@@ -637,12 +637,20 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         _ => None,
     };
 
+    // Build ir_scope from function parameters
+    let ir_scope: std::collections::HashMap<String, gunbc_ir::code_ir::IrType> = fd
+        .params
+        .iter()
+        .map(|p| (p.name.clone(), fn_codegen::type_expr_to_ir_type(&p.ty)))
+        .collect();
+
     let ctx = {
         let mut augmented = ctx.clone();
         augmented.struct_field_types.extend(new_field_types);
         augmented.optional_params = optional_params;
         augmented.param_types = param_types;
         augmented.current_return_type = return_type_name;
+        augmented.ir_scope = ir_scope;
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -895,6 +903,8 @@ pub fn typedefs_to_source_file(
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
+        ir_scope: std::collections::HashMap::new(),
+        struct_field_ir_types: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1013,6 +1023,8 @@ pub fn generate_types_for_modules(
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
+            ir_scope: std::collections::HashMap::new(),
+            struct_field_ir_types: std::collections::HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }

@@ -36,6 +36,34 @@ use crate::ValueExpr;
 use serde::{Deserialize, Serialize};
 
 // ===========================================================================
+// Type annotations for generated code
+// ===========================================================================
+
+/// Target-agnostic type annotation derived from .dag TypeExpr.
+///
+/// Backends interpret these for their target language:
+///   `Optional(T)` → Rust: `Option<T>`, Go: `*T`, C: `T*`
+///   `Generic("List", [T])` → Rust: `Vec<T>`, Go: `[]T`, C: `T*+len`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IrType {
+    /// A named type: MyStruct, Token, Expr.
+    Named(String),
+    /// A generic type: List<T>, Map<K,V>.
+    Generic(String, Vec<IrType>),
+    /// An optional/nullable type: T?
+    Optional(Box<IrType>),
+    Bool,
+    Int,
+    Str,
+    Tuple(Vec<IrType>),
+    /// Anonymous record: { name: String, age: Int }
+    Record(Vec<(String, IrType)>),
+    Unit,
+    /// Gradual migration: backend falls back to existing heuristics.
+    Unknown,
+}
+
+// ===========================================================================
 // Test file structure (moved from testgen::test_ir)
 // ===========================================================================
 
@@ -111,6 +139,8 @@ pub enum Stmt {
         name: String,
         mutable: bool,
         expr: Expr,
+        /// Target-agnostic type of this binding (populated during compilation).
+        ir_type: Option<IrType>,
     },
     /// **Tier 2 (ManagedIR).** Managed-language binding with explicit intent:
     /// multi-target declaration/assignment (e.g., Go `a, err := call()`).
@@ -210,6 +240,8 @@ pub enum Expr {
         fields: Vec<(String, Expr)>,
         /// Optional struct update base (renders as `..base`).
         rest: Option<Box<Expr>>,
+        /// Declared field types from the struct definition (populated during compilation).
+        field_types: Option<Vec<(String, IrType)>>,
     },
     /// **Tier 0.** Closure/lambda: `|args| body` / `lambda args: body`.
     Closure { args: Vec<String>, body: Box<Expr> },
@@ -625,6 +657,7 @@ impl Stmt {
             name: name.into(),
             mutable: false,
             expr,
+            ir_type: None,
         }
     }
 
@@ -634,6 +667,7 @@ impl Stmt {
             name: name.into(),
             mutable: true,
             expr,
+            ir_type: None,
         }
     }
 

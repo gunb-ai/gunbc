@@ -211,6 +211,7 @@ fn lower_stmt_into(out: &mut Vec<Stmt>, stmt: &Stmt, in_fallible_fn: bool, confi
             name,
             mutable: _,
             expr,
+            ..
         } => {
             let lowered_expr = lower_expr(expr, config);
             let is_transport = expr_is_transport_call(expr);
@@ -241,6 +242,7 @@ fn lower_stmt_into(out: &mut Vec<Stmt>, stmt: &Stmt, in_fallible_fn: bool, confi
                     name: to_camel_case(name),
                     mutable: false, // Go uses := for all short decls.
                     expr: lowered_expr,
+                    ir_type: None,
                 });
             }
         }
@@ -389,13 +391,14 @@ fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
             args: args.clone(),
             body: Box::new(lower_expr(body, config)),
         },
-        Expr::Struct { name, fields, rest } => Expr::Struct {
+        Expr::Struct { name, fields, rest, field_types } => Expr::Struct {
             name: to_pascal_case(name),
             fields: fields
                 .iter()
                 .map(|(k, v)| (to_pascal_case(k), lower_expr(v, config)))
                 .collect(),
             rest: rest.as_ref().map(|r| Box::new(lower_expr(r, config))),
+            field_types: field_types.clone(),
         },
         // MacroCall doesn't exist in Go — convert to function call.
         Expr::MacroCall { name, args } => Expr::Call {

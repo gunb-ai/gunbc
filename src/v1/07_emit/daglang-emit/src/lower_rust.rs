@@ -170,10 +170,12 @@ fn lower_stmt(stmt: &Stmt, in_fallible_fn: bool, config: &RustConfig) -> Stmt {
             name,
             mutable,
             expr,
+            ir_type,
         } => Stmt::Let {
             name: name.clone(),
             mutable: *mutable,
             expr: lower_expr(expr, in_fallible_fn, config),
+            ir_type: ir_type.clone(),
         },
         Stmt::Expr(expr) => Stmt::Expr(lower_expr(expr, in_fallible_fn, config)),
         Stmt::Return(expr) => Stmt::Return(lower_expr(expr, in_fallible_fn, config)),
@@ -319,7 +321,7 @@ fn lower_expr(expr: &Expr, in_fallible_fn: bool, config: &RustConfig) -> Expr {
             args: args.clone(),
             body: Box::new(lower_expr(body, in_fallible_fn, config)),
         },
-        Expr::Struct { name, fields, rest } => Expr::Struct {
+        Expr::Struct { name, fields, rest, field_types } => Expr::Struct {
             name: name.clone(),
             fields: fields
                 .iter()
@@ -328,6 +330,7 @@ fn lower_expr(expr: &Expr, in_fallible_fn: bool, config: &RustConfig) -> Expr {
             rest: rest
                 .as_ref()
                 .map(|r| Box::new(lower_expr(r, in_fallible_fn, config))),
+            field_types: field_types.clone(),
         },
         // Leaf expressions pass through.
         other => other.clone(),

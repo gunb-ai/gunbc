@@ -49,10 +49,43 @@
 
 use daglang_syntax::ast;
 use gunbc_ir::code_ir;
+use gunbc_ir::code_ir::IrType;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::type_codegen::to_snake_case;
+
+// ---------------------------------------------------------------------------
+// TypeExpr → IrType conversion
+// ---------------------------------------------------------------------------
+
+/// Convert a DSL `TypeExpr` to a target-agnostic `IrType`.
+///
+/// This is the single source of truth for mapping .dag types to the IR type
+/// system. Backends then render `IrType` to their target language.
+pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
+    match expr {
+        ast::TypeExpr::Named(n) => match n.as_str() {
+            "Bool" => IrType::Bool,
+            "Int" => IrType::Int,
+            "String" => IrType::Str,
+            _ => IrType::Named(n.clone()),
+        },
+        ast::TypeExpr::Generic(n, args) => {
+            IrType::Generic(n.clone(), args.iter().map(type_expr_to_ir_type).collect())
+        }
+        ast::TypeExpr::Optional(inner) => {
+            IrType::Optional(Box::new(type_expr_to_ir_type(inner)))
+        }
+        ast::TypeExpr::Refined(inner, _) => type_expr_to_ir_type(inner),
+        ast::TypeExpr::Record(fields) => IrType::Record(
+            fields
+                .iter()
+                .map(|f| (f.name.clone(), type_expr_to_ir_type(&f.ty)))
+                .collect(),
+        ),
+    }
+}
 
 /// Context for compiling DSL function bodies.
 ///
@@ -86,6 +119,11 @@ pub struct CompileContext {
     pub param_types: std::collections::HashMap<String, String>,
     /// Current function's return type name (for variant disambiguation in return position).
     pub current_return_type: Option<String>,
+    /// Target-agnostic type scope: variable name → IrType (populated from function params
+    /// and augmented as let bindings are compiled).
+    pub ir_scope: HashMap<String, IrType>,
+    /// Struct/variant name → [(field_name, IrType)] for populating `Expr::Struct.field_types`.
+    pub struct_field_ir_types: HashMap<String, Vec<(String, IrType)>>,
 }
 
 impl Default for CompileContext {
@@ -108,6 +146,8 @@ impl CompileContext {
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
+            ir_scope: HashMap::new(),
+            struct_field_ir_types: HashMap::new(),
         }
     }
 }
@@ -140,7 +180,14 @@ pub fn compile_fn_body(body: &ast::FnBody, ctx: &CompileContext) -> Vec<code_ir:
                 current_ctx.optional_params.insert(name.clone());
             }
         }
-        result.push(compile_stmt(s, i == len - 1, &current_ctx, &mut counter));
+        let compiled = compile_stmt(s, i == len - 1, &current_ctx, &mut counter);
+        // Track the ir_type in scope for downstream let bindings
+        if let ast::Stmt::Let(name, _) = s {
+            if let code_ir::Stmt::Let { ir_type: Some(ref ty), .. } = compiled {
+                current_ctx.ir_scope.insert(name.clone(), ty.clone());
+            }
+        }
+        result.push(compiled);
     }
     result
 }
@@ -149,7 +196,7 @@ pub fn compile_fn_body(body: &ast::FnBody, ctx: &CompileContext) -> Vec<code_ir:
 fn is_clearly_optional_ast_expr(expr: &ast::Expr) -> bool {
     match expr {
         ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => true,
-        ast::Expr::Call(name, _) if name == "Some" => true,
+        ast::Expr::Call(name, _) if name == "Some" || name == "parse_int" => true,
         ast::Expr::Ident(name) if name == "null" => true,
         ast::Expr::Literal(ast::Literal::None) => true,
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
@@ -177,20 +224,28 @@ fn compile_stmt(
     counter: &mut usize,
 ) -> code_ir::Stmt {
     match stmt {
-        ast::Stmt::Let(name, expr) => code_ir::Stmt::Let {
-            name: escape_rust_keyword(name),
-            mutable: false,
-            expr: compile_expr(expr, ctx, counter),
-        },
+        ast::Stmt::Let(name, expr) => {
+            let ir_type = infer_ast_expr_type(expr, ctx);
+            code_ir::Stmt::Let {
+                name: escape_rust_keyword(name),
+                mutable: false,
+                expr: compile_expr(expr, ctx, counter),
+                ir_type,
+            }
+        }
         ast::Stmt::Assign(name, expr) => code_ir::Stmt::Assign {
             dest: code_ir::Expr::Var(escape_rust_keyword(name)),
             value: compile_expr(expr, ctx, counter),
         },
-        ast::Stmt::Node(ns) => code_ir::Stmt::Let {
-            name: escape_rust_keyword(&ns.name),
-            mutable: false,
-            expr: compile_expr(&ns.expr, ctx, counter),
-        },
+        ast::Stmt::Node(ns) => {
+            let ir_type = infer_ast_expr_type(&ns.expr, ctx);
+            code_ir::Stmt::Let {
+                name: escape_rust_keyword(&ns.name),
+                mutable: false,
+                expr: compile_expr(&ns.expr, ctx, counter),
+                ir_type,
+            }
+        }
         ast::Stmt::Expr(expr) => {
             if is_last {
                 code_ir::Stmt::TailExpr(compile_expr(expr, ctx, counter))
@@ -248,6 +303,14 @@ fn compile_return_fields(
                 } else {
                     compiled
                 };
+                // Unwrap optional value for non-optional target field
+                if !is_opt && !is_none && matches!(infer_ast_expr_type(expr, ctx), Some(IrType::Optional(_))) {
+                    result = code_ir::Expr::MethodCall {
+                        receiver: Box::new(result),
+                        method: "unwrap".to_string(),
+                        args: vec![],
+                    };
+                }
                 // Box wrapping for recursive fields
                 if needs_box_wrapping(&struct_name, name, ctx) {
                     result = code_ir::Expr::Call {
@@ -263,10 +326,12 @@ fn compile_return_fields(
             })
             .collect();
         let all_fields = fill_missing_fields(&struct_name, compiled_fields, ctx);
+        let ir_field_types = ctx.struct_field_ir_types.get(&struct_name).cloned();
         code_ir::Expr::Struct {
             name: struct_name.clone(),
             fields: all_fields,
             rest: None,
+            field_types: ir_field_types,
         }
     }
 }
@@ -467,6 +532,14 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                     } else {
                         compiled
                     };
+                    // Unwrap optional value for non-optional target field
+                    if !is_opt && !is_none && matches!(infer_ast_expr_type(e, ctx), Some(IrType::Optional(_))) {
+                        result = code_ir::Expr::MethodCall {
+                            receiver: Box::new(result),
+                            method: "unwrap".to_string(),
+                            args: vec![],
+                        };
+                    }
                     // Wrap in Box::new() if this field is recursive
                     if needs_box_wrapping(&struct_name, n, ctx) {
                         result = code_ir::Expr::Call {
@@ -479,10 +552,12 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 })
                 .collect();
             let ir_fields = fill_missing_fields(&struct_name, ir_fields, ctx);
+            let ir_field_types = ctx.struct_field_ir_types.get(&struct_name).cloned();
             code_ir::Expr::Struct {
                 name: qualified_name,
                 fields: ir_fields,
                 rest: None,
+                field_types: ir_field_types,
             }
         }
         ast::Expr::Match(scrutinee, arms) => compile_match(scrutinee, arms, ctx, counter),
@@ -502,6 +577,17 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
         ast::Expr::For(binding, iter_expr, _passthrough, body) => {
             let result_var = fresh(counter, "for_result");
             let iter = make_owned_iter(compile_expr(iter_expr, ctx, counter));
+            // Infer element type from body for Vec<T> annotation
+            let body_ast_expr = match body {
+                ast::ForBody::Expr(e) => Some(e.as_ref()),
+                ast::ForBody::Block(stmts) => stmts.last().and_then(|s| match s {
+                    ast::Stmt::Expr(e) => Some(e),
+                    _ => None,
+                }),
+            };
+            let list_type = body_ast_expr
+                .and_then(|e| infer_ast_expr_type(e, ctx))
+                .map(|t| IrType::Generic("List".to_string(), vec![t]));
             let push_expr = match body {
                 ast::ForBody::Expr(expr) => compile_expr(expr, ctx, counter),
                 ast::ForBody::Block(stmts) => code_ir::Expr::Block(
@@ -513,10 +599,15 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 ),
             };
             code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result_var, code_ir::Expr::MacroCall {
-                    name: "vec".to_string(),
-                    args: vec![],
-                }),
+                code_ir::Stmt::Let {
+                    name: result_var.clone(),
+                    mutable: true,
+                    expr: code_ir::Expr::MacroCall {
+                        name: "vec".to_string(),
+                        args: vec![],
+                    },
+                    ir_type: list_type,
+                },
                 code_ir::Stmt::For {
                     binding: binding.clone(),
                     iter,
@@ -919,6 +1010,14 @@ fn compile_intrinsic_call(
                             } else {
                                 compiled
                             };
+                            // Unwrap optional value for non-optional target field
+                            if !is_opt && !is_none && matches!(infer_ast_expr_type(e, ctx), Some(IrType::Optional(_))) {
+                                result = code_ir::Expr::MethodCall {
+                                    receiver: Box::new(result),
+                                    method: "unwrap".to_string(),
+                                    args: vec![],
+                                };
+                            }
                             // Box wrapping for recursive fields
                             if needs_box_wrapping(&struct_name, n, ctx) {
                                 result = code_ir::Expr::Call {
@@ -937,6 +1036,7 @@ fn compile_intrinsic_call(
                         name: struct_name,
                         fields: ir_fields,
                         rest: Some(Box::new(cloned_base)),
+                        field_types: None,
                     })
                 }
                 _ => {
@@ -1032,6 +1132,7 @@ fn compile_intrinsic_call(
                         args: vec![],
                     },
                     mutable: false,
+                    ir_type: None,
                 },
                 code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(format!("{tmp} as i64"))),
             ]))
@@ -1326,25 +1427,87 @@ fn compile_map_intrinsic(
         },
         None => code_ir::Expr::Var(elem.clone()),
     };
-    code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(
-            &result,
-            code_ir::Expr::MacroCall {
-                name: "vec".to_string(),
-                args: vec![],
+    // Check if the mapper body produces an optional value — if so, generate
+    // filter-map semantics (only push Some values) instead of bare push.
+    let body_is_optional = match mapper {
+        Some(ast::Expr::Lambda(_, body)) => {
+            is_clearly_optional_ast_expr(body) || {
+                // For field accesses (e.g. `p => p.module`), check if the field
+                // has IrType::Optional in ALL structs that define it.
+                if let ast::Expr::FieldAccess(_, field_name) = body.as_ref() {
+                    let mut found = false;
+                    let mut all_opt = true;
+                    for fields in ctx.struct_field_ir_types.values() {
+                        if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field_name) {
+                            found = true;
+                            if !matches!(ty, IrType::Optional(_)) {
+                                all_opt = false;
+                                break;
+                            }
+                        }
+                    }
+                    found && all_opt
+                } else {
+                    false
+                }
+            }
+        }
+        _ => false,
+    };
+    if body_is_optional {
+        let inner = fresh(counter, "inner");
+        code_ir::Expr::Block(vec![
+            code_ir::Stmt::let_mut(
+                &result,
+                code_ir::Expr::MacroCall {
+                    name: "vec".to_string(),
+                    args: vec![],
+                },
+            ),
+            code_ir::Stmt::For {
+                binding: elem,
+                iter: make_owned_iter(collection.clone()),
+                body: vec![code_ir::Stmt::Expr(code_ir::Expr::Match {
+                    expr: Box::new(mapped_value),
+                    arms: vec![
+                        code_ir::MatchArm {
+                            pattern: format!("Some({inner})"),
+                            body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                                receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                                method: "push".to_string(),
+                                args: vec![code_ir::Expr::Var(inner.clone())],
+                            })],
+                        },
+                        code_ir::MatchArm {
+                            pattern: "_".to_string(),
+                            body: vec![],
+                        },
+                    ],
+                })],
             },
-        ),
-        code_ir::Stmt::For {
-            binding: elem,
-            iter: make_owned_iter(collection.clone()),
-            body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
-                receiver: Box::new(code_ir::Expr::Var(result.clone())),
-                method: "push".to_string(),
-                args: vec![mapped_value],
-            })],
-        },
-        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
-    ])
+            code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+        ])
+    } else {
+        code_ir::Expr::Block(vec![
+            code_ir::Stmt::let_mut(
+                &result,
+                code_ir::Expr::MacroCall {
+                    name: "vec".to_string(),
+                    args: vec![],
+                },
+            ),
+            code_ir::Stmt::For {
+                binding: elem,
+                iter: make_owned_iter(collection.clone()),
+                body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                    method: "push".to_string(),
+                    args: vec![mapped_value],
+                })],
+            },
+            code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+        ])
+    }
 }
 
 fn compile_filter_intrinsic(
@@ -1428,8 +1591,28 @@ fn compile_fold_intrinsic(
         },
         None => code_ir::Expr::Var(acc.clone()),
     };
+    // Prefer init type; if it's a list with Unknown element, try the lambda body
+    let init_ir_type = init.and_then(|e| infer_ast_expr_type(e, ctx));
+    let acc_ir_type = match &init_ir_type {
+        Some(IrType::Generic(name, args))
+            if name == "List" && args.first() == Some(&IrType::Unknown) =>
+        {
+            // Init is an empty list — infer element type from lambda body
+            let body_type = match func {
+                Some(ast::Expr::Lambda(_, body)) => infer_ast_expr_type(body, ctx),
+                _ => None,
+            };
+            body_type.or(init_ir_type)
+        }
+        _ => init_ir_type,
+    };
     code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(&acc, init_expr),
+        code_ir::Stmt::Let {
+            name: acc.clone(),
+            mutable: true,
+            expr: init_expr,
+            ir_type: acc_ir_type,
+        },
         code_ir::Stmt::For {
             binding: elem,
             iter: make_owned_iter(collection.clone()),
@@ -1557,13 +1740,14 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
         code_ir::Expr::Deref(inner) => {
             code_ir::Expr::Deref(Box::new(substitute_var(inner, from, to)))
         }
-        code_ir::Expr::Struct { name, fields, rest } => code_ir::Expr::Struct {
+        code_ir::Expr::Struct { name, fields, rest, field_types } => code_ir::Expr::Struct {
             name: name.clone(),
             fields: fields
                 .iter()
                 .map(|(n, e)| (n.clone(), substitute_var(e, from, to)))
                 .collect(),
             rest: rest.as_ref().map(|r| Box::new(substitute_var(r, from, to))),
+            field_types: field_types.clone(),
         },
         code_ir::Expr::Match { expr, arms } => code_ir::Expr::Match {
             expr: Box::new(substitute_var(expr, from, to)),
@@ -1613,10 +1797,12 @@ fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) 
             name,
             expr,
             mutable,
+            ir_type,
         } => code_ir::Stmt::Let {
             name: name.clone(),
             expr: substitute_var(expr, from, to),
             mutable: *mutable,
+            ir_type: ir_type.clone(),
         },
         code_ir::Stmt::Assign { dest, value } => code_ir::Stmt::Assign {
             dest: substitute_var(dest, from, to),
@@ -1867,6 +2053,7 @@ fn compile_match_arm(
                         name: bind_name.clone(),
                         expr: code_ir::Expr::Deref(Box::new(code_ir::Expr::Var(bind_name.clone()))),
                         mutable: false,
+                        ir_type: None,
                     });
                 }
             }
@@ -2326,6 +2513,66 @@ fn is_null_ast_expr(expr: &ast::Expr) -> bool {
     }
 }
 
+/// Infer the IrType of a DSL AST expression from the compile context.
+///
+/// Returns `Some(IrType)` when the type can be determined from the context
+/// (variable lookups, struct field types, function return types), `None` otherwise.
+fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    match expr {
+        ast::Expr::Ident(name) => ctx.ir_scope.get(name).cloned(),
+        ast::Expr::List(elements) => {
+            let elem_type = elements
+                .first()
+                .and_then(|item| infer_ast_expr_type(item, ctx))
+                .unwrap_or(IrType::Unknown);
+            Some(IrType::Generic("List".to_string(), vec![elem_type]))
+        }
+        ast::Expr::Literal(lit) => match lit {
+            ast::Literal::Int(_) => Some(IrType::Int),
+            ast::Literal::String(_) => Some(IrType::Str),
+            ast::Literal::Bool(_) => Some(IrType::Bool),
+            ast::Literal::Float(_) => None,
+            ast::Literal::None => None,
+        },
+        ast::Expr::FieldAccess(receiver, field_name) => {
+            // Look up receiver type, then field type in struct definitions
+            if let ast::Expr::Ident(recv_name) = receiver.as_ref() {
+                if let Some(recv_type) = ctx.ir_scope.get(recv_name) {
+                    let struct_name = match recv_type {
+                        IrType::Named(n) => Some(n.as_str()),
+                        IrType::Optional(inner) => match inner.as_ref() {
+                            IrType::Named(n) => Some(n.as_str()),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(sn) = struct_name {
+                        if let Some(fields) = ctx.struct_field_ir_types.get(sn) {
+                            return fields
+                                .iter()
+                                .find(|(n, _)| n == field_name)
+                                .map(|(_, ty)| ty.clone());
+                        }
+                    }
+                }
+            }
+            None
+        }
+        ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
+        ast::Expr::Record(Some(name), _) => Some(IrType::Named(name.clone())),
+        ast::Expr::Call(name, _) if name == "Some" => None,
+        ast::Expr::Call(name, _) if name == "parse_int" => {
+            Some(IrType::Optional(Box::new(IrType::Int)))
+        }
+        ast::Expr::Call(name, _) => {
+            // Look up return type from fn_return_types → try to get the IrType
+            // We only have the Rust type string here; map known patterns
+            ctx.fn_return_types.get(name).map(|_| IrType::Unknown)
+        }
+        _ => None,
+    }
+}
+
 /// Compile a field value expression with type-aware variant resolution.
 ///
 /// When the field's declared type is an enum that contains the bare identifier
@@ -2392,6 +2639,14 @@ fn compile_expr_in_field_context(
                             } else {
                                 compiled
                             };
+                            // Unwrap optional value for non-optional target field
+                            if !is_opt && !is_none && matches!(infer_ast_expr_type(e, ctx), Some(IrType::Optional(_))) {
+                                result = code_ir::Expr::MethodCall {
+                                    receiver: Box::new(result),
+                                    method: "unwrap".to_string(),
+                                    args: vec![],
+                                };
+                            }
                             if needs_box_wrapping(record_name, n, ctx) {
                                 result = code_ir::Expr::Call {
                                     func: Box::new(code_ir::Expr::Path(vec![
@@ -2410,6 +2665,7 @@ fn compile_expr_in_field_context(
                         name: qualified,
                         fields: ir_fields,
                         rest: None,
+                        field_types: None,
                     };
                 }
             }
@@ -3097,6 +3353,7 @@ mod tests {
                     name: String::new(),
                     fields: vec![],
                     rest: None,
+                    field_types: None,
                 })],
             }],
         })];

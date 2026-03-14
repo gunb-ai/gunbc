@@ -1589,7 +1589,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Self::record_ident(first, used);
                 }
             }
-            Expr::Struct { name, fields, rest } => {
+            Expr::Struct { name, fields, rest, .. } => {
                 Self::record_ident(name, used);
                 for (_, expr) in fields {
                     Self::collect_idents_from_expr(expr, used);
@@ -1695,6 +1695,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             Expr::call("ExecutionMode::DryRun", vec![mocks_expr.clone()]),
                         )],
                         rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        field_types: None,
                     },
                 ],
             )
@@ -2166,6 +2167,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                     Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                                 )],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -2257,6 +2259,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -2374,6 +2377,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                     Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                                 )],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -2905,6 +2909,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
                         )],
                         rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        field_types: None,
                     },
                 ],
             )
@@ -3012,6 +3017,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                             "Default::default",
                                             vec![],
                                         ))),
+                                        field_types: None,
                                     },
                                 ],
                             ),
@@ -3087,6 +3093,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -3201,6 +3208,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                             "Default::default",
                                             vec![],
                                         ))),
+                                        field_types: None,
                                     },
                                 ],
                             )
@@ -3264,6 +3272,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                             "Default::default",
                                             vec![],
                                         ))),
+                                        field_types: None,
                                     },
                                 ],
                             )
@@ -3380,6 +3389,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                         Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
                                     )],
                                     rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                    field_types: None,
                                 },
                             ],
                         )
@@ -3990,6 +4000,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -4187,6 +4198,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                         ]),
                                     )],
                                     rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                    field_types: None,
                                 },
                             ],
                         )
@@ -4321,6 +4333,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                     vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
                                 ))],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -4374,6 +4387,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 name: "ExecuteConfig".to_string(),
                                 fields: vec![("mode".to_string(), Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]))],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -4638,6 +4652,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -6417,6 +6432,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                                     Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                                 )],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     ),

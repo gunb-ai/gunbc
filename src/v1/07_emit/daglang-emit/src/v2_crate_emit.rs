@@ -107,6 +107,24 @@ pub fn assemble_v2_crate(
     });
     // Note: MatchPattern is defined in the .dag source — don't add it here.
 
+    // 3b. Build struct_field_ir_types (target-agnostic type annotations)
+    let mut struct_field_ir_types = build_struct_field_ir_types(&all_type_defs);
+    // Add materialized types from std_types_prelude
+    struct_field_ir_types.insert(
+        "BindingPower".to_string(),
+        vec![
+            ("left".to_string(), gunbc_ir::code_ir::IrType::Int),
+            ("right".to_string(), gunbc_ir::code_ir::IrType::Int),
+        ],
+    );
+    struct_field_ir_types.insert(
+        "SourceSpan".to_string(),
+        vec![
+            ("start".to_string(), gunbc_ir::code_ir::IrType::Int),
+            ("end".to_string(), gunbc_ir::code_ir::IrType::Int),
+        ],
+    );
+
     // 4. Build optional_fields map
     let optional_fields = build_optional_fields(&all_type_defs);
 
@@ -160,6 +178,16 @@ pub fn assemble_v2_crate(
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
 
+        // Filter struct_field_ir_types to only include visible types
+        let module_struct_field_ir_types: HashMap<
+            String,
+            Vec<(String, gunbc_ir::code_ir::IrType)>,
+        > = struct_field_ir_types
+            .iter()
+            .filter(|(name, _)| visible_type_names.contains(name.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
         let source = emit_module(
             items,
             &recursive_fields,
@@ -168,6 +196,7 @@ pub fn assemble_v2_crate(
             &optional_fields,
             &all_enum_variants,
             &defined_type_signatures,
+            &module_struct_field_ir_types,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -317,6 +346,7 @@ fn module_prelude(dag_stem: &str) -> String {
     prelude
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_module(
     items: &[daglang_syntax::span::Spanned<Item>],
     recursive_fields: &HashSet<(String, String)>,
@@ -325,6 +355,7 @@ fn emit_module(
     optional_fields: &HashMap<String, HashSet<String>>,
     all_enum_variants: &HashMap<String, HashSet<String>>,
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
+    struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -380,6 +411,8 @@ fn emit_module(
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
+        ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
+        struct_field_ir_types: struct_field_ir_types.clone(),
     };
 
     for item in items {
@@ -460,6 +493,38 @@ fn build_struct_field_types(type_defs: &[&TypeDef]) -> HashMap<String, HashMap<S
                             .map(|f| (f.name.clone(), type_expr_to_rust_name(&f.ty)))
                             .collect();
                         map.insert(v.name.clone(), field_map);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    map
+}
+
+/// Build struct/variant name → [(field_name, IrType)] map for type-annotated IR.
+fn build_struct_field_ir_types(
+    type_defs: &[&TypeDef],
+) -> HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>> {
+    let mut map = HashMap::new();
+    for td in type_defs {
+        match &td.body {
+            TypeBody::Record(fields) => {
+                let ir_fields: Vec<(String, gunbc_ir::code_ir::IrType)> = fields
+                    .iter()
+                    .map(|f| (f.name.clone(), fn_codegen::type_expr_to_ir_type(&f.ty)))
+                    .collect();
+                map.insert(td.name.clone(), ir_fields);
+            }
+            TypeBody::Sum(variants) => {
+                for v in variants {
+                    if !v.fields.is_empty() {
+                        let ir_fields: Vec<(String, gunbc_ir::code_ir::IrType)> = v
+                            .fields
+                            .iter()
+                            .map(|f| (f.name.clone(), fn_codegen::type_expr_to_ir_type(&f.ty)))
+                            .collect();
+                        map.insert(v.name.clone(), ir_fields);
                     }
                 }
             }
