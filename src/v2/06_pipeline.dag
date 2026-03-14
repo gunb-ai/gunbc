@@ -117,7 +117,7 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
     }
   } else {
     // Safe to extract: all parses succeeded, so every p.module is Some.
-    let modules = map(parse_results, p => p.module)
+    let modules = map(parse_results, p => p.module.value)
     // Stage 3: Resolve imports and build module graph
     let graph = resolve_modules(modules: modules)
 

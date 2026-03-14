@@ -2413,4 +2413,47 @@ mod smoke {
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
+
+    /// Generate the v2 crate to target/v2-compiler/ for inspection.
+    /// Does not clean up — the crate persists for manual browsing/running.
+    #[test]
+    #[ignore]
+    fn v2_crate_emit_to_target() {
+        let out_dir = workspace_root().join("target/v2-compiler");
+        let _ = std::fs::remove_dir_all(&out_dir);
+
+        let v2_files = [
+            ("00_core", "src/v2/00_core.dag"),
+            ("01_tokenize", "src/v2/01_tokenize.dag"),
+            ("02_parse", "src/v2/02_parse.dag"),
+            ("03_resolve", "src/v2/03_resolve.dag"),
+            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("05_emit", "src/v2/05_emit.dag"),
+            ("06_pipeline", "src/v2/06_pipeline.dag"),
+        ];
+
+        let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
+            .iter()
+            .map(|(stem, path)| {
+                let source = read_v2_file(path);
+                let result = daglang_syntax::parser::parse_to_result(&source);
+                (stem.to_string(), result.ast)
+            })
+            .collect();
+
+        let modules: Vec<(
+            &str,
+            &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>],
+        )> = parsed
+            .iter()
+            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
+                (stem.as_str(), sf.items.as_slice())
+            })
+            .collect();
+
+        let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
+        daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+
+        eprintln!("v2 crate written to: {}", out_dir.display());
+    }
 }

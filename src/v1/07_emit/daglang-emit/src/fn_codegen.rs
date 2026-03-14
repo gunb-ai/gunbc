@@ -2367,6 +2367,16 @@ fn is_likely_option_receiver_ctx(expr: &ast::Expr, ctx: &CompileContext) -> bool
             // Also check optional params
             ctx.optional_params.contains(name.as_str())
         }
+        // A field access is Option if the accessed field is optional
+        // (e.g., `p.module` where `ParseResult.module: Module?`).
+        ast::Expr::FieldAccess(_, field) => {
+            for opt_fields in ctx.optional_fields.values() {
+                if opt_fields.contains(field.as_str()) {
+                    return true;
+                }
+            }
+            false
+        }
         _ => false,
     }
 }

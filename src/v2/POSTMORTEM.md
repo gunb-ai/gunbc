@@ -40,6 +40,51 @@ Rust-backed extern functions in the .dag source.
 
 ## Debt catalog
 
+### Category 0: Confirmed invariant violations from follow-up scan
+
+These are not generic bootstrap rough edges; they are places where the
+current .dag pipeline claims one invariant and implements another.
+
+**Invariant violation: `merge_envs()` is first-writer-wins, not last-writer-wins.**
+`04_typecheck.dag` says later bindings shadow earlier ones, and the
+comments explicitly describe a right-to-left dedupe. The implementation
+at lines 186-197 does not reverse the bindings before folding, so it
+keeps the first occurrence of each name. That means kernel or imported
+bindings can incorrectly shadow later local bindings, violating the
+documented environment layering (`kernel < imports < local`).
+
+**Invariant violation: `build_type_env()` loses import provenance.**
+`ResolvedImport` carries the target module for each import, but
+`build_type_env()` ignores it. At lines 213-224, each imported name is
+looked up in one merged parent environment built from *all* parent
+modules, not in the specific module named by `imp.module_path`. If two
+dependencies export the same type name, `import a { Foo }` can bind
+`Foo` from `b` instead of `a`. This launders module identity across the
+resolve/typecheck boundary.
+
+**Invariant violation: the pipeline emits after resolve/typecheck failure.**
+`06_pipeline.dag` only gates on parse errors. Once parsing succeeds,
+`compile_sources()` always calls `resolve_modules()`, `typecheck()`, and
+`emit_rust()` (lines 99-136), even if resolver or typechecker
+diagnostics contain errors. That violates the emitter precondition in
+`05_emit.dag` lines 1-11, which says emit receives a fully resolved,
+fully typed graph with no remaining ambiguity.
+
+**Concrete bad case: cycle modules get `dep_order = -1` and still flow downstream.**
+When topological sort cannot place a module, `find_index_in_list()`
+returns `-1` (03_resolve.dag lines 439-444). `resolve_modules()` still
+attaches that `dep_order` and sorts the full module list by it (lines
+90-104). Combined with the pipeline behavior above, cyclic or otherwise
+unsorted modules are pushed to the front of the resolver output and then
+typechecked/emitted anyway instead of being quarantined behind the
+diagnostic.
+
+**Invariant checker exists but the pipeline does not use it.**
+`04_typecheck.dag` defines `typecheck_and_validate()` plus
+`validate_no_unresolved()` / `typecheck_ok()` (lines 992-1017), but
+`06_pipeline.dag` calls plain `typecheck()`. So even the compiler's own
+post-typecheck invariant audit is bypassed on the main pipeline path.
+
 ### Category 1: Hardcoded bootstrap scaffolding in v2_crate_emit.rs
 
 These exist because the v1 emitter pipeline works on individual parsed
