@@ -87,4 +87,70 @@ pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
 pub fn str_eq(a: impl AsRef<str>, b: impl AsRef<str>) -> bool {
     a.as_ref() == b.as_ref()
 }
+
+// ---------------------------------------------------------------------------
+// Scanner operations — used by the v2 tokenizer
+// ---------------------------------------------------------------------------
+
+/// Scan while a predicate holds, returning the end position.
+/// `pred` receives a single-character string and returns true to continue.
+pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(String) -> bool) -> i64 {
+    let chars: Vec<char> = s.as_ref().chars().collect();
+    let mut pos = start.max(0) as usize;
+    while pos < chars.len() && pred(chars[pos].to_string()) {
+        pos += 1;
+    }
+    pos as i64
+}
+
+/// Skip horizontal whitespace (spaces and tabs), returning the new position.
+pub fn skip_horizontal_ws(s: impl AsRef<str>, start: i64) -> i64 {
+    let chars: Vec<char> = s.as_ref().chars().collect();
+    let mut pos = start.max(0) as usize;
+    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') {
+        pos += 1;
+    }
+    pos as i64
+}
+
+/// Scan to end of line, returning the position of the newline (or end of string).
+pub fn scan_to_eol(s: impl AsRef<str>, start: i64) -> i64 {
+    let chars: Vec<char> = s.as_ref().chars().collect();
+    let start = start.max(0) as usize;
+    for (i, &ch) in chars.iter().enumerate().skip(start) {
+        if ch == '\n' {
+            return i as i64;
+        }
+    }
+    chars.len() as i64
+}
+
+/// Scan to end of a string literal, handling escape sequences.
+/// Returns the position after the closing quote.
+pub fn scan_string_end(s: impl AsRef<str>, start: i64) -> i64 {
+    let chars: Vec<char> = s.as_ref().chars().collect();
+    let mut pos = start.max(0) as usize;
+    while pos < chars.len() {
+        if chars[pos] == '\\' {
+            pos += 2;
+        } else if chars[pos] == '"' {
+            return (pos + 1) as i64;
+        } else {
+            pos += 1;
+        }
+    }
+    chars.len() as i64
+}
+
+/// Return the Unicode code point of a character (given as a single-char string).
+pub fn code_point(c: impl AsRef<str>) -> i64 {
+    c.as_ref().chars().next().map(|ch| ch as i64).unwrap_or(0)
+}
+
+/// Convert a Unicode code point to a single-character string.
+pub fn from_code_point(cp: i64) -> String {
+    char::from_u32(cp as u32)
+        .map(|c| c.to_string())
+        .unwrap_or_default()
+}
 "#;

@@ -31,6 +31,11 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
 }
 
+/// Public version of type_expr_to_rust for use in v2_crate_emit.
+pub fn type_expr_to_rust_pub(expr: &TypeExpr) -> String {
+    type_expr_to_rust(expr)
+}
+
 /// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
 /// available for structural type resolution.
 ///
@@ -291,7 +296,7 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
             };
             (format!("&[{elem_type}]"), format!("&[\n    {items}\n]"))
         }
-        // Map<K, V> data: emit as a function returning HashMap since HashMap isn't const
+        // Map<K, V> data: emit as a LazyLock static (HashMap can't be const)
         TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
             let key_type = type_expr_to_rust(&args[0]);
             let val_type = type_expr_to_rust(&args[1]);
@@ -300,10 +305,10 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                 _ => &val_type,
             };
             let value = render_expr_to_rust(&dd.value, val_type_name, STATIC_OPTS);
-            let fn_name = to_snake_case(&dd.name);
-            // Emit as a public function returning HashMap
+            // Emit as a LazyLock static with SCREAMING_SNAKE name so compile_ident's
+            // `NAME.clone()` pattern works for both List statics and Map statics.
             return vec![code_ir::Item::Raw(format!(
-                "pub fn {fn_name}() -> std::collections::HashMap<{key_type}, {val_type}> {{\n    {value}\n}}"
+                "pub static {rust_name}: std::sync::LazyLock<std::collections::HashMap<{key_type}, {val_type}>> = std::sync::LazyLock::new(|| {{\n    {value}\n}});"
             ))];
         }
         _ => {
@@ -833,6 +838,7 @@ pub fn typedefs_to_source_file(
         struct_field_types,
         enum_variants,
         boxed_fields: std::collections::HashSet::new(),
+        fn_return_types: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -946,6 +952,7 @@ pub fn generate_types_for_modules(
             struct_field_types: sft,
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
+            fn_return_types: std::collections::HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1230,10 +1237,12 @@ pub fn typedef_to_code_ir_boxed(
                     (f.name.clone(), final_ty, true)
                 })
                 .collect();
+            // All v2 structs get Default — this enables ..Default::default()
+            // struct update syntax for missing fields. Since all field types
+            // are either primitives, String, Vec, Option, Box, or other
+            // generated structs (which also derive Default), this is sound.
             let mut derives = derives;
-            if all_fields_default_compatible(fields) {
-                derives.push("Default".to_string());
-            }
+            derives.push("Default".to_string());
             vec![code_ir::Item::Struct(StructDef {
                 name: td.name.clone(),
                 is_pub: true,
@@ -1248,10 +1257,22 @@ pub fn typedef_to_code_ir_boxed(
                 derives.push("Copy".to_string());
                 derives.push("Hash".to_string());
             }
+            // Add a `#[default]` attribute on the first variant so enums
+            // can derive Default — needed for struct fields that contain
+            // enum types when the parent struct derives Default.
+            derives.push("Default".to_string());
 
             let variant_strs: Vec<String> = variants
                 .iter()
-                .map(|v| format_variant_boxed(v, &td.name, recursive_fields))
+                .enumerate()
+                .map(|(i, v)| {
+                    let base = format_variant_boxed(v, &td.name, recursive_fields);
+                    if i == 0 {
+                        format!("#[default]\n    {base}")
+                    } else {
+                        base
+                    }
+                })
                 .collect();
 
             vec![code_ir::Item::Enum(EnumDef {

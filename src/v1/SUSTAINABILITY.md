@@ -408,6 +408,32 @@ runtime shim. Deleted all six heuristic functions.
 type information to determine what an operator does, the operator is
 the wrong abstraction — use an explicit function instead.
 
+#### S80: `PR.val: Map` — untyped parse results (FIXED 2026-03-13)
+
+The v2 parser used `type PR { val: Map, state: ParserState, err: Diagnostic? }`
+as a universal parse result. The untyped `Map` field forced the v1 codegen to
+synthesize anonymous structs with String-defaulted field types, producing ~200
+type errors in the generated Rust.
+
+**Root cause:** Untyped dynamic container (`Map`) used where static types are
+needed. This is the same pattern as TypeId (Branch 1) — a deferred lookup that
+forces downstream code to guess.
+
+**Fix:** Replaced `PR` with ~45 per-category typed result types
+(`ExprResult`, `ItemResult`, `NameResult`, etc.). Each type has value fields
+directly alongside `state` and `err` (flat, no nesting). Eliminated `ok()`,
+`fail()`, `is_err()` helpers. Migrated ~108 function signatures and ~205
+construction sites.
+
+**Principle:** Parse results are typed data. Using an untyped container
+(Map/HashMap) for typed data forces runtime field lookup instead of
+compile-time field access. The extra work of defining ~45 types is repaid
+immediately by the compiler catching field access errors statically.
+
+**Impact:** Eliminates ~200 E0308 errors and reduces synthesized anonymous
+structs to near zero in parse.rs. Also removes 5 materialized types from
+`std_types_prelude()` and their hardcoded `struct_field_types` entries.
+
 #### S76: `clone_if_needed()` — blind ownership heuristic (OPEN)
 
 fn_codegen adds `.clone()` to all variable/field expressions passed as
