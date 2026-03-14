@@ -274,7 +274,7 @@ pub struct ServiceCallMetadata {
 use daglang_lower::{
     LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
 };
-use gunbc_ir::node::{Node, NodeBody};
+use gunbc_ir::node::{Node, NodeBody, NodeKind};
 use gunbc_ir::Port;
 
 /// Error during computation classification.
@@ -299,12 +299,12 @@ impl std::fmt::Display for ClassifyError {
 
 /// Classify a DAG node's operation as a target-independent [`Computation`].
 ///
-/// This is the bridge from the lowerer's structural representation (`LoweredOp`)
-/// to the semantic model that codegen backends consume. The classification uses:
+/// Dispatches on `node.kind` (stamped by the lowerer) for the top-level
+/// classification (Pure/Transport/ResourceAcquire/Collection), then drills
+/// into `LoweredOp` only for body details within each variant.
 ///
-/// 1. The `ObligationCategory` for service/resource nodes.
-/// 2. Name-pattern heuristics for content-upsert and well-known operations.
-/// 3. Port types as a fallback signal.
+/// This eliminates the duplicated `ObligationCategory` dispatch that
+/// previously existed between the lowerer and this function (S68).
 pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, ClassifyError> {
     let op = match &node.body {
         NodeBody::Opaque(op) => op,
@@ -314,8 +314,188 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
     let inputs: Vec<TypedPort> = node.inputs.iter().map(port_to_typed).collect();
     let outputs: Vec<TypedPort> = node.outputs.iter().map(port_to_typed).collect();
 
+    match node.kind {
+        // Collection nodes: stamped by the lowerer from LoweredOp::Collection.
+        NodeKind::Collection => {
+            if let LoweredOp::Collection { kind, .. } = op {
+                classify_collection(&inputs, kind)
+            } else {
+                Err(ClassifyError::UnrecognizedOp {
+                    node_id: node.id.0.clone(),
+                    detail: "NodeKind::Collection but LoweredOp is not Collection".into(),
+                })
+            }
+        }
+
+        // Transport execute: the I/O boundary crossing.
+        NodeKind::TransportExecute => classify_transport_execute(op, &node.id.0, inputs, outputs),
+
+        // Transport prepare/parse: pure computations that build requests or
+        // parse responses, classified as Pure with ServiceCall body.
+        NodeKind::TransportPrepare => classify_transport_phase(op, "prepare", inputs, outputs),
+        NodeKind::TransportParse => classify_transport_phase(op, "parse", inputs, outputs),
+
+        // Resource acquisition nodes.
+        NodeKind::ResourceAcquire | NodeKind::ResourceEnvironment => {
+            classify_resource_acquire(op, &node.id.0, &outputs)
+        }
+
+        // Remaining node kinds are all pure computations with varying bodies.
+        NodeKind::ResourceRelease
+        | NodeKind::ParamSource
+        | NodeKind::ToolEnvironment
+        | NodeKind::ToolConsumer
+        | NodeKind::Pure => classify_pure_body(op, inputs, outputs),
+    }
+}
+
+/// Classify a transport execute node as `Computation::Transport`.
+fn classify_transport_execute(
+    op: &LoweredOp,
+    node_id: &str,
+    inputs: Vec<TypedPort>,
+    outputs: Vec<TypedPort>,
+) -> Result<Computation, ClassifyError> {
+    let service_metadata = match op {
+        LoweredOp::Transport {
+            service_metadata, ..
+        } => Some(service_metadata),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::IoExecuteFileRead,
+            ..
+        } => {
+            return Ok(Computation::Transport {
+                prepare: RequestSpec {
+                    input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+                    kind: RequestKind::FilePath {
+                        path_port: "request".to_string(),
+                    },
+                },
+                execute: TransportKind::FileRead,
+                parse: ResponseSpec {
+                    output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+                    kind: ResponseKind::RawContent,
+                },
+            });
+        }
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
+            ..
+        } => {
+            return Ok(Computation::Transport {
+                prepare: RequestSpec {
+                    input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+                    kind: RequestKind::FilePath {
+                        path_port: "request".to_string(),
+                    },
+                },
+                execute: TransportKind::FileWrite,
+                parse: ResponseSpec {
+                    output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+                    kind: ResponseKind::ExitStatus,
+                },
+            });
+        }
+        _ => None,
+    };
+
+    let meta = service_metadata.ok_or_else(|| ClassifyError::UnrecognizedOp {
+        node_id: node_id.to_string(),
+        detail: "TransportExecute node without service metadata".into(),
+    })?;
+    let transport_kind = infer_transport_kind(node_id, meta)?;
+    Ok(Computation::Transport {
+        prepare: RequestSpec {
+            input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+            kind: infer_request_kind(&inputs, transport_kind),
+        },
+        execute: transport_kind,
+        parse: ResponseSpec {
+            output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+            kind: ResponseKind::RawContent,
+        },
+    })
+}
+
+/// Classify a transport prepare or parse node as `Computation::Pure` with a
+/// `ServiceCall` body.
+fn classify_transport_phase(
+    op: &LoweredOp,
+    phase: &str,
+    inputs: Vec<TypedPort>,
+    outputs: Vec<TypedPort>,
+) -> Result<Computation, ClassifyError> {
+    // Primitive transport prepare/parse (file I/O).
+    if let LoweredOp::Primitive { kind, .. } = op {
+        match kind {
+            PrimitiveOpKind::IoPrepareFileRead => {
+                return Ok(Computation::Pure {
+                    inputs,
+                    outputs,
+                    body: PureBody::PrepareTransport {
+                        kind: TransportKind::FileRead,
+                    },
+                });
+            }
+            PrimitiveOpKind::IoPrepareFileWrite => {
+                return Ok(Computation::Pure {
+                    inputs,
+                    outputs,
+                    body: PureBody::PrepareTransport {
+                        kind: TransportKind::FileWrite,
+                    },
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let body = match op {
+        LoweredOp::Transport {
+            service_metadata, ..
+        } => PureBody::ServiceCall(ServiceCallMetadata {
+            service: service_metadata.service.clone(),
+            method: service_metadata.operation.clone(),
+            config: vec![(String::from("phase"), phase.to_string())],
+        }),
+        _ => PureBody::Literal(serde_json::Value::Null),
+    };
+    Ok(Computation::Pure {
+        inputs,
+        outputs,
+        body,
+    })
+}
+
+/// Classify a resource acquire/environment node as `Computation::ResourceAcquire`.
+fn classify_resource_acquire(
+    op: &LoweredOp,
+    node_id: &str,
+    outputs: &[TypedPort],
+) -> Result<Computation, ClassifyError> {
+    let handle_type = outputs
+        .first()
+        .map(|p| p.abstract_type.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
+    let handle_value = match op {
+        LoweredOp::Callable { name, .. }
+        | LoweredOp::Transport { name, .. }
+        | LoweredOp::Primitive { name, .. } => name.clone(),
+        _ => node_id.to_string(),
+    };
+    Ok(Computation::ResourceAcquire {
+        handle_type,
+        handle_value,
+    })
+}
+
+/// Classify a pure-kind node's body from its `LoweredOp`.
+fn classify_pure_body(
+    op: &LoweredOp,
+    inputs: Vec<TypedPort>,
+    outputs: Vec<TypedPort>,
+) -> Result<Computation, ClassifyError> {
     match op {
-        LoweredOp::Collection { kind, .. } => classify_collection(&inputs, kind),
         LoweredOp::Pipeline { stage_names, .. } => Ok(Computation::Pure {
             inputs,
             outputs,
@@ -332,14 +512,14 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             name,
             obligation,
             ..
-        } => classify_callable(module, name, (*obligation).into(), None, inputs, outputs),
+        } => classify_callable_pure(module, name, (*obligation).into(), None, inputs, outputs),
         LoweredOp::Transport {
             module,
             name,
             obligation,
             service_metadata,
             ..
-        } => classify_callable(
+        } => classify_callable_pure(
             module,
             name,
             (*obligation).into(),
@@ -355,6 +535,11 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
         LoweredOp::UnsupportedPattern { name } => Err(ClassifyError::SubDagNode(format!(
             "unsupported pattern: {name}"
         ))),
+        // Collection should not reach here (handled by NodeKind::Collection).
+        LoweredOp::Collection { .. } => Err(ClassifyError::UnrecognizedOp {
+            node_id: "unknown".to_string(),
+            detail: "Collection node with non-Collection NodeKind".into(),
+        }),
     }
 }
 
@@ -507,7 +692,11 @@ fn classify_collection(
     })
 }
 
-fn classify_callable(
+/// Classify a callable/transport node that `node.kind` has already identified
+/// as pure. Uses the `ObligationCategory` only to determine the *body* variant
+/// (template, literal, compare, service-call), not the top-level Computation
+/// category — that decision was made at lowering time (S68).
+fn classify_callable_pure(
     module: &str,
     name: &str,
     obligation: ObligationCategory,
@@ -515,112 +704,53 @@ fn classify_callable(
     inputs: Vec<TypedPort>,
     outputs: Vec<TypedPort>,
 ) -> Result<Computation, ClassifyError> {
-    let require_metadata = || {
-        service_metadata.ok_or_else(|| ClassifyError::UnrecognizedOp {
-            node_id: name.to_string(),
-            detail: "transport obligation without service metadata".into(),
-        })
-    };
-    match obligation {
-        ObligationCategory::ResourceAcquire | ObligationCategory::ResourceProvide => {
-            let handle_type = outputs
-                .first()
-                .map(|p| p.abstract_type.clone())
-                .unwrap_or_else(|| "Unknown".to_string());
-            Ok(Computation::ResourceAcquire {
-                handle_type,
-                handle_value: name.to_string(),
-            })
-        }
-
-        ObligationCategory::ServiceTransportExecute => {
-            let transport_kind = infer_transport_kind(name, require_metadata()?)?;
-            Ok(Computation::Transport {
-                prepare: RequestSpec {
-                    input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
-                    kind: infer_request_kind(&inputs, transport_kind),
-                },
-                execute: transport_kind,
-                parse: ResponseSpec {
-                    output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
-                    kind: ResponseKind::RawContent,
-                },
-            })
-        }
-
-        ObligationCategory::ServiceTransportPrepare => {
-            let body = service_metadata
-                .map(|meta| {
-                    PureBody::ServiceCall(ServiceCallMetadata {
-                        service: meta.service.clone(),
-                        method: meta.operation.clone(),
-                        config: vec![("phase".to_string(), "prepare".to_string())],
-                    })
+    let body = match obligation {
+        ObligationCategory::ServiceTransportPrepare => service_metadata
+            .map(|meta| {
+                PureBody::ServiceCall(ServiceCallMetadata {
+                    service: meta.service.clone(),
+                    method: meta.operation.clone(),
+                    config: vec![("phase".to_string(), "prepare".to_string())],
                 })
-                .unwrap_or(PureBody::Literal(serde_json::Value::Null));
-            Ok(Computation::Pure {
-                inputs,
-                outputs,
-                body,
             })
-        }
+            .unwrap_or(PureBody::Literal(serde_json::Value::Null)),
 
-        ObligationCategory::ServiceTransportParse => {
-            let body = service_metadata
-                .map(|meta| {
-                    PureBody::ServiceCall(ServiceCallMetadata {
-                        service: meta.service.clone(),
-                        method: meta.operation.clone(),
-                        config: vec![("phase".to_string(), "parse".to_string())],
-                    })
+        ObligationCategory::ServiceTransportParse => service_metadata
+            .map(|meta| {
+                PureBody::ServiceCall(ServiceCallMetadata {
+                    service: meta.service.clone(),
+                    method: meta.operation.clone(),
+                    config: vec![("phase".to_string(), "parse".to_string())],
                 })
-                .unwrap_or(PureBody::Literal(serde_json::Value::Null));
-            Ok(Computation::Pure {
-                inputs,
-                outputs,
-                body,
             })
-        }
+            .unwrap_or(PureBody::Literal(serde_json::Value::Null)),
 
-        ObligationCategory::ServiceParamSource | ObligationCategory::ResourceRelease => {
-            Ok(Computation::Pure {
-                inputs,
-                outputs,
-                body: PureBody::Literal(serde_json::Value::Null),
-            })
-        }
-
-        ObligationCategory::InterfaceContractVerification => Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::Compare {
-                left: "expected".to_string(),
-                right: "actual".to_string(),
-            },
-        }),
+        ObligationCategory::InterfaceContractVerification => PureBody::Compare {
+            left: "expected".to_string(),
+            right: "actual".to_string(),
+        },
 
         ObligationCategory::PureRender => {
             let vars = inputs.iter().map(|p| p.name.clone()).collect();
-            Ok(Computation::Pure {
-                inputs,
-                outputs,
-                body: PureBody::Template {
-                    pattern: name.to_string(),
-                    vars,
-                },
-            })
+            PureBody::Template {
+                pattern: name.to_string(),
+                vars,
+            }
         }
 
-        ObligationCategory::PureDataLoad | ObligationCategory::PureGeneric => {
-            Ok(Computation::Pure {
-                inputs,
-                outputs,
-                body: PureBody::Literal(serde_json::Value::Null),
-            })
+        ObligationCategory::None => {
+            return classify_by_name(module, name, inputs, outputs);
         }
 
-        ObligationCategory::None => classify_by_name(module, name, inputs, outputs),
-    }
+        // All other pure-kind obligations produce a literal body.
+        _ => PureBody::Literal(serde_json::Value::Null),
+    };
+
+    Ok(Computation::Pure {
+        inputs,
+        outputs,
+        body,
+    })
 }
 
 /// Derive [`TransportKind`] from required service metadata.
@@ -765,8 +895,6 @@ impl FnBodyClassification {
 /// - If any node has non-trivial ports → `PureCompute`
 /// - Otherwise → `PureRender`
 pub fn classify_fn_body<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>) -> FnBodyClassification {
-    use gunbc_ir::NodeKind;
-
     let mut has_compute = false;
     for node in &dag.nodes {
         match node.kind {
@@ -886,7 +1014,8 @@ mod tests {
                 name: "content_upsert::prepare_read_makegen".into(),
                 kind: daglang_lower::PrimitiveOpKind::IoPrepareFileRead,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportPrepare);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(
@@ -913,7 +1042,8 @@ mod tests {
                 name: "content_upsert::execute_read_makegen".into(),
                 kind: daglang_lower::PrimitiveOpKind::IoExecuteFileRead,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportExecute);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(
@@ -966,7 +1096,8 @@ mod tests {
                 name: "content_upsert::prepare_write_makegen".into(),
                 kind: daglang_lower::PrimitiveOpKind::IoPrepareFileWrite,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportPrepare);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(
@@ -996,7 +1127,8 @@ mod tests {
                 name: "content_upsert::execute_makegen_transport".into(),
                 kind: daglang_lower::PrimitiveOpKind::IoExecuteFileWrite,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportExecute);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(
@@ -1025,7 +1157,8 @@ mod tests {
                 resource_target: None,
                 fn_body: None,
             },
-        );
+        )
+        .with_kind(NodeKind::ResourceEnvironment);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(comp, Computation::ResourceAcquire { .. }),
@@ -1145,7 +1278,8 @@ mod tests {
                 name: "content_upsert::execute_read_clippy".into(),
                 kind: daglang_lower::PrimitiveOpKind::IoExecuteFileRead,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportExecute);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,
@@ -1195,7 +1329,8 @@ mod tests {
                 name: "content_upsert::execute_clippy_transport".into(),
                 kind: daglang_lower::PrimitiveOpKind::IoExecuteFileWrite,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportExecute);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,
@@ -1223,7 +1358,8 @@ mod tests {
                 resource_target: None,
                 fn_body: None,
             },
-        );
+        )
+        .with_kind(NodeKind::ResourceAcquire);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(comp, Computation::ResourceAcquire { .. }));
     }
@@ -1252,7 +1388,8 @@ mod tests {
                 is_interactive: false,
                 resource_target: None,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportExecute);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(
@@ -1290,7 +1427,8 @@ mod tests {
                 is_interactive: false,
                 resource_target: None,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportExecute);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,
@@ -1325,7 +1463,8 @@ mod tests {
                 is_interactive: false,
                 resource_target: None,
             },
-        );
+        )
+        .with_kind(NodeKind::TransportPrepare);
         let comp = classify_computation(&node).unwrap();
         assert!(
             matches!(
@@ -1350,7 +1489,8 @@ mod tests {
                 callable: "transform".into(),
                 kind: daglang_lower::CollectionOpKind::Map,
             },
-        );
+        )
+        .with_kind(NodeKind::Collection);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,
@@ -1372,7 +1512,8 @@ mod tests {
                 callable: "is_valid".into(),
                 kind: daglang_lower::CollectionOpKind::Filter,
             },
-        );
+        )
+        .with_kind(NodeKind::Collection);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,
@@ -1394,7 +1535,8 @@ mod tests {
                 callable: "len".into(),
                 kind: daglang_lower::CollectionOpKind::Len,
             },
-        );
+        )
+        .with_kind(NodeKind::Collection);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,
@@ -1416,7 +1558,8 @@ mod tests {
                 callable: "dedup".into(),
                 kind: daglang_lower::CollectionOpKind::Dedup,
             },
-        );
+        )
+        .with_kind(NodeKind::Collection);
         let comp = classify_computation(&node).unwrap();
         assert!(matches!(
             comp,

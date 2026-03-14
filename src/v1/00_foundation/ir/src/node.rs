@@ -35,6 +35,8 @@ pub enum NodeKind {
     ResourceRelease,
     /// Feeds a callable's declared parameter into the DAG as an input source.
     ParamSource,
+    /// Collection operation: element-wise transform over a list (map, filter, etc.).
+    Collection,
     /// Pure computation (no I/O boundary).
     #[default]
     Pure,

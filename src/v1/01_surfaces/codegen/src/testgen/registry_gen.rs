@@ -41,8 +41,13 @@ pub enum TransportClass {
 
 impl TransportClass {
     /// Classify a transport node by examining explicit request/response types.
+    ///
+    /// This is a legacy fallback for nodes that lack stamped `transport_class`
+    /// metadata. Emits a diagnostic warning when the transport class cannot be
+    /// determined from port types.
+    #[allow(clippy::disallowed_macros)]
     fn from_node_context(
-        _node_id: &str,
+        node_id: &str,
         input_type: Option<&str>,
         output_type: Option<&str>,
     ) -> Self {
@@ -54,24 +59,35 @@ impl TransportClass {
             (Some("LocalRequest"), _) | (_, Some("LocalResponse")) => return Self::Local,
             _ => {}
         }
-        // Default: REST (most common transport class).
+        eprintln!(
+            "S25 warning: transport node `{node_id}` has no stamped transport_class metadata \
+             and port types ({input_type:?}, {output_type:?}) are not classifiable — \
+             defaulting to REST. Stamp transport_class on this node to silence this warning."
+        );
         Self::Rest
     }
 }
 
-fn from_service_transport_class(class: ServiceTransportClass) -> TransportClass {
+fn from_service_transport_class(class: ServiceTransportClass, node_id: &str) -> TransportClass {
     match class {
         ServiceTransportClass::RestNetwork => TransportClass::Rest,
         ServiceTransportClass::ShellLocal => TransportClass::Shell,
         ServiceTransportClass::FileBoundary => TransportClass::File,
         ServiceTransportClass::LocalDirect => TransportClass::Local,
         ServiceTransportClass::InterfaceStub => TransportClass::Rest,
-        ServiceTransportClass::Unknown => TransportClass::Rest,
+        ServiceTransportClass::Unknown => {
+            panic!(
+                "S25: transport node `{node_id}` has ServiceTransportClass::Unknown — \
+                 every transport node must have an explicit transport class stamped by \
+                 the lowerer. Add a `transport` block to the service definition in the DSL."
+            );
+        }
     }
 }
 
 fn transport_class_from_node_metadata<T>(node: &gunbc_ir::Node<T>) -> Option<TransportClass> {
-    node.transport_class.map(from_service_transport_class)
+    node.transport_class
+        .map(|tc| from_service_transport_class(tc, node.id.0.as_str()))
 }
 
 /// Info about a single transport executor node.
@@ -161,6 +177,8 @@ pub fn derive_virtual_backend_requirements<T>(
             .get(executor_id.as_str())
             .and_then(|node| transport_class_from_node_metadata(*node))
             .unwrap_or_else(|| {
+                // S25: No stamped metadata — fall back to type-based inference
+                // with a diagnostic warning.
                 TransportClass::from_node_context(executor_id, input_type, output_type)
             });
 
@@ -189,7 +207,9 @@ mod tests {
     use gunbc_ir::{Dag, Node};
 
     #[test]
-    fn classify_rest_from_unknown_types_defaults_to_rest() {
+    fn classify_rest_from_unknown_types_warns_and_defaults_to_rest() {
+        // S25: from_node_context with no classifiable port types emits a warning
+        // and falls back to REST. This is the legacy path for unstamped nodes.
         assert_eq!(
             TransportClass::from_node_context(
                 "service_transport::execute::github.Gist::Create",
@@ -246,7 +266,8 @@ mod tests {
                 vec![port("response", "TransportResponse")],
                 (),
             )
-            .with_kind(NodeKind::TransportExecute),
+            .with_kind(NodeKind::TransportExecute)
+            .with_transport_class(ServiceTransportClass::RestNetwork),
         );
 
         let analysis = crate::testgen::analyze::analyze_dag(&dag);
@@ -298,5 +319,12 @@ mod tests {
 
         assert!(!requirements.needs_virtual_backend());
         assert_eq!(requirements.transport_class_count(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "S25: transport node")]
+    fn unknown_transport_class_panics() {
+        // S25: ServiceTransportClass::Unknown must not silently default to REST.
+        from_service_transport_class(ServiceTransportClass::Unknown, "test_node");
     }
 }

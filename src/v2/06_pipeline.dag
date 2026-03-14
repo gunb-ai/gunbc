@@ -46,6 +46,13 @@ type ParseStageResult {
   diagnostics: List<Diagnostic>
 }
 
+// Result of compiling a single source file — module (if parse succeeded)
+// plus any diagnostics. Follows the value+diagnostics pattern.
+type CompileFileResult {
+  module: Module?
+  diagnostics: List<Diagnostic>
+}
+
 // =========================================================================
 // Source reading (effectful)
 // =========================================================================
@@ -81,7 +88,7 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 
 // Compile a single source file through all stages.
 // Returns the parsed module (if successful) and any diagnostics.
-fn compile_file(source: SourceFile) -> { module: Module?, diagnostics: List<Diagnostic> } {
+fn compile_file(source: SourceFile) -> CompileFileResult {
   let tokens = tokenize(source: source.content)
   let result = parse(tokens: tokens)
   if result.error != None {
@@ -91,9 +98,9 @@ fn compile_file(source: SourceFile) -> { module: Module?, diagnostics: List<Diag
       span: None,
       module_name: None
     }
-    { module: None, diagnostics: [diag] }
+    CompileFileResult { module: None, diagnostics: [diag] }
   } else {
-    { module: result.module, diagnostics: [] }
+    CompileFileResult { module: result.module, diagnostics: [] }
   }
 }
 

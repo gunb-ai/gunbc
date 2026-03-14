@@ -927,6 +927,21 @@ impl TypeRegistry {
             SemanticCarrierKind::Secret => return Ok(ValueBacking::Secret),
         }
 
+        // S23/S35: Structural classification from type DAG.
+        // Product types (records) serialize as Map at runtime.
+        // Coproduct types (enums) serialize as String at runtime.
+        if let Some(dag) = self.resolve_type(type_id) {
+            use crate::type_op::TypeOp;
+            use crate::NodeBody;
+            for node in &dag.nodes {
+                match &node.body {
+                    NodeBody::Opaque(TypeOp::Product(_)) => return Ok(ValueBacking::Map),
+                    NodeBody::Opaque(TypeOp::Coproduct(_)) => return Ok(ValueBacking::String),
+                    _ => {}
+                }
+            }
+        }
+
         // Legacy suffix-based aliases.
         if raw.ends_with("List") {
             return Ok(ValueBacking::List);

@@ -4513,7 +4513,22 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         // Use lowered DAG for boundary analysis so node IDs match lowered MockSpec IDs.
         // SubDag nodes in the un-lowered DAG become flattened, prefixed nodes after lowering;
         // the MockSpec uses these lowered IDs since the executor operates on the lowered DAG.
-        let lowered_result = gunbc_exec::lower(self.dag).ok();
+        //
+        // S24: Surface lowering failures instead of silently swallowing via .ok().
+        // Lowering can legitimately fail (e.g., SubDag with missing entrypoints during
+        // early codegen), so we fall back to unlowered analysis — but we log and annotate.
+        let (lowered_result, lowering_failure) = match gunbc_exec::lower(self.dag) {
+            Ok(lr) => (Some(lr), None),
+            Err(e) => {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[testgen] WARNING: lowering failed for boundary analysis, \
+                     falling back to unlowered DAG: {e}"
+                );
+                let msg = format!("Lowering failed: {e}");
+                (None, Some(msg))
+            }
+        };
         let lowered_analysis = lowered_result.as_ref().map(|lr| analyze_dag(&lr.dag));
         let boundary_analysis = lowered_analysis.as_ref().unwrap_or(analysis);
 
@@ -4656,9 +4671,18 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
+        let notes = match &lowering_failure {
+            Some(msg) => vec![
+                format!("WARNING: {msg}"),
+                "Boundary tests use unlowered DAG analysis; node IDs may not match MockSpec."
+                    .to_string(),
+            ],
+            None => Vec::new(),
+        };
+
         Some(TestSection {
             title: "Boundary Tests (per-node mockability)".to_string(),
-            notes: Vec::new(),
+            notes,
             tests,
         })
     }
@@ -9244,6 +9268,7 @@ mod tests {
                         },
                     )),
                     sequence: None,
+                    provider: None,
                 }],
                 input_expectations: vec![],
                 resource_mocks: Default::default(),

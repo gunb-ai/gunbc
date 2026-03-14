@@ -31,6 +31,11 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
 }
 
+/// Public version of type_expr_to_rust for use in v2_crate_emit.
+pub fn type_expr_to_rust_pub(expr: &TypeExpr) -> String {
+    type_expr_to_rust(expr)
+}
+
 /// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
 /// available for structural type resolution.
 ///
@@ -276,6 +281,10 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
     let (rust_type, rust_value) = match &dd.ty {
         TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => {
             let elem_type = type_expr_to_rust(&args[0]);
+            // TEMPORARY bootstrap scaffolding (S81): In static context, List<String>
+            // must emit &[&str] because string literals are &str, not String.
+            let is_string_list = matches!(&args[0], TypeExpr::Named(n) if n == "String");
+            let static_elem_type = if is_string_list { "&str".to_string() } else { elem_type.clone() };
             let elem_type_name = match &args[0] {
                 TypeExpr::Named(n) => n.as_str(),
                 _ => &elem_type,
@@ -289,9 +298,9 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                     .join(",\n    "),
                 _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
             };
-            (format!("&[{elem_type}]"), format!("&[\n    {items}\n]"))
+            (format!("&[{static_elem_type}]"), format!("&[\n    {items}\n]"))
         }
-        // Map<K, V> data: emit as a function returning HashMap since HashMap isn't const
+        // Map<K, V> data: emit as a LazyLock static (HashMap can't be const)
         TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
             let key_type = type_expr_to_rust(&args[0]);
             let val_type = type_expr_to_rust(&args[1]);
@@ -300,10 +309,10 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                 _ => &val_type,
             };
             let value = render_expr_to_rust(&dd.value, val_type_name, STATIC_OPTS);
-            let fn_name = to_snake_case(&dd.name);
-            // Emit as a public function returning HashMap
+            // Emit as a LazyLock static with SCREAMING_SNAKE name so compile_ident's
+            // `NAME.clone()` pattern works for both List statics and Map statics.
             return vec![code_ir::Item::Raw(format!(
-                "pub fn {fn_name}() -> std::collections::HashMap<{key_type}, {val_type}> {{\n    {value}\n}}"
+                "pub static {rust_name}: std::sync::LazyLock<std::collections::HashMap<{key_type}, {val_type}>> = std::sync::LazyLock::new(|| {{\n    {value}\n}});"
             ))];
         }
         _ => {
@@ -578,13 +587,40 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     let (synth_items, _name_map, new_field_types) =
         fn_codegen::synthesize_anonymous_structs(&fd.name, &fd.body, &ctx.struct_field_types);
 
-    // Augment context with synthesized struct field types so compile_expr
-    // can resolve anonymous records to the synthesized struct names.
-    let ctx = if new_field_types.is_empty() {
+    // Collect optional parameters (T? → Option<T>)
+    let optional_params: std::collections::HashSet<String> = fd
+        .params
+        .iter()
+        .filter(|p| matches!(&p.ty, TypeExpr::Optional(_)))
+        .map(|p| p.name.clone())
+        .collect();
+
+    // S81: Collect parameter name → type name map for scrutinee type inference
+    let param_types: std::collections::HashMap<String, String> = fd
+        .params
+        .iter()
+        .map(|p| {
+            let type_name = match &p.ty {
+                TypeExpr::Named(n) => n.clone(),
+                TypeExpr::Optional(inner) => match inner.as_ref() {
+                    TypeExpr::Named(n) => n.clone(),
+                    _ => type_expr_to_rust(&p.ty),
+                },
+                _ => type_expr_to_rust(&p.ty),
+            };
+            (p.name.clone(), type_name)
+        })
+        .collect();
+
+    // Augment context with synthesized struct field types and optional params
+    // so compile_expr can resolve anonymous records and prevent double-wrapping.
+    let ctx = if new_field_types.is_empty() && optional_params.is_empty() && param_types.is_empty() {
         std::borrow::Cow::Borrowed(ctx)
     } else {
         let mut augmented = ctx.clone();
         augmented.struct_field_types.extend(new_field_types);
+        augmented.optional_params = optional_params;
+        augmented.param_types = param_types;
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -610,7 +646,6 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         }
         todo_body
     } else {
-        fn_codegen::reset_tmp_counter();
         let compiled = fn_codegen::compile_fn_body(&fd.body, &ctx);
         if fn_codegen::body_has_empty_construct(&compiled) {
             if rename_todo_params {
@@ -828,11 +863,15 @@ pub fn typedefs_to_source_file(
     }
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_map_names: std::collections::HashSet::new(),
         optional_fields,
         variant_to_enum,
         struct_field_types,
         enum_variants,
         boxed_fields: std::collections::HashSet::new(),
+        fn_return_types: std::collections::HashMap::new(),
+        optional_params: std::collections::HashSet::new(),
+        param_types: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -941,11 +980,15 @@ pub fn generate_types_for_modules(
         }
         let fn_ctx = fn_codegen::CompileContext {
             data_names: fn_data_names,
+            data_map_names: std::collections::HashSet::new(),
             optional_fields: opt_fields,
             variant_to_enum: v2e,
             struct_field_types: sft,
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
+            fn_return_types: std::collections::HashMap::new(),
+            optional_params: std::collections::HashSet::new(),
+            param_types: std::collections::HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1192,14 +1235,25 @@ fn dfs_find_cycles(
                 dfs_find_cycles(target, graph, visited, on_stack, path, recursive_fields);
                 path.pop();
             } else if on_stack.contains(target.as_str()) {
-                // Found a cycle — mark the current edge as needing Box<>
-                recursive_fields.insert((node.to_string(), field_name.clone()));
-                // Also mark all edges on the cycle path
-                for (from, fname, to) in path.iter().rev() {
-                    recursive_fields.insert((from.clone(), fname.clone()));
-                    if to == target {
+                // Found a cycle — only mark edges that are WITHIN the cycle,
+                // not edges that merely led to the cycle. The cycle starts
+                // at `target` and includes all path edges from `target` onward.
+                let cycle_start = target.as_str();
+                let mut in_cycle = false;
+                for (from, fname, to) in path.iter() {
+                    if from == cycle_start {
+                        in_cycle = true;
+                    }
+                    if in_cycle {
+                        recursive_fields.insert((from.clone(), fname.clone()));
+                    }
+                    if in_cycle && to == cycle_start {
                         break;
                     }
+                }
+                // The current edge (node → target) closes the cycle
+                if node == cycle_start || in_cycle {
+                    recursive_fields.insert((node.to_string(), field_name.clone()));
                 }
             }
         }
@@ -1230,10 +1284,12 @@ pub fn typedef_to_code_ir_boxed(
                     (f.name.clone(), final_ty, true)
                 })
                 .collect();
+            // All v2 structs get Default — this enables ..Default::default()
+            // struct update syntax for missing fields. Since all field types
+            // are either primitives, String, Vec, Option, Box, or other
+            // generated structs (which also derive Default), this is sound.
             let mut derives = derives;
-            if all_fields_default_compatible(fields) {
-                derives.push("Default".to_string());
-            }
+            derives.push("Default".to_string());
             vec![code_ir::Item::Struct(StructDef {
                 name: td.name.clone(),
                 is_pub: true,
@@ -1248,10 +1304,22 @@ pub fn typedef_to_code_ir_boxed(
                 derives.push("Copy".to_string());
                 derives.push("Hash".to_string());
             }
+            // Add a `#[default]` attribute on the first variant so enums
+            // can derive Default — needed for struct fields that contain
+            // enum types when the parent struct derives Default.
+            derives.push("Default".to_string());
 
             let variant_strs: Vec<String> = variants
                 .iter()
-                .map(|v| format_variant_boxed(v, &td.name, recursive_fields))
+                .enumerate()
+                .map(|(i, v)| {
+                    let base = format_variant_boxed(v, &td.name, recursive_fields);
+                    if i == 0 {
+                        format!("#[default]\n    {base}")
+                    } else {
+                        base
+                    }
+                })
                 .collect();
 
             vec![code_ir::Item::Enum(EnumDef {

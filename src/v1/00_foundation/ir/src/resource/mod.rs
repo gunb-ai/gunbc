@@ -666,6 +666,7 @@ impl std::fmt::Display for MissingResourceDeclaration {
             NodeKind::ResourceAcquire => "resource acquire",
             NodeKind::ResourceRelease => "resource release",
             NodeKind::ParamSource => "param source",
+            NodeKind::Collection => "collection",
             NodeKind::Pure => "pure",
         };
         write!(
@@ -690,7 +691,7 @@ pub enum ResourceValidationMode {
 /// Returns `None` for pure nodes. Non-pure nodes return their `NodeKind`.
 pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
     match node.kind {
-        NodeKind::Pure => None,
+        NodeKind::Pure | NodeKind::Collection => None,
         kind => Some(kind),
     }
 }

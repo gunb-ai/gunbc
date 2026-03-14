@@ -275,18 +275,24 @@ fn default_file_response() -> Value {
     }))
 }
 
-/// Resolve MockProvider from a node's OperationKey metadata.
+/// Resolve MockProvider from node metadata stamped at lower time.
 ///
-/// Uses the typed `OperationKey` instead of parsing node ID strings.
-/// Falls back to node ID heuristic only when no operation_key is present
-/// (e.g., nodes not stamped by the lowerer).
+/// Priority order:
+/// 1. `node.response_provider` — authoritative, stamped by the lowerer from
+///    DSL `config { response_provider }` (S42/S45).
+/// 2. `node.operation_key` — inferred from the service name.
+/// 3. Node ID heuristic — legacy fallback for nodes not stamped by the lowerer.
 fn resolve_mock_provider<T>(dag: &Dag<T>, node_id: &str) -> MockProvider {
     if let Some(node) = dag.get_node(&NodeId::from(node_id)) {
+        // S42: prefer the authoritative response_provider field stamped at lower time.
+        if let Some(rp) = node.response_provider {
+            return MockProvider::from(rp);
+        }
         if let Some(op_key) = &node.operation_key {
             return operation_key_to_mock_provider(op_key);
         }
     }
-    // Fallback for nodes without operation_key (legacy or non-service nodes).
+    // Fallback for nodes without response_provider or operation_key (legacy).
     infer_provider_from_node_id(node_id)
 }
 
@@ -583,6 +589,15 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
 
     dedupe_boundary_mocks_keep_last(&mut spec);
 
+    // S42/S43: Stamp provider classification on each boundary mock so that
+    // `auto_mock_failure_variants` can generate provider-specific error
+    // responses without re-inferring from node ID strings.
+    for mock in &mut spec.boundary_mocks {
+        if mock.provider.is_none() {
+            mock.provider = Some(resolve_mock_provider(&lowered.dag, &mock.node));
+        }
+    }
+
     // Auto-add OutputMatchers for terminal nodes (no outgoing edges) to satisfy
     // the observability invariant: every terminal reachable from a probe must
     // have an OutputMatcher.
@@ -781,7 +796,10 @@ pub fn auto_mock_failure_variants(success_spec: &MockSpec) -> Vec<FailureVariant
     let mut variants = Vec::new();
 
     for (idx, mock) in success_spec.boundary_mocks.iter().enumerate() {
-        let failure_values = failure_values_for_mock(&mock.value, &mock.node);
+        let provider = mock
+            .provider
+            .unwrap_or_else(|| infer_provider_from_node_id(&mock.node));
+        let failure_values = failure_values_for_mock(&mock.value, provider);
         for (tag_suffix, failure_value) in failure_values {
             let mut spec = success_spec.clone();
             spec.boundary_mocks[idx].value = failure_value;
@@ -803,7 +821,7 @@ pub fn has_transport_boundaries(spec: &MockSpec) -> bool {
         .any(|m| matches!(&m.value, Value::Response(_)))
 }
 
-fn failure_values_for_mock(value: &Value, node_id: &str) -> Vec<(&'static str, Value)> {
+fn failure_values_for_mock(value: &Value, provider: MockProvider) -> Vec<(&'static str, Value)> {
     match value {
         Value::Response(TransportResponse::Shell(_)) => {
             vec![(
@@ -816,7 +834,6 @@ fn failure_values_for_mock(value: &Value, node_id: &str) -> Vec<(&'static str, V
             )]
         }
         Value::Response(TransportResponse::Rest(_)) => {
-            let provider = infer_provider_from_node_id(node_id);
             vec![
                 (
                     "rest_401_auth",
@@ -865,6 +882,7 @@ mod tests {
                     "ok".to_string(),
                 ))),
                 sequence: None,
+                provider: None,
             }],
             input_expectations: vec![],
             resource_mocks: Default::default(),
@@ -887,6 +905,7 @@ mod tests {
                     serde_json::json!({"ok": true}),
                 ))),
                 sequence: None,
+                provider: Some(MockProvider::GitHub),
             }],
             input_expectations: vec![],
             resource_mocks: Default::default(),
@@ -937,6 +956,7 @@ mod tests {
                 port: "output".to_string(),
                 value: Value::Str("hello".to_string()),
                 sequence: None,
+                provider: None,
             }],
             input_expectations: vec![],
             resource_mocks: Default::default(),

@@ -105,6 +105,7 @@ impl MockSpec {
             port: port.into(),
             value,
             sequence: None,
+            provider: None,
         });
         self
     }
@@ -167,6 +168,7 @@ impl MockSpec {
             port: port.into(),
             value: sequence.last().unwrap().clone(),
             sequence: Some(sequence),
+            provider: None,
         });
         self
     }
@@ -371,6 +373,12 @@ pub struct BoundaryMock {
     pub value: Value,
     /// Optional ordered sequence of responses (exhaustion is always an error)
     pub sequence: Option<Vec<Value>>,
+    /// Provider classification stamped at mock creation time (S42/S43).
+    ///
+    /// When present, `auto_mock_failure_variants` uses this to generate
+    /// provider-specific error responses instead of re-inferring from
+    /// the node ID string.
+    pub provider: Option<crate::MockProvider>,
 }
 
 /// A mock value for a transport executor node (injected via DryRun interception).

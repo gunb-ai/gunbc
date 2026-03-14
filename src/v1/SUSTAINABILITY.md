@@ -65,19 +65,22 @@ that lags gets masked by a fallback.
 
 #### Symptoms:
 
-**S3:** FnBodyEvalCallableOp catch-all passthrough. Eval errors silently
-caught → evaluator can never visibly regress. Fix: structured eval
-contract (option C) — evaluator declares capabilities, unsupported
-forms are compile-time opaque.
+~~**S3:** FnBodyEvalCallableOp catch-all passthrough.~~ **DONE.** `execute_primitive`
+wildcard `_ => Ok(inputs)` replaced with explicit match arms that return `Err` for
+unsupported operations (I/O, wiring primitives). New `PrimitiveOpKind` variants
+force compile-time decisions.
 
 ~~**S16:** Service transport dispatch duplicated across prepare/parse.~~
 **DONE.** `TransportTripletSpec` + `build_transport_triplet()` in `transport.rs`. 4 duplicated sites → 1.
 
-**S42:** Provider classification duplicated across `operation_key` and
-`node_id` paths. Fix: stamp `MockProvider` at lower time.
+~~**S42:** Provider classification duplicated across `operation_key` and
+`node_id` paths.~~ **DONE.** `resolve_mock_provider` now reads `node.response_provider`
+(stamped at lower time via S45) as authoritative source. Falls back to `operation_key`
+then node ID heuristic. `MockSpec.boundary_mocks` stamped with `provider` field.
 
-**S43:** Kitchen-sink REST response fabricates all-provider fields.
-Fix: require provider classification (S42); provider-specific mocks.
+~~**S43:** Kitchen-sink REST response fabricates all-provider fields.~~
+**DONE.** `failure_values_for_mock` takes `MockProvider` directly instead of re-inferring
+from node ID. Provider-specific error responses driven by stamped classification.
 
 ---
 
@@ -96,7 +99,9 @@ annotations. String matching only for closed sets.
 ~~**S14:** Obligation classification by name prefix.~~ **DONE.** Structural output-type classification in lowerer.
 ~~**S15:** Filesystem resource hardcoded by type name.~~ **DONE.** `FILESYSTEM_HANDLE_TYPE` constant + `is_filesystem_resource_port()`.
 ~~**S17:** Mock wrong-type matrix — 20 match arms.~~ **DONE.** `ValueBacking::mock_value()` replaces match matrix.
-**S21:** Workflow claim handle type from claim-name prefix. Fix: derive from definition.
+~~**S21:** Workflow claim handle type from claim-name prefix.~~ **DONE.** `HandleType`
+enum added to `UnitClaim`. `from_claim_prefix` encapsulates prefix logic. Standalone
+`claim_handle_type_id()` deleted.
 ~~**S22:** Service transport resolution by module/name prefixes.~~ **DONE.** `TransportObligation` structural dispatch in resolver.
 ~~**S44:** Shell output parsing inferred from field shape.~~ **DONE.** `output_parsing` DSL annotation + parser support.
 ~~**S45:** Response provider inferred from service name substrings.~~ **DONE.** `response_provider` DSL annotation + `Node.response_provider` field.
@@ -115,7 +120,9 @@ When a concept is defined in both the DSL and Rust, the two diverge.
 
 #### Symptoms:
 
-**S6:** ResourceHandle shape in DSL vs Rust `Into<Value>`. Already diverged.
+~~**S6:** ResourceHandle shape in DSL vs Rust `Into<Value>`.~~ **DONE.** Audit confirms
+DSL (4 fields: type, resource_id, key, cap) matches Rust `From<ResourceHandle>` impl
+exactly. Roundtrip tests pass.
 **S10:** Container types are compiler built-ins. 4+ places per new container.
 
 ---
@@ -138,12 +145,17 @@ refactor the upstream output type so the check is unnecessary.
 mode — not wired into pipeline until DSL types propagate to IR TypeRegistry.
 **S19:** No validation that Map key types are String after typecheck. (Fixed.)
 **S20:** No validation that non-empty list ports have edges after resolve. (Fixed.)
-**S23/S35:** `value_compatible_with_type_id` fails open for unknown types →
-Json-as-top-type escape. Fix sequence: (a) teach `value_backing()` to
-classify record→Map, sum→String; (b) add registry-aware variant for
-testgen; (c) flip to `.unwrap_or(false)`; (d) panic on unknown in mock gen.
-**S24:** Testgen swallows lowering failure via `.ok()`. Fix: propagate error.
-**S25:** Virtual backend defaults unknown transport to REST. Fix: require stamped metadata.
+~~**S23/S35:** `value_compatible_with_type_id` fails open for unknown types.~~
+**DONE (steps a+c).** `value_backing()` classifies Product→Map, Coproduct→String from type DAG.
+`value_compatible_with_type_id` flipped to `.unwrap_or(false)` — unknown types are now
+incompatible instead of silently passing. Steps b (registry-aware testgen) and d (panic
+in mock gen) remain for follow-up.
+~~**S24:** Testgen swallows lowering failure via `.ok()`.~~
+**DONE.** `.ok()` replaced with explicit `match`. Lowering failures logged in debug builds
+and annotated in generated test section notes. Falls back to unlowered analysis.
+~~**S25:** Virtual backend defaults unknown transport to REST. Fix: require stamped metadata.~~
+**DONE.** `from_service_transport_class` now panics on `Unknown` instead of defaulting to REST.
+`from_node_context` fallback emits a diagnostic warning. Test DAGs stamp `RestNetwork` explicitly.
 **S30:** Testgen re-derives type info by parsing TypeId strings. Fix: query type DAG.
 ~~**S31:** Lowerer doesn't stamp OperationKey on all transport nodes.~~
 **DONE.** All 12 transport nodes (prepare+execute+parse × 4 sites) now stamped.
@@ -151,24 +163,23 @@ testgen; (c) flip to `.unwrap_or(false)`; (d) panic on unknown in mock gen.
 **DONE.** `DryRunStrictness::Strict` (default) / `Lenient` on `ExecuteConfig`.
 ~~**S33:** Coercion exists because lowerer doesn't validate cardinality compatibility.~~
 **DONE.** `CardinalityIncompatibility` validation via `validate_coercions()`, wired into `verify_dag()`.
-**S7:** `resolve_field_type_dag` swallows errors → `identity()` placeholder cascades
-through `value_backing()` → Json → any value accepted → wrong emit → no test coverage.
-Fix: return `Result`; make `_checked()` the only path.
-**S34:** Lowerer fails open on callable return wiring (`let _ = wire_callable_return_outputs`).
-Prereqs: `lower_expr` must trace service call result bindings and handle collection
-intrinsic calls in return position.
+~~**S7:** `resolve_field_type_dag` swallows errors.~~
+**DONE (transitional).** Returns `Result<Dag, String>`. Callers use `resolve_field_type_dag_or_identity`
+wrapper that logs unresolved types and falls back to identity. Flip to hard error when
+DSL type registry covers all referenced types.
+~~**S34:** Lowerer fails open on callable return wiring.~~
+**DONE.** `let _ = wire_callable_return_outputs(...)` replaced with explicit `match` that
+propagates structural errors and accepts expected `ExprLower` failures (service-call
+result bindings not yet statically wirable).
 ~~**S40:** Optional type syntax not normalized.~~ **DONE.** `normalize_optional_type_id()` canonicalizes `T?`/`OptionalT`/`Optional<T>`.
 ~~**S41:** Cardinality-based mock fabrication hides empty-list cases.~~ **DONE.** `ValueBacking::mock_value()` returns empty list for List backing.
 **S62:** `[when]` guards on `func` body service calls not lowered into DAG IR.
 Guards are silently dropped, making conditional service calls execute unconditionally.
 Discovered via IAM preflight incident (2026-03-09); affected code deleted.
-**S64:** `lower_expr().ok()` — 9 sites in lowerer silently discard lowering errors,
-producing partial DAGs with unwired edges and no diagnostic. Affected: service call
-arguments, conditional synthesis, match dispatch, list construction, string interpolation.
-Fix: propagate `Result` through all `lower_expr` call sites.
-**S65:** `std::env::var()` in lowerer — `resolve_profile_config_expr` performs
-environment I/O during a pure lowering pass (`lib.rs:1155`). Fix: separate profile
-config resolution step that produces resolved values as lowerer inputs.
+~~**S64:** `lower_expr().ok()` — 9 sites in lowerer silently discard lowering errors.~~
+**DONE.** All `lower_expr` call sites now propagate `Result`. No `.ok()` swallowing remains.
+~~**S65:** `std::env::var()` in lowerer.~~ **DONE.** `env_resolver` dependency
+injected via `LowerConfig`. Pure lowering pass no longer performs environment I/O.
 ~~**S66:** `gunbc-resolve` depends on `daglang-driver`.~~ **DONE.** `daglang-driver` made
 optional via `compile` Cargo feature. Pure resolution API (`resolve_compiled_dsl`) has
 no driver dependency. Compilation convenience API gated behind `features = ["compile"]`.
@@ -177,18 +188,22 @@ no driver dependency. Compilation convenience API gated behind `features = ["com
 `display_name()` returns `String` (not `Option`); `is_inferred()` guard replaces all
 `matches!(_, Unknown)` checks. `TypecheckWarning::InferredType` added for soft failures.
 Match and if/else arms now propagate concrete types when all branches agree.
-**S68:** Computation classification duplicated in typecheck and emit. Both
-`daglang-typecheck` (`classify_computation`, `classify_fn_body`) and `daglang-emit`
-(`computation.rs`) derive node classification from `LoweredOp`. Fix: stamp
-`Computation` on nodes at lowering time; consumers read, don't re-derive.
-**S69:** `EmitCollectionFamily` enum lives in `daglang-syntax` AST (`lib.rs:608`),
-coupling the parser to codegen concerns. Fix: move to emit or lower crate.
+**S68:** ~~Computation classification duplicated~~ **DONE.** `NodeKind::Collection`
+variant added to IR. `obligation_to_node_kind` stamps `Collection` on lowered nodes.
+`classify_computation` dispatches on `node.kind` first (stamped at lowering time),
+then drills into `LoweredOp` only for body details. `classify_fn_body` already read
+`node.kind`. `classify_callable` replaced by `classify_callable_pure` (body-only).
+`classify_effect` treats `Collection` as non-effectful (no resource port required).
+~~**S69:** `EmitCollectionFamily` enum lives in `daglang-syntax` AST.~~
+**DONE.** Already moved to `ir/src/patterns/collection.rs`. Re-exported from
+`daglang-emit/src/computation.rs`. No definition remains in syntax/AST crate.
 **S70:** ~~Emit input types too permissive~~ — DONE. `classify_for_emit()`
 walks the DAG once; `EmitInput` / `EmitCallable` / `EmitTransport` /
 `EmitPrimitive` / `EmitCollection` / `EmitPipeline` structs replace raw
 variant matching. Legacy API wraps new classified path.
-**S71:** Thread-local `TmpCounter` in emit (`fn_codegen.rs:72–96`) makes temp name
-generation non-deterministic. Fix: explicit counter passed through emission functions.
+~~**S71:** Thread-local `TmpCounter` in emit.~~ **DONE.** `TmpCounter` struct,
+`thread_local!`, and `reset_tmp_counter()` deleted. `fresh(counter: &mut usize, prefix)`
+threaded through 16 functions. `compile_fn_body` creates a fresh counter per invocation.
 
 ---
 
@@ -204,9 +219,13 @@ lists.~~ **DONE.** Consolidated static registry in `transport/llm/provider.rs`.
 ### Standalone items
 
 **S8:** C backend discards Map key types. Intentional (C has no native map).
-**S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.
-**S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
-implementations. Provider-specific code belongs under `extdeps/`, not `std/`.
+~~**S9:** Opaque kernel types (Unit/Json/Any/Record) lack documented rationale.~~
+**DONE.** Block comments added to `BUILTIN_TYPES`, doc comments on `ResolvedScalar`
+variants and `TypeId` constructors. Each explains purpose, when to use/not use, and
+distinction from similar types.
+~~**S63:** `std/patterns.dag` mixes generic patterns with GCP-specific auth
+implementations.~~ **DONE.** GCP-specific code removed; `std/patterns.dag` now
+contains only generic patterns.
 **S72 (resolved):** `generated_types_are_not_stale` is `#[ignore]`d.
 The anonymous-record naming bug is fixed — `gen-types` now emits
 `TypeName { field: val }` for fold initializers via three-tier
@@ -325,52 +344,69 @@ concrete blockers — see gap analysis below.
 residual value. If stack sizes need bumping again before self-hosting
 lands, Option A becomes justified as an interim fix.
 
-#### V2 self-hosting gap analysis (2026-03-13)
+#### V2 self-hosting gap analysis (updated 2026-03-14)
+
+**V2 source:** 7 modules, 7,311 lines, all parse with zero diagnostics.
+
+**Test status:** 59 pass, 0 fail, 2 ignored (OOM + cargo check gate).
 
 **What works today:**
 - Module discovery: `daglang.toml` multi-root config discovers all 7 v2 modules
 - Parsing: all v2 .dag files parse to AST successfully
 - Type codegen: `typedef_to_code_ir` handles structs, enums, aliases
 - Fn codegen: handles records, match, if/else, for, lambda, string interp,
-  intrinsics (map/filter/fold/any/contains/sum/join/last/enumerate)
+  intrinsics (map/filter/fold/any/contains/sum/join/last/enumerate),
+  `with()` immutable record update, `concat()` explicit concatenation
+- Recursive type detection: `compute_recursive_fields()` inserts `Box<>`
 - Rust rendering: `render_rust` produces valid Rust from code_ir
+- Crate assembly: `assemble_v2_crate()` generates complete Cargo project
+  (7 module files + lib.rs + v2_rt.rs + Cargo.toml)
+- Runtime shims: string ops, collection ops, scanner ops all implemented
 
-**Blocker 1 — `build_context` ignores `daglang.toml`:**
-`build_context()` hardcodes `dsl/` as the only root. Must call
-`resolve_default_roots()` to read `daglang.toml` multi-root config.
-Fix is 1 line in `compile/context.rs`.
+**Blocker 1 — RESOLVED:** `build_context` reads `daglang.toml`.
 
-**Blocker 2 — v1 typechecker rejects v2 idioms (12 errors):**
-- TC003 ×7: bare enum variant used where parent type expected
-  (`UnterminatedString` vs `StringScanResult`, `Some` vs `Option<T>`)
-- TC003 ×2: `Record` literal where typechecker expects `Map`
-- TC021 ×3: named arguments not recognized (`ch:` in `code_point()`)
+**Blocker 2 — BYPASSED:** v1 typechecker errors bypassed by compiling
+fn bodies directly from parsed AST without typechecking v2 source.
 
-Fix: make typechecker accept variant-as-type in assignment/return
-context, and recognize named args in the callable registry.
+**Blocker 3 — MOSTLY RESOLVED:**
+- `with()` — implemented ✓
+- String builtins (`char_at`, `substring`, etc.) — implemented ✓
+- Recursive enum boxing — implemented ✓
+- Optional field patterns — partially addressed
 
-**Blocker 3 — fn_codegen missing constructs:**
-- `with(state, { field: value })` — immutable record update, used
-  pervasively for state threading (~100 call sites in v2)
-- String builtins: `char_at()`, `substring()`, `string_length()`,
-  `lookup()` — need Rust equivalents
-- Recursive enum boxing: `Expr` contains `Expr` via variants;
-  type codegen must detect cycles and insert `Box<>`
-- Optional field patterns: `T?` → `Option<T>`, `Some { value: x }`
-  match patterns
+**Blocker 4 — RESOLVED:** Crate assembly harness implemented and
+generating files. Runtime shims complete.
 
-**Blocker 4 — end-to-end crate assembly:**
-- No harness to emit a complete Cargo crate (Cargo.toml, lib.rs,
-  per-module files, main.rs driver)
-- Need v2-specific stdlib shims (string ops, list ops, Option helpers)
+**Current state: 115 compile errors in generated v2 Rust crate.**
+(Down from 829 on 2026-03-14 morning, 2204 initial.)
 
-**Recommended sequence (next PR):**
-1. Fix `build_context` to read `daglang.toml` (1 line)
-2. Fix 12 typecheck errors (variant-as-type, named args)
-3. Add `with()` and string builtins to fn_codegen
-4. Add recursive type detection for `Box<>`
-5. Build crate assembly harness
-6. Iterative: generate crate, compile, fix errors
+Fixes applied (2026-03-14):
+- Optionality tracking: check `T?` annotations, prevent double-wrapping
+  of `None`, `Some{}`, and already-optional field accesses (829→279)
+- Box wrapping: `needs_box_wrapping` checks via parent enum name,
+  deref let-bindings in match arms for boxed fields (279→258)
+- Runtime shim imports: `use crate::v2_rt::{scan_while, ...}` (258→231)
+- String match: `.as_str()` on scrutinee when all arms use string
+  literal patterns (231→223)
+- Variant disambiguation: `compile_pattern_typed` threads expected type
+  through sub-patterns; `compile_expr_in_field_context` handles nested
+  Records with context-aware enum resolution (223→115)
+
+Remaining 115 errors:
+| Error | Count | Root cause |
+|-------|-------|------------|
+| E0308 type mismatches | 59 | Long tail: String/i64, anon struct names, remaining Option |
+| E0382 use-after-move | 26 | Multi-use String fields in match arms (S76) |
+| E0609 `.value` on `Option` | 9 | Need `.unwrap()` for `Some{value:x}` access |
+| E0425 missing values | 2 | Variable scoping in generated code |
+| E0282 type annotation | 1 | Inference gap |
+| E0063 missing field | 1 | Struct field mismatch |
+
+**Path forward:**
+1. Fix `.value` on `Option<T>` → emit `.unwrap()` (9 errors)
+2. Add `.clone()` for multi-use String match bindings (26 errors)
+3. Fix anonymous struct naming (`__TrylambdaparamsState` → `ParserState`) (8 errors)
+4. Remaining type mismatches need deeper type tracking (50 errors)
 
 ---
 
@@ -407,6 +443,96 @@ runtime shim. Deleted all six heuristic functions.
 **Principle:** Operators must have syntax-local semantics. If you need
 type information to determine what an operator does, the operator is
 the wrong abstraction — use an explicit function instead.
+
+#### S80: `PR.val: Map` — untyped parse results (FIXED 2026-03-13)
+
+The v2 parser used `type PR { val: Map, state: ParserState, err: Diagnostic? }`
+as a universal parse result. The untyped `Map` field forced the v1 codegen to
+synthesize anonymous structs with String-defaulted field types, producing ~200
+type errors in the generated Rust.
+
+**Root cause:** Untyped dynamic container (`Map`) used where static types are
+needed. This is the same pattern as TypeId (Branch 1) — a deferred lookup that
+forces downstream code to guess.
+
+**Fix:** Replaced `PR` with ~45 per-category typed result types
+(`ExprResult`, `ItemResult`, `NameResult`, etc.). Each type has value fields
+directly alongside `state` and `err` (flat, no nesting). Eliminated `ok()`,
+`fail()`, `is_err()` helpers. Migrated ~108 function signatures and ~205
+construction sites.
+
+**Principle:** Parse results are typed data. Using an untyped container
+(Map/HashMap) for typed data forces runtime field lookup instead of
+compile-time field access. The extra work of defining ~45 types is repaid
+immediately by the compiler catching field access errors statically.
+
+**Impact:** Eliminates ~200 E0308 errors and reduces synthesized anonymous
+structs to near zero in parse.rs. Also removes 5 materialized types from
+`std_types_prelude()` and their hardcoded `struct_field_types` entries.
+
+#### S81: fn_codegen emits Rust, not code_ir — CRITICAL (OPEN)
+
+fn_codegen.rs was designed to produce target-agnostic `code_ir` that flows
+through all backends (Rust, Go, C, MIPS). During v2 bootstrap, it has
+accumulated ~15 Rust-specific heuristics that inject target-language
+constructs directly into the IR:
+
+- `clone_if_needed()` — Rust ownership (C/Go don't need this)
+- `Box::new()` wrapping — Rust heap boxing (C uses pointers, Go implicit)
+- `Some()`/`None` injection — Rust `Option<T>` (C uses NULL, Go uses nil)
+- `.as_str()` insertion — Rust `String` vs `&str` (no other language has this)
+- `..Default::default()` — Rust struct update syntax (no equivalent elsewhere)
+- `LazyLock` for Map data — Rust static initialization
+- `Deref`/`*` for Box unwrapping — Rust-specific dereference
+
+**Root cause:** fn_codegen has no type information, so it compensates with
+heuristics. Those heuristics are Rust-shaped because the only emission
+target during bootstrap is Rust.
+
+**Why this matters:** The code_ir layer exists so that one compilation
+produces IR that all backends can render. If the IR already contains
+`"clone"`, `"Box::new"`, `"Some"`, then the Go renderer must ignore
+Rust-specific method calls, the C renderer must translate `Box::new` to
+`malloc`, and every new backend must enumerate and strip the Rust idioms.
+The IR has become a Rust AST with extra steps.
+
+**Deeper framing:** DAG nodes are **facts** — tautological assertions
+about computation (types, cardinality, data flow, semantics). These
+facts are target-agnostic truths. **Rendering facts** (how to express
+Optional, how to handle ownership, how to name types) are target-specific
+decisions that belong in backends, not in the IR.
+
+The heuristics in fn_codegen are **rendering facts mixed into computation
+facts**. `clone_if_needed` is a Rust rendering fact ("ownership requires
+copying here") injected into the computation DAG. The computation fact is
+just "this value is used at these two sites" — the rendering decides what
+that means (Rust: clone, C: nothing, Go: nothing, Verilog: fan-out wire).
+
+**Structural test:** Can you swap rendering facts without changing
+computation facts? If `Box::new()` is in the code_ir, a C backend must
+translate it to `malloc` — the rendering fact leaked into the computation
+layer. If the code_ir says "this field is recursive" and the Rust
+renderer emits `Box::new()` while the C renderer emits a pointer, the
+separation is correct.
+
+**Design guide:** The DAG type system is compositional — similar to
+protobuf message stacking. Products, sums, primitives, containers.
+These should map naturally across all targets including hardware
+description languages (Verilog, PSPICE). If a type construct or IR
+node only makes sense for languages with heaps and garbage collectors,
+it's a rendering fact masquerading as a computation fact.
+
+**Fix path:** The v2 compiler's emitter reads computation facts (types,
+cardinality, recursion, optionality) and applies rendering facts
+per-backend. Backends are themselves compositional .dag models — rendering
+strategies expressed as facts about how computation concepts map to
+target idioms. No heuristics — the types tell the emitter what's true,
+the backend decides how to express it.
+
+**Interim principle:** Every Rust-specific construct added to fn_codegen
+during bootstrap must be documented here and must NOT be migrated to
+the v2 emitter. The v2 emitter should derive these from type information,
+not from heuristic pattern matching.
 
 #### S76: `clone_if_needed()` — blind ownership heuristic (OPEN)
 
@@ -459,12 +585,9 @@ rather than deriving them from `import` declarations in each .dag file.
 
 Ordered by signal value (which fix prevents the most silent regressions):
 
-1. **Constrain fn-body-eval passthrough (S3).** Structured eval contract:
-   evaluator declares capabilities, unsupported forms are compile-time opaque.
-2. **Fail-closed callable return wiring (S34).** Requires lowerer improvements
-   (service call result bindings + collection intrinsics in return position).
-3. **Fail-closed types (S23/S35).** Teach `value_backing()` to classify
-   DSL types, then flip to `.unwrap_or(false)`.
+1. ~~**Constrain fn-body-eval passthrough (S3).**~~ DONE (2026-03-14).
+2. ~~**Fail-closed callable return wiring (S34).**~~ DONE (2026-03-14).
+3. ~~**Fail-closed types (S23/S35).**~~ DONE (2026-03-14, steps a+c).
 4. **Restore test semantic strength (S38/S39).** Re-add collection/manifest/
    output-value assertions.
 5. **Map<K,V> typecheck diagnostic (S19).** Partially addressed.
@@ -477,9 +600,14 @@ v2 eliminates the deep root by design: types are TypeExpr values, not
 strings. No TypeRegistry. No deferred resolution. No parallel interpreter.
 
 **Eliminated by v2 (no v1 fix needed):**
-All of Branch 1 (S1, S2, S4, S5, S13). Branch 2 parallels (S3, S36, S37).
-Branch 5 type issues (S7, S40). Branch 2 provider issues (S42, S43).
+All of Branch 1 (S1, S2, S4, S5, S13). Branch 2 parallels (S36, S37).
 Branch 3 container classification (S47).
+
+**Fixed in v1 as interim hardening (2026-03-14):**
+S3 (eval passthrough), S7 (type resolution), S23/S35 (value compat),
+S24 (testgen), S25 (REST default), S34 (callable wiring), S42/S43
+(provider classification), S68 (computation dup), S71 (TmpCounter),
+S21 (claim handle), S9 (kernel docs), S6 (ResourceHandle), S69 (crate loc).
 
 **Inherited by v2 (re-implement correctly):**
 S34 (callable wiring), S38 (emitted code untested), S44 (shell output
@@ -664,6 +792,23 @@ exactly the 5 points that call `eval_expr_s` with a subsequent push
 | S67-6 | Positional args dropped in `eval_call_args` | Preserved as `__pos_0`, `__pos_1`, etc. | 2026-03-13 |
 | S67-7 | No tail continuation elimination | Full TCO with `is_tail_position` threading through eval_expr_s/match_s/block_s | 2026-03-13 |
 | S74 | Blanket `#[allow(dead_code)]` suppressions | Removed; test-only helpers gated behind `#[cfg(test)]` | 2026-03-13 |
+| S63 | `std/patterns.dag` mixes generic with GCP-specific | GCP-specific code removed; only generic patterns remain | 2026-03-14 |
+| S64 | `lower_expr().ok()` swallows lowering errors | All `lower_expr` call sites propagate `Result` | 2026-03-14 |
+| S65 | `std::env::var()` in lowerer (impure) | `env_resolver` injected via `LowerConfig` | 2026-03-14 |
+| S7 | `resolve_field_type_dag` swallows errors | Returns `Result`; transitional wrapper logs + falls back to identity | 2026-03-14 |
+| S23/S35 | `value_compatible` fails open for unknown types | `value_backing()` classifies Product→Map, Coproduct→String; flipped to `.unwrap_or(false)` | 2026-03-14 |
+| S24 | Testgen swallows lowering failure via `.ok()` | Explicit error handling with debug logging and test section annotation | 2026-03-14 |
+| S25 | Virtual backend defaults unknown transport to REST | `from_service_transport_class` panics on Unknown; `from_node_context` warns | 2026-03-14 |
+| S42 | Provider classification duplicated | `resolve_mock_provider` reads `node.response_provider`; `MockSpec` stamps provider | 2026-03-14 |
+| S43 | Kitchen-sink REST response | `failure_values_for_mock` takes `MockProvider` directly | 2026-03-14 |
+| S68 | Computation classification duplicated | `NodeKind::Collection` + `classify_computation` dispatches on stamped kind | 2026-03-14 |
+| S3 | FnBodyCallableOp catch-all passthrough | `execute_primitive` wildcard replaced with explicit error-returning arms | 2026-03-14 |
+| S6 | ResourceHandle shape divergence | Audit confirms DSL and Rust shapes are aligned | 2026-03-14 |
+| S9 | Kernel types lack documentation | Doc comments on Unit/Json/Any/Record in `BUILTIN_TYPES` and constructors | 2026-03-14 |
+| S21 | Claim handle type from prefix string | `HandleType` enum on `UnitClaim`; `claim_handle_type_id()` deleted | 2026-03-14 |
+| S34 | Callable return wiring `let _ =` | Explicit `match` propagates structural errors, accepts expected ExprLower | 2026-03-14 |
+| S69 | `EmitCollectionFamily` in wrong crate | Already in `ir/src/patterns/collection.rs`; no syntax crate definition | 2026-03-14 |
+| S71 | Thread-local `TmpCounter` | Explicit `&mut usize` counter threaded through 16 emission functions | 2026-03-14 |
 | BUG-6 | Collection aliases mapped to wrong arity | Count/Sum/FilterMap/SortBy/Append promoted to first-class `CollectionKind` variants | 2026-03-13 |
 | E3.2 | Transport mock tests tautological | Replaced insert/get/assert with registry construction + entry count + well-formedness checks. `go_test_name` deleted (dead code). TestSpec API (E3.4-E3.6) is the proper replacement. | 2026-03-13 |
 | Eval-9 | `extract_projection` indirection | Inlined to direct `output_value()` call; `PopResult::Error` variant removed (dead code) | 2026-03-13 |
@@ -672,3 +817,129 @@ exactly the 5 points that call `eval_expr_s` with a subsequent push
 | S77 | v2 codegen: `infer_struct_name()` guesses struct type from field names | OPEN — workaround for anonymous records in .dag having no explicit type. Wrong inference causes E0308 errors. Remove when .dag records are named or typed. | 2026-03-13 |
 | S78 | v2 codegen: hardcoded materialized types in `std_types_prelude()` | OPEN — `SourceSpan`, `BindingPower`, `ItemResult`, etc. manually defined in Rust because v1 emitter can't resolve cross-module imports. Remove when v2 compiler resolves imports. | 2026-03-13 |
 | S79 | v2 codegen: hardcoded `module_prelude()` cross-module imports | OPEN — `use crate::v2_core::*` etc. should be derived from .dag `import` declarations. Remove when v2 compiler resolves imports. | 2026-03-13 |
+
+---
+
+## Heuristic elimination roadmap
+
+Each v1 bootstrap heuristic (S81) exists because the codegen lacks
+information that the v2 compiler will have. This roadmap maps each
+heuristic to the **modeling decision or language feature** that makes
+it unnecessary. Ordered by dependency — earlier items unblock later ones.
+
+### Phase A: Type-aware emission (eliminates S76, S77, S78, S81 bulk)
+
+The v2 emitter receives typed IR. Every emission decision that the v1
+codegen guesses from naming patterns, the v2 emitter reads from types.
+
+| Heuristic | What v2 emitter does instead |
+|-----------|------------------------------|
+| `clone_if_needed` (S76) | Emitter tracks variable liveness. Last use = move, earlier use = borrow. Per-backend: Rust emits `.clone()`, C emits nothing, Go emits nothing. |
+| `infer_struct_name` (S77) | Typechecker resolves anonymous records to their structural type. Emitter knows the type — no guessing. |
+| `Box::new()` wrapping | Emitter checks `TypeExpr` for recursion. Rust emitter emits `Box::new()`. C emitter emits `malloc`. Go emitter emits nothing (implicit). Verilog: N/A (no recursion in hardware types). |
+| `Some()`/`None` injection | `TypeExpr::Optional` in the typed IR. Rust emitter emits `Some`/`None`. C emitter emits non-NULL/NULL. Go emitter emits value/nil. |
+| `.as_str()` insertion | Rust emitter knows when a `String` is matched and emits `.as_str()`. Other backends don't need this — their string types are uniform. |
+| `..Default::default()` | Emitter has all field types. Constructs complete struct literals per-backend. No default-filling needed. |
+| `is_option_expr` double-wrap prevention | Typechecker resolves optionality. Emitter knows source and target types — no guessing whether a value is already `Option`. |
+
+**Modeling decision:** No new language features needed. The v2 typechecker
+already resolves types to `TypeExpr` values. The emitter reads those
+values and makes per-backend decisions.
+
+### Phase B: Import resolution (eliminates S78, S79)
+
+The v2 resolver traces `import` declarations and builds a cross-module
+type environment. Each module knows which types are defined locally vs
+imported.
+
+| Heuristic | What v2 resolver does instead |
+|-----------|-------------------------------|
+| `std_types_prelude()` (S78) | Imported types come from the resolved module graph. `SourceSpan`, `BindingPower` are defined in their .dag modules and imported by name. No hand-written Rust definitions. |
+| `module_prelude()` (S79) | Per-module `use` statements derived from resolved imports. Each module imports exactly what its `import` declarations specify. |
+
+**Modeling decision:** Already designed. `03_resolve.dag` builds a
+`ModuleGraph` with `ResolvedImport` entries. The emitter reads these
+to generate correct import statements per-backend.
+
+### Phase C: Variant disambiguation (eliminates ambiguous LitStr/BinOpKind)
+
+Multiple enums share variant names (`LitStr` in both `TokenKind` and
+`LiteralValue`, `Add` in both `BinOpKind` and arithmetic). The v1
+codegen resolves by "first definition wins" — positional, not structural.
+
+| Decision | Options |
+|----------|---------|
+| **Option 1: Qualified variants in .dag source** | `LiteralValue.LitStr { value: s }` instead of bare `LitStr`. Requires parser change to support `Type.Variant` syntax. Explicit, no ambiguity, maps to every backend. |
+| **Option 2: Typechecker resolves from context** | The typechecker knows the expected type from the field being assigned or the match scrutinee type. Resolves `LitStr` → `LiteralValue::LitStr` when the context expects `LiteralValue`. Already partially implemented in v1 — extend to full coverage in v2. |
+| **Option 3: Rename to eliminate overlap** | Rename `LiteralValue::LitStr` to `StrLiteral` etc. Breaks the natural naming. Not recommended. |
+
+**Recommended:** Option 2 for v2 (the typechecker handles it). Option 1
+as a language feature for explicitness when disambiguation is needed.
+
+### Phase D: Optionality as a structural property (eliminates double-wrapping)
+
+The `.dag` language uses `T?` for optional types. The v1 codegen doesn't
+track which values are optional vs required, so it guesses from field
+names, parameter types, and expression shapes.
+
+| Decision | Modeling |
+|----------|---------|
+| **Optional fields are typed** | `TypeExpr::Optional { inner: T }` is already in the type system. The emitter checks source and target optionality before wrapping. |
+| **Optional parameters are typed** | Function params with `T?` produce optional bindings. The typechecker carries this through the body. |
+| **Backend rendering** | Rust: `Option<T>`, `Some(v)`, `None`. C: `T*`, `&v`, `NULL`. Go: `*T`, `&v`, `nil`. Verilog: valid bit + data bus. |
+
+**Modeling decision:** Already modeled in the type system. The issue is
+purely that the v1 codegen doesn't read the types. v2 does.
+
+### Phase E: Ownership as backend concern, not IR concern (eliminates S76)
+
+The `.dag` language has value semantics — every binding is a value, not
+a reference. How that maps to target memory management is a backend
+decision:
+
+| Backend | Strategy |
+|---------|----------|
+| Rust | Ownership analysis: last use = move, earlier = clone or borrow. Emit `.clone()` only when needed. |
+| C | Copy semantics for small types, pointer + refcount for large. Or arena allocation. |
+| Go | GC handles it. All values are implicitly shared. |
+| Verilog | Wire assignment. No memory management. Values are signals. |
+| PSPICE | Node voltages. No memory management. Values are circuit parameters. |
+
+**Modeling decision:** The `.dag` language does not expose ownership,
+borrowing, or memory management. These are backend concerns. The code_ir
+should represent "this value is used here and here" — the backend decides
+whether that means clone, borrow, share, or wire.
+
+### Phase F: Static data as language-level constants
+
+`data` definitions in `.dag` (e.g., `data keywords: Map<String, TokenKind>`)
+are compile-time constant tables. The v1 codegen emits them differently per
+container type (List → `static &[T]`, Map → `LazyLock<HashMap>`) with
+Rust-specific patterns.
+
+| Backend | Strategy |
+|---------|----------|
+| Rust | `static` or `lazy_static` depending on type complexity. |
+| C | `const` arrays, or generated init functions for maps. |
+| Go | Package-level `var` with init. |
+| Verilog | ROM or lookup table. |
+
+**Modeling decision:** `data` is a constant definition. The code_ir should
+represent it as `ConstDef { name, type, value }`. Each backend renders
+the constant in its idiom. The v1 codegen should not inject `LazyLock` at
+the IR level — that belongs in `render_rust.rs`.
+
+### Summary: what dies with self-hosting
+
+When the v2 compiler achieves self-hosting, the following v1 code becomes
+dead and should be deleted:
+
+- `fn_codegen.rs` — entire file (replaced by v2 emitter)
+- `v2_crate_emit.rs` — entire file (replaced by v2 pipeline)
+- `v2_runtime_shim.rs` — entire file (replaced by proper stdlib)
+- `synthesize_anonymous_structs()` — entire function
+- `clone_if_needed()`, `is_option_expr()`, `is_none_expr()` — all heuristics
+- `std_types_prelude()`, `module_prelude()` — all hardcoded scaffolding
+- `infer_struct_name()`, `infer_field_type_from_expr()` — all type guessing
+- `compile_intrinsic_call()` Rust-specific intrinsic handlers — replaced by
+  per-backend intrinsic rendering

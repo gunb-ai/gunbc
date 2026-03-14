@@ -852,7 +852,8 @@ pub enum ResolvedType {
     },
     /// Optional (nullable).
     Optional(Box<ResolvedType>),
-    /// Named product type (record/struct).
+    /// Structural product type with named fields. Two Records with the same
+    /// field names and types are structurally equivalent (no nominal identity).
     Record {
         name: String,
         fields: Vec<(String, ResolvedType)>,
@@ -874,7 +875,11 @@ pub enum ResolvedScalar {
     String,
     Bool,
     Bytes,
+    /// Arbitrary structured data without compile-time shape guarantees.
+    /// See the `Json` entry in [`BUILTIN_TYPES`] for full rationale.
     Json,
+    /// Zero-information scalar: represents "no value."
+    /// See the `Unit` entry in [`BUILTIN_TYPES`] for full rationale.
     Unit,
 }
 
@@ -964,6 +969,8 @@ impl TypeId {
     pub fn float() -> Self {
         Self("Float".into())
     }
+    /// The zero-information type: no data, only presence.
+    /// Use for control-flow edges and completion signals.
     pub fn unit() -> Self {
         Self("Unit".into())
     }
@@ -973,6 +980,9 @@ impl TypeId {
     pub fn secret() -> Self {
         Self("Secret".into())
     }
+    /// The universal interchange type: arbitrary structured data
+    /// without compile-time shape guarantees. Prefer narrowing to
+    /// a specific type whenever the shape is known.
     pub fn json() -> Self {
         Self("Json".into())
     }
@@ -1135,10 +1145,38 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
     BuiltinType { name: "Int",     arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Float",   arity: 0, value_backing: Some(ValueBacking::Float),  carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Bytes",   arity: 0, value_backing: Some(ValueBacking::Bytes),  carrier_kind: SemanticCarrierKind::Structural },
+    // Unit: the zero-information type. Represents "no meaningful value" for ports
+    // that exist purely for control flow (completion signals, sequencing edges).
+    // Analogous to `void` in C or `()` in Rust. Use Unit when a port must exist
+    // (to express an edge in the DAG) but carries no data. Do NOT use Unit as a
+    // stand-in for "unknown type" -- use Any for that.
     BuiltinType { name: "Unit",    arity: 0, value_backing: Some(ValueBacking::Unit),   carrier_kind: SemanticCarrierKind::Structural },
+    // Json: the universal interchange type. Represents arbitrary structured data
+    // without compile-time shape guarantees. Used at system boundaries where type
+    // information is unavailable: external API responses, dynamic configuration,
+    // transport payloads. Every concrete scalar type (String, Int, Bool, etc.)
+    // is upcast-compatible with Json, making it the practical "top of the value
+    // lattice." Prefer narrowing Json to a specific type whenever the shape is
+    // known -- leaving data as Json forfeits compile-time validation.
     BuiltinType { name: "Json",    arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Secret",  arity: 0, value_backing: Some(ValueBacking::Secret), carrier_kind: SemanticCarrierKind::Secret },
+    // Any: the type-theoretic top type. Every type is compatible with Any as a
+    // target, so `is_compatible(T, Any)` holds for all T. Used in type positions
+    // where the compiler cannot determine the specific type (e.g., generic
+    // forwarding nodes, unresolved inference variables). Distinct from Json:
+    // Json is a concrete value representation (arbitrary JSON data at runtime),
+    // while Any is a type-level concept meaning "I accept any type here."
+    // At runtime, Any values are backed by Json serialization, but the semantic
+    // difference matters for type checking: Json-typed ports accept any *value*,
+    // while Any-typed ports accept any *type*.
     BuiltinType { name: "Any",     arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::Structural },
+    // Record: a structural product type with named fields. Analogous to an
+    // anonymous struct -- two Records with the same field names and types are
+    // structurally equivalent regardless of declaration site. Records have no
+    // nominal identity; identity comes from structure alone. Backed by Map at
+    // runtime (field-name -> value). Use Record for ad-hoc grouped data; use
+    // named product types (registered via `register_product_checked`) when
+    // nominal identity and cross-module reference stability matter.
     BuiltinType { name: "Record",  arity: 0, value_backing: Some(ValueBacking::Map),    carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Void",    arity: 0, value_backing: Some(ValueBacking::Unit),   carrier_kind: SemanticCarrierKind::Structural },
     BuiltinType { name: "Error",   arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
@@ -1460,11 +1498,12 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return true;
     }
 
-    // Default to structural backing compatibility.
-    // Unknown types fall back to Json (accepts anything) for backwards compat.
+    // S23/S35: fail closed for unknown types. Previously fell back to Json
+    // (accepts anything) which silently masked type mismatches. Now unknown
+    // types are incompatible — callers must ensure types are registered.
     value_backing_for_type_id(type_id)
-        .unwrap_or(ValueBacking::Json)
-        .accepts_value_kind(kind)
+        .map(|backing| backing.accepts_value_kind(kind))
+        .unwrap_or(false)
 }
 
 impl From<&str> for TypeId {

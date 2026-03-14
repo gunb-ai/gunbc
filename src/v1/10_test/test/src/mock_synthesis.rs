@@ -17,6 +17,19 @@ pub enum MockProvider {
     OpenAi,
 }
 
+impl From<gunbc_ir::transport::middleware::ResponseProvider> for MockProvider {
+    fn from(rp: gunbc_ir::transport::middleware::ResponseProvider) -> Self {
+        use gunbc_ir::transport::middleware::ResponseProvider;
+        match rp {
+            ResponseProvider::Generic => MockProvider::Generic,
+            ResponseProvider::GitHub => MockProvider::GitHub,
+            ResponseProvider::Gcp => MockProvider::Gcp,
+            ResponseProvider::Anthropic => MockProvider::Anthropic,
+            ResponseProvider::OpenAi => MockProvider::OpenAi,
+        }
+    }
+}
+
 /// Behavior-driven synthesis input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MockResponseSynthesis {
