@@ -1264,6 +1264,7 @@ fn foo(item: String) -> String {
         assert!(!typed_modules.is_empty());
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::List(vec![]));
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1336,6 +1337,7 @@ fn foo(item: String) -> String {
         };
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::List(vec![]));
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1458,8 +1460,8 @@ fn foo(item: String) -> String {
     fn phase4_emit_handles_for_loop() {
         let source = read_v2_file("src/v2/05_emit.dag");
         assert!(
-            source.contains("emit_for_loop"),
-            "emit.dag should contain emit_for_loop function"
+            source.contains("emit_for_each"),
+            "emit.dag should contain emit_for_each function"
         );
         assert!(
             source.contains("into_iter"),
@@ -1854,31 +1856,7 @@ fn example(items: List<String>) -> Int {
         );
     }
 
-    #[test]
-    fn phase6_compile_file_filters_absent_parse_diagnostics() {
-        let output = compile_all_modules().expect("compilation should succeed");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "source".to_string(),
-            source_file_value("ok.dag", "module ok\n"),
-        );
-
-        let result = call_fn(&output, "compile_file", inputs).expect("compile_file should succeed");
-        let diagnostics = result
-            .get("diagnostics")
-            .expect("compile_file should return diagnostics");
-
-        match diagnostics {
-            gunbc_ir::Value::List(items) => {
-                assert!(
-                    items.is_empty(),
-                    "expected no diagnostics, got: {:?}",
-                    items
-                );
-            }
-            other => panic!("expected diagnostics list, got: {other:?}"),
-        }
-    }
+    // compile_file was deleted (dead code — never called by the pipeline).
 
     #[test]
     fn phase6_compile_sources_filters_none_parse_diagnostics() {
@@ -1891,14 +1869,6 @@ fn example(items: List<String>) -> Int {
                 source_file_value("bad.dag", "fn orphan() -> Int { 42 }\n"),
             ]),
         );
-        inputs.insert(
-            "backend".to_string(),
-            gunbc_ir::Value::Enum {
-                ty: String::new(),
-                variant: "Rust".to_string(),
-            },
-        );
-
         let result =
             call_fn(&output, "compile_sources", inputs).expect("compile_sources should succeed");
         let diagnostics = result
@@ -2043,6 +2013,7 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
+            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::List(vec![]));
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()
@@ -2294,7 +2265,7 @@ fn example(items: List<String>) -> Int {
     //   Type correctness:       cargo check passes on ~10,500 lines of generated Rust (v2_crate_cargo_check)
     //   Link correctness:       cargo build succeeds — all trait impls resolve (v2_crate_cargo_build)
     //   Semantic correctness:   phase 3 interpreter tests prove v2 logic works on real input through all 5 stages
-    //   Runtime correctness:    smoke test proves generated Rust tokenizer executes correctly (v2_crate_runtime_smoke)
+    //   Runtime correctness:    generated tests prove emitted Rust executes correctly (v2_crate_cargo_test)
 
     /// Type-check the generated v2 crate (cargo check).
     #[test]
@@ -2343,56 +2314,18 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
-    /// Run the generated v2 tokenizer on real input — proves runtime correctness.
+    /// Run the generated v2 crate's emitted tests — proves runtime correctness.
+    ///
+    /// The tests come FROM the crate assembly (emit_test_module), not from this
+    /// test harness. This is Phase 1 / D6: the compiler tests itself through
+    /// generated tests.
     #[test]
     #[ignore] // Requires cargo build; run with --ignored
-    fn v2_crate_runtime_smoke() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-smoke");
+    fn v2_crate_cargo_test() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-test");
 
-        // Inject a smoke test into the generated crate
-        let smoke_test = r#"
-#[cfg(test)]
-mod smoke {
-    use crate::tokenize::tokenize;
-
-    #[test]
-    fn tokenize_produces_tokens() {
-        let tokens = tokenize("fn foo() -> Int { 42 }".to_string());
-        assert!(!tokens.is_empty(), "tokenize should produce at least one token");
-    }
-
-    #[test]
-    fn tokenize_ends_with_eof() {
-        let tokens = tokenize("type Foo { x: Int }".to_string());
-        let last = tokens.last().expect("should have tokens");
-        assert!(
-            matches!(last.kind, crate::v2_core::TokenKind::Eof),
-            "last token should be Eof, got {:?}",
-            last.kind
-        );
-    }
-
-    #[test]
-    fn tokenize_fn_keyword() {
-        let tokens = tokenize("fn".to_string());
-        // Should have at least KwFn and Eof
-        assert!(tokens.len() >= 2, "expected at least 2 tokens, got {}", tokens.len());
-        assert!(
-            matches!(tokens[0].kind, crate::v2_core::TokenKind::KwFn),
-            "first token should be KwFn, got {:?}",
-            tokens[0].kind
-        );
-    }
-}
-"#;
-        let smoke_path = tmp_dir.join("src/smoke_test.rs");
-        std::fs::write(&smoke_path, smoke_test).expect("failed to write smoke test");
-
-        // Add `mod smoke_test;` to lib.rs
-        let lib_path = tmp_dir.join("src/lib.rs");
-        let mut lib_content = std::fs::read_to_string(&lib_path).expect("failed to read lib.rs");
-        lib_content.push_str("\n#[cfg(test)]\nmod smoke_test;\n");
-        std::fs::write(&lib_path, &lib_content).expect("failed to write lib.rs");
+        // The generated crate already contains src/generated_tests.rs and the
+        // corresponding `mod generated_tests;` in lib.rs — no injection needed.
 
         let output = std::process::Command::new("cargo")
             .arg("test")
@@ -2410,6 +2343,13 @@ mod smoke {
                 stderr
             );
         }
+
+        // Verify that the emitted tests actually ran (not just compiled)
+        assert!(
+            stdout.contains("test generated_tests"),
+            "expected generated_tests to appear in test output:\n{}",
+            stdout
+        );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }

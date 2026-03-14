@@ -1211,8 +1211,10 @@ pub fn compute_recursive_fields(
     let mut visited = HashSet::new();
     let mut on_stack = HashSet::new();
 
-    for type_name in all_type_names.iter() {
-        if !visited.contains(type_name) {
+    let mut sorted_type_names: Vec<&String> = all_type_names.iter().collect();
+    sorted_type_names.sort();
+    for type_name in &sorted_type_names {
+        if !visited.contains(*type_name as &str) {
             dfs_find_cycles(
                 type_name,
                 &graph,

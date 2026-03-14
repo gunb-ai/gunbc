@@ -14,7 +14,7 @@ module v2.compiler.emit
 
 import v2.std.core {
   Module, Import, Item, TypeDef, FnDef, FuncDef, ServiceDef, DataDef,
-  TypeExpr, TypeApp, TypeBody, Field, Variant, Param, Expr, MatchArm,
+  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
   ResourceDef, CapabilityDef, ExternFuncDecl,
@@ -22,7 +22,9 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  ResponseMapping, MockResponseDef, OperationModifier
+  ResponseMapping, MockResponseDef, OperationModifier,
+  ForEach,
+  TypedItem, FuncEnv, FuncSig
 }
 
 // =========================================================================
@@ -40,7 +42,9 @@ type TypedGraph {
 
 type TypedModule {
   module: Module
+  items: List<TypedItem>
   type_env: TypeEnv
+  func_env: FuncEnv
 }
 
 type TypeEnv {
@@ -50,6 +54,15 @@ type TypeEnv {
 type TypeBinding {
   name: String
   resolved: TypeExpr
+}
+
+// =========================================================================
+// Emit result — files plus diagnostic channel for downstream consumers.
+// =========================================================================
+
+type EmitResult {
+  files: List<TextFile>
+  diagnostics: List<Diagnostic>
 }
 
 // =========================================================================
@@ -71,14 +84,17 @@ data rust_reserved: List<String> = [
 // Entry point
 // =========================================================================
 
-fn emit_rust(typed: TypedGraph) -> List<TextFile> {
-  let module_files = typed.modules |> map(tm => emit_module(typed_module: tm))
+fn emit_rust(typed: TypedGraph) -> EmitResult {
+  let all_items = typed.modules |> flat_map(tm => tm.module.items)
+  let registry = build_item_registry(items: all_items)
+  let module_files = typed.modules |> map(tm => emit_module(typed_module: tm, registry: registry))
   let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
     |> filter(f => f.content != "")
   let lib_file = emit_lib_rs(modules: typed.modules)
   let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_service_items(typed: typed))
-  concat([cargo, lib_file], module_files, test_files)
+  let files = concat([cargo, lib_file], module_files, test_files)
+  EmitResult { files: files, diagnostics: [] }
 }
 
 // =========================================================================
@@ -124,9 +140,8 @@ fn emit_lib_rs(modules: List<TypedModule>) -> TextFile {
 // Module emission
 // =========================================================================
 
-fn emit_module(typed_module: TypedModule) -> TextFile {
+fn emit_module(typed_module: TypedModule, registry: List<ItemInfo>) -> TextFile {
   let m = typed_module.module
-  let registry = build_item_registry(items: m.items)
   let prelude = emit_prelude()
   let imports_str = emit_imports(imports: m.imports)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
@@ -151,7 +166,12 @@ fn emit_imports(imports: List<Import>) -> String {
   } else {
     let import_lines = imports |> map(imp =>
       let mod_name = module_to_filename(name: imp.module_path)
-      concat("use crate::", mod_name, "::*;")
+      if imp.names |> count == 0 {
+        concat("use crate::", mod_name, "::*;")
+      } else {
+        let names_str = imp.names |> join(separator: ", ")
+        concat("use crate::", mod_name, "::{", names_str, "};")
+      }
     )
     import_lines |> join(separator: "\n")
   }
@@ -162,7 +182,53 @@ fn emit_imports(imports: List<Import>) -> String {
 // =========================================================================
 
 fn emit_prelude() -> String {
-  "use std::collections::BTreeMap;\nuse serde::\{Serialize, Deserialize\};"
+  let serde_import = concat("use serde::{", "Serialize, Deserialize};")
+  let imports = concat("use std::collections::BTreeMap;\n", serde_import)
+  concat(imports, "\n\n", emit_non_empty_wrappers())
+}
+
+// Emit newtype wrapper definitions for NonEmptyVec and NonEmptyBTreeSet.
+// These validate non-emptiness at construction time.
+fn emit_non_empty_wrappers() -> String {
+  let vec_wrapper = concat(
+    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n",
+    "pub struct NonEmptyVec<T>(Vec<T>);\n\n",
+    "impl<T> NonEmptyVec<T> {\n",
+    "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n",
+    "        if items.is_empty() {\n",
+    "            Err(\"NonEmptyVec requires at least one element\")\n",
+    "        } else {\n",
+    "            Ok(Self(items))\n",
+    "        }\n",
+    "    }\n\n",
+    "    pub fn as_slice(&self) -> &[T] {\n",
+    "        &self.0\n",
+    "    }\n\n",
+    "    pub fn into_vec(self) -> Vec<T> {\n",
+    "        self.0\n",
+    "    }\n",
+    "}"
+  )
+  let set_wrapper = concat(
+    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n",
+    "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
+    "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
+    "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
+    "        if items.is_empty() {\n",
+    "            Err(\"NonEmptyBTreeSet requires at least one element\")\n",
+    "        } else {\n",
+    "            Ok(Self(items))\n",
+    "        }\n",
+    "    }\n\n",
+    "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n",
+    "        &self.0\n",
+    "    }\n\n",
+    "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n",
+    "        self.0\n",
+    "    }\n",
+    "}"
+  )
+  concat(vec_wrapper, "\n\n", set_wrapper)
 }
 
 // =========================================================================
@@ -217,7 +283,11 @@ fn emit_struct_field(field: Field) -> String {
   } else {
     emit_type_expr(type_expr: field.type_expr)
   }
-  concat("    pub ", rust_ident(name: field.name), ": ", ty, ",")
+  let default_doc = match field.default_value {
+    Some { value: expr } => concat("    /// Default: ", emit_expr(expr: expr, registry: []), "\n")
+    None => ""
+  }
+  concat(default_doc, "    pub ", rust_ident(name: field.name), ": ", ty, ",")
 }
 
 fn emit_enum_def(name: String, variants: List<Variant>) -> String {
@@ -273,9 +343,6 @@ fn emit_type_expr(type_expr: TypeExpr) -> String {
     Refined { base: b, predicates: _, span: _ } =>
       // Refinements are erased at the Rust level — just emit the base type
       emit_type_expr(type_expr: b)
-    TypeApp { name: n, args: type_args, span: _ } =>
-      let arg_strs = type_args |> map(a => emit_type_expr(type_expr: a))
-      concat(n, "<", arg_strs |> join(separator: ", "), ">")
   }
 }
 
@@ -296,8 +363,8 @@ fn emit_container_type(kind: ContainerKind, element: TypeExpr) -> String {
   match kind {
     List => concat("Vec<", inner, ">")
     Set => concat("std::collections::BTreeSet<", inner, ">")
-    NonEmptyList => concat("Vec<", inner, ">")
-    NonEmptySet => concat("std::collections::BTreeSet<", inner, ">")
+    NonEmptyList => concat("NonEmptyVec<", inner, ">")
+    NonEmptySet => concat("NonEmptyBTreeSet<", inner, ">")
   }
 }
 
@@ -358,10 +425,44 @@ fn emit_func_def(
   let service_names = unique_strings(items: collect_service_calls(expr: body))
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_func_return_type(return_type: return_type)
-  let body_str = emit_expr(expr: body, registry: registry)
+  let body_str = emit_func_body(body: body, registry: registry)
   concat("pub async fn ", rust_ident(name: name),
     "(", params_str, ")", ret_str, " {\n",
     indent(text: body_str, level: 1), "\n}")
+}
+
+// Emit a func body, wrapping the tail expression in Ok(...).
+// For let-chains the leading bindings are emitted as statements,
+// and only the final expression is wrapped.
+fn emit_func_body(body: Expr, registry: List<ItemInfo>) -> String {
+  match body {
+    Let { name: n, value: v, body: inner, span: _ } => {
+      let val_str = emit_expr(expr: v, registry: registry)
+      let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
+      match inner {
+        Some { value: bd } =>
+          concat(let_line, "\n", emit_func_body(body: bd, registry: registry))
+        None => let_line
+      }
+    }
+    Block { stmts: ss, span: _ } => {
+      if ss |> count == 0 {
+        "Ok(())"
+      } else {
+        let init_stmts = ss |> enumerate
+          |> filter(p => p.first < (ss |> count) - 1)
+          |> map(p => emit_expr(expr: p.second, registry: registry))
+        let last_stmt = ss |> last
+        let last_str = match last_stmt {
+          Some { value: s } => concat("Ok(", emit_expr(expr: s, registry: registry), ")")
+          None => "Ok(())"
+        }
+        let all_lines = concat(init_stmts, [last_str])
+        all_lines |> join(separator: "\n")
+      }
+    }
+    _ => concat("Ok(", emit_expr(expr: body, registry: registry), ")")
+  }
 }
 
 fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
@@ -472,6 +573,8 @@ fn emit_expr(expr: Expr, registry: List<ItemInfo>) -> String {
       emit_block(stmts: ss, registry: registry)
     Cast { expr: e, target: t, span: _ } =>
       emit_cast(expr: e, target: t, registry: registry)
+    ForEach { variable: v, collection: c, body: bd, span: _ } =>
+      emit_for_each(variable: v, collection: c, body: bd, registry: registry)
   }
 }
 
@@ -504,66 +607,32 @@ fn emit_string_literal(s: String) -> String {
 // =========================================================================
 
 fn emit_call(func: String, args: List<NamedArg>, registry: List<ItemInfo>) -> String {
-  if func == "for" {
-    emit_for_loop(args: args, registry: registry)
-  } else {
-    let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry))
-    let callee = lookup_item(registry: registry, name: func)
-    let extra_args = match callee {
-      Some { value: info } =>
-        if info.kind == "func" {
-          info.service_names |> map(sn => service_var_name(service_name: sn))
-        } else { [] }
-      None => []
-    }
-    let all_args = concat(arg_strs, extra_args)
-    let args_str = all_args |> join(separator: ", ")
-    let call_str = concat(rust_ident(name: func), "(", args_str, ")")
-    match callee {
-      Some { value: info } =>
-        if info.kind == "func" { concat(call_str, ".await?") } else { call_str }
-      None => call_str
-    }
+  let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry))
+  let callee = lookup_item(registry: registry, name: func)
+  let extra_args = match callee {
+    Some { value: info } =>
+      if info.kind == "func" {
+        info.service_names |> map(sn => service_var_name(service_name: sn))
+      } else { [] }
+    None => []
+  }
+  let all_args = concat(arg_strs, extra_args)
+  let args_str = all_args |> join(separator: ", ")
+  let call_str = concat(rust_ident(name: func), "(", args_str, ")")
+  match callee {
+    Some { value: info } =>
+      if info.kind == "func" { concat(call_str, ".await?") } else { call_str }
+    None => call_str
   }
 }
 
-// Emit a for-loop from its desugared Call representation.
-// The parser produces: Call { func: "for", args: [var: "name", collection: expr, body: lambda] }
-fn emit_for_loop(args: List<NamedArg>, registry: List<ItemInfo>) -> String {
-  // Extract named args
-  let var_arg = args |> filter(a => match a.name {
-    Some { value: "var" } => true
-    _ => false
-  }) |> first
-  let coll_arg = args |> filter(a => match a.name {
-    Some { value: "collection" } => true
-    _ => false
-  }) |> first
-  let body_arg = args |> filter(a => match a.name {
-    Some { value: "body" } => true
-    _ => false
-  }) |> first
-
-  let var_name = match var_arg {
-    Some { value: a } => match a.value {
-      Literal { value: LitStr { value: s } } => s
-      _ => "item"
-    }
-    None => "item"
-  }
-  let coll_str = match coll_arg {
-    Some { value: a } => emit_expr(expr: a.value, registry: registry)
-    None => "vec![]"
-  }
-  let body_str = match body_arg {
-    Some { value: a } => match a.value {
-      Lambda { params: _, body: bd } => emit_expr(expr: bd, registry: registry)
-      _ => emit_expr(expr: a.value, registry: registry)
-    }
-    None => "()"
-  }
-  concat(coll_str, ".into_iter().map(|", rust_ident(name: var_name), "| {\n",
-    indent(text: body_str, level: 1), "\n}).collect::<Vec<_>>()")
+// Emit a for-each loop from the ForEach AST node.
+// Produces a Rust statement-level for loop (side effects, no return value).
+fn emit_for_each(variable: String, collection: Expr, body: Expr, registry: List<ItemInfo>) -> String {
+  let coll_str = emit_expr(expr: collection, registry: registry)
+  let body_str = emit_expr(expr: body, registry: registry)
+  concat("for ", rust_ident(name: variable), " in ", coll_str, ".into_iter() {\n",
+    indent(text: body_str, level: 1), ";\n}")
 }
 
 fn emit_call_arg(arg: NamedArg, registry: List<ItemInfo>) -> String {
@@ -735,9 +804,6 @@ fn emit_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: List<ItemInfo>)
   if is_null_coalesce_op(op: op) {
     // x ?? y  →  x.unwrap_or_else(|| y)
     concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
-  } else if is_concat_op(op: op) {
-    // String concatenation → format!
-    concat("format!(\"{}{}\", ", l_str, ", ", r_str, ")")
   } else {
     let op_str = emit_bin_op_symbol(op: op)
     concat("(", l_str, " ", op_str, " ", r_str, ")")
@@ -759,15 +825,7 @@ fn emit_bin_op_symbol(op: BinOpKind) -> String {
     BinGe => ">="
     BinAnd => "&&"
     BinOr => "||"
-    Concat => "+"
     NullCoalesce => "??"
-  }
-}
-
-fn is_concat_op(op: BinOpKind) -> Bool {
-  match op {
-    Concat => true
-    _ => false
   }
 }
 
@@ -856,7 +914,25 @@ fn emit_block(stmts: List<Expr>, registry: List<ItemInfo>) -> String {
 fn emit_cast(expr: Expr, target: TypeExpr, registry: List<ItemInfo>) -> String {
   let expr_str = emit_expr(expr: expr, registry: registry)
   let ty_str = emit_type_expr(type_expr: target)
-  concat(expr_str, " as ", ty_str)
+  if is_primitive_numeric(type_expr: target) {
+    concat(expr_str, " as ", ty_str)
+  } else {
+    // Non-primitive cast: `as` is only valid for numeric primitives in Rust.
+    // Emit a compile-time failure so this is caught rather than silently wrong.
+    concat("todo!(\"unsupported cast to ", ty_str, "\")")
+  }
+}
+
+// Returns true for primitive numeric types where Rust `as` is valid.
+fn is_primitive_numeric(type_expr: TypeExpr) -> Bool {
+  match type_expr {
+    Primitive { name: n, span: _ } =>
+      if n == "Int" { true }
+      else if n == "Float" { true }
+      else if n == "Bool" { true }
+      else { false }
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -914,6 +990,23 @@ fn emit_service_impl(name: String, transport: TransportBinding, operations: List
   concat("impl ", name, " {\n", indent(text: methods_str, level: 1), "\n}")
 }
 
+fn emit_modifier_name(modifier: OperationModifier) -> String {
+  match modifier {
+    Idempotent => "idempotent"
+    Readonly => "readonly"
+    Hermetic => "hermetic"
+  }
+}
+
+fn emit_modifier_doc(modifiers: List<OperationModifier>) -> String {
+  if modifiers |> count == 0 {
+    ""
+  } else {
+    let names = modifiers |> map(m => emit_modifier_name(modifier: m))
+    concat("/// Modifiers: ", names |> join(separator: ", "), "\n")
+  }
+}
+
 fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
   let input_params = operation.inputs |> map(f =>
     concat(rust_ident(name: f.name), ": ", emit_field_type(field: f))
@@ -925,8 +1018,14 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, oper
     concat("&self, ", params_str)
   }
   let ret_type = emit_operation_return_type(outputs: operation.outputs)
-  let body = emit_transport_call(transport: transport, operation: operation, registry: registry)
-  concat("pub async fn ", rust_ident(name: operation.name),
+  // Use per-operation transport override if present, otherwise service-level transport.
+  let effective_transport = match operation.transport {
+    Some { value: op_transport } => op_transport
+    None => transport
+  }
+  let body = emit_transport_call(transport: effective_transport, operation: operation, registry: registry)
+  let modifier_doc = emit_modifier_doc(modifiers: operation.modifiers)
+  concat(modifier_doc, "pub async fn ", rust_ident(name: operation.name),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
     indent(text: body, level: 1), "\n}")
 }
@@ -967,7 +1066,7 @@ fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<Head
   let auth_line = match auth {
     Some { value: ac } =>
       concat("let request = client.post(&url)\n    .header(\"",
-        ac.header, "\", &self.auth_token);")
+        ac.header, "\", ", emit_expr(expr: ac.token_expr, registry: registry), ");")
     None =>
       "let request = client.post(&url);"
   }

@@ -143,7 +143,6 @@ type TypeExpr
   // Kernel types (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
   // that have no structural expansion.
   | Primitive { name: String, span: SourceSpan }
-  | TypeApp { name: String, args: List<TypeExpr>, span: SourceSpan }
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
@@ -214,6 +213,7 @@ type Expr
   | StringInterp { parts: List<StringPart>, span: SourceSpan }
   | Block { stmts: List<Expr>, span: SourceSpan }
   | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
+  | ForEach { variable: String, collection: Expr, body: Expr, span: SourceSpan }
 
 type NamedArg { name: String?, value: Expr }
 type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
@@ -240,7 +240,7 @@ type LiteralValue
 type BinOpKind
   = Add | Sub | Mul | Div | Mod
   | BinEq | BinNe | BinLt | BinGt | BinLe | BinGe
-  | BinAnd | BinOr | Concat | NullCoalesce
+  | BinAnd | BinOr | NullCoalesce
 
 type UnaryOpKind = Not | Neg
 
@@ -338,4 +338,50 @@ type Diagnostic {
   module_name: String?
 }
 
-type Severity = Error | Warning | Info
+type Severity = Error | Warning
+
+// =========================================================================
+// Typed AST — produced by the typechecker after expression-level inference.
+// Every expression carries its resolved TypeExpr.
+// =========================================================================
+
+type TypedExpr {
+  expr: Expr
+  resolved_type: TypeExpr
+}
+
+type TypedMatchArm {
+  pattern: MatchPattern
+  guard: TypedExpr?
+  body: TypedExpr
+}
+
+type TypedNamedArg {
+  name: String?
+  value: TypedExpr
+}
+
+type TypedFieldInit {
+  name: String
+  value: TypedExpr
+}
+
+type TypedItem
+  = TypedTypeDef { name: String, body: TypeBody, span: SourceSpan }
+  | TypedFnDef { name: String, params: List<Param>, return_type: TypeExpr, body: TypedExpr, span: SourceSpan }
+  | TypedFuncDef { name: String, params: List<Param>, return_type: TypeExpr, uses: List<ResourceUse>, body: TypedExpr, span: SourceSpan }
+  | TypedServiceDef { name: String, transport: TransportBinding, config: ServiceConfig?, operations: List<OperationDef>, span: SourceSpan }
+  | TypedResourceDef { name: String, properties: List<FieldInit>, capabilities: List<CapabilityDef>, span: SourceSpan }
+  | TypedDataDef { name: String, type_expr: TypeExpr, value: TypedExpr, span: SourceSpan }
+  | TypedExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
+
+type FuncSig {
+  name: String
+  params: List<Param>
+  return_type: TypeExpr
+  is_async: Bool
+}
+
+type FuncEnv {
+  signatures: List<FuncSig>
+}

@@ -26,12 +26,12 @@ import v2.std.core {
   Field, Variant, Param, ResourceUse,
   Predicate, NonEmpty, Pattern, Range, Brand, ContentEncoding, Format,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
-  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast,
+  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast, ForEach,
   NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   BinOpKind, Add, Sub, Mul, Div, Mod,
-  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, Concat, NullCoalesce,
+  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   TransportBinding, RestBinding, ShellBinding, FileBinding, LocalBinding,
@@ -52,7 +52,7 @@ import v2.std.core {
   Question, NullCoalesce, Pipe, PipeArrow,
   Ident, StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown,
-  Diagnostic, Severity, Error, Warning, Info,
+  Diagnostic, Severity, Error, Warning,
   SourceSpan
 }
 
@@ -557,8 +557,13 @@ fn parse_import(state: ParserState) -> ImportResult {
     let imp = Import { module_path: mod_path, names: names, span: start_span }
     ImportResult { import: imp, state: s, err: none }
   } else {
+    // Bare import (no braces): import all from module.
+    // Uses ["*"] as sentinel to distinguish from empty block import foo.bar {}
+    // which produces names: []. The core Import type (00_core.dag) defines
+    // names as List<String>, so we cannot use Optional to distinguish the two
+    // cases. The sentinel "*" is not a valid identifier in the language.
     let s = skip_newlines(state: s)
-    let imp = Import { module_path: mod_path, names: [], span: start_span }
+    let imp = Import { module_path: mod_path, names: ["*"], span: start_span }
     ImportResult { import: imp, state: s, err: none }
   }
 }
@@ -2345,7 +2350,7 @@ fn infix_bp(state: ParserState) -> BindingPower? {
   let k = peek_kind(state: state)
   match k {
     Some { value: PipeArrow }    => Some { value: BindingPower { left: 0, right: 1 } }
-    Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 0 } }
+    Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 2 } }
     Some { value: Or }       => Some { value: BindingPower { left: 2, right: 3 } }
     Some { value: And }      => Some { value: BindingPower { left: 4, right: 5 } }
     Some { value: EqEq }     => Some { value: BindingPower { left: 6, right: 7 } }
@@ -2380,6 +2385,10 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
     And => BinAnd
     Or => BinOr
     NullCoalesce => NullCoalesce
+    // All other tokens are not binary operators. This function is only called
+    // after infix_bp confirms the token is an operator, so this arm is
+    // unreachable in correct usage. Returns Add as a defensive fallback —
+    // the parser will produce a type error downstream.
     _ => Add
   }
 }
@@ -2973,13 +2982,10 @@ fn parse_for(state: ParserState) -> ExprResult {
   if has_err(err: r.err) { return r }
   let body = r.expr
 
-  let for_expr = Call {
-    func: "for",
-    args: [
-      NamedArg { name: Some { value: "var" }, value: Literal { value: LitStr { value: var_name }, span: span } },
-      NamedArg { name: Some { value: "collection" }, value: collection },
-      NamedArg { name: Some { value: "body" }, value: Lambda { params: [var_name], body: body, span: span } }
-    ],
+  let for_expr = ForEach {
+    variable: var_name,
+    collection: collection,
+    body: body,
     span: span
   }
   ExprResult { expr: for_expr, state: r.state, err: none }

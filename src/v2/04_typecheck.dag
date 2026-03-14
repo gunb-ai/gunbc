@@ -22,13 +22,29 @@ import v2.std.core {
   Module, Item, TypeExpr, TypeBody, Field, Variant, Param,
   Expr, Diagnostic, Severity,
   TypeDef, FuncDef, FnDef, ServiceDef, ResourceDef, DataDef, ExternFuncDecl,
-  Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive, TypeApp,
+  Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive,
   Record, Sum, Alias,
   ContainerKind,
   Predicate,
   OperationDef, CapabilityDef, ResourceUse,
+  ResponseMapping, ExitMapping,
   TransportBinding, ServiceConfig,
-  Error, Warning, Info
+  Error, Warning, Info,
+  TypedExpr, TypedMatchArm, TypedNamedArg, TypedFieldInit,
+  TypedItem, TypedTypeDef, TypedFnDef, TypedFuncDef,
+  TypedServiceDef, TypedResourceDef, TypedDataDef, TypedExternFuncDecl,
+  FuncSig, FuncEnv,
+  ForEach,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  BinOpKind, Add, Sub, Mul, Div, Mod,
+  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
+  BinAnd, BinOr, NullCoalesce,
+  UnaryOpKind, Not, Neg,
+  MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
+  Literal, Var, FieldAccess, Call, MethodCall,
+  Match, If, Let, RecordLit, ListLit, BinOp, UnaryOp,
+  Lambda, StringInterp, Block, Cast,
+  Import
 }
 // Forward import: v2.compiler.resolve will define these types (C4).
 // Until then, they are defined locally below.
@@ -69,7 +85,9 @@ type TypedGraph {
 
 type TypedModule {
   module: Module
+  items: List<TypedItem>
   type_env: TypeEnv
+  func_env: FuncEnv
 }
 
 type TypeEnv {
@@ -84,6 +102,27 @@ type TypeBinding {
 // Internal result type for threading diagnostics through resolution.
 type ResolveResult {
   resolved: TypeExpr
+  diagnostics: List<Diagnostic>
+}
+
+// =========================================================================
+// Expression inference types
+// =========================================================================
+
+type InferScope {
+  type_env: TypeEnv
+  func_env: FuncEnv
+  locals: List<TypeBinding>
+  module_name: String
+}
+
+type InferResult {
+  typed: TypedExpr
+  diagnostics: List<Diagnostic>
+}
+
+type TypedItemResult {
+  item: TypedItem
   diagnostics: List<Diagnostic>
 }
 
@@ -127,6 +166,680 @@ type CapabilityResult {
 type ResourceUseResult {
   resource_use: ResourceUse
   diagnostics: List<Diagnostic>
+}
+
+// =========================================================================
+// Build function environment from module items.
+// Extracts signatures from FnDef, FuncDef, and ExternFuncDecl items.
+// =========================================================================
+
+fn build_func_env(items: List<Item>) -> FuncEnv {
+  // Note: return_type is TypeExpr? on FnDef/FuncDef/ExternFuncDecl, but the
+  // v1 codegen loses optionality in match destructuring. We use build_func_sig
+  // helpers that take the full item to work around this limitation.
+  let sigs = fold(items, init: [], f: (acc, item) =>
+    match item {
+      FnDef { name: n, params: ps, return_type: _, body: _, span: _ } =>
+        concat(acc, [build_fn_sig(name: n, params: ps, is_async: false)])
+      FuncDef { name: n, params: ps, return_type: _, uses: _, body: _, span: _ } =>
+        concat(acc, [build_fn_sig(name: n, params: ps, is_async: true)])
+      ExternFuncDecl { name: n, params: ps, return_type: _, span: _ } =>
+        concat(acc, [build_fn_sig(name: n, params: ps, is_async: false)])
+      _ => acc
+    }
+  )
+  FuncEnv { signatures: sigs }
+}
+
+// Build a FuncSig. Return type defaults to Unit — the typed AST inference
+// pass (step 3) will resolve actual return types from the type environment.
+fn build_fn_sig(name: String, params: List<Param>, is_async: Bool) -> FuncSig {
+  let unit_type = Primitive { name: "Unit", span: SourceSpan { start: 0, end: 0 } }
+  FuncSig { name: name, params: params, return_type: unit_type, is_async: is_async }
+}
+
+// =========================================================================
+// Expression inference — step 3 of the typed AST design
+//
+// Assigns a resolved TypeExpr to every Expr node in the AST, producing
+// TypedExpr values. This is a single top-down pass (not Hindley-Milner);
+// .dag has explicit type annotations on params and fields, so inference
+// is propagation, not unification.
+// =========================================================================
+
+// -------------------------------------------------------------------------
+// Helper: construct a no-span sentinel for synthesized types
+// -------------------------------------------------------------------------
+
+fn no_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0 }
+}
+
+// -------------------------------------------------------------------------
+// Helper: construct a unit TypeExpr
+// -------------------------------------------------------------------------
+
+fn unit_type() -> TypeExpr {
+  Primitive { name: "Unit", span: no_span() }
+}
+
+// -------------------------------------------------------------------------
+// Helper: wrap an Expr with a resolved type to produce a TypedExpr
+// -------------------------------------------------------------------------
+
+fn typed(expr: Expr, resolved_type: TypeExpr) -> TypedExpr {
+  TypedExpr { expr: expr, resolved_type: resolved_type }
+}
+
+// -------------------------------------------------------------------------
+// Helper: wrap an Expr+type into an InferResult with no diagnostics
+// -------------------------------------------------------------------------
+
+fn ok_infer(expr: Expr, resolved_type: TypeExpr) -> InferResult {
+  InferResult {
+    typed: typed(expr: expr, resolved_type: resolved_type),
+    diagnostics: []
+  }
+}
+
+// -------------------------------------------------------------------------
+// lookup_in_scope: look up a variable name in locals, then func params,
+// then type_env. Returns Primitive "Unit" if not found.
+// -------------------------------------------------------------------------
+
+fn lookup_in_scope(scope: InferScope, name: String) -> TypeExpr {
+  // 1. Check locals
+  let local_matches = filter(scope.locals, b => b.name == name)
+  if count(local_matches) > 0 {
+    let found = first(local_matches)
+    match found {
+      Some { value: binding } => binding.resolved
+      None => unit_type()
+    }
+  } else {
+    // 2. Check func_env params — look through all signatures for a matching param
+    let param_type = lookup_in_func_params(func_env: scope.func_env, name: name)
+    match param_type {
+      Some { value: te } => te
+      None =>
+        // 3. Check type_env (type names)
+        let type_match = lookup_type(env: scope.type_env, name: name)
+        match type_match {
+          Some { value: te } => te
+          None => unit_type()
+        }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
+// lookup_in_func_params: search all FuncSig params for a name
+// -------------------------------------------------------------------------
+
+fn lookup_in_func_params(func_env: FuncEnv, name: String) -> TypeExpr? {
+  let all_params = fold(func_env.signatures, init: [], f: (acc, sig) =>
+    concat(acc, sig.params)
+  )
+  let matches = filter(all_params, p => p.name == name)
+  if count(matches) > 0 {
+    let found = first(matches)
+    match found {
+      Some { value: p } => Some { value: p.type_expr }
+      None => None
+    }
+  } else {
+    None
+  }
+}
+
+// -------------------------------------------------------------------------
+// lookup_field_type: given a resolved type (Product), look up a field
+// by name and return its type. Returns Unit if not found or not a Product.
+// -------------------------------------------------------------------------
+
+fn lookup_field_type(type_expr: TypeExpr, field_name: String) -> TypeExpr {
+  match type_expr {
+    Product { name: _, fields: fields, span: _ } =>
+      let matches = filter(fields, f => f.name == field_name)
+      if count(matches) > 0 {
+        let found = first(matches)
+        match found {
+          Some { value: f } =>
+            if f.optional {
+              Optional { inner: f.type_expr, span: no_span() }
+            } else {
+              f.type_expr
+            }
+          None => unit_type()
+        }
+      } else {
+        unit_type()
+      }
+    // For Optional types, unwrap and look up in inner
+    Optional { inner: inner, span: _ } =>
+      let inner_result = lookup_field_type(type_expr: inner, field_name: field_name)
+      Optional { inner: inner_result, span: no_span() }
+    _ => unit_type()
+  }
+}
+
+// -------------------------------------------------------------------------
+// lookup_func_sig: look up a function signature by name
+// -------------------------------------------------------------------------
+
+fn lookup_func_sig(func_env: FuncEnv, name: String) -> FuncSig? {
+  let matches = filter(func_env.signatures, s => s.name == name)
+  if count(matches) > 0 {
+    first(matches)
+  } else {
+    None
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_literal: resolve the type of a LiteralValue
+// -------------------------------------------------------------------------
+
+fn infer_literal(lit: LiteralValue) -> TypeExpr {
+  match lit {
+    LitStr { value: _ } => Primitive { name: "String", span: no_span() }
+    LitInt { value: _ } => Primitive { name: "Int", span: no_span() }
+    LitFloat { value: _ } => Primitive { name: "Float", span: no_span() }
+    LitBool { value: _ } => Primitive { name: "Bool", span: no_span() }
+    LitNull => Primitive { name: "Unit", span: no_span() }
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_binop_type: resolve the result type of a binary operation
+// -------------------------------------------------------------------------
+
+fn infer_binop_type(op: BinOpKind, left_type: TypeExpr) -> TypeExpr {
+  match op {
+    // Arithmetic: result is same as left operand
+    Add => left_type
+    Sub => left_type
+    Mul => left_type
+    Div => left_type
+    Mod => left_type
+    // Comparison: result is Bool
+    BinEq => Primitive { name: "Bool", span: no_span() }
+    BinNe => Primitive { name: "Bool", span: no_span() }
+    BinLt => Primitive { name: "Bool", span: no_span() }
+    BinGt => Primitive { name: "Bool", span: no_span() }
+    BinLe => Primitive { name: "Bool", span: no_span() }
+    BinGe => Primitive { name: "Bool", span: no_span() }
+    // Logical: result is Bool
+    BinAnd => Primitive { name: "Bool", span: no_span() }
+    BinOr => Primitive { name: "Bool", span: no_span() }
+    // NullCoalesce: unwrap Optional to inner type
+    NullCoalesce => extract_optional_inner(type_expr: left_type)
+  }
+}
+
+// -------------------------------------------------------------------------
+// extract_optional_inner: unwrap Optional<T> to T; if not Optional, return as-is
+// -------------------------------------------------------------------------
+
+fn extract_optional_inner(type_expr: TypeExpr) -> TypeExpr {
+  match type_expr {
+    Optional { inner: inner, span: _ } => inner
+    _ => type_expr
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_method_call_type: compute result type for pipe methods
+// -------------------------------------------------------------------------
+
+fn infer_method_call_type(receiver_type: TypeExpr, method: String) -> TypeExpr {
+  // Extract the element type from Container types
+  let elem_type = match receiver_type {
+    Container { kind: _, element: el, span: _ } => el
+    _ => receiver_type
+  }
+  if method == "map" {
+    // map preserves container kind but element type comes from context;
+    // without bidirectional typing, return the same container shape
+    receiver_type
+  } else {
+    if method == "filter" {
+      // filter preserves the full container type
+      receiver_type
+    } else {
+      if method == "fold" {
+        // fold returns the accumulator type; without more info, Unit
+        unit_type()
+      } else {
+        if method == "first" {
+          // first returns Optional<element>
+          Optional { inner: elem_type, span: no_span() }
+        } else {
+          if method == "last" {
+            // last returns Optional<element>
+            Optional { inner: elem_type, span: no_span() }
+          } else {
+            if method == "count" {
+              Primitive { name: "Int", span: no_span() }
+            } else {
+              if method == "join" {
+                Primitive { name: "String", span: no_span() }
+              } else {
+                if method == "any" {
+                  Primitive { name: "Bool", span: no_span() }
+                } else {
+                  if method == "contains" {
+                    Primitive { name: "Bool", span: no_span() }
+                  } else {
+                    if method == "enumerate" {
+                      // enumerate wraps elements in (index, element) pairs;
+                      // keep as container for now
+                      receiver_type
+                    } else {
+                      // Unknown method — fall back to Unit
+                      unit_type()
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
+// build_params_scope: add function params to locals in an InferScope
+// -------------------------------------------------------------------------
+
+fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
+  let param_bindings = map(params, p =>
+    TypeBinding { name: p.name, resolved: p.type_expr }
+  )
+  InferScope {
+    type_env: scope.type_env,
+    func_env: scope.func_env,
+    locals: concat(scope.locals, param_bindings),
+    module_name: scope.module_name
+  }
+}
+
+// -------------------------------------------------------------------------
+// extend_scope: add a single local binding to an InferScope
+// -------------------------------------------------------------------------
+
+fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferScope {
+  InferScope {
+    type_env: scope.type_env,
+    func_env: scope.func_env,
+    locals: concat(scope.locals, [TypeBinding { name: name, resolved: resolved }]),
+    module_name: scope.module_name
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_expr: the main recursive function
+//
+// For each Expr variant, produce a TypedExpr wrapping the original expr
+// with its resolved type. Diagnostics are threaded through for reporting.
+// -------------------------------------------------------------------------
+
+fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
+  match expr {
+    Literal { value: lit, span: _ } =>
+      ok_infer(expr: expr, resolved_type: infer_literal(lit: lit))
+
+    Var { name: name, span: _ } =>
+      ok_infer(expr: expr, resolved_type: lookup_in_scope(scope: scope, name: name))
+
+    FieldAccess { base: base_expr, field: field_name, span: _ } =>
+      let base_result = infer_expr(expr: base_expr, scope: scope)
+      let base_type = base_result.typed.resolved_type
+      let field_type = lookup_field_type(type_expr: base_type, field_name: field_name)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: field_type),
+        diagnostics: base_result.diagnostics
+      }
+
+    Call { func: func_name, args: _, span: _ } =>
+      let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
+      if sig == none {
+        // Unknown function — check if it's a type constructor
+        let type_match = lookup_type(env: scope.type_env, name: func_name)
+        match type_match {
+          Some { value: te } =>
+            ok_infer(expr: expr, resolved_type: te)
+          None =>
+            ok_infer(expr: expr, resolved_type: unit_type())
+        }
+      } else {
+        match sig {
+          Some { value: s } => ok_infer(expr: expr, resolved_type: s.return_type)
+          None => ok_infer(expr: expr, resolved_type: unit_type())
+        }
+      }
+
+    MethodCall { receiver: recv, method: method_name, args: _, span: _ } =>
+      let recv_result = infer_expr(expr: recv, scope: scope)
+      let recv_type = recv_result.typed.resolved_type
+      let result_type = infer_method_call_type(receiver_type: recv_type, method: method_name)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: result_type),
+        diagnostics: recv_result.diagnostics
+      }
+
+    Match { scrutinee: scrut, arms: arms, span: _ } =>
+      let scrut_result = infer_expr(expr: scrut, scope: scope)
+      // Type the arms; return type is the type of the first arm body
+      let arm_results = map(arms, arm =>
+        infer_expr(expr: arm.body, scope: scope)
+      )
+      let arm_diags = fold(arm_results, init: [], f: (acc, ar) => concat(acc, ar.diagnostics))
+      // Result type: type of first arm body, or Unit if no arms
+      let result_type = if count(arm_results) > 0 {
+        let first_arm = first(arm_results)
+        match first_arm {
+          Some { value: ar } => ar.typed.resolved_type
+          None => unit_type()
+        }
+      } else {
+        unit_type()
+      }
+      InferResult {
+        typed: typed(expr: expr, resolved_type: result_type),
+        diagnostics: concat(scrut_result.diagnostics, arm_diags)
+      }
+
+    If { condition: cond, then_branch: then_expr, else_branch: _, span: _ } =>
+      let cond_result = infer_expr(expr: cond, scope: scope)
+      let then_result = infer_expr(expr: then_expr, scope: scope)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: then_result.typed.resolved_type),
+        diagnostics: concat(cond_result.diagnostics, then_result.diagnostics)
+      }
+
+    Let { name: let_name, value: let_value, body: _, span: _ } =>
+      let val_result = infer_expr(expr: let_value, scope: scope)
+      let val_type = val_result.typed.resolved_type
+      // body is Expr? — use == none check per v1 codegen limitation
+      let let_body = infer_let_body(expr: expr, scope: scope, let_name: let_name, val_type: val_type)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: let_body.resolved_type),
+        diagnostics: concat(val_result.diagnostics, let_body.diagnostics)
+      }
+
+    RecordLit { type_name: _, fields: _, span: _ } =>
+      infer_record_lit(expr: expr, scope: scope)
+
+    ListLit { elements: elements, span: _ } =>
+      if count(elements) > 0 {
+        let first_elem = first(elements)
+        match first_elem {
+          Some { value: elem } =>
+            let elem_result = infer_expr(expr: elem, scope: scope)
+            let elem_type = elem_result.typed.resolved_type
+            let list_type = Container { kind: List, element: elem_type, span: no_span() }
+            InferResult {
+              typed: typed(expr: expr, resolved_type: list_type),
+              diagnostics: elem_result.diagnostics
+            }
+          None =>
+            ok_infer(expr: expr, resolved_type: Container { kind: List, element: unit_type(), span: no_span() })
+        }
+      } else {
+        ok_infer(expr: expr, resolved_type: Container { kind: List, element: unit_type(), span: no_span() })
+      }
+
+    BinOp { op: op, left: left_expr, right: _, span: _ } =>
+      let left_result = infer_expr(expr: left_expr, scope: scope)
+      let result_type = infer_binop_type(op: op, left_type: left_result.typed.resolved_type)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: result_type),
+        diagnostics: left_result.diagnostics
+      }
+
+    UnaryOp { op: op, operand: operand_expr, span: _ } =>
+      let operand_result = infer_expr(expr: operand_expr, scope: scope)
+      let result_type = match op {
+        Not => Primitive { name: "Bool", span: no_span() }
+        Neg => operand_result.typed.resolved_type
+      }
+      InferResult {
+        typed: typed(expr: expr, resolved_type: result_type),
+        diagnostics: operand_result.diagnostics
+      }
+
+    Lambda { params: _, body: _, span: _ } =>
+      ok_infer(expr: expr, resolved_type: unit_type())
+
+    StringInterp { parts: _, span: _ } =>
+      ok_infer(expr: expr, resolved_type: Primitive { name: "String", span: no_span() })
+
+    Block { stmts: stmts, span: _ } =>
+      if count(stmts) > 0 {
+        // Infer each statement, return type of last
+        let stmt_results = map(stmts, s => infer_expr(expr: s, scope: scope))
+        let all_diags = fold(stmt_results, init: [], f: (acc, sr) => concat(acc, sr.diagnostics))
+        let last_result = last(stmt_results)
+        match last_result {
+          Some { value: sr } =>
+            InferResult {
+              typed: typed(expr: expr, resolved_type: sr.typed.resolved_type),
+              diagnostics: all_diags
+            }
+          None =>
+            InferResult {
+              typed: typed(expr: expr, resolved_type: unit_type()),
+              diagnostics: all_diags
+            }
+        }
+      } else {
+        ok_infer(expr: expr, resolved_type: unit_type())
+      }
+
+    Cast { expr: cast_inner, target: target_type, span: _ } =>
+      let inner_result = infer_expr(expr: cast_inner, scope: scope)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: target_type),
+        diagnostics: inner_result.diagnostics
+      }
+
+    ForEach { variable: _, collection: coll, body: body_expr, span: _ } =>
+      let coll_result = infer_expr(expr: coll, scope: scope)
+      let body_result = infer_expr(expr: body_expr, scope: scope)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: unit_type()),
+        diagnostics: concat(coll_result.diagnostics, body_result.diagnostics)
+      }
+
+    // Fallback for any unrecognized variant
+    _ => ok_infer(expr: expr, resolved_type: unit_type())
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_let_body: helper for Let expression body inference
+//
+// Let body is Expr? — handle with == none check per v1 codegen limitation.
+// If body is none, the Let's type is the value's type. Otherwise, extend
+// scope and infer the body.
+// -------------------------------------------------------------------------
+
+type LetBodyResult {
+  resolved_type: TypeExpr
+  diagnostics: List<Diagnostic>
+}
+
+fn infer_let_body(expr: Expr, scope: InferScope, let_name: String, val_type: TypeExpr) -> LetBodyResult {
+  // Extract the body from the Let expression
+  // Due to v1 codegen limitation with optional fields in match destructuring,
+  // we re-match to get the body field, then use == none check
+  match expr {
+    Let { name: _, value: _, body: body, span: _ } =>
+      if body == none {
+        LetBodyResult { resolved_type: val_type, diagnostics: [] }
+      } else {
+        let extended = extend_scope(scope: scope, name: let_name, resolved: val_type)
+        let body_result = infer_expr(expr: body.value, scope: extended)
+        LetBodyResult {
+          resolved_type: body_result.typed.resolved_type,
+          diagnostics: body_result.diagnostics
+        }
+      }
+    _ =>
+      LetBodyResult { resolved_type: val_type, diagnostics: [] }
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_record_lit: helper for RecordLit inference
+//
+// type_name is String? — handle with == none check per v1 codegen limitation.
+// If type_name given, look up in type_env; else construct anonymous Product.
+// -------------------------------------------------------------------------
+
+fn infer_record_lit(expr: Expr, scope: InferScope) -> InferResult {
+  match expr {
+    RecordLit { type_name: tn, fields: field_inits, span: _ } =>
+      if tn == none {
+        // Anonymous record — construct Product from field inits
+        let field_types = map(field_inits, fi =>
+          let fi_result = infer_expr(expr: fi.value, scope: scope)
+          Field {
+            name: fi.name,
+            type_expr: fi_result.typed.resolved_type,
+            optional: false,
+            default_value: none,
+            from_key: none,
+            span: no_span()
+          }
+        )
+        let anon_type = Product { name: none, fields: field_types, span: no_span() }
+        ok_infer(expr: expr, resolved_type: anon_type)
+      } else {
+        // Named record — look up type in env
+        let type_match = lookup_type(env: scope.type_env, name: tn.value)
+        match type_match {
+          Some { value: te } =>
+            ok_infer(expr: expr, resolved_type: te)
+          None =>
+            // Type not found — use a Named reference as placeholder
+            ok_infer(expr: expr, resolved_type: Named { name: tn.value, span: no_span() })
+        }
+      }
+    _ =>
+      ok_infer(expr: expr, resolved_type: unit_type())
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_item: wraps each Item into its TypedItem counterpart
+// -------------------------------------------------------------------------
+
+fn infer_item(item: Item, scope: InferScope) -> TypedItemResult {
+  match item {
+    FnDef { name: name, params: params, return_type: ret_type, body: body, span: span } =>
+      let fn_scope = build_params_scope(scope: scope, params: params)
+      let body_result = infer_expr(expr: body, scope: fn_scope)
+      // Resolve return type: use declared if present, else inferred from body
+      let resolved_ret = if ret_type == none {
+        body_result.typed.resolved_type
+      } else {
+        ret_type.value
+      }
+      TypedItemResult {
+        item: TypedFnDef {
+          name: name,
+          params: params,
+          return_type: resolved_ret,
+          body: body_result.typed,
+          span: span
+        },
+        diagnostics: body_result.diagnostics
+      }
+
+    FuncDef { name: name, params: params, return_type: ret_type, uses: uses, body: body, span: span } =>
+      let func_scope = build_params_scope(scope: scope, params: params)
+      let body_result = infer_expr(expr: body, scope: func_scope)
+      let resolved_ret = if ret_type == none {
+        body_result.typed.resolved_type
+      } else {
+        ret_type.value
+      }
+      TypedItemResult {
+        item: TypedFuncDef {
+          name: name,
+          params: params,
+          return_type: resolved_ret,
+          uses: uses,
+          body: body_result.typed,
+          span: span
+        },
+        diagnostics: body_result.diagnostics
+      }
+
+    DataDef { name: name, type_expr: type_expr, value: value, span: span } =>
+      let val_result = infer_expr(expr: value, scope: scope)
+      TypedItemResult {
+        item: TypedDataDef {
+          name: name,
+          type_expr: type_expr,
+          value: val_result.typed,
+          span: span
+        },
+        diagnostics: val_result.diagnostics
+      }
+
+    TypeDef { name: name, body: body, span: span } =>
+      TypedItemResult {
+        item: TypedTypeDef { name: name, body: body, span: span },
+        diagnostics: []
+      }
+
+    ServiceDef { name: name, transport: transport, config: config, operations: operations, span: span } =>
+      TypedItemResult {
+        item: TypedServiceDef {
+          name: name,
+          transport: transport,
+          config: config,
+          operations: operations,
+          span: span
+        },
+        diagnostics: []
+      }
+
+    ResourceDef { name: name, properties: props, capabilities: caps, span: span } =>
+      TypedItemResult {
+        item: TypedResourceDef {
+          name: name,
+          properties: props,
+          capabilities: caps,
+          span: span
+        },
+        diagnostics: []
+      }
+
+    ExternFuncDecl { name: name, params: params, return_type: ret_type, span: span } =>
+      TypedItemResult {
+        item: TypedExternFuncDecl {
+          name: name,
+          params: params,
+          return_type: ret_type,
+          span: span
+        },
+        diagnostics: []
+      }
+  }
+}
+
+// -------------------------------------------------------------------------
+// infer_items: walk all items in a module and produce TypedItems
+// -------------------------------------------------------------------------
+
+fn infer_items(items: List<Item>, scope: InferScope) -> List<TypedItemResult> {
+  map(items, item => infer_item(item: item, scope: scope))
 }
 
 // =========================================================================
@@ -186,10 +899,16 @@ type DedupeState {
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let all_bindings = fold(envs, init: [], f: (acc, env) => concat(acc, env.bindings))
   // Deduplicate: keep last occurrence of each name (last-writer-wins).
-  // Fold right-to-left by reversing: fold over all, skip if name already seen.
+  // Fold left-to-right, replacing earlier entries when a later one has the same name.
   let deduped = fold(all_bindings, init: DedupeState { seen: [], result: [] }, f: (acc, b) =>
     if contains(acc.seen, b.name) {
-      acc
+      // Replace the earlier binding with this later one
+      DedupeState {
+        seen: acc.seen,
+        result: acc.result |> map(existing =>
+          if existing.name == b.name { b } else { existing }
+        )
+      }
     } else {
       DedupeState { seen: concat(acc.seen, [b.name]), result: concat(acc.result, [b]) }
     }
@@ -209,15 +928,31 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
 fn build_type_env(module: ResolvedModule, parent_envs: List<TypeEnv>) -> TypeEnv {
   let kernel = kernel_type_env()
 
-  // Collect imported bindings from parent envs based on resolved imports.
+  // Collect imported bindings from the specific target module for each import.
   let import_bindings = fold(module.resolved_imports, init: [], f: (acc, imp) =>
-    let merged_parent = merge_envs(envs: parent_envs)
+    // Build the target module's type env from its items so we look up names
+    // in the correct module, not a merged soup of all parents.
+    let target_env = if imp.target_module == none {
+      // Fallback: target module not resolved — merge all parents.
+      merge_envs(envs: parent_envs)
+    } else {
+      // Build a local env from the target module's type definitions.
+      let target_local = fold(imp.target_module.value.items, init: [], f: (tb_acc, item) =>
+        match item {
+          TypeDef { name: tname, body: tbody, span: tspan } =>
+            let resolved = type_body_to_expr(name: tname, body: tbody, span: tspan)
+            concat(tb_acc, [TypeBinding { name: tname, resolved: resolved }])
+          _ => tb_acc
+        }
+      )
+      TypeEnv { bindings: target_local }
+    }
     let imported = fold(imp.names, init: [], f: (inner_acc, name) =>
-      match lookup_type(env: merged_parent, name: name) {
+      match lookup_type(env: target_env, name: name) {
         Some { value: resolved } =>
           concat(inner_acc, [TypeBinding { name: name, resolved: resolved }])
         None =>
-          // Import not found in parent envs — will be caught as diagnostic later.
+          // Import not found in target module — will be caught as diagnostic later.
           inner_acc
       }
     )
@@ -368,15 +1103,6 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
         resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
         diagnostics: concat(key_result.diagnostics, value_result.diagnostics)
       }
-
-    TypeApp { name: name, args: args, span: span } =>
-      let arg_results = map(args, a => resolve_type_expr_with_resolving(expr: a, env: env, module_name: module_name, resolving: resolving))
-      let resolved_args = map(arg_results, ar => ar.resolved)
-      let all_diags = fold(arg_results, init: [], f: (acc, ar) => concat(acc, ar.diagnostics))
-      ResolveResult {
-        resolved: TypeApp { name: name, args: resolved_args, span: span },
-        diagnostics: all_diags
-      }
   }
 }
 
@@ -392,6 +1118,7 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
       type_expr: type_result.resolved,
       optional: field.optional,
       default_value: field.default_value,
+      from_key: field.from_key,
       span: field.span
     },
     diagnostics: type_result.diagnostics
@@ -444,19 +1171,40 @@ fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> Ope
   let resolved_outputs = map(output_results, fr => fr.field)
   let input_diags = fold(input_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
   let output_diags = fold(output_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
+
+  // Resolve TypeExprs inside response mappings.
+  let resolved_responses = map(op.response, rm =>
+    let r = resolve_type_expr(expr: rm.type_expr, env: env, module_name: module_name)
+    ResponseMapping { status: rm.status, type_expr: r.resolved }
+  )
+  let response_diags = fold(op.response, init: [], f: (acc, rm) =>
+    let r = resolve_type_expr(expr: rm.type_expr, env: env, module_name: module_name)
+    concat(acc, r.diagnostics)
+  )
+
+  // Resolve TypeExprs inside exit mappings.
+  let resolved_exits = map(op.exit_mappings, em =>
+    let r = resolve_type_expr(expr: em.type_expr, env: env, module_name: module_name)
+    ExitMapping { code: em.code, type_expr: r.resolved, description: em.description }
+  )
+  let exit_diags = fold(op.exit_mappings, init: [], f: (acc, em) =>
+    let r = resolve_type_expr(expr: em.type_expr, env: env, module_name: module_name)
+    concat(acc, r.diagnostics)
+  )
+
   OperationResult {
     operation: OperationDef {
       name: op.name,
       inputs: resolved_inputs,
       outputs: resolved_outputs,
-      response: op.response,
+      response: resolved_responses,
       mock_response: op.mock_response,
-      exit_mappings: op.exit_mappings,
+      exit_mappings: resolved_exits,
       modifiers: op.modifiers,
       transport: op.transport,
       span: op.span
     },
-    diagnostics: concat(input_diags, output_diags)
+    diagnostics: concat(input_diags, output_diags, response_diags, exit_diags)
   }
 }
 
@@ -702,12 +1450,28 @@ fn typecheck_module(resolved: ResolvedModule, parent_envs: List<TypeEnv>) -> Typ
   // bindings point to fully-resolved structural forms.
   let resolved_env = resolve_env_bindings(env: env, module_name: resolved.module.name)
 
+  // Build func_env from the resolved items (return types resolved by now).
+  let func_env = build_func_env(items: resolved_items)
+
+  // Build the InferScope and infer all items to produce TypedItems.
+  let infer_scope = InferScope {
+    type_env: resolved_env.env,
+    func_env: func_env,
+    locals: [],
+    module_name: resolved.module.name
+  }
+  let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
+  let typed_items = map(typed_item_results, tir => tir.item)
+  let infer_diags = fold(typed_item_results, init: [], f: (acc, tir) => concat(acc, tir.diagnostics))
+
   TypecheckModuleResult {
     typed: TypedModule {
       module: typed_module,
-      type_env: resolved_env.env
+      items: typed_items,
+      type_env: resolved_env.env,
+      func_env: func_env
     },
-    diagnostics: concat(item_diags, resolved_env.diagnostics)
+    diagnostics: concat(item_diags, resolved_env.diagnostics, infer_diags)
   }
 }
 
@@ -741,20 +1505,6 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   EnvResolveResult {
     env: TypeEnv { bindings: resolved_bindings },
     diagnostics: all_diags
-  }
-}
-
-// =========================================================================
-// Find a ResolvedModule by name in the module list
-// =========================================================================
-
-fn find_resolved_module(modules: List<ResolvedModule>, name: String) -> ResolvedModule? {
-  let matches = filter(modules, m => m.module.name == name)
-  let n = count(matches)
-  if n > 0 {
-    first(matches)
-  } else {
-    None
   }
 }
 
@@ -815,28 +1565,6 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
   TypedGraph {
     modules: result.modules,
     diagnostics: result.diagnostics
-  }
-}
-
-// =========================================================================
-// Diagnostic helpers
-// =========================================================================
-
-fn make_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
-  Diagnostic {
-    severity: Error,
-    message: message,
-    span: span,
-    module_name: module_name
-  }
-}
-
-fn make_warning(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
-  Diagnostic {
-    severity: Warning,
-    message: message,
-    span: span,
-    module_name: module_name
   }
 }
 
@@ -975,11 +1703,6 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
     MapType { key: key, value: value, span: _ } =>
       concat(collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names),
         collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names))
-
-    TypeApp { name: _, args: args, span: _ } =>
-      fold(args, init: [], f: (acc, a) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: a, module_name: module_name, defined_names: defined_names))
-      )
   }
 }
 
@@ -998,44 +1721,3 @@ fn typecheck_and_validate(graph: ModuleGraph) -> TypedGraph {
   }
 }
 
-// =========================================================================
-// Query helpers for downstream consumers
-// =========================================================================
-
-// Count errors in a typed graph's diagnostics.
-fn error_count(graph: TypedGraph) -> Int {
-  count(filter(graph.diagnostics, d =>
-    match d.severity {
-      Error => true
-      _ => false
-    }
-  ))
-}
-
-// Check if typecheck succeeded (no errors).
-fn typecheck_ok(graph: TypedGraph) -> Bool {
-  error_count(graph: graph) == 0
-}
-
-// Get all type bindings visible in a module (for emit stage).
-fn module_type_bindings(graph: TypedGraph, module_name: String) -> List<TypeBinding> {
-  match find_typed_module(modules: graph.modules, name: module_name) {
-    Some { value: typed } => typed.type_env.bindings
-    None => []
-  }
-}
-
-// Look up a resolved type by name across the entire graph.
-fn lookup_type_in_graph(graph: TypedGraph, name: String) -> TypeExpr? {
-  let all_bindings = fold(graph.modules, init: [], f: (acc, tm) => concat(acc, tm.type_env.bindings))
-  let matches = filter(all_bindings, b => b.name == name)
-  let n = count(matches)
-  if n > 0 {
-    match first(matches) {
-      Some { value: binding } => Some { value: binding.resolved }
-      None => None
-    }
-  } else {
-    None
-  }
-}

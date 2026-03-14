@@ -443,9 +443,12 @@ fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> Strin
     } else if candidates.len() > 1 {
         let n = field_names.len();
         let mut sorted = candidates;
-        sorted.sort_by_key(|(_, count)| {
-            let diff = (*count as isize - n as isize).unsigned_abs();
-            (if *count == n { 0usize } else { 1 }, diff)
+        sorted.sort_by(|(name_a, count_a), (name_b, count_b)| {
+            let diff_a = (*count_a as isize - n as isize).unsigned_abs();
+            let exact_a = if *count_a == n { 0usize } else { 1 };
+            let diff_b = (*count_b as isize - n as isize).unsigned_abs();
+            let exact_b = if *count_b == n { 0usize } else { 1 };
+            (exact_a, diff_a, name_a).cmp(&(exact_b, diff_b, name_b))
         });
         sorted[0].0.clone()
     } else {
@@ -542,9 +545,12 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                     // smallest superset.
                     let n = field_names.len();
                     let mut sorted = candidates;
-                    sorted.sort_by_key(|(_, count)| {
-                        let diff = (*count as isize - n as isize).unsigned_abs();
-                        (if *count == n { 0usize } else { 1 }, diff)
+                    sorted.sort_by(|(name_a, count_a), (name_b, count_b)| {
+                        let diff_a = (*count_a as isize - n as isize).unsigned_abs();
+                        let exact_a = if *count_a == n { 0usize } else { 1 };
+                        let diff_b = (*count_b as isize - n as isize).unsigned_abs();
+                        let exact_b = if *count_b == n { 0usize } else { 1 };
+                        (exact_a, diff_a, name_a).cmp(&(exact_b, diff_b, name_b))
                     });
                     sorted[0].0.clone()
                 } else {

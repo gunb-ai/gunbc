@@ -243,7 +243,26 @@ pub fn assemble_v2_crate(
         content: v2_runtime_shim::V2_RUNTIME_SOURCE.to_string(),
     });
 
-    // 8. Emit Cargo.toml (standalone — not part of any workspace)
+    // 8. Emit generated test module
+    //    Read 01_tokenize.dag source at crate-assembly time so the self-parse
+    //    test can embed it as a const string in the generated crate.
+    let tokenize_dag_source = {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        // daglang-emit lives at src/v1/07_emit/daglang-emit/, workspace root is 4 up
+        let workspace_root = manifest_dir
+            .ancestors()
+            .nth(4)
+            .expect("could not find workspace root from CARGO_MANIFEST_DIR");
+        let dag_path = workspace_root.join("src/v2/01_tokenize.dag");
+        std::fs::read_to_string(&dag_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", dag_path.display(), e))
+    };
+    files.push(GeneratedFile {
+        rel_path: "src/generated_tests.rs".to_string(),
+        content: emit_test_module(&tokenize_dag_source),
+    });
+
+    // 9. Emit Cargo.toml (standalone — not part of any workspace)
     let mut cargo_toml = render_rust::render_cargo_toml("v2-compiler", &[]);
     cargo_toml.push_str("\n[workspace]\n");
     files.push(GeneratedFile {
@@ -276,6 +295,7 @@ fn emit_lib_rs() -> String {
         out.push_str(&format!("pub mod {};\n", rust_mod));
     }
     out.push_str("pub mod v2_rt;\n");
+    out.push_str("\n#[cfg(test)]\nmod generated_tests;\n");
 
     out
 }
@@ -619,6 +639,131 @@ fn build_optional_fields(type_defs: &[&TypeDef]) -> HashMap<String, HashSet<Stri
         }
     }
     map
+}
+
+/// Emit a test module containing `#[test]` functions for the generated v2 crate.
+///
+/// These tests exercise the generated tokenizer and parser on representative inputs,
+/// proving that the emitted Rust code executes correctly. The tests are part of the
+/// crate assembly itself — they travel with the generated crate, not with the test
+/// harness.
+///
+/// `tokenize_dag_source` is the raw content of `01_tokenize.dag`, embedded as a
+/// const in the generated test module so the compiled v2 compiler can tokenize and
+/// parse one of its own source files (the self-hosting seed).
+fn emit_test_module(tokenize_dag_source: &str) -> String {
+    // Escape the .dag source for embedding as a Rust raw string literal.
+    // We use r##"..."## so the content can contain r#"..."# sequences.
+    // Check if the source contains the closing delimiter; if so, add more #s.
+    let (open, close) = if tokenize_dag_source.contains("\"##") {
+        ("r###\"", "\"###")
+    } else {
+        ("r##\"", "\"##")
+    };
+
+    format!(
+        r#"#[cfg(test)]
+mod generated_tests {{
+    use crate::tokenize::tokenize;
+
+    #[test]
+    fn tokenize_produces_tokens() {{
+        let tokens = tokenize("fn foo() -> Int {{ 42 }}".to_string());
+        assert!(!tokens.is_empty(), "tokenize should produce at least one token");
+    }}
+
+    #[test]
+    fn tokenize_ends_with_eof() {{
+        let tokens = tokenize("type Foo {{ x: Int }}".to_string());
+        let last = tokens.last().expect("should have tokens");
+        assert!(
+            matches!(last.kind, crate::v2_core::TokenKind::Eof),
+            "last token should be Eof, got {{:?}}",
+            last.kind
+        );
+    }}
+
+    #[test]
+    fn tokenize_fn_keyword() {{
+        let tokens = tokenize("fn".to_string());
+        // Should have at least KwFn and Eof
+        assert!(tokens.len() >= 2, "expected at least 2 tokens, got {{}}", tokens.len());
+        assert!(
+            matches!(tokens[0].kind, crate::v2_core::TokenKind::KwFn),
+            "first token should be KwFn, got {{:?}}",
+            tokens[0].kind
+        );
+    }}
+
+    #[test]
+    fn tokenize_count_stable() {{
+        let tokens = tokenize("module test\ntype Foo {{ x: Int }}".to_string());
+        // Non-trivial input should produce multiple tokens
+        assert!(tokens.len() > 5, "non-trivial input should produce multiple tokens, got {{}}", tokens.len());
+    }}
+
+    #[test]
+    fn parse_trivial_module() {{
+        let tokens = tokenize("module test\ntype Foo {{ x: Int }}\n".to_string());
+        let result = crate::parse::parse(tokens);
+        // ParseResult should have a module
+        assert!(result.module.is_some(), "valid module should parse successfully");
+    }}
+
+    /// Self-parse test: the compiled v2 compiler tokenizes and parses its own
+    /// tokenizer source (01_tokenize.dag). This is the self-hosting seed — if
+    /// the generated compiler can parse its own source, it can bootstrap.
+    #[test]
+    fn self_parse_tokenize_dag() {{
+        // The generated parser uses recursive descent which requires extra stack
+        // for non-trivial inputs (same as v1 evaluator's with_parser_stack).
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {{
+                const TOKENIZE_DAG_SOURCE: &str = {open}{source}{close};
+
+                // Tokenize the v2 compiler's own tokenizer source
+                let tokens = tokenize(TOKENIZE_DAG_SOURCE.to_string());
+
+                // Token list should be non-empty
+                assert!(!tokens.is_empty(), "tokenizing 01_tokenize.dag should produce tokens");
+
+                // Should end with Eof
+                let last = tokens.last().expect("should have tokens");
+                assert!(
+                    matches!(last.kind, crate::v2_core::TokenKind::Eof),
+                    "last token should be Eof, got {{:?}}",
+                    last.kind
+                );
+
+                // Parse the tokens
+                let result = crate::parse::parse(tokens);
+
+                // Parse should succeed with a module
+                assert!(
+                    result.module.is_some(),
+                    "parsing 01_tokenize.dag should produce a module"
+                );
+
+                // Module name should be "v2.compiler.tokenize"
+                let module = result.module.as_ref().unwrap();
+                assert_eq!(
+                    module.name,
+                    "v2.compiler.tokenize",
+                    "module name should be v2.compiler.tokenize, got {{}}",
+                    module.name
+                );
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("self-parse test panicked");
+    }}
+}}
+"#,
+        open = open,
+        close = close,
+        source = tokenize_dag_source,
+    )
 }
 
 #[cfg(test)]

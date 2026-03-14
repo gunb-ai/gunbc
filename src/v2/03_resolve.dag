@@ -410,24 +410,6 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
 // =========================================================================
 // Cycle detection
 //
-// Returns the names of modules that form a cycle, or None if acyclic.
-// Delegates to the topological sort — any unsorted modules are in cycles.
-// =========================================================================
-
-fn detect_cycle(modules: List<Module>) -> List<String>? {
-  let topo = topological_sort(modules: modules)
-  let module_names = modules |> map(m => m.name)
-  let sorted_count = topo.sorted |> count
-  let total_count = module_names |> count
-  if sorted_count == total_count {
-    None
-  } else {
-    let cycle_members = module_names
-      |> filter(name => topo.sorted |> any(s => s == name) == false)
-    Some { value: cycle_members }
-  }
-}
-
 // =========================================================================
 // Utility functions
 //

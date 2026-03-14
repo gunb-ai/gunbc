@@ -132,7 +132,11 @@ pub fn scan_string_end(s: impl AsRef<str>, start: i64) -> i64 {
     let mut pos = start.max(0) as usize;
     while pos < chars.len() {
         if chars[pos] == '\\' {
-            pos += 2;
+            if pos + 1 < chars.len() {
+                pos += 2;
+            } else {
+                return chars.len() as i64;
+            }
         } else if chars[pos] == '"' {
             return (pos + 1) as i64;
         } else {

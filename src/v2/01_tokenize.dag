@@ -290,7 +290,7 @@ fn scan_string(state: TokenizerState) -> TokenizerState {
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
       let token = Token {
-        kind: LitStr { value: processed },
+        kind: Unknown { char: processed },
         span: SourceSpan { start: span_start, end: end_pos }
       }
       TokenizerState {
@@ -333,7 +333,7 @@ fn scan_str_cont(state: TokenizerState, span_start: Int) -> TokenizerState {
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
       let token = Token {
-        kind: StrEnd { value: processed },
+        kind: Unknown { char: processed },
         span: SourceSpan { start: span_start, end: end_pos }
       }
       TokenizerState {
