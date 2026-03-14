@@ -78,6 +78,9 @@ pub struct CompileContext {
     pub boxed_fields: HashSet<(String, String)>,
     /// Map from function return type name → return type string (for type inference).
     pub fn_return_types: std::collections::HashMap<String, String>,
+    /// Set of parameter names that have optional types (T? → Option<T>).
+    /// Used to prevent double-wrapping when passing optional params to optional fields.
+    pub optional_params: HashSet<String>,
 }
 
 impl Default for CompileContext {
@@ -96,6 +99,7 @@ impl CompileContext {
             enum_variants: std::collections::HashMap::new(),
             boxed_fields: HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
+            optional_params: HashSet::new(),
         }
     }
 }
@@ -1491,8 +1495,24 @@ fn compile_match(
     ctx: &CompileContext,
 ) -> code_ir::Expr {
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
+    // When matching against string literal patterns, add .as_str() to the
+    // scrutinee so Rust can compare String with &str patterns. Only apply
+    // when the scrutinee is a variable or field access (not a temporary).
+    let has_string_patterns = arms.iter().any(|a| {
+        matches!(&a.pattern, ast::Pattern::Literal(ast::Literal::String(_)))
+    });
+    let compiled_scrutinee = compile_expr(scrutinee, ctx);
+    let match_expr = if has_string_patterns && matches!(&compiled_scrutinee, code_ir::Expr::Var(_) | code_ir::Expr::Field(_, _) | code_ir::Expr::MethodCall { .. }) {
+        code_ir::Expr::MethodCall {
+            receiver: Box::new(compiled_scrutinee),
+            method: "as_str".to_string(),
+            args: vec![],
+        }
+    } else {
+        compiled_scrutinee
+    };
     code_ir::Expr::Match {
-        expr: Box::new(compile_expr(scrutinee, ctx)),
+        expr: Box::new(match_expr),
         arms: arms
             .iter()
             .map(|a| compile_match_arm(a, has_none_arm, ctx))
@@ -1548,10 +1568,34 @@ fn is_null_pattern(pat: &ast::Pattern) -> bool {
 }
 
 fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
+    compile_pattern_with_context(pat, ctx, None)
+}
+
+/// Compile a pattern with optional type context for resolving ambiguous variants.
+/// `expected_type` is the type name of the field being matched (e.g., "LiteralValue"
+/// for `Expr::Literal { value: ... }` patterns).
+fn compile_pattern_with_context(
+    pat: &ast::Pattern,
+    ctx: &CompileContext,
+    expected_type: Option<&str>,
+) -> String {
     match pat {
         ast::Pattern::Ident(name) => {
             if name == "null" {
                 "None".to_string()
+            } else if let Some(et) = expected_type {
+                // If we know the expected type and it's an enum that has this variant, use it
+                if let Some(variants) = ctx.enum_variants.get(et) {
+                    if variants.contains(name.as_str()) {
+                        return format!("{et}::{name}");
+                    }
+                }
+                // Fall through to normal resolution
+                if let Some(enum_name) = ctx.variant_to_enum.get(name.as_str()) {
+                    format!("{enum_name}::{name}")
+                } else {
+                    name.clone()
+                }
             } else if let Some(enum_name) = ctx.variant_to_enum.get(name.as_str()) {
                 format!("{enum_name}::{name}")
             } else {
@@ -1559,20 +1603,44 @@ fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
             }
         }
         ast::Pattern::Variant(name, fields) => {
-            let qualified = ctx
-                .variant_to_enum
-                .get(name.as_str())
-                .map(|e| format!("{e}::{name}"))
-                .unwrap_or_else(|| name.clone());
+            // Resolve variant to its parent enum, using expected_type if available
+            let qualified = if let Some(et) = expected_type {
+                if let Some(variants) = ctx.enum_variants.get(et) {
+                    if variants.contains(name.as_str()) {
+                        format!("{et}::{name}")
+                    } else {
+                        ctx.variant_to_enum.get(name.as_str())
+                            .map(|e| format!("{e}::{name}"))
+                            .unwrap_or_else(|| name.clone())
+                    }
+                } else {
+                    ctx.variant_to_enum.get(name.as_str())
+                        .map(|e| format!("{e}::{name}"))
+                        .unwrap_or_else(|| name.clone())
+                }
+            } else {
+                ctx.variant_to_enum.get(name.as_str())
+                    .map(|e| format!("{e}::{name}"))
+                    .unwrap_or_else(|| name.clone())
+            };
             if fields.is_empty() {
                 qualified
             } else if name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
                 // Some { value: x } → Some(x) in Rust
-                format!("Some({})", compile_pattern(&fields[0].1, ctx))
+                format!("Some({})", compile_pattern_with_context(&fields[0].1, ctx, None))
             } else {
+                // Look up field types for this variant to provide context to sub-patterns
+                let parent_enum = expected_type
+                    .and_then(|_| Some(name.as_str()))
+                    .or_else(|| ctx.variant_to_enum.get(name.as_str()).map(|s| s.as_str()));
+                let variant_fields = ctx.struct_field_types.get(name.as_str());
                 let field_pats: Vec<String> = fields
                     .iter()
-                    .map(|(n, p)| format!("{}: {}", n, compile_pattern(p, ctx)))
+                    .map(|(n, p)| {
+                        // Look up field type for context-aware sub-pattern compilation
+                        let field_type = variant_fields.and_then(|ft| ft.get(n.as_str()));
+                        format!("{}: {}", n, compile_pattern_with_context(p, ctx, field_type.map(|s| s.as_str())))
+                    })
                     .collect();
                 format!("{} {{ {}, .. }}", qualified, field_pats.join(", "))
             }
@@ -1723,6 +1791,10 @@ fn is_option_expr(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
         code_ir::Expr::MethodCall { receiver, method, .. } if method == "clone" => {
             is_option_expr(receiver, ctx)
         }
+        // Variable that is an optional function parameter (T? → Option<T>).
+        code_ir::Expr::Var(name) => {
+            ctx.optional_params.contains(name.as_str())
+        }
         // Field access on a field that is optional in ANY known struct type.
         // When reading r.err where err is Optional<T> in the source struct,
         // the result is already Option<T>. Don't wrap in Some().
@@ -1754,6 +1826,61 @@ fn compile_expr_in_field_context(
                 if let Some(variants) = ctx.enum_variants.get(type_name) {
                     if variants.contains(name.as_str()) {
                         return code_ir::Expr::Path(vec![type_name.clone(), name.to_string()]);
+                    }
+                }
+            }
+        }
+    }
+    // Named record construction: when the field's type is an enum that contains
+    // the record name as a variant, compile the record with the correct qualified
+    // name. E.g., `LitStr { value: s }` in a field of type `LiteralValue`
+    // → `LiteralValue::LitStr { value: s }` instead of `TokenKind::LitStr { ... }`.
+    if let ast::Expr::Record(Some(name), fields) = expr {
+        if let Some(ft_map) = field_types {
+            if let Some(type_name) = ft_map.get(field_name) {
+                if let Some(variants) = ctx.enum_variants.get(type_name) {
+                    if variants.contains(name.as_str()) {
+                        // Compile as a record with the correctly qualified variant name
+                        let qualified = format!("{type_name}::{name}");
+                        let opt_set = ctx.optional_fields.get(name.as_str());
+                        let inner_field_types = ctx.struct_field_types.get(name.as_str());
+                        let ir_fields: Vec<(String, code_ir::Expr)> = fields
+                            .iter()
+                            .map(|(n, e)| {
+                                let compiled = compile_expr_in_field_context(e, n, inner_field_types, ctx);
+                                let compiled = clone_if_needed(compiled);
+                                let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
+                                let mut result = if is_opt && !is_none_expr(&compiled) && !is_option_expr(&compiled, ctx) {
+                                    code_ir::Expr::Call {
+                                        func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                                        args: vec![compiled],
+                                        obligation: None,
+                                    }
+                                } else {
+                                    compiled
+                                };
+                                // Box wrapping for recursive fields
+                                let parent_enum = ctx.variant_to_enum.get(name.as_str())
+                                    .map(|s| s.as_str())
+                                    .unwrap_or(type_name.as_str());
+                                let qualified_field = format!("{}::{}", name, n);
+                                let needs_box = ctx.boxed_fields.contains(&(parent_enum.to_string(), qualified_field.clone()))
+                                    || ctx.boxed_fields.contains(&(parent_enum.to_string(), n.clone()));
+                                if needs_box {
+                                    result = code_ir::Expr::Call {
+                                        func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                                        args: vec![result],
+                                        obligation: None,
+                                    };
+                                }
+                                (n.clone(), result)
+                            })
+                            .collect();
+                        return code_ir::Expr::Struct {
+                            name: qualified,
+                            fields: ir_fields,
+                            rest: None,
+                        };
                     }
                 }
             }

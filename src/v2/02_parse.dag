@@ -2341,25 +2341,25 @@ fn parse_expr_loop(state: ParserState, lhs: Expr, min_bp: Int) -> ExprResult {
   }
 }
 
-fn infix_bp(state: ParserState) -> Map? {
+fn infix_bp(state: ParserState) -> BindingPower? {
   let k = peek_kind(state: state)
   match k {
-    Some { value: PipeArrow }    => Some { value: { left: 0, right: 1 } }
-    Some { value: NullCoalesce } => Some { value: { left: 1, right: 0 } }
-    Some { value: Or }       => Some { value: { left: 2, right: 3 } }
-    Some { value: And }      => Some { value: { left: 4, right: 5 } }
-    Some { value: EqEq }     => Some { value: { left: 6, right: 7 } }
-    Some { value: Ne }       => Some { value: { left: 6, right: 7 } }
-    Some { value: Lt }       => Some { value: { left: 6, right: 7 } }
-    Some { value: Gt }       => Some { value: { left: 6, right: 7 } }
-    Some { value: Le }       => Some { value: { left: 6, right: 7 } }
-    Some { value: Ge }       => Some { value: { left: 6, right: 7 } }
-    Some { value: Plus }     => Some { value: { left: 8, right: 9 } }
-    Some { value: Minus }    => Some { value: { left: 8, right: 9 } }
-    Some { value: Star }     => Some { value: { left: 10, right: 11 } }
-    Some { value: Slash }    => Some { value: { left: 10, right: 11 } }
-    Some { value: Percent }  => Some { value: { left: 10, right: 11 } }
-    Some { value: Dot }      => Some { value: { left: 14, right: 15 } }
+    Some { value: PipeArrow }    => Some { value: BindingPower { left: 0, right: 1 } }
+    Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 0 } }
+    Some { value: Or }       => Some { value: BindingPower { left: 2, right: 3 } }
+    Some { value: And }      => Some { value: BindingPower { left: 4, right: 5 } }
+    Some { value: EqEq }     => Some { value: BindingPower { left: 6, right: 7 } }
+    Some { value: Ne }       => Some { value: BindingPower { left: 6, right: 7 } }
+    Some { value: Lt }       => Some { value: BindingPower { left: 6, right: 7 } }
+    Some { value: Gt }       => Some { value: BindingPower { left: 6, right: 7 } }
+    Some { value: Le }       => Some { value: BindingPower { left: 6, right: 7 } }
+    Some { value: Ge }       => Some { value: BindingPower { left: 6, right: 7 } }
+    Some { value: Plus }     => Some { value: BindingPower { left: 8, right: 9 } }
+    Some { value: Minus }    => Some { value: BindingPower { left: 8, right: 9 } }
+    Some { value: Star }     => Some { value: BindingPower { left: 10, right: 11 } }
+    Some { value: Slash }    => Some { value: BindingPower { left: 10, right: 11 } }
+    Some { value: Percent }  => Some { value: BindingPower { left: 10, right: 11 } }
+    Some { value: Dot }      => Some { value: BindingPower { left: 14, right: 15 } }
     _ => none
   }
 }

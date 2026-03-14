@@ -176,15 +176,22 @@ fn lookup_type(env: TypeEnv, name: String) -> TypeExpr? {
 // first, then transitive deps, then direct imports, then local defs.
 // =========================================================================
 
+// Fold accumulator for deduplication — tracks which names have been
+// processed and the deduplicated result list.
+type DedupeState {
+  seen: List<String>
+  result: List<TypeBinding>
+}
+
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let all_bindings = fold(envs, init: [], f: (acc, env) => concat(acc, env.bindings))
   // Deduplicate: keep last occurrence of each name (last-writer-wins).
   // Fold right-to-left by reversing: fold over all, skip if name already seen.
-  let deduped = fold(all_bindings, init: { seen: [], result: [] }, f: (acc, b) =>
+  let deduped = fold(all_bindings, init: DedupeState { seen: [], result: [] }, f: (acc, b) =>
     if contains(acc.seen, b.name) {
       acc
     } else {
-      { seen: concat(acc.seen, [b.name]), result: concat(acc.result, [b]) }
+      DedupeState { seen: concat(acc.seen, [b.name]), result: concat(acc.result, [b]) }
     }
   )
   TypeEnv { bindings: deduped.result }
@@ -717,10 +724,17 @@ type EnvResolveResult {
   diagnostics: List<Diagnostic>
 }
 
+// Result of resolving a single type binding — follows the same
+// value+diagnostics pattern as ResolveResult, ItemResult, etc.
+type BindingResult {
+  binding: TypeBinding
+  diagnostics: List<Diagnostic>
+}
+
 fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   let results = map(env.bindings, b =>
     let result = resolve_type_expr(expr: b.resolved, env: env, module_name: module_name)
-    { binding: TypeBinding { name: b.name, resolved: result.resolved }, diagnostics: result.diagnostics }
+    BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved }, diagnostics: result.diagnostics }
   )
   let resolved_bindings = map(results, r => r.binding)
   let all_diags = fold(results, init: [], f: (acc, r) => concat(acc, r.diagnostics))

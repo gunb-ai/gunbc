@@ -434,6 +434,47 @@ immediately by the compiler catching field access errors statically.
 structs to near zero in parse.rs. Also removes 5 materialized types from
 `std_types_prelude()` and their hardcoded `struct_field_types` entries.
 
+#### S81: fn_codegen emits Rust, not code_ir — CRITICAL (OPEN)
+
+fn_codegen.rs was designed to produce target-agnostic `code_ir` that flows
+through all backends (Rust, Go, C, MIPS). During v2 bootstrap, it has
+accumulated ~15 Rust-specific heuristics that inject target-language
+constructs directly into the IR:
+
+- `clone_if_needed()` — Rust ownership (C/Go don't need this)
+- `Box::new()` wrapping — Rust heap boxing (C uses pointers, Go implicit)
+- `Some()`/`None` injection — Rust `Option<T>` (C uses NULL, Go uses nil)
+- `.as_str()` insertion — Rust `String` vs `&str` (no other language has this)
+- `..Default::default()` — Rust struct update syntax (no equivalent elsewhere)
+- `LazyLock` for Map data — Rust static initialization
+- `Deref`/`*` for Box unwrapping — Rust-specific dereference
+
+**Root cause:** fn_codegen has no type information, so it compensates with
+heuristics. Those heuristics are Rust-shaped because the only emission
+target during bootstrap is Rust.
+
+**Why this matters:** The code_ir layer exists so that one compilation
+produces IR that all backends can render. If the IR already contains
+`"clone"`, `"Box::new"`, `"Some"`, then the Go renderer must ignore
+Rust-specific method calls, the C renderer must translate `Box::new` to
+`malloc`, and every new backend must enumerate and strip the Rust idioms.
+The IR has become a Rust AST with extra steps.
+
+**Structural test:** Can a Go or C backend render the code_ir produced by
+fn_codegen without special-casing Rust constructs? Today: no. Every
+Rust-specific injection is a case the other backends must handle.
+
+**Fix path:** The v2 compiler's emitter has type information and emits
+per-backend. The Rust emitter knows about `Box` and `Option`. The C
+emitter knows about `malloc` and `NULL`. The Go emitter knows about
+implicit heap allocation and `nil`. No heuristics needed — the types
+tell the emitter what to do.
+
+**Interim principle:** Every Rust-specific construct added to fn_codegen
+during bootstrap must be documented here and must NOT be migrated to
+the v2 emitter. The v2 emitter should derive these from type information,
+not from heuristic pattern matching.
+
 #### S76: `clone_if_needed()` — blind ownership heuristic (OPEN)
 
 fn_codegen adds `.clone()` to all variable/field expressions passed as

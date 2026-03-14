@@ -109,6 +109,19 @@ pub fn assemble_v2_crate(
     // 4. Build optional_fields map
     let optional_fields = build_optional_fields(&all_type_defs);
 
+    // 4b. Build cross-module enum_variants for context-aware variant resolution
+    let all_enum_variants: HashMap<String, HashSet<String>> = all_type_defs
+        .iter()
+        .filter_map(|td| {
+            if let TypeBody::Sum(variants) = &td.body {
+                let names: HashSet<String> = variants.iter().map(|v| v.name.clone()).collect();
+                Some((td.name.clone(), names))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     // 5. Emit each module
     for (dag_stem, items) in modules {
         let rust_mod = match V2_MODULE_MAP.iter().find(|(stem, _)| stem == dag_stem) {
@@ -122,6 +135,7 @@ pub fn assemble_v2_crate(
             &variant_to_enum,
             &struct_field_types,
             &optional_fields,
+            &all_enum_variants,
         );
         let mut content = module_prelude(dag_stem);
         content.push_str(&render_rust::render_rust_source(&source));
@@ -267,6 +281,7 @@ fn emit_module(
     variant_to_enum: &HashMap<String, String>,
     struct_field_types: &HashMap<String, HashMap<String, String>>,
     optional_fields: &HashMap<String, HashSet<String>>,
+    all_enum_variants: &HashMap<String, HashSet<String>>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -279,21 +294,8 @@ fn emit_module(
         })
         .collect();
 
-    // Build enum_variants map from type defs
-    let enum_variants_map: HashMap<String, HashSet<String>> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::TypeDef(td) => {
-                if let TypeBody::Sum(variants) = &td.body {
-                    let names: HashSet<String> = variants.iter().map(|v| v.name.clone()).collect();
-                    Some((td.name.clone(), names))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        })
-        .collect();
+    // Use cross-module enum_variants for correct variant resolution
+    let enum_variants_map = all_enum_variants.clone();
 
     // Build fn_return_types from function definitions
     let fn_return_types: HashMap<String, String> = items
@@ -316,6 +318,7 @@ fn emit_module(
         enum_variants: enum_variants_map,
         boxed_fields: recursive_fields.clone(),
         fn_return_types,
+        optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
     };
 
     for item in items {

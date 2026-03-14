@@ -583,13 +583,22 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     let (synth_items, _name_map, new_field_types) =
         fn_codegen::synthesize_anonymous_structs(&fd.name, &fd.body, &ctx.struct_field_types);
 
-    // Augment context with synthesized struct field types so compile_expr
-    // can resolve anonymous records to the synthesized struct names.
-    let ctx = if new_field_types.is_empty() {
+    // Collect optional parameters (T? → Option<T>)
+    let optional_params: std::collections::HashSet<String> = fd
+        .params
+        .iter()
+        .filter(|p| matches!(&p.ty, TypeExpr::Optional(_)))
+        .map(|p| p.name.clone())
+        .collect();
+
+    // Augment context with synthesized struct field types and optional params
+    // so compile_expr can resolve anonymous records and prevent double-wrapping.
+    let ctx = if new_field_types.is_empty() && optional_params.is_empty() {
         std::borrow::Cow::Borrowed(ctx)
     } else {
         let mut augmented = ctx.clone();
         augmented.struct_field_types.extend(new_field_types);
+        augmented.optional_params = optional_params;
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -839,6 +848,7 @@ pub fn typedefs_to_source_file(
         enum_variants,
         boxed_fields: std::collections::HashSet::new(),
         fn_return_types: std::collections::HashMap::new(),
+        optional_params: std::collections::HashSet::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -953,6 +963,7 @@ pub fn generate_types_for_modules(
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
+            optional_params: std::collections::HashSet::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
