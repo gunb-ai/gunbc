@@ -11,6 +11,41 @@
 //! DSL pipe chains (`|>`) are compiled to `For` loops inside `Expr::Block`
 //! to ensure cross-target compatibility. This avoids closures (unsupported
 //! in C) and method-chain idioms that not all backends can render.
+//!
+//! ## v2 Bootstrap Scaffolding (TEMPORARY — remove after self-hosting)
+//!
+//! The following functions are workarounds for the fn_codegen pipeline having
+//! no type information. They exist to bootstrap the v2 compiler and should be
+//! removed once self-hosting is achieved.
+//!
+//! **Remaining workaround functions:**
+//!
+//! - `clone_if_needed()`: Adds `.clone()` to variable/field expressions passed
+//!   as arguments or struct fields. Prevents use-after-move. Proper fix: the
+//!   v2 compiler should track ownership.
+//!
+//! - `infer_struct_name()`: Matches field names against known struct definitions
+//!   to guess which struct an anonymous record constructs. Needed because the
+//!   DSL doesn't always name its records.
+//!
+//! - `escape_rust_keyword()`: Prefixes Rust keywords with `r#`. Needed because
+//!   the DSL allows keywords as variable names.
+//!
+//! **Removed (no longer needed):**
+//!
+//! - `is_numeric_expr()`, `is_list_expr()`, `is_likely_list_concat()`, etc.:
+//!   Guessed whether `+` was arithmetic vs concatenation. Removed because the
+//!   DAG language now uses `concat()` for concatenation and `+` exclusively
+//!   for arithmetic.
+//!
+//! - `compile_string_concat()`, `flatten_concat_parts()`: Compiled `+` chains
+//!   with string literals to `format!()`. Removed — same reason.
+//!
+//! **Heuristic data in `v2_crate_emit.rs` (still needed):**
+//!
+//! - `std_types_prelude()`: Materializes types from `std.types` imports.
+//! - Hardcoded `struct_field_types` entries for materialized types.
+//! - `module_prelude()`: Hardcoded cross-module `use` statements.
 
 use daglang_syntax::ast;
 use gunbc_ir::code_ir;
@@ -39,6 +74,8 @@ pub struct CompileContext {
         std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     /// Map from enum name → set of variant names, for field-type-based disambiguation.
     pub enum_variants: std::collections::HashMap<String, HashSet<String>>,
+    /// Set of (type_name, field_name) pairs that need Box<> wrapping (recursive types).
+    pub boxed_fields: HashSet<(String, String)>,
 }
 
 impl Default for CompileContext {
@@ -55,6 +92,7 @@ impl CompileContext {
             variant_to_enum: std::collections::HashMap::new(),
             struct_field_types: std::collections::HashMap::new(),
             enum_variants: std::collections::HashMap::new(),
+            boxed_fields: HashSet::new(),
         }
     }
 }
@@ -103,16 +141,16 @@ pub fn reset_tmp_counter() {
 fn compile_stmt(stmt: &ast::Stmt, is_last: bool, ctx: &CompileContext) -> code_ir::Stmt {
     match stmt {
         ast::Stmt::Let(name, expr) => code_ir::Stmt::Let {
-            name: name.clone(),
+            name: escape_rust_keyword(name),
             mutable: false,
             expr: compile_expr(expr, ctx),
         },
         ast::Stmt::Assign(name, expr) => code_ir::Stmt::Assign {
-            dest: code_ir::Expr::Var(name.clone()),
+            dest: code_ir::Expr::Var(escape_rust_keyword(name)),
             value: compile_expr(expr, ctx),
         },
         ast::Stmt::Node(ns) => code_ir::Stmt::Let {
-            name: ns.name.clone(),
+            name: escape_rust_keyword(&ns.name),
             mutable: false,
             expr: compile_expr(&ns.expr, ctx),
         },
@@ -137,17 +175,46 @@ fn compile_stmt(stmt: &ast::Stmt, is_last: bool, ctx: &CompileContext) -> code_i
 fn compile_return_fields(fields: &[(String, ast::Expr)], ctx: &CompileContext) -> code_ir::Expr {
     if fields.is_empty() {
         code_ir::Expr::Tuple(vec![])
-    } else if fields.len() == 1 && fields[0].0 == "value" {
+    } else if fields.len() == 1 && (fields[0].0 == "value" || fields[0].0 == "return") {
+        // Single-field return: unwrap the record to a bare expression.
+        // DSL `return { return: expr }` and `return { value: expr }` both
+        // mean "return this value".
         compile_expr(&fields[0].1, ctx)
     } else {
+        // Multi-field return: try to infer the struct name from context.
+        let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+        let struct_name = infer_struct_name(&field_names, ctx);
         code_ir::Expr::Struct {
-            name: String::new(),
+            name: struct_name,
             fields: fields
                 .iter()
                 .map(|(name, expr)| (name.clone(), compile_expr(expr, ctx)))
                 .collect(),
             rest: None,
         }
+    }
+}
+
+/// Infer a struct name from field names using the CompileContext's struct registry.
+fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> String {
+    let candidates: Vec<(&String, usize)> = ctx
+        .struct_field_types
+        .iter()
+        .filter(|(_, ft)| field_names.iter().all(|f| ft.contains_key(*f)))
+        .map(|(sn, ft)| (sn, ft.len()))
+        .collect();
+    if candidates.len() == 1 {
+        candidates[0].0.clone()
+    } else if candidates.len() > 1 {
+        let n = field_names.len();
+        let mut sorted = candidates;
+        sorted.sort_by_key(|(_, count)| {
+            let diff = (*count as isize - n as isize).unsigned_abs();
+            (if *count == n { 0usize } else { 1 }, diff)
+        });
+        sorted[0].0.clone()
+    } else {
+        String::new()
     }
 }
 
@@ -160,7 +227,13 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         ast::Expr::Literal(lit) => compile_literal(lit),
         ast::Expr::Ident(name) => compile_ident(name, ctx),
         ast::Expr::FieldAccess(receiver, field) => {
-            code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), field.clone())
+            // DSL pair/tuple field names → Rust tuple indices
+            let rust_field = match field.as_str() {
+                "first" => "0".to_string(),
+                "second" => "1".to_string(),
+                other => other.to_string(),
+            };
+            code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field)
         }
         ast::Expr::Call(name, args) => {
             if let Some(intrinsic) = compile_intrinsic_call(name, args, ctx) {
@@ -170,9 +243,20 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             }
         }
         ast::Expr::BinOp(left, op, right) => {
-            if matches!(op, ast::BinOp::Add) && contains_string_literal(expr) {
-                compile_string_concat(expr, ctx)
+            if matches!(op, ast::BinOp::NullCoalesce) {
+                // x ?? y → x.unwrap_or_else(|| y)
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(compile_expr(left, ctx)),
+                    method: "unwrap_or_else".to_string(),
+                    args: vec![code_ir::Expr::Closure {
+                        args: vec![],
+                        body: Box::new(compile_expr(right, ctx)),
+                    }],
+                }
             } else {
+                // All binary operators (including +) emit directly.
+                // + is now exclusively arithmetic — string/list concat uses
+                // the `concat()` intrinsic function instead.
                 code_ir::Expr::BinOp {
                     left: Box::new(compile_expr(left, ctx)),
                     op: compile_binop(op),
@@ -185,6 +269,19 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             expr: Box::new(compile_expr(expr, ctx)),
         },
         ast::Expr::Record(name, fields) => {
+            // Special case: Some { value: x } → Some(compiled_x) in Rust
+            if name.as_deref() == Some("Some") && fields.len() == 1 && fields[0].0 == "value" {
+                let inner = compile_expr(&fields[0].1, ctx);
+                return code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                    args: vec![inner],
+                    obligation: None,
+                };
+            }
+            // Special case: None { } → None
+            if name.as_deref() == Some("None") && fields.is_empty() {
+                return code_ir::Expr::Var("None".to_string());
+            }
             let struct_name = name.clone().unwrap_or_else(|| {
                 // Infer the struct type for anonymous records (e.g. fold inits)
                 // by matching field names against known struct definitions.
@@ -212,26 +309,46 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
                     String::new()
                 }
             });
+            // Qualify variant names: if struct_name is a variant, prefix with parent enum
+            let qualified_name = if let Some(enum_name) = ctx.variant_to_enum.get(&struct_name) {
+                format!("{enum_name}::{struct_name}")
+            } else {
+                struct_name.clone()
+            };
             let opt_set = ctx.optional_fields.get(&struct_name);
             let field_types = ctx.struct_field_types.get(&struct_name);
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
                 .iter()
                 .map(|(n, e)| {
                     let compiled = compile_expr_in_field_context(e, n, field_types, ctx);
+                    // Clone variable references to avoid use-after-move in struct fields
+                    let compiled = clone_if_needed(compiled);
                     let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
-                    if is_opt && !is_none_expr(&compiled) {
-                        (n.clone(), code_ir::Expr::Call {
+                    let mut result = if is_opt && !is_none_expr(&compiled) {
+                        code_ir::Expr::Call {
                             func: Box::new(code_ir::Expr::Var("Some".to_string())),
                             args: vec![compiled],
                             obligation: None,
-                        })
+                        }
                     } else {
-                        (n.clone(), compiled)
+                        compiled
+                    };
+                    // Wrap in Box::new() if this field is recursive
+                    let needs_box = ctx.boxed_fields.contains(&(struct_name.clone(), n.clone()))
+                        || ctx.boxed_fields.contains(&(struct_name.clone(), format!("{}::{}", struct_name, n)));
+                    // Also check for variant::field pattern
+                    if needs_box {
+                        result = code_ir::Expr::Call {
+                            func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                            args: vec![result],
+                            obligation: None,
+                        };
                     }
+                    (n.clone(), result)
                 })
                 .collect();
             code_ir::Expr::Struct {
-                name: struct_name,
+                name: qualified_name,
                 fields: ir_fields,
                 rest: None,
             }
@@ -306,7 +423,15 @@ fn compile_literal(lit: &ast::Literal) -> code_ir::Expr {
     match lit {
         ast::Literal::Int(n) => code_ir::Expr::IntLit(*n),
         ast::Literal::Float(f) => code_ir::Expr::RawCode(format!("{f:?}_f64")),
-        ast::Literal::String(s) => code_ir::Expr::Str(s.clone()),
+        ast::Literal::String(s) => {
+            // Emit owned String for v2 compiler compatibility.
+            // The .dag language uses String everywhere, not &str.
+            code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Str(s.clone())),
+                method: "to_string".to_string(),
+                args: vec![],
+            }
+        }
         ast::Literal::Bool(b) => code_ir::Expr::BoolLit(*b),
         ast::Literal::None => code_ir::Expr::Var("None".to_string()),
     }
@@ -329,7 +454,22 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
     } else if let Some(enum_name) = ctx.variant_to_enum.get(name) {
         code_ir::Expr::Path(vec![enum_name.clone(), name.to_string()])
     } else {
-        code_ir::Expr::Var(name.to_string())
+        code_ir::Expr::Var(escape_rust_keyword(name))
+    }
+}
+
+/// Escape Rust reserved keywords for use as identifiers.
+fn escape_rust_keyword(name: &str) -> String {
+    match name {
+        "mod" | "type" | "fn" | "let" | "mut" | "ref" | "self" | "super"
+        | "crate" | "pub" | "use" | "impl" | "trait" | "struct" | "enum"
+        | "match" | "if" | "else" | "for" | "while" | "loop" | "break"
+        | "continue" | "return" | "where" | "as" | "in" | "move" | "async"
+        | "await" | "dyn" | "static" | "const" | "extern" | "unsafe"
+        | "abstract" | "become" | "box" | "do" | "final" | "macro"
+        | "override" | "priv" | "try" | "typeof" | "unsized" | "virtual"
+        | "yield" => format!("r#{name}"),
+        _ => name.to_string(),
     }
 }
 
@@ -436,7 +576,7 @@ fn compile_intrinsic_call(
             let elem = fresh("elem");
             let first = fresh("first");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::Str(String::new())),
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::RawCode("String::new()".to_string())),
                 code_ir::Stmt::let_mut(&first, code_ir::Expr::BoolLit(true)),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
@@ -450,11 +590,7 @@ fn compile_intrinsic_call(
                             then_body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                                 receiver: Box::new(code_ir::Expr::Var(result.clone())),
                                 method: "push_str".to_string(),
-                                args: vec![code_ir::Expr::MethodCall {
-                                    receiver: Box::new(sep.clone()),
-                                    method: "as_str".to_string(),
-                                    args: vec![],
-                                }],
+                                args: vec![code_ir::Expr::Ref(Box::new(sep.clone()))],
                             })],
                             else_body: None,
                         }),
@@ -465,11 +601,7 @@ fn compile_intrinsic_call(
                         code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                             receiver: Box::new(code_ir::Expr::Var(result.clone())),
                             method: "push_str".to_string(),
-                            args: vec![code_ir::Expr::MethodCall {
-                                receiver: Box::new(code_ir::Expr::Var(elem)),
-                                method: "as_str".to_string(),
-                                args: vec![],
-                            }],
+                            args: vec![code_ir::Expr::Ref(Box::new(code_ir::Expr::Var(elem)))],
                         }),
                     ],
                 },
@@ -492,13 +624,17 @@ fn compile_intrinsic_call(
             let result = fresh("split_parts");
             let elem = fresh("part");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
                     iter: code_ir::Expr::MethodCall {
                         receiver: Box::new(collection()),
                         method: "split".to_string(),
-                        args: vec![delim],
+                        args: vec![code_ir::Expr::MethodCall {
+                            receiver: Box::new(delim),
+                            method: "as_str".to_string(),
+                            args: vec![],
+                        }],
                     },
                     body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::Var(result.clone())),
@@ -517,7 +653,7 @@ fn compile_intrinsic_call(
             let result = fresh("chars");
             let ch = fresh("ch");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
                 code_ir::Stmt::For {
                     binding: ch.clone(),
                     iter: code_ir::Expr::MethodCall {
@@ -538,8 +674,356 @@ fn compile_intrinsic_call(
                 code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
             ]))
         }
+        // v2 compiler intrinsics: immutable record update
+        "with" if args.len() == 2 => {
+            // with(state, { pos: state.pos + 1 }) → State { pos: state.pos + 1, ..state.clone() }
+            let base = compile_expr(&args[0].1, ctx);
+            // Clone the base value since struct update syntax moves the base
+            let cloned_base = code_ir::Expr::MethodCall {
+                receiver: Box::new(base),
+                method: "clone".to_string(),
+                args: vec![],
+            };
+            // Second arg should be a record literal with update fields
+            match &args[1].1 {
+                ast::Expr::Record(name, fields) => {
+                    let struct_name = name.clone().unwrap_or_else(|| {
+                        // Infer struct name from field names
+                        let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                        infer_struct_name(&field_names, ctx)
+                    });
+                    let ir_fields: Vec<(String, code_ir::Expr)> = fields
+                        .iter()
+                        .map(|(n, e)| (n.clone(), compile_expr(e, ctx)))
+                        .collect();
+                    Some(code_ir::Expr::Struct {
+                        name: struct_name,
+                        fields: ir_fields,
+                        rest: Some(Box::new(cloned_base)),
+                    })
+                }
+                _ => {
+                    // Fallback: emit as runtime call
+                    Some(code_ir::Expr::Call {
+                        func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "with".to_string()])),
+                        args: vec![cloned_base, compile_expr(&args[1].1, ctx)],
+                        obligation: None,
+                    })
+                }
+            }
+        }
+        // v2 compiler intrinsics: string builtins
+        "char_at" if args.len() == 2 => {
+            let s = resolve_named_or_positional(args, "s", 0, ctx);
+            let pos = resolve_named_or_positional(args, "pos", 1, ctx);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "char_at".to_string()])),
+                args: vec![s, pos],
+                obligation: None,
+            })
+        }
+        "string_length" if args.len() == 1 => {
+            let s = resolve_named_or_positional(args, "s", 0, ctx);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "string_length".to_string()])),
+                args: vec![s],
+                obligation: None,
+            })
+        }
+        "substring" if args.len() == 3 => {
+            let s = resolve_named_or_positional(args, "s", 0, ctx);
+            let start = resolve_named_or_positional(args, "start", 1, ctx);
+            let end = resolve_named_or_positional(args, "end", 2, ctx);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "substring".to_string()])),
+                args: vec![s, start, end],
+                obligation: None,
+            })
+        }
+        "lookup" if args.len() == 2 => {
+            let table = resolve_named_or_positional(args, "table", 0, ctx);
+            let key = resolve_named_or_positional(args, "key", 1, ctx);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "lookup".to_string()])),
+                args: vec![table, key],
+                obligation: None,
+            })
+        }
+        // concat(a, b) → v2_rt::concat(a, b)
+        // Works for both String and Vec<T> via the Concat trait.
+        "concat" if args.len() >= 2 => {
+            // Binary: concat(a, b) → v2_rt::concat(a, b)
+            // Variadic: concat(a, b, c) → v2_rt::concat(v2_rt::concat(a, b), c)
+            let mut result = compile_expr(&args[0].1, ctx);
+            for arg in &args[1..] {
+                result = code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "concat".to_string()])),
+                    args: vec![result, compile_expr(&arg.1, ctx)],
+                    obligation: None,
+                };
+            }
+            Some(result)
+        }
+        // count(list) → list.len() as i64
+        "count" if args.len() == 1 => {
+            Some(code_ir::Expr::RawCode(format!(
+                "{}.len() as i64",
+                render_expr_inline(&collection())
+            )))
+        }
+        // first(list) → list.first().cloned()
+        "first" if args.len() == 1 => {
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection()),
+                    method: "first".to_string(),
+                    args: vec![],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            })
+        }
+        // append(list, item) → { let mut v = list; v.push(item); v }
+        "append" if args.len() == 2 => {
+            let list = collection();
+            let item = compile_expr(&args[1].1, ctx);
+            let v = fresh("appended");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&v, list),
+                code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                    method: "push".to_string(),
+                    args: vec![item],
+                }),
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
+            ]))
+        }
+        // flat_map(list, f) → { let mut r = vec![]; for e in list { r.extend(f(e)); } r }
+        "flat_map" if args.len() == 2 => {
+            let result = fresh("flat_mapped");
+            let elem = fresh("elem");
+            let mapped = match &args[1].1 {
+                ast::Expr::Lambda(params, body) => {
+                    let compiled = compile_expr(body, ctx);
+                    params.first()
+                        .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
+                        .unwrap_or(compiled)
+                }
+                other => code_ir::Expr::Call {
+                    func: Box::new(compile_expr(other, ctx)),
+                    args: vec![code_ir::Expr::Var(elem.clone())],
+                    obligation: None,
+                },
+            };
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+                code_ir::Stmt::For {
+                    binding: elem,
+                    iter: make_owned_iter(collection()),
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                        method: "extend".to_string(),
+                        args: vec![mapped],
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+            ]))
+        }
+        // enumerate(list) → list.iter().enumerate().map(|(i, e)| (i as i64, e.clone())).collect()
+        "enumerate" if args.len() == 1 => {
+            let result = fresh("enumerated");
+            let idx = fresh("idx");
+            let elem = fresh("elem");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+                code_ir::Stmt::For {
+                    binding: format!("({idx}, {elem})"),
+                    iter: code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::MethodCall {
+                            receiver: Box::new(collection()),
+                            method: "iter".to_string(),
+                            args: vec![],
+                        }),
+                        method: "enumerate".to_string(),
+                        args: vec![],
+                    },
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                        method: "push".to_string(),
+                        args: vec![code_ir::Expr::RawCode(format!(
+                            "({idx} as i64, {elem}.clone())"
+                        ))],
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+            ]))
+        }
+        // sort_by(list, key_fn) → { let mut v = list; v.sort_by_key(key_fn); v }
+        "sort_by" if args.len() == 2 => {
+            let list = collection();
+            let key_fn = compile_expr(&args[1].1, ctx);
+            let v = fresh("sorted");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&v, list),
+                code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                    method: "sort_by_key".to_string(),
+                    args: vec![key_fn],
+                }),
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
+            ]))
+        }
+        // drop_last(list) → list[..list.len()-1].to_vec()
+        "drop_last" if args.len() == 1 => {
+            let list = collection();
+            Some(code_ir::Expr::RawCode(format!(
+                "{{ let __v = {}; __v[..__v.len().saturating_sub(1)].to_vec() }}",
+                render_expr_inline(&list)
+            )))
+        }
+        // replace_last(list, value) → { let mut v = list; if let Some(last) = v.last_mut() { *last = value; } v }
+        "replace_last" if args.len() == 2 => {
+            let list = collection();
+            let value = compile_expr(&args[1].1, ctx);
+            let v = fresh("replaced");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&v, list),
+                code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                    "if let Some(__last) = {v}.last_mut() {{ *__last = {}; }}",
+                    render_expr_inline(&value)
+                ))),
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
+            ]))
+        }
+        // starts_with(s, prefix) → s.starts_with(prefix.as_str())
+        "starts_with" if args.len() == 2 => {
+            let s = compile_expr(&args[0].1, ctx);
+            let prefix = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(s),
+                method: "starts_with".to_string(),
+                args: vec![code_ir::Expr::MethodCall {
+                    receiver: Box::new(prefix),
+                    method: "as_str".to_string(),
+                    args: vec![],
+                }],
+            })
+        }
+        // ends_with(s, suffix) → s.ends_with(suffix.as_str())
+        "ends_with" if args.len() == 2 => {
+            let s = compile_expr(&args[0].1, ctx);
+            let suffix = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(s),
+                method: "ends_with".to_string(),
+                args: vec![code_ir::Expr::MethodCall {
+                    receiver: Box::new(suffix),
+                    method: "as_str".to_string(),
+                    args: vec![],
+                }],
+            })
+        }
+        // parse_int(s) → s.parse::<i64>().ok()
+        "parse_int" if args.len() == 1 => {
+            Some(code_ir::Expr::RawCode(format!(
+                "{}.parse::<i64>().ok()",
+                render_expr_inline(&collection())
+            )))
+        }
+        // reverse(list) → { let mut v = list; v.reverse(); v }
+        "reverse" if args.len() == 1 => {
+            let v = fresh("reversed");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&v, collection()),
+                code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                    method: "reverse".to_string(),
+                    args: vec![],
+                }),
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
+            ]))
+        }
+        // is_empty(list) → list.is_empty()
+        "is_empty" if args.len() == 1 => {
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(collection()),
+                method: "is_empty".to_string(),
+                args: vec![],
+            })
+        }
+        // skip(list, n) → list[n as usize..].to_vec()
+        "skip" if args.len() == 2 => {
+            let n = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::RawCode(format!(
+                "{{ let __s = {}; __s[({}) as usize..].to_vec() }}",
+                render_expr_inline(&collection()),
+                render_expr_inline(&n)
+            )))
+        }
+        // take(list, n) → list[..n as usize].to_vec()
+        "take" if args.len() == 2 => {
+            let n = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::RawCode(format!(
+                "{{ let __t = {}; __t[..({}) as usize].to_vec() }}",
+                render_expr_inline(&collection()),
+                render_expr_inline(&n)
+            )))
+        }
+        // find(list, pred) → list.iter().find(pred).cloned()
+        "find" if args.len() == 2 => {
+            let pred = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::MethodCall {
+                        receiver: Box::new(collection()),
+                        method: "iter".to_string(),
+                        args: vec![],
+                    }),
+                    method: "find".to_string(),
+                    args: vec![pred],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            })
+        }
+        // get(list, idx) → list.get(idx as usize).cloned()
+        "get" if args.len() == 2 => {
+            let idx = compile_expr(&args[1].1, ctx);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection()),
+                    method: "get".to_string(),
+                    args: vec![code_ir::Expr::RawCode(format!(
+                        "({}) as usize",
+                        render_expr_inline(&idx)
+                    ))],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            })
+        }
         _ => None,
     }
+}
+
+/// Quick inline rendering of a code_ir::Expr for use in RawCode interpolation.
+fn render_expr_inline(expr: &code_ir::Expr) -> String {
+    crate::render_rust::render_expr_pub(expr)
+}
+
+/// Resolve a named argument by name first, falling back to positional index.
+fn resolve_named_or_positional(
+    args: &[(Option<String>, ast::Expr)],
+    name: &str,
+    pos: usize,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    // Try named first
+    if let Some((_, expr)) = args.iter().find(|(n, _)| n.as_deref() == Some(name)) {
+        return compile_expr(expr, ctx);
+    }
+    // Fall back to positional
+    compile_expr(&args[pos].1, ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -747,7 +1231,46 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
             code_ir::Expr::Block(stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect())
         }
         code_ir::Expr::Ref(inner) => code_ir::Expr::Ref(Box::new(substitute_var(inner, from, to))),
-        // For other variants, return as-is (they don't contain variable references)
+        code_ir::Expr::RefMut(inner) => code_ir::Expr::RefMut(Box::new(substitute_var(inner, from, to))),
+        code_ir::Expr::Deref(inner) => code_ir::Expr::Deref(Box::new(substitute_var(inner, from, to))),
+        code_ir::Expr::Struct { name, fields, rest } => code_ir::Expr::Struct {
+            name: name.clone(),
+            fields: fields.iter().map(|(n, e)| (n.clone(), substitute_var(e, from, to))).collect(),
+            rest: rest.as_ref().map(|r| Box::new(substitute_var(r, from, to))),
+        },
+        code_ir::Expr::Match { expr, arms } => code_ir::Expr::Match {
+            expr: Box::new(substitute_var(expr, from, to)),
+            arms: arms.iter().map(|arm| code_ir::MatchArm {
+                pattern: arm.pattern.clone(),
+                body: arm.body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+            }).collect(),
+        },
+        code_ir::Expr::Closure { args, body } => {
+            // Don't substitute if the closure shadows the variable
+            if args.iter().any(|a| a == from) {
+                expr.clone()
+            } else {
+                code_ir::Expr::Closure {
+                    args: args.clone(),
+                    body: Box::new(substitute_var(body, from, to)),
+                }
+            }
+        }
+        code_ir::Expr::FormatStr { template, args } => code_ir::Expr::FormatStr {
+            template: template.clone(),
+            args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
+        },
+        code_ir::Expr::MacroCall { name, args } => code_ir::Expr::MacroCall {
+            name: name.clone(),
+            args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
+        },
+        code_ir::Expr::Tuple(items) => code_ir::Expr::Tuple(
+            items.iter().map(|a| substitute_var(a, from, to)).collect(),
+        ),
+        code_ir::Expr::Array(items) => code_ir::Expr::Array(
+            items.iter().map(|a| substitute_var(a, from, to)).collect(),
+        ),
+        // For other variants (RawCode, Value), return as-is
         other => other.clone(),
     }
 }
@@ -765,10 +1288,19 @@ fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) 
         },
         code_ir::Stmt::Expr(expr) => code_ir::Stmt::Expr(substitute_var(expr, from, to)),
         code_ir::Stmt::TailExpr(expr) => code_ir::Stmt::TailExpr(substitute_var(expr, from, to)),
+        code_ir::Stmt::Return(expr) => code_ir::Stmt::Return(substitute_var(expr, from, to)),
         code_ir::Stmt::For { binding, iter, body } => code_ir::Stmt::For {
             binding: binding.clone(),
             iter: substitute_var(iter, from, to),
             body: body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+        },
+        code_ir::Stmt::BlockScope(stmts) => code_ir::Stmt::BlockScope(
+            stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+        ),
+        code_ir::Stmt::Bind { targets, intent, expr } => code_ir::Stmt::Bind {
+            targets: targets.clone(),
+            intent: *intent,
+            expr: substitute_var(expr, from, to),
         },
         other => other.clone(),
     }
@@ -779,13 +1311,46 @@ fn compile_call(
     args: &[(Option<String>, ast::Expr)],
     ctx: &CompileContext,
 ) -> code_ir::Expr {
-    let ir_args: Vec<code_ir::Expr> = args.iter().map(|(_, e)| compile_expr(e, ctx)).collect();
+    let ir_args: Vec<code_ir::Expr> = args
+        .iter()
+        .map(|(_, e)| clone_if_needed(compile_expr(e, ctx)))
+        .collect();
     let rust_name = to_snake_case(name);
 
     code_ir::Expr::Call {
         func: Box::new(code_ir::Expr::Var(rust_name)),
         args: ir_args,
         obligation: None,
+    }
+}
+
+/// Add .clone() to variable/field expressions that would be consumed by a call.
+/// This ensures generated code doesn't have use-after-move errors.
+/// Redundant clones are optimized away by the compiler.
+fn clone_if_needed(expr: code_ir::Expr) -> code_ir::Expr {
+    match &expr {
+        // Bare variables and field accesses need cloning (they'd be moved otherwise)
+        code_ir::Expr::Var(name) => {
+            // Don't clone fresh temporaries (they're used only once)
+            if name.starts_with("__") {
+                expr
+            } else {
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(expr),
+                    method: "clone".to_string(),
+                    args: vec![],
+                }
+            }
+        }
+        code_ir::Expr::Field(_, _) => {
+            code_ir::Expr::MethodCall {
+                receiver: Box::new(expr),
+                method: "clone".to_string(),
+                args: vec![],
+            }
+        }
+        // Literals, calls, etc. are temporary values — don't clone
+        _ => expr,
     }
 }
 
@@ -880,12 +1445,15 @@ fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
                 .unwrap_or_else(|| name.clone());
             if fields.is_empty() {
                 qualified
+            } else if name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
+                // Some { value: x } → Some(x) in Rust
+                format!("Some({})", compile_pattern(&fields[0].1, ctx))
             } else {
                 let field_pats: Vec<String> = fields
                     .iter()
                     .map(|(n, p)| format!("{}: {}", n, compile_pattern(p, ctx)))
                     .collect();
-                format!("{} {{ {} }}", qualified, field_pats.join(", "))
+                format!("{} {{ {}, .. }}", qualified, field_pats.join(", "))
             }
         }
         ast::Pattern::Wildcard => "_".to_string(),
@@ -912,17 +1480,54 @@ fn compile_if(
     let then_stmts = expr_to_stmts(then_expr, ctx);
     let else_stmts = else_expr.as_ref().map(|e| expr_to_stmts(e, ctx));
 
+    // If there's no else branch, any trailing TailExpr in the then-body
+    // must be converted to Return — otherwise Rust requires an else clause
+    // for value-producing if expressions.
+    let then_body = if else_stmts.is_none() {
+        convert_trailing_tailexpr_to_return(then_stmts)
+    } else {
+        then_stmts
+    };
+
     code_ir::Expr::If {
         cond: Box::new(compile_expr(cond, ctx)),
-        then_body: then_stmts,
+        then_body,
         else_body: else_stmts,
     }
+}
+
+/// Convert any trailing TailExpr to a Return statement.
+/// Used for if-then bodies without else branches.
+fn convert_trailing_tailexpr_to_return(mut stmts: Vec<code_ir::Stmt>) -> Vec<code_ir::Stmt> {
+    if let Some(last) = stmts.last_mut() {
+        match last {
+            code_ir::Stmt::TailExpr(expr) => {
+                let expr = std::mem::replace(expr, code_ir::Expr::Tuple(vec![]));
+                *last = code_ir::Stmt::Return(expr);
+            }
+            code_ir::Stmt::Expr(code_ir::Expr::If { then_body, else_body, .. }) => {
+                *then_body = convert_trailing_tailexpr_to_return(std::mem::take(then_body));
+                if let Some(eb) = else_body {
+                    *eb = convert_trailing_tailexpr_to_return(std::mem::take(eb));
+                }
+            }
+            _ => {}
+        }
+    }
+    stmts
 }
 
 fn expr_to_stmts(expr: &ast::Expr, ctx: &CompileContext) -> Vec<code_ir::Stmt> {
     match expr {
         ast::Expr::Return(fields) => {
             vec![code_ir::Stmt::Return(compile_return_fields(fields, ctx))]
+        }
+        ast::Expr::Block(stmts) => {
+            stmts
+                .iter()
+                .enumerate()
+                .map(|(index, stmt)| compile_stmt(stmt, index + 1 == stmts.len(), ctx))
+                .collect()
         }
         _ => {
             vec![code_ir::Stmt::TailExpr(compile_expr(expr, ctx))]
@@ -939,7 +1544,10 @@ fn compile_string_interp(parts: &[ast::StringPart], ctx: &CompileContext) -> cod
     let mut args = Vec::new();
     for part in parts {
         match part {
-            ast::StringPart::Literal(s) => template.push_str(s),
+            ast::StringPart::Literal(s) => {
+                // Escape literal { and } for Rust format! strings
+                template.push_str(&s.replace('{', "{{").replace('}', "}}"));
+            }
             ast::StringPart::Expr(e) => {
                 template.push_str("{}");
                 args.push(compile_expr(e, ctx));
@@ -1037,55 +1645,22 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
     }
 }
 
-/// Check if any leaf of a `+` chain is a string literal.
-fn contains_string_literal(expr: &ast::Expr) -> bool {
-    match expr {
-        ast::Expr::Literal(ast::Literal::String(_)) => true,
-        ast::Expr::BinOp(left, ast::BinOp::Add, right) => {
-            contains_string_literal(left) || contains_string_literal(right)
-        }
-        _ => false,
-    }
-}
+// ---------------------------------------------------------------------------
+// Removed: v2 bootstrap heuristics for + operator disambiguation.
+//
+// The `+` operator is now exclusively arithmetic. String and list
+// concatenation use the `concat()` intrinsic function, which maps to
+// `v2_rt::concat()` with trait dispatch. See the `concat` case in
+// `compile_intrinsic_call()`.
+//
+// The following dead code was removed:
+// - is_numeric_expr() — guessed whether + was arithmetic
+// - contains_string_literal() — detected string concat chains
+// - compile_string_concat() / flatten_concat_parts() — compiled + chains to format!()
+// ---------------------------------------------------------------------------
 
-enum ConcatPart {
-    Lit(String),
-    Dyn(code_ir::Expr),
-}
-
-/// Flatten a chain of `a + " " + b + " "` into FormatStr parts.
-fn flatten_concat_parts(expr: &ast::Expr, parts: &mut Vec<ConcatPart>, ctx: &CompileContext) {
-    match expr {
-        ast::Expr::BinOp(left, ast::BinOp::Add, right) if contains_string_literal(expr) => {
-            flatten_concat_parts(left, parts, ctx);
-            flatten_concat_parts(right, parts, ctx);
-        }
-        ast::Expr::Literal(ast::Literal::String(s)) => {
-            parts.push(ConcatPart::Lit(s.clone()));
-        }
-        other => {
-            parts.push(ConcatPart::Dyn(compile_expr(other, ctx)));
-        }
-    }
-}
-
-fn compile_string_concat(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
-    let mut parts = Vec::new();
-    flatten_concat_parts(expr, &mut parts, ctx);
-
-    let mut template = String::new();
-    let mut args = Vec::new();
-    for part in parts {
-        match part {
-            ConcatPart::Lit(s) => template.push_str(&s),
-            ConcatPart::Dyn(e) => {
-                template.push_str("{}");
-                args.push(e);
-            }
-        }
-    }
-    code_ir::Expr::FormatStr { template, args }
-}
+// compile_string_interp remains for `"hello ${name}"` interpolation syntax,
+// which is distinct from concat() and not affected by the + operator change.
 
 // ---------------------------------------------------------------------------
 // Anonymous record synthesis

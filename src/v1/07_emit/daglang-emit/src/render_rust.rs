@@ -41,6 +41,11 @@ pub fn render_rust_source(source: &SourceFile) -> String {
     out
 }
 
+/// Public access to expression rendering (for fn_codegen RawCode interpolation).
+pub fn render_expr_pub(expr: &Expr) -> String {
+    render_expr(expr)
+}
+
 /// Render a minimal Cargo.toml for a generated crate.
 pub fn render_cargo_toml(crate_name: &str, dependencies: &[(&str, &str)]) -> String {
     let mut out = String::new();

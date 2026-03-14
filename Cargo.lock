@@ -1108,6 +1108,7 @@ name = "v2-compiler-tests"
 version = "0.1.0"
 dependencies = [
  "daglang-driver",
+ "daglang-emit",
  "daglang-eval",
  "daglang-lower",
  "daglang-syntax",

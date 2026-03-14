@@ -63,12 +63,12 @@ fn read_source(path: FilePath) -> SourceFile {
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
   fold(parse_results, init: [], f: fn(acc, pr) {
     if pr.error != None {
-      acc + [Diagnostic {
+      concat(acc, [Diagnostic {
         severity: Error,
         message: pr.error,
         span: None,
         module_name: None
-      }]
+      }])
     } else {
       acc
     }
@@ -139,7 +139,7 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
 
     CompileResult {
       files: files,
-      diagnostics: graph.diagnostics + typed.diagnostics + parse_diagnostics
+      diagnostics: concat(graph.diagnostics, typed.diagnostics, parse_diagnostics)
     }
   }
 }

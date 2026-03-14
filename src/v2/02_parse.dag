@@ -265,7 +265,7 @@ fn expect_ident(state: ParserState) -> PR {
         Some { value: kind } => kind_tag(kind: kind)
         None => "EOF"
       }
-      fail(msg: "expected identifier, found " + found, state: state)
+      fail(msg: concat("expected identifier, found ", found), state: state)
     }
   }
 }
@@ -293,7 +293,7 @@ fn expect_name(state: ParserState) -> PR {
             Some { value: kind } => kind_tag(kind: kind)
             None => "EOF"
           }
-          fail(msg: "expected name, found " + found, state: state)
+          fail(msg: concat("expected name, found ", found), state: state)
         }
       }
     }
@@ -450,7 +450,7 @@ fn parse_imports(state: ParserState) -> PR {
     if is_err(pr: r) { return r }
     let rest = parse_imports(state: r.state)
     if is_err(pr: rest) { return rest }
-    ok(val: { imports: [r.val.import] +rest.val.imports }, state: rest.state)
+    ok(val: { imports: concat([r.val.import], rest.val.imports) }, state: rest.state)
   } else {
     ok(val: { imports: [] }, state: s)
   }
@@ -465,7 +465,7 @@ fn parse_items(state: ParserState) -> PR {
     if is_err(pr: r) { return r }
     let rest = parse_items(state: r.state)
     if is_err(pr: rest) { return rest }
-    ok(val: { items: [r.val.item] +rest.val.items }, state: rest.state)
+    ok(val: { items: concat([r.val.item], rest.val.items) }, state: rest.state)
   }
 }
 
@@ -516,7 +516,7 @@ fn parse_import_names(state: ParserState) -> PR {
     let s = skip_newlines(state: if e.consumed { e.state } else { s })
     let rest = parse_import_names(state: s)
     if is_err(pr: rest) { return rest }
-    ok(val: { names: [name] +rest.val.names }, state: rest.state)
+    ok(val: { names: concat([name], rest.val.names) }, state: rest.state)
   }
 }
 
@@ -593,7 +593,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
       let first_variant = r.val.variant
       let rest = parse_more_variants(state: r.state)
       if is_err(pr: rest) { return rest }
-      let variants = [first_variant] +rest.val.variants
+      let variants = concat([first_variant], rest.val.variants)
       let body = Sum { variants: variants }
       let item = TypeDef { name: name, body: body, span: start_span }
       ok(val: { item: item }, state: skip_newlines(state: rest.state))
@@ -643,7 +643,7 @@ fn parse_predicates(state: ParserState) -> PR {
   if e.consumed {
     let rest = parse_predicates(state: skip_newlines(state: e.state))
     if is_err(pr: rest) { return rest }
-    ok(val: { predicates: [r.val.predicate] + rest.val.predicates }, state: rest.state)
+    ok(val: { predicates: concat([r.val.predicate], rest.val.predicates) }, state: rest.state)
   } else {
     ok(val: { predicates: [r.val.predicate] }, state: r.state)
   }
@@ -713,14 +713,14 @@ fn parse_single_predicate(state: ParserState) -> PR {
         ok(val: { predicate: Range { min: r2.val.min_val, max: r2.val.max_val } }, state: r3.state)
       }
       _ => {
-        fail(msg: "unknown where predicate `" + pred_name + "`", state: e.state)
+        fail(msg: concat("unknown where predicate `", pred_name, "`"), state: e.state)
       }
     }
   } else {
     // No args — handle bare predicate names
     match pred_name {
       "non_empty" => ok(val: { predicate: NonEmpty }, state: s)
-      _ => fail(msg: "unknown where predicate `" + pred_name + "`", state: s)
+      _ => fail(msg: concat("unknown where predicate `", pred_name, "`"), state: s)
     }
   }
 }
@@ -760,7 +760,7 @@ fn parse_single_named_int(state: ParserState) -> PR {
   match r3.val.expr {
     Literal { value: LitInt { value: n } } =>
       ok(val: { arg_name: name, arg_value: n }, state: r3.state)
-    _ => fail(msg: "range() argument `" + name + "` requires an integer literal", state: r3.state)
+    _ => fail(msg: concat("range() argument `", name, "` requires an integer literal"), state: r3.state)
   }
 }
 
@@ -793,7 +793,7 @@ fn parse_more_variants(state: ParserState) -> PR {
     if is_err(pr: r2) { return r2 }
     let rest = parse_more_variants(state: r2.state)
     if is_err(pr: rest) { return rest }
-    ok(val: { variants: [r2.val.variant] +rest.val.variants }, state: rest.state)
+    ok(val: { variants: concat([r2.val.variant], rest.val.variants) }, state: rest.state)
   } else {
     ok(val: { variants: [] }, state: s)
   }
@@ -912,7 +912,7 @@ fn parse_field_list(state: ParserState) -> PR {
       let s3 = skip_newlines(state: if e.consumed { e.state } else { s2 })
       let rest = parse_field_list(state: s3)
       if is_err(pr: rest) { return rest }
-      ok(val: { fields: [r.val.field] +rest.val.fields }, state: rest.state)
+      ok(val: { fields: concat([r.val.field], rest.val.fields) }, state: rest.state)
     } else {
       ok(val: { fields: [] }, state: s)
     }
@@ -1088,7 +1088,7 @@ fn parse_uses_list(state: ParserState) -> PR {
   if e.consumed {
     let rest = parse_uses_list(state: e.state)
     if is_err(pr: rest) { return rest }
-    ok(val: { uses: [first] +rest.val.uses }, state: rest.state)
+    ok(val: { uses: concat([first], rest.val.uses) }, state: rest.state)
   } else {
     ok(val: { uses: [first] }, state: s)
   }
@@ -1192,7 +1192,7 @@ fn parse_service_entries(state: ParserState, config: ServiceConfig?, transport: 
       Some { value: KwOperation } => {
         let r = parse_operation_def(state: s)
         if is_err(pr: r) { return r }
-        parse_service_entries(state: r.state, config: config, transport: transport, operations: operations +[r.val.operation])
+        parse_service_entries(state: r.state, config: config, transport: transport, operations: concat(operations, [r.val.operation]))
       }
       _ => fail(msg: "expected config, transport, or operation in service block", state: s)
     }
@@ -1494,15 +1494,15 @@ fn parse_op_body_entries(
       }
       Some { value: KwIdempotent } => {
         let adv = advance(state: s)
-        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: modifiers + [Idempotent], transport: transport, exits: exits, response: response, mock_response: mock_response)
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: concat(modifiers, [Idempotent]), transport: transport, exits: exits, response: response, mock_response: mock_response)
       }
       Some { value: KwReadonly } => {
         let adv = advance(state: s)
-        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: modifiers + [Readonly], transport: transport, exits: exits, response: response, mock_response: mock_response)
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: concat(modifiers, [Readonly]), transport: transport, exits: exits, response: response, mock_response: mock_response)
       }
       Some { value: KwHermetic } => {
         let adv = advance(state: s)
-        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: modifiers + [Hermetic], transport: transport, exits: exits, response: response, mock_response: mock_response)
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: concat(modifiers, [Hermetic]), transport: transport, exits: exits, response: response, mock_response: mock_response)
       }
       Some { value: Ident { name: id } } => {
         if id == "transport" {
@@ -1574,7 +1574,7 @@ fn parse_exit_entries(state: ParserState) -> PR {
     let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
     let rest = parse_exit_entries(state: s2)
     if is_err(pr: rest) { return rest }
-    ok(val: { entries: [entry] + rest.val.entries }, state: rest.state)
+    ok(val: { entries: concat([entry], rest.val.entries) }, state: rest.state)
   }
 }
 
@@ -1584,17 +1584,17 @@ fn parse_operation_modifiers(state: ParserState) -> PR {
     Some { value: KwIdempotent } => {
       let adv = advance(state: state)
       let rest = parse_operation_modifiers(state: adv.state)
-      ok(val: { modifiers: [Idempotent] +rest.val.modifiers }, state: rest.state)
+      ok(val: { modifiers: concat([Idempotent], rest.val.modifiers) }, state: rest.state)
     }
     Some { value: KwReadonly } => {
       let adv = advance(state: state)
       let rest = parse_operation_modifiers(state: adv.state)
-      ok(val: { modifiers: [Readonly] +rest.val.modifiers }, state: rest.state)
+      ok(val: { modifiers: concat([Readonly], rest.val.modifiers) }, state: rest.state)
     }
     Some { value: KwHermetic } => {
       let adv = advance(state: state)
       let rest = parse_operation_modifiers(state: adv.state)
-      ok(val: { modifiers: [Hermetic] +rest.val.modifiers }, state: rest.state)
+      ok(val: { modifiers: concat([Hermetic], rest.val.modifiers) }, state: rest.state)
     }
     _ => ok(val: { modifiers: [] }, state: state)
   }
@@ -1695,7 +1695,7 @@ fn parse_response_entries(state: ParserState) -> PR {
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r3.state })
     let rest = parse_response_entries(state: s2)
     if is_err(pr: rest) { return rest }
-    ok(val: { entries: [entry] + rest.val.entries }, state: rest.state)
+    ok(val: { entries: concat([entry], rest.val.entries) }, state: rest.state)
   }
 }
 
@@ -1745,7 +1745,7 @@ fn parse_mock_response_entries(state: ParserState) -> PR {
     let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
     let rest = parse_mock_response_entries(state: s2)
     if is_err(pr: rest) { return rest }
-    ok(val: { entries: [entry] + rest.val.entries }, state: rest.state)
+    ok(val: { entries: concat([entry], rest.val.entries) }, state: rest.state)
   }
 }
 
@@ -1791,7 +1791,7 @@ fn parse_resource_entries(state: ParserState, properties: List<FieldInit>, capab
       Some { value: KwCapability } => {
         let r = parse_capability(state: s)
         if is_err(pr: r) { return r }
-        parse_resource_entries(state: r.state, properties: properties, capabilities: capabilities + [r.val.capability])
+        parse_resource_entries(state: r.state, properties: properties, capabilities: concat(capabilities, [r.val.capability]))
       }
       Some { value: KwAcquire } => {
         let adv = advance(state: s)
@@ -1822,7 +1822,7 @@ fn parse_resource_entries(state: ParserState, properties: List<FieldInit>, capab
           let r3 = parse_expr(state: r2.state)
           if is_err(pr: r3) { return r3 }
           let fi = FieldInit { name: fname, value: r3.val.expr }
-          parse_resource_entries(state: skip_newlines(state: r3.state), properties: properties + [fi], capabilities: capabilities)
+          parse_resource_entries(state: skip_newlines(state: r3.state), properties: concat(properties, [fi]), capabilities: capabilities)
         } else {
           fail(msg: "unexpected token in resource block", state: s)
         }
@@ -2064,7 +2064,7 @@ fn parse_param_list(state: ParserState) -> PR {
     } else {
       let rest = parse_param_list(state: s2)
       if is_err(pr: rest) { return rest }
-      ok(val: { params: [r.val.param] +rest.val.params }, state: rest.state)
+      ok(val: { params: concat([r.val.param], rest.val.params) }, state: rest.state)
     }
   } else {
     ok(val: { params: [r.val.param] }, state: s)
@@ -2139,7 +2139,7 @@ fn parse_stmts(state: ParserState) -> PR {
     let s2 = skip_newlines(state: r.state)
     let rest = parse_stmts(state: s2)
     if is_err(pr: rest) { return rest }
-    ok(val: { stmts: [r.val.expr] +rest.val.stmts }, state: rest.state)
+    ok(val: { stmts: concat([r.val.expr], rest.val.stmts) }, state: rest.state)
   }
 }
 
@@ -2547,7 +2547,7 @@ fn parse_arg_list(state: ParserState) -> PR {
     } else {
       let rest = parse_arg_list(state: s2)
       if is_err(pr: rest) { return rest }
-      ok(val: { args: [r.val.arg] +rest.val.args }, state: rest.state)
+      ok(val: { args: concat([r.val.arg], rest.val.args) }, state: rest.state)
     }
   } else {
     ok(val: { args: [r.val.arg] }, state: s)
@@ -2692,7 +2692,7 @@ fn parse_match_arms(state: ParserState) -> PR {
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
     let rest = parse_match_arms(state: s2)
     if is_err(pr: rest) { return rest }
-    ok(val: { arms: [r.val.arm] +rest.val.arms }, state: rest.state)
+    ok(val: { arms: concat([r.val.arm], rest.val.arms) }, state: rest.state)
   }
 }
 
@@ -2823,7 +2823,7 @@ fn parse_variant_bindings_brace(state: ParserState) -> PR {
       let rest = parse_variant_bindings_brace(state: s3)
       if is_err(pr: rest) { return rest }
       let fb = FieldBinding { field_name: field_name, binding: Bind { name: binding_name } }
-      ok(val: { field_bindings: [fb] + rest.val.field_bindings }, state: rest.state)
+      ok(val: { field_bindings: concat([fb], rest.val.field_bindings) }, state: rest.state)
     } else {
       // Shorthand: field_name binds to itself
       let e2 = eat(state: s, tag: "Comma")
@@ -2831,7 +2831,7 @@ fn parse_variant_bindings_brace(state: ParserState) -> PR {
       let rest = parse_variant_bindings_brace(state: s2)
       if is_err(pr: rest) { return rest }
       let fb = FieldBinding { field_name: field_name, binding: Bind { name: field_name } }
-      ok(val: { field_bindings: [fb] + rest.val.field_bindings }, state: rest.state)
+      ok(val: { field_bindings: concat([fb], rest.val.field_bindings) }, state: rest.state)
     }
   }
 }
@@ -2979,7 +2979,7 @@ fn parse_field_init_list(state: ParserState) -> PR {
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
     let rest = parse_field_init_list(state: s2)
     if is_err(pr: rest) { return rest }
-    ok(val: { fields: [r.val.field] +rest.val.fields }, state: rest.state)
+    ok(val: { fields: concat([r.val.field], rest.val.fields) }, state: rest.state)
   }
 }
 
@@ -3050,7 +3050,7 @@ fn parse_expr_list_until(state: ParserState, end_tag: String) -> PR {
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
     let rest = parse_expr_list_until(state: s2, end_tag: end_tag)
     if is_err(pr: rest) { return rest }
-    ok(val: { exprs: [r.val.expr] +rest.val.exprs }, state: rest.state)
+    ok(val: { exprs: concat([r.val.expr], rest.val.exprs) }, state: rest.state)
   }
 }
 
@@ -3127,7 +3127,7 @@ fn collect_lambda_idents(state: ParserState, acc: List<String>) -> PR {
     match k {
       Some { value: Ident { name: n } } => {
         let adv = advance(state: state)
-        let new_acc = acc +[n]
+        let new_acc = concat(acc, [n])
         let e = eat(state: adv.state, tag: "Comma")
         if e.consumed {
           collect_lambda_idents(state: e.state, acc: new_acc)
@@ -3167,7 +3167,7 @@ fn parse_interp_parts(state: ParserState, parts: List<StringPart>, span: SourceS
   // Parse the interpolated expression
   let r = parse_expr(state: state)
   if is_err(pr: r) { return r }
-  let new_parts = parts +[Interpolation { expr: r.val.expr }]
+  let new_parts = concat(parts, [Interpolation { expr: r.val.expr }])
   let s = r.state
 
   // Next should be StrMid or StrEnd
@@ -3176,7 +3176,7 @@ fn parse_interp_parts(state: ParserState, parts: List<StringPart>, span: SourceS
     Some { value: StrMid { value: mid } } => {
       let adv = advance(state: s)
       let mid_parts = if string_length(s: mid) > 0 {
-        new_parts +[Text { value: mid }]
+        concat(new_parts, [Text { value: mid }])
       } else {
         new_parts
       }
@@ -3185,7 +3185,7 @@ fn parse_interp_parts(state: ParserState, parts: List<StringPart>, span: SourceS
     Some { value: StrEnd { value: suffix } } => {
       let adv = advance(state: s)
       let final_parts = if string_length(s: suffix) > 0 {
-        new_parts +[Text { value: suffix }]
+        concat(new_parts, [Text { value: suffix }])
       } else {
         new_parts
       }

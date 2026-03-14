@@ -78,9 +78,9 @@ fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span> {
       acc
     } else {
       if span_width(span: span, tier: tier) <= acc.remaining {
-        { kept: acc.kept + [span], remaining: acc.remaining - span_width(span: span, tier: tier) }
+        { kept: concat(acc.kept, [span]), remaining: acc.remaining - span_width(span: span, tier: tier) }
       } else {
-        { kept: acc.kept + [Span { text: truncate_text(text: span.text, max_width: acc.remaining), style: span.style }], remaining: 0 }
+        { kept: concat(acc.kept, [Span { text: truncate_text(text: span.text, max_width: acc.remaining), style: span.style }]), remaining: 0 }
       }
     }
   )

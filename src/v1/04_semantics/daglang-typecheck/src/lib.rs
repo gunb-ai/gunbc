@@ -3044,7 +3044,7 @@ fn validate_callable_body(
                 }
                 None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
-            let mismatches = push_type_mismatch_if_needed(ty, &inferred);
+            let mismatches = push_type_mismatch_if_needed(ty, &inferred, infer_context.variant_parents, infer_context.record_type_registry);
             errors.extend(mismatches);
         }
     }
@@ -3075,7 +3075,7 @@ fn validate_return_stmt(
                 infer_context,
             );
             errors.extend(infer_errors);
-            let mismatches = push_type_mismatch_if_needed(ty, &inferred);
+            let mismatches = push_type_mismatch_if_needed(ty, &inferred, infer_context.variant_parents, infer_context.record_type_registry);
             errors.extend(mismatches);
         }
         ReturnContract::Record { fields: expected } => {
@@ -3089,7 +3089,7 @@ fn validate_return_stmt(
                 };
                 let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
-                let mismatches = push_type_mismatch_if_needed(expected_ty, &inferred);
+                let mismatches = push_type_mismatch_if_needed(expected_ty, &inferred, infer_context.variant_parents, infer_context.record_type_registry);
                 errors.extend(mismatches);
             }
         }
@@ -3586,13 +3586,32 @@ fn are_branch_types_compatible(
     }
 }
 
-fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<TypeError> {
+fn push_type_mismatch_if_needed(
+    expected: &str,
+    inferred: &ValueType,
+    variant_parents: &HashMap<String, String>,
+    record_type_registry: &RecordTypeRegistry,
+) -> Vec<TypeError> {
     // S67: Skip type mismatch when the inferred type is Inferred — the
     // typechecker lacks enough information to judge compatibility.
     if inferred.is_inferred() {
         return Vec::new();
     }
     let got = inferred.display_name();
+
+    // v2 TC003 fix: bare enum variant is compatible with its parent sum type.
+    // e.g. returning `UnterminatedString` where `StringScanResult` is expected.
+    if let Some(parent) = variant_parents.get(&got) {
+        if parent == expected {
+            return Vec::new();
+        }
+    }
+
+    // v2 TC003 fix: "Record"/"Map" is compatible with a known struct type.
+    if (got == "Record" || got == "Map") && resolve_record_fields(expected, record_type_registry).is_some() {
+        return Vec::new();
+    }
+
     if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
         .is_compatible(&normalize_type_id(&got), &normalize_type_id(expected))
     {

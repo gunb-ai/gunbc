@@ -177,14 +177,14 @@ fn lookup_type(env: TypeEnv, name: String) -> TypeExpr? {
 // =========================================================================
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
-  let all_bindings = fold(envs, init: [], f: (acc, env) => acc + env.bindings)
+  let all_bindings = fold(envs, init: [], f: (acc, env) => concat(acc, env.bindings))
   // Deduplicate: keep last occurrence of each name (last-writer-wins).
   // Fold right-to-left by reversing: fold over all, skip if name already seen.
   let deduped = fold(all_bindings, init: { seen: [], result: [] }, f: (acc, b) =>
     if contains(acc.seen, b.name) {
       acc
     } else {
-      { seen: acc.seen + [b.name], result: acc.result + [b] }
+      { seen: concat(acc.seen, [b.name]), result: concat(acc.result, [b]) }
     }
   )
   TypeEnv { bindings: deduped.result }
@@ -208,13 +208,13 @@ fn build_type_env(module: ResolvedModule, parent_envs: List<TypeEnv>) -> TypeEnv
     let imported = fold(imp.names, init: [], f: (inner_acc, name) =>
       match lookup_type(env: merged_parent, name: name) {
         Some { value: resolved } =>
-          inner_acc + [TypeBinding { name: name, resolved: resolved }]
+          concat(inner_acc, [TypeBinding { name: name, resolved: resolved }])
         None =>
           // Import not found in parent envs — will be caught as diagnostic later.
           inner_acc
       }
     )
-    acc + imported
+    concat(acc, imported)
   )
   let import_env = TypeEnv { bindings: import_bindings }
 
@@ -223,7 +223,7 @@ fn build_type_env(module: ResolvedModule, parent_envs: List<TypeEnv>) -> TypeEnv
     match item {
       TypeDef { name: name, body: body, span: span } =>
         let resolved = type_body_to_expr(name: name, body: body, span: span)
-        acc + [TypeBinding { name: name, resolved: resolved }]
+        concat(acc, [TypeBinding { name: name, resolved: resolved }])
       _ => acc
     }
   )
@@ -290,12 +290,12 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
                   ResolveResult { resolved: expr, diagnostics: [] }
                 } else {
                   // Resolve the target with name added to resolving stack.
-                  resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: resolving + [name])
+                  resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: concat(resolving, [name]))
                 }
               _ =>
                 // Resolved to a structural form. Recursively resolve any
                 // Named references inside it.
-                resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: resolving + [name])
+                resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: concat(resolving, [name]))
             }
           None =>
             // Unresolved name — emit diagnostic.
@@ -303,7 +303,7 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
               resolved: expr,
               diagnostics: [Diagnostic {
                 severity: Error,
-                message: "unresolved type '" + name + "'",
+                message: concat("unresolved type '", name, "'"),
                 span: span,
                 module_name: module_name
               }]
@@ -318,7 +318,7 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
     Product { name: prod_name, fields: fields, span: span } =>
       let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field)
-      let all_diags = fold(field_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
+      let all_diags = fold(field_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
       ResolveResult {
         resolved: Product { name: prod_name, fields: resolved_fields, span: span },
         diagnostics: all_diags
@@ -327,7 +327,7 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
     Coproduct { name: coprod_name, variants: variants, span: span } =>
       let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
       let resolved_variants = map(variant_results, vr => vr.variant)
-      let all_diags = fold(variant_results, init: [], f: (acc, vr) => acc + vr.diagnostics)
+      let all_diags = fold(variant_results, init: [], f: (acc, vr) => concat(acc, vr.diagnostics))
       ResolveResult {
         resolved: Coproduct { name: coprod_name, variants: resolved_variants, span: span },
         diagnostics: all_diags
@@ -359,13 +359,13 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
       let value_result = resolve_type_expr_with_resolving(expr: value, env: env, module_name: module_name, resolving: resolving)
       ResolveResult {
         resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
-        diagnostics: key_result.diagnostics + value_result.diagnostics
+        diagnostics: concat(key_result.diagnostics, value_result.diagnostics)
       }
 
     TypeApp { name: name, args: args, span: span } =>
       let arg_results = map(args, a => resolve_type_expr_with_resolving(expr: a, env: env, module_name: module_name, resolving: resolving))
       let resolved_args = map(arg_results, ar => ar.resolved)
-      let all_diags = fold(arg_results, init: [], f: (acc, ar) => acc + ar.diagnostics)
+      let all_diags = fold(arg_results, init: [], f: (acc, ar) => concat(acc, ar.diagnostics))
       ResolveResult {
         resolved: TypeApp { name: name, args: resolved_args, span: span },
         diagnostics: all_diags
@@ -398,7 +398,7 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
 fn resolve_variant(variant: Variant, env: TypeEnv, module_name: String) -> VariantResult {
   let field_results = map(variant.fields, f => resolve_field(field: f, env: env, module_name: module_name))
   let resolved_fields = map(field_results, fr => fr.field)
-  let all_diags = fold(field_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
+  let all_diags = fold(field_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
   VariantResult {
     variant: Variant {
       name: variant.name,
@@ -435,8 +435,8 @@ fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> Ope
   let output_results = map(op.outputs, f => resolve_field(field: f, env: env, module_name: module_name))
   let resolved_inputs = map(input_results, fr => fr.field)
   let resolved_outputs = map(output_results, fr => fr.field)
-  let input_diags = fold(input_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
-  let output_diags = fold(output_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
+  let input_diags = fold(input_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
+  let output_diags = fold(output_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
   OperationResult {
     operation: OperationDef {
       name: op.name,
@@ -449,7 +449,7 @@ fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> Ope
       transport: op.transport,
       span: op.span
     },
-    diagnostics: input_diags + output_diags
+    diagnostics: concat(input_diags, output_diags)
   }
 }
 
@@ -462,8 +462,8 @@ fn resolve_capability(cap: CapabilityDef, env: TypeEnv, module_name: String) -> 
   let output_results = map(cap.outputs, f => resolve_field(field: f, env: env, module_name: module_name))
   let resolved_inputs = map(input_results, fr => fr.field)
   let resolved_outputs = map(output_results, fr => fr.field)
-  let input_diags = fold(input_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
-  let output_diags = fold(output_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
+  let input_diags = fold(input_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
+  let output_diags = fold(output_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
   CapabilityResult {
     capability: CapabilityDef {
       name: cap.name,
@@ -471,7 +471,7 @@ fn resolve_capability(cap: CapabilityDef, env: TypeEnv, module_name: String) -> 
       outputs: resolved_outputs,
       span: cap.span
     },
-    diagnostics: input_diags + output_diags
+    diagnostics: concat(input_diags, output_diags)
   }
 }
 
@@ -529,7 +529,7 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
     FnDef { name: name, params: params, return_type: return_type, body: body, span: span } =>
       let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = fold(param_results, init: [], f: (acc, pr) => acc + pr.diagnostics)
+      let param_diags = fold(param_results, init: [], f: (acc, pr) => concat(acc, pr.diagnostics))
       let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
       // Wrap resolved type back in Option to preserve return_type: TypeExpr? contract.
       let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
@@ -541,17 +541,17 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
           body: body,
           span: span
         },
-        diagnostics: param_diags + ret_result.diagnostics
+        diagnostics: concat(param_diags, ret_result.diagnostics)
       }
 
     FuncDef { name: name, params: params, return_type: return_type, uses: uses, body: body, span: span } =>
       let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = fold(param_results, init: [], f: (acc, pr) => acc + pr.diagnostics)
+      let param_diags = fold(param_results, init: [], f: (acc, pr) => concat(acc, pr.diagnostics))
       let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
       let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
       let resolved_uses = map(use_results, ur => ur.resource_use)
-      let use_diags = fold(use_results, init: [], f: (acc, ur) => acc + ur.diagnostics)
+      let use_diags = fold(use_results, init: [], f: (acc, ur) => concat(acc, ur.diagnostics))
       // Wrap resolved type back in Option to preserve return_type: TypeExpr? contract.
       let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
       ItemResult {
@@ -563,13 +563,13 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
           body: body,
           span: span
         },
-        diagnostics: param_diags + ret_result.diagnostics + use_diags
+        diagnostics: concat(param_diags, ret_result.diagnostics, use_diags)
       }
 
     ServiceDef { name: name, transport: transport, config: config, operations: operations, span: span } =>
       let op_results = map(operations, op => resolve_operation(op: op, env: env, module_name: module_name))
       let resolved_ops = map(op_results, opr => opr.operation)
-      let op_diags = fold(op_results, init: [], f: (acc, opr) => acc + opr.diagnostics)
+      let op_diags = fold(op_results, init: [], f: (acc, opr) => concat(acc, opr.diagnostics))
       ItemResult {
         item: ServiceDef {
           name: name,
@@ -584,7 +584,7 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
     ResourceDef { name: name, properties: props, capabilities: capabilities, span: span } =>
       let cap_results = map(capabilities, c => resolve_capability(cap: c, env: env, module_name: module_name))
       let resolved_caps = map(cap_results, cr => cr.capability)
-      let cap_diags = fold(cap_results, init: [], f: (acc, cr) => acc + cr.diagnostics)
+      let cap_diags = fold(cap_results, init: [], f: (acc, cr) => concat(acc, cr.diagnostics))
       ItemResult {
         item: ResourceDef {
           name: name,
@@ -610,7 +610,7 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
     ExternFuncDecl { name: name, params: params, return_type: return_type, span: span } =>
       let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = fold(param_results, init: [], f: (acc, pr) => acc + pr.diagnostics)
+      let param_diags = fold(param_results, init: [], f: (acc, pr) => concat(acc, pr.diagnostics))
       let ret_result = resolve_type_expr(expr: return_type, env: env, module_name: module_name)
       ItemResult {
         item: ExternFuncDecl {
@@ -619,7 +619,7 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
           return_type: ret_result.resolved,
           span: span
         },
-        diagnostics: param_diags + ret_result.diagnostics
+        diagnostics: concat(param_diags, ret_result.diagnostics)
       }
   }
 }
@@ -638,7 +638,7 @@ fn resolve_type_body(body: TypeBody, env: TypeEnv, module_name: String) -> TypeB
     Record { fields: fields } =>
       let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field)
-      let all_diags = fold(field_results, init: [], f: (acc, fr) => acc + fr.diagnostics)
+      let all_diags = fold(field_results, init: [], f: (acc, fr) => concat(acc, fr.diagnostics))
       TypeBodyResult {
         body: Record { fields: resolved_fields },
         diagnostics: all_diags
@@ -647,7 +647,7 @@ fn resolve_type_body(body: TypeBody, env: TypeEnv, module_name: String) -> TypeB
     Sum { variants: variants } =>
       let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
       let resolved_variants = map(variant_results, vr => vr.variant)
-      let all_diags = fold(variant_results, init: [], f: (acc, vr) => acc + vr.diagnostics)
+      let all_diags = fold(variant_results, init: [], f: (acc, vr) => concat(acc, vr.diagnostics))
       TypeBodyResult {
         body: Sum { variants: resolved_variants },
         diagnostics: all_diags
@@ -681,7 +681,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_envs: List<TypeEnv>) -> Typ
     resolve_item_types(item: item, env: env, module_name: resolved.module.name)
   )
   let resolved_items = map(item_results, ir => ir.item)
-  let item_diags = fold(item_results, init: [], f: (acc, ir) => acc + ir.diagnostics)
+  let item_diags = fold(item_results, init: [], f: (acc, ir) => concat(acc, ir.diagnostics))
 
   // Rebuild the module with resolved items.
   let typed_module = Module {
@@ -700,7 +700,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_envs: List<TypeEnv>) -> Typ
       module: typed_module,
       type_env: resolved_env.env
     },
-    diagnostics: item_diags + resolved_env.diagnostics
+    diagnostics: concat(item_diags, resolved_env.diagnostics)
   }
 }
 
@@ -723,7 +723,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
     { binding: TypeBinding { name: b.name, resolved: result.resolved }, diagnostics: result.diagnostics }
   )
   let resolved_bindings = map(results, r => r.binding)
-  let all_diags = fold(results, init: [], f: (acc, r) => acc + r.diagnostics)
+  let all_diags = fold(results, init: [], f: (acc, r) => concat(acc, r.diagnostics))
   EnvResolveResult {
     env: TypeEnv { bindings: resolved_bindings },
     diagnostics: all_diags
@@ -768,7 +768,7 @@ fn find_typed_module(modules: List<TypedModule>, name: String) -> TypedModule? {
 fn collect_parent_envs(resolved: ResolvedModule, typed_modules: List<TypedModule>) -> List<TypeEnv> {
   fold(resolved.resolved_imports, init: [], f: (acc, imp) =>
     match find_typed_module(modules: typed_modules, name: imp.module_path) {
-      Some { value: typed } => acc + [typed.type_env]
+      Some { value: typed } => concat(acc, [typed.type_env])
       None => acc
     }
   )
@@ -793,8 +793,8 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
     let parent_envs = collect_parent_envs(resolved: resolved, typed_modules: acc.modules)
     let tc_result = typecheck_module(resolved: resolved, parent_envs: parent_envs)
     {
-      modules: acc.modules + [tc_result.typed],
-      diagnostics: acc.diagnostics + tc_result.diagnostics
+      modules: concat(acc.modules, [tc_result.typed]),
+      diagnostics: concat(acc.diagnostics, tc_result.diagnostics)
     }
   )
 
@@ -836,13 +836,13 @@ fn make_warning(message: String, span: SourceSpan, module_name: String) -> Diagn
 
 fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
   // Collect all defined type names across the graph (for cycle-breaker detection)
-  let all_defined = fold(graph.modules, init: [], f: (acc, tm) => acc + tm.type_env.bindings)
+  let all_defined = fold(graph.modules, init: [], f: (acc, tm) => concat(acc, tm.type_env.bindings))
   let defined_names = map(all_defined, b => b.name)
   fold(graph.modules, init: [], f: (acc, tm) =>
     let item_diags = fold(tm.module.items, init: [], f: (inner_acc, item) =>
-      inner_acc + collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names)
+      concat(inner_acc, collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names))
     )
-    acc + item_diags
+    concat(acc, item_diags)
   )
 }
 
@@ -853,43 +853,43 @@ fn collect_unresolved_in_item(item: Item, module_name: String, defined_names: Li
 
     FnDef { name: _, params: params, return_type: return_type, body: _, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
-        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
       )
       let ret_diags = if return_type == none { [] }
         else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
-      param_diags + ret_diags
+      concat(param_diags, ret_diags)
 
     FuncDef { name: _, params: params, return_type: return_type, uses: uses, body: _, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
-        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
       )
       let ret_diags = if return_type == none { [] }
         else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
       let use_diags = fold(uses, init: [], f: (acc, u) =>
-        acc + collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
       )
-      param_diags + ret_diags + use_diags
+      concat(param_diags, ret_diags, use_diags)
 
     ServiceDef { name: _, transport: _, config: _, operations: operations, span: _ } =>
       fold(operations, init: [], f: (acc, op) =>
         let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
         )
         let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
         )
-        acc + input_diags + output_diags
+        concat(acc, input_diags, output_diags)
       )
 
     ResourceDef { name: _, capabilities: capabilities, span: _ } =>
       fold(capabilities, init: [], f: (acc, cap) =>
         let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
         )
         let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
         )
-        acc + input_diags + output_diags
+        concat(acc, input_diags, output_diags)
       )
 
     DataDef { name: _, type_expr: type_expr, value: _, span: _ } =>
@@ -897,9 +897,9 @@ fn collect_unresolved_in_item(item: Item, module_name: String, defined_names: Li
 
     ExternFuncDecl { name: _, params: params, return_type: return_type, span: _ } =>
       let param_diags = fold(params, init: [], f: (acc, p) =>
-        acc + collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
       )
-      param_diags + collect_unresolved_in_type_expr(expr: return_type, module_name: module_name, defined_names: defined_names)
+      concat(param_diags, collect_unresolved_in_type_expr(expr: return_type, module_name: module_name, defined_names: defined_names))
   }
 }
 
@@ -907,12 +907,12 @@ fn collect_unresolved_in_type_body(body: TypeBody, module_name: String, defined_
   match body {
     Record { fields: fields } =>
       fold(fields, init: [], f: (acc, f) =>
-        acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
       )
     Sum { variants: variants } =>
       fold(variants, init: [], f: (acc, v) =>
         fold(v.fields, init: acc, f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
         )
       )
     Alias { base: base } =>
@@ -929,7 +929,7 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
       } else {
         [Diagnostic {
           severity: Error,
-          message: "unresolved type '" + name + "' survived typecheck (internal error)",
+          message: concat("unresolved type '", name, "' survived typecheck (internal error)"),
           span: span,
           module_name: module_name
         }]
@@ -939,13 +939,13 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
 
     Product { name: _, fields: fields, span: _ } =>
       fold(fields, init: [], f: (acc, f) =>
-        acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
       )
 
     Coproduct { name: _, variants: variants, span: _ } =>
       fold(variants, init: [], f: (acc, v) =>
         fold(v.fields, init: acc, f: (inner_acc, f) =>
-          inner_acc + collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names)
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
         )
       )
 
@@ -959,12 +959,12 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
       collect_unresolved_in_type_expr(expr: base, module_name: module_name, defined_names: defined_names)
 
     MapType { key: key, value: value, span: _ } =>
-      collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names)
-      + collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names)
+      concat(collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names),
+        collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names))
 
     TypeApp { name: _, args: args, span: _ } =>
       fold(args, init: [], f: (acc, a) =>
-        acc + collect_unresolved_in_type_expr(expr: a, module_name: module_name, defined_names: defined_names)
+        concat(acc, collect_unresolved_in_type_expr(expr: a, module_name: module_name, defined_names: defined_names))
       )
   }
 }
@@ -980,7 +980,7 @@ fn typecheck_and_validate(graph: ModuleGraph) -> TypedGraph {
   let validation_diags = validate_no_unresolved(graph: typed)
   TypedGraph {
     modules: typed.modules,
-    diagnostics: typed.diagnostics + validation_diags
+    diagnostics: concat(typed.diagnostics, validation_diags)
   }
 }
 
@@ -1013,7 +1013,7 @@ fn module_type_bindings(graph: TypedGraph, module_name: String) -> List<TypeBind
 
 // Look up a resolved type by name across the entire graph.
 fn lookup_type_in_graph(graph: TypedGraph, name: String) -> TypeExpr? {
-  let all_bindings = fold(graph.modules, init: [], f: (acc, tm) => acc + tm.type_env.bindings)
+  let all_bindings = fold(graph.modules, init: [], f: (acc, tm) => concat(acc, tm.type_env.bindings))
   let matches = filter(all_bindings, b => b.name == name)
   let n = count(matches)
   if n > 0 {

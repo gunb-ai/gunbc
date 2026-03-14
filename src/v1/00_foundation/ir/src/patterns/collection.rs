@@ -416,6 +416,47 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
                 output_type: "String",
             },
         ),
+        // v2 compiler string builtins
+        (
+            "char_at",
+            BuiltinContract {
+                arity: 2,
+                params: &["s", "pos"],
+                output_type: "String",
+            },
+        ),
+        (
+            "string_length",
+            BuiltinContract {
+                arity: 1,
+                params: &["s"],
+                output_type: "Int",
+            },
+        ),
+        (
+            "substring",
+            BuiltinContract {
+                arity: 3,
+                params: &["s", "start", "end"],
+                output_type: "String",
+            },
+        ),
+        (
+            "lookup",
+            BuiltinContract {
+                arity: 2,
+                params: &["table", "key"],
+                output_type: "Any",
+            },
+        ),
+        (
+            "with",
+            BuiltinContract {
+                arity: 2,
+                params: &["record", "updates"],
+                output_type: "Any",
+            },
+        ),
     ]
 }
 

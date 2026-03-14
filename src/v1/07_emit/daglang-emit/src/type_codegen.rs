@@ -291,6 +291,21 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
             };
             (format!("&[{elem_type}]"), format!("&[\n    {items}\n]"))
         }
+        // Map<K, V> data: emit as a function returning HashMap since HashMap isn't const
+        TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
+            let key_type = type_expr_to_rust(&args[0]);
+            let val_type = type_expr_to_rust(&args[1]);
+            let val_type_name = match &args[1] {
+                TypeExpr::Named(n) => n.as_str(),
+                _ => &val_type,
+            };
+            let value = render_expr_to_rust(&dd.value, val_type_name, STATIC_OPTS);
+            let fn_name = to_snake_case(&dd.name);
+            // Emit as a public function returning HashMap
+            return vec![code_ir::Item::Raw(format!(
+                "pub fn {fn_name}() -> std::collections::HashMap<{key_type}, {val_type}> {{\n    {value}\n}}"
+            ))];
+        }
         _ => {
             let rust_ty = type_expr_to_rust(&dd.ty);
             let value = render_expr_to_rust(&dd.value, &rust_ty, STATIC_OPTS);
@@ -439,6 +454,17 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
             } else {
                 format!("\"{s}\".to_string()")
             }
+        }
+        Expr::Map(entries) => {
+            let items: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| {
+                    let key_str = render_expr_to_rust(k, "String", opts);
+                    let val_str = render_expr_to_rust(v, context_type, opts);
+                    format!("({key_str}.to_string(), {val_str})")
+                })
+                .collect();
+            format!("HashMap::from([{}])", items.join(", "))
         }
         _ => format!(
             "compile_error!(\"unsupported expr in type_codegen: {}\")",
@@ -806,6 +832,7 @@ pub fn typedefs_to_source_file(
         variant_to_enum,
         struct_field_types,
         enum_variants,
+        boxed_fields: std::collections::HashSet::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -918,6 +945,7 @@ pub fn generate_types_for_modules(
             variant_to_enum: v2e,
             struct_field_types: sft,
             enum_variants: ev,
+            boxed_fields: std::collections::HashSet::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1052,6 +1080,223 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
             "c.repeat(n.max(0) as usize)".to_string(),
         ))]),
         _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Recursive type detection → Box<> insertion (Phase 4)
+// ---------------------------------------------------------------------------
+
+use std::collections::{HashMap, HashSet};
+
+/// Compute the set of (TypeName, FieldName) pairs where the field type
+/// creates a recursive cycle and needs to be wrapped in `Box<>`.
+///
+/// Uses DFS cycle detection on a type reference graph built from the TypeDef
+/// items. Only fields that directly reference a type in a cycle are boxed —
+/// fields referencing types through `List<T>` are already heap-allocated
+/// and don't need boxing.
+pub fn compute_recursive_fields(
+    type_defs: &[&daglang_syntax::ast::TypeDef],
+) -> HashSet<(String, String)> {
+    // Build adjacency: type_name → [(field_name, referenced_type_name)]
+    let mut graph: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    let all_type_names: HashSet<String> = type_defs.iter().map(|td| td.name.clone()).collect();
+
+    for td in type_defs {
+        let mut edges = Vec::new();
+        match &td.body {
+            TypeBody::Record(fields) => {
+                for f in fields {
+                    collect_direct_type_refs(&f.ty, &f.name, &all_type_names, &mut edges);
+                }
+            }
+            TypeBody::Sum(variants) => {
+                for v in variants {
+                    for f in &v.fields {
+                        let field_key = format!("{}::{}", v.name, f.name);
+                        collect_direct_type_refs(&f.ty, &field_key, &all_type_names, &mut edges);
+                    }
+                }
+            }
+            TypeBody::Alias(_) => {}
+        }
+        graph.insert(td.name.clone(), edges);
+    }
+
+    // DFS cycle detection
+    let mut recursive_fields = HashSet::new();
+    let mut visited = HashSet::new();
+    let mut on_stack = HashSet::new();
+
+    for type_name in all_type_names.iter() {
+        if !visited.contains(type_name) {
+            dfs_find_cycles(
+                type_name,
+                &graph,
+                &mut visited,
+                &mut on_stack,
+                &mut Vec::new(),
+                &mut recursive_fields,
+            );
+        }
+    }
+
+    recursive_fields
+}
+
+/// Collect direct (non-List-wrapped) type references from a TypeExpr.
+/// Only direct references need boxing; List<T> is already heap-allocated.
+fn collect_direct_type_refs(
+    ty: &TypeExpr,
+    field_name: &str,
+    known_types: &HashSet<String>,
+    edges: &mut Vec<(String, String)>,
+) {
+    match ty {
+        TypeExpr::Named(name) => {
+            if known_types.contains(name) {
+                edges.push((field_name.to_string(), name.clone()));
+            }
+        }
+        TypeExpr::Optional(inner) => {
+            collect_direct_type_refs(inner, field_name, known_types, edges);
+        }
+        TypeExpr::Refined(inner, _) => {
+            collect_direct_type_refs(inner, field_name, known_types, edges);
+        }
+        // Generic containers like List<T>, Map<K,V> are heap-allocated;
+        // their contents don't need Boxing.
+        TypeExpr::Generic(_, _) => {}
+        TypeExpr::Record(_) => {}
+    }
+}
+
+/// DFS helper for cycle detection. When a back-edge is found, all edges
+/// on the cycle path are marked as needing Box<>.
+fn dfs_find_cycles(
+    node: &str,
+    graph: &HashMap<String, Vec<(String, String)>>,
+    visited: &mut HashSet<String>,
+    on_stack: &mut HashSet<String>,
+    path: &mut Vec<(String, String, String)>, // (from_type, field_name, to_type)
+    recursive_fields: &mut HashSet<(String, String)>,
+) {
+    visited.insert(node.to_string());
+    on_stack.insert(node.to_string());
+
+    if let Some(edges) = graph.get(node) {
+        for (field_name, target) in edges {
+            if !visited.contains(target.as_str()) {
+                path.push((node.to_string(), field_name.clone(), target.clone()));
+                dfs_find_cycles(target, graph, visited, on_stack, path, recursive_fields);
+                path.pop();
+            } else if on_stack.contains(target.as_str()) {
+                // Found a cycle — mark the current edge as needing Box<>
+                recursive_fields.insert((node.to_string(), field_name.clone()));
+                // Also mark all edges on the cycle path
+                for (from, fname, to) in path.iter().rev() {
+                    recursive_fields.insert((from.clone(), fname.clone()));
+                    if to == target {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    on_stack.remove(node);
+}
+
+/// Like `typedef_to_code_ir` but wraps recursive fields in `Box<>`.
+pub fn typedef_to_code_ir_boxed(
+    td: &daglang_syntax::ast::TypeDef,
+    recursive_fields: &HashSet<(String, String)>,
+) -> Vec<code_ir::Item> {
+    let derives: Vec<String> = DEFAULT_DERIVES.iter().map(|s| s.to_string()).collect();
+
+    match &td.body {
+        TypeBody::Record(fields) => {
+            let struct_fields: Vec<(String, String, bool)> = fields
+                .iter()
+                .map(|f| {
+                    let rust_ty = type_expr_to_rust(&f.ty);
+                    let needs_box = recursive_fields.contains(&(td.name.clone(), f.name.clone()));
+                    let final_ty = if needs_box {
+                        format!("Box<{}>", rust_ty)
+                    } else {
+                        rust_ty
+                    };
+                    (f.name.clone(), final_ty, true)
+                })
+                .collect();
+            let mut derives = derives;
+            if all_fields_default_compatible(fields) {
+                derives.push("Default".to_string());
+            }
+            vec![code_ir::Item::Struct(StructDef {
+                name: td.name.clone(),
+                is_pub: true,
+                derives,
+                fields: struct_fields,
+                doc: vec![],
+            })]
+        }
+        TypeBody::Sum(variants) => {
+            let mut derives = derives;
+            if is_simple_enum(variants) {
+                derives.push("Copy".to_string());
+                derives.push("Hash".to_string());
+            }
+
+            let variant_strs: Vec<String> = variants
+                .iter()
+                .map(|v| format_variant_boxed(v, &td.name, recursive_fields))
+                .collect();
+
+            vec![code_ir::Item::Enum(EnumDef {
+                name: td.name.clone(),
+                is_pub: true,
+                derives,
+                variants: variant_strs,
+                doc: vec![],
+            })]
+        }
+        TypeBody::Alias(type_expr) => {
+            let rust_type = type_expr_to_rust(type_expr);
+            vec![code_ir::Item::Raw(format!(
+                "pub type {} = {};",
+                td.name, rust_type
+            ))]
+        }
+    }
+}
+
+/// Format a variant for enum definition, wrapping recursive fields in Box<>.
+fn format_variant_boxed(
+    v: &daglang_syntax::ast::Variant,
+    type_name: &str,
+    recursive_fields: &HashSet<(String, String)>,
+) -> String {
+    if v.fields.is_empty() {
+        v.name.clone()
+    } else {
+        let field_strs: Vec<String> = v
+            .fields
+            .iter()
+            .map(|f| {
+                let rust_ty = type_expr_to_rust(&f.ty);
+                let field_key = format!("{}::{}", v.name, f.name);
+                let needs_box = recursive_fields.contains(&(type_name.to_string(), field_key));
+                let final_ty = if needs_box {
+                    format!("Box<{}>", rust_ty)
+                } else {
+                    rust_ty
+                };
+                format!("{}: {}", f.name, final_ty)
+            })
+            .collect();
+        format!("{} {{ {} }}", v.name, field_strs.join(", "))
     }
 }
 

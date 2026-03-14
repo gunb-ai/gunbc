@@ -1958,4 +1958,184 @@ fn example(items: List<String>) -> Int {
             kinds
         );
     }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Phase 4+5: v2 → Rust crate assembly
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// Parse all v2 .dag files and assemble them into a Rust crate via
+    /// the v2_crate_emit module.
+    #[test]
+    fn v2_crate_assembly_produces_files() {
+        let v2_files = [
+            ("00_core", "src/v2/00_core.dag"),
+            ("01_tokenize", "src/v2/01_tokenize.dag"),
+            ("02_parse", "src/v2/02_parse.dag"),
+            ("03_resolve", "src/v2/03_resolve.dag"),
+            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("05_emit", "src/v2/05_emit.dag"),
+            ("06_pipeline", "src/v2/06_pipeline.dag"),
+        ];
+
+        let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
+            .iter()
+            .map(|(stem, path)| {
+                let source = read_v2_file(path);
+                let result = daglang_syntax::parser::parse_to_result(&source);
+                assert!(
+                    result.is_ok(),
+                    "{} had parse errors: {:?}",
+                    path,
+                    result.diagnostics
+                );
+                (stem.to_string(), result.ast)
+            })
+            .collect();
+
+        let modules: Vec<(&str, &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>])> =
+            parsed
+                .iter()
+                .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf.items.as_slice()))
+                .collect();
+
+        let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
+
+        // Should produce: 7 module files + lib.rs + v2_rt.rs + Cargo.toml = 10 files
+        let file_names: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
+        assert!(
+            file_names.contains(&"Cargo.toml"),
+            "missing Cargo.toml in {:?}",
+            file_names
+        );
+        assert!(
+            file_names.contains(&"src/lib.rs"),
+            "missing src/lib.rs in {:?}",
+            file_names
+        );
+        assert!(
+            file_names.contains(&"src/v2_rt.rs"),
+            "missing src/v2_rt.rs in {:?}",
+            file_names
+        );
+        assert!(
+            file_names.contains(&"src/v2_core.rs"),
+            "missing src/v2_core.rs in {:?}",
+            file_names
+        );
+
+        // All generated .rs files should be non-empty
+        for f in &files {
+            assert!(
+                !f.content.is_empty(),
+                "{} is empty",
+                f.rel_path
+            );
+        }
+    }
+
+    /// The recursive type detection should identify Expr and TypeExpr as needing Box<>.
+    #[test]
+    fn v2_recursive_types_detected() {
+        let source = read_v2_file("src/v2/00_core.dag");
+        let result = daglang_syntax::parser::parse_to_result(&source);
+        assert!(result.is_ok());
+
+        let type_defs: Vec<&daglang_syntax::ast::TypeDef> = result
+            .ast
+            .items
+            .iter()
+            .filter_map(|item| match &item.node {
+                daglang_syntax::ast::Item::TypeDef(td) => Some(td),
+                _ => None,
+            })
+            .collect();
+
+        let recursive_fields =
+            daglang_emit::type_codegen::compute_recursive_fields(&type_defs);
+
+        // Expr should have recursive fields (e.g. FieldAccess::base is Expr)
+        let has_expr_recursive = recursive_fields
+            .iter()
+            .any(|(ty, _)| ty == "Expr");
+        assert!(
+            has_expr_recursive,
+            "Expr should have recursive fields, got: {:?}",
+            recursive_fields
+        );
+
+        // TypeExpr should have recursive fields (e.g. Optional::inner is TypeExpr)
+        let has_type_expr_recursive = recursive_fields
+            .iter()
+            .any(|(ty, _)| ty == "TypeExpr");
+        assert!(
+            has_type_expr_recursive,
+            "TypeExpr should have recursive fields, got: {:?}",
+            recursive_fields
+        );
+    }
+
+    /// v2 builtins (char_at, string_length, etc.) should be recognized by the
+    /// builtin contract registry.
+    #[test]
+    fn v2_builtins_registered() {
+        use gunbc_ir::patterns::collection::contract_for_name;
+
+        assert!(contract_for_name("char_at").is_some(), "char_at not registered");
+        assert!(contract_for_name("string_length").is_some(), "string_length not registered");
+        assert!(contract_for_name("substring").is_some(), "substring not registered");
+        assert!(contract_for_name("lookup").is_some(), "lookup not registered");
+        assert!(contract_for_name("with").is_some(), "with not registered");
+    }
+
+    /// Write crate to temp dir and run cargo check on it.
+    #[test]
+    #[ignore] // Enable once convergence phase is complete
+    fn v2_crate_cargo_check() {
+        let v2_files = [
+            ("00_core", "src/v2/00_core.dag"),
+            ("01_tokenize", "src/v2/01_tokenize.dag"),
+            ("02_parse", "src/v2/02_parse.dag"),
+            ("03_resolve", "src/v2/03_resolve.dag"),
+            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("05_emit", "src/v2/05_emit.dag"),
+            ("06_pipeline", "src/v2/06_pipeline.dag"),
+        ];
+
+        let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
+            .iter()
+            .map(|(stem, path)| {
+                let source = read_v2_file(path);
+                let result = daglang_syntax::parser::parse_to_result(&source);
+                (stem.to_string(), result.ast)
+            })
+            .collect();
+
+        let modules: Vec<(&str, &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>])> =
+            parsed
+                .iter()
+                .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf.items.as_slice()))
+                .collect();
+
+        let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
+
+        let tmp_dir = std::env::temp_dir().join("v2-compiler-check");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files)
+            .expect("failed to write crate");
+
+        let output = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo check");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            // Don't clean up — leave crate for inspection at tmp_dir
+            eprintln!("v2 crate written to: {}", tmp_dir.display());
+            panic!("cargo check failed:\n{}", stderr);
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
 }

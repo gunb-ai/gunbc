@@ -525,6 +525,29 @@ pub fn eval_builtin_call(
     args: &[(Option<String>, Value)],
 ) -> Option<Result<Value, EvalError>> {
     Some(match name {
+        // concat(a, b, ...) — sequence concatenation for strings and lists.
+        // Replaces the overloaded `+` operator for non-arithmetic operations.
+        "concat" => {
+            if args.len() < 2 {
+                Err(EvalError::new("concat requires at least 2 arguments"))
+            } else {
+                let mut result = args[0].1.clone();
+                for (_, arg) in &args[1..] {
+                    result = match (result, arg) {
+                        (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
+                        (Value::List(mut a), Value::List(b)) => {
+                            a.extend(b.iter().cloned());
+                            Value::List(a)
+                        }
+                        (a, b) => {
+                            // Fallback: convert to strings and concatenate
+                            Value::Str(format!("{}{}", value_to_string(&a), value_to_string(b)))
+                        }
+                    };
+                }
+                Ok(result)
+            }
+        }
         "with" => {
             if args.len() >= 2 {
                 match (&args[0].1, &args[1].1) {

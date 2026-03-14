@@ -78,7 +78,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
   )
   let resolved_imports_list = resolve_results |> map(r => r.resolved_imports)
   let import_diags = resolve_results |> map(r => r.diagnostics)
-    |> fold(init: [], f: fn(acc, diags) { acc + diags })
+    |> fold(init: [], f: fn(acc, diags) { concat(acc, diags) })
 
   // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules)
@@ -105,7 +105,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
 
   ModuleGraph {
     modules: sorted_resolved,
-    diagnostics: dup_diags + import_diags + topo_diags
+    diagnostics: concat(dup_diags, import_diags, topo_diags)
   }
 }
 
@@ -139,7 +139,7 @@ fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleRe
   )
   let resolved = results |> map(r => r.resolved)
   let diags = results |> map(r => r.diagnostics)
-    |> fold(init: [], f: fn(acc, d) { acc + d })
+    |> fold(init: [], f: fn(acc, d) { concat(acc, d) })
   ModuleResolveResult {
     resolved_imports: resolved,
     diagnostics: diags
@@ -163,7 +163,7 @@ fn resolve_import(
     None => {
       let diag = Diagnostic {
         severity: Error,
-        message: "unresolved import: module '" + import.module_path + "' not found (imported by '" + importing_module + "')",
+        message: concat("unresolved import: module '", import.module_path, "' not found (imported by '", importing_module, "')"),
         span: Some { value: import.span },
         module_name: Some { value: importing_module }
       }
@@ -184,7 +184,7 @@ fn resolve_import(
         |> map(missing_name =>
           Diagnostic {
             severity: Error,
-            message: "name '" + missing_name + "' not found in module '" + import.module_path + "' (imported by '" + importing_module + "')",
+            message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
             span: Some { value: import.span },
             module_name: Some { value: importing_module }
           }
@@ -213,8 +213,8 @@ fn get_exported_names(module: Module) -> List<String> {
   let item_names = module.items |> map(item => get_item_name(item: item))
   let variant_names = module.items
     |> map(item => get_variant_names(item: item))
-    |> fold(init: [], f: fn(acc, names) { acc + names })
-  item_names + variant_names
+    |> fold(init: [], f: fn(acc, names) { concat(acc, names) })
+  concat(item_names, variant_names)
 }
 
 // Extract the primary name from an item.
@@ -276,13 +276,13 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
     match earlier |> first {
       Some { value: _ } => [Diagnostic {
         severity: Error,
-        message: "duplicate module declaration: '" + m.name + "'",
+        message: concat("duplicate module declaration: '", m.name, "'"),
         span: Some { value: m.span },
         module_name: Some { value: m.name }
       }]
       None => []
     }
-  ) |> fold(init: [], f: fn(acc, diags) { acc + diags })
+  ) |> fold(init: [], f: fn(acc, diags) { concat(acc, diags) })
 }
 
 // =========================================================================
@@ -307,7 +307,7 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
         DepEdge { from_module: dep, to_module: m.name }
       )
     )
-    |> fold(init: [], f: fn(acc, edges) { acc + edges })
+    |> fold(init: [], f: fn(acc, edges) { concat(acc, edges) })
 
   // Compute initial in-degrees
   let initial_in_degrees = module_names |> map(name =>
@@ -337,7 +337,7 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
       sorted: final_state.sorted,
       cycle_error: Some { value: Diagnostic {
         severity: Error,
-        message: "circular dependency detected: " + cycle_desc,
+        message: concat("circular dependency detected: ", cycle_desc),
         span: None,
         module_name: None
       } }
@@ -377,7 +377,7 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
   }
 
   // Add zero-degree nodes to sorted output
-  let new_sorted = state.sorted + zero_nodes
+  let new_sorted = concat(state.sorted, zero_nodes)
 
   // Decrement in-degrees: for each edge from a zero_node, decrement target
   let new_in_degrees = state.module_names |> enumerate |> map(pair =>

@@ -1833,6 +1833,96 @@ fn eval_intrinsic_inner(
                 "chars: expected String, got {receiver:?}"
             ))),
         },
+        // v2 compiler builtins
+        "char_at" => {
+            let pos_expr = rest
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("pos"))
+                .or_else(|| rest.first());
+            match (&receiver, pos_expr) {
+                (Value::Str(s), Some((_, e))) => match eval_expr(e, env, ctx)? {
+                    Value::Int(pos) => match s.chars().nth(pos as usize) {
+                        Some(c) => Ok(Value::Str(c.to_string())),
+                        None => Ok(Value::Unit),
+                    },
+                    _ => Err(EvalError::new("char_at: pos must be Int")),
+                },
+                _ => Err(EvalError::new("char_at requires (String, Int)")),
+            }
+        }
+        "string_length" => match &receiver {
+            Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+            _ => Err(EvalError::new("string_length requires String")),
+        },
+        "substring" => {
+            let start_expr = rest
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("start"))
+                .or_else(|| rest.first());
+            let end_expr = rest
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("end"))
+                .or_else(|| rest.get(1));
+            match (&receiver, start_expr, end_expr) {
+                (Value::Str(s), Some((_, se)), Some((_, ee))) => {
+                    let start = match eval_expr(se, env, ctx)? {
+                        Value::Int(n) => n as usize,
+                        _ => return Err(EvalError::new("substring: start must be Int")),
+                    };
+                    let end = match eval_expr(ee, env, ctx)? {
+                        Value::Int(n) => n as usize,
+                        _ => return Err(EvalError::new("substring: end must be Int")),
+                    };
+                    Ok(Value::Str(s.chars().skip(start).take(end.saturating_sub(start)).collect()))
+                }
+                _ => Err(EvalError::new("substring requires (String, Int, Int)")),
+            }
+        }
+        "lookup" => {
+            let key_expr = rest
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("key"))
+                .or_else(|| rest.first());
+            match (&receiver, key_expr) {
+                (Value::Map(map), Some((_, e))) => {
+                    let key = match eval_expr(e, env, ctx)? {
+                        Value::Str(s) => s,
+                        other => value_to_string(&other),
+                    };
+                    match map.get(&key).cloned() {
+                        Some(val) => {
+                            let mut m = BTreeMap::new();
+                            m.insert("_variant".into(), Value::Str("Some".into()));
+                            m.insert("value".into(), val);
+                            Ok(Value::Map(m))
+                        }
+                        None => {
+                            let mut m = BTreeMap::new();
+                            m.insert("_variant".into(), Value::Str("None".into()));
+                            Ok(Value::Map(m))
+                        }
+                    }
+                }
+                _ => Err(EvalError::new("lookup requires (Map, key)")),
+            }
+        }
+        "with" => {
+            // with(record, { field: value, ... }) → record updated with new fields
+            match (receiver, rest.first()) {
+                (Value::Map(mut map), Some((_, e))) => {
+                    let updates = eval_expr(e, env, ctx)?;
+                    if let Value::Map(update_map) = updates {
+                        for (k, v) in update_map {
+                            map.insert(k, v);
+                        }
+                    }
+                    Ok(Value::Map(map))
+                }
+                (other, _) => {
+                    Err(EvalError::new(format!("with: expected record/map, got {other:?}")))
+                }
+            }
+        }
         _ => Err(EvalError::new(format!("unknown intrinsic call: {name}"))),
     }
 }

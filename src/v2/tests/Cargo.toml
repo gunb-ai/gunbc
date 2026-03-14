@@ -9,6 +9,7 @@ description = "Integration tests for the v2 self-hosted compiler"
 
 [dev-dependencies]
 daglang-driver = { path = "../../v1/02_pipeline/daglang-driver" }
+daglang-emit = { path = "../../v1/07_emit/daglang-emit" }
 daglang-eval = { path = "../../v1/05_graph/daglang-eval" }
 daglang-syntax = { path = "../../v1/03_source/daglang-syntax" }
 daglang-lower = { path = "../../v1/05_graph/daglang-lower" }

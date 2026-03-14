@@ -374,6 +374,87 @@ context, and recognize named args in the callable registry.
 
 ---
 
+### Branch 8: Type-unaware codegen produces heuristic-dependent output
+
+The v1 fn_codegen pipeline compiles .dag function bodies to Rust without
+type information. This forces heuristic workarounds that guess behavior
+from naming patterns — exactly the kind of string-based classification
+that the sustainability invariants prohibit.
+
+**Root cause:** fn_codegen receives raw AST but no type environment. It
+doesn't know field types, return types, or whether a struct field is
+recursive (`Box<T>`) or optional (`Option<T>`). Every decision that
+requires type information is either wrong or heuristic.
+
+**Terminal state:** Self-hosting. The v2 compiler has a typechecker and
+emitter that work on typed IR. Once self-hosting is achieved, the v1
+fn_codegen is dead code and all heuristics go with it.
+
+#### S75: `+` operator overloaded (FIXED 2026-03-13)
+
+The .dag language used `+` for arithmetic, string concatenation, and
+list concatenation. The codegen had no way to determine which without
+type information, producing six heuristic functions (`is_numeric_expr`,
+`is_list_field`, `is_list_call`, `is_list_ident`, `is_likely_list_concat`,
+`contains_string_literal`) that guessed meaning from field names and
+AST structure.
+
+**Fix:** Introduced `concat()` as an explicit intrinsic function for
+sequence concatenation. `+` is now exclusively arithmetic. Migrated
+~130 call sites across 8 .dag files. Added `Concat` trait to v2_rt
+runtime shim. Deleted all six heuristic functions.
+
+**Principle:** Operators must have syntax-local semantics. If you need
+type information to determine what an operator does, the operator is
+the wrong abstraction — use an explicit function instead.
+
+#### S76: `clone_if_needed()` — blind ownership heuristic (OPEN)
+
+fn_codegen adds `.clone()` to all variable/field expressions passed as
+function arguments or struct fields. Produces correct but inefficient
+generated code. ~300 unnecessary clones in the v2 crate.
+
+**Root cause:** No ownership tracking in the codegen pipeline.
+
+**Fix path:** v2 compiler's emitter should track variable liveness and
+emit borrows or moves as appropriate.
+
+#### S77: `infer_struct_name()` — field-name matching (OPEN)
+
+Anonymous records `{ field: value }` in .dag must be mapped to named
+Rust structs. The codegen guesses which struct by matching field names
+against known struct definitions. This produces wrong matches when
+multiple structs share field names (e.g., `BindingPower` vs `Expr::BinOp`
+both have `left` and `right` fields).
+
+**Root cause:** .dag allows anonymous records; Rust requires named types.
+The codegen has no type context to resolve the intended type.
+
+**Fix path:** Either require named records in .dag source, or carry
+return type information from function signatures into the codegen.
+
+#### S78: Materialized types in `std_types_prelude()` (OPEN)
+
+Types imported from `std.types` (`SourceSpan`, `FilePath`) and types
+invented for anonymous records (`BindingPower`, `ItemResult`,
+`VariantResult`, `CapabilityResult`, `ParamResult`, `OperationResult`)
+are hand-written as Rust struct definitions in the v2 crate assembly.
+
+**Root cause:** The v1 emitter doesn't resolve `import` declarations
+across modules. Types from external .dag modules aren't available.
+
+**Fix path:** v2 compiler's resolve phase handles cross-module imports.
+
+#### S79: Hardcoded cross-module imports (OPEN)
+
+`module_prelude()` in v2_crate_emit.rs contains hardcoded `use`
+statements (`use crate::v2_core::*`, `use crate::tokenize::*`, etc.)
+rather than deriving them from `import` declarations in each .dag file.
+
+**Root cause:** Same as S78 — no import resolution in the v1 emitter.
+
+---
+
 ## Prioritized sequence
 
 Ordered by signal value (which fix prevents the most silent regressions):
@@ -586,3 +667,8 @@ exactly the 5 points that call `eval_expr_s` with a subsequent push
 | BUG-6 | Collection aliases mapped to wrong arity | Count/Sum/FilterMap/SortBy/Append promoted to first-class `CollectionKind` variants | 2026-03-13 |
 | E3.2 | Transport mock tests tautological | Replaced insert/get/assert with registry construction + entry count + well-formedness checks. `go_test_name` deleted (dead code). TestSpec API (E3.4-E3.6) is the proper replacement. | 2026-03-13 |
 | Eval-9 | `extract_projection` indirection | Inlined to direct `output_value()` call; `PopResult::Error` variant removed (dead code) | 2026-03-13 |
+| S75 | `+` operator overloaded for arithmetic, string concat, and list concat | Introduced `concat()` intrinsic; `+` is now exclusively arithmetic. Removed all heuristic disambiguation (`is_numeric_expr`, `compile_string_concat`, etc.). ~130 .dag sites migrated. | 2026-03-13 |
+| S76 | v2 codegen: `clone_if_needed()` blindly clones arguments | OPEN — workaround for no ownership tracking in fn_codegen. Generates redundant `.clone()` calls. Remove when v2 compiler tracks ownership. | 2026-03-13 |
+| S77 | v2 codegen: `infer_struct_name()` guesses struct type from field names | OPEN — workaround for anonymous records in .dag having no explicit type. Wrong inference causes E0308 errors. Remove when .dag records are named or typed. | 2026-03-13 |
+| S78 | v2 codegen: hardcoded materialized types in `std_types_prelude()` | OPEN — `SourceSpan`, `BindingPower`, `ItemResult`, etc. manually defined in Rust because v1 emitter can't resolve cross-module imports. Remove when v2 compiler resolves imports. | 2026-03-13 |
+| S79 | v2 codegen: hardcoded `module_prelude()` cross-module imports | OPEN — `use crate::v2_core::*` etc. should be derived from .dag `import` declarations. Remove when v2 compiler resolves imports. | 2026-03-13 |
