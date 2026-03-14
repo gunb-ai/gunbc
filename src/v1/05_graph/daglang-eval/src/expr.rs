@@ -26,7 +26,11 @@ impl LoweredFnBody {
     /// Create a fn body with only statements (no type metadata).
     /// Used by synthetic/test bodies where type info is not available.
     pub fn from_stmts(stmts: Vec<LoweredStmt>) -> Self {
-        Self { stmts, param_types: vec![], return_type: None }
+        Self {
+            stmts,
+            param_types: vec![],
+            return_type: None,
+        }
     }
 
     /// Create a fn body with full type metadata for boundary checks.
@@ -35,7 +39,11 @@ impl LoweredFnBody {
         param_types: Vec<(String, String)>,
         return_type: Option<String>,
     ) -> Self {
-        Self { stmts, param_types, return_type }
+        Self {
+            stmts,
+            param_types,
+            return_type,
+        }
     }
 }
 
@@ -198,4 +206,3 @@ pub enum LoweredPattern {
     /// Literal value
     Literal(LoweredLiteral),
 }
-

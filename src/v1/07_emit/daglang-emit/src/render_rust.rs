@@ -11,8 +11,8 @@
 //! **Owned by**: Task 12 (dsl-codegen-tasks.md)
 
 use gunbc_ir::code_ir::{
-    Assert, BindIntent, BindTarget, EnumDef, Expr, FnDef, ImplBlock, Import, Item, MatchArm,
-    SourceFile, Stmt, StructDef,
+    Assert, BindIntent, BindTarget, EnumDef, Expr, FnDef, ImplBlock, Import, IrType, Item,
+    MatchArm, SourceFile, Stmt, StructDef,
 };
 use gunbc_ir::ValueExpr;
 use std::fmt::Write;
@@ -218,6 +218,58 @@ fn render_impl_block(i: &ImplBlock, indent: usize) -> String {
 }
 
 // ===========================================================================
+// IrType → Rust type rendering
+// ===========================================================================
+
+/// Render a target-agnostic `IrType` to a Rust type string.
+fn render_ir_type(ty: &IrType) -> String {
+    match ty {
+        IrType::Named(n) => n.clone(),
+        IrType::Generic(name, args) => {
+            let rust_name = match name.as_str() {
+                "List" => "Vec",
+                "Map" => "std::collections::HashMap",
+                other => other,
+            };
+            let rendered_args: Vec<String> = args.iter().map(render_ir_type).collect();
+            format!("{}<{}>", rust_name, rendered_args.join(", "))
+        }
+        IrType::Optional(inner) => format!("Option<{}>", render_ir_type(inner)),
+        IrType::Bool => "bool".to_string(),
+        IrType::Int => "i64".to_string(),
+        IrType::Str => "String".to_string(),
+        IrType::Tuple(items) => {
+            let rendered: Vec<String> = items.iter().map(render_ir_type).collect();
+            format!("({})", rendered.join(", "))
+        }
+        IrType::Record(fields) => {
+            let rendered: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| format!("{}: {}", n, render_ir_type(t)))
+                .collect();
+            format!("{{ {} }}", rendered.join(", "))
+        }
+        IrType::Unit => "()".to_string(),
+        IrType::Unknown => "_".to_string(),
+    }
+}
+
+/// Check if a let binding needs an explicit type annotation in Rust.
+///
+/// Currently: empty `vec![]` / `Vec::new()` needs `Vec<T>` annotation
+/// when the type can't be inferred from usage context.
+fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
+    match expr {
+        Expr::MacroCall { name, args } if name == "vec" && args.is_empty() => {
+            // Only annotate if we have a concrete element type (not Unknown)
+            matches!(ir_type, IrType::Generic(n, args) if n == "List"
+                && !args.iter().any(|a| matches!(a, IrType::Unknown)))
+        }
+        _ => false,
+    }
+}
+
+// ===========================================================================
 // Statement rendering
 // ===========================================================================
 
@@ -228,8 +280,19 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             name,
             mutable,
             expr,
+            ir_type,
         } => {
             let mut_kw = if *mutable { "mut " } else { "" };
+            // Emit explicit type annotation when Rust can't infer the type
+            if let Some(ty) = ir_type {
+                if needs_type_annotation(expr, ty) {
+                    let rust_type = render_ir_type(ty);
+                    return format!(
+                        "{}let {}{}: {} = {};\n",
+                        pad, mut_kw, name, rust_type, render_expr(expr)
+                    );
+                }
+            }
             format!("{}let {}{} = {};\n", pad, mut_kw, name, render_expr(expr))
         }
         Stmt::Bind {
@@ -352,7 +415,7 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
         Expr::RefMut(expr) => format!("&mut {}", render_expr(expr)),
         Expr::Path(segments) => segments.join("::"),
-        Expr::Struct { name, fields, rest } => {
+        Expr::Struct { name, fields, rest, .. } => {
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(k, v)| {
@@ -422,8 +485,13 @@ fn render_expr(expr: &Expr) -> String {
             }
         }
         Expr::MacroCall { name, args } => {
-            let args_str: Vec<String> = args.iter().map(render_expr).collect();
-            format!("{}!({})", name, args_str.join(", "))
+            // Empty vec!() needs type annotation; use Vec::new() instead.
+            if name == "vec" && args.is_empty() {
+                "Vec::new()".to_string()
+            } else {
+                let args_str: Vec<String> = args.iter().map(render_expr).collect();
+                format!("{}!({})", name, args_str.join(", "))
+            }
         }
         Expr::Tuple(items) => {
             let items_str: Vec<String> = items.iter().map(render_expr).collect();
@@ -453,7 +521,8 @@ fn render_match(expr: &Expr, arms: &[MatchArm]) -> String {
 fn render_if(cond: &Expr, then_body: &[Stmt], else_body: Option<&[Stmt]>) -> String {
     if matches!(cond, Expr::Block(_)) {
         let cond_rendered = render_expr(cond);
-        let mut out = format!("let __cond = {};\nif __cond {{\n", cond_rendered);
+        // Wrap in a block so `let` is valid in expression position (e.g. RHS of assignment).
+        let mut out = format!("{{\nlet __cond = {};\nif __cond {{\n", cond_rendered);
         for stmt in then_body {
             out.push_str(&render_stmt(stmt, 1));
         }
@@ -463,7 +532,7 @@ fn render_if(cond: &Expr, then_body: &[Stmt], else_body: Option<&[Stmt]>) -> Str
                 out.push_str(&render_stmt(stmt, 1));
             }
         }
-        out.push('}');
+        out.push_str("}\n}");
         return out;
     }
     let mut out = format!("if {} {{\n", render_expr(cond));
@@ -679,6 +748,7 @@ mod tests {
                     name: "Config".to_string(),
                     fields: vec![("name".to_string(), Expr::str_lit("default"))],
                     rest: None,
+                    field_types: None,
                 })],
                 doc: vec![],
                 attributes: vec![],
@@ -764,6 +834,7 @@ mod tests {
             name: "Config".to_string(),
             fields: vec![],
             rest: Some(Box::new(Expr::var("defaults"))),
+            field_types: None,
         };
         let rendered = render_expr(&expr);
         assert_eq!(rendered, "Config { ..defaults }");
@@ -783,6 +854,7 @@ mod tests {
                 ("count".to_string(), Expr::int(42)),
             ],
             rest: Some(Box::new(Expr::var("defaults"))),
+            field_types: None,
         };
         let rendered = render_expr(&expr);
         assert_eq!(

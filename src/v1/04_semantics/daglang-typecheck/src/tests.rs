@@ -73,6 +73,29 @@ fn duplicate_param_names_are_reported() {
 }
 
 #[test]
+fn located_signature_errors_carry_item_span() {
+    let graph = module_graph_from_sources(&[(
+        "dup_params.dag",
+        "module sample.dup\nfn bad(a: String, a: Int) -> String { a }",
+    )]);
+    let errors = typecheck_module_graph_located(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect_err("duplicate params should fail");
+    assert!(errors.iter().any(|error| matches!(
+        &error.error,
+        TypeError::DuplicateParameter { item, param } if item == "bad" && param == "a"
+    )));
+    assert!(
+        errors.iter().any(|error| error.span.is_some()),
+        "signature validation errors should carry the enclosing item span"
+    );
+}
+
+#[test]
 fn duplicate_output_fields_are_reported() {
     let graph = module_graph_from_sources(&[(
         "dup_outputs.dag",
@@ -100,6 +123,75 @@ fn undefined_types_are_reported() {
     assert!(errors.iter().any(
         |error| matches!(error, TypeError::UndefinedType(msg) if msg.contains("MissingType"))
     ));
+}
+
+#[test]
+fn unresolvable_type_defs_fail_closed_with_item_span() {
+    let graph = module_graph_from_sources(&[(
+        "bad_type_def.dag",
+        r#"module sample.types
+type Config {
+  field: MissingType
+}
+"#,
+    )]);
+    let errors = typecheck_module_graph_located(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect_err("bad type definitions should fail typecheck");
+    assert!(errors.iter().any(|error| matches!(
+        &error.error,
+        TypeError::UnresolvableType { ty, context }
+            if ty == "MissingType" && context == "type Config.field"
+    )));
+    assert!(
+        errors.iter().any(|error| error.span.is_some()),
+        "type registry errors should carry the enclosing item span"
+    );
+}
+
+#[test]
+fn non_string_map_keys_are_rejected_in_signatures() {
+    let graph = module_graph_from_sources(&[(
+        "bad_map_key.dag",
+        "module sample.maps\nfn run(input: Map<Int,String>) -> String { \"ok\" }",
+    )]);
+    let errors = typecheck_module_graph(&graph).expect_err("non-string map key should fail");
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnresolvableType { ty, context }
+                if ty == "Map<Int, String>" && context == "run.input"
+        )),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn located_callable_body_errors_carry_item_span() {
+    let graph = module_graph_from_sources(&[(
+        "missing_call.dag",
+        "module sample.calls\nfn run() -> String { missing(value: \"ok\") }",
+    )]);
+    let errors = typecheck_module_graph_located(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("unresolved callable target should fail");
+    assert!(errors.iter().any(|error| matches!(
+        &error.error,
+        TypeError::UnresolvedCallTarget { caller, callee }
+            if caller == "run" && callee == "missing"
+    )));
+    assert!(
+        errors.iter().any(|error| error.span.is_some()),
+        "callable body errors should carry the enclosing item span"
+    );
 }
 
 #[test]

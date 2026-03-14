@@ -46,12 +46,8 @@ pub fn execute_lowered_op(
         LoweredOp::Callable { fn_body, .. } => {
             execute_callable(fn_body.as_deref(), &inputs, sibling_fns, data_values)
         }
-        LoweredOp::Transport { .. } => {
-            execute_transport_passthrough(inputs)
-        }
-        LoweredOp::Collection { kind, .. } => {
-            execute_collection(kind, inputs)
-        }
+        LoweredOp::Transport { .. } => execute_transport_passthrough(inputs),
+        LoweredOp::Collection { kind, .. } => execute_collection(kind, inputs),
         LoweredOp::Pattern(pattern_op) => {
             // Patterns are self-executing via the Executable trait.
             use gunbc_exec::Executable;

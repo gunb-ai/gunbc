@@ -829,11 +829,20 @@ mod tests {
     fn container_refinement_length_propagates() {
         let bit_dag = type_lib::refined("Bit", vec![Predicate::Width(1)]);
         let list_bit = type_lib::list(bit_dag);
-        let list_bit_len8 = type_lib::refined_with_base("Byte.bits", list_bit, vec![Predicate::Length(8)]);
+        let list_bit_len8 =
+            type_lib::refined_with_base("Byte.bits", list_bit, vec![Predicate::Length(8)]);
 
         let props = derive_structural_properties(&list_bit_len8);
-        assert_eq!(props.length, Some(8), "Length(8) predicate should propagate through container refinement");
-        assert_eq!(props.width, Some(1), "Inner element width should be inherited from SubDag");
+        assert_eq!(
+            props.length,
+            Some(8),
+            "Length(8) predicate should propagate through container refinement"
+        );
+        assert_eq!(
+            props.width,
+            Some(1),
+            "Inner element width should be inherited from SubDag"
+        );
     }
 
     // =========================================================================
@@ -851,7 +860,11 @@ mod tests {
         let byte_dag = type_lib::product_resolved("Byte", vec![("bits", list_bit_len8)]);
 
         let props = derive_structural_properties(&byte_dag);
-        assert_eq!(props.width, Some(8), "Byte = Product(bits: List<Bit> where length(8)) should derive width 8×1=8");
+        assert_eq!(
+            props.width,
+            Some(8),
+            "Byte = Product(bits: List<Bit> where length(8)) should derive width 8×1=8"
+        );
     }
 
     #[test]
@@ -871,7 +884,11 @@ mod tests {
         let word32_dag = type_lib::product_resolved("Word32", vec![("bytes", list_byte_len4)]);
 
         let props = derive_structural_properties(&word32_dag);
-        assert_eq!(props.width, Some(32), "Word32 = Product(bytes: List<Byte> where length(4)) should derive width 4×8=32");
+        assert_eq!(
+            props.width,
+            Some(32),
+            "Word32 = Product(bytes: List<Byte> where length(4)) should derive width 4×8=32"
+        );
     }
 
     #[test]
@@ -890,7 +907,11 @@ mod tests {
         );
 
         let props = derive_structural_properties(&uint8_dag);
-        assert_eq!(props.width, Some(8), "UInt8 = Byte where unsigned, arithmetic should inherit width 8 from Byte");
+        assert_eq!(
+            props.width,
+            Some(8),
+            "UInt8 = Byte where unsigned, arithmetic should inherit width 8 from Byte"
+        );
         assert_eq!(props.signed, Some(false));
         assert!(props.arithmetic);
     }

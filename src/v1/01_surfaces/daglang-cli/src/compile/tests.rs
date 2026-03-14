@@ -370,10 +370,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
         resolve_lowered_dag(&dag).expect("unknown callables should resolve via passthrough");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(
-        debug.contains("CallableOp"),
-        "unexpected op debug: {debug}"
-    );
+    assert!(debug.contains("CallableOp"), "unexpected op debug: {debug}");
 }
 
 #[test]

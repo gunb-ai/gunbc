@@ -369,11 +369,7 @@ impl TypeRegistry {
         );
         self.register_product(
             "TransportResponse",
-            vec![
-                ("status", "Int"),
-                ("headers", "Json"),
-                ("body", "String"),
-            ],
+            vec![("status", "Int"), ("headers", "Json"), ("body", "String")],
         );
         self.register_product(
             "FileResponse",
@@ -438,7 +434,6 @@ impl TypeRegistry {
         self.register("GcpServiceAccountEmail", type_lib::non_empty_string());
         self.register("GcpSubjectToken", type_lib::non_empty_string());
         self.register("OidcSubjectToken", type_lib::non_empty_string());
-
     }
 
     /// Create a type registry with primitives + common refined/core types.
@@ -914,8 +909,7 @@ impl TypeRegistry {
         // classification to determine backing.
         use crate::types::SemanticCarrierKind;
         match self.semantic_carrier_kind(type_id) {
-            SemanticCarrierKind::Structural
-            | SemanticCarrierKind::UnknownSemantic => {} // fall through to suffix/error path
+            SemanticCarrierKind::Structural | SemanticCarrierKind::UnknownSemantic => {} // fall through to suffix/error path
             SemanticCarrierKind::Platform => return Ok(ValueBacking::String),
             SemanticCarrierKind::Timestamp => return Ok(ValueBacking::Int),
             SemanticCarrierKind::TransportRequest
@@ -927,17 +921,13 @@ impl TypeRegistry {
             SemanticCarrierKind::Secret => return Ok(ValueBacking::Secret),
         }
 
-        // S23/S35: Structural classification from type DAG.
-        // Product types (records) serialize as Map at runtime.
-        // Coproduct types (enums) serialize as String at runtime.
+        // S23/S35: Structural classification from the resolved type shape.
+        // This reads the outer composition instead of scanning descendant
+        // nodes, so wrapper/container aliases keep their own backing.
         if let Some(dag) = self.resolve_type(type_id) {
-            use crate::type_op::TypeOp;
-            use crate::NodeBody;
-            for node in &dag.nodes {
-                match &node.body {
-                    NodeBody::Opaque(TypeOp::Product(_)) => return Ok(ValueBacking::Map),
-                    NodeBody::Opaque(TypeOp::Coproduct(_)) => return Ok(ValueBacking::String),
-                    _ => {}
+            if let Ok(shape) = crate::type_shape::type_shape(&dag) {
+                if let Some(backing) = value_backing_from_shape(&shape) {
+                    return Ok(backing);
                 }
             }
         }
@@ -951,7 +941,10 @@ impl TypeRegistry {
         }
 
         // Fallback: unknown type — return an error.
-        Err(format!("unknown type '{}' has no known ValueBacking", type_id.0))
+        Err(format!(
+            "unknown type '{}' has no known ValueBacking",
+            type_id.0
+        ))
     }
 
     /// Classify a type's semantic carrier kind using registry knowledge.
@@ -1000,6 +993,24 @@ impl TypeRegistry {
                 crate::types::SeedPlaceholderPolicy::ExplicitSeedRequired
             }
         }
+    }
+}
+
+fn value_backing_from_shape(
+    shape: &crate::type_shape::TypeShape,
+) -> Option<crate::types::ValueBacking> {
+    use crate::type_shape::{ContainerShape, TypeShape};
+    use crate::types::ValueBacking;
+
+    match shape {
+        TypeShape::Coproduct(..) => Some(ValueBacking::String),
+        TypeShape::Product(..) => Some(ValueBacking::Map),
+        TypeShape::Brand(_, inner) => value_backing_from_shape(inner),
+        TypeShape::Container(ContainerShape::Optional(inner)) => value_backing_from_shape(inner),
+        TypeShape::Container(ContainerShape::List(_)) => Some(ValueBacking::List),
+        TypeShape::Container(ContainerShape::Set(_)) => Some(ValueBacking::Set),
+        TypeShape::Container(ContainerShape::Map(..)) => Some(ValueBacking::Map),
+        TypeShape::Platform(_) | TypeShape::Opaque(_) => None,
     }
 }
 
@@ -1420,8 +1431,7 @@ mod tests {
         ];
 
         for type_name in &cases {
-            let expected = value_backing_for_type_id(type_name)
-                .unwrap_or(ValueBacking::Json);
+            let expected = value_backing_for_type_id(type_name).unwrap_or(ValueBacking::Json);
             let actual = registry
                 .value_backing(&TypeId::from(*type_name))
                 .unwrap_or(ValueBacking::Json);
@@ -1495,8 +1505,30 @@ mod tests {
             ValueBacking::Float
         );
         assert_eq!(
-            r.value_backing(&TypeId::from("Optional<Credential>")).unwrap(),
+            r.value_backing(&TypeId::from("Optional<Credential>"))
+                .unwrap(),
             ValueBacking::Map
+        );
+    }
+
+    #[test]
+    fn test_value_backing_regression_container_alias_uses_outer_shape() {
+        use crate::types::ValueBacking;
+
+        let mut registry = TypeRegistry::with_core_types();
+        registry.register(
+            "PayloadList",
+            crate::type_lib::list(crate::type_lib::product(
+                "Payload",
+                vec![("value", "String")],
+            )),
+        );
+
+        assert_eq!(
+            registry
+                .value_backing(&TypeId::from("PayloadList"))
+                .unwrap(),
+            ValueBacking::List
         );
     }
 
@@ -1677,14 +1709,8 @@ mod tests {
     fn ratchet_identity_types_in_core_registry() {
         let registry = TypeRegistry::with_core_types();
         let identities = registry.audit_identity_types();
-        let allowed: std::collections::BTreeSet<&str> = [
-            "Any",
-            "Json",
-            "Record",
-            "Unit",
-        ]
-        .into_iter()
-        .collect();
+        let allowed: std::collections::BTreeSet<&str> =
+            ["Any", "Json", "Record", "Unit"].into_iter().collect();
         let actual: std::collections::BTreeSet<&str> =
             identities.iter().map(|t| t.0.as_str()).collect();
         let unexpected: Vec<_> = actual.difference(&allowed).collect();

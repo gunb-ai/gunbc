@@ -231,9 +231,13 @@ fn scan_number(state: TokenizerState) -> TokenizerState {
     return TokenizerState { source: state.source, pos: frac_end, tokens: concat(state.tokens, [token]), interp_depth: state.interp_depth }
   }
   let text = substring(s: state.source, start: state.pos, end: int_end)
-  let value = parse_int(s: text)
+  let parsed = parse_int(s: text)
+  let kind = match parsed {
+    Some { value: v } => LitInt { value: v }
+    None => Unknown { char: text }
+  }
   let token = Token {
-    kind: LitInt { value: value },
+    kind: kind,
     span: SourceSpan { start: state.pos, end: int_end }
   }
   TokenizerState { source: state.source, pos: int_end, tokens: concat(state.tokens, [token]), interp_depth: state.interp_depth }

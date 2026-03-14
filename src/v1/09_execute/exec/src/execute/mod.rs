@@ -658,7 +658,8 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 .unwrap_or(Cardinality::ONE);
 
                             if let Some(elements) = collect_fan_in(val, from_cardinality) {
-                                let bucket = list_buckets.entry(edge.to_port.0.clone()).or_default();
+                                let bucket =
+                                    list_buckets.entry(edge.to_port.0.clone()).or_default();
                                 bucket.push((edge.index, elements));
                             }
                         } else if scalar_sources.contains_key(&edge.to_port.0) {
@@ -885,11 +886,12 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // template once per element and replace the element output with results.
         if let Some(loop_info) = loops.iter().find(|l| l.unpack_id == *node_id) {
             let body_entries =
-                execute_loop_body(loop_info, &node_outputs, mode, log_detail, strictness)
-                    .map_err(|e| {
+                execute_loop_body(loop_info, &node_outputs, mode, log_detail, strictness).map_err(
+                    |e| {
                         // Annotate loop body errors with the unpack node as context
                         e.with_layer(node_trace_layer(node_id, node))
-                })?;
+                    },
+                )?;
 
             let results: Vec<Value> = body_entries
                 .iter()
@@ -1428,14 +1430,14 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
         let body_entries =
             execute_loop_body(loop_info, &state.node_outputs, mode, log_detail, strictness)
                 .map_err(|e| {
-                // Annotate loop body errors with unpack node context (Pure role
-                // since we don't have the full Node<T> here — the node_id is the
-                // important part for trace rendering).
-                e.with_layer(ErrorLayer::NodeTrace(NodeTraceLayer {
-                    node_id: node_id.0.clone(),
-                    role: NodeRole::Pure,
-                }))
-            })?;
+                    // Annotate loop body errors with unpack node context (Pure role
+                    // since we don't have the full Node<T> here — the node_id is the
+                    // important part for trace rendering).
+                    e.with_layer(ErrorLayer::NodeTrace(NodeTraceLayer {
+                        node_id: node_id.0.clone(),
+                        role: NodeRole::Pure,
+                    }))
+                })?;
 
         // Replace the unpack element output with transformed body results.
         let results: Vec<Value> = body_entries

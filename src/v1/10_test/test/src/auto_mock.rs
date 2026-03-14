@@ -6,16 +6,15 @@
 //! downstream consumer nodes to select the best response variant.
 
 use gunbc_exec::{execute_single_node, Executable, ExecutionMode};
+use gunbc_ir::filename;
 use gunbc_ir::transport::{
     FileOp, FileResponse, RestResponse, ShellRequest, ShellResponse, TransportRequest,
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, parse_map_type_id,
-    variant_witnesses, Cardinality, Dag, NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry,
-    Value, ValueBacking,
+    detect_boundaries, detect_entrypoints, parse_map_type_id, variant_witnesses, Cardinality, Dag,
+    NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry, Value, ValueBacking,
 };
-use gunbc_ir::filename;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
@@ -147,11 +146,7 @@ fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) 
 /// Walks the type DAG for `Product(field_names)` nodes, extracts each field's
 /// type from the corresponding `field_{name}` SubDag child, and recursively
 /// generates witness values for each field.
-fn product_witness(
-    type_dag: &Dag<TypeOp>,
-    registry: &TypeRegistry,
-    depth: u8,
-) -> Option<Value> {
+fn product_witness(type_dag: &Dag<TypeOp>, registry: &TypeRegistry, depth: u8) -> Option<Value> {
     // Find the Product node and extract field names.
     let field_names: Vec<String> = type_dag.nodes.iter().find_map(|node| {
         if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
@@ -219,7 +214,10 @@ fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
             }
             // Use the passed-in registry (which includes DSL types) instead
             // of the static core-only registry from value_backing_for_type_id().
-            match registry.value_backing(&gunbc_ir::TypeId::from(type_id)).unwrap_or(ValueBacking::Json) {
+            match registry
+                .value_backing(&gunbc_ir::TypeId::from(type_id))
+                .unwrap_or(ValueBacking::Json)
+            {
                 ValueBacking::String => Value::Str("mock".to_string()),
                 ValueBacking::Secret => Value::Secret(gunbc_ir::SecretString::new("mock")),
                 ValueBacking::Bool => Value::Bool(true),
@@ -235,7 +233,11 @@ fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
     }
 }
 
-fn default_value_for_port(type_id: &str, cardinality: Cardinality, registry: &TypeRegistry) -> Value {
+fn default_value_for_port(
+    type_id: &str,
+    cardinality: Cardinality,
+    registry: &TypeRegistry,
+) -> Value {
     if type_id == "Any" && cardinality.max != Some(1) {
         let count = cardinality.min.max(1) as usize;
         return Value::List(vec![Value::Str("mock".to_string()); count]);
@@ -633,7 +635,11 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                default_value_for_port(input_port.type_id.0.as_str(), input_port.cardinality, &registry)
+                default_value_for_port(
+                    input_port.type_id.0.as_str(),
+                    input_port.cardinality,
+                    &registry,
+                )
             };
             required_inputs.insert(input_port.name.0.clone(), value);
         }
@@ -688,7 +694,10 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
             let matcher = if use_fallback {
                 OutputMatcher::NonEmpty
             } else {
-                match registry.value_backing(&port.type_id).unwrap_or(ValueBacking::Json) {
+                match registry
+                    .value_backing(&port.type_id)
+                    .unwrap_or(ValueBacking::Json)
+                {
                     ValueBacking::Bool => OutputMatcher::IsBool,
                     ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
                     ValueBacking::String => OutputMatcher::IsString,
@@ -989,7 +998,10 @@ mod tests {
         // are now DSL-only (available after merge_dsl_types).
         assert_eq!(
             default_value_for_type("Platform", &registry),
-            Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }
+            Value::Enum {
+                ty: "Platform".to_string(),
+                variant: "Linux".to_string()
+            }
         );
     }
 
@@ -998,7 +1010,10 @@ mod tests {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
             default_value_for_type("List<Platform>", &registry),
-            Value::List(vec![Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }])
+            Value::List(vec![Value::Enum {
+                ty: "Platform".to_string(),
+                variant: "Linux".to_string()
+            }])
         );
     }
 
@@ -1007,15 +1022,20 @@ mod tests {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
             default_value_for_type("Platform", &registry),
-            Value::Enum { ty: "Platform".to_string(), variant: "Linux".to_string() }
+            Value::Enum {
+                ty: "Platform".to_string(),
+                variant: "Linux".to_string()
+            }
         );
     }
 
     #[test]
     fn default_value_for_optional_prefers_absent() {
         let registry = TypeRegistry::with_core_types();
-        assert_eq!(default_value_for_type("Optional<String>", &registry), Value::Unit);
+        assert_eq!(
+            default_value_for_type("Optional<String>", &registry),
+            Value::Unit
+        );
         assert_eq!(default_value_for_type("String?", &registry), Value::Unit);
     }
-
 }

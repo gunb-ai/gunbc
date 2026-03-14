@@ -17,7 +17,7 @@ import v2.std.core {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
-import v2.compiler.typecheck { typecheck, TypedGraph }
+import v2.compiler.typecheck { typecheck_and_validate, TypedGraph }
 import v2.compiler.emit { emit_rust }
 
 // =========================================================================
@@ -67,19 +67,14 @@ fn read_source(path: FilePath) -> SourceFile {
 // =========================================================================
 
 // Gather all diagnostics from a list of parse results.
+// ParseResult.error is Diagnostic? — extract non-None errors directly.
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
-  fold(parse_results, init: [], f: fn(acc, pr) {
-    if pr.error != None {
-      concat(acc, [Diagnostic {
-        severity: Error,
-        message: pr.error,
-        span: None,
-        module_name: None
-      }])
-    } else {
-      acc
+  fold(parse_results, init: [], f: (acc, pr) =>
+    match pr.error {
+      Some { value: diag } => concat(acc, [diag])
+      None => acc
     }
-  })
+  )
 }
 
 // =========================================================================
@@ -91,17 +86,8 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 fn compile_file(source: SourceFile) -> CompileFileResult {
   let tokens = tokenize(source: source.content)
   let result = parse(tokens: tokens)
-  if result.error != None {
-    let diag = Diagnostic {
-      severity: Error,
-      message: result.error,
-      span: None,
-      module_name: None
-    }
-    CompileFileResult { module: None, diagnostics: [diag] }
-  } else {
-    CompileFileResult { module: result.module, diagnostics: [] }
-  }
+  let errors = collect_diagnostics(parse_results: [result])
+  CompileFileResult { module: result.module, diagnostics: errors }
 }
 
 // =========================================================================
@@ -131,14 +117,35 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
     }
   } else {
     // Safe to extract: all parses succeeded, so every p.module is Some.
-    let modules = map(parse_results, p => p.module)
+    let modules = map(parse_results, p => p.module.value)
     // Stage 3: Resolve imports and build module graph
     let graph = resolve_modules(modules: modules)
 
-    // Stage 4: Type-check the module graph
-    let typed = typecheck(graph: graph)
+    // Gate: if resolve produced errors, do not proceed to typecheck.
+    let resolve_errors = graph.diagnostics |> filter(d => d.severity == Error)
+    if resolve_errors |> count > 0 {
+      return CompileResult {
+        files: [],
+        diagnostics: concat(parse_diagnostics, graph.diagnostics)
+      }
+    }
+
+    // Stage 4: Type-check and validate the module graph.
+    // typecheck_and_validate runs typecheck + validate_no_unresolved,
+    // ensuring no unresolved Named references survive past this point.
+    let typed = typecheck_and_validate(graph: graph)
+
+    // Gate: if typecheck produced errors, do not proceed to emit.
+    let typecheck_errors = typed.diagnostics |> filter(d => d.severity == Error)
+    if typecheck_errors |> count > 0 {
+      return CompileResult {
+        files: [],
+        diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics)
+      }
+    }
 
     // Stage 5: Emit target-language files
+    // Precondition: no errors from any prior stage.
     let files = match backend {
       Rust => emit_rust(typed: typed)
       Python => []
@@ -146,7 +153,7 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
 
     CompileResult {
       files: files,
-      diagnostics: concat(graph.diagnostics, typed.diagnostics, parse_diagnostics)
+      diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics)
     }
   }
 }

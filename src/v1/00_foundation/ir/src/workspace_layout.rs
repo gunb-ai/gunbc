@@ -398,7 +398,9 @@ mod tests {
             "expected src/v1/00_foundation/ir source glob, got: {globs:?}"
         );
         assert!(
-            globs.iter().any(|g| g == "src/v1/00_foundation/ir/Cargo.toml"),
+            globs
+                .iter()
+                .any(|g| g == "src/v1/00_foundation/ir/Cargo.toml"),
             "expected src/v1/00_foundation/ir manifest glob, got: {globs:?}"
         );
     }

@@ -2173,7 +2173,8 @@ impl Parser {
                     exit = self.parse_exit_block()?;
                 } else if matches!(&self.peek().kind, TokenKind::Ident(s) if s == "mock_response") {
                     mock_responses = self.parse_mock_response_block()?;
-                } else if matches!(&self.peek().kind, TokenKind::Ident(s) if s == "output_parsing") {
+                } else if matches!(&self.peek().kind, TokenKind::Ident(s) if s == "output_parsing")
+                {
                     self.advance(); // consume "output_parsing"
                     self.expect(&TokenKind::Colon)?;
                     output_parsing = Some(self.expect_ident()?);
@@ -3234,7 +3235,7 @@ impl Parser {
                 }
                 self.advance(); // consume |
                 self.advance(); // consume >
-                // RHS: parse with high binding power so we get just the function call
+                                // RHS: parse with high binding power so we get just the function call
                 let rhs = self.parse_expr(r_bp)?;
                 lhs = match rhs {
                     // `a |> f(b, c)` → `f(a, b, c)`
@@ -3645,7 +3646,10 @@ impl Parser {
             // Multi-statement lambda body: `x => let a = 1\n a + 1`
             // Statements until `)` or `}`
             let mut stmts = Vec::new();
-            while !self.check(&TokenKind::RParen) && !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            while !self.check(&TokenKind::RParen)
+                && !self.check(&TokenKind::RBrace)
+                && !self.at_eof()
+            {
                 match self.parse_stmt() {
                     Ok(s) => stmts.push(s),
                     Err(e) => {
@@ -3675,14 +3679,20 @@ impl Parser {
                 | TokenKind::Match
                 | TokenKind::If
                 | TokenKind::For
+                // Literals indicate a block expression, not a record
+                | TokenKind::Str(_)
+                | TokenKind::Int(_)
+                | TokenKind::Float(_)
+                | TokenKind::True
+                | TokenKind::False
+                | TokenKind::StrBegin(_)
+                | TokenKind::NoneLit
         ) || (Self::token_kind_as_ident(&self.tokens[next].kind).is_some()
             && matches!(
                 self.tokens[after].kind,
                 TokenKind::Eq | TokenKind::LBracket | TokenKind::LParen
             ))
     }
-
-
 
     fn consume_brace_block_expr(&mut self) -> Result<Expr, ParseError> {
         let stmts = self.parse_stmts()?;
@@ -3795,41 +3805,42 @@ impl Parser {
                 None
             };
             self.expect(&TokenKind::FatArrow)?;
-            let body = if self.check(&TokenKind::LBrace) && self.starts_brace_block_expr_after_lbrace() {
-                // Match arm bodies with { let ... } or { if ... } are parsed as blocks.
-                self.advance(); // consume {
-                let mut stmts = self.parse_stmts()?;
-                self.expect(&TokenKind::RBrace)?;
-                if stmts.len() == 1 {
-                    match stmts.remove(0) {
-                        Stmt::Expr(expr) => expr,
-                        other => Expr::Block(vec![other]),
+            let body =
+                if self.check(&TokenKind::LBrace) && self.starts_brace_block_expr_after_lbrace() {
+                    // Match arm bodies with { let ... } or { if ... } are parsed as blocks.
+                    self.advance(); // consume {
+                    let mut stmts = self.parse_stmts()?;
+                    self.expect(&TokenKind::RBrace)?;
+                    if stmts.len() == 1 {
+                        match stmts.remove(0) {
+                            Stmt::Expr(expr) => expr,
+                            other => Expr::Block(vec![other]),
+                        }
+                    } else {
+                        Expr::Block(stmts)
                     }
-                } else {
-                    Expr::Block(stmts)
-                }
-            } else if self.starts_brace_block_expr() {
-                // Implicit block: multi-statement body without braces
-                // (e.g., `Text { v } => let x = ...\n expr`)
-                // Parse statements until next pattern or closing }.
-                let mut stmts = Vec::new();
-                while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                    // Stop if we see what looks like a new match arm
-                    if self.looks_like_match_arm_start() {
-                        break;
-                    }
-                    match self.parse_stmt() {
-                        Ok(s) => stmts.push(s),
-                        Err(e) => {
-                            self.record_err(e);
+                } else if self.starts_brace_block_expr() {
+                    // Implicit block: multi-statement body without braces
+                    // (e.g., `Text { v } => let x = ...\n expr`)
+                    // Parse statements until next pattern or closing }.
+                    let mut stmts = Vec::new();
+                    while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                        // Stop if we see what looks like a new match arm
+                        if self.looks_like_match_arm_start() {
                             break;
                         }
+                        match self.parse_stmt() {
+                            Ok(s) => stmts.push(s),
+                            Err(e) => {
+                                self.record_err(e);
+                                break;
+                            }
+                        }
                     }
-                }
-                Expr::Block(stmts)
-            } else {
-                self.parse_expr(0)?
-            };
+                    Expr::Block(stmts)
+                } else {
+                    self.parse_expr(0)?
+                };
             arms.push(MatchArm {
                 pattern,
                 guard,
@@ -5467,10 +5478,7 @@ service rest.T {
         let ast = parse_or_panic(source);
         match &ast.items[0].node {
             Item::ServiceDef(def) => {
-                assert_eq!(
-                    def.config.response_provider,
-                    Some("GitHub".to_string())
-                );
+                assert_eq!(def.config.response_provider, Some("GitHub".to_string()));
             }
             other => panic!("expected ServiceDef, got {other:?}"),
         }

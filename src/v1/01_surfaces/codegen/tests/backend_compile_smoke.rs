@@ -32,10 +32,10 @@ fn workspace_path(relative: &str) -> std::path::PathBuf {
     // CARGO_MANIFEST_DIR points to the crate dir; workspace root is 4 levels up
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest
-        .parent()  // 01_surfaces/
-        .and_then(|p| p.parent())  // v1/
-        .and_then(|p| p.parent())  // src/
-        .and_then(|p| p.parent())  // workspace root
+        .parent() // 01_surfaces/
+        .and_then(|p| p.parent()) // v1/
+        .and_then(|p| p.parent()) // src/
+        .and_then(|p| p.parent()) // workspace root
         .expect("workspace root")
         .join(relative)
 }

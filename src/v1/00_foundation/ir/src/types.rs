@@ -1140,17 +1140,47 @@ impl BuiltinType {
 /// instead of maintaining parallel match arms.
 pub static BUILTIN_TYPES: &[BuiltinType] = &[
     // ── Scalar primitives ────────────────────────────────────────────
-    BuiltinType { name: "String",  arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Bool",    arity: 0, value_backing: Some(ValueBacking::Bool),   carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Int",     arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Float",   arity: 0, value_backing: Some(ValueBacking::Float),  carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Bytes",   arity: 0, value_backing: Some(ValueBacking::Bytes),  carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "String",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Bool",
+        arity: 0,
+        value_backing: Some(ValueBacking::Bool),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Int",
+        arity: 0,
+        value_backing: Some(ValueBacking::Int),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Float",
+        arity: 0,
+        value_backing: Some(ValueBacking::Float),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Bytes",
+        arity: 0,
+        value_backing: Some(ValueBacking::Bytes),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // Unit: the zero-information type. Represents "no meaningful value" for ports
     // that exist purely for control flow (completion signals, sequencing edges).
     // Analogous to `void` in C or `()` in Rust. Use Unit when a port must exist
     // (to express an edge in the DAG) but carries no data. Do NOT use Unit as a
     // stand-in for "unknown type" -- use Any for that.
-    BuiltinType { name: "Unit",    arity: 0, value_backing: Some(ValueBacking::Unit),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "Unit",
+        arity: 0,
+        value_backing: Some(ValueBacking::Unit),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // Json: the universal interchange type. Represents arbitrary structured data
     // without compile-time shape guarantees. Used at system boundaries where type
     // information is unavailable: external API responses, dynamic configuration,
@@ -1158,8 +1188,18 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
     // is upcast-compatible with Json, making it the practical "top of the value
     // lattice." Prefer narrowing Json to a specific type whenever the shape is
     // known -- leaving data as Json forfeits compile-time validation.
-    BuiltinType { name: "Json",    arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Secret",  arity: 0, value_backing: Some(ValueBacking::Secret), carrier_kind: SemanticCarrierKind::Secret },
+    BuiltinType {
+        name: "Json",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Secret",
+        arity: 0,
+        value_backing: Some(ValueBacking::Secret),
+        carrier_kind: SemanticCarrierKind::Secret,
+    },
     // Any: the type-theoretic top type. Every type is compatible with Any as a
     // target, so `is_compatible(T, Any)` holds for all T. Used in type positions
     // where the compiler cannot determine the specific type (e.g., generic
@@ -1169,7 +1209,12 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
     // At runtime, Any values are backed by Json serialization, but the semantic
     // difference matters for type checking: Json-typed ports accept any *value*,
     // while Any-typed ports accept any *type*.
-    BuiltinType { name: "Any",     arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "Any",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // Record: a structural product type with named fields. Analogous to an
     // anonymous struct -- two Records with the same field names and types are
     // structurally equivalent regardless of declaration site. Records have no
@@ -1177,62 +1222,317 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
     // runtime (field-name -> value). Use Record for ad-hoc grouped data; use
     // named product types (registered via `register_product_checked`) when
     // nominal identity and cross-module reference stability matter.
-    BuiltinType { name: "Record",  arity: 0, value_backing: Some(ValueBacking::Map),    carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Void",    arity: 0, value_backing: Some(ValueBacking::Unit),   carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Error",   arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "Record",
+        arity: 0,
+        value_backing: Some(ValueBacking::Map),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Void",
+        arity: 0,
+        value_backing: Some(ValueBacking::Unit),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Error",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // ── Generic containers ───────────────────────────────────────────
-    BuiltinType { name: "List",    arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Map",     arity: 2, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Optional", arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Result",  arity: 2, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Queue",   arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Set",     arity: 1, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Self",    arity: 0, value_backing: None, carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "List",
+        arity: 1,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Map",
+        arity: 2,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Optional",
+        arity: 1,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Result",
+        arity: 2,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Queue",
+        arity: 1,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Set",
+        arity: 1,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Self",
+        arity: 0,
+        value_backing: None,
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // ── Refined structural types (named, zero-arity) ─────────────────
-    BuiltinType { name: "NonEmptyString",    arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "NonEmptyStr",       arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "SecretName",        arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Url",               arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "FilePath",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Path",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Email",             arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "PositiveInt",       arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "NonNegativeInt",    arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "Char",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "NonEmptyString",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "NonEmptyStr",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "SecretName",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Url",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "FilePath",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Path",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Email",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "PositiveInt",
+        arity: 0,
+        value_backing: Some(ValueBacking::Int),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "NonNegativeInt",
+        arity: 0,
+        value_backing: Some(ValueBacking::Int),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "Char",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // ── GCP/OIDC identity types ──────────────────────────────────────
-    BuiltinType { name: "OidcAudience",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "WifAudience",               arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "GcpProjectId",              arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "GcpSecretId",               arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "GcpSecretVersion",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "GcpServiceAccountEmail",    arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "GcpSubjectToken",           arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "OidcSubjectToken",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "LanguageId",                arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "ProjectId",                 arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
-    BuiltinType { name: "ServiceAccountEmail",       arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Structural },
+    BuiltinType {
+        name: "OidcAudience",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "WifAudience",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "GcpProjectId",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "GcpSecretId",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "GcpSecretVersion",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "GcpServiceAccountEmail",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "GcpSubjectToken",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "OidcSubjectToken",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "LanguageId",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "ProjectId",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
+    BuiltinType {
+        name: "ServiceAccountEmail",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Structural,
+    },
     // ── Transport types ──────────────────────────────────────────────
-    BuiltinType { name: "TransportRequest",  arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
-    BuiltinType { name: "FileRequest",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
-    BuiltinType { name: "ShellRequest",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
-    BuiltinType { name: "RestRequest",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
-    BuiltinType { name: "HttpRequest",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
-    BuiltinType { name: "TcpRequest",        arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportRequest },
-    BuiltinType { name: "TransportResponse", arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
-    BuiltinType { name: "FileResponse",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
-    BuiltinType { name: "ShellResponse",     arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
-    BuiltinType { name: "RestResponse",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
-    BuiltinType { name: "HttpResponse",      arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
-    BuiltinType { name: "TcpResponse",       arity: 0, value_backing: Some(ValueBacking::Json), carrier_kind: SemanticCarrierKind::TransportResponse },
+    BuiltinType {
+        name: "TransportRequest",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportRequest,
+    },
+    BuiltinType {
+        name: "FileRequest",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportRequest,
+    },
+    BuiltinType {
+        name: "ShellRequest",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportRequest,
+    },
+    BuiltinType {
+        name: "RestRequest",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportRequest,
+    },
+    BuiltinType {
+        name: "HttpRequest",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportRequest,
+    },
+    BuiltinType {
+        name: "TcpRequest",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportRequest,
+    },
+    BuiltinType {
+        name: "TransportResponse",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportResponse,
+    },
+    BuiltinType {
+        name: "FileResponse",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportResponse,
+    },
+    BuiltinType {
+        name: "ShellResponse",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportResponse,
+    },
+    BuiltinType {
+        name: "RestResponse",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportResponse,
+    },
+    BuiltinType {
+        name: "HttpResponse",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportResponse,
+    },
+    BuiltinType {
+        name: "TcpResponse",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::TransportResponse,
+    },
     // ── Semantic carrier types ───────────────────────────────────────
-    BuiltinType { name: "Credential",        arity: 0, value_backing: Some(ValueBacking::Map),    carrier_kind: SemanticCarrierKind::Credential },
-    BuiltinType { name: "SecretString",      arity: 0, value_backing: Some(ValueBacking::Secret), carrier_kind: SemanticCarrierKind::Secret },
-    BuiltinType { name: "FilesystemHandle",  arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::FilesystemHandle },
-    BuiltinType { name: "NetworkHandle",     arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::NetworkHandle },
-    BuiltinType { name: "ToolHandle",        arity: 0, value_backing: Some(ValueBacking::Json),   carrier_kind: SemanticCarrierKind::ToolHandle },
-    BuiltinType { name: "Platform",          arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Platform },
-    BuiltinType { name: "RuntimePlatform",   arity: 0, value_backing: Some(ValueBacking::String), carrier_kind: SemanticCarrierKind::Platform },
-    BuiltinType { name: "Timestamp",         arity: 0, value_backing: Some(ValueBacking::Int),    carrier_kind: SemanticCarrierKind::Timestamp },
+    BuiltinType {
+        name: "Credential",
+        arity: 0,
+        value_backing: Some(ValueBacking::Map),
+        carrier_kind: SemanticCarrierKind::Credential,
+    },
+    BuiltinType {
+        name: "SecretString",
+        arity: 0,
+        value_backing: Some(ValueBacking::Secret),
+        carrier_kind: SemanticCarrierKind::Secret,
+    },
+    BuiltinType {
+        name: "FilesystemHandle",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::FilesystemHandle,
+    },
+    BuiltinType {
+        name: "NetworkHandle",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::NetworkHandle,
+    },
+    BuiltinType {
+        name: "ToolHandle",
+        arity: 0,
+        value_backing: Some(ValueBacking::Json),
+        carrier_kind: SemanticCarrierKind::ToolHandle,
+    },
+    BuiltinType {
+        name: "Platform",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Platform,
+    },
+    BuiltinType {
+        name: "RuntimePlatform",
+        arity: 0,
+        value_backing: Some(ValueBacking::String),
+        carrier_kind: SemanticCarrierKind::Platform,
+    },
+    BuiltinType {
+        name: "Timestamp",
+        arity: 0,
+        value_backing: Some(ValueBacking::Int),
+        carrier_kind: SemanticCarrierKind::Timestamp,
+    },
 ];
 
 /// Classify a type name into a semantic carrier kind.
@@ -1359,9 +1659,7 @@ impl ValueBacking {
                 Some(1) | None => Value::Str("<MOCK>".to_string()),
                 Some(i) => Value::Str(format!("<MOCK_{}>", i)),
             },
-            ValueBacking::Secret => {
-                Value::Secret(crate::value::SecretString::new("<MOCK_SECRET>"))
-            }
+            ValueBacking::Secret => Value::Secret(crate::value::SecretString::new("<MOCK_SECRET>")),
             ValueBacking::Bool => match index {
                 Some(i) => Value::Bool(i % 2 == 1),
                 None => Value::Bool(true),

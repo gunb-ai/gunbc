@@ -23,8 +23,7 @@ use gunbc_resolve::builder::compile_and_resolve;
 use gunbc_resolve::BuildOpts;
 use gunbc_test::{auto_mock_failure_variants, auto_mock_spec};
 use gunbc_test::{
-    BoundaryMock, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher,
-    TestClass, TransportMock,
+    BoundaryMock, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher, TestClass, TransportMock,
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;

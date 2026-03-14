@@ -63,8 +63,13 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
             match container {
                 ContainerShape::Optional(inner) => {
                     let inner_str = emit_shape(inner, backend);
-                    language_model::resolve_container(ContainerKind::Optional, &inner_str, None, model)
-                        .unwrap_or_else(|| format!("Optional<{inner_str}>"))
+                    language_model::resolve_container(
+                        ContainerKind::Optional,
+                        &inner_str,
+                        None,
+                        model,
+                    )
+                    .unwrap_or_else(|| format!("Optional<{inner_str}>"))
                 }
                 ContainerShape::List(inner) => {
                     let inner_str = emit_shape(inner, backend);
@@ -79,8 +84,13 @@ pub fn emit_shape(shape: &gunbc_ir::TypeShape, backend: Backend) -> String {
                 ContainerShape::Map(key, value) => {
                     let key_str = emit_shape(key, backend);
                     let val_str = emit_shape(value, backend);
-                    language_model::resolve_container(ContainerKind::Map, &val_str, Some(&key_str), model)
-                        .unwrap_or_else(|| format!("Map<{key_str}, {val_str}>"))
+                    language_model::resolve_container(
+                        ContainerKind::Map,
+                        &val_str,
+                        Some(&key_str),
+                        model,
+                    )
+                    .unwrap_or_else(|| format!("Map<{key_str}, {val_str}>"))
                 }
             }
         }
@@ -196,8 +206,14 @@ mod tests {
         assert_eq!(resolve_and_emit("Int", None, Backend::Rust), "i64");
         assert_eq!(resolve_and_emit("i64", None, Backend::Rust), "i64");
         assert_eq!(resolve_and_emit("Float", None, Backend::Rust), "f64");
-        assert_eq!(resolve_and_emit("ToolRegistry", None, Backend::Rust), "serde_json::Value");
-        assert_eq!(resolve_and_emit("FilesystemHandle", None, Backend::Rust), "PathBuf");
+        assert_eq!(
+            resolve_and_emit("ToolRegistry", None, Backend::Rust),
+            "serde_json::Value"
+        );
+        assert_eq!(
+            resolve_and_emit("FilesystemHandle", None, Backend::Rust),
+            "PathBuf"
+        );
     }
 
     #[test]
@@ -206,7 +222,10 @@ mod tests {
         assert_eq!(resolve_and_emit("Bool", None, Backend::Go), "bool");
         assert_eq!(resolve_and_emit("Int", None, Backend::Go), "int64");
         assert_eq!(resolve_and_emit("Float", None, Backend::Go), "float64");
-        assert_eq!(resolve_and_emit("ToolRegistry", None, Backend::Go), "interface{}");
+        assert_eq!(
+            resolve_and_emit("ToolRegistry", None, Backend::Go),
+            "interface{}"
+        );
     }
 
     #[test]
@@ -402,7 +421,10 @@ mod tests {
         assert_eq!(resolve_and_emit("Float", None, Backend::C), "double");
         assert_eq!(resolve_and_emit("Bytes", None, Backend::C), "uint8_t*");
         assert_eq!(resolve_and_emit("Json", None, Backend::C), "void*");
-        assert_eq!(resolve_and_emit("FilesystemHandle", None, Backend::C), "const char*");
+        assert_eq!(
+            resolve_and_emit("FilesystemHandle", None, Backend::C),
+            "const char*"
+        );
         assert_eq!(resolve_and_emit("Unit", None, Backend::C), "void");
         assert_eq!(resolve_and_emit("Bool", None, Backend::C), "bool");
     }

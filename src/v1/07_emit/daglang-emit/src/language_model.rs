@@ -128,7 +128,13 @@ fn rust_format_product(name: Option<&str>, fields: &[(String, String)]) -> Strin
 fn rust_format_coproduct(name: Option<&str>, variants: &[(String, String)]) -> String {
     let variant_strs: Vec<String> = variants
         .iter()
-        .map(|(n, t)| if t == "()" { n.clone() } else { format!("{n}({t})") })
+        .map(|(n, t)| {
+            if t == "()" {
+                n.clone()
+            } else {
+                format!("{n}({t})")
+            }
+        })
         .collect();
     match name {
         Some(n) => format!("enum {n} {{ {} }}", variant_strs.join(", ")),
@@ -186,44 +192,146 @@ static RUST_SCALARS: &[ScalarEntry] = &[
 ];
 
 static RUST_NAMED: &[NamedEntry] = &[
-    NamedEntry { names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId",
-                           "ServiceAccountEmail", "FilePath", "Secret"], syntax: "String" },
-    NamedEntry { names: &["Bool", "bool"], syntax: "bool" },
-    NamedEntry { names: &["Int", "i64", "I64"], syntax: "i64" },
-    NamedEntry { names: &["Float", "f64"], syntax: "f64" },
-    NamedEntry { names: &["Char"], syntax: "char" },
-    NamedEntry { names: &["Bytes"], syntax: "Vec<u8>" },
-    NamedEntry { names: &["Json", "ToolRegistry"], syntax: "serde_json::Value" },
-    NamedEntry { names: &["TransportRequest"], syntax: "TransportRequest" },
-    NamedEntry { names: &["TransportResponse"], syntax: "TransportResponse" },
-    NamedEntry { names: &["FilesystemHandle"], syntax: "PathBuf" },
-    NamedEntry { names: &["Record"], syntax: "serde_json::Value" },
+    NamedEntry {
+        names: &[
+            "String",
+            "Path",
+            "NonEmptyStr",
+            "Url",
+            "GistId",
+            "ProjectId",
+            "ServiceAccountEmail",
+            "FilePath",
+            "Secret",
+        ],
+        syntax: "String",
+    },
+    NamedEntry {
+        names: &["Bool", "bool"],
+        syntax: "bool",
+    },
+    NamedEntry {
+        names: &["Int", "i64", "I64"],
+        syntax: "i64",
+    },
+    NamedEntry {
+        names: &["Float", "f64"],
+        syntax: "f64",
+    },
+    NamedEntry {
+        names: &["Char"],
+        syntax: "char",
+    },
+    NamedEntry {
+        names: &["Bytes"],
+        syntax: "Vec<u8>",
+    },
+    NamedEntry {
+        names: &["Json", "ToolRegistry"],
+        syntax: "serde_json::Value",
+    },
+    NamedEntry {
+        names: &["TransportRequest"],
+        syntax: "TransportRequest",
+    },
+    NamedEntry {
+        names: &["TransportResponse"],
+        syntax: "TransportResponse",
+    },
+    NamedEntry {
+        names: &["FilesystemHandle"],
+        syntax: "PathBuf",
+    },
+    NamedEntry {
+        names: &["Record"],
+        syntax: "serde_json::Value",
+    },
 ];
 
 static RUST_CONTAINERS: &[ContainerEntry] = &[
-    ContainerEntry { kind: ContainerKind::Optional, syntax_template: "Option<{T}>" },
-    ContainerEntry { kind: ContainerKind::List, syntax_template: "Vec<{T}>" },
-    ContainerEntry { kind: ContainerKind::Set, syntax_template: "HashSet<{T}>" },
-    ContainerEntry { kind: ContainerKind::Map, syntax_template: "HashMap<{K}, {V}>" },
+    ContainerEntry {
+        kind: ContainerKind::Optional,
+        syntax_template: "Option<{T}>",
+    },
+    ContainerEntry {
+        kind: ContainerKind::List,
+        syntax_template: "Vec<{T}>",
+    },
+    ContainerEntry {
+        kind: ContainerKind::Set,
+        syntax_template: "HashSet<{T}>",
+    },
+    ContainerEntry {
+        kind: ContainerKind::Map,
+        syntax_template: "HashMap<{K}, {V}>",
+    },
 ];
 
 static RUST_TRANSPORT: &[TransportEntry] = &[
-    TransportEntry { abstract_name: "prepare_file_read", native_call: "FileRequest::read" },
-    TransportEntry { abstract_name: "execute_file_read", native_call: "execute_transport" },
-    TransportEntry { abstract_name: "parse_file_read_response", native_call: "parse_file_response" },
-    TransportEntry { abstract_name: "prepare_file_write", native_call: "FileRequest::write" },
-    TransportEntry { abstract_name: "execute_file_write", native_call: "execute_transport" },
-    TransportEntry { abstract_name: "parse_file_write_response", native_call: "parse_file_response" },
-    TransportEntry { abstract_name: "prepare_file_exists", native_call: "FileRequest::exists" },
-    TransportEntry { abstract_name: "execute_file_exists", native_call: "execute_transport" },
-    TransportEntry { abstract_name: "prepare_shell_exec", native_call: "ShellRequest::new" },
-    TransportEntry { abstract_name: "execute_shell_exec", native_call: "execute_transport" },
-    TransportEntry { abstract_name: "parse_shell_exec_response", native_call: "parse_shell_response" },
-    TransportEntry { abstract_name: "prepare_http_request", native_call: "RestRequest::new" },
-    TransportEntry { abstract_name: "execute_http_request", native_call: "execute_transport" },
-    TransportEntry { abstract_name: "prepare_directory_list", native_call: "FileRequest::list_dir" },
-    TransportEntry { abstract_name: "execute_directory_list", native_call: "execute_transport" },
-    TransportEntry { abstract_name: "acquire_resource", native_call: "acquire_resource_handle" },
+    TransportEntry {
+        abstract_name: "prepare_file_read",
+        native_call: "FileRequest::read",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_read",
+        native_call: "execute_transport",
+    },
+    TransportEntry {
+        abstract_name: "parse_file_read_response",
+        native_call: "parse_file_response",
+    },
+    TransportEntry {
+        abstract_name: "prepare_file_write",
+        native_call: "FileRequest::write",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_write",
+        native_call: "execute_transport",
+    },
+    TransportEntry {
+        abstract_name: "parse_file_write_response",
+        native_call: "parse_file_response",
+    },
+    TransportEntry {
+        abstract_name: "prepare_file_exists",
+        native_call: "FileRequest::exists",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_exists",
+        native_call: "execute_transport",
+    },
+    TransportEntry {
+        abstract_name: "prepare_shell_exec",
+        native_call: "ShellRequest::new",
+    },
+    TransportEntry {
+        abstract_name: "execute_shell_exec",
+        native_call: "execute_transport",
+    },
+    TransportEntry {
+        abstract_name: "parse_shell_exec_response",
+        native_call: "parse_shell_response",
+    },
+    TransportEntry {
+        abstract_name: "prepare_http_request",
+        native_call: "RestRequest::new",
+    },
+    TransportEntry {
+        abstract_name: "execute_http_request",
+        native_call: "execute_transport",
+    },
+    TransportEntry {
+        abstract_name: "prepare_directory_list",
+        native_call: "FileRequest::list_dir",
+    },
+    TransportEntry {
+        abstract_name: "execute_directory_list",
+        native_call: "execute_transport",
+    },
+    TransportEntry {
+        abstract_name: "acquire_resource",
+        native_call: "acquire_resource_handle",
+    },
 ];
 
 pub static RUST_MODEL: LanguageModel = LanguageModel {
@@ -232,7 +340,10 @@ pub static RUST_MODEL: LanguageModel = LanguageModel {
     named: RUST_NAMED,
     containers: RUST_CONTAINERS,
     transport: RUST_TRANSPORT,
-    composite: CompositeFormat { format_product: rust_format_product, format_coproduct: rust_format_coproduct },
+    composite: CompositeFormat {
+        format_product: rust_format_product,
+        format_coproduct: rust_format_coproduct,
+    },
     unit_syntax: "()",
     opaque_fallback: "serde_json::Value",
 };
@@ -256,43 +367,143 @@ static GO_SCALARS: &[ScalarEntry] = &[
 ];
 
 static GO_NAMED: &[NamedEntry] = &[
-    NamedEntry { names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId",
-                           "ServiceAccountEmail", "FilePath", "Secret", "FilesystemHandle"], syntax: "string" },
-    NamedEntry { names: &["Bool", "bool"], syntax: "bool" },
-    NamedEntry { names: &["Int", "i64", "I64"], syntax: "int64" },
-    NamedEntry { names: &["Float", "f64"], syntax: "float64" },
-    NamedEntry { names: &["Char"], syntax: "rune" },
-    NamedEntry { names: &["Bytes"], syntax: "[]byte" },
-    NamedEntry { names: &["Json", "ToolRegistry"], syntax: "interface{}" },
-    NamedEntry { names: &["TransportRequest"], syntax: "transport.Request" },
-    NamedEntry { names: &["TransportResponse"], syntax: "transport.Response" },
-    NamedEntry { names: &["Record"], syntax: "interface{}" },
+    NamedEntry {
+        names: &[
+            "String",
+            "Path",
+            "NonEmptyStr",
+            "Url",
+            "GistId",
+            "ProjectId",
+            "ServiceAccountEmail",
+            "FilePath",
+            "Secret",
+            "FilesystemHandle",
+        ],
+        syntax: "string",
+    },
+    NamedEntry {
+        names: &["Bool", "bool"],
+        syntax: "bool",
+    },
+    NamedEntry {
+        names: &["Int", "i64", "I64"],
+        syntax: "int64",
+    },
+    NamedEntry {
+        names: &["Float", "f64"],
+        syntax: "float64",
+    },
+    NamedEntry {
+        names: &["Char"],
+        syntax: "rune",
+    },
+    NamedEntry {
+        names: &["Bytes"],
+        syntax: "[]byte",
+    },
+    NamedEntry {
+        names: &["Json", "ToolRegistry"],
+        syntax: "interface{}",
+    },
+    NamedEntry {
+        names: &["TransportRequest"],
+        syntax: "transport.Request",
+    },
+    NamedEntry {
+        names: &["TransportResponse"],
+        syntax: "transport.Response",
+    },
+    NamedEntry {
+        names: &["Record"],
+        syntax: "interface{}",
+    },
 ];
 
 static GO_CONTAINERS: &[ContainerEntry] = &[
-    ContainerEntry { kind: ContainerKind::Optional, syntax_template: "*{T}" },
-    ContainerEntry { kind: ContainerKind::List, syntax_template: "[]{T}" },
-    ContainerEntry { kind: ContainerKind::Set, syntax_template: "map[{T}]struct{}" },
-    ContainerEntry { kind: ContainerKind::Map, syntax_template: "map[{K}]{V}" },
+    ContainerEntry {
+        kind: ContainerKind::Optional,
+        syntax_template: "*{T}",
+    },
+    ContainerEntry {
+        kind: ContainerKind::List,
+        syntax_template: "[]{T}",
+    },
+    ContainerEntry {
+        kind: ContainerKind::Set,
+        syntax_template: "map[{T}]struct{}",
+    },
+    ContainerEntry {
+        kind: ContainerKind::Map,
+        syntax_template: "map[{K}]{V}",
+    },
 ];
 
 static GO_TRANSPORT: &[TransportEntry] = &[
-    TransportEntry { abstract_name: "prepare_file_read", native_call: "transport.NewFileReadRequest" },
-    TransportEntry { abstract_name: "execute_file_read", native_call: "transport.Execute" },
-    TransportEntry { abstract_name: "parse_file_read_response", native_call: "transport.ParseFileResponse" },
-    TransportEntry { abstract_name: "prepare_file_write", native_call: "transport.NewFileWriteRequest" },
-    TransportEntry { abstract_name: "execute_file_write", native_call: "transport.Execute" },
-    TransportEntry { abstract_name: "parse_file_write_response", native_call: "transport.ParseFileResponse" },
-    TransportEntry { abstract_name: "prepare_file_exists", native_call: "transport.NewFileExistsRequest" },
-    TransportEntry { abstract_name: "execute_file_exists", native_call: "transport.Execute" },
-    TransportEntry { abstract_name: "prepare_shell_exec", native_call: "transport.NewShellRequest" },
-    TransportEntry { abstract_name: "execute_shell_exec", native_call: "transport.Execute" },
-    TransportEntry { abstract_name: "parse_shell_exec_response", native_call: "transport.ParseShellResponse" },
-    TransportEntry { abstract_name: "prepare_http_request", native_call: "transport.NewHTTPRequest" },
-    TransportEntry { abstract_name: "execute_http_request", native_call: "transport.Execute" },
-    TransportEntry { abstract_name: "prepare_directory_list", native_call: "transport.NewDirListRequest" },
-    TransportEntry { abstract_name: "execute_directory_list", native_call: "transport.Execute" },
-    TransportEntry { abstract_name: "acquire_resource", native_call: "resource.Acquire" },
+    TransportEntry {
+        abstract_name: "prepare_file_read",
+        native_call: "transport.NewFileReadRequest",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_read",
+        native_call: "transport.Execute",
+    },
+    TransportEntry {
+        abstract_name: "parse_file_read_response",
+        native_call: "transport.ParseFileResponse",
+    },
+    TransportEntry {
+        abstract_name: "prepare_file_write",
+        native_call: "transport.NewFileWriteRequest",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_write",
+        native_call: "transport.Execute",
+    },
+    TransportEntry {
+        abstract_name: "parse_file_write_response",
+        native_call: "transport.ParseFileResponse",
+    },
+    TransportEntry {
+        abstract_name: "prepare_file_exists",
+        native_call: "transport.NewFileExistsRequest",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_exists",
+        native_call: "transport.Execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_shell_exec",
+        native_call: "transport.NewShellRequest",
+    },
+    TransportEntry {
+        abstract_name: "execute_shell_exec",
+        native_call: "transport.Execute",
+    },
+    TransportEntry {
+        abstract_name: "parse_shell_exec_response",
+        native_call: "transport.ParseShellResponse",
+    },
+    TransportEntry {
+        abstract_name: "prepare_http_request",
+        native_call: "transport.NewHTTPRequest",
+    },
+    TransportEntry {
+        abstract_name: "execute_http_request",
+        native_call: "transport.Execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_directory_list",
+        native_call: "transport.NewDirListRequest",
+    },
+    TransportEntry {
+        abstract_name: "execute_directory_list",
+        native_call: "transport.Execute",
+    },
+    TransportEntry {
+        abstract_name: "acquire_resource",
+        native_call: "resource.Acquire",
+    },
 ];
 
 pub static GO_MODEL: LanguageModel = LanguageModel {
@@ -301,7 +512,10 @@ pub static GO_MODEL: LanguageModel = LanguageModel {
     named: GO_NAMED,
     containers: GO_CONTAINERS,
     transport: GO_TRANSPORT,
-    composite: CompositeFormat { format_product: go_format_product, format_coproduct: go_format_coproduct },
+    composite: CompositeFormat {
+        format_product: go_format_product,
+        format_coproduct: go_format_coproduct,
+    },
     unit_syntax: "struct{}",
     opaque_fallback: "interface{}",
 };
@@ -325,39 +539,127 @@ static C_SCALARS: &[ScalarEntry] = &[
 ];
 
 static C_NAMED: &[NamedEntry] = &[
-    NamedEntry { names: &["String", "Path", "NonEmptyStr", "Url", "GistId", "ProjectId",
-                           "ServiceAccountEmail", "FilePath", "Secret", "FilesystemHandle"], syntax: "const char*" },
-    NamedEntry { names: &["Bool", "bool"], syntax: "bool" },
-    NamedEntry { names: &["Int", "i64", "I64"], syntax: "int64_t" },
-    NamedEntry { names: &["Float", "f64"], syntax: "double" },
-    NamedEntry { names: &["Char"], syntax: "char" },
-    NamedEntry { names: &["Bytes"], syntax: "uint8_t*" },
-    NamedEntry { names: &["Json", "ToolRegistry", "Record"], syntax: "void*" },
-    NamedEntry { names: &["TransportRequest"], syntax: "TransportRequest" },
-    NamedEntry { names: &["TransportResponse"], syntax: "TransportResponse" },
+    NamedEntry {
+        names: &[
+            "String",
+            "Path",
+            "NonEmptyStr",
+            "Url",
+            "GistId",
+            "ProjectId",
+            "ServiceAccountEmail",
+            "FilePath",
+            "Secret",
+            "FilesystemHandle",
+        ],
+        syntax: "const char*",
+    },
+    NamedEntry {
+        names: &["Bool", "bool"],
+        syntax: "bool",
+    },
+    NamedEntry {
+        names: &["Int", "i64", "I64"],
+        syntax: "int64_t",
+    },
+    NamedEntry {
+        names: &["Float", "f64"],
+        syntax: "double",
+    },
+    NamedEntry {
+        names: &["Char"],
+        syntax: "char",
+    },
+    NamedEntry {
+        names: &["Bytes"],
+        syntax: "uint8_t*",
+    },
+    NamedEntry {
+        names: &["Json", "ToolRegistry", "Record"],
+        syntax: "void*",
+    },
+    NamedEntry {
+        names: &["TransportRequest"],
+        syntax: "TransportRequest",
+    },
+    NamedEntry {
+        names: &["TransportResponse"],
+        syntax: "TransportResponse",
+    },
 ];
 
 static C_CONTAINERS: &[ContainerEntry] = &[
-    ContainerEntry { kind: ContainerKind::Optional, syntax_template: "{T}*" },
-    ContainerEntry { kind: ContainerKind::List, syntax_template: "{T}*" },
-    ContainerEntry { kind: ContainerKind::Set, syntax_template: "{T}*" },
-    ContainerEntry { kind: ContainerKind::Map, syntax_template: "{V}*" },
+    ContainerEntry {
+        kind: ContainerKind::Optional,
+        syntax_template: "{T}*",
+    },
+    ContainerEntry {
+        kind: ContainerKind::List,
+        syntax_template: "{T}*",
+    },
+    ContainerEntry {
+        kind: ContainerKind::Set,
+        syntax_template: "{T}*",
+    },
+    ContainerEntry {
+        kind: ContainerKind::Map,
+        syntax_template: "{V}*",
+    },
 ];
 
 static C_TRANSPORT: &[TransportEntry] = &[
-    TransportEntry { abstract_name: "prepare_file_read", native_call: "gunbc_file_read_request" },
-    TransportEntry { abstract_name: "execute_file_read", native_call: "gunbc_transport_execute" },
-    TransportEntry { abstract_name: "prepare_file_write", native_call: "gunbc_file_write_request" },
-    TransportEntry { abstract_name: "execute_file_write", native_call: "gunbc_transport_execute" },
-    TransportEntry { abstract_name: "prepare_file_exists", native_call: "gunbc_file_exists_request" },
-    TransportEntry { abstract_name: "execute_file_exists", native_call: "gunbc_transport_execute" },
-    TransportEntry { abstract_name: "prepare_shell_exec", native_call: "gunbc_shell_request" },
-    TransportEntry { abstract_name: "execute_shell_exec", native_call: "gunbc_transport_execute" },
-    TransportEntry { abstract_name: "prepare_http_request", native_call: "gunbc_http_request" },
-    TransportEntry { abstract_name: "execute_http_request", native_call: "gunbc_transport_execute" },
-    TransportEntry { abstract_name: "prepare_directory_list", native_call: "gunbc_dir_list_request" },
-    TransportEntry { abstract_name: "execute_directory_list", native_call: "gunbc_transport_execute" },
-    TransportEntry { abstract_name: "acquire_resource", native_call: "gunbc_acquire_resource" },
+    TransportEntry {
+        abstract_name: "prepare_file_read",
+        native_call: "gunbc_file_read_request",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_read",
+        native_call: "gunbc_transport_execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_file_write",
+        native_call: "gunbc_file_write_request",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_write",
+        native_call: "gunbc_transport_execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_file_exists",
+        native_call: "gunbc_file_exists_request",
+    },
+    TransportEntry {
+        abstract_name: "execute_file_exists",
+        native_call: "gunbc_transport_execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_shell_exec",
+        native_call: "gunbc_shell_request",
+    },
+    TransportEntry {
+        abstract_name: "execute_shell_exec",
+        native_call: "gunbc_transport_execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_http_request",
+        native_call: "gunbc_http_request",
+    },
+    TransportEntry {
+        abstract_name: "execute_http_request",
+        native_call: "gunbc_transport_execute",
+    },
+    TransportEntry {
+        abstract_name: "prepare_directory_list",
+        native_call: "gunbc_dir_list_request",
+    },
+    TransportEntry {
+        abstract_name: "execute_directory_list",
+        native_call: "gunbc_transport_execute",
+    },
+    TransportEntry {
+        abstract_name: "acquire_resource",
+        native_call: "gunbc_acquire_resource",
+    },
 ];
 
 pub static C_MODEL: LanguageModel = LanguageModel {
@@ -366,7 +668,10 @@ pub static C_MODEL: LanguageModel = LanguageModel {
     named: C_NAMED,
     containers: C_CONTAINERS,
     transport: C_TRANSPORT,
-    composite: CompositeFormat { format_product: c_format_product, format_coproduct: c_format_coproduct },
+    composite: CompositeFormat {
+        format_product: c_format_product,
+        format_coproduct: c_format_coproduct,
+    },
     unit_syntax: "void",
     opaque_fallback: "void*",
 };
@@ -407,7 +712,10 @@ pub fn resolve_named(name: &str, model: &LanguageModel) -> Option<&'static str> 
 ///
 /// Returns `None` if no entry matches — callers must handle the failure
 /// explicitly rather than silently falling back to a default type.
-pub fn resolve_scalar(props: &gunbc_ir::StructuralProperties, model: &LanguageModel) -> Option<&'static str> {
+pub fn resolve_scalar(
+    props: &gunbc_ir::StructuralProperties,
+    model: &LanguageModel,
+) -> Option<&'static str> {
     // Domain types (floats): exact domain + width + arithmetic match
     if let Some(domain) = &props.domain {
         for entry in model.scalars {
@@ -448,7 +756,8 @@ pub fn resolve_container(
 ) -> Option<String> {
     for entry in model.containers {
         if entry.kind == kind {
-            let result = entry.syntax_template
+            let result = entry
+                .syntax_template
                 .replace("{T}", inner)
                 .replace("{V}", inner);
             let result = if let Some(k) = key {
@@ -479,12 +788,18 @@ mod tests {
     #[test]
     fn rust_model_resolves_scalars() {
         let props = gunbc_ir::StructuralProperties {
-            width: Some(32), signed: Some(true), arithmetic: true, ..Default::default()
+            width: Some(32),
+            signed: Some(true),
+            arithmetic: true,
+            ..Default::default()
         };
         assert_eq!(resolve_scalar(&props, &RUST_MODEL), Some("i32"));
 
         let props = gunbc_ir::StructuralProperties {
-            width: Some(64), signed: Some(false), arithmetic: true, ..Default::default()
+            width: Some(64),
+            signed: Some(false),
+            arithmetic: true,
+            ..Default::default()
         };
         assert_eq!(resolve_scalar(&props, &RUST_MODEL), Some("u64"));
     }
@@ -492,8 +807,10 @@ mod tests {
     #[test]
     fn go_model_resolves_floats() {
         let props = gunbc_ir::StructuralProperties {
-            width: Some(64), domain: Some("ieee754_binary64".to_string()),
-            arithmetic: true, ..Default::default()
+            width: Some(64),
+            domain: Some("ieee754_binary64".to_string()),
+            arithmetic: true,
+            ..Default::default()
         };
         assert_eq!(resolve_scalar(&props, &GO_MODEL), Some("float64"));
     }
@@ -501,7 +818,10 @@ mod tests {
     #[test]
     fn c_model_resolves_integers() {
         let props = gunbc_ir::StructuralProperties {
-            width: Some(8), signed: Some(false), arithmetic: true, ..Default::default()
+            width: Some(8),
+            signed: Some(false),
+            arithmetic: true,
+            ..Default::default()
         };
         assert_eq!(resolve_scalar(&props, &C_MODEL), Some("uint8_t"));
     }

@@ -34,7 +34,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use daglang_syntax::ast::{Item, TypeDef, TypeBody};
+use daglang_syntax::ast::{Item, TypeBody, TypeDef};
+use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
 
 use crate::fn_codegen;
@@ -106,8 +107,41 @@ pub fn assemble_v2_crate(
     });
     // Note: MatchPattern is defined in the .dag source — don't add it here.
 
+    // 3b. Build struct_field_ir_types (target-agnostic type annotations)
+    let mut struct_field_ir_types = build_struct_field_ir_types(&all_type_defs);
+    // Add materialized types from std_types_prelude
+    struct_field_ir_types.insert(
+        "BindingPower".to_string(),
+        vec![
+            ("left".to_string(), gunbc_ir::code_ir::IrType::Int),
+            ("right".to_string(), gunbc_ir::code_ir::IrType::Int),
+        ],
+    );
+    struct_field_ir_types.insert(
+        "SourceSpan".to_string(),
+        vec![
+            ("start".to_string(), gunbc_ir::code_ir::IrType::Int),
+            ("end".to_string(), gunbc_ir::code_ir::IrType::Int),
+        ],
+    );
+
     // 4. Build optional_fields map
     let optional_fields = build_optional_fields(&all_type_defs);
+
+    // 4c. Build global fn_return_types (cross-module) for type inference in intrinsics
+    let global_fn_return_types: HashMap<String, String> = modules
+        .iter()
+        .flat_map(|(_, items)| {
+            items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+                    let ret = crate::type_codegen::type_expr_to_rust_pub(&fd.return_type);
+                    Some((rust_name, ret))
+                }
+                _ => None,
+            })
+        })
+        .collect();
 
     // 4b. Build cross-module enum_variants for context-aware variant resolution
     let all_enum_variants: HashMap<String, HashSet<String>> = all_type_defs
@@ -124,16 +158,14 @@ pub fn assemble_v2_crate(
 
     // 5. Emit each module, tracking type definitions to suppress exact duplicates
     // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
-    // structurally identical types (same name AND same fields) get their duplicate
-    // definitions suppressed, so cross-module references use the upstream type
+    // structurally identical types get their duplicate definitions suppressed,
+    // so cross-module references use the upstream type
     // via `use crate::upstream::*`.
-    let mut defined_type_fields: HashMap<String, Vec<String>> = HashMap::new();
+    let mut defined_type_signatures: HashMap<String, TypeDefSignature> = HashMap::new();
     // S81: Track which type names are visible to each module (current + upstream)
     // Initialize with hardcoded materialized types from std_types_prelude
-    let mut visible_type_names: HashSet<String> = HashSet::from([
-        "SourceSpan".to_string(),
-        "BindingPower".to_string(),
-    ]);
+    let mut visible_type_names: HashSet<String> =
+        HashSet::from(["SourceSpan".to_string(), "BindingPower".to_string()]);
     for (dag_stem, items) in modules {
         let rust_mod = match V2_MODULE_MAP.iter().find(|(stem, _)| stem == dag_stem) {
             Some((_, rust_name)) => *rust_name,
@@ -154,7 +186,18 @@ pub fn assemble_v2_crate(
         }
 
         // Filter struct_field_types to only include visible types
-        let module_struct_field_types: HashMap<String, HashMap<String, String>> = struct_field_types
+        let module_struct_field_types: HashMap<String, HashMap<String, String>> =
+            struct_field_types
+                .iter()
+                .filter(|(name, _)| visible_type_names.contains(name.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+        // Filter struct_field_ir_types to only include visible types
+        let module_struct_field_ir_types: HashMap<
+            String,
+            Vec<(String, gunbc_ir::code_ir::IrType)>,
+        > = struct_field_ir_types
             .iter()
             .filter(|(name, _)| visible_type_names.contains(name.as_str()))
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -167,18 +210,16 @@ pub fn assemble_v2_crate(
             &module_struct_field_types,
             &optional_fields,
             &all_enum_variants,
-            &defined_type_fields,
+            &defined_type_signatures,
+            &module_struct_field_ir_types,
+            &global_fn_return_types,
         );
-        // Track which types this module defines WITH their field names
+        // Track which types this module defines with their structural signature.
         for item in items.iter() {
             if let Item::TypeDef(td) = &item.node {
-                let fields: Vec<String> = match &td.body {
-                    daglang_syntax::ast::TypeBody::Record(fs) => {
-                        fs.iter().map(|f| f.name.clone()).collect()
-                    }
-                    _ => vec![],
-                };
-                defined_type_fields.entry(td.name.clone()).or_insert(fields);
+                defined_type_signatures
+                    .entry(td.name.clone())
+                    .or_insert_with(|| type_def_signature(td));
             }
         }
         let mut content = module_prelude(dag_stem);
@@ -321,6 +362,7 @@ fn module_prelude(dag_stem: &str) -> String {
     prelude
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_module(
     items: &[daglang_syntax::span::Spanned<Item>],
     recursive_fields: &HashSet<(String, String)>,
@@ -328,7 +370,9 @@ fn emit_module(
     struct_field_types: &HashMap<String, HashMap<String, String>>,
     optional_fields: &HashMap<String, HashSet<String>>,
     all_enum_variants: &HashMap<String, HashSet<String>>,
-    upstream_type_fields: &HashMap<String, Vec<String>>,
+    upstream_type_signatures: &HashMap<String, TypeDefSignature>,
+    struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
+    global_fn_return_types: &HashMap<String, String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -359,19 +403,6 @@ fn emit_module(
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
-    // Build fn_return_types from function definitions
-    let fn_return_types: HashMap<String, String> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::FnDef(fd) => {
-                let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                let ret = crate::type_codegen::type_expr_to_rust_pub(&fd.return_type);
-                Some((rust_name, ret))
-            }
-            _ => None,
-        })
-        .collect();
-
     let ctx = fn_codegen::CompileContext {
         data_names,
         data_map_names,
@@ -380,26 +411,29 @@ fn emit_module(
         struct_field_types: struct_field_types.clone(),
         enum_variants: enum_variants_map,
         boxed_fields: recursive_fields.clone(),
-        fn_return_types,
+        fn_return_types: global_fn_return_types.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
+        current_return_type: None,                     // populated per-function in fndef_to_code_ir
+        current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
+        ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
+        struct_field_ir_types: struct_field_ir_types.clone(),
     };
 
     for item in items {
         match &item.node {
             Item::TypeDef(td) => {
-                // Skip types already defined with identical fields in upstream modules
-                // (S81: suppress structurally identical duplicates)
-                if let Some(upstream_fields) = upstream_type_fields.get(&td.name) {
-                    let this_fields: Vec<String> = match &td.body {
-                        daglang_syntax::ast::TypeBody::Record(fs) => {
-                            fs.iter().map(|f| f.name.clone()).collect()
-                        }
-                        _ => vec![],
-                    };
-                    if &this_fields == upstream_fields {
-                        continue;
-                    }
+                // TEMPORARY bootstrap-only nominality compromise (S81):
+                // suppress same-name upstream duplicates only when their full
+                // structural signature matches exactly. This is still structural
+                // dedupe, not sound nominal typing, and should be removed once
+                // cross-module type identity is modeled authoritatively.
+                let this_signature = type_def_signature(td);
+                if upstream_type_signatures
+                    .get(&td.name)
+                    .is_some_and(|upstream| upstream == &this_signature)
+                {
+                    continue;
                 }
                 ir_items.extend(type_codegen::typedef_to_code_ir_boxed(td, recursive_fields));
             }
@@ -476,6 +510,38 @@ fn build_struct_field_types(type_defs: &[&TypeDef]) -> HashMap<String, HashMap<S
     map
 }
 
+/// Build struct/variant name → [(field_name, IrType)] map for type-annotated IR.
+fn build_struct_field_ir_types(
+    type_defs: &[&TypeDef],
+) -> HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>> {
+    let mut map = HashMap::new();
+    for td in type_defs {
+        match &td.body {
+            TypeBody::Record(fields) => {
+                let ir_fields: Vec<(String, gunbc_ir::code_ir::IrType)> = fields
+                    .iter()
+                    .map(|f| (f.name.clone(), fn_codegen::type_expr_to_ir_type(&f.ty)))
+                    .collect();
+                map.insert(td.name.clone(), ir_fields);
+            }
+            TypeBody::Sum(variants) => {
+                for v in variants {
+                    if !v.fields.is_empty() {
+                        let ir_fields: Vec<(String, gunbc_ir::code_ir::IrType)> = v
+                            .fields
+                            .iter()
+                            .map(|f| (f.name.clone(), fn_codegen::type_expr_to_ir_type(&f.ty)))
+                            .collect();
+                        map.insert(v.name.clone(), ir_fields);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    map
+}
+
 /// Extract the simple type name from a TypeExpr.
 fn type_expr_to_rust_name(expr: &daglang_syntax::ast::TypeExpr) -> String {
     match expr {
@@ -484,6 +550,40 @@ fn type_expr_to_rust_name(expr: &daglang_syntax::ast::TypeExpr) -> String {
         daglang_syntax::ast::TypeExpr::Generic(name, _) => name.clone(),
         daglang_syntax::ast::TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         daglang_syntax::ast::TypeExpr::Record(_) => "Anonymous".to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TypeDefSignature {
+    Alias(String),
+    Record(Vec<(String, String)>),
+    Sum(Vec<(String, Vec<(String, String)>)>),
+}
+
+fn type_def_signature(td: &TypeDef) -> TypeDefSignature {
+    match &td.body {
+        TypeBody::Alias(type_expr) => TypeDefSignature::Alias(type_expr_to_string(type_expr)),
+        TypeBody::Record(fields) => TypeDefSignature::Record(
+            fields
+                .iter()
+                .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
+                .collect(),
+        ),
+        TypeBody::Sum(variants) => TypeDefSignature::Sum(
+            variants
+                .iter()
+                .map(|variant| {
+                    (
+                        variant.name.clone(),
+                        variant
+                            .fields
+                            .iter()
+                            .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        ),
     }
 }
 
@@ -519,4 +619,63 @@ fn build_optional_fields(type_defs: &[&TypeDef]) -> HashMap<String, HashSet<Stri
         }
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assemble_v2_crate;
+
+    fn parse_items(source: &str) -> Vec<daglang_syntax::span::Spanned<daglang_syntax::ast::Item>> {
+        daglang_syntax::parser::parse(source)
+            .unwrap_or_else(|errors| panic!("parse failed: {errors:?}"))
+            .items
+    }
+
+    #[test]
+    fn assemble_v2_crate_keeps_same_name_records_with_different_field_types() {
+        let core_items = parse_items(
+            r#"
+module v2.std.core
+
+type Shared {
+  value: String
+}
+"#,
+        );
+        let tokenize_items = parse_items(
+            r#"
+module v2.compiler.tokenize
+
+type Shared {
+  value: Int
+}
+"#,
+        );
+
+        let modules = vec![
+            ("00_core", core_items.as_slice()),
+            ("01_tokenize", tokenize_items.as_slice()),
+        ];
+        let files = assemble_v2_crate(&modules);
+
+        let core_file = files
+            .iter()
+            .find(|file| file.rel_path == "src/v2_core.rs")
+            .expect("core file emitted");
+        let tokenize_file = files
+            .iter()
+            .find(|file| file.rel_path == "src/tokenize.rs")
+            .expect("tokenize file emitted");
+
+        assert!(
+            core_file.content.contains("pub struct Shared"),
+            "upstream module should emit Shared:\n{}",
+            core_file.content
+        );
+        assert!(
+            tokenize_file.content.contains("pub struct Shared"),
+            "downstream module should emit its distinct Shared definition:\n{}",
+            tokenize_file.content
+        );
+    }
 }

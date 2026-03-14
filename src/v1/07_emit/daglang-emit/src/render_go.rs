@@ -348,7 +348,7 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
         Expr::RefMut(expr) => format!("&{}", render_expr(expr)), // Go has no &mut.
         Expr::Path(segments) => segments.join("."),              // Go uses dots, not ::.
-        Expr::Struct { name, fields, rest } => {
+        Expr::Struct { name, fields, rest, .. } => {
             if rest.is_some() {
                 // Go has no struct update syntax (`..base`). Emit an ERROR comment
                 // so the output is clearly invalid rather than silently wrong.
@@ -806,6 +806,7 @@ mod tests {
             name: "Config".to_string(),
             fields: vec![("Name".to_string(), Expr::str_lit("custom"))],
             rest: Some(Box::new(Expr::var("defaults"))),
+            field_types: None,
         };
         let rendered = render_expr(&expr);
         assert!(
@@ -825,6 +826,7 @@ mod tests {
             name: "Config".to_string(),
             fields: vec![],
             rest: Some(Box::new(Expr::var("defaults"))),
+            field_types: None,
         };
         let rendered = render_expr(&expr);
         assert!(

@@ -71,8 +71,8 @@ pub mod fn_codegen;
 pub mod dag_emit;
 
 // v2 compiler support: runtime shim source and crate assembly.
-pub mod v2_runtime_shim;
 pub mod v2_crate_emit;
+pub mod v2_runtime_shim;
 
 #[cfg(test)]
 mod backend_harness;
@@ -401,10 +401,7 @@ pub struct EmitInput {
 /// This is the single point where `LoweredOp` variant matching happens for
 /// emission. All downstream emit functions consume the pre-classified
 /// [`EmitInput`] without touching `LoweredOp` directly.
-pub fn classify_for_emit(
-    dag: &ReachableDag<LoweredOp>,
-    artifacts: &DerivedArtifacts,
-) -> EmitInput {
+pub fn classify_for_emit(dag: &ReachableDag<LoweredOp>, artifacts: &DerivedArtifacts) -> EmitInput {
     let mut callables = Vec::new();
     let mut transports = Vec::new();
     let mut primitives = Vec::new();
@@ -572,12 +569,13 @@ fn symbols_from_classified(input: &EmitInput) -> Vec<CollectedSymbol> {
 
 /// Count callables and pipelines from pre-classified input.
 fn counts_from_classified(input: &EmitInput) -> (usize, usize) {
-    let callable_count =
-        input.callables.len() + input.transports.len() + input.primitives.len() + input.collections.len();
+    let callable_count = input.callables.len()
+        + input.transports.len()
+        + input.primitives.len()
+        + input.collections.len();
     let pipeline_count = input.pipelines.len();
     (callable_count, pipeline_count)
 }
-
 
 // ============================================================================
 // S70: New emit functions that consume EmitInput
@@ -612,8 +610,10 @@ pub fn emit_rust_bundle_classified(input: &EmitInput) -> Result<EmissionBundle, 
     }
 
     for c in &input.collections {
-        let fn_name =
-            sanitize_identifier(&format!("{}_{}_collection_{:?}", c.module, c.callable, c.kind));
+        let fn_name = sanitize_identifier(&format!(
+            "{}_{}_collection_{:?}",
+            c.module, c.callable, c.kind
+        ));
         emitted_functions.push(backend.emit_func(&fn_name));
     }
 
@@ -660,9 +660,7 @@ pub fn emit_rust_bundle_classified(input: &EmitInput) -> Result<EmissionBundle, 
     if let Some(manifest) = emit_middleware_manifest("rust", &rust_symbols)? {
         files.push(manifest);
     }
-    if let Some(test_file) =
-        test_gen::emit_dry_run_completion_test("rust", &input.obligations)
-    {
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("rust", &input.obligations) {
         files.push(test_file);
     }
 

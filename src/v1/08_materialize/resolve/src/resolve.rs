@@ -26,11 +26,13 @@
 
 use std::collections::HashMap;
 
+use crate::fs_env::FsEnv;
 use daglang_lower::{
     CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral, PrimitiveOpKind,
     ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
+use gunbc_ir::filename;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::{
@@ -41,8 +43,6 @@ use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_ir::filename;
-use crate::fs_env::FsEnv;
 
 use crate::service_ops::{
     FilesystemExecuteOp, GenericParseOp, GenericPrepareOp, InterfaceStubExecuteOp,
@@ -190,8 +190,12 @@ impl Executable for CallableOp {
             }
         }
 
-        match daglang_lower::eval::evaluate_fn_body_with_data(fn_body, &eval_inputs, &self.sibling_fns, &self.data_values)
-        {
+        match daglang_lower::eval::evaluate_fn_body_with_data(
+            fn_body,
+            &eval_inputs,
+            &self.sibling_fns,
+            &self.data_values,
+        ) {
             Ok(body_results) => {
                 let mut outputs = HashMap::new();
                 for (port_name, is_optional) in &self.output_ports {
@@ -396,8 +400,9 @@ impl Executable for PurePrimitiveOp {
         let result = match &self.kind {
             PrimitiveOpKind::GetField { field } => {
                 let value = require_input_port(&inputs, &self.get_field_input_port, "GetField")?;
-                daglang_lower::eval::eval_get_field(value, field)
-                    .map_err(|e| ExecError::new(format!("on port `{}`: {e}", self.get_field_input_port)))?
+                daglang_lower::eval::eval_get_field(value, field).map_err(|e| {
+                    ExecError::new(format!("on port `{}`: {e}", self.get_field_input_port))
+                })?
             }
             PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
                 let values: Vec<Value> = input_ports
@@ -467,7 +472,10 @@ impl Executable for PurePrimitiveOp {
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     let sibling_fns_map: HashMap<String, daglang_lower::LoweredFnBody> =
-                        sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                        sibling_fns
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
                     daglang_lower::eval::eval_match(&scrutinee, arms, &env, &sibling_fns_map)
                         .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?
                 }
@@ -776,8 +784,14 @@ fn resolve_lowered_dag_impl(
         .filter(|edge| {
             !pipeline_ids.contains(edge.from_node.0.as_str())
                 && !pipeline_ids.contains(edge.to_node.0.as_str())
-                && !edge.from_node.0.starts_with(daglang_lower::DATA_DECL_NODE_PREFIX)
-                && !edge.to_node.0.starts_with(daglang_lower::DATA_DECL_NODE_PREFIX)
+                && !edge
+                    .from_node
+                    .0
+                    .starts_with(daglang_lower::DATA_DECL_NODE_PREFIX)
+                && !edge
+                    .to_node
+                    .0
+                    .starts_with(daglang_lower::DATA_DECL_NODE_PREFIX)
         })
         .cloned()
         .collect();
@@ -827,9 +841,14 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let empty_data = HashMap::new();
     let node_id = node.id.0.clone();
     match &node.body {
-        NodeBody::Opaque(op) => {
-            resolve_op(&node_id, op, &node.inputs, &node.outputs, &empty_siblings, &empty_data)
-        }
+        NodeBody::Opaque(op) => resolve_op(
+            &node_id,
+            op,
+            &node.inputs,
+            &node.outputs,
+            &empty_siblings,
+            &empty_data,
+        ),
         NodeBody::SubDag(inner, _kind) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag_with(inner)?,
         })),
@@ -1005,14 +1024,12 @@ fn resolve_primitive(
         | PrimitiveOpKind::RecordConstruct { .. }
         | PrimitiveOpKind::NullCoalesce
         | PrimitiveOpKind::VariantConstruct { .. }
-        | PrimitiveOpKind::ListConstruct { .. } => {
-            Ok(DynOp::new(PurePrimitiveOp {
-                kind: kind.clone(),
-                output_port: default_output_port(outputs),
-                get_field_input_port: String::new(),
-                has_else: false,
-            }))
-        }
+        | PrimitiveOpKind::ListConstruct { .. } => Ok(DynOp::new(PurePrimitiveOp {
+            kind: kind.clone(),
+            output_port: default_output_port(outputs),
+            get_field_input_port: String::new(),
+            has_else: false,
+        })),
     }
 }
 
@@ -1178,9 +1195,7 @@ fn resolve_service_transport(
         if let Some(spec) = &metadata.spec {
             match role {
                 Some(TransportRole::Prepare) => {
-                    return Ok(DynOp::new(GenericPrepareOp {
-                        spec: spec.clone(),
-                    }));
+                    return Ok(DynOp::new(GenericPrepareOp { spec: spec.clone() }));
                 }
                 Some(TransportRole::Parse) => {
                     let auth_scheme = match spec {
@@ -1261,10 +1276,7 @@ fn needs_transport_resource(
     };
 
     // Only add if not already present (S15: structural query).
-    let already_has = resolved
-        .inputs
-        .iter()
-        .any(is_filesystem_resource_port);
+    let already_has = resolved.inputs.iter().any(is_filesystem_resource_port);
     if already_has {
         None
     } else {
@@ -2074,7 +2086,11 @@ mod tests {
         );
         let resolved = Node::opaque(
             "execute_read_makegen",
-            vec![Port::resource("file", FILESYSTEM_HANDLE_TYPE, AccessMode::Read)],
+            vec![Port::resource(
+                "file",
+                FILESYSTEM_HANDLE_TYPE,
+                AccessMode::Read,
+            )],
             vec![Port::new("response", "TransportResponse")],
             DynOp::new(DslFsEnvOp),
         );
@@ -2097,7 +2113,11 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "execute_read_makegen",
-            vec![Port::resource("file", FILESYSTEM_HANDLE_TYPE, AccessMode::Read)],
+            vec![Port::resource(
+                "file",
+                FILESYSTEM_HANDLE_TYPE,
+                AccessMode::Read,
+            )],
             vec![Port::new("response", "TransportResponse")],
             DynOp::new(DslFsEnvOp),
         ));

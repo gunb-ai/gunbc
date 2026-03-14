@@ -70,9 +70,9 @@ pub use mock_requirements::{
 };
 pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
-    ChainValidationResult, InputConstraint, InputExpectation, InputMock,
-    LiveExpectedOutput, MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult,
-    ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
+    ChainValidationResult, InputConstraint, InputExpectation, InputMock, LiveExpectedOutput,
+    MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult, ResourceBehavior, ResourceMocks,
+    ResourceSimulation, ResourceType, TransportMock,
 };
 pub use mock_synthesis::{
     find_error_mocks, find_success_mock, synthesize_from_mock_response_entry,
@@ -80,10 +80,7 @@ pub use mock_synthesis::{
 };
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};
-pub use window::{
-    apply_window_inputs, assert_chain_outputs, window_subdag, Window,
-    WindowError,
-};
+pub use window::{apply_window_inputs, assert_chain_outputs, window_subdag, Window, WindowError};
 /// Assert that the typed MockSpec builder rejects an unknown slot.
 ///
 /// This is the shared implementation for the `test_typed_builder_rejects_wrong_slot`

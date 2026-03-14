@@ -27,9 +27,7 @@ pub use gunbc_ir::patterns::EmitCollectionFamily;
 /// Classify a collection op kind into an emit-level family.
 ///
 /// Delegates to [`CollectionKind::emit_family`] — single source of truth (S11).
-pub fn collection_emit_family(
-    kind: &daglang_lower::CollectionOpKind,
-) -> EmitCollectionFamily {
+pub fn collection_emit_family(kind: &daglang_lower::CollectionOpKind) -> EmitCollectionFamily {
     kind.emit_family()
 }
 
@@ -776,11 +774,15 @@ fn infer_transport_kind(
         ServiceTransportClass::LocalDirect => Ok(TransportKind::ShellExec),
         ServiceTransportClass::Unknown => Err(ClassifyError::UnrecognizedOp {
             node_id: name.to_string(),
-            detail: "transport class is Unknown — service must declare a concrete transport binding".into(),
+            detail:
+                "transport class is Unknown — service must declare a concrete transport binding"
+                    .into(),
         }),
         ServiceTransportClass::InterfaceStub => Err(ClassifyError::UnrecognizedOp {
             node_id: name.to_string(),
-            detail: "InterfaceStub transport should be resolved to a concrete binding before emission".into(),
+            detail:
+                "InterfaceStub transport should be resolved to a concrete binding before emission"
+                    .into(),
         }),
     }
 }

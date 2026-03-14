@@ -44,8 +44,8 @@ use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
     contract, parse_map_type_id, value_compatible_with_type_id, value_kind_name, Cardinality, Dag,
-    NodeId, NodeKind, Os, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass,
-    TypeRegistry, Value, ValueExpr,
+    NodeId, NodeKind, Os, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry,
+    Value, ValueExpr,
 };
 use gunbc_test::{FailureVariant, FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -1055,7 +1055,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             });
         }
 
-
         if self.config.probe_observer_tests && self.mock_spec.is_some() {
             file.imports.push(Import {
                 path: vec!["gunbc_exec".to_string()],
@@ -1129,9 +1128,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             file.helpers.push(HelperFn {
                 name: "mock_spec".to_string(),
                 return_type: "MockSpec".to_string(),
-                body: vec![
-                    Stmt::tail(Expr::var(mock_spec_fn)),
-                ],
+                body: vec![Stmt::tail(Expr::var(mock_spec_fn))],
             });
         }
 
@@ -1592,7 +1589,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Self::record_ident(first, used);
                 }
             }
-            Expr::Struct { name, fields, rest } => {
+            Expr::Struct { name, fields, rest, .. } => {
                 Self::record_ident(name, used);
                 for (_, expr) in fields {
                     Self::collect_idents_from_expr(expr, used);
@@ -1698,6 +1695,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             Expr::call("ExecutionMode::DryRun", vec![mocks_expr.clone()]),
                         )],
                         rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        field_types: None,
                     },
                 ],
             )
@@ -2169,6 +2167,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                     Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                                 )],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -2260,6 +2259,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -2377,6 +2377,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                     Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                                 )],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -2482,7 +2483,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
             if !analysis.pure_nodes.contains(&node_id.0) {
                 continue;
             }
-
 
             if !lowered_ids.contains(&node_id.0) {
                 if skipped_nodes.insert(node_id.0.clone()) {
@@ -2909,6 +2909,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                             Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
                         )],
                         rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                        field_types: None,
                     },
                 ],
             )
@@ -3016,6 +3017,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                             "Default::default",
                                             vec![],
                                         ))),
+                                        field_types: None,
                                     },
                                 ],
                             ),
@@ -3091,6 +3093,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -3205,6 +3208,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                             "Default::default",
                                             vec![],
                                         ))),
+                                        field_types: None,
                                     },
                                 ],
                             )
@@ -3268,6 +3272,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                             "Default::default",
                                             vec![],
                                         ))),
+                                        field_types: None,
                                     },
                                 ],
                             )
@@ -3384,6 +3389,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                         Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
                                     )],
                                     rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                    field_types: None,
                                 },
                             ],
                         )
@@ -3994,6 +4000,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -4191,6 +4198,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                         ]),
                                     )],
                                     rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                    field_types: None,
                                 },
                             ],
                         )
@@ -4325,6 +4333,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                     vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
                                 ))],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -4378,6 +4387,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 name: "ExecuteConfig".to_string(),
                                 fields: vec![("mode".to_string(), Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]))],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     )
@@ -4520,11 +4530,6 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
         let (lowered_result, lowering_failure) = match gunbc_exec::lower(self.dag) {
             Ok(lr) => (Some(lr), None),
             Err(e) => {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "[testgen] WARNING: lowering failed for boundary analysis, \
-                     falling back to unlowered DAG: {e}"
-                );
                 let msg = format!("Lowering failed: {e}");
                 (None, Some(msg))
             }
@@ -4647,6 +4652,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                                 Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                             )],
                             rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                            field_types: None,
                         },
                     ],
                 )
@@ -6426,6 +6432,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
                                     Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
                                 )],
                                 rest: Some(Box::new(Expr::call("Default::default", vec![]))),
+                                field_types: None,
                             },
                         ],
                     ),
@@ -6713,9 +6720,9 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             ))))
         }
         "TransportResponse" => {
-            return Some(Value::Response(TransportResponse::Shell(ShellResponse::ok(
-                "<MOCK>",
-            ))))
+            return Some(Value::Response(TransportResponse::Shell(
+                ShellResponse::ok("<MOCK>"),
+            )))
         }
         _ => {}
     }
@@ -8264,7 +8271,10 @@ mod tests {
             SeedPolicy::Generated
         );
         assert!(requires_explicit_seed("Secret", SeedContext::LiveFlow));
-        assert!(!requires_explicit_seed("List<String>", SeedContext::LiveFlow));
+        assert!(!requires_explicit_seed(
+            "List<String>",
+            SeedContext::LiveFlow
+        ));
     }
 
     #[test]

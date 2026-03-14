@@ -365,9 +365,7 @@ mod compile_internals {
         };
 
         let bytes = serde_json::to_vec(&cached).map_err(|e| {
-            BuilderError::InternalInvariant(format!(
-                "dagbin cache store: serialize failed: {e}"
-            ))
+            BuilderError::InternalInvariant(format!("dagbin cache store: serialize failed: {e}"))
         })?;
 
         let cache = DagbinCache::from_workspace_root(&layout.workspace_root);
@@ -470,8 +468,8 @@ mod compile_internals {
                 callable_properties: output.derived.callable_properties,
             };
 
-            let source_digest = compute_source_digest_for_context(&context)
-                .expect("source digest should succeed");
+            let source_digest =
+                compute_source_digest_for_context(&context).expect("source digest should succeed");
 
             let cached = CachedCompileData {
                 cache_version: DAGBIN_CACHE_VERSION,
