@@ -1025,6 +1025,7 @@ pub fn generate_types_for_modules(
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
+            current_return_ir_type: None,
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: std::collections::HashMap::new(),
         };

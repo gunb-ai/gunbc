@@ -803,10 +803,10 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
   // Process modules in dependency order. Each iteration adds one
   // TypedModule to the accumulator, making its types available to
   // subsequent modules.
-  let result = fold(graph.modules, init: { modules: [], diagnostics: [] }, f: (acc, resolved) =>
+  let result = fold(graph.modules, init: TypedGraph { modules: [], diagnostics: [] }, f: (acc, resolved) =>
     let parent_envs = collect_parent_envs(resolved: resolved, typed_modules: acc.modules)
     let tc_result = typecheck_module(resolved: resolved, parent_envs: parent_envs)
-    {
+    TypedGraph {
       modules: concat(acc.modules, [tc_result.typed]),
       diagnostics: concat(acc.diagnostics, tc_result.diagnostics)
     }

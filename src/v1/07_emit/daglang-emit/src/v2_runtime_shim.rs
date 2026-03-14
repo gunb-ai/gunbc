@@ -153,4 +153,21 @@ pub fn from_code_point(cp: i64) -> String {
         .map(|c| c.to_string())
         .unwrap_or_default()
 }
+
+// ---------------------------------------------------------------------------
+// Filesystem operations — stub for Filesystem.read service call
+// ---------------------------------------------------------------------------
+
+/// Result of a filesystem read operation.
+#[derive(Debug, Clone)]
+pub struct FilesystemReadResult {
+    pub content: String,
+}
+
+/// Read a file's text content. Stub for the Filesystem.read service call.
+pub fn filesystem_read(path: String) -> FilesystemReadResult {
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
+    FilesystemReadResult { content }
+}
 "#;

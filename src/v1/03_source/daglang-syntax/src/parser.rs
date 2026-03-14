@@ -3679,6 +3679,14 @@ impl Parser {
                 | TokenKind::Match
                 | TokenKind::If
                 | TokenKind::For
+                // Literals indicate a block expression, not a record
+                | TokenKind::Str(_)
+                | TokenKind::Int(_)
+                | TokenKind::Float(_)
+                | TokenKind::True
+                | TokenKind::False
+                | TokenKind::StrBegin(_)
+                | TokenKind::NoneLit
         ) || (Self::token_kind_as_ident(&self.tokens[next].kind).is_some()
             && matches!(
                 self.tokens[after].kind,
