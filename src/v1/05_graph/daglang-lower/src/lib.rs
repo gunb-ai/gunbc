@@ -466,10 +466,18 @@ pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
 /// `ToolHandle` input port become `ToolConsumer` regardless of their
 /// obligation category.
 pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
-    let cat = match &node.body {
-        gunbc_ir::NodeBody::Opaque(op) => op.obligation_category(),
-        gunbc_ir::NodeBody::SubDag(..) => ObligationCategory::None,
+    let op = match &node.body {
+        gunbc_ir::NodeBody::Opaque(op) => op,
+        gunbc_ir::NodeBody::SubDag(..) => return NodeKind::Pure,
     };
+
+    // Collection nodes are stamped before obligation dispatch — they
+    // always map to `NodeKind::Collection` regardless of obligation.
+    if matches!(op, LoweredOp::Collection { .. }) {
+        return NodeKind::Collection;
+    }
+
+    let cat = op.obligation_category();
 
     // ToolConsumer: any node that consumes a ToolHandle input, unless it's
     // already a transport executor.
@@ -8132,12 +8140,14 @@ fn add_service_call_edges(
             // argument wiring is first-write-only — multiple call sites could
             // make a function return values from an unrelated invocation.
             if !matches!(&item.node, Item::FnDef(_)) {
-                // Callable return wiring may fail for patterns that reference
-                // service call results or other DAG-wired values that aren't
-                // visible as simple idents. FnBodyCallableOp handles these via
-                // direct evaluation. TODO: make this a hard error once the
-                // lowerer can trace through service call result bindings.
-                let _ = wire_callable_return_outputs(builder, &fn_ctx, stmts, target);
+                match wire_callable_return_outputs(builder, &fn_ctx, stmts, target) {
+                    Ok(()) => {}
+                    // Return bindings that reference service-call results or
+                    // collection operations cannot be statically wired yet —
+                    // the runtime evaluates the body directly for these cases.
+                    Err(LowerError::ExprLower(_)) => {}
+                    Err(e) => return Err(e),
+                }
             }
         }
     }

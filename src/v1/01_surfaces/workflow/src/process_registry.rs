@@ -63,18 +63,68 @@ impl From<String> for ClaimId {
     }
 }
 
+/// Structural handle type for resource claims.
+///
+/// Replaces string-prefix-based type resolution with a stamped enum field,
+/// so the handle type is determined at construction time rather than inferred
+/// from the claim ID at each use site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HandleType {
+    Filesystem,
+    Tool,
+    WorkflowLedger,
+    Network,
+    Resource,
+}
+
+impl HandleType {
+    /// Returns the canonical type ID string for this handle type.
+    pub fn type_id(&self) -> &'static str {
+        match self {
+            Self::Filesystem => "FilesystemHandle",
+            Self::Tool => "ToolHandle",
+            Self::WorkflowLedger => "WorkflowLedgerHandle",
+            Self::Network => "NetworkHandle",
+            Self::Resource => "ResourceHandle",
+        }
+    }
+
+    /// Transitional bridge: derive handle type from claim ID prefix.
+    ///
+    /// This encapsulates the legacy prefix-based resolution in a single place
+    /// so callers that construct claims from string IDs can still derive the
+    /// correct handle type without scattering prefix logic.
+    pub fn from_claim_prefix(claim_id: &ClaimId) -> Self {
+        if claim_id.0.starts_with("file:") {
+            Self::Filesystem
+        } else if claim_id.0.starts_with("tool:") {
+            Self::Tool
+        } else if claim_id.0.starts_with("ledger:") {
+            Self::WorkflowLedger
+        } else if claim_id.0.starts_with("network:") {
+            Self::Network
+        } else {
+            Self::Resource
+        }
+    }
+}
+
 /// Declared claim for a workflow unit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitClaim {
     pub claim_id: ClaimId,
     pub access_mode: AccessMode,
+    pub handle_type: HandleType,
 }
 
 impl UnitClaim {
     pub fn new(claim_id: impl Into<ClaimId>, access_mode: AccessMode) -> Self {
+        let claim_id = claim_id.into();
+        let handle_type = HandleType::from_claim_prefix(&claim_id);
         Self {
-            claim_id: claim_id.into(),
+            claim_id,
             access_mode,
+            handle_type,
         }
     }
 
@@ -155,55 +205,37 @@ fn canonicalize_unit_id(unit_id: &NodeId) -> NodeId {
     }
 }
 
-/// Canonical handle type auto-wiring policy for resource claims.
-pub fn claim_handle_type_id(claim_id: &ClaimId) -> &'static str {
-    if claim_id.0.starts_with("file:") {
-        "FilesystemHandle"
-    } else if claim_id.0.starts_with("tool:") {
-        "ToolHandle"
-    } else if claim_id.0.starts_with("ledger:") {
-        "WorkflowLedgerHandle"
-    } else if claim_id.0.starts_with("network:") {
-        "NetworkHandle"
-    } else {
-        "ResourceHandle"
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn claim_handle_type_policy_maps_common_prefixes() {
-        assert_eq!(
-            claim_handle_type_id(&ClaimId::new("file:workspace")),
-            "FilesystemHandle"
-        );
-        assert_eq!(
-            claim_handle_type_id(&ClaimId::new("tool:cargo")),
-            "ToolHandle"
-        );
-        assert_eq!(
-            claim_handle_type_id(&ClaimId::new("ledger:workflow")),
-            "WorkflowLedgerHandle"
-        );
+    fn handle_type_stamps_common_prefixes() {
+        let file_claim = UnitClaim::read("file:workspace");
+        assert_eq!(file_claim.handle_type, HandleType::Filesystem);
+        assert_eq!(file_claim.handle_type.type_id(), "FilesystemHandle");
+
+        let tool_claim = UnitClaim::read("tool:cargo");
+        assert_eq!(tool_claim.handle_type, HandleType::Tool);
+        assert_eq!(tool_claim.handle_type.type_id(), "ToolHandle");
+
+        let ledger_claim = UnitClaim::read("ledger:workflow");
+        assert_eq!(ledger_claim.handle_type, HandleType::WorkflowLedger);
+        assert_eq!(ledger_claim.handle_type.type_id(), "WorkflowLedgerHandle");
     }
 
     #[test]
-    fn network_claim_maps_to_network_handle() {
-        assert_eq!(
-            claim_handle_type_id(&ClaimId::new("network:github_gist")),
-            "NetworkHandle"
-        );
+    fn network_claim_stamps_network_handle() {
+        let claim = UnitClaim::read("network:github_gist");
+        assert_eq!(claim.handle_type, HandleType::Network);
+        assert_eq!(claim.handle_type.type_id(), "NetworkHandle");
     }
 
     #[test]
-    fn credential_claim_maps_to_resource_handle() {
-        assert_eq!(
-            claim_handle_type_id(&ClaimId::new("credential:github")),
-            "ResourceHandle"
-        );
+    fn credential_claim_stamps_resource_handle() {
+        let claim = UnitClaim::read("credential:github");
+        assert_eq!(claim.handle_type, HandleType::Resource);
+        assert_eq!(claim.handle_type.type_id(), "ResourceHandle");
     }
 
     #[test]

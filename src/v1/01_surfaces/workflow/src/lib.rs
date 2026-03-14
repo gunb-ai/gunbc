@@ -36,8 +36,7 @@ pub use planner::{
     WorkflowPlannerError,
 };
 pub use process_registry::{
-    claim_handle_type_id, ClaimId, ProcessId, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec,
-    UnitClaim,
+    ClaimId, HandleType, ProcessId, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, UnitClaim,
 };
 pub use projection::{
     project_execute_set, validate_projection_equivalence, ExecuteProjection, ProjectionDrift,

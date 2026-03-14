@@ -155,9 +155,40 @@ fn execute_primitive(
                 .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
-        // I/O and transport primitives are handled by the transport layer,
-        // not by the pure evaluator. These pass through for now.
-        _ => Ok(inputs),
+        // S3: I/O and transport primitives are NOT supported by the pure
+        // evaluator. Each variant is listed explicitly so that adding a new
+        // PrimitiveOpKind forces a compile-time decision here instead of
+        // silently passing through the old catch-all wildcard.
+        PrimitiveOpKind::FsEnv => Err(ExecError::new(
+            "S3: PrimitiveOpKind::FsEnv is an I/O operation not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::CallParamSource { callable, param } => Err(ExecError::new(format!(
+            "S3: PrimitiveOpKind::CallParamSource({callable}, {param}) \
+             is a wiring primitive not supported by the pure evaluator"
+        ))),
+        PrimitiveOpKind::CallLiteralSource { .. } => Err(ExecError::new(
+            "S3: PrimitiveOpKind::CallLiteralSource \
+             is a wiring primitive not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::IoPrepareFileRead => Err(ExecError::new(
+            "S3: PrimitiveOpKind::IoPrepareFileRead is an I/O operation not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::IoExecuteFileRead => Err(ExecError::new(
+            "S3: PrimitiveOpKind::IoExecuteFileRead is an I/O operation not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::CompareEquality => Err(ExecError::new(
+            "S3: PrimitiveOpKind::CompareEquality is not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::IoPrepareFileWrite => Err(ExecError::new(
+            "S3: PrimitiveOpKind::IoPrepareFileWrite is an I/O operation not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::IoExecuteFileWrite => Err(ExecError::new(
+            "S3: PrimitiveOpKind::IoExecuteFileWrite is an I/O operation not supported by the pure evaluator",
+        )),
+        PrimitiveOpKind::ContentUpsertOutputPath { path } => Err(ExecError::new(format!(
+            "S3: PrimitiveOpKind::ContentUpsertOutputPath({path}) \
+             is an I/O annotation not supported by the pure evaluator"
+        ))),
     }
 }
 
@@ -206,6 +237,10 @@ fn execute_callable(
     match eval::evaluate_fn_body_with_data(body, &eval_inputs, sibling_fns, data_values) {
         Ok(results) => Ok(results),
         Err(eval_err) => {
+            // S3: When ALL inputs are Skipped (unwired/missing upstream), evaluation
+            // failure is expected -- the node was never wired. Propagate Skipped rather
+            // than erroring. But when ANY input carries a real value, the evaluation
+            // was supposed to succeed, so surface the error.
             let has_real_inputs = eval_inputs.values().any(|v| !matches!(v, Value::Skipped));
             if has_real_inputs {
                 Err(ExecError::new(format!(

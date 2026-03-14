@@ -982,12 +982,22 @@ fn typecheck_graph_modules_spanned(
         });
     }
 
+    let (dsl_type_registry, unresolved_types) = collect_dsl_type_registry(&graph.modules);
+
+    // S7: unresolved type names are collected during DSL type registration.
+    // These types are referenced in DSL definitions but couldn't be resolved
+    // from the registry — they fall back to identity placeholders. The
+    // ratchet_fail_open_types test tracks the known set. Once all DSL types
+    // propagate to the registry, this Vec will be empty and the transitional
+    // `resolve_field_type_dag_or_identity` wrapper can be deleted.
+    let _ = &unresolved_types;
+
     errors
         .is_empty()
         .then_some(TypedProjectMetadata {
             typed_modules,
             pipeline_params: collect_pipeline_params(&graph.modules),
-            dsl_type_registry: collect_dsl_type_registry(&graph.modules),
+            dsl_type_registry,
             available_profiles: collect_available_profiles(&graph.modules),
         })
         .ok_or(errors)
@@ -1009,8 +1019,9 @@ fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
     params
 }
 
-fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
+fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<String>) {
     let mut registry = TypeRegistry::new();
+    let mut unresolved_types: Vec<String> = Vec::new();
 
     // Collect all type definitions across modules for two-pass registration.
     let mut all_type_defs: Vec<&daglang_syntax::ast::TypeDef> = Vec::new();
@@ -1060,7 +1071,7 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
 
     // Pass 2: Re-register with resolved structural DAGs in topological order.
     for def in ordered {
-        register_type_def(def, &mut registry);
+        register_type_def(def, &mut registry, &mut unresolved_types);
     }
 
     // Pass 3: Register inline record types from fn/func parameter and return types.
@@ -1076,28 +1087,30 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> TypeRegistry {
                 _ => continue,
             };
             for param in params {
-                register_inline_records(&param.ty, &mut registry);
+                register_inline_records(&param.ty, &mut registry, &mut unresolved_types);
             }
         }
     }
 
-    registry
+    (registry, unresolved_types)
 }
 
 /// Recursively walk a type expression and register any inline record types.
-fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry) {
+fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry, unresolved: &mut Vec<String>) {
     match ty {
         TypeExpr::Record(_) => {
             // resolve_field_type_dag handles the registration.
-            resolve_field_type_dag(ty, registry);
+            // Errors here are informational — the type will surface as
+            // unresolved when actually used in port construction.
+            resolve_field_type_dag_or_identity(ty, registry, unresolved);
         }
         TypeExpr::Generic(_, args) => {
             for arg in args {
-                register_inline_records(arg, registry);
+                register_inline_records(arg, registry, unresolved);
             }
         }
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
-            register_inline_records(inner, registry);
+            register_inline_records(inner, registry, unresolved);
         }
         TypeExpr::Named(_) => {}
     }
@@ -1191,7 +1204,7 @@ fn topological_sort_types<'a>(
 }
 
 /// Register a single type definition into the registry (Pass 2 worker).
-fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegistry) {
+fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegistry, unresolved: &mut Vec<String>) {
     match &def.body {
         TypeBody::Sum(variants) => {
             // Unit variants get "Unit" type, payload variants get resolved field DAGs.
@@ -1201,14 +1214,14 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
                     let dag = if variant.fields.is_empty() {
                         gunbc_ir::type_lib::unit()
                     } else if variant.fields.len() == 1 {
-                        resolve_field_type_dag(&variant.fields[0].ty, registry)
+                        resolve_field_type_dag_or_identity(&variant.fields[0].ty, registry, unresolved)
                     } else {
                         // Multi-field payload variant: wrap fields as an anonymous product.
                         let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
                             variant
                                 .fields
                                 .iter()
-                                .map(|f| (f.name.as_str(), resolve_field_type_dag(&f.ty, registry)))
+                                .map(|f| (f.name.as_str(), resolve_field_type_dag_or_identity(&f.ty, registry, unresolved)))
                                 .collect();
                         gunbc_ir::type_lib::product_resolved(&variant.name, resolved_fields)
                     };
@@ -1224,7 +1237,7 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
             let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = fields
                 .iter()
                 .map(|field| {
-                    let dag = resolve_field_type_dag(&field.ty, registry);
+                    let dag = resolve_field_type_dag_or_identity(&field.ty, registry, unresolved);
                     (field.name.as_str(), dag)
                 })
                 .collect();
@@ -1245,8 +1258,8 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
                 match base_dag_opt {
                     Some(dag) => dag,
                     None => {
-                        // Unresolved type alias base — produce identity placeholder.
-                        // The type may be defined externally or not yet registered.
+                        // Unresolved type alias base — identity fallback with warning.
+                        unresolved.push(base_name.clone());
                         gunbc_ir::type_lib::identity(&base_name)
                     }
                 }
@@ -1273,26 +1286,26 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
 ///
 /// Handles structural containers (List, Optional, Set, Map) by recursing into
 /// their type arguments and building structural DAGs instead of flattening to
-/// identity strings. Non-refined named types fall back to registry lookup or
-/// an identity DAG.
+/// identity strings. Returns `Err(type_name)` when a named type cannot be
+/// resolved from the registry — callers decide whether to fail or warn.
 fn resolve_field_type_dag(
     ty: &TypeExpr,
     registry: &mut TypeRegistry,
-) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
+) -> Result<gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>, String> {
     match ty {
         TypeExpr::Generic(name, args) => {
             match (name.as_str(), args.len()) {
                 ("List", 1) => {
-                    let elem = resolve_field_type_dag(&args[0], registry);
-                    return gunbc_ir::type_lib::list(elem);
+                    let elem = resolve_field_type_dag(&args[0], registry)?;
+                    return Ok(gunbc_ir::type_lib::list(elem));
                 }
                 ("Option" | "Optional", 1) => {
-                    let inner = resolve_field_type_dag(&args[0], registry);
-                    return gunbc_ir::type_lib::optional(inner);
+                    let inner = resolve_field_type_dag(&args[0], registry)?;
+                    return Ok(gunbc_ir::type_lib::optional(inner));
                 }
                 ("Set", 1) => {
-                    let elem = resolve_field_type_dag(&args[0], registry);
-                    return gunbc_ir::type_lib::set(elem);
+                    let elem = resolve_field_type_dag(&args[0], registry)?;
+                    return Ok(gunbc_ir::type_lib::set(elem));
                 }
                 ("Map", 2) => {
                     // Runtime Value::Map is string-keyed. Reject non-String
@@ -1300,61 +1313,84 @@ fn resolve_field_type_dag(
                     let key_name = type_expr_to_string(&args[0]);
                     if key_name != "String" {
                         // Non-String key types are not supported by Value::Map.
-                        // Fall through to produce an identity placeholder that
-                        // will fail downstream rather than silently miscompiling.
+                        // Fall through to produce an error rather than silently
+                        // miscompiling.
                     } else {
-                        let key = resolve_field_type_dag(&args[0], registry);
-                        let val = resolve_field_type_dag(&args[1], registry);
-                        return gunbc_ir::type_lib::map(key, val);
+                        let key = resolve_field_type_dag(&args[0], registry)?;
+                        let val = resolve_field_type_dag(&args[1], registry)?;
+                        return Ok(gunbc_ir::type_lib::map(key, val));
                     }
                 }
                 _ => { /* fall through to string-based path */ }
             }
         }
         TypeExpr::Optional(inner) => {
-            let inner_dag = resolve_field_type_dag(inner, registry);
-            return gunbc_ir::type_lib::optional(inner_dag);
+            let inner_dag = resolve_field_type_dag(inner, registry)?;
+            return Ok(gunbc_ir::type_lib::optional(inner_dag));
         }
         TypeExpr::Refined(inner, _) => {
-            let base_dag = resolve_field_type_dag(inner, registry);
+            let base_dag = resolve_field_type_dag(inner, registry)?;
             let predicates = collect_predicates_from_type_expr(ty);
             if predicates.is_empty() {
-                return base_dag;
+                return Ok(base_dag);
             } else {
                 let base_name = type_expr_to_string(inner);
-                return gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates);
+                return Ok(gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates));
             }
         }
         TypeExpr::Record(fields) => {
             // Inline record: desugar into a registered anonymous product type.
             // The structural name (e.g., "{key: String, value: String}") is
             // deterministic — identical inline records get the same type.
-            let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = fields
+            let resolved_fields: Result<Vec<_>, String> = fields
                 .iter()
-                .map(|f| (f.name.as_str(), resolve_field_type_dag(&f.ty, registry)))
+                .map(|f| {
+                    let dag = resolve_field_type_dag(&f.ty, registry)?;
+                    Ok((f.name.as_str(), dag))
+                })
                 .collect();
+            let resolved_fields = resolved_fields?;
             let name = type_expr_to_string(ty);
             let dag = gunbc_ir::type_lib::product_resolved(&name, resolved_fields);
             registry.register(name.as_str(), dag.clone());
-            return dag;
+            return Ok(dag);
         }
         _ => { /* Named — fall through */ }
     }
 
-    // String-based fallback for Named types and unmatched Generic.
+    // String-based path for Named types and unmatched Generic.
     let base_name = type_expr_to_string(ty);
     let predicates = collect_predicates_from_type_expr(ty);
     let base_dag_opt = registry.get_by_name(&base_name).cloned();
     if predicates.is_empty() {
-        base_dag_opt.unwrap_or_else(|| {
-            // Unresolved type — produce identity placeholder. The type may
-            // be defined externally or not yet registered.
-            gunbc_ir::type_lib::identity(&base_name)
-        })
+        match base_dag_opt {
+            Some(dag) => Ok(dag),
+            None => Err(base_name),
+        }
     } else {
         match base_dag_opt {
-            Some(dag) => gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates),
-            None => gunbc_ir::type_lib::refined(&base_name, predicates),
+            Some(dag) => Ok(gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates)),
+            None => Ok(gunbc_ir::type_lib::refined(&base_name, predicates)),
+        }
+    }
+}
+
+/// Transitional wrapper: resolves a type DAG or falls back to identity with a warning.
+///
+/// Calls `resolve_field_type_dag` and, on failure, produces an identity placeholder
+/// while recording the unresolved type name. This preserves current behavior while
+/// making unresolved types visible. Once all DSL types are registered (S7 terminal
+/// state), this wrapper should be deleted and callers should use the Result directly.
+fn resolve_field_type_dag_or_identity(
+    ty: &TypeExpr,
+    registry: &mut TypeRegistry,
+    unresolved: &mut Vec<String>,
+) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
+    match resolve_field_type_dag(ty, registry) {
+        Ok(dag) => dag,
+        Err(type_name) => {
+            unresolved.push(type_name.clone());
+            gunbc_ir::type_lib::identity(&type_name)
         }
     }
 }

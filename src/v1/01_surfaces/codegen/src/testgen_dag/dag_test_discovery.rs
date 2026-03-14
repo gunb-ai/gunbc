@@ -533,6 +533,7 @@ fn apply_mock<T>(
             port: mock.port.clone(),
             value,
             sequence: None,
+            provider: None,
         });
     }
 }

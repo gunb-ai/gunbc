@@ -322,6 +322,7 @@ impl MockRequirements {
                     port: port.to_string(),
                     value,
                     sequence: None,
+                    provider: None,
                 });
             }
         }

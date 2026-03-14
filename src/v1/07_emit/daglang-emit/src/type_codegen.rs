@@ -646,7 +646,6 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         }
         todo_body
     } else {
-        fn_codegen::reset_tmp_counter();
         let compiled = fn_codegen::compile_fn_body(&fd.body, &ctx);
         if fn_codegen::body_has_empty_construct(&compiled) {
             if rename_todo_params {
