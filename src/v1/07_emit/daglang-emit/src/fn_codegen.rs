@@ -174,11 +174,37 @@ fn compile_return_fields(fields: &[(String, ast::Expr)], ctx: &CompileContext, c
         // Multi-field return: try to infer the struct name from context.
         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
         let struct_name = infer_struct_name(&field_names, ctx);
+        let opt_set = ctx.optional_fields.get(&struct_name);
+        let field_types = ctx.struct_field_types.get(&struct_name);
         code_ir::Expr::Struct {
-            name: struct_name,
+            name: struct_name.clone(),
             fields: fields
                 .iter()
-                .map(|(name, expr)| (name.clone(), compile_expr(expr, ctx, counter)))
+                .map(|(name, expr)| {
+                    let compiled = compile_expr_in_field_context(expr, name, field_types, ctx, counter);
+                    let is_opt = opt_set.is_some_and(|s| s.contains(name.as_str()));
+                    let is_none = is_none_expr(&compiled);
+                    let already_optional = is_opt && is_already_optional_expr(expr, ctx);
+                    let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
+                    let mut result = if is_opt && !is_none && !already_optional {
+                        code_ir::Expr::Call {
+                            func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                            args: vec![compiled],
+                            obligation: None,
+                        }
+                    } else {
+                        compiled
+                    };
+                    // Box wrapping for recursive fields
+                    if needs_box_wrapping(&struct_name, name, ctx) {
+                        result = code_ir::Expr::Call {
+                            func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                            args: vec![result],
+                            obligation: None,
+                        };
+                    }
+                    (name.clone(), result)
+                })
                 .collect(),
             rest: None,
         }
@@ -311,10 +337,18 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 .iter()
                 .map(|(n, e)| {
                     let compiled = compile_expr_in_field_context(e, n, field_types, ctx, counter);
-                    // Clone variable references to avoid use-after-move in struct fields
-                    let compiled = clone_if_needed(compiled);
                     let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
-                    let mut result = if is_opt && !is_none_expr(&compiled) {
+                    // Check for None/null BEFORE cloning (clone_if_needed would
+                    // turn None into None.clone(), hiding it from is_none_expr).
+                    let is_none = is_none_expr(&compiled);
+                    // Check if the source expression is already Optional (e.g.,
+                    // accessing an Optional field from another struct). In that
+                    // case, don't double-wrap in Some().
+                    let already_optional = is_opt && is_already_optional_expr(e, ctx);
+                    // Clone variable references to avoid use-after-move in struct fields
+                    // (but don't clone None — it's Copy and cloning produces noise)
+                    let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
+                    let mut result = if is_opt && !is_none && !already_optional {
                         code_ir::Expr::Call {
                             func: Box::new(code_ir::Expr::Var("Some".to_string())),
                             args: vec![compiled],
@@ -324,10 +358,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                         compiled
                     };
                     // Wrap in Box::new() if this field is recursive
-                    let needs_box = ctx.boxed_fields.contains(&(struct_name.clone(), n.clone()))
-                        || ctx.boxed_fields.contains(&(struct_name.clone(), format!("{}::{}", struct_name, n)));
-                    // Also check for variant::field pattern
-                    if needs_box {
+                    if needs_box_wrapping(&struct_name, n, ctx) {
                         result = code_ir::Expr::Call {
                             func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
                             args: vec![result],
@@ -493,6 +524,9 @@ fn compile_intrinsic_call(
 ) -> Option<code_ir::Expr> {
     // First arg is always the collection/receiver.
     // Eagerly evaluated since counter is &mut and can't be captured in a closure.
+    if args.is_empty() {
+        return None;
+    }
     let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter));
 
     match name {
@@ -684,9 +718,35 @@ fn compile_intrinsic_call(
                         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
                         infer_struct_name(&field_names, ctx)
                     });
+                    let opt_set = ctx.optional_fields.get(&struct_name);
+                    let field_types = ctx.struct_field_types.get(&struct_name);
                     let ir_fields: Vec<(String, code_ir::Expr)> = fields
                         .iter()
-                        .map(|(n, e)| (n.clone(), compile_expr(e, ctx, counter)))
+                        .map(|(n, e)| {
+                            let compiled = compile_expr_in_field_context(e, n, field_types, ctx, counter);
+                            let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
+                            let is_none = is_none_expr(&compiled);
+                            let already_optional = is_opt && is_already_optional_expr(e, ctx);
+                            let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
+                            let mut result = if is_opt && !is_none && !already_optional {
+                                code_ir::Expr::Call {
+                                    func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                                    args: vec![compiled],
+                                    obligation: None,
+                                }
+                            } else {
+                                compiled
+                            };
+                            // Box wrapping for recursive fields
+                            if needs_box_wrapping(&struct_name, n, ctx) {
+                                result = code_ir::Expr::Call {
+                                    func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                                    args: vec![result],
+                                    obligation: None,
+                                };
+                            }
+                            (n.clone(), result)
+                        })
                         .collect();
                     Some(code_ir::Expr::Struct {
                         name: struct_name,
@@ -1391,8 +1451,24 @@ fn compile_match(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
+    let mut compiled_scrutinee = compile_expr(scrutinee, ctx, counter);
+    // If all non-wildcard/non-null arms use string literal patterns and the
+    // scrutinee is not a literal, add .as_str() so Rust can match &str patterns
+    // against a String value.
+    let all_string_arms = arms.iter().all(|a| {
+        matches!(&a.pattern, ast::Pattern::Literal(ast::Literal::String(_)))
+            || matches!(&a.pattern, ast::Pattern::Wildcard)
+            || is_null_pattern(&a.pattern)
+    });
+    if all_string_arms && !arms.is_empty() && !matches!(scrutinee, ast::Expr::Literal(_)) {
+        compiled_scrutinee = code_ir::Expr::MethodCall {
+            receiver: Box::new(compiled_scrutinee),
+            method: "as_str".to_string(),
+            args: vec![],
+        };
+    }
     code_ir::Expr::Match {
-        expr: Box::new(compile_expr(scrutinee, ctx, counter)),
+        expr: Box::new(compiled_scrutinee),
         arms: arms
             .iter()
             .map(|a| compile_match_arm(a, has_none_arm, ctx, counter))
@@ -1413,10 +1489,26 @@ fn compile_match_arm(
     {
         pattern = format!("Some({pattern})");
     }
-    code_ir::MatchArm {
-        pattern,
-        body: vec![code_ir::Stmt::TailExpr(compile_expr(&arm.body, ctx, counter))],
+    // Collect deref let-bindings for boxed fields in variant patterns.
+    // If the pattern destructures a variant with boxed fields, we need
+    // `let field = *field;` to deref Box<T> → T for the body.
+    let mut deref_stmts = Vec::new();
+    if let ast::Pattern::Variant(variant_name, fields) = &arm.pattern {
+        for (field_name, field_pat) in fields {
+            if let ast::Pattern::Ident(bind_name) = field_pat {
+                if needs_box_wrapping(variant_name, field_name, ctx) {
+                    deref_stmts.push(code_ir::Stmt::Let {
+                        name: bind_name.clone(),
+                        expr: code_ir::Expr::Deref(Box::new(code_ir::Expr::Var(bind_name.clone()))),
+                        mutable: false,
+                    });
+                }
+            }
+        }
     }
+    let mut body = deref_stmts;
+    body.push(code_ir::Stmt::TailExpr(compile_expr(&arm.body, ctx, counter)));
+    code_ir::MatchArm { pattern, body }
 }
 
 fn is_null_pattern(pat: &ast::Pattern) -> bool {
@@ -1425,10 +1517,35 @@ fn is_null_pattern(pat: &ast::Pattern) -> bool {
 }
 
 fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
+    compile_pattern_typed(pat, ctx, None)
+}
+
+/// Compile a pattern with optional expected type context for variant resolution.
+///
+/// When `expected_type` is Some, ambiguous variants are resolved against that
+/// type's known variants instead of the global `variant_to_enum` map.
+fn compile_pattern_typed(
+    pat: &ast::Pattern,
+    ctx: &CompileContext,
+    expected_type: Option<&str>,
+) -> String {
     match pat {
         ast::Pattern::Ident(name) => {
             if name == "null" {
                 "None".to_string()
+            } else if let Some(et) = expected_type {
+                // If we have an expected type and it's an enum containing this variant, use it
+                if let Some(variants) = ctx.enum_variants.get(et) {
+                    if variants.contains(name.as_str()) {
+                        return format!("{et}::{name}");
+                    }
+                }
+                // Fall back to global map
+                if let Some(enum_name) = ctx.variant_to_enum.get(name.as_str()) {
+                    format!("{enum_name}::{name}")
+                } else {
+                    name.clone()
+                }
             } else if let Some(enum_name) = ctx.variant_to_enum.get(name.as_str()) {
                 format!("{enum_name}::{name}")
             } else {
@@ -1436,20 +1553,43 @@ fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
             }
         }
         ast::Pattern::Variant(name, fields) => {
-            let qualified = ctx
-                .variant_to_enum
-                .get(name.as_str())
-                .map(|e| format!("{e}::{name}"))
-                .unwrap_or_else(|| name.clone());
+            // Resolve variant name: use expected_type if available, else global map
+            let qualified = if let Some(et) = expected_type {
+                if let Some(variants) = ctx.enum_variants.get(et) {
+                    if variants.contains(name.as_str()) {
+                        format!("{et}::{name}")
+                    } else {
+                        ctx.variant_to_enum
+                            .get(name.as_str())
+                            .map(|e| format!("{e}::{name}"))
+                            .unwrap_or_else(|| name.clone())
+                    }
+                } else {
+                    ctx.variant_to_enum
+                        .get(name.as_str())
+                        .map(|e| format!("{e}::{name}"))
+                        .unwrap_or_else(|| name.clone())
+                }
+            } else {
+                ctx.variant_to_enum
+                    .get(name.as_str())
+                    .map(|e| format!("{e}::{name}"))
+                    .unwrap_or_else(|| name.clone())
+            };
             if fields.is_empty() {
                 qualified
             } else if name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
                 // Some { value: x } → Some(x) in Rust
-                format!("Some({})", compile_pattern(&fields[0].1, ctx))
+                format!("Some({})", compile_pattern_typed(&fields[0].1, ctx, None))
             } else {
+                // Look up field types for this variant to provide context to sub-patterns
+                let variant_field_types = ctx.struct_field_types.get(name.as_str());
                 let field_pats: Vec<String> = fields
                     .iter()
-                    .map(|(n, p)| format!("{}: {}", n, compile_pattern(p, ctx)))
+                    .map(|(n, p)| {
+                        let field_type = variant_field_types.and_then(|ft| ft.get(n.as_str()));
+                        format!("{}: {}", n, compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str())))
+                    })
                     .collect();
                 format!("{} {{ {}, .. }}", qualified, field_pats.join(", "))
             }
@@ -1587,6 +1727,67 @@ fn is_none_expr(expr: &code_ir::Expr) -> bool {
     matches!(expr, code_ir::Expr::Var(name) if name == "None")
 }
 
+/// Check if a struct field needs Box<> wrapping (recursive type).
+///
+/// Checks multiple key patterns because `compute_recursive_fields` uses
+/// `(enum_name, "Variant::field")` for Sum type variants, while struct
+/// construction code uses the variant name as `struct_name`.
+fn needs_box_wrapping(struct_name: &str, field_name: &str, ctx: &CompileContext) -> bool {
+    // Direct: (StructName, field_name)
+    if ctx.boxed_fields.contains(&(struct_name.to_string(), field_name.to_string())) {
+        return true;
+    }
+    // Variant qualified: (StructName, StructName::field_name)
+    let qualified = format!("{struct_name}::{field_name}");
+    if ctx.boxed_fields.contains(&(struct_name.to_string(), qualified)) {
+        return true;
+    }
+    // Via parent enum: if StructName is a variant of EnumName,
+    // check (EnumName, StructName::field_name)
+    if let Some(enum_name) = ctx.variant_to_enum.get(struct_name) {
+        let variant_qualified = format!("{struct_name}::{field_name}");
+        if ctx.boxed_fields.contains(&(enum_name.clone(), variant_qualified)) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if an AST expression will produce an already-optional value.
+///
+/// Returns true when the expression accesses a field that is itself `T?` in
+/// the source struct, meaning the compiled Rust type is already `Option<T>`
+/// and should NOT be wrapped in another `Some()`.
+fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext) -> bool {
+    match expr {
+        // field_access: x.field_name — check if field_name is optional in any known struct
+        ast::Expr::FieldAccess(receiver, field_name) => {
+            // Try to determine the receiver's type from context
+            // For now, check if ANY struct has this field as optional
+            // and the receiver looks like a variable (common case: result.err)
+            if let ast::Expr::Ident(_) = receiver.as_ref() {
+                for opt_fields in ctx.optional_fields.values() {
+                    if opt_fields.contains(field_name.as_str()) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        // Ident: check if the variable name matches a known optional parameter
+        ast::Expr::Ident(name) => ctx.optional_params.contains(name.as_str()),
+        // Record with Some variant: Some { value: x } → already Option<T>
+        ast::Expr::Record(Some(name), _) if name == "Some" => true,
+        // Call to Some: Some(x) → already Option<T>
+        ast::Expr::Call(name, _) if name == "Some" => true,
+        // Null coalesce (x ?? y): result is non-optional by definition
+        ast::Expr::BinOp(_, ast::BinOp::NullCoalesce, _) => false,
+        // If/match that return optional values from both branches
+        // (conservative: don't double-wrap)
+        _ => false,
+    }
+}
+
 /// Compile a field value expression with type-aware variant resolution.
 ///
 /// When the field's declared type is an enum that contains the bare identifier
@@ -1599,20 +1800,69 @@ fn compile_expr_in_field_context(
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
+    // Resolve expected type for this field
+    let expected_type = field_types.and_then(|ft_map| ft_map.get(field_name));
+
     if let ast::Expr::Ident(name) = expr {
         if name == "null" {
             return code_ir::Expr::Var("None".to_string());
         }
-        if let Some(ft_map) = field_types {
-            if let Some(type_name) = ft_map.get(field_name) {
-                if let Some(variants) = ctx.enum_variants.get(type_name) {
-                    if variants.contains(name.as_str()) {
-                        return code_ir::Expr::Path(vec![type_name.clone(), name.to_string()]);
-                    }
+        if let Some(type_name) = expected_type {
+            if let Some(variants) = ctx.enum_variants.get(type_name.as_str()) {
+                if variants.contains(name.as_str()) {
+                    return code_ir::Expr::Path(vec![type_name.clone(), name.to_string()]);
                 }
             }
         }
     }
+
+    // Record construction in field context: if the record name is a variant
+    // of the expected field type, qualify with the correct enum.
+    if let ast::Expr::Record(Some(record_name), fields) = expr {
+        if let Some(type_name) = expected_type {
+            if let Some(variants) = ctx.enum_variants.get(type_name.as_str()) {
+                if variants.contains(record_name.as_str()) {
+                    // Re-compile this record with the correct enum qualification
+                    let qualified = format!("{type_name}::{record_name}");
+                    let opt_set = ctx.optional_fields.get(record_name.as_str());
+                    let variant_field_types = ctx.struct_field_types.get(record_name.as_str());
+                    let ir_fields: Vec<(String, code_ir::Expr)> = fields
+                        .iter()
+                        .map(|(n, e)| {
+                            let compiled = compile_expr_in_field_context(e, n, variant_field_types, ctx, counter);
+                            let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
+                            let is_none = is_none_expr(&compiled);
+                            let already_optional = is_opt && is_already_optional_expr(e, ctx);
+                            let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
+                            let mut result = if is_opt && !is_none && !already_optional {
+                                code_ir::Expr::Call {
+                                    func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                                    args: vec![compiled],
+                                    obligation: None,
+                                }
+                            } else {
+                                compiled
+                            };
+                            if needs_box_wrapping(record_name, n, ctx) {
+                                result = code_ir::Expr::Call {
+                                    func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                                    args: vec![result],
+                                    obligation: None,
+                                };
+                            }
+                            (n.clone(), result)
+                        })
+                        .collect();
+                    return code_ir::Expr::Struct {
+                        name: qualified,
+                        fields: ir_fields,
+                        rest: None,
+                    };
+                }
+            }
+        }
+    }
+
     compile_expr(expr, ctx, counter)
 }
 

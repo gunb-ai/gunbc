@@ -344,52 +344,69 @@ concrete blockers — see gap analysis below.
 residual value. If stack sizes need bumping again before self-hosting
 lands, Option A becomes justified as an interim fix.
 
-#### V2 self-hosting gap analysis (2026-03-13)
+#### V2 self-hosting gap analysis (updated 2026-03-14)
+
+**V2 source:** 7 modules, 7,311 lines, all parse with zero diagnostics.
+
+**Test status:** 59 pass, 0 fail, 2 ignored (OOM + cargo check gate).
 
 **What works today:**
 - Module discovery: `daglang.toml` multi-root config discovers all 7 v2 modules
 - Parsing: all v2 .dag files parse to AST successfully
 - Type codegen: `typedef_to_code_ir` handles structs, enums, aliases
 - Fn codegen: handles records, match, if/else, for, lambda, string interp,
-  intrinsics (map/filter/fold/any/contains/sum/join/last/enumerate)
+  intrinsics (map/filter/fold/any/contains/sum/join/last/enumerate),
+  `with()` immutable record update, `concat()` explicit concatenation
+- Recursive type detection: `compute_recursive_fields()` inserts `Box<>`
 - Rust rendering: `render_rust` produces valid Rust from code_ir
+- Crate assembly: `assemble_v2_crate()` generates complete Cargo project
+  (7 module files + lib.rs + v2_rt.rs + Cargo.toml)
+- Runtime shims: string ops, collection ops, scanner ops all implemented
 
-**Blocker 1 — `build_context` ignores `daglang.toml`:**
-`build_context()` hardcodes `dsl/` as the only root. Must call
-`resolve_default_roots()` to read `daglang.toml` multi-root config.
-Fix is 1 line in `compile/context.rs`.
+**Blocker 1 — RESOLVED:** `build_context` reads `daglang.toml`.
 
-**Blocker 2 — v1 typechecker rejects v2 idioms (12 errors):**
-- TC003 ×7: bare enum variant used where parent type expected
-  (`UnterminatedString` vs `StringScanResult`, `Some` vs `Option<T>`)
-- TC003 ×2: `Record` literal where typechecker expects `Map`
-- TC021 ×3: named arguments not recognized (`ch:` in `code_point()`)
+**Blocker 2 — BYPASSED:** v1 typechecker errors bypassed by compiling
+fn bodies directly from parsed AST without typechecking v2 source.
 
-Fix: make typechecker accept variant-as-type in assignment/return
-context, and recognize named args in the callable registry.
+**Blocker 3 — MOSTLY RESOLVED:**
+- `with()` — implemented ✓
+- String builtins (`char_at`, `substring`, etc.) — implemented ✓
+- Recursive enum boxing — implemented ✓
+- Optional field patterns — partially addressed
 
-**Blocker 3 — fn_codegen missing constructs:**
-- `with(state, { field: value })` — immutable record update, used
-  pervasively for state threading (~100 call sites in v2)
-- String builtins: `char_at()`, `substring()`, `string_length()`,
-  `lookup()` — need Rust equivalents
-- Recursive enum boxing: `Expr` contains `Expr` via variants;
-  type codegen must detect cycles and insert `Box<>`
-- Optional field patterns: `T?` → `Option<T>`, `Some { value: x }`
-  match patterns
+**Blocker 4 — RESOLVED:** Crate assembly harness implemented and
+generating files. Runtime shims complete.
 
-**Blocker 4 — end-to-end crate assembly:**
-- No harness to emit a complete Cargo crate (Cargo.toml, lib.rs,
-  per-module files, main.rs driver)
-- Need v2-specific stdlib shims (string ops, list ops, Option helpers)
+**Current state: 115 compile errors in generated v2 Rust crate.**
+(Down from 829 on 2026-03-14 morning, 2204 initial.)
 
-**Recommended sequence (next PR):**
-1. Fix `build_context` to read `daglang.toml` (1 line)
-2. Fix 12 typecheck errors (variant-as-type, named args)
-3. Add `with()` and string builtins to fn_codegen
-4. Add recursive type detection for `Box<>`
-5. Build crate assembly harness
-6. Iterative: generate crate, compile, fix errors
+Fixes applied (2026-03-14):
+- Optionality tracking: check `T?` annotations, prevent double-wrapping
+  of `None`, `Some{}`, and already-optional field accesses (829→279)
+- Box wrapping: `needs_box_wrapping` checks via parent enum name,
+  deref let-bindings in match arms for boxed fields (279→258)
+- Runtime shim imports: `use crate::v2_rt::{scan_while, ...}` (258→231)
+- String match: `.as_str()` on scrutinee when all arms use string
+  literal patterns (231→223)
+- Variant disambiguation: `compile_pattern_typed` threads expected type
+  through sub-patterns; `compile_expr_in_field_context` handles nested
+  Records with context-aware enum resolution (223→115)
+
+Remaining 115 errors:
+| Error | Count | Root cause |
+|-------|-------|------------|
+| E0308 type mismatches | 59 | Long tail: String/i64, anon struct names, remaining Option |
+| E0382 use-after-move | 26 | Multi-use String fields in match arms (S76) |
+| E0609 `.value` on `Option` | 9 | Need `.unwrap()` for `Some{value:x}` access |
+| E0425 missing values | 2 | Variable scoping in generated code |
+| E0282 type annotation | 1 | Inference gap |
+| E0063 missing field | 1 | Struct field mismatch |
+
+**Path forward:**
+1. Fix `.value` on `Option<T>` → emit `.unwrap()` (9 errors)
+2. Add `.clone()` for multi-use String match bindings (26 errors)
+3. Fix anonymous struct naming (`__TrylambdaparamsState` → `ParserState`) (8 errors)
+4. Remaining type mismatches need deeper type tracking (50 errors)
 
 ---
 
@@ -568,12 +585,9 @@ rather than deriving them from `import` declarations in each .dag file.
 
 Ordered by signal value (which fix prevents the most silent regressions):
 
-1. **Constrain fn-body-eval passthrough (S3).** Structured eval contract:
-   evaluator declares capabilities, unsupported forms are compile-time opaque.
-2. **Fail-closed callable return wiring (S34).** Requires lowerer improvements
-   (service call result bindings + collection intrinsics in return position).
-3. **Fail-closed types (S23/S35).** Teach `value_backing()` to classify
-   DSL types, then flip to `.unwrap_or(false)`.
+1. ~~**Constrain fn-body-eval passthrough (S3).**~~ DONE (2026-03-14).
+2. ~~**Fail-closed callable return wiring (S34).**~~ DONE (2026-03-14).
+3. ~~**Fail-closed types (S23/S35).**~~ DONE (2026-03-14, steps a+c).
 4. **Restore test semantic strength (S38/S39).** Re-add collection/manifest/
    output-value assertions.
 5. **Map<K,V> typecheck diagnostic (S19).** Partially addressed.
@@ -586,9 +600,14 @@ v2 eliminates the deep root by design: types are TypeExpr values, not
 strings. No TypeRegistry. No deferred resolution. No parallel interpreter.
 
 **Eliminated by v2 (no v1 fix needed):**
-All of Branch 1 (S1, S2, S4, S5, S13). Branch 2 parallels (S3, S36, S37).
-Branch 5 type issues (S7, S40). Branch 2 provider issues (S42, S43).
+All of Branch 1 (S1, S2, S4, S5, S13). Branch 2 parallels (S36, S37).
 Branch 3 container classification (S47).
+
+**Fixed in v1 as interim hardening (2026-03-14):**
+S3 (eval passthrough), S7 (type resolution), S23/S35 (value compat),
+S24 (testgen), S25 (REST default), S34 (callable wiring), S42/S43
+(provider classification), S68 (computation dup), S71 (TmpCounter),
+S21 (claim handle), S9 (kernel docs), S6 (ResourceHandle), S69 (crate loc).
 
 **Inherited by v2 (re-implement correctly):**
 S34 (callable wiring), S38 (emitted code untested), S44 (shell output

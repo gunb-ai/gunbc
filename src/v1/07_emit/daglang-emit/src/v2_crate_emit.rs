@@ -283,6 +283,8 @@ fn module_prelude(dag_stem: &str) -> String {
 
     // All modules get access to the runtime shims and std collections
     prelude.push_str("use crate::v2_rt;\n");
+    // Import commonly-used runtime functions directly for unqualified calls
+    prelude.push_str("use crate::v2_rt::{scan_while, scan_to_eol, skip_horizontal_ws, code_point, from_code_point, scan_string_end};\n");
     prelude.push_str("use std::collections::HashMap;\n");
     // Map type alias is defined only in v2_core to avoid redefinition conflicts
     if dag_stem == "00_core" {
