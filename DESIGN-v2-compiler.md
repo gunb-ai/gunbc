@@ -1,5 +1,12 @@
 # v2: Self-hosted compiler design
 
+Canonical docs:
+- `src/v2/WORKBOARD.md` for current status and work queue
+- `src/v2/DESIGN.md` for the canonical v2 design
+
+This file is kept for continuity with older references. New design updates
+should go to `src/v2/DESIGN.md` rather than being duplicated here.
+
 ## Premise
 
 The v0/v1 compiler exists to eliminate glue bugs in downstream systems,

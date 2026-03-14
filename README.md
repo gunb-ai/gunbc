@@ -59,6 +59,10 @@ src/v2/
   06_pipeline.dag    Orchestrator: discover -> compile -> write
 ```
 
+Start with `src/v2/WORKBOARD.md` for current status, work queue, and doc roles.
+Use `src/v2/DESIGN.md` for target architecture and `src/v2/POSTMORTEM.md` for
+the exhaustive audit ledger.
+
 The key design change from v1: **types are structural values, not string
 references.** A type like `List<Span>` is stored as
 `Container { kind: List, element: Product { name: "Span", fields: [...] } }`,

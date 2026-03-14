@@ -1113,6 +1113,42 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    fn phase3_parse_fold_with_fn_lambda() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        // Test multi-line pipe chain with fold + fn lambda (matches 03_resolve.dag line 80-81)
+        let source = "module test\nfn foo(items: List<List<Int>>) -> List<Int> {\n  let diags = items |> map(r => r)\n    |> fold(init: [], f: fn(acc, diags) { concat(acc, diags) })\n  diags\n}\n";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs);
+        match parse_result {
+            Ok(outputs) => {
+                let error_val = outputs.get("error");
+                if let Some(gunbc_ir::Value::Map(err_map)) = error_val {
+                    if !err_map.is_empty() {
+                        if let Some(gunbc_ir::Value::Str(msg)) = err_map.get("message") {
+                            panic!("parse error: {}", msg);
+                        }
+                        panic!("parse produced error: {:?}", err_map);
+                    }
+                }
+                let module_val = outputs.get("module").expect("should have 'module' key");
+                if let gunbc_ir::Value::Unit = module_val {
+                    let error_val = outputs.get("error");
+                    panic!("module is Unit (parse returned None), error: {:?}", error_val);
+                }
+            }
+            Err(e) => panic!("parse fn eval failed: {}", e),
+        }
+    }
+
+    #[test]
     fn phase3_resolve_single_module() {
         let output = compile_all_modules().expect("compilation should succeed");
         let source = "module test\ntype Foo { x: Int }";

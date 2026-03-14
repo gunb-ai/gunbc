@@ -1,5 +1,10 @@
 # v2 Compiler Postmortem — Bootstrap to cargo check (2026-03-14)
 
+Operational entrypoint: `src/v2/WORKBOARD.md`
+
+This file is the exhaustive audit ledger. Keep active priorities, task slicing,
+and parallel work coordination in `src/v2/WORKBOARD.md`.
+
 This document records the full state of the v2 self-hosted compiler at
 the point where the generated Rust crate passes `cargo check`, `cargo
 build`, and runtime smoke tests. It catalogs every workaround, hack,
