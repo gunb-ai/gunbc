@@ -1234,14 +1234,25 @@ fn dfs_find_cycles(
                 dfs_find_cycles(target, graph, visited, on_stack, path, recursive_fields);
                 path.pop();
             } else if on_stack.contains(target.as_str()) {
-                // Found a cycle — mark the current edge as needing Box<>
-                recursive_fields.insert((node.to_string(), field_name.clone()));
-                // Also mark all edges on the cycle path
-                for (from, fname, to) in path.iter().rev() {
-                    recursive_fields.insert((from.clone(), fname.clone()));
-                    if to == target {
+                // Found a cycle — only mark edges that are WITHIN the cycle,
+                // not edges that merely led to the cycle. The cycle starts
+                // at `target` and includes all path edges from `target` onward.
+                let cycle_start = target.as_str();
+                let mut in_cycle = false;
+                for (from, fname, to) in path.iter() {
+                    if from == cycle_start {
+                        in_cycle = true;
+                    }
+                    if in_cycle {
+                        recursive_fields.insert((from.clone(), fname.clone()));
+                    }
+                    if in_cycle && to == cycle_start {
                         break;
                     }
+                }
+                // The current edge (node → target) closes the cycle
+                if node == cycle_start || in_cycle {
+                    recursive_fields.insert((node.to_string(), field_name.clone()));
                 }
             }
         }

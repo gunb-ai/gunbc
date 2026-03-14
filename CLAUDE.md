@@ -34,14 +34,20 @@ confirm before continuing.
    below it. Adding a dependency means instantiating existing vocabulary, not inventing
    new abstractions.
 
-6. **The interpreter maps IR to execution — nothing more.** No domain logic, no
+6. **DAG nodes are facts, rendering is separate.** A DAG node asserts truths about
+   computation (types, cardinality, data flow). These are target-agnostic. How to
+   express those truths in a target language (Rust `Box<T>`, C `T*`, Verilog wire
+   bundle) is a rendering decision that lives in the backend, never in the IR.
+   The structural test: can you swap the backend without changing the IR?
+
+7. **The interpreter maps IR to execution — nothing more.** No domain logic, no
    compiler logic. Every `extern func` backed by Rust must be justified.
 
-7. **Every expression lowers to structural DAG nodes or compilation fails.** No opaque
+8. **Every expression lowers to structural DAG nodes or compilation fails.** No opaque
    AST fragments. No interpreter-backed fallback nodes. `lower_expr` returns `Result`,
    not `Option`, and its match is exhaustive with no wildcard.
 
-8. **Correctness by construction, not by validation.** If a property must hold, the
+9. **Correctness by construction, not by validation.** If a property must hold, the
    API must make violations unrepresentable. Don't add validation passes — refactor
    the types so invalid states can't be constructed.
 

@@ -128,17 +128,43 @@ pub fn assemble_v2_crate(
     // definitions suppressed, so cross-module references use the upstream type
     // via `use crate::upstream::*`.
     let mut defined_type_fields: HashMap<String, Vec<String>> = HashMap::new();
+    // S81: Track which type names are visible to each module (current + upstream)
+    // Initialize with hardcoded materialized types from std_types_prelude
+    let mut visible_type_names: HashSet<String> = HashSet::from([
+        "SourceSpan".to_string(),
+        "BindingPower".to_string(),
+    ]);
     for (dag_stem, items) in modules {
         let rust_mod = match V2_MODULE_MAP.iter().find(|(stem, _)| stem == dag_stem) {
             Some((_, rust_name)) => *rust_name,
             None => continue,
         };
 
+        // Add this module's type names AND variant names to the visible set
+        for item in items.iter() {
+            if let Item::TypeDef(td) = &item.node {
+                visible_type_names.insert(td.name.clone());
+                // Also add variant names (they're keys in struct_field_types)
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
+                    for v in variants {
+                        visible_type_names.insert(v.name.clone());
+                    }
+                }
+            }
+        }
+
+        // Filter struct_field_types to only include visible types
+        let module_struct_field_types: HashMap<String, HashMap<String, String>> = struct_field_types
+            .iter()
+            .filter(|(name, _)| visible_type_names.contains(name.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
         let source = emit_module(
             items,
             &recursive_fields,
             &variant_to_enum,
-            &struct_field_types,
+            &module_struct_field_types,
             &optional_fields,
             &all_enum_variants,
             &defined_type_fields,
@@ -274,9 +300,6 @@ fn module_prelude(dag_stem: &str) -> String {
         "04_typecheck" => {
             prelude.push_str("use crate::parse::*;\n");
             prelude.push_str("use crate::resolve::*;\n");
-            // S81: fold init inference picks ParseStageResult from pipeline —
-            // import it so the generated code compiles
-            prelude.push_str("use crate::pipeline::ParseStageResult;\n");
         }
         "05_emit" => {
             prelude.push_str("use crate::parse::*;\n");

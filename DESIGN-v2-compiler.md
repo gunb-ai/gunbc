@@ -55,6 +55,90 @@ program, run the emitted files with the appropriate runtime. The
 compiler and the runtime are separate programs with a file boundary
 between them.
 
+## Core principle: DAG nodes are facts, composition is conjunction
+
+A DAG node is a **fact** — a tautological assertion about a computation.
+"This operation takes a String and produces an Int." "This operation is
+idempotent." "This operation has cardinality [0,∞)." Each fact is true
+independent of any target language or runtime.
+
+**Composition is conjunction.** When a DAG contains multiple nodes
+connected by edges, the DAG asserts all of their facts simultaneously.
+The edges assert data flow relationships between the facts.
+
+**SubDag encapsulation is abstraction.** When a node contains an inner
+DAG (`NodeBody::SubDag`), it does two things:
+1. **Stacks facts** — the outer node adds properties (cardinality,
+   idempotency, resource requirements) on top of the inner DAG's facts.
+2. **Hides complexity** — consumers see only the outer node's ports,
+   not the inner structure. The inner facts are still true; they're
+   just not visible from outside.
+
+This is not progressive lowering (where you lose information at each
+step). It's **abstraction by composition** — you never lose facts, you
+stack them. The inner DAG's truths are preserved inside the encapsulation.
+
+**Rendering reads facts, never changes them.** A backend doesn't
+transform the DAG — it reads the accumulated facts and renders them in
+its idiom. A Rust renderer reads "this type is Optional" and emits
+`Option<T>`. A C renderer reads the same fact and emits `T*` with NULL.
+A Verilog renderer reads it and emits a valid bit + data bus. The facts
+don't change; the rendering does.
+
+This creates a clean **separation between computation facts and rendering
+facts**:
+- **Computation facts** live in the DAG: types, cardinality, data flow,
+  operation semantics. These are target-agnostic truths.
+- **Rendering facts** live in the backend: how to express Optional, how
+  to handle ownership, how to name types. These are target-specific
+  decisions.
+
+The structural test for correct architecture: **can you swap rendering
+facts without changing computation facts?** If yes, the IR is
+target-agnostic. If you find a rendering fact mixed into the computation
+layer, you've found a design bug.
+
+This is why backends should themselves be compositional .dag models —
+rendering strategies are facts about how to map computation concepts to
+target idioms, expressible in the same compositional vocabulary.
+
+### Comparison with LLVM IR and MLIR
+
+**LLVM IR** is a single-level, fixed-type SSA representation. It's the
+contract between language frontends and hardware backends. LLVM's design
+is clean — the IR is target-agnostic, and all target knowledge lives in
+the backend passes. But LLVM only handles one abstraction level (close
+to machine code), and its type system is fixed (i32, float, ptr, struct).
+
+**MLIR** extends LLVM with multi-level IR via dialects. Each dialect
+defines operations and types at a specific abstraction level (TensorFlow
+ops, linalg, affine loops, LLVM). Interfaces allow transformations to
+work across dialects polymorphically. MLIR solves "how do I lower
+through many abstraction levels?" via progressive dialect conversion.
+
+**gunbc's DAG IR** solves a different problem. It doesn't lower through
+abstraction levels — it composes facts and then renders them. The IR
+is not a staging area for optimization passes. It's a **compositional
+knowledge graph** where each node asserts truths about computation,
+and backends read those truths to produce target-specific output.
+
+| | LLVM | MLIR | gunbc |
+|---|---|---|---|
+| Model | Lower to machine code | Lower through abstraction levels | Compose facts, render to any target |
+| Extension | Fixed instruction set | Dialect system + interfaces | `Dag<T>` generic over closed op enum + SubDag composition |
+| Types | Fixed (i32, ptr, struct) | Extensible per-dialect | Structural `TypeExpr` values (products, sums, containers) |
+| Target knowledge | Backend passes | Dialect conversion | Rendering .dag models |
+| Information flow | Lossy (lowering drops info) | Lossy (progressive) | Lossless (facts compose, never lost) |
+| World I/O | Annotated (readonly, writeonly) | Interface (MemoryEffects) | Structural (graph topology) |
+| Cardinality | None | None | First-class [min, max] intervals |
+
+Key properties that gunbc preserves and must not lose:
+- **World I/O is structural** — detected by graph inspection, no annotations
+- **Cardinality is first-class** — ports carry multiplicity, not metadata
+- **Types are compositional values** — products, sums, containers stack like
+  protobuf messages and map to any target (Rust structs, C structs, Verilog
+  wire bundles, PSPICE subcircuit interfaces)
+
 ## Core principle: types are values, not references
 
 In v2, types are structural values that flow through the pipeline

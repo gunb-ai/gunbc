@@ -271,20 +271,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
                 }
                 code_ir::Expr::Field(Box::new(compiled), rust_field)
             } else {
-                let field_expr = code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field.clone());
-                // S81: Auto-deref boxed fields that are ONLY boxed in ALL structs
-                // that have them. Only deref when the field name is EXCLUSIVELY
-                // a boxed field (not sometimes plain, sometimes boxed).
-                // Use a targeted list of field+type pairs known to be Box<T>.
-                let is_known_boxed = matches!(
-                    rust_field.as_str(),
-                    "resource" | "status"
-                );
-                if is_known_boxed {
-                    code_ir::Expr::Deref(Box::new(field_expr))
-                } else {
-                    field_expr
-                }
+                code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field)
             }
         }
         ast::Expr::Call(name, args) => {
@@ -1572,7 +1559,8 @@ fn compile_match(
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
     // TEMPORARY bootstrap scaffolding (S81): Infer the scrutinee type to
     // resolve ambiguous variant patterns (e.g., LitStr → LiteralValue vs TokenKind).
-    let scrutinee_type = infer_scrutinee_type(scrutinee, ctx);
+    let scrutinee_type = infer_scrutinee_type(scrutinee, ctx)
+        .or_else(|| infer_type_from_arms(arms, ctx));
     // When matching against string literal patterns, add .as_str() to the
     // scrutinee so Rust can compare String with &str patterns. Only apply
     // when the scrutinee is a variable or field access (not a temporary).
@@ -1634,6 +1622,46 @@ fn infer_scrutinee_type(scrutinee: &ast::Expr, ctx: &CompileContext) -> Option<S
         }
         _ => None,
     }
+}
+
+/// TEMPORARY bootstrap scaffolding (S81): Infer the scrutinee type from the
+/// match arm patterns. Finds the enum that contains ALL the variant patterns
+/// used in the arms, preferring more specific (smaller) enums.
+fn infer_type_from_arms(arms: &[ast::MatchArm], ctx: &CompileContext) -> Option<String> {
+    // Collect all variant names from the arms (excluding Option variants and wildcards)
+    let arm_variants: Vec<&str> = arms
+        .iter()
+        .filter_map(|a| match &a.pattern {
+            ast::Pattern::Variant(name, _) if name != "Some" && name != "None" => {
+                Some(name.as_str())
+            }
+            ast::Pattern::Ident(name) if name != "null" && name != "_" => {
+                // Bare identifiers that are enum variants
+                if ctx.variant_to_enum.contains_key(name.as_str()) {
+                    Some(name.as_str())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .collect();
+    if arm_variants.is_empty() {
+        return None;
+    }
+    // Find enums that contain ALL the arm variants
+    let mut candidates: Vec<(&String, usize)> = ctx
+        .enum_variants
+        .iter()
+        .filter(|(_, variants)| arm_variants.iter().all(|v| variants.contains(*v)))
+        .map(|(name, variants)| (name, variants.len()))
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    // Prefer the smallest enum (most specific)
+    candidates.sort_by_key(|(_, size)| *size);
+    Some(candidates[0].0.clone())
 }
 
 fn compile_match_arm(
@@ -1701,6 +1729,13 @@ fn compile_match_arm(
 fn collect_string_literal_guards(pat: &ast::Pattern, ctx: &CompileContext) -> Vec<String> {
     let mut guards = Vec::new();
     if let ast::Pattern::Variant(name, fields) = pat {
+        // Special case: Some { value: "literal" } → need guard on the inner value
+        if name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
+            if let ast::Pattern::Literal(ast::Literal::String(s)) = &fields[0].1 {
+                guards.push(format!("__some_val == \"{s}\""));
+                return guards;
+            }
+        }
         let variant_fields = ctx.struct_field_types.get(name.as_str());
         for (field_name, sub_pattern) in fields {
             if let ast::Pattern::Literal(ast::Literal::String(s)) = sub_pattern {
@@ -1779,7 +1814,12 @@ fn compile_pattern_with_context(
                 qualified
             } else if name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
                 // Some { value: x } → Some(x) in Rust
-                format!("Some({})", compile_pattern_with_context(&fields[0].1, ctx, None))
+                // S81: Some { value: "literal" } → Some(ref __some_val) + guard
+                if let ast::Pattern::Literal(ast::Literal::String(_)) = &fields[0].1 {
+                    "Some(ref __some_val)".to_string()
+                } else {
+                    format!("Some({})", compile_pattern_with_context(&fields[0].1, ctx, None))
+                }
             } else {
                 // Look up field types for this variant to provide context to sub-patterns
                 let _parent_enum = expected_type
@@ -1993,8 +2033,9 @@ fn is_option_value_access(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
 /// TEMPORARY bootstrap scaffolding (S81): Check if a variable expression likely
 /// holds an Option<T> value because it was derived from an optional field.
 /// Used to prevent double-wrapping: if a variable name matches the field name
-/// being set AND that field name is optional in some other struct, the value
-/// was likely extracted from an optional field and is already Option<T>.
+/// being set AND that field name is EXCLUSIVELY optional (optional in ALL structs
+/// where it appears as a field), the value was likely extracted from an optional
+/// field and is already Option<T>.
 fn is_var_likely_option(expr: &code_ir::Expr, field_name: &str, ctx: &CompileContext) -> bool {
     // Extract the variable name from the expression (handle .clone() wrapping)
     let var_name = match expr {
@@ -2010,12 +2051,22 @@ fn is_var_likely_option(expr: &code_ir::Expr, field_name: &str, ctx: &CompileCon
     if let Some(name) = var_name {
         let escaped = name.strip_prefix("r#").unwrap_or(name);
         // Only flag if the variable name matches the field being set AND
-        // the variable name is optional in some struct AND it's NOT a function parameter
-        if escaped == field_name
-            && !ctx.param_types.contains_key(escaped)
-            && ctx.optional_fields.values().any(|opt| opt.contains(escaped))
-        {
-            return true;
+        // it's NOT a function parameter AND the field name is EXCLUSIVELY
+        // optional (in ALL structs that have it). This prevents false positives
+        // for common names like "span" that are optional in some structs but not all.
+        if escaped == field_name && !ctx.param_types.contains_key(escaped) {
+            let appears_in_count = ctx.struct_field_types.values()
+                .filter(|ft| ft.contains_key(escaped))
+                .count();
+            let optional_in_count = ctx.optional_fields.values()
+                .filter(|opt| opt.contains(escaped))
+                .count();
+            // Flag as option if optional in MORE THAN HALF the structs where it appears.
+            // This handles fields like `return_type` which is optional in 2/3 structs.
+            // Fields like `span` (optional in 1/many) won't be flagged.
+            if appears_in_count > 0 && optional_in_count * 2 > appears_in_count {
+                return true;
+            }
         }
     }
     false

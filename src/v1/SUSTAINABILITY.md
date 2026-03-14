@@ -460,22 +460,38 @@ Rust-specific method calls, the C renderer must translate `Box::new` to
 `malloc`, and every new backend must enumerate and strip the Rust idioms.
 The IR has become a Rust AST with extra steps.
 
-**Structural test:** Can a Go or C backend render the code_ir produced by
-fn_codegen without special-casing Rust constructs? Today: no. Every
-Rust-specific injection is a case the other backends must handle.
+**Deeper framing:** DAG nodes are **facts** — tautological assertions
+about computation (types, cardinality, data flow, semantics). These
+facts are target-agnostic truths. **Rendering facts** (how to express
+Optional, how to handle ownership, how to name types) are target-specific
+decisions that belong in backends, not in the IR.
 
-**Fix path:** The v2 compiler's emitter has type information and emits
-per-backend. The Rust emitter knows about `Box` and `Option`. The C
-emitter knows about `malloc` and `NULL`. The Go emitter knows about
-implicit heap allocation and `nil`. No heuristics needed — the types
-tell the emitter what to do.
+The heuristics in fn_codegen are **rendering facts mixed into computation
+facts**. `clone_if_needed` is a Rust rendering fact ("ownership requires
+copying here") injected into the computation DAG. The computation fact is
+just "this value is used at these two sites" — the rendering decides what
+that means (Rust: clone, C: nothing, Go: nothing, Verilog: fan-out wire).
+
+**Structural test:** Can you swap rendering facts without changing
+computation facts? If `Box::new()` is in the code_ir, a C backend must
+translate it to `malloc` — the rendering fact leaked into the computation
+layer. If the code_ir says "this field is recursive" and the Rust
+renderer emits `Box::new()` while the C renderer emits a pointer, the
+separation is correct.
 
 **Design guide:** The DAG type system is compositional — similar to
 protobuf message stacking. Products, sums, primitives, containers.
-This should map naturally across all targets including hardware
+These should map naturally across all targets including hardware
 description languages (Verilog, PSPICE). If a type construct or IR
 node only makes sense for languages with heaps and garbage collectors,
-it's too coupled to software runtime assumptions.
+it's a rendering fact masquerading as a computation fact.
+
+**Fix path:** The v2 compiler's emitter reads computation facts (types,
+cardinality, recursion, optionality) and applies rendering facts
+per-backend. Backends are themselves compositional .dag models — rendering
+strategies expressed as facts about how computation concepts map to
+target idioms. No heuristics — the types tell the emitter what's true,
+the backend decides how to express it.
 
 **Interim principle:** Every Rust-specific construct added to fn_codegen
 during bootstrap must be documented here and must NOT be migrated to
