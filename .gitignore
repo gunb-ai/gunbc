@@ -63,3 +63,7 @@ node_modules/
 # --- Claude Code worktrees (from claude-code) ---
 # Temporary agent worktrees; not project state
 .claude/worktrees/
+
+# --- Interactive auth/session transcripts ---
+# Should never be committed; may contain OAuth URLs or session state
+out.txt
