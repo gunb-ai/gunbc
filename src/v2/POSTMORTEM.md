@@ -860,6 +860,233 @@ by Category 5 or Pass 8.
   from the emitted call with no diagnostic
   (`lower_to_ir.rs:254-270`).
 
+### Pass 26: Valid-program miscompilation (2026-03-14)
+
+This pass focused on the retrospective's most under-sampled theme:
+well-formed .dag programs that compile to semantically wrong Rust.
+
+**`[07] src/v2/02_parse.dag` + `[10] src/v2/05_emit.dag`**
+- `??` (NullCoalesce) has `BindingPower { left: 1, right: 0 }` — right-
+  associative (`src/v2/02_parse.dag:2348`). Every mainstream language
+  with `??` (C#, JS, Kotlin) evaluates left-to-right. Right-associative
+  `??` inverts short-circuit order: `a ?? b ?? c` evaluates the inner
+  `b ?? c` before checking `a`, changing observable behavior when
+  operands have side effects.
+- `for` loops are desugared to `Call { func: "for", args: [...] }` by
+  the parser (`src/v2/02_parse.dag:2976-2984`), then emitted as
+  `.into_iter().map(|item| { ... }).collect::<Vec<_>>()`
+  (`src/v2/05_emit.dag:565-566`). This changes the return type from
+  `()` to `Vec<T>`, prevents `?`/`.await` propagation from inside the
+  closure, and allocates a `Vec` for side-effectful loops.
+
+**`[10] src/v2/05_emit.dag`**
+- `NonEmptyList` and `NonEmptySet` container kinds are emitted as `Vec`
+  and `BTreeSet` (`src/v2/05_emit.dag:297-300`), silently dropping the
+  non-emptiness invariant. Downstream code relying on guaranteed
+  non-emptiness can panic at runtime.
+- Uppercase bind patterns in match arms are parsed as
+  `VariantPattern { name, field_bindings: [] }` instead of `Bind`
+  (`src/v2/02_parse.dag:2800-2801`). The emitter produces a bare
+  identifier in pattern position (`src/v2/05_emit.dag:648-649`). In
+  Rust, this is a constant/variant pattern, not a binding. Combined with
+  no match exhaustiveness checking, valid but non-exhaustive .dag
+  matches produce non-compiling Rust.
+
+**`[09] src/v2/04_typecheck.dag` + `[10] src/v2/05_emit.dag`**
+- Type aliases are transparently resolved by `type_body_to_expr`
+  (`src/v2/04_typecheck.dag:257-258`): `type UserId = String` becomes
+  `Primitive { name: "String" }` in the type environment. Function
+  parameters typed as `UserId` are emitted as `String` in Rust
+  signatures, losing nominal alias identity.
+- `resolve_field` drops `from_key` (documented in Pass 6). The concrete
+  miscompilation: `field: String from "fieldName"` emits without
+  `#[serde(rename = "fieldName")]`, causing JSON deserialization to look
+  for the wrong key at runtime.
+
+### Pass 27: Negative-space audit (2026-03-14)
+
+This pass identified constructs that are declared but never consumed, or
+consumed but never produced.
+
+**Dead types in `[11] src/v2/06_pipeline.dag`:**
+- `StageResult` (line 34): never constructed, never returned.
+- `ParseStageResult` (line 44): never constructed, never returned.
+- `CompileFileResult` (line 51): produced by `compile_file()`, but
+  `compile_file()` itself is never called.
+
+**Dead functions:**
+- `compile_file` (`src/v2/06_pipeline.dag:86`): never called.
+- `read_source` (`src/v2/06_pipeline.dag:60`): never called.
+- `make_error` (`src/v2/04_typecheck.dag:825`): never called; diagnostics
+  constructed inline.
+- `make_warning` (`src/v2/04_typecheck.dag:834`): never called.
+- `detect_cycle` (`src/v2/03_resolve.dag:417`): never called;
+  `topological_sort` handles cycles internally.
+- `typecheck_and_validate` (`src/v2/04_typecheck.dag:992`): never called;
+  pipeline calls `typecheck()` directly.
+- `find_resolved_module` (`src/v2/04_typecheck.dag:751`): never called.
+- `error_count` (`src/v2/04_typecheck.dag:1006`): only called by
+  `typecheck_ok`, which is itself never called.
+- `typecheck_ok` (`src/v2/04_typecheck.dag:1016`): never called.
+- `module_type_bindings` (`src/v2/04_typecheck.dag:1021`): never called.
+- `lookup_type_in_graph` (`src/v2/04_typecheck.dag:1029`): never called.
+
+**Never-constructed enum variants:**
+- `Severity::Info` (`src/v2/00_core.dag:341`): defined, never emitted.
+- `BinOpKind::Concat` (`src/v2/00_core.dag:243`): handled in emit
+  (line 762) but never produced by the parser.
+- `TypeExpr::TypeApp` (`src/v2/00_core.dag:146`): handled in typecheck
+  (line 372) and emit (line 276) but never produced by the parser. The
+  parser maps `Name<T>` to `Container` or `Named`, never `TypeApp`.
+- `Backend::Python` (`src/v2/06_pipeline.dag:32`): match arm emits `[]`
+  (empty file list) — fabrication, not failure.
+
+**Parsed-but-never-consumed fields (corroborates Pass 30):**
+`Field.default_value`, `Param.default_value`, `OperationDef.modifiers`,
+`OperationDef.response`, `OperationDef.exit_mappings`,
+`OperationDef.transport` (per-op override), `AuthConfig.scheme`,
+`AuthConfig.token_expr`, `ServiceConfig.*` (all fields),
+`ResourceDef.properties`. All populated at parse, preserved through
+typecheck, never read at emit.
+
+**Duplicate type definitions (sustainability invariant violation):**
+`TypedGraph`, `TypedModule`, `TypeEnv`, `TypeBinding` defined in both
+`04_typecheck.dag` and `05_emit.dag`. `ResolvedImport`, `ResolvedModule`,
+`ModuleGraph` defined in both `03_resolve.dag` and `04_typecheck.dag`.
+Acknowledged as temporary (C4/C5) but still a parallel representation.
+
+### Pass 28: Determinism and output stability (2026-03-14)
+
+This pass audited ordering-dependent code paths in the v1 codegen and
+v2 .dag pipeline.
+
+**High risk — non-deterministic output:**
+- `infer_struct_name()` tiebreaker uses `HashMap` iteration order
+  (`fn_codegen.rs:434-453`). When multiple known structs have the same
+  field-count proximity, which struct wins depends on hash seed. The
+  wrong struct can be inferred, silently generating incorrect code.
+- `compute_recursive_fields()` DFS roots from `HashSet<String>`
+  iteration (`type_codegen.rs:1214-1225`). Which field gets `Box<>`
+  varies between runs — both placements may compile, but the generated
+  code differs non-deterministically.
+
+**Medium risk — fragile or semantically wrong:**
+- `build_variant_to_enum()` first-definition-wins depends on
+  `V2_MODULE_MAP` order (`v2_crate_emit.rs:469-481`). Accidentally
+  deterministic; no structural guarantee.
+- `TypeDefSignature::Record` field-order-sensitive comparison
+  (`v2_crate_emit.rs:563-588`). Structurally identical types with
+  reordered fields are treated as distinct, violating structural type
+  semantics. Deterministic but wrong.
+
+**Low risk — cosmetic or latent:**
+- `fill_missing_fields()` iterates `HashMap.keys()`
+  (`fn_codegen.rs:341-369`). Emitted optional-field order is non-
+  deterministic; Rust struct construction is order-independent.
+- `global_fn_return_types` silently drops duplicate fn names
+  (`v2_crate_emit.rs:132-144`). Accidentally deterministic.
+- `struct_field_types` (HashMap) vs `struct_field_ir_types` (Vec)
+  divergent ordering guarantees (`v2_crate_emit.rs:484-543`).
+- `lib.rs` module order depends on `dep_order` stability; mitigated by
+  alphabetical tiebreaker in resolver (`05_emit.dag:114-121`,
+  `03_resolve.dag:365-373`).
+
+### Pass 29: Boundary contract audit (2026-03-14)
+
+This pass compared each stage's public contract with what the
+implementation actually guarantees.
+
+**typecheck → emit (highest severity):**
+- **Gap 10: Emitter ignores `TypeEnv`.** `TypedModule` carries
+  `type_env: TypeEnv` — the resolved type environment from the
+  typechecker. `emit_module()` (`src/v2/05_emit.dag:127-142`)
+  extracts `typed_module.module` and operates entirely on the raw
+  pre-resolution AST. The typechecker's output is structurally present
+  but functionally dead. The emit stage re-derives type structure from
+  AST items rather than consuming the resolved types.
+- **Gap 11: Emitter has no diagnostic channel.** Returns
+  `List<TextFile>` with no error representation. Every other stage
+  returns `{ value, diagnostics }`. Emit-stage problems have no
+  representation.
+- **Gap 12: Emitter locally redefines typechecker output types.**
+  Independent `TypedGraph`, `TypedModule`, `TypeEnv`, `TypeBinding`
+  definitions in `05_emit.dag:36-53` vs `04_typecheck.dag:65-79`.
+
+**resolve → typecheck:**
+- **Gap 7: Typechecker trusts but does not verify topological order.**
+  `fold` over `graph.modules` in list order (`04_typecheck.dag:806`).
+  If the list is not topologically sorted (e.g., `dep_order = -1`
+  cycles), `collect_parent_envs()` silently returns empty, making
+  imports no-ops.
+- **Gap 8: `ModuleGraph.diagnostics` silently dropped.** Typechecker
+  starts fresh `TypedGraph { diagnostics: [] }` — resolve-stage
+  diagnostics are not propagated through the typecheck boundary.
+
+**parse → resolve:**
+- **Gap 4:** `Module?` → `Module` unwrap depends on behavioral
+  invariant of two independent `ParseResult` fields (`module` and
+  `error`).
+- **Gap 5:** `Module.span` is a single-token span, not file-covering.
+- **Gap 6:** `Module.name` is unvalidated `String`; empty strings from
+  error paths are representable.
+
+**tokenize → parse:**
+- **Gap 2:** `Unknown` tokens conflate lexical and parse errors into a
+  single halt point.
+- **Gap 3:** Pipeline sidesteps `TokenizeResult` entirely; actual
+  boundary is raw `List<Token>`.
+
+**Pipeline:**
+- **Gap 13:** Diagnostic concatenation order
+  (`concat(graph.diagnostics, typed.diagnostics, parse_diagnostics)`)
+  does not follow pipeline stage order.
+
+**v1 evaluator:**
+- **Gap 15:** S57 type-boundary checks are soft warnings collected in
+  `EvalOutcome.warnings`, not enforcement. Wrong-typed values flow
+  through function boundaries.
+- **Gap 16:** `output_value()` "value" key fallback is undocumented in
+  .dag contracts.
+
+**v1 crate assembly:**
+- **Gap 17:** `module_prelude()` widens module visibility beyond what
+  .dag import declarations authorize.
+- **Gap 18:** Type deduplication semantics ("same shape = same type")
+  disagree with typechecker's type identity model ("each module defines
+  its own types").
+
+### Pass 30: Provenance loss audit (2026-03-14)
+
+This pass traced provenance-carrying fields through parse → resolve →
+typecheck → emit.
+
+**Pattern:** The parser populates faithfully. The typechecker preserves.
+The emitter ignores.
+
+| Field | Populated | Preserved | Read at emit |
+|-------|-----------|-----------|--------------|
+| `Field.default_value` | parse:1024 | typecheck:388-398 | NEVER |
+| `Param.default_value` | parse:2181 | typecheck:423-434 | NEVER |
+| `OperationDef.modifiers` | parse:1588-1598 | typecheck:455 | NEVER |
+| `OperationDef.response` | parse:1514-1523 | typecheck:452 (unresolved) | NEVER |
+| `OperationDef.exit_mappings` | parse:1606-1614 | typecheck:454 (unresolved) | NEVER |
+| `OperationDef.transport` | parse:1549 | typecheck:456 | NEVER (service-level used) |
+| `ServiceConfig.*` | parse (config_fields) | typecheck:583 | NEVER |
+| `AuthConfig.scheme` | parse | typecheck | NEVER (hardcoded `self.auth_token`) |
+| `AuthConfig.token_expr` | parse | typecheck | NEVER (hardcoded) |
+
+**ResolvedImport drops span:** `Import { span }` exists
+(`src/v2/00_core.dag:99-103`), used for diagnostics at resolve time
+(`src/v2/03_resolve.dag:167,188`), but `ResolvedImport` type
+(`src/v2/03_resolve.dag:33-37`) omits `span`. Downstream stages cannot
+produce span-accurate diagnostics for import-related issues.
+
+**Alias name lost in `type_body_to_expr`:** For `Alias { base }`,
+`type_body_to_expr` (`src/v2/04_typecheck.dag:257-258`) returns `base`
+directly, discarding the alias name. `type UserId = String` resolves to
+`Primitive { name: "String" }` — field types that referenced `UserId`
+are emitted as `String`, not `UserId`.
+
 ## Pass retrospective
 
 This section synthesizes the outcomes of the passes themselves rather
@@ -915,13 +1142,59 @@ named-argument names, resource metadata, and original item kind. This is
 related to semantic collapse, but it is specific enough to track on its
 own.
 
-### What the current passes are under-sampling
+**Bootstrap fixes often repair the visible artifact but not the helper state.**
+The branch review reinforced a pattern the pass log was already hinting
+at: a fix at the emitted-definition layer is not necessarily a fix in
+the helper registries that drive codegen. `TypeDefSignature` repaired
+the worst same-name type collapse in emitted Rust, but bare-name helper
+maps (`struct_field_types`, `struct_field_ir_types`, `optional_fields`,
+`variant_to_enum`) can still launder nominal identity or ambiguity
+before the final file is written.
 
-**Valid-program miscompilation.**
-The current manual reread method is strongest at finding silent drops,
-placeholder fabrication, dead helper types, and stage-contract
-mismatches visible in control flow. It is weaker at catching programs
-that are fully well-formed and still compile to the wrong meaning.
+**Partially-started IR layers become dangerous once they are reachable.**
+`IrType` is valuable progress toward typed `code_ir`, but the branch
+review showed the usual compiler failure mode: a representation that is
+"not yet authoritative" is relatively safe while dormant and becomes an
+actual invariant hazard once new call sites rely on it. The empty-`Vec`
+annotation path made that concrete by turning invalid record-type
+rendering from a theoretical issue into a reachable compile failure.
+
+### What passes 26-30 addressed (2026-03-14)
+
+Passes 26-30 were run in parallel, targeting the five themes the
+retrospective identified as under-sampled. Results:
+
+**Valid-program miscompilation (Pass 26).** Now covered. Key findings:
+`for` loops emit as `.map().collect()` (wrong return type, no `?`
+propagation), `??` associativity disagrees with all mainstream languages,
+`NonEmptyList` downgrades to `Vec`, type aliases lose nominal identity
+in signatures, `from_key` loss causes serde miscompilation.
+
+**Negative-space auditing (Pass 27).** Now covered. 38 findings: 3 dead
+types, 11 dead functions, 4 never-constructed enum variants, 12
+parsed-but-never-consumed fields, 7 duplicate type definitions. The
+typecheck module alone has 8 dead functions — a full query API that
+nothing calls.
+
+**Determinism and output stability (Pass 28).** Now covered. Two
+high-risk items: `infer_struct_name` tiebreaker and `compute_recursive_
+fields` DFS roots both depend on `HashMap`/`HashSet` iteration order,
+producing non-deterministic output that can change semantics.
+
+**Boundary contract auditing (Pass 29).** Now covered. The headline
+finding: the emitter declares `TypeEnv` in its input type but never
+reads it, emitting from the raw pre-resolution AST instead. The
+typechecker's output is dead data at its most important consumer. Also:
+emitter has no diagnostic channel (only stage without one),
+`ModuleGraph.diagnostics` silently dropped by typechecker, and the
+evaluator's S57 type checks are soft warnings, not enforcement.
+
+**Provenance loss (Pass 30).** Now covered. Systematic trace: 9 field
+families are populated at parse, preserved through typecheck, and never
+read at emit. The emitter is structurally disconnected from the rich
+data earlier stages produce.
+
+### What remains under-sampled
 
 **Diagnostic quality, not just diagnostic existence.**
 We have found many places where errors are suppressed or bypassed, but
@@ -929,16 +1202,11 @@ we have not yet done a systematic audit of whether surviving diagnostics
 carry the correct span, module name, blame site, and deduplication
 behavior end-to-end.
 
-**Determinism and output stability.**
-A few ordering issues surfaced, but there has not yet been a full
-determinism pass over import order, sort keys, field ordering, registry
-buildup, and emitted file stability for semantically identical inputs.
-
 **Effect/resource enforcement.**
-We now know the resource model is being erased, but we still have not
-done a systematic pass over whether claims like `readonly`,
-`idempotent`, `hermetic`, `kind`, `mode`, and `expires` are enforced by
-any downstream stage in a meaningful way.
+We now know the resource model is being erased (Pass 17, Pass 30), but
+we still have not done a systematic pass over whether claims like
+`readonly`, `idempotent`, `hermetic`, `kind`, `mode`, and `expires` are
+enforced by any downstream stage in a meaningful way.
 
 **Construct coverage as a matrix.**
 The passes are still partly opportunistic. A more exhaustive next step
@@ -952,19 +1220,6 @@ The scan log is now large enough that it should start recording which
 findings are protected by regression tests, which are documented only,
 and which remain vulnerable because there is no test pressure on that
 construct family.
-
-### Missing themes to name explicitly
-
-**Boundary contract auditing.**
-Some of the highest-value findings came from comparing a stage's public
-contract with what the implementation actually guarantees. That should
-be an explicit scan theme, not just an emergent one.
-
-**Negative-space auditing.**
-We should explicitly look for fields, variants, tokens, item kinds, and
-helper result types that are declared but never consumed, or consumed
-but never produced. `TokenizeResult` is the clearest example so far, but
-it is unlikely to be the only one.
 
 **Target-language leakage.**
 The emitter is repeatedly compensating for missing upstream semantics by
@@ -1059,11 +1314,13 @@ should remain until self-hosting deletes fn_codegen entirely.
 user-defined types) falls through as `IrType::Named(...)` — a string,
 not a structural type. `render_ir_type()` (render_rust.rs:225-254)
 renders `IrType::Record` as `{ a: T }`, which is not valid Rust type
-syntax if it ever becomes a let-binding annotation. The right framing:
-we have *started* a target-agnostic IR layer, and it is not
-authoritative yet. It provides correct type annotations for the three
-primitives and for Generic/Optional, but is pass-through for everything
-else.
+syntax. This is now reachable, not hypothetical: the new empty-`Vec`
+accumulator annotations in `compile_expr()` can infer element types from
+field accesses or lambda bodies, so collections of anonymous records can
+render as `Vec<{ ... }>` and fail at compile time. The right framing: we
+have *started* a target-agnostic IR layer, and it is not authoritative
+yet. It provides correct type annotations for the three primitives and
+for Generic/Optional, but is pass-through for everything else.
 
 **Duplicate type suppression is bootstrap-only, even after the
 `TypeDefSignature` fix.** The improved structural signature comparison
@@ -1075,6 +1332,17 @@ identical structure but different semantics. The test
 `assemble_v2_crate_keeps_same_name_records_with_different_field_types`
 proves the worst case is fixed, but the whole mechanism should stay
 labeled as temporary bootstrap scaffolding that dies with self-hosting.
+
+**Cross-module helper maps still key on bare names.**
+Even after the emitted-definition fix above, the helper registries that
+feed fn_codegen (`struct_field_types`, `struct_field_ir_types`,
+`optional_fields`) are still built globally and keyed only by bare type
+or variant name. Later modules overwrite earlier entries before the
+per-module visibility filter runs, so fn_codegen can still infer fields,
+optionality, or return-shape facts against the wrong nominal type. This
+means S81 is only partially repaired: the final `struct` definition can
+be right while the code that constructs it is still reasoning from the
+wrong helper state.
 
 **`v2_runtime_shim::filesystem_read()` panics on failure.**
 This performs real I/O and `panic!`s on read errors. It exists to get
@@ -1112,6 +1380,16 @@ Downstream modules that re-declare structurally identical types get their
 definitions suppressed so cross-module references use the upstream type
 via `use crate::upstream::*`. Correct but positional — depends on module
 processing order matching the dependency graph.
+
+**Helper registries are still same-name / first-definition-wins.**
+The v2 crate emitter now preserves same-name types with different
+signatures at the final emitted-definition layer, but its supporting
+registries still collapse by bare name. `struct_field_types`,
+`struct_field_ir_types`, and `optional_fields` are global maps keyed by
+type or variant name, so later modules can overwrite earlier helper
+entries. This leaves nominal identity partially laundered inside the
+bootstrap codegen path even when the emitted Rust type declarations are
+no longer wrong.
 
 ### Category 2: Runtime shim functions (v2_rt.rs)
 
@@ -1181,6 +1459,14 @@ detection in typechecker.
 Compiles expressions with expected field type for variant qualification.
 Uses `enum_variants` map to resolve ambiguous variant names. v2 fix:
 typechecker resolves variants from context type.
+
+**Ambiguous bare variants still resolve by file order in v2 crate emit.**
+The older `type_codegen` path excluded ambiguous entries from
+`variant_to_enum`; the newer v2 crate path's `build_variant_to_enum()`
+keeps the first enum that declares a variant name. That means adding a
+second enum with `Info`, `Error`, etc. can silently retarget existing
+bare constructors outside field-context disambiguation. v2 fix: either
+typed resolution from context or a fail-closed ambiguity error.
 
 **`infer_collection_element_struct()` / `infer_ast_expr_type()`.**
 Core workaround: infers types from ir_scope, struct_field_types, and
@@ -1262,6 +1548,68 @@ multi-stage pipeline contracts exposed:
 **Status:** Mitigated (S55-S61 fixes), not solved. Self-hosting
 eliminates this entire category.
 
+## Retro retrospective
+
+This section collapses the scan log into the hottest / largest invariant
+families rather than the chronological order of passes.
+
+### 1. Invalid states keep moving forward
+
+This is still the highest-blast-radius cluster. Once a bad state enters
+the pipeline, later stages usually keep going with placeholders,
+heuristics, or diagnostics that do not actually gate progress.
+Representative findings: parse-only gating in `06_pipeline.dag`,
+resolver/typechecker diagnostics that do not block emit, cycles getting
+`dep_order = -1` and still flowing downstream, the skipped
+post-typecheck invariant audit, evaluator soft type-boundary warnings,
+and runtime-shim panics instead of typed failure.
+
+### 2. Provenance and nominal identity are laundered too early
+
+This is the hottest semantic cluster after fail-open behavior because it
+turns correct later-stage reasoning into an impossible problem. Once the
+compiler forgets which module, alias, enum, or field a thing came from,
+every later stage is forced into heuristics. Representative findings:
+`build_type_env()` ignoring import provenance, `ResolvedImport` dropping
+span, alias names disappearing in `type_body_to_expr`, duplicate type
+suppression, helper registries keyed by bare names, and ambiguous
+variant resolution falling back to first-definition-wins.
+
+### 3. Intermediate representations exist but are not authoritative
+
+The project now has several half-authoritative models: `TokenizeResult`,
+`TypedGraph`, `TypeEnv`, `IrType`, helper registries for fn_codegen, and
+the typed output of the typechecker. The recurrent problem is not "no
+model exists" but "the model exists and downstream stages do not trust
+or consume it as source of truth." Representative findings: emit
+re-deriving types from raw AST instead of `TypeEnv`, local redefinition
+of typechecker output types in `05_emit.dag`, the partly-started
+`IrType` layer, and helper maps compensating for missing nominal data.
+
+### 4. Rust-specific codegen heuristics are standing in for language semantics
+
+This is the largest branch-local source of bootstrap debt. It explains a
+large share of the remaining silent-wrong-behavior risk even when the
+pipeline "works." Representative findings: `.value` becoming
+`.unwrap()`, `clone_if_needed()`, `infer_struct_name()`,
+`compile_expr_in_field_context()`, `needs_box_wrapping()`, `Some`/`None`
+injection, and Rust-specific constructs leaking directly into `code_ir`.
+The new helper-map and ambiguous-variant findings both strengthen this
+theme: the codegen is still resolving language meaning through Rust-side
+guesswork rather than typed source semantics.
+
+### 5. Diagnostic channels are weaker than the invariants they claim to defend
+
+This cluster is slightly cooler than the four above, but it is the one
+that most directly blocks ratcheting. The compiler often has enough
+information to know something went wrong but either does not propagate
+it, does not attach the right provenance, or has no representation for
+the failure at all. Representative findings: emit has no diagnostic
+channel, resolve diagnostics are dropped by typecheck, import span is
+lost before downstream use, diagnostic ordering does not match stage
+order, and diagnostic quality remains under-audited relative to raw
+existence checks.
+
 ---
 
 ## Design decisions (locked in 2026-03-14)
@@ -1331,7 +1679,48 @@ cross-module imports, the .dag source switches to `import` and the
 duplicated types are deleted. No formalization of forward declarations
 as a language feature.
 
-### D6: `data` definitions → backend renders per-idiom
+### D6: The compiler tests itself through generated tests
+
+**Principle:** The v2 compiler emits tests alongside code. When it
+compiles itself, it must also emit tests that verify the compiled
+compiler works correctly. The compiler is not special — it is a .dag
+program like any other, and the same testing contract applies.
+
+**Current gap:** The generated v2 crate has 3 hand-written smoke tests
+injected as string literals from the v1 test harness
+(`tests/src/lib.rs:2353-2387`). These test only trivial tokenizer
+behavior. The semantic issues found in passes 26-30 (for-loop
+miscompilation, `??` associativity, NonEmptyList erasure, provenance
+loss, 12 dead fields) are invisible because no test exercises them.
+
+**What "generated testing" means for the compiler:**
+
+1. **Stage-level round-trip tests.** The emitter knows the v2 pipeline's
+   stage contracts. For each stage function it emits, it should also emit
+   a test that feeds known input and checks known output. Example: emit
+   a test that tokenizes `"fn foo() -> Int"` and asserts the token kinds
+   match `[KwFn, Ident, LParen, RParen, Arrow, Ident, Eof]`. The test
+   input and expected output come from the .dag source's own test data
+   or from `mock_response`-style annotations.
+
+2. **Pipeline integration tests.** Feed a small .dag file through the
+   full compiled pipeline (tokenize → parse → resolve → typecheck →
+   emit) and assert the output files are non-empty and valid. This is
+   the behavioral equivalence test from D3, emitted as a Rust `#[test]`.
+
+3. **Self-compilation smoke test.** The ultimate generated test: the
+   compiled v2 compiler tokenizes/parses one of its own .dag source
+   files and asserts the output matches what the v1 interpreter produced.
+   This is the fixed-point seed.
+
+**Why this matters now:** The scan passes found ~30 semantic issues that
+`cargo check` cannot catch. The purpose of this project is to eliminate
+glue bugs through structural correctness, and the compiler's own test
+gap is itself a glue bug — the emitter produces code but no evidence
+that the code is correct. Closing this gap is prerequisite to trusting
+self-hosting output.
+
+### D7: `data` definitions → backend renders per-idiom
 
 `data` in the typed IR is a constant definition. The Rust emitter
 renders as `lazy_static!` / `const` / `static`. A Go emitter renders
@@ -1342,15 +1731,45 @@ as package-level `var`. 05_emit.dag already handles this correctly via
 
 ## Follow-on work (ordered by dependency)
 
-### Phase 1: Self-hosting fixed point
+### Phase 1: Generated tests for the compiled v2 crate (D6)
+
+**Goal:** The compiled v2 compiler verifies its own correctness through
+emitted tests, not hand-written string-literal smoke tests.
+
+1. **Emit per-stage unit tests.** The v1 crate assembly emits a test
+   module alongside each compiled .dag module. Each test calls the
+   module's entry function with known input and asserts expected output.
+   Start with tokenize (known input→expected token list) since the
+   interpreter already validates this path.
+
+2. **Emit pipeline integration test.** A test that feeds a small .dag
+   snippet through the full compiled pipeline (tokenize → parse →
+   resolve → typecheck → emit) and asserts the output is non-empty
+   valid Rust.
+
+3. **Emit self-parse test.** The compiled v2 compiler tokenizes and
+   parses one of its own .dag source files. Assert the token count and
+   module name match what the v1 interpreter produces. This is the
+   behavioral equivalence seed from D3.
+
+4. **Replace injected smoke tests.** Delete the 3 hand-written smoke
+   tests in `tests/src/lib.rs` and replace with the emitted tests above.
+   The test harness runs `cargo test` on the generated crate — same
+   mechanism, but the tests come from the compiler, not from the host.
+
+**Exit criterion:** `cargo test` on the generated v2 crate runs ≥10
+emitted tests covering tokenize, parse, and at least one pipeline
+round-trip. All pass.
+
+### Phase 2: Self-hosting fixed point
 
 **Goal:** The v2 compiler compiles itself. Behavioral equivalence with
 v1 output (D3).
 
-1. **Run v2 pipeline end-to-end on a trivial .dag file.** The smoke
-   test proves `tokenize` works. Next: prove `parse`, `resolve`,
-   `typecheck`, and `emit` work by feeding the tokenizer output through
-   each stage and checking the output.
+1. **Run v2 pipeline end-to-end on a trivial .dag file.** The Phase 1
+   emitted tests already prove tokenize works. Extend to prove `parse`,
+   `resolve`, `typecheck`, and `emit` work by feeding the tokenizer
+   output through each stage and checking the output.
 
 2. **Run v2 pipeline on v2 source.** Feed the 7 .dag files through the
    compiled v2 pipeline. Compare pipeline output (tokens, AST, types)
@@ -1360,7 +1779,7 @@ v1 output (D3).
    with B1 → get binary B2. B1 and B2 should produce identical output
    on the same input.
 
-### Phase 2: Eliminate runtime shims via language features (D4)
+### Phase 3: Eliminate runtime shims via language features (D4)
 
 Add first-class language features to replace v2_rt.rs:
 
@@ -1379,7 +1798,7 @@ Add first-class language features to replace v2_rt.rs:
 7. **`filesystem_read`** → I/O transport (existing mechanism).
 8. **Delete v2_rt.rs.**
 
-### Phase 3: Eliminate bootstrap scaffolding (S78, S79)
+### Phase 4: Eliminate bootstrap scaffolding (S78, S79)
 
 1. **Derive `module_prelude()` from .dag imports.** Read `import`
    declarations from each module's AST, map to `use crate::` statements.
@@ -1394,7 +1813,7 @@ Add first-class language features to replace v2_rt.rs:
 4. **Delete manual `struct_field_types` entries.** All field type maps
    should come from `build_struct_field_types()` over parsed type defs.
 
-### Phase 4: Resolve .dag source forward declarations (C4, C5)
+### Phase 5: Resolve .dag source forward declarations (C4, C5)
 
 1. **Wire cross-module imports in the compiled v2 crate.** When the
    compiled crate's modules can import from each other, replace forward
@@ -1404,7 +1823,7 @@ Add first-class language features to replace v2_rt.rs:
    duplicated type definitions in typecheck and emit modules can be
    removed.
 
-### Phase 5: Clean up code_ir target leakage (S81)
+### Phase 6: Clean up code_ir target leakage (S81)
 
 This is the architectural cleanup. Every Rust-specific construct
 currently injected into code_ir by fn_codegen must be moved to
@@ -1422,7 +1841,7 @@ entirely. The v2 emitter in 05_emit.dag already reads typed IR and
 makes per-target decisions. The cleanup is only needed if fn_codegen
 persists beyond bootstrap.
 
-### Phase 6: Delete v1 bootstrap code
+### Phase 7: Delete v1 bootstrap code
 
 Once self-hosting is proven and tested:
 
@@ -1439,7 +1858,7 @@ Once self-hosting is proven and tested:
 - Phase 3 interpreter tests (replaced by compiled tests)
 - `with_parser_stack(16MB)` scaffolding
 
-### Phase 7: Capabilities that would further reduce debt
+### Phase 8: Capabilities that would further reduce debt
 
 From SUSTAINABILITY.md — not blockers, but would accelerate:
 
