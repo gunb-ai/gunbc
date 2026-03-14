@@ -342,6 +342,647 @@ the typed graph and emitted Rust.
 - No new confirmed findings on pass 6 beyond earlier pipeline gating and
   validation-path issues.
 
+### Pass 7: Parser structural violations
+
+This pass audited `02_parse.dag` for structural violations not covered
+in passes 1-6: wildcard fabrication, systematic dummy-node patterns,
+and duplicated logic.
+
+**`[07] src/v2/02_parse.dag`**
+- `token_to_binop()` wildcard `_ => Add` silently substitutes addition
+  for any unrecognized token kind. An internal caller passing a
+  non-operator token gets a valid `BinOpKind` back instead of a failure
+  (`src/v2/02_parse.dag:2383`).
+- ~28 error-path functions construct dummy AST nodes with `name: ""`,
+  `span: SourceSpan { start: 0, end: 0 }`, `fields: []`. The error IS
+  set alongside the dummy node, but the node is also returned — callers
+  can use it without checking the error. Pass 1 documented specific
+  instances (`parse_config_fields`, `parse_status_pattern`, etc.); this
+  finding confirms the pattern is systematic across the entire parser.
+- `expect_ident` vs `expect_name` (lines 316-361): near-duplicate logic
+  diverging only on keyword fallback. `expect_name` adds a
+  `keyword_to_name()` branch; `expect_ident` lacks it. Both share
+  identical error construction and `NameResult` return structure
+  (`src/v2/02_parse.dag:316-361`).
+- `parse_io_blocks_acc` (lines 1994-2027): `KwInput` and `KwOutput`
+  branches are copy-pasted, differing only in which accumulator
+  (`inputs` vs `outputs`) receives `r2.fields` in the tail call
+  (`src/v2/02_parse.dag:1994-2027`).
+
+### Pass 8: v1 codegen fabrication depth
+
+This pass audited the v1 codegen pipeline (`fn_codegen.rs`,
+`type_codegen.rs`, `render_rust.rs`) for fabrication, duplication, and
+invariant violations beyond what Categories 0b, 3, and 5 already
+document. All findings die with self-hosting.
+
+**`fn_codegen.rs`**
+- `infer_struct_name()` returns an empty string when no struct
+  candidates match the field names. Downstream code receives `""` as a
+  valid struct name, generating `struct` definitions with an empty
+  identifier (`fn_codegen.rs:451-453`). Category 3 S77 documents wrong
+  matching; this is the degenerate case where matching fails entirely.
+- `infer_field_type_from_expr()` defaults all unknown expressions to
+  `"String"`. Synthesized structs get wrong field types for any
+  non-literal expression (`fn_codegen.rs:2824`).
+- `with` intrinsic silently falls back to `v2_rt::with()` runtime call
+  when the pattern doesn't match known cases. No error emitted; the
+  codegen silently delegates to the runtime shim
+  (`fn_codegen.rs:1034-1043`).
+- `is_already_optional_expr()` falls back to searching ALL structs in
+  the global context when receiver type is unknown. Can misidentify a
+  field as optional based on an unrelated struct that happens to have
+  the same field name (`fn_codegen.rs:2437-2443`).
+- `resolve_named_or_positional()` uses unchecked array index
+  `args[pos]` with no bounds validation. Panics if `pos >= args.len()`
+  (`fn_codegen.rs:1392`).
+
+**`type_codegen.rs`**
+- Duplicate container kind matching: `List`/`Map`/`Set` enumerated at
+  lines 60-65 (returning `ContainerKind`) and again at lines 238-241
+  (returning Rust type strings). Two representations of the same
+  dispatch that must stay synchronized (`type_codegen.rs:60-65`,
+  `type_codegen.rs:238-241`).
+- Rust-specific constructs (`&'static str`, `&[...]`, `LazyLock`)
+  generated in type codegen rather than the Rust renderer. Invariant 6
+  violation: type codegen should produce target-agnostic IR; rendering
+  decisions belong in `render_rust.rs` (`type_codegen.rs:227-233`,
+  `type_codegen.rs:288-315`).
+- String-to-static-str rule hardcoded in 3 separate places: line 228
+  (`Named("String")` → `"&'static str"`), line 836 (return type
+  mapping), and line 293 (`is_string_list` check for `&[&str]`). No
+  single authority (`type_codegen.rs:228,293,836`).
+
+**`render_rust.rs`**
+- `IrType::Unknown` renders as `"_"`, which is not valid Rust type
+  syntax in most positions (`render_rust.rs:253`).
+- Container name mapping (`List→Vec`, `Map→HashMap`) duplicates
+  `type_codegen.rs` lines 238-241, and the `render_rust` version is
+  missing `Set→HashSet`, falling through to `other → other`
+  (`render_rust.rs:229-232`).
+
+### Pass 9: v2 crate assembly
+
+This pass audited `v2_crate_emit.rs` and `v2_runtime_shim.rs` for
+violations beyond what Category 1 already documents.
+
+**`v2_crate_emit.rs`**
+- `module_prelude()` hardcoded imports diverge from actual .dag imports:
+  `03_resolve` gets `use crate::parse::*` but `resolve.dag` imports
+  only from `v2.compiler.core`, not from parse. Category 1 S79
+  documents the hardcoding; this notes the specific divergence
+  (`v2_crate_emit.rs:336-359`).
+- Manual `struct_field_types` AND `struct_field_ir_types` entries for
+  `BindingPower` and `SourceSpan` create two parallel sources of truth
+  alongside the computed `build_struct_field_types()` output. Category 1
+  documents the manual entries; this notes the dual-map duplication:
+  same fields hand-inserted into both `HashMap<String, HashMap<String,
+  String>>` and `HashMap<String, Vec<(String, IrType)>>`
+  (`v2_crate_emit.rs:93-107`, `v2_crate_emit.rs:113-126`).
+
+**`v2_runtime_shim.rs`**
+- `scan_string_end()` does `pos += 2` for backslash escape without
+  bounds check. If `\` appears at the last position in the string,
+  `pos` jumps past `chars.len()` — the loop exits cleanly but silently
+  succeeds on malformed input with a trailing backslash
+  (`v2_runtime_shim.rs:135`).
+
+### Pass 10: Cross-file boundary contracts
+
+This pass audited boundary contracts across pipeline stages.
+
+**`[09] src/v2/04_typecheck.dag`**
+- `build_type_env()` silently drops imports not found in parent envs:
+  when `lookup_type()` returns `None`, `inner_acc` is returned unchanged
+  with a comment that it "will be caught as diagnostic later," but no
+  mechanism exists to produce that diagnostic. The missing import is
+  simply absent from the type environment. Extends the Pass 1 finding
+  about lost import provenance with a concrete dropped-name consequence
+  (`src/v2/04_typecheck.dag:216-221`).
+
+**Pipeline boundary: `CompileResult` coherence.**
+`CompileResult` (defined in `00_core.dag`) carries both `files` and
+`diagnostics` with no type-level enforcement that error diagnostics
+imply empty files. Combined with the pipeline's failure to gate on
+resolve/typecheck errors (documented in Pass 1 and Category 0), the
+emitter can produce output files from a graph that contains unresolved
+references. The type makes this invalid state representable — violates
+correctness by construction (Invariant 9).
+
+### Pass 11: Tokenize-stage diagnostic contract
+
+This pass re-read the numbered pipeline with a narrow lens on lexical
+failure representation: whether the tokenize stage can actually surface
+errors as diagnostics, or only as malformed-but-successful token streams.
+
+**`[06] src/v2/01_tokenize.dag`**
+- `tokenize()` returns only `List<Token>` with no diagnostic channel
+  (`src/v2/01_tokenize.dag:84-88`). Combined with the malformed-number
+  and unterminated-string cases already logged in Passes 1 and 6,
+  lexical failure is not representable as a stage result; the tokenizer
+  can only launder bad input into tokens.
+
+**`[11] src/v2/06_pipeline.dag`**
+- `TokenizeResult { tokens, diagnostics }` exists in the pipeline file
+  but nothing produces or consumes it (`src/v2/06_pipeline.dag:39-42`,
+  `src/v2/01_tokenize.dag:84-88`). The pipeline therefore advertises a
+  diagnostic-carrying tokenize stage that the actual tokenizer API
+  cannot implement.
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/02_parse.dag`, `src/v2/03_resolve.dag`,
+`src/v2/04_typecheck.dag`, `src/v2/05_emit.dag`, or the scanned
+`dsl/std` files.
+
+### Pass 12: Import intent collapse
+
+This pass followed import syntax end-to-end to check whether the parser,
+resolver, and type environment preserve what the source import meant.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_import()` still lowers both bare `import foo.bar` and explicit
+  `import foo.bar {}` to `Import { names: [] }`
+  (`src/v2/02_parse.dag:547-562`). Pass 6 logged the AST collapse; this
+  pass traced its downstream semantic consequence.
+
+**`[09] src/v2/04_typecheck.dag`**
+- `build_type_env()` imports only the names listed in `imp.names`
+  (`src/v2/04_typecheck.dag:213-224`). Combined with the parser
+  collapse above, a bare `import foo.bar` becomes a semantic no-op after
+  type environment construction: the module target is resolved, but no
+  bindings are introduced.
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/01_tokenize.dag`, `src/v2/03_resolve.dag`,
+`src/v2/05_emit.dag`, `src/v2/06_pipeline.dag`, or the scanned
+`dsl/std` files.
+
+### Pass 13: Expression-tree type holes
+
+This pass checked whether the so-called typecheck stage actually covers
+all typed substructure in the AST, including types nested inside
+expressions and service/data values.
+
+**`[09] src/v2/04_typecheck.dag`**
+- `resolve_item_types()` resolves declared type surfaces only and
+  threads executable/value expressions through unchanged: `FnDef.body`,
+  `FuncDef.body`, `ServiceDef.transport`, `ServiceDef.config`, and
+  `DataDef.value` are all preserved without any expression walk
+  (`src/v2/04_typecheck.dag:521-589`,
+  `src/v2/04_typecheck.dag:605-614`).
+- `validate_no_unresolved()` says it walks every `TypeExpr` in every
+  item, but `collect_unresolved_in_item()` also skips expression trees
+  entirely (`src/v2/04_typecheck.dag:846-918`). Since the core AST
+  permits `Cast { target: TypeExpr }` inside expressions and carries
+  `Expr` payloads inside `TransportBinding` and `DataDef`
+  (`src/v2/00_core.dag:108-113`, `src/v2/00_core.dag:200-216`,
+  `src/v2/00_core.dag:257-263`), unresolved types embedded in
+  expressions can survive both typecheck and its post-pass validator.
+
+No new confirmed findings on this pass in `src/v2/01_tokenize.dag`,
+`src/v2/02_parse.dag`, `src/v2/03_resolve.dag`,
+`src/v2/05_emit.dag`, `src/v2/06_pipeline.dag`, or the scanned
+`dsl/std` files.
+
+### Pass 14: Call and record emission shape loss
+
+This pass re-read the emitter with a focus on whether expression shapes
+from the AST survive Rust lowering without positional/structural loss.
+
+**`[10] src/v2/05_emit.dag`**
+- Generic call emission drops `NamedArg.name` entirely. Both
+  `emit_call()` and `emit_method_call()` map through
+  `emit_call_arg()`, which serializes only `arg.value`
+  (`src/v2/05_emit.dag:506-526`, `src/v2/05_emit.dag:569-570`,
+  `src/v2/05_emit.dag:573-604`; AST surface at
+  `src/v2/00_core.dag:204-218`). Any non-positional argument semantics
+  are erased during Rust lowering.
+- `emit_record_lit()` emits anonymous record literals as bare
+  `{\n field: expr,\n}` when `type_name == none`
+  (`src/v2/05_emit.dag:698-710`). That is not valid Rust struct-literal
+  syntax, so a valid AST node can become invalid emitted Rust.
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/01_tokenize.dag`, `src/v2/02_parse.dag`,
+`src/v2/03_resolve.dag`, `src/v2/04_typecheck.dag`,
+`src/v2/06_pipeline.dag`, or the scanned `dsl/std` files.
+
+### Pass 15: Option/null and cast assumptions in emit
+
+This pass focused on emitter helpers that assume Rust `Option` or Rust
+primitive-cast semantics without typed evidence from the input graph.
+
+**`[10] src/v2/05_emit.dag`**
+- `emit_literal(LitNull)` always lowers to `None`, while
+  `emit_data_value_json(LitNull)` lowers to `null`
+  (`src/v2/05_emit.dag:482-490`,
+  `src/v2/05_emit.dag:1407-1415`). The same DSL literal changes meaning
+  depending only on which emission helper touches it.
+- `emit_bin_op()` always lowers `??` to `.unwrap_or_else(...)`
+  (`src/v2/05_emit.dag:732-744`), assuming the left operand is an
+  `Option` even though the v2 typecheck stage does not annotate
+  expression trees.
+- `emit_cast()` always lowers `Cast` to Rust `as`
+  (`src/v2/05_emit.dag:856-859`), but the AST permits arbitrary
+  `TypeExpr` targets, not just primitive numeric/pointer casts
+  (`src/v2/00_core.dag:200-216`). Record, container, and optional
+  targets therefore become invalid or nonsensical Rust casts.
+
+No new confirmed findings on this pass in `src/v2/01_tokenize.dag`,
+`src/v2/02_parse.dag`, `src/v2/03_resolve.dag`,
+`src/v2/04_typecheck.dag`, `src/v2/06_pipeline.dag`, or the scanned
+`dsl/std` files.
+
+### Pass 16: Data emission laundering and helper contract drift
+
+This pass followed value-bearing helper APIs to see whether they still
+mean what their signatures and comments say after the latest bootstrap
+changes.
+
+**`[10] src/v2/05_emit.dag`**
+- For nested-record `data` emission, `emit_data_value_json()` serializes
+  `Var` as the quoted variable name and all other non-literal,
+  non-list, non-record expressions as `"null"`
+  (`src/v2/05_emit.dag:1063-1075`,
+  `src/v2/05_emit.dag:1407-1429`). Since `DataDef.value` is any `Expr`
+  and typecheck leaves that expression untouched
+  (`src/v2/00_core.dag:113`, `src/v2/04_typecheck.dag:605-614`),
+  complex data definitions can silently change meaning during the JSON
+  fallback path.
+
+**`[11] src/v2/06_pipeline.dag`**
+- `compile_file()` is documented as compiling a single source file
+  “through all stages,” but the implementation only tokenizes and parses
+  before returning the parsed module plus diagnostics
+  (`src/v2/06_pipeline.dag:84-90`). The helper's public contract
+  overclaims what callers actually receive.
+
+### Pass 17: Resource model erasure
+
+This pass followed `resource` declarations from stdlib source through
+the parser, typechecker, and emitter to see which parts of the resource
+contract survive.
+
+**`[01] src/v2/00_core.dag`**
+- `ResourceDef` carries only `properties` and `capabilities`; there is
+  no structural slot for `acquire` or `release`
+  (`src/v2/00_core.dag:111-112`). The core AST cannot faithfully
+  represent the full source shape used by `dsl/std/resources.dag`.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_resource_entries()` handles `acquire { ... }` and
+  `release { ... }` by calling `skip_until_rbrace()` and discarding the
+  entire block contents (`src/v2/02_parse.dag:1883-1899`,
+  `src/v2/02_parse.dag:1921-1941`). Resource lifecycle semantics are
+  erased during parse rather than preserved for later checking.
+
+**`[09] src/v2/04_typecheck.dag`**
+- `typecheck` preserves `ResourceDef.properties` untouched and resolves
+  only capability signatures (`src/v2/04_typecheck.dag:591-603`), so
+  the resource metadata that *does* survive parse never gets validated
+  as part of the resource model.
+
+**`[10] src/v2/05_emit.dag`**
+- `emit_item()` drops `ResourceDef.properties`, and `emit_resource_def()`
+  lowers every resource to a trait containing only capability methods
+  (`src/v2/05_emit.dag:182-183`,
+  `src/v2/05_emit.dag:1018-1037`). Fields like `kind`, `mode`,
+  `expires`, and any lifecycle structure are absent from the emitted
+  Rust, even though they are central in the stdlib resource definitions
+  (`dsl/std/resources.dag:28-110`).
+
+### Pass 18: Item-kind coercion
+
+This pass checked whether item kinds tokenized by the front end remain
+distinguishable after parse and emission.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_item()` dispatches both `KwPattern` and `KwInterface` to
+  `parse_func_def()` (`src/v2/02_parse.dag:587-600`), and
+  `parse_func_def()` explicitly accepts `func`, `pattern`, and
+  `interface` as interchangeable leading keywords
+  (`src/v2/02_parse.dag:1104-1113`). Distinct surface constructs are
+  therefore coerced to the same AST item.
+
+**`[01] src/v2/00_core.dag`**
+- The core `Item` union has `FuncDef` and `FnDef`, but no dedicated
+  `PatternDef` or `InterfaceDef`
+  (`src/v2/00_core.dag:107-114`). Once the parser performs the coercion,
+  no later stage can recover the original declaration kind.
+
+**`[10] src/v2/05_emit.dag`**
+- The emitter only knows how to lower `FuncDef`/`FnDef`
+  (`src/v2/05_emit.dag:176-183`), so parsed `pattern` and `interface`
+  declarations are emitted as ordinary Rust functions/traits for those
+  existing item kinds rather than as their own semantic category.
+
+### Pass 19: Evaluator + interpreter fabrication patterns
+
+Category 6 documents evaluator resource limits. This pass documents
+value-level fabrication in the same codebase: places where the
+evaluator or DAG interpreter invents values instead of failing.
+
+**`eval_stack.rs`**
+- `map`, `filter`, `filter_map`, and `flat_map` intrinsics all share
+  the same fallback: when the lambda argument is missing or
+  unparseable, they return the input list unchanged
+  (`eval_stack.rs:1473`, `eval_stack.rs:1512`,
+  `eval_stack.rs:1532`, `eval_stack.rs:1552`). A silently dropped
+  transformation is indistinguishable from identity.
+- `eval_ident()` converts unbound uppercase identifiers to
+  `Value::Str(name)` instead of failing (`eval_stack.rs:1211-1212`).
+  An undefined constructor like `Foo` silently becomes the string
+  `"Foo"`, masking typos and missing imports.
+
+**`interp/src/lib.rs`**
+- `execute_primitive()` defaults every missing input port to
+  `Value::Skipped` via `unwrap_or(Value::Skipped)` across 10+ call
+  sites (`interp/src/lib.rs:72-139`). Wiring errors in the DAG
+  propagate as Skipped instead of failing at the execution boundary.
+- `execute_callable()` swallows evaluation errors when all inputs are
+  Skipped, returning an empty output map (`interp/src/lib.rs:236-247`).
+  Legitimate errors in function bodies are hidden if the node happened
+  to receive no real inputs.
+- `execute_callable()` with no `fn_body` performs a passthrough using
+  `__out:` prefix conventions on input keys
+  (`interp/src/lib.rs:213-225`). The IR does not distinguish
+  intentional passthrough from missing body, so the interpreter guesses.
+
+### Pass 20: Runtime shim per-function fabrication
+
+Category 2 lists each runtime shim function. This pass adds the
+specific fabrication behavior per function: what each returns on
+malformed input instead of failing.
+
+**`v2_runtime_shim.rs`**
+- `char_at()`: out-of-bounds or negative index → empty string via
+  `unwrap_or_default()` (`v2_runtime_shim.rs:53`).
+- `code_point()`: empty string → `0` (null code point) via
+  `unwrap_or(0)` (`v2_runtime_shim.rs:147`). Indistinguishable from
+  a legitimate `\0` input.
+- `from_code_point()`: invalid or negative code point → empty string
+  via `unwrap_or_default()` (`v2_runtime_shim.rs:154`).
+- `substring()`: inverted range (`end < start`) silently clamped to
+  empty string via `.max(0)` (`v2_runtime_shim.rs:66`).
+- `scan_while()`, `skip_horizontal_ws()`, `scan_to_eol()`: negative
+  `start` silently clamped to 0 via `.max(0)` — caller cannot
+  distinguish "started at 0" from "gave invalid position"
+  (`v2_runtime_shim.rs:99`, `v2_runtime_shim.rs:109`,
+  `v2_runtime_shim.rs:119`).
+
+### Pass 21: Typechecker + resolver structural gaps
+
+Extends passes 1, 6, 10, and 13 with function-level findings in
+`04_typecheck.dag` and `03_resolve.dag` not previously documented.
+
+**`[09] src/v2/04_typecheck.dag`**
+- `resolve_type_expr_with_resolving()` cycle detection returns success
+  with empty diagnostics when a name is already on the resolving stack
+  (`src/v2/04_typecheck.dag:287-288`). If the name is also unresolved,
+  the unresolved-name diagnostic is suppressed by the early return.
+- `lookup_type()` takes the first binding when multiple bindings share
+  the same name (`src/v2/04_typecheck.dag:158-169`). Combined with
+  `merge_envs()` first-writer-wins (Category 0), name collisions from
+  different env layers are silently resolved to an arbitrary winner.
+- `find_resolved_module()` and `find_typed_module()` return the first
+  match without checking uniqueness
+  (`src/v2/04_typecheck.dag:751-773`). Duplicate module names in the
+  graph are silently collapsed.
+- `validate_no_unresolved()` collects defined names from
+  `tm.type_env.bindings` instead of from `tm.module.items`
+  (`src/v2/04_typecheck.dag:851-861`). If a type definition failed to
+  resolve and wasn't added to the environment, later references to that
+  name are reported as "unresolved" instead of "failed to resolve."
+- `collect_parent_envs()` silently returns `acc` unchanged when
+  `find_typed_module()` returns `None` for a dependency
+  (`src/v2/04_typecheck.dag:782-789`). An untyped dependency's
+  bindings are simply absent, with no diagnostic to distinguish
+  "dependency not typed" from "dependency has no exports."
+
+**`[08] src/v2/03_resolve.dag`**
+- `resolve_import()` returns `ResolvedImport { target_module: None }`
+  with a diagnostic when the target module is not found
+  (`src/v2/03_resolve.dag:162-176`), but downstream consumers do not
+  filter partial imports. The typechecker receives the full list
+  including failed imports, then silently drops them when lookup fails
+  (covered above in `collect_parent_envs`). No stage enforces that
+  only fully-resolved imports flow past the resolve/typecheck boundary.
+
+### Pass 22: Emitter fabrication residuals
+
+This pass caught remaining fabrication in `05_emit.dag` not covered by
+passes 1, 4, 5, 14-18.
+
+**`[10] src/v2/05_emit.dag`**
+- `emit_first_arg()` returns an empty string literal `""` when the
+  argument list is empty (`src/v2/05_emit.dag:615`). Callers that
+  expect a serialized first argument get a valid-looking but fabricated
+  Rust expression.
+- `extract_service_name()` returns `"Unknown"` when the receiver
+  expression does not match expected patterns
+  (`src/v2/05_emit.dag:1298`, `src/v2/05_emit.dag:1300`). The string
+  becomes a variable name in emitted Rust (`unknown.method()`), which
+  compiles or fails unpredictably depending on scope.
+- `emit_operation_test()` emits test scaffolding (mock status + body
+  setup) with no operation invocation and no assertions
+  (`src/v2/05_emit.dag:1143-1153`). The generated test always passes.
+
+### Pass 23: Parser expression-level erasure
+
+Extends Pass 3 (semantic erasure) with expression-level findings in
+`02_parse.dag`.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_interp_parts()` silently completes a `StringInterp` node when
+  the next token after an interpolated expression is neither `StrMid`
+  nor `StrEnd` (`src/v2/02_parse.dag:3224`). Malformed interpolation
+  produces a valid result with `err: none` instead of failing.
+- `parse_brace_expr()` unwraps single-statement blocks to bare
+  expressions (`src/v2/02_parse.dag:3252-3256`). After parse,
+  `{ expr }` and `expr` are indistinguishable — later stages cannot
+  recover that the source used an explicit block scope.
+
+### Pass 24: Crate assembly + test harness gaps
+
+This pass extends Pass 9 (crate assembly) and audits the test
+infrastructure for contract violations.
+
+**`v2_crate_emit.rs`**
+- `assemble_v2_crate()` silently drops modules whose `dag_stem` is not
+  in `V2_MODULE_MAP` via a bare `continue` (`v2_crate_emit.rs:172`).
+  The resulting crate is incomplete with no diagnostic.
+
+**`src/v2/tests/src/lib.rs`**
+- `compile_tokenizer_module()` and `compile_all_modules()` silently
+  discard data value evaluation failures with an empty `Err(_) => {}`
+  arm (`tests/src/lib.rs:152-158`, `tests/src/lib.rs:532-534`). Tests
+  pass with incomplete data state.
+- `phase3_kind_tag_matches_ident` and `phase3_expect_ident_on_ident_token`
+  hand-construct token `Value::Map`s with hardcoded `_variant` keys
+  instead of running the tokenizer (`tests/src/lib.rs:862-968`).
+  Bugs in the real token representation would not be caught.
+- Runtime smoke tests are embedded as string literals injected into the
+  generated crate (`tests/src/lib.rs:2353-2387`). They are not
+  first-class test files and cannot be maintained independently.
+
+### Pass 25: CodeIR definitions + lower_to_ir bridge
+
+This pass audited the IR type definitions (`code_ir/mod.rs`) and the
+AST-to-IR bridge (`lower_to_ir.rs`) for structural issues not covered
+by Category 5 or Pass 8.
+
+**`code_ir/mod.rs`**
+- `FnDef.params` stores types as `Vec<(String, String)>` and
+  `FnDef.return_type` as `Option<String>` instead of `IrType`
+  (`code_ir/mod.rs:409-410`). Same for `StructDef.fields` as
+  `Vec<(String, String, bool)>` (`code_ir/mod.rs:447`). Type
+  information enters the IR as pre-rendered strings, preventing
+  backends from re-interpreting the structure. Category 0b notes the
+  IrType layer is incomplete; this is where the incompleteness is
+  structural — the definitions themselves use strings where IrType
+  should go.
+- `Stmt::Let.ir_type`, `Expr::Call.obligation`, and
+  `Expr::Struct.field_types` are all `Option` with comments saying
+  "populated during compilation" (`code_ir/mod.rs:143,219,244`), but
+  `lower_to_ir.rs` never populates them — it always passes `None`.
+  Renderers must handle the missing case with fallbacks.
+
+**`lower_to_ir.rs`**
+- `map_abstract_type()` hardcodes `Backend::Rust` when resolving
+  entrypoint parameter types (`lower_to_ir.rs:524-526`). IR produced
+  by the bridge is already target-locked before any backend runs.
+  Category 5 documents fn_codegen injecting Rust constructs into IR
+  expressions; this shows the bridge itself bakes Rust into IR type
+  annotations.
+- `PureBody::ServiceCall` lowering silently drops unrecognized `phase`
+  metadata values via wildcard: anything other than `"prepare"` or
+  `"parse"` falls through to `None`, and the obligation is omitted
+  from the emitted call with no diagnostic
+  (`lower_to_ir.rs:254-270`).
+
+## Pass retrospective
+
+This section synthesizes the outcomes of the passes themselves rather
+than adding more file-local findings. The aim is to understand what the
+scan log is converging on, what kinds of violations it is best at
+surfacing, and which themes are still underrepresented.
+
+### Dominant themes in the pass log
+
+**Fail-open behavior is the main recurring pathology.**
+Across tokenize, parse, resolve, typecheck, emit, the runtime shim, and
+the evaluator/interpreter, malformed or unsupported input usually
+continues as a placeholder, wildcard, empty list, dummy node, identity
+transform, or heuristic fallback instead of becoming a hard failure.
+The passes are repeatedly finding success-shaped failure.
+
+**Semantic distinctions are being collapsed too early.**
+Many findings have the same shape: two distinct source constructs become
+indistinguishable before later stages can reason about them. Examples:
+bare vs empty imports, `return x` vs `x`, `()` vs empty record,
+`pattern`/`interface`/`func`, named vs positional arguments, resource
+lifecycle blocks, and anonymous structural types. This is now one of
+the clearest cross-pass themes.
+
+**The intermediate models are not authoritative enough.**
+Several findings are not just "bad lowering" bugs. They show the AST,
+typed graph, or helper result types are too weak to faithfully carry the
+language semantics: tokenizer diagnostics have no representation,
+resource lifecycle has no core slot, expression-embedded `TypeExpr`s are
+not covered, and invalid pipeline states are representable in
+`CompileResult`. Downstream heuristics are compensating for missing
+structure upstream.
+
+**The typechecker is still mostly a type-reference resolver.**
+The pass log now makes this hard to ignore. Top-level declared types are
+resolved, but expression trees, many value payloads, transport/config
+expressions, and cast targets are largely outside the checking surface.
+That pushes semantic debt into emit, where Rust-specific assumptions are
+currently standing in for language semantics.
+
+**Comments, helper types, and implementations often disagree.**
+`TokenizeResult` exists but is unused, `compile_file()` overclaims its
+scope, `merge_envs()` comments do not match implementation, the
+post-typecheck validator exists but is bypassed, and emitter comments
+claim stronger preconditions than the pipeline enforces. Contract drift
+is not incidental; it is one of the recurring sources of invariant
+violations.
+
+**Provenance loss deserves to be treated as its own theme.**
+The passes keep finding places where the compiler loses "where this came
+from": imported module identity, `from_key`, response/exit typing,
+named-argument names, resource metadata, and original item kind. This is
+related to semantic collapse, but it is specific enough to track on its
+own.
+
+### What the current passes are under-sampling
+
+**Valid-program miscompilation.**
+The current manual reread method is strongest at finding silent drops,
+placeholder fabrication, dead helper types, and stage-contract
+mismatches visible in control flow. It is weaker at catching programs
+that are fully well-formed and still compile to the wrong meaning.
+
+**Diagnostic quality, not just diagnostic existence.**
+We have found many places where errors are suppressed or bypassed, but
+we have not yet done a systematic audit of whether surviving diagnostics
+carry the correct span, module name, blame site, and deduplication
+behavior end-to-end.
+
+**Determinism and output stability.**
+A few ordering issues surfaced, but there has not yet been a full
+determinism pass over import order, sort keys, field ordering, registry
+buildup, and emitted file stability for semantically identical inputs.
+
+**Effect/resource enforcement.**
+We now know the resource model is being erased, but we still have not
+done a systematic pass over whether claims like `readonly`,
+`idempotent`, `hermetic`, `kind`, `mode`, and `expires` are enforced by
+any downstream stage in a meaningful way.
+
+**Construct coverage as a matrix.**
+The passes are still partly opportunistic. A more exhaustive next step
+would be a feature matrix:
+tokenized -> parsed -> representable in core -> resolved -> validated ->
+emitted -> tested. That would expose unsupported language surface more
+systematically than ad hoc rereads.
+
+**Test coverage correlation.**
+The scan log is now large enough that it should start recording which
+findings are protected by regression tests, which are documented only,
+and which remain vulnerable because there is no test pressure on that
+construct family.
+
+### Missing themes to name explicitly
+
+**Boundary contract auditing.**
+Some of the highest-value findings came from comparing a stage's public
+contract with what the implementation actually guarantees. That should
+be an explicit scan theme, not just an emergent one.
+
+**Negative-space auditing.**
+We should explicitly look for fields, variants, tokens, item kinds, and
+helper result types that are declared but never consumed, or consumed
+but never produced. `TokenizeResult` is the clearest example so far, but
+it is unlikely to be the only one.
+
+**Target-language leakage.**
+The emitter is repeatedly compensating for missing upstream semantics by
+making Rust-specific decisions (`Option`, `as`, JSON fallback, trait-only
+resource lowering, import widening). That deserves to be tracked as its
+own category because it explains a large fraction of later-stage bugs.
+
+### Implication for future passes
+
+If the rereads continue, the highest-yield next themes are probably:
+
+- source-construct coverage matrix across all stages
+- provenance retention: names, spans, module identity, field origin,
+  item kind
+- valid-program semantic miscompilation, not just malformed-input paths
+- stage contract audits: comment/type/API vs actual guarantees
+- test-pressure mapping: documented debt vs protected behavior
+
 ### Category 0: Confirmed invariant violations from follow-up scan
 
 These are not generic bootstrap rough edges; they are places where the
