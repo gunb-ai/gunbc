@@ -11,9 +11,6 @@ module extdeps.cloud.gcp.sts
 
 import extdeps.cloud.cloud { CloudAuthScheme }
 import std.types { Url }
-import std.behavioral {
-  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
-}
 import std.errors { GcpErrorShape, GitHubErrorShape }
 
 // ── Token types ───────────────────────────────────────────────────
@@ -55,35 +52,6 @@ data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchan
 data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
 
 data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
-
-// ── Operation behaviors ───────────────────────────────────────────
-
-type StsOperationBehavior {
-  operation: String
-  behavior: OperationBehavior
-}
-
-data operation_behaviors: List<StsOperationBehavior> = [
-  {
-    operation: "exchange",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: NonDeterministic,
-      failure_modes: [
-        { name: "InvalidGrant", condition: "expired_or_invalid_subject_token", http_status: 400, recoverable: false, retry_safe: false },
-        { name: "InvalidAudience", condition: "audience_mismatch", http_status: 400, recoverable: false, retry_safe: false },
-        { name: "PermissionDenied", condition: "wif_pool_not_bound", http_status: 403, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [{ description: "STS tokens have shorter lifetime than source tokens", trigger: "token_exchange", severity: Medium }],
-      confidence: Documented,
-      prerequisites: [{ description: "valid WIF pool and provider configured", kind: Infrastructure }],
-      assumptions: ["Subject token is not expired at time of exchange"],
-      unknowns: ["Exact clock skew tolerance for subject token validation"]
-    }
-  }
-]
 
 // ── Service: REST transport wiring ──────────────────────────────
 

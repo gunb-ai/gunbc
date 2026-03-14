@@ -152,6 +152,17 @@ type ImportResolveResult {
   diagnostics: List<Diagnostic>
 }
 
+fn is_wildcard_import_names(names: List<String>) -> Bool {
+  if names |> count == 1 {
+    match first(names) {
+      Some { value: name } => name == "*"
+      None => false
+    }
+  } else {
+    false
+  }
+}
+
 // Resolve a single import: find target module, validate imported names.
 fn resolve_import(
   import: Import,
@@ -179,16 +190,20 @@ fn resolve_import(
     Some { value: target_mod } => {
       // Validate each imported name exists in the target
       let exported = get_exported_names(module: target_mod)
-      let name_diags = import.names
-        |> filter(name => exported |> any(e => e == name) == false)
-        |> map(missing_name =>
-          Diagnostic {
-            severity: Error,
-            message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
-            span: Some { value: import.span },
-            module_name: Some { value: importing_module }
-          }
-        )
+      let name_diags = if is_wildcard_import_names(names: import.names) {
+        []
+      } else {
+        import.names
+          |> filter(name => exported |> any(e => e == name) == false)
+          |> map(missing_name =>
+            Diagnostic {
+              severity: Error,
+              message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
+              span: Some { value: import.span },
+              module_name: Some { value: importing_module }
+            }
+          )
+      }
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import.module_path,

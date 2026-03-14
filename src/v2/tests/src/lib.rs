@@ -213,6 +213,64 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
+    fn compile_sources_with(
+        output: &daglang_driver::EmbeddedCompileOutput,
+        sources: &[(&str, &str)],
+    ) -> HashMap<String, gunbc_ir::Value> {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "sources".to_string(),
+            gunbc_ir::Value::List(
+                sources
+                    .iter()
+                    .map(|(path, content)| source_file_value(path, content))
+                    .collect(),
+            ),
+        );
+        let result =
+            call_fn(output, "compile_sources", inputs).expect("compile_sources should succeed");
+        if let Some(gunbc_ir::Value::Map(map)) = result.get("return") {
+            map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        } else {
+            result
+        }
+    }
+
+    fn diagnostic_messages(diags: &gunbc_ir::Value) -> Vec<String> {
+        match diags {
+            gunbc_ir::Value::List(items) => items
+                .iter()
+                .filter_map(|item| match item {
+                    gunbc_ir::Value::Map(map) => match map.get("message") {
+                        Some(gunbc_ir::Value::Str(message)) => Some(message.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect(),
+            other => panic!("expected diagnostics list, got: {other:?}"),
+        }
+    }
+
+    fn emitted_file_content(files: &gunbc_ir::Value, path: &str) -> String {
+        match files {
+            gunbc_ir::Value::List(items) => items
+                .iter()
+                .find_map(|item| match item {
+                    gunbc_ir::Value::Map(map) => match (map.get("path"), map.get("content")) {
+                        (
+                            Some(gunbc_ir::Value::Str(file_path)),
+                            Some(gunbc_ir::Value::Str(content)),
+                        ) if file_path == path => Some(content.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("missing emitted file {path}")),
+            other => panic!("expected files list, got: {other:?}"),
+        }
+    }
+
     #[test]
     fn phase0_fn_lambda_syntax() {
         let source = r#"module test
@@ -1141,7 +1199,10 @@ fn foo(item: String) -> String {
                 let module_val = outputs.get("module").expect("should have 'module' key");
                 if let gunbc_ir::Value::Unit = module_val {
                     let error_val = outputs.get("error");
-                    panic!("module is Unit (parse returned None), error: {:?}", error_val);
+                    panic!(
+                        "module is Unit (parse returned None), error: {:?}",
+                        error_val
+                    );
                 }
             }
             Err(e) => panic!("parse fn eval failed: {}", e),
@@ -1599,6 +1660,156 @@ fn example(items: List<String>) -> Int {
         );
     }
 
+    /// Regression: multi-line pipe chain with continuation on next line.
+    /// Locks in that `items |> map(i =>\n  process(i)\n) |> filter(f => f != none)` parses.
+    #[test]
+    fn phase4_parse_multiline_pipe_chain() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\nfn transform(items: List<Int>) -> List<Int> {\n  let x = items |> map(i =>\n    process(i)\n  ) |> filter(f => f != none)\n  x\n}\n";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs);
+        match parse_result {
+            Ok(outputs) => {
+                let error_val = outputs.get("error");
+                if let Some(gunbc_ir::Value::Map(err_map)) = error_val {
+                    if !err_map.is_empty() {
+                        if let Some(gunbc_ir::Value::Str(msg)) = err_map.get("message") {
+                            panic!("parse error: {}", msg);
+                        }
+                        panic!("parse produced error: {:?}", err_map);
+                    }
+                }
+                let module_val = outputs.get("module").expect("should have 'module' key");
+                if let gunbc_ir::Value::Unit = module_val {
+                    panic!(
+                        "module is Unit (parse returned None), error: {:?}",
+                        outputs.get("error")
+                    );
+                }
+                // Verify module has items (the fn parsed successfully)
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap()
+                    } else {
+                        module_val
+                    }
+                } else {
+                    module_val
+                };
+                if let gunbc_ir::Value::Map(mod_map) = module {
+                    assert!(
+                        mod_map.contains_key("items"),
+                        "parsed module should have 'items'"
+                    );
+                    if let Some(gunbc_ir::Value::List(items)) = mod_map.get("items") {
+                        assert!(
+                            !items.is_empty(),
+                            "multi-line pipe chain fn should produce at least one item"
+                        );
+                    }
+                } else {
+                    panic!("module is not a Map: {:?}", module);
+                }
+            }
+            Err(e) => panic!("parse fn eval failed on multi-line pipe chain: {}", e),
+        }
+    }
+
+    /// Regression: fn() lambda as a named argument in a call.
+    /// Locks in that `fold(init: [], f: fn(acc, item) { concat(acc, [item]) })` parses.
+    #[test]
+    fn phase4_parse_fn_lambda_in_call_arg() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\nfn flatten(items: List<List<Int>>) -> List<Int> {\n  fold(init: [], f: fn(acc, item) { concat(acc, [item]) })\n}\n";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs);
+        match parse_result {
+            Ok(outputs) => {
+                let error_val = outputs.get("error");
+                if let Some(gunbc_ir::Value::Map(err_map)) = error_val {
+                    if !err_map.is_empty() {
+                        if let Some(gunbc_ir::Value::Str(msg)) = err_map.get("message") {
+                            panic!("parse error: {}", msg);
+                        }
+                        panic!("parse produced error: {:?}", err_map);
+                    }
+                }
+                let module_val = outputs.get("module").expect("should have 'module' key");
+                if let gunbc_ir::Value::Unit = module_val {
+                    panic!(
+                        "module is Unit (parse returned None), error: {:?}",
+                        outputs.get("error")
+                    );
+                }
+            }
+            Err(e) => panic!("parse fn eval failed on fn-lambda-in-call-arg: {}", e),
+        }
+    }
+
+    /// Regression: keyword as named argument name.
+    /// Locks in that `resolve_module_imports(module: m, all_modules: modules)` parses
+    /// and the named arg `module` is preserved.
+    #[test]
+    fn phase4_parse_keyword_named_arg() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\nfn do_resolve(m: Module, modules: List<Module>) -> Module {\n  resolve_module_imports(module: m, all_modules: modules)\n}\n";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs);
+        match parse_result {
+            Ok(outputs) => {
+                let error_val = outputs.get("error");
+                if let Some(gunbc_ir::Value::Map(err_map)) = error_val {
+                    if !err_map.is_empty() {
+                        if let Some(gunbc_ir::Value::Str(msg)) = err_map.get("message") {
+                            panic!("parse error: {}", msg);
+                        }
+                        panic!("parse produced error: {:?}", err_map);
+                    }
+                }
+                let module_val = outputs.get("module").expect("should have 'module' key");
+                if let gunbc_ir::Value::Unit = module_val {
+                    panic!(
+                        "module is Unit (parse returned None), error: {:?}",
+                        outputs.get("error")
+                    );
+                }
+                // Verify the named arg "module" is preserved in the AST
+                let json = value_to_json(module_val);
+                let json_str = json.to_string();
+                assert!(
+                    json_str.contains("module"),
+                    "named arg 'module' should be preserved in parse output, got: {}",
+                    &json_str[..json_str.len().min(1000)]
+                );
+            }
+            Err(e) => panic!("parse fn eval failed on keyword-named-arg: {}", e),
+        }
+    }
+
     // ═════════════════════════════════════════════════════════════════════
     // Phase 5: gist.dag transitive closure — v1 parser gate
     //
@@ -1931,6 +2142,215 @@ fn example(items: List<String>) -> Int {
         }
     }
 
+    #[test]
+    fn phase6_bare_import_wildcard_survives_pipeline() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[
+                ("dep.dag", "module dep\ntype Foo { x: Int }\n"),
+                (
+                    "main.dag",
+                    "module main\nimport dep\nfn id(x: Foo) -> Foo { x }\n",
+                ),
+            ],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "bare import should not produce diagnostics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main.rs");
+        assert!(
+            main_rs.contains("use crate::dep::*;"),
+            "bare import should emit a Rust wildcard import:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_empty_import_block_emits_no_rust_import() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[
+                ("dep.dag", "module dep\ntype Foo { x: Int }\n"),
+                (
+                    "main.dag",
+                    "module main\nimport dep {}\ndata answer: Int = 42\n",
+                ),
+            ],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "empty import block should remain a no-op: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main.rs");
+        assert!(
+            !main_rs.contains("use crate::dep::*;") && !main_rs.contains("use crate::dep::{"),
+            "empty import block should not emit a Rust import:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_map_index_emits_lookup_style_rust() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn get(m: Map<String, Int>) -> Int? { m[\"x\"] }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "map index should typecheck and emit cleanly: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main.rs");
+        assert!(
+            main_rs.contains(".get(&\"x\".to_string()).cloned()"),
+            "map index should emit Rust map lookup semantics:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_string_index_and_slice_emit_string_runtime_calls() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn head(s: String) -> String { s[0] }\nfn mid(s: String) -> String { s[0..1] }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "string index/slice should compile cleanly: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main.rs");
+        assert!(
+            main_rs.contains("v2_rt::char_at(&s, 0)")
+                && main_rs.contains("v2_rt::substring(&s, 0, 1)"),
+            "string index/slice should emit string runtime helpers:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_list_index_is_rejected_before_emit() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn first(xs: List<Int>) -> Int { xs[0] }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages
+                .iter()
+                .any(|message| message
+                    .contains("indexing is only supported for String and Map values")),
+            "list index should be rejected by typecheck: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase6_map_index_key_type_mismatch_is_rejected() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn get(m: Map<String, Int>) -> Int? { m[0] }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages
+                .iter()
+                .any(|message| message
+                    .contains("map index key type does not match the map key type")),
+            "mismatched map keys should be rejected: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase6_non_string_slice_is_rejected_before_emit() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn sub(xs: List<Int>) -> String { xs[0..1] }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("slice is only supported for String values")),
+            "non-string slice should be rejected by typecheck: {:?}",
+            messages
+        );
+    }
+
     /// Focused test: func with return type goes through typecheck without error.
     /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
     #[test]
@@ -2152,9 +2572,7 @@ fn example(items: List<String>) -> Int {
 
         let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
             .iter()
-            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
-                (stem.as_str(), sf)
-            })
+            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf))
             .collect();
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
@@ -2274,9 +2692,7 @@ fn example(items: List<String>) -> Int {
 
         let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
             .iter()
-            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
-                (stem.as_str(), sf)
-            })
+            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf))
             .collect();
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
@@ -2413,9 +2829,7 @@ fn example(items: List<String>) -> Int {
 
         let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
             .iter()
-            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
-                (stem.as_str(), sf)
-            })
+            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf))
             .collect();
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);

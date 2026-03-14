@@ -1092,6 +1092,64 @@ directly, discarding the alias name. `type UserId = String` resolves to
 `Primitive { name: "String" }` — field types that referenced `UserId`
 are emitted as `String`, not `UserId`.
 
+### Pass 31: Self-hosting parser convergence (2026-03-14)
+
+This pass drove the v2 self-hosted parser toward self-parsing: feeding
+each .dag module's source through the v2 tokenizer and parser running
+in the v1 interpreter.
+
+**Three parser bugs found:**
+
+1. **Multi-line pipe chain.** A pipe expression like
+   `items |> map(i =>\n  process(i)\n) |> filter(f => f != none)`
+   failed because the parser consumed the closing `)` of the lambda
+   argument and then did not recognize the continuation `|>` on the
+   next line. The infix-continuation logic needed to handle newlines
+   between a closing delimiter and the next `|>`.
+
+2. **`fn` lambda vs named-arg ambiguity.** In
+   `fold(init: [], f: fn(acc, item) { concat(acc, [item]) })`,
+   the parser saw `fn` after `f:` and attempted to parse a top-level
+   function definition instead of an inline lambda expression. The
+   call-argument parser needed to recognize `fn(` as a lambda prefix
+   when it appears in expression position.
+
+3. **Keyword as named argument.** In
+   `resolve_module_imports(module: m, all_modules: modules)`,
+   the token `module` was consumed as the keyword `KwModule` rather
+   than as an identifier in named-argument position. The named-arg
+   parser needed to accept keywords that are followed by `:` as
+   argument names.
+
+**S76 OOM diagnosis:**
+
+Self-hosting the full 3,313-line `02_parse.dag` through the
+interpreter triggered OOM. Profiling revealed ~2,136 recursive clone
+operations with 3-5KB stack frames each. In debug mode (no inlining,
+full debug info), the total stack usage exceeded the 16MB parser stack
+limit. Root cause: the v2 parser's `parse_items`, `parse_stmts`, and
+`parse_match_arms` functions were recursive (each call parsed one item
+and recursed for the rest), and the evaluator added its own recursion
+layer per call.
+
+**Iterative parser fixes applied:**
+
+- `parse_items`: converted from recursive to iterative (loop + list
+  accumulation)
+- `parse_stmts`: converted from recursive to iterative
+- `parse_match_arms`: converted from recursive to iterative
+
+These three functions accounted for the deepest recursion chains since
+they recurse once per item/statement/arm in the module. Making them
+iterative cut stack depth from O(n) to O(max-nesting-depth).
+
+**Current convergence state:**
+
+- 2/7 modules self-parse successfully: `00_core.dag`, `01_tokenize.dag`
+- 5/7 modules blocked on the three parser bugs documented above
+- Regression tests added: `phase4_parse_multiline_pipe_chain`,
+  `phase4_parse_fn_lambda_in_call_arg`, `phase4_parse_keyword_named_arg`
+
 ## Pass retrospective
 
 This section synthesizes the outcomes of the passes themselves rather

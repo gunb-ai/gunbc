@@ -9,9 +9,6 @@
 module extdeps.llm.openai
 
 import extdeps.llm.llm { Role, StopReason, TokenUsage }
-import std.behavioral {
-  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
-}
 import std.errors { OpenAiErrorShape }
 
 // ── Models ────────────────────────────────────────────────────────
@@ -71,58 +68,6 @@ type ToolCall {
   type: String
   function: FunctionCall
 }
-
-// ── Operation behaviors ───────────────────────────────────────────
-
-type OpenAiOperationBehavior {
-  operation: String
-  behavior: OperationBehavior
-}
-
-data operation_behaviors: List<OpenAiOperationBehavior> = [
-  {
-    operation: "chat_completion",
-    behavior: {
-      side_effects: WritesExternal,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: NonDeterministic,
-      failure_modes: [
-        { name: "RateLimited", condition: "too_many_requests", http_status: 429, recoverable: true, retry_safe: true },
-        { name: "ServerError", condition: "internal_error", http_status: 500, recoverable: true, retry_safe: true },
-        { name: "InvalidRequest", condition: "malformed_input", http_status: 400, recoverable: false, retry_safe: false },
-        { name: "AuthError", condition: "invalid_api_key", http_status: 401, recoverable: false, retry_safe: false },
-        { name: "ContentFiltered", condition: "safety_filter_triggered", http_status: 400, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [
-        { description: "JSON mode may produce partial JSON if max_tokens is hit", trigger: "json_mode_truncation", severity: High },
-        { description: "reasoning models (o1/o3) do not support temperature or system messages", trigger: "reasoning_model", severity: Medium }
-      ],
-      confidence: Documented,
-      prerequisites: [{ description: "valid OpenAI API key", kind: Credential }],
-      assumptions: [],
-      unknowns: ["Exact behavior of content_filter finish reason across models"]
-    }
-  },
-  {
-    operation: "responses",
-    behavior: {
-      side_effects: WritesExternal,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: NonDeterministic,
-      failure_modes: [
-        { name: "RateLimited", condition: "too_many_requests", http_status: 429, recoverable: true, retry_safe: true },
-        { name: "InvalidRequest", condition: "malformed_input", http_status: 400, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [{ description: "valid OpenAI API key", kind: Credential }],
-      assumptions: [],
-      unknowns: []
-    }
-  }
-]
 
 // ── Service: REST transport wiring ──────────────────────────────
 

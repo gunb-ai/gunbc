@@ -10,9 +10,6 @@
 module extdeps.cloud.gcp.iam
 
 import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject }
-import std.behavioral {
-  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
-}
 import std.errors { GcpErrorShape }
 
 // ── Roles ─────────────────────────────────────────────────────────
@@ -74,66 +71,6 @@ data default_token_lifetime: TokenLifetime = {
   default_seconds: 3600,
   max_seconds: 43200
 }
-
-// ── Operation behaviors ───────────────────────────────────────────
-
-type IamOperationBehavior {
-  operation: String
-  behavior: OperationBehavior
-}
-
-data operation_behaviors: List<IamOperationBehavior> = [
-  {
-    operation: "getIamPolicy",
-    behavior: {
-      side_effects: ReadOnly,
-      idempotent: true,
-      idempotency_keys: null,
-      determinism: Deterministic,
-      failure_modes: [{ name: "PermissionDenied", condition: "insufficient_access", http_status: 403, recoverable: false, retry_safe: false }],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [{ description: "resourcemanager.projects.getIamPolicy permission", kind: Capability }],
-      assumptions: [],
-      unknowns: []
-    }
-  },
-  {
-    operation: "setIamPolicy",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: true,
-      idempotency_keys: ["etag"],
-      determinism: Deterministic,
-      failure_modes: [
-        { name: "ConflictError", condition: "etag_mismatch", http_status: 409, recoverable: true, retry_safe: false },
-        { name: "PermissionDenied", condition: "insufficient_access", http_status: 403, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [{ description: "IAM policy changes may take up to 7 minutes to propagate", trigger: "policy_update", severity: High }],
-      confidence: Documented,
-      prerequisites: [{ description: "resourcemanager.projects.setIamPolicy permission", kind: Capability }],
-      assumptions: ["etag provides CAS semantics for concurrent updates"],
-      unknowns: []
-    }
-  },
-  {
-    operation: "generateAccessToken",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: NonDeterministic,
-      failure_modes: [
-        { name: "PermissionDenied", condition: "insufficient_access", http_status: 403, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [{ description: "iam.serviceAccounts.getAccessToken permission", kind: Capability }],
-      assumptions: ["Generated tokens have the requested lifetime"],
-      unknowns: []
-    }
-  }
-]
 
 // ── Service: REST transport wiring ──────────────────────────────
 

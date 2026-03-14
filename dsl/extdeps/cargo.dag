@@ -10,10 +10,6 @@
 
 module extdeps.cargo
 
-import std.behavioral {
-  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
-}
-
 // ── Package model ─────────────────────────────────────────────────
 
 type CargoPackage {
@@ -61,82 +57,6 @@ type CargoCommand = CargoBuild | CargoTest | CargoClippy | CargoDoc | CargoRun |
 data default_edition: String = "2021"
 
 data default_profile: CargoProfile = "dev"
-
-// ── Operation behaviors ───────────────────────────────────────────
-
-type CargoOperationBehavior {
-  operation: String
-  behavior: OperationBehavior
-}
-
-data operation_behaviors: List<CargoOperationBehavior> = [
-  {
-    operation: "build",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: true,
-      idempotency_keys: ["target", "profile", "features"],
-      determinism: Deterministic,
-      failure_modes: [{ name: "CompileError", condition: "source_error", http_status: null, recoverable: false, retry_safe: true }],
-      edge_cases: [{ description: "incremental compilation may cache stale artifacts", trigger: "source_rename", severity: Medium }],
-      confidence: Documented,
-      prerequisites: [{ description: "rust toolchain installed", kind: Tooling }],
-      assumptions: ["Cargo.lock is present and up-to-date"],
-      unknowns: []
-    }
-  },
-  {
-    operation: "test",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: true,
-      idempotency_keys: ["target", "profile"],
-      determinism: Deterministic,
-      failure_modes: [
-        { name: "TestFailure", condition: "assertion_failed", http_status: null, recoverable: false, retry_safe: true },
-        { name: "CompileError", condition: "source_error", http_status: null, recoverable: false, retry_safe: true }
-      ],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [{ description: "rust toolchain installed", kind: Tooling }],
-      assumptions: [],
-      unknowns: []
-    }
-  },
-  {
-    operation: "clippy",
-    behavior: {
-      side_effects: ReadOnly,
-      idempotent: true,
-      idempotency_keys: null,
-      determinism: Deterministic,
-      failure_modes: [{ name: "LintDenied", condition: "deny_lint_triggered", http_status: null, recoverable: false, retry_safe: true }],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [{ description: "clippy component installed", kind: Tooling }],
-      assumptions: [],
-      unknowns: []
-    }
-  },
-  {
-    operation: "publish",
-    behavior: {
-      side_effects: WritesExternal,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: Deterministic,
-      failure_modes: [
-        { name: "VersionExists", condition: "version_already_published", http_status: null, recoverable: false, retry_safe: false },
-        { name: "AuthError", condition: "invalid_token", http_status: null, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [{ description: "published crates cannot be unpublished, only yanked", trigger: "publish_complete", severity: High }],
-      confidence: Documented,
-      prerequisites: [{ description: "crates.io API token", kind: Credential }],
-      assumptions: [],
-      unknowns: []
-    }
-  }
-]
 
 // ── Service: shell transport wiring ─────────────────────────────
 

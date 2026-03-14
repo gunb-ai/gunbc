@@ -97,6 +97,11 @@ type TypedItemResult {
   diagnostics: List<Diagnostic>
 }
 
+type AccessCheckResult {
+  resolved_type: TypeExpr
+  diagnostics: List<Diagnostic>
+}
+
 // Internal result type for item-level resolution.
 type ItemResult {
   item: Item
@@ -334,21 +339,160 @@ fn infer_literal(lit: LiteralValue) -> TypeExpr {
 // -------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------
-// infer_index_type: compute result type for Index expression
-//   Container<T>[i] → T, String[i] → String, Map<K,V>[k] → V
+// Index/Slice access helpers
 // -------------------------------------------------------------------------
 
-fn infer_index_type(base_type: TypeExpr) -> TypeExpr {
-  match base_type {
-    Container { kind: _, element: el, span: _ } => el
-    MapType { key: _, value: v, span: _ } => v
-    Primitive { name: n, span: _ } =>
-      if n == "String" {
-        Primitive { name: "String", span: no_span() }
+fn normalize_access_type(type_expr: TypeExpr) -> TypeExpr {
+  match type_expr {
+    Refined { base: base, predicates: _, span: _ } =>
+      normalize_access_type(type_expr: base)
+    _ => type_expr
+  }
+}
+
+fn container_kind_name(kind: ContainerKind) -> String {
+  match kind {
+    List => "List"
+    Set => "Set"
+    NonEmptyList => "NonEmptyList"
+    NonEmptySet => "NonEmptySet"
+  }
+}
+
+fn type_expr_shape(type_expr: TypeExpr) -> String {
+  match normalize_access_type(type_expr: type_expr) {
+    Named { name: name, span: _ } => concat("Named(", name, ")")
+    Primitive { name: name, span: _ } => concat("Primitive(", name, ")")
+    Container { kind: kind, element: element, span: _ } =>
+      concat("Container(", container_kind_name(kind: kind), ",", type_expr_shape(type_expr: element), ")")
+    Optional { inner: inner, span: _ } =>
+      concat("Optional(", type_expr_shape(type_expr: inner), ")")
+    MapType { key: key, value: value, span: _ } =>
+      concat("Map(", type_expr_shape(type_expr: key), ",", type_expr_shape(type_expr: value), ")")
+    Product { name: name, fields: _, span: _ } =>
+      if name == none { "Product(<anon>)" } else { concat("Product(", name.value, ")") }
+    Coproduct { name: name, variants: _, span: _ } =>
+      if name == none { "Coproduct(<anon>)" } else { concat("Coproduct(", name.value, ")") }
+    Refined { base: _, predicates: _, span: _ } =>
+      "Refined(<unreachable>)"
+  }
+}
+
+fn type_expr_equals(left: TypeExpr, right: TypeExpr) -> Bool {
+  type_expr_shape(type_expr: left) == type_expr_shape(type_expr: right)
+}
+
+fn is_int_type(type_expr: TypeExpr) -> Bool {
+  match normalize_access_type(type_expr: type_expr) {
+    Primitive { name: name, span: _ } => name == "Int"
+    _ => false
+  }
+}
+
+fn is_string_type(type_expr: TypeExpr) -> Bool {
+  match normalize_access_type(type_expr: type_expr) {
+    Primitive { name: name, span: _ } => name == "String"
+    _ => false
+  }
+}
+
+fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
+  Diagnostic {
+    severity: Error,
+    message: message,
+    span: Some { value: span },
+    module_name: Some { value: module_name }
+  }
+}
+
+fn check_index_access(base_type: TypeExpr, index_type: TypeExpr, span: SourceSpan, module_name: String) -> AccessCheckResult {
+  match normalize_access_type(type_expr: base_type) {
+    Primitive { name: name, span: _ } =>
+      if name == "String" {
+        let diags = if is_int_type(type_expr: index_type) {
+          []
+        } else {
+          [access_error(
+            message: "string index requires an Int index",
+            span: span,
+            module_name: module_name
+          )]
+        }
+        AccessCheckResult {
+          resolved_type: Primitive { name: "String", span: no_span() },
+          diagnostics: diags
+        }
       } else {
-        unit_type()
+        AccessCheckResult {
+          resolved_type: unit_type(),
+          diagnostics: [access_error(
+            message: "indexing is only supported for String and Map values",
+            span: span,
+            module_name: module_name
+          )]
+        }
       }
-    _ => unit_type()
+    MapType { key: key, value: value, span: _ } =>
+      let diags = if type_expr_equals(left: key, right: index_type) {
+        []
+      } else {
+        [access_error(
+          message: "map index key type does not match the map key type",
+          span: span,
+          module_name: module_name
+        )]
+      }
+      AccessCheckResult {
+        resolved_type: Optional { inner: value, span: no_span() },
+        diagnostics: diags
+      }
+    _ =>
+      AccessCheckResult {
+        resolved_type: unit_type(),
+        diagnostics: [access_error(
+          message: "indexing is only supported for String and Map values",
+          span: span,
+          module_name: module_name
+        )]
+      }
+  }
+}
+
+fn check_slice_access(base_type: TypeExpr, start_type: TypeExpr, end_type: TypeExpr, span: SourceSpan, module_name: String) -> AccessCheckResult {
+  let base_diags = if is_string_type(type_expr: base_type) {
+    []
+  } else {
+    [access_error(
+      message: "slice is only supported for String values",
+      span: span,
+      module_name: module_name
+    )]
+  }
+  let start_diags = if is_int_type(type_expr: start_type) {
+    []
+  } else {
+    [access_error(
+      message: "slice start requires an Int index",
+      span: span,
+      module_name: module_name
+    )]
+  }
+  let end_diags = if is_int_type(type_expr: end_type) {
+    []
+  } else {
+    [access_error(
+      message: "slice end requires an Int index",
+      span: span,
+      module_name: module_name
+    )]
+  }
+  AccessCheckResult {
+    resolved_type: if is_string_type(type_expr: base_type) {
+      Primitive { name: "String", span: no_span() }
+    } else {
+      unit_type()
+    },
+    diagnostics: concat(base_diags, start_diags, end_diags)
   }
 }
 
@@ -652,20 +796,34 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         diagnostics: concat(coll_result.diagnostics, body_result.diagnostics)
       }
 
-    Index { base: base_expr, index: _, span: _ } =>
+    Index { base: base_expr, index: index_expr, span: span } =>
       let base_result = infer_expr(expr: base_expr, scope: scope)
-      let base_type = base_result.typed.resolved_type
-      let elem_type = infer_index_type(base_type: base_type)
+      let index_result = infer_expr(expr: index_expr, scope: scope)
+      let index_check = check_index_access(
+        base_type: base_result.typed.resolved_type,
+        index_type: index_result.typed.resolved_type,
+        span: span,
+        module_name: scope.module_name
+      )
       InferResult {
-        typed: typed(expr: expr, resolved_type: elem_type),
-        diagnostics: base_result.diagnostics
+        typed: typed(expr: expr, resolved_type: index_check.resolved_type),
+        diagnostics: concat(base_result.diagnostics, index_result.diagnostics, index_check.diagnostics)
       }
 
-    Slice { base: base_expr, start: _, end: _, span: _ } =>
+    Slice { base: base_expr, start: start_expr, end: end_expr, span: span } =>
       let base_result = infer_expr(expr: base_expr, scope: scope)
+      let start_result = infer_expr(expr: start_expr, scope: scope)
+      let end_result = infer_expr(expr: end_expr, scope: scope)
+      let slice_check = check_slice_access(
+        base_type: base_result.typed.resolved_type,
+        start_type: start_result.typed.resolved_type,
+        end_type: end_result.typed.resolved_type,
+        span: span,
+        module_name: scope.module_name
+      )
       InferResult {
-        typed: typed(expr: expr, resolved_type: base_result.typed.resolved_type),
-        diagnostics: base_result.diagnostics
+        typed: typed(expr: expr, resolved_type: slice_check.resolved_type),
+        diagnostics: concat(base_result.diagnostics, start_result.diagnostics, end_result.diagnostics, slice_check.diagnostics)
       }
 
     // Fallback for any unrecognized variant
@@ -930,6 +1088,17 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   TypeEnv { bindings: deduped.result }
 }
 
+fn is_wildcard_import_names(names: List<String>) -> Bool {
+  if names |> count == 1 {
+    match first(names) {
+      Some { value: name } => name == "*"
+      None => false
+    }
+  } else {
+    false
+  }
+}
+
 // =========================================================================
 // Build type environment for a single module
 //
@@ -961,15 +1130,19 @@ fn build_type_env(module: ResolvedModule, parent_envs: List<TypeEnv>) -> TypeEnv
       )
       TypeEnv { bindings: target_local }
     }
-    let imported = fold(imp.names, init: [], f: (inner_acc, name) =>
-      match lookup_type(env: target_env, name: name) {
-        Some { value: resolved } =>
-          concat(inner_acc, [TypeBinding { name: name, resolved: resolved }])
-        None =>
-          // Import not found in target module — will be caught as diagnostic later.
-          inner_acc
-      }
-    )
+    let imported = if is_wildcard_import_names(names: imp.names) {
+      target_env.bindings
+    } else {
+      fold(imp.names, init: [], f: (inner_acc, name) =>
+        match lookup_type(env: target_env, name: name) {
+          Some { value: resolved } =>
+            concat(inner_acc, [TypeBinding { name: name, resolved: resolved }])
+          None =>
+            // Import not found in target module — will be caught as diagnostic later.
+            inner_acc
+        }
+      )
+    }
     concat(acc, imported)
   )
   let import_env = TypeEnv { bindings: import_bindings }
@@ -1811,4 +1984,3 @@ fn typecheck_and_validate(graph: ModuleGraph) -> TypedGraph {
     diagnostics: concat(typed.diagnostics, validation_diags)
   }
 }
-
