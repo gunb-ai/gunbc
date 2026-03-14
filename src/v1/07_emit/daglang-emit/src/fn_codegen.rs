@@ -122,6 +122,8 @@ pub struct CompileContext {
     /// Target-agnostic type scope: variable name → IrType (populated from function params
     /// and augmented as let bindings are compiled).
     pub ir_scope: HashMap<String, IrType>,
+    /// Current function's return type as IrType (for fold accumulator inference).
+    pub current_return_ir_type: Option<IrType>,
     /// Struct/variant name → [(field_name, IrType)] for populating `Expr::Struct.field_types`.
     pub struct_field_ir_types: HashMap<String, Vec<(String, IrType)>>,
 }
@@ -146,6 +148,7 @@ impl CompileContext {
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
+            current_return_ir_type: None,
             ir_scope: HashMap::new(),
             struct_field_ir_types: HashMap::new(),
         }
@@ -636,9 +639,27 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             }
             code_ir::Expr::Block(ir_stmts)
         }
-        ast::Expr::ServiceCall(_, _) | ast::Expr::Map(_) => {
+        ast::Expr::ServiceCall(path, args) => {
+            // Lower Resource.method(args) → v2_rt::resource_method(args)
+            let fn_name = path
+                .iter()
+                .map(|s| crate::type_codegen::to_snake_case(s))
+                .collect::<Vec<_>>()
+                .join("_");
+            let compiled_args: Vec<code_ir::Expr> =
+                args.iter().map(|(_, e)| compile_expr(e, ctx, counter)).collect();
+            code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    fn_name,
+                ])),
+                args: compiled_args,
+                obligation: None,
+            }
+        }
+        ast::Expr::Map(_) => {
             code_ir::Expr::RawCode(
-                "compile_error!(\"unsupported DSL construct: ServiceCall/Map not yet supported in fn codegen\");"
+                "compile_error!(\"unsupported DSL construct: Map not yet supported in fn codegen\");"
                     .to_string(),
             )
         }
@@ -1587,7 +1608,8 @@ fn compile_fold_intrinsic(
         },
         None => code_ir::Expr::Var(acc.clone()),
     };
-    // Prefer init type; if it's a list with Unknown element, try the lambda body
+    // Prefer init type; if it's a list with Unknown element, try the lambda body,
+    // then fall back to the function's return type (fold result = return type).
     let init_ir_type = init.and_then(|e| infer_ast_expr_type(e, ctx));
     let acc_ir_type = match &init_ir_type {
         Some(IrType::Generic(name, args))
@@ -1598,7 +1620,9 @@ fn compile_fold_intrinsic(
                 Some(ast::Expr::Lambda(_, body)) => infer_ast_expr_type(body, ctx),
                 _ => None,
             };
-            body_type.or(init_ir_type)
+            body_type
+                .or_else(|| ctx.current_return_ir_type.clone())
+                .or(init_ir_type)
         }
         _ => init_ir_type,
     };

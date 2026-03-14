@@ -415,6 +415,7 @@ fn emit_module(
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
+        current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
         struct_field_ir_types: struct_field_ir_types.clone(),
     };

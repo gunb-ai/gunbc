@@ -67,19 +67,9 @@ fn read_source(path: FilePath) -> SourceFile {
 // =========================================================================
 
 // Gather all diagnostics from a list of parse results.
+// ParseResult.error is Diagnostic? — extract non-None errors directly.
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
-  fold(parse_results, init: [], f: fn(acc, pr) {
-    if pr.error != None {
-      concat(acc, [Diagnostic {
-        severity: Error,
-        message: pr.error,
-        span: None,
-        module_name: None
-      }])
-    } else {
-      acc
-    }
-  })
+  map(parse_results, pr => pr.error)
 }
 
 // =========================================================================
@@ -91,17 +81,8 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 fn compile_file(source: SourceFile) -> CompileFileResult {
   let tokens = tokenize(source: source.content)
   let result = parse(tokens: tokens)
-  if result.error != None {
-    let diag = Diagnostic {
-      severity: Error,
-      message: result.error,
-      span: None,
-      module_name: None
-    }
-    CompileFileResult { module: None, diagnostics: [diag] }
-  } else {
-    CompileFileResult { module: result.module, diagnostics: [] }
-  }
+  let errors = map([result], r => r.error)
+  CompileFileResult { module: result.module, diagnostics: errors }
 }
 
 // =========================================================================

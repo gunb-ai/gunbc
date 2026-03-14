@@ -650,6 +650,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         augmented.optional_params = optional_params;
         augmented.param_types = param_types;
         augmented.current_return_type = return_type_name;
+        augmented.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
         augmented.ir_scope = ir_scope;
         std::borrow::Cow::Owned(augmented)
     };
@@ -903,6 +904,7 @@ pub fn typedefs_to_source_file(
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
+        current_return_ir_type: None,
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types: std::collections::HashMap::new(),
     };
