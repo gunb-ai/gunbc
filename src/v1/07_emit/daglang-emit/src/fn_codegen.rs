@@ -252,7 +252,23 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
-            code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field)
+            // TEMPORARY bootstrap scaffolding (S81): In DAG, Option is a record
+            // with a `value` field (Some { value: x }). In Rust, Option<T> has no
+            // `.value` field. Emit `.unwrap()` instead when accessing `.value` on
+            // expressions that produce Option<T>.
+            if rust_field == "value" {
+                let compiled = compile_expr(receiver, ctx);
+                if is_option_expr(&compiled, ctx) {
+                    return code_ir::Expr::MethodCall {
+                        receiver: Box::new(compiled),
+                        method: "unwrap".to_string(),
+                        args: vec![],
+                    };
+                }
+                code_ir::Expr::Field(Box::new(compiled), rust_field)
+            } else {
+                code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field)
+            }
         }
         ast::Expr::Call(name, args) => {
             if let Some(intrinsic) = compile_intrinsic_call(name, args, ctx) {

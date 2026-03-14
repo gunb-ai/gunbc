@@ -281,6 +281,10 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
     let (rust_type, rust_value) = match &dd.ty {
         TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => {
             let elem_type = type_expr_to_rust(&args[0]);
+            // TEMPORARY bootstrap scaffolding (S81): In static context, List<String>
+            // must emit &[&str] because string literals are &str, not String.
+            let is_string_list = matches!(&args[0], TypeExpr::Named(n) if n == "String");
+            let static_elem_type = if is_string_list { "&str".to_string() } else { elem_type.clone() };
             let elem_type_name = match &args[0] {
                 TypeExpr::Named(n) => n.as_str(),
                 _ => &elem_type,
@@ -294,7 +298,7 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                     .join(",\n    "),
                 _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
             };
-            (format!("&[{elem_type}]"), format!("&[\n    {items}\n]"))
+            (format!("&[{static_elem_type}]"), format!("&[\n    {items}\n]"))
         }
         // Map<K, V> data: emit as a LazyLock static (HashMap can't be const)
         TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
