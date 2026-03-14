@@ -40,6 +40,308 @@ Rust-backed extern functions in the .dag source.
 
 ## Debt catalog
 
+### Pass ledger setup
+
+This section is the running scan log for the v2 pipeline. Each pass
+records the exact file inventory that was in scope and then notes, per
+file, whether a confirmed invariant violation was found.
+
+### Pass 1: Pipeline file inventory
+
+Requested directory command:
+
+```sh
+tree -d src/v2 dsl/std
+```
+
+Local fallback used during this pass (`tree` was not installed in the
+workspace shell):
+
+```sh
+find src/v2 dsl/std -type d | sort
+```
+
+Pipeline file inventory for pass 1:
+
+```text
+src/v2
+├── 00_core.dag
+├── 01_tokenize.dag
+├── 02_parse.dag
+├── 03_resolve.dag
+├── 04_typecheck.dag
+├── 05_emit.dag
+├── 06_pipeline.dag
+└── tests
+    └── src
+
+dsl/std
+├── behavioral.dag
+├── errors.dag
+├── resources.dag
+└── types.dag
+```
+
+`src/v2/tests/**` is part of the directory scope above, but not part of
+the compiler pipeline proper. Pass 1 scanned the 7 compiler modules plus
+the 4 `dsl/std` files they depend on.
+
+Canonical numbered file order for repeated end-to-end scans:
+
+| ID | File | Role |
+|----|------|------|
+| 01 | `src/v2/00_core.dag` | Shared compiler contracts and AST/type surface |
+| 02 | `dsl/std/types.dag` | Standard type vocabulary imported by the pipeline |
+| 03 | `dsl/std/resources.dag` | Standard resource vocabulary imported by the pipeline |
+| 04 | `dsl/std/behavioral.dag` | Behavioral stdlib shapes referenced by the pipeline |
+| 05 | `dsl/std/errors.dag` | Canonical error-shape vocabulary |
+| 06 | `src/v2/01_tokenize.dag` | Tokenizer |
+| 07 | `src/v2/02_parse.dag` | Parser |
+| 08 | `src/v2/03_resolve.dag` | Resolver |
+| 09 | `src/v2/04_typecheck.dag` | Typechecker |
+| 10 | `src/v2/05_emit.dag` | Rust emitter |
+| 11 | `src/v2/06_pipeline.dag` | End-to-end pipeline wiring |
+
+All later passes should use these IDs so repeated scans stay aligned to
+the same end-to-end order.
+
+### Pass 1: Per-file invariant ledger
+
+**`[01] src/v2/00_core.dag`**
+- No confirmed file-local invariant violation on pass 1. This file is
+  mostly contract surface; several downstream findings are breaches of
+  guarantees documented here rather than local implementation bugs.
+
+**`[06] src/v2/01_tokenize.dag`**
+- `scan_number()` launders integer parse failure or overflow into a valid
+  `LitInt(0)` token via `parse_int(s: text) ?? 0`
+  (`src/v2/01_tokenize.dag:221-239`). Invalid numeric source should stay
+  invalid until it becomes a diagnostic.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_config_fields()`, `parse_rest_fields()`, and
+  `parse_file_fields()` fabricate empty-string expressions for required
+  fields (`endpoint`, `base_url`, `base_path`) instead of rejecting the
+  missing input (`src/v2/02_parse.dag:1290-1322`,
+  `src/v2/02_parse.dag:1376-1399`,
+  `src/v2/02_parse.dag:1443-1450`).
+- Inline `operation` and inline `capability` lowering only preserve
+  `Product` and plain `Named` return types; any other return shape
+  collapses to `outputs: []`, erasing source information before
+  typecheck sees it (`src/v2/02_parse.dag:1504-1510`,
+  `src/v2/02_parse.dag:1974-1980`).
+- `parse_status_pattern()` converts an invalid response or exit status
+  token into a synthetic `"_"` literal with `err: none`
+  (`src/v2/02_parse.dag:1702-1746`).
+- `parse_pattern()` and `parse_field_init()` invent placeholders instead
+  of failing: malformed match arms can become `Wildcard`, and malformed
+  record literal entries can become a synthetic `_` field
+  (`src/v2/02_parse.dag:2792-2827`,
+  `src/v2/02_parse.dag:3023-3055`).
+
+**`[08] src/v2/03_resolve.dag`**
+- `resolve_modules()` assigns `dep_order = -1` to modules never placed by
+  topo sort and then sorts them into the normal resolver output anyway
+  (`src/v2/03_resolve.dag:90-104`,
+  `src/v2/03_resolve.dag:439-444`).
+
+**`[09] src/v2/04_typecheck.dag`**
+- `merge_envs()` documents last-writer-wins shadowing but implements
+  first-writer-wins deduplication (`src/v2/04_typecheck.dag:174-197`).
+- `build_type_env()` loses import provenance by resolving every imported
+  name against one merged parent environment instead of the specific
+  module named by each `ResolvedImport`
+  (`src/v2/04_typecheck.dag:209-225`).
+- `typecheck_and_validate()` exists, but the main pipeline does not use
+  it, so the post-typecheck unresolved-type audit is not part of the
+  normal compile path (`src/v2/04_typecheck.dag:992-999` together with
+  `src/v2/06_pipeline.dag:124-125`).
+
+**`[10] src/v2/05_emit.dag`**
+- Service method signatures promise `Result<ret, Box<dyn Error>>`, but
+  several transport lowerings do not preserve that contract:
+  `emit_shell_call()` and `emit_file_call()` always return `String`,
+  while `emit_local_call()` returns a bare function call rather than a
+  `Result` (`src/v2/05_emit.dag:917-931`,
+  `src/v2/05_emit.dag:986-1009`).
+- The emitter's own file header says it receives a fully resolved,
+  unambiguous typed graph (`src/v2/05_emit.dag:1-11`), but the pipeline
+  currently violates that precondition.
+
+**`[11] src/v2/06_pipeline.dag`**
+- `compile_sources()` gates only on parse failure, then always resolves,
+  typechecks, and emits even when later stages produced error
+  diagnostics (`src/v2/06_pipeline.dag:99-136`).
+- The main path calls `typecheck()` directly rather than
+  `typecheck_and_validate()`, so the compiler bypasses its own
+  post-typecheck invariant audit (`src/v2/06_pipeline.dag:124-125` with
+  `src/v2/04_typecheck.dag:992-999`).
+
+**`[02] dsl/std/types.dag`**
+- No confirmed pipeline invariant violation on pass 1.
+
+**`[03] dsl/std/resources.dag`**
+- No confirmed pipeline invariant violation on pass 1.
+
+**`[04] dsl/std/behavioral.dag`**
+- No confirmed pipeline invariant violation on pass 1.
+
+**`[05] dsl/std/errors.dag`**
+- No confirmed pipeline invariant violation on pass 1.
+
+### Pass 2: Silent drop / placeholder laundering
+
+This pass focused on places that still return success while skipping
+input, fabricating placeholders, or discarding malformed substructure.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_op_body_entries()` silently skips unknown `name: value` entries
+  inside v1 operation bodies instead of producing a diagnostic. A
+  misspelled key can disappear without leaving evidence in the parsed
+  `OperationDef` (`src/v2/02_parse.dag:1600-1634`).
+- `parse_capability()` accepts a bare `capability Name` with no block or
+  inline signature and manufactures an empty capability instead of
+  failing (`src/v2/02_parse.dag:1944-1985`).
+- `make_call_expr()` only preserves calls whose callee parsed as `Var` or
+  `FieldAccess`. Any other callee expression is rewritten to
+  `Call { func: "<expr>", ... }`, which launders the original source
+  shape into a synthetic placeholder (`src/v2/02_parse.dag:2559-2564`).
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/01_tokenize.dag`, `src/v2/03_resolve.dag`,
+`src/v2/04_typecheck.dag`, `src/v2/05_emit.dag`,
+`src/v2/06_pipeline.dag`, or the scanned `dsl/std` files.
+
+### Pass 3: Semantic erasure
+
+This pass focused on constructs that parse or emit successfully while
+collapsing meaning that earlier stages should preserve.
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_return()` discards the `return` control-flow marker and returns
+  only the inner expression. After parse, `return x` and bare `x` become
+  indistinguishable (`src/v2/02_parse.dag:2940-2948`).
+- `parse_paren_expr()` maps `()` to `RecordLit {}` rather than a distinct
+  unit literal, so source unit and anonymous empty record collapse to the
+  same AST shape (`src/v2/02_parse.dag:3106-3112`).
+
+**`[10] src/v2/05_emit.dag`**
+- `emit_product_type_expr()` and `emit_coproduct_type_expr()` erase
+  anonymous structural types during Rust emission: single-field products
+  collapse to the field type, multi-field products become
+  `serde_json::Value`, and anonymous coproducts also become
+  `serde_json::Value`. The typed graph contains more structure than the
+  emitted type layer preserves (`src/v2/05_emit.dag:304-330`).
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/01_tokenize.dag`, `src/v2/03_resolve.dag`,
+`src/v2/04_typecheck.dag`, `src/v2/06_pipeline.dag`, or the scanned
+`dsl/std` files.
+
+### Pass 4: Call / async / output contract mismatches
+
+This pass focused on places where the emitter's generated Rust no longer
+matches the call, async, or return-shape contracts implied by the typed
+graph.
+
+**`[10] src/v2/05_emit.dag`**
+- `build_item_registry()` indexes only items from the current module
+  (`src/v2/05_emit.dag:95-103`, wired in
+  `src/v2/05_emit.dag:127-129`), but `emit_call()` uses that registry to
+  decide whether a callee is a `func` and which implicit service
+  arguments to thread (`src/v2/05_emit.dag:506-526`). Imported workflow
+  functions therefore lose `.await?` and service-parameter threading
+  during call emission.
+- `emit_func_def()` declares `Result<T, Box<dyn std::error::Error>>` for
+  every `func`, but emits the raw body expression as the function tail
+  instead of wrapping success in `Ok(...)` or otherwise producing a
+  `Result` value (`src/v2/05_emit.dag:350-364`,
+  `src/v2/05_emit.dag:379-383`). This is a broader signature/body
+  mismatch than the service-method issue already noted in pass 1.
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/01_tokenize.dag`, `src/v2/02_parse.dag`,
+`src/v2/03_resolve.dag`, `src/v2/04_typecheck.dag`,
+`src/v2/06_pipeline.dag`, or the scanned `dsl/std` files.
+
+### Pass 5: Module-boundary fidelity
+
+This pass focused on whether source-module boundaries and import intent
+survive emission.
+
+**`[10] src/v2/05_emit.dag`**
+- `emit_imports()` ignores the explicit imported-name list and emits
+  `use crate::<module>::*;` for every source import. That widens source
+  visibility, launders name-boundary intent, and can introduce collisions
+  that the original `import foo { Bar }` syntax did not permit
+  (`src/v2/05_emit.dag:148-156`).
+
+No new confirmed findings on this pass in `src/v2/00_core.dag`,
+`src/v2/01_tokenize.dag`, `src/v2/02_parse.dag`,
+`src/v2/03_resolve.dag`, `src/v2/04_typecheck.dag`,
+`src/v2/06_pipeline.dag`, or the scanned `dsl/std` files.
+
+### Pass 6: Full numbered reread (`01 -> 11`)
+
+This pass re-read every numbered file in the canonical order above. The
+lens for this pass was source-fidelity and metadata preservation:
+whether later stages can still tell what the source said, and whether
+auxiliary data like field/import metadata survives the transition into
+the typed graph and emitted Rust.
+
+**`[01] src/v2/00_core.dag`**
+- No new confirmed findings on pass 6.
+
+**`[02] dsl/std/types.dag`**
+- No new confirmed findings on pass 6.
+
+**`[03] dsl/std/resources.dag`**
+- No new confirmed findings on pass 6.
+
+**`[04] dsl/std/behavioral.dag`**
+- No new confirmed findings on pass 6.
+
+**`[05] dsl/std/errors.dag`**
+- No new confirmed findings on pass 6.
+
+**`[06] src/v2/01_tokenize.dag`**
+- Unterminated strings are laundered into ordinary string tokens instead
+  of surfacing as lexical errors. `scan_string()` turns
+  `UnterminatedString` into `LitStr`, and `scan_str_cont()` turns it
+  into `StrEnd`, both with `err`-free success paths
+  (`src/v2/01_tokenize.dag:258-297`,
+  `src/v2/01_tokenize.dag:303-339`).
+
+**`[07] src/v2/02_parse.dag`**
+- `parse_import()` collapses `import foo.bar` and `import foo.bar {}` to
+  the same AST shape (`Import { names: [] }`), so the parser no longer
+  preserves whether the binding list was omitted or explicitly empty
+  (`src/v2/02_parse.dag:547-562`).
+
+**`[08] src/v2/03_resolve.dag`**
+- No new confirmed findings on pass 6 beyond earlier resolver issues.
+
+**`[09] src/v2/04_typecheck.dag`**
+- `resolve_field()` drops `from_key` when rebuilding `Field`, so JSON-key
+  provenance present in the parsed AST can disappear during type
+  resolution (`src/v2/04_typecheck.dag:388-398`).
+- `resolve_operation()` resolves only input/output field types and leaves
+  `response` and `exit_mappings` untouched, even though both carry
+  `TypeExpr` payloads. The post-typecheck invariant audit also skips
+  those operation substructures, checking only inputs and outputs in
+  service operations (`src/v2/04_typecheck.dag:440-459`,
+  `src/v2/04_typecheck.dag:887-896`). That means unresolved response or
+  exit types can survive typecheck without being reported.
+
+**`[10] src/v2/05_emit.dag`**
+- `emit_prelude()` emits `use serde::\{Serialize, Deserialize\};`, which
+  is not valid Rust syntax. This is an output-shape violation in the
+  emitted crate surface itself (`src/v2/05_emit.dag:164-166`).
+
+**`[11] src/v2/06_pipeline.dag`**
+- No new confirmed findings on pass 6 beyond earlier pipeline gating and
+  validation-path issues.
+
 ### Category 0: Confirmed invariant violations from follow-up scan
 
 These are not generic bootstrap rough edges; they are places where the
@@ -84,6 +386,61 @@ diagnostic.
 `validate_no_unresolved()` / `typecheck_ok()` (lines 992-1017), but
 `06_pipeline.dag` calls plain `typecheck()`. So even the compiler's own
 post-typecheck invariant audit is bypassed on the main pipeline path.
+
+### Category 0b: Semantic deviations in v1 codegen (bootstrap-only)
+
+These are codegen behaviors that produce working Rust but encode
+incorrect or non-obvious semantics. They exist because the v1 codegen
+lacks type information and compensates with heuristics. All die with
+self-hosting.
+
+**`.value` accessor → `.unwrap()` insertion (fn_codegen.rs:466-471).**
+When DSL code accesses `.value` on an expression the codegen infers as
+optional, it emits `.unwrap()` in Rust. This is a hidden runtime panic
+path. `compile_struct_field_value` correctly fails closed with
+`compile_error!` for optional-to-required field assignments (line 402),
+but the `.value` accessor bypasses that gate. These two paths are
+inconsistent: one fails at compile time, the other panics at runtime.
+Should be unified — either both fail closed, or both are explicit
+about the coercion.
+
+**`map` cardinality preservation (FIXED — regression test locks it).**
+`compile_map_intrinsic` previously rewrote `map` to de facto
+`filter_map` when the mapper body looked optional, silently dropping
+elements and breaking positional/cardinality alignment. This was fixed;
+the regression test `map_intrinsic_preserves_optional_mapper_results`
+(fn_codegen.rs:3561) now asserts that map is a 1:1 transform. The test
+should remain until self-hosting deletes fn_codegen entirely.
+
+**IrType layer is started but not yet authoritative.**
+`type_expr_to_ir_type()` (fn_codegen.rs:66-86) only special-cases
+`Bool`, `Int`, and `String`; everything else (`Float`, `Bytes`, `Json`,
+user-defined types) falls through as `IrType::Named(...)` — a string,
+not a structural type. `render_ir_type()` (render_rust.rs:225-254)
+renders `IrType::Record` as `{ a: T }`, which is not valid Rust type
+syntax if it ever becomes a let-binding annotation. The right framing:
+we have *started* a target-agnostic IR layer, and it is not
+authoritative yet. It provides correct type annotations for the three
+primitives and for Generic/Optional, but is pass-through for everything
+else.
+
+**Duplicate type suppression is bootstrap-only, even after the
+`TypeDefSignature` fix.** The improved structural signature comparison
+(v2_crate_emit.rs:553-585) correctly distinguishes same-name types with
+different field types. But the mechanism still says "same name + same
+structural shape across modules = collapse to one emitted definition,"
+which is not a sound nominal type model. Two distinct types can have
+identical structure but different semantics. The test
+`assemble_v2_crate_keeps_same_name_records_with_different_field_types`
+proves the worst case is fixed, but the whole mechanism should stay
+labeled as temporary bootstrap scaffolding that dies with self-hosting.
+
+**`v2_runtime_shim::filesystem_read()` panics on failure.**
+This performs real I/O and `panic!`s on read errors. It exists to get
+the generated compiler working, but it is exactly the kind of
+fail-open runtime behavior the project invariants prohibit. It should
+be replaced by the I/O transport mechanism (Invariant 2: World I/O is
+structural) or at minimum return a Result.
 
 ### Category 1: Hardcoded bootstrap scaffolding in v2_crate_emit.rs
 
