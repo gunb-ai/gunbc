@@ -422,8 +422,13 @@ fn render_expr(expr: &Expr) -> String {
             }
         }
         Expr::MacroCall { name, args } => {
-            let args_str: Vec<String> = args.iter().map(render_expr).collect();
-            format!("{}!({})", name, args_str.join(", "))
+            // Empty vec!() needs type annotation; use Vec::new() instead.
+            if name == "vec" && args.is_empty() {
+                "Vec::new()".to_string()
+            } else {
+                let args_str: Vec<String> = args.iter().map(render_expr).collect();
+                format!("{}!({})", name, args_str.join(", "))
+            }
         }
         Expr::Tuple(items) => {
             let items_str: Vec<String> = items.iter().map(render_expr).collect();
@@ -453,7 +458,8 @@ fn render_match(expr: &Expr, arms: &[MatchArm]) -> String {
 fn render_if(cond: &Expr, then_body: &[Stmt], else_body: Option<&[Stmt]>) -> String {
     if matches!(cond, Expr::Block(_)) {
         let cond_rendered = render_expr(cond);
-        let mut out = format!("let __cond = {};\nif __cond {{\n", cond_rendered);
+        // Wrap in a block so `let` is valid in expression position (e.g. RHS of assignment).
+        let mut out = format!("{{\nlet __cond = {};\nif __cond {{\n", cond_rendered);
         for stmt in then_body {
             out.push_str(&render_stmt(stmt, 1));
         }
@@ -463,7 +469,7 @@ fn render_if(cond: &Expr, then_body: &[Stmt], else_body: Option<&[Stmt]>) -> Str
                 out.push_str(&render_stmt(stmt, 1));
             }
         }
-        out.push('}');
+        out.push_str("}\n}");
         return out;
     }
     let mut out = format!("if {} {{\n", render_expr(cond));

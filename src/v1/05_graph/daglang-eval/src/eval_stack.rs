@@ -1873,7 +1873,12 @@ fn eval_intrinsic_inner(
                         Value::Int(n) => n as usize,
                         _ => return Err(EvalError::new("substring: end must be Int")),
                     };
-                    Ok(Value::Str(s.chars().skip(start).take(end.saturating_sub(start)).collect()))
+                    Ok(Value::Str(
+                        s.chars()
+                            .skip(start)
+                            .take(end.saturating_sub(start))
+                            .collect(),
+                    ))
                 }
                 _ => Err(EvalError::new("substring requires (String, Int, Int)")),
             }
@@ -1918,9 +1923,9 @@ fn eval_intrinsic_inner(
                     }
                     Ok(Value::Map(map))
                 }
-                (other, _) => {
-                    Err(EvalError::new(format!("with: expected record/map, got {other:?}")))
-                }
+                (other, _) => Err(EvalError::new(format!(
+                    "with: expected record/map, got {other:?}"
+                ))),
             }
         }
         _ => Err(EvalError::new(format!("unknown intrinsic call: {name}"))),

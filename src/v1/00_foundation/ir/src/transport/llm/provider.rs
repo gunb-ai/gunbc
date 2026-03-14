@@ -252,7 +252,10 @@ mod tests {
 
         let meta = provider_meta_by_id("anthropic").unwrap();
         assert_eq!(meta.id, "anthropic");
-        assert!(matches!(meta.auth, LlmAuthMeta::Header { name: "x-api-key" }));
+        assert!(matches!(
+            meta.auth,
+            LlmAuthMeta::Header { name: "x-api-key" }
+        ));
 
         assert!(provider_meta_by_id("unknown").is_none());
     }

@@ -104,13 +104,14 @@ mod tests {
 
         let mut parsed_files = Vec::new();
         for (path, source) in &sources {
-            let ast = daglang_syntax::parser::parse_with_file_diagnostics(path, source)
-                .map_err(|errs| {
+            let ast = daglang_syntax::parser::parse_with_file_diagnostics(path, source).map_err(
+                |errs| {
                     errs.iter()
                         .map(|d| d.render())
                         .collect::<Vec<_>>()
                         .join("\n")
-                })?;
+                },
+            )?;
             parsed_files.push((path.clone(), ast, source.clone()));
         }
 
@@ -142,18 +143,15 @@ mod tests {
                         let lowered_expr =
                             daglang_lower::expr::lower_expr_remap(expr, &variant_names);
                         let body = daglang_eval::LoweredFnBody {
-
                             stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                 "return".to_string(),
                                 lowered_expr,
                             )])],
                             ..Default::default()
                         };
-                        if let Ok(result) = daglang_eval::evaluate_fn_body(
-                            &body,
-                            &HashMap::new(),
-                            &HashMap::new(),
-                        ) {
+                        if let Ok(result) =
+                            daglang_eval::evaluate_fn_body(&body, &HashMap::new(), &HashMap::new())
+                        {
                             if let Some(val) = result.get("return") {
                                 data_values.insert(dd.name.clone(), val.clone());
                             }
@@ -442,8 +440,7 @@ fn foo(item: String) -> String {
     /// Extract fn bodies and data values from the tokenizer module.
     /// Uses direct AST-level lowering (bypasses DAG wiring) to avoid
     /// DAG-level expression resolution failures for pure fn bodies.
-    fn compile_tokenizer_module(
-    ) -> Result<daglang_driver::EmbeddedCompileOutput, String> {
+    fn compile_tokenizer_module() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
         let root = workspace_root();
 
         // Read sources
@@ -463,13 +460,14 @@ fn foo(item: String) -> String {
         // Parse all sources
         let mut parsed_files = Vec::new();
         for (path, source) in &sources {
-            let ast = daglang_syntax::parser::parse_with_file_diagnostics(path, source)
-                .map_err(|errs| {
+            let ast = daglang_syntax::parser::parse_with_file_diagnostics(path, source).map_err(
+                |errs| {
                     errs.iter()
                         .map(|d| d.render())
                         .collect::<Vec<_>>()
                         .join("\n")
-                })?;
+                },
+            )?;
             parsed_files.push((path.clone(), ast, source.clone()));
         }
 
@@ -494,7 +492,8 @@ fn foo(item: String) -> String {
             for item in &ast.items {
                 match &item.node {
                     daglang_syntax::ast::Item::FnDef(fndef) => {
-                        let lowered = daglang_lower::expr::lower_fn_body(&fndef.body, &variant_names);
+                        let lowered =
+                            daglang_lower::expr::lower_fn_body(&fndef.body, &variant_names);
                         fns.insert(fndef.name.clone(), lowered);
                     }
                     daglang_syntax::ast::Item::DataDef(dd) => {
@@ -504,7 +503,6 @@ fn foo(item: String) -> String {
                             let lowered_expr =
                                 daglang_lower::expr::lower_expr_remap(expr, &variant_names);
                             let body = daglang_eval::LoweredFnBody {
-
                                 stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
                                     "return".to_string(),
                                     lowered_expr,
@@ -518,10 +516,7 @@ fn foo(item: String) -> String {
                             ) {
                                 Ok(result) => {
                                     if let Some(val) = result.get("return") {
-                                        data_values.insert(
-                                            dd.name.clone(),
-                                            val.clone(),
-                                        );
+                                        data_values.insert(dd.name.clone(), val.clone());
                                     }
                                 }
                                 Err(_) => {
@@ -584,11 +579,19 @@ fn foo(item: String) -> String {
     fn phase1_data_lookup_works() {
         let output = compile_tokenizer_module().expect("compilation should succeed");
         // Check if "lookup" accidentally exists as a sibling fn
-        eprintln!("[diag] fns has 'lookup': {}", output.fns.contains_key("lookup"));
-        eprintln!("[diag] fns has 'find_module': {}", output.fns.contains_key("find_module"));
+        eprintln!(
+            "[diag] fns has 'lookup': {}",
+            output.fns.contains_key("lookup")
+        );
+        eprintln!(
+            "[diag] fns has 'find_module': {}",
+            output.fns.contains_key("find_module")
+        );
         let fn_names: Vec<_> = output.fns.keys().collect();
         eprintln!("[diag] all fn names ({}):", fn_names.len());
-        for name in &fn_names { eprintln!("  {}", name); }
+        for name in &fn_names {
+            eprintln!("  {}", name);
+        }
 
         let mut inputs = HashMap::new();
         inputs.insert("source".to_string(), gunbc_ir::Value::Str("+".to_string()));
@@ -600,7 +603,12 @@ fn foo(item: String) -> String {
         );
         match &result {
             Ok(outputs) => {
-                eprintln!("[diag] tokenize('+') ok: {:?}", outputs.get("return").map(|v| format!("{:?}", v)[..200.min(format!("{:?}", v).len())].to_string()));
+                eprintln!(
+                    "[diag] tokenize('+') ok: {:?}",
+                    outputs.get("return").map(|v| format!("{:?}", v)
+                        [..200.min(format!("{:?}", v).len())]
+                        .to_string())
+                );
             }
             Err(e) => {
                 eprintln!("[diag] tokenize('+') failed: {}", e);
@@ -613,9 +621,16 @@ fn foo(item: String) -> String {
     #[allow(clippy::disallowed_macros)]
     fn phase1_keywords_data_shape() {
         let output = compile_tokenizer_module().expect("compilation should succeed");
-        let kw = output.data_values.get("keywords").expect("keywords should exist");
+        let kw = output
+            .data_values
+            .get("keywords")
+            .expect("keywords should exist");
         let kw_str = format!("{:?}", kw);
-        eprintln!("[diag] keywords ({} chars):\n{}", kw_str.len(), &kw_str[..kw_str.len().min(500)]);
+        eprintln!(
+            "[diag] keywords ({} chars):\n{}",
+            kw_str.len(),
+            &kw_str[..kw_str.len().min(500)]
+        );
 
         let sp = output.data_values.get("single_punct");
         eprintln!("[diag] single_punct present: {}", sp.is_some());
@@ -815,8 +830,7 @@ fn foo(item: String) -> String {
         let root = workspace_root();
         let core = root.join("src/v2/00_core.dag");
         let source = std::fs::read_to_string(&core).unwrap();
-        let ast =
-            daglang_syntax::parser::parse_with_file_diagnostics(&core, &source).unwrap();
+        let ast = daglang_syntax::parser::parse_with_file_diagnostics(&core, &source).unwrap();
         let mut variant_names = std::collections::HashSet::new();
         for item in &ast.items {
             if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
@@ -846,10 +860,7 @@ fn foo(item: String) -> String {
             "_variant".to_string(),
             gunbc_ir::Value::Str("Ident".to_string()),
         );
-        kind_map.insert(
-            "name".to_string(),
-            gunbc_ir::Value::Str("test".to_string()),
-        );
+        kind_map.insert("name".to_string(), gunbc_ir::Value::Str("test".to_string()));
         let kind_val = gunbc_ir::Value::Map(kind_map);
 
         let mut inputs = HashMap::new();
@@ -896,153 +907,143 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase3_expect_ident_on_ident_token() {
-            // Test expect_ident with a token list starting with an Ident token
-            let output = compile_all_modules().expect("compilation should succeed");
+        // Test expect_ident with a token list starting with an Ident token
+        let output = compile_all_modules().expect("compilation should succeed");
 
-            // Build a token list with just an Ident token + Eof
-            let mut ident_kind = std::collections::BTreeMap::new();
-            ident_kind.insert(
-                "_variant".to_string(),
-                gunbc_ir::Value::Str("Ident".to_string()),
+        // Build a token list with just an Ident token + Eof
+        let mut ident_kind = std::collections::BTreeMap::new();
+        ident_kind.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Ident".to_string()),
+        );
+        ident_kind.insert("name".to_string(), gunbc_ir::Value::Str("test".to_string()));
+
+        let mut span = std::collections::BTreeMap::new();
+        span.insert("start".to_string(), gunbc_ir::Value::Int(0));
+        span.insert("end".to_string(), gunbc_ir::Value::Int(4));
+
+        let mut token = std::collections::BTreeMap::new();
+        token.insert("kind".to_string(), gunbc_ir::Value::Map(ident_kind));
+        token.insert("span".to_string(), gunbc_ir::Value::Map(span.clone()));
+
+        let eof_token = {
+            let mut t = std::collections::BTreeMap::new();
+            t.insert(
+                "kind".to_string(),
+                gunbc_ir::Value::Enum {
+                    ty: String::new(),
+                    variant: "Eof".to_string(),
+                },
             );
-            ident_kind.insert(
-                "name".to_string(),
-                gunbc_ir::Value::Str("test".to_string()),
-            );
+            t.insert("span".to_string(), gunbc_ir::Value::Map(span));
+            t
+        };
 
-            let mut span = std::collections::BTreeMap::new();
-            span.insert("start".to_string(), gunbc_ir::Value::Int(0));
-            span.insert("end".to_string(), gunbc_ir::Value::Int(4));
+        let tokens = gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::Map(token),
+            gunbc_ir::Value::Map(eof_token),
+        ]);
 
-            let mut token = std::collections::BTreeMap::new();
-            token.insert("kind".to_string(), gunbc_ir::Value::Map(ident_kind));
-            token.insert("span".to_string(), gunbc_ir::Value::Map(span.clone()));
+        let mut state = std::collections::BTreeMap::new();
+        state.insert("tokens".to_string(), tokens);
+        state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
 
-            let eof_token = {
-                let mut t = std::collections::BTreeMap::new();
-                t.insert(
-                    "kind".to_string(),
-                    gunbc_ir::Value::Enum {
-                        ty: String::new(),
-                        variant: "Eof".to_string(),
-                    },
-                );
-                t.insert("span".to_string(), gunbc_ir::Value::Map(span));
-                t
-            };
+        let mut inputs = HashMap::new();
+        inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
-            let tokens = gunbc_ir::Value::List(vec![
-                gunbc_ir::Value::Map(token),
-                gunbc_ir::Value::Map(eof_token),
-            ]);
-
-            let mut state = std::collections::BTreeMap::new();
-            state.insert("tokens".to_string(), tokens);
-            state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
-
-            let mut inputs = HashMap::new();
-            inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
-
-            match call_fn(&output, "expect_ident", inputs) {
-                Ok(_outputs) => {}
-                Err(e) => panic!("expect_ident failed: {}", e),
-            }
+        match call_fn(&output, "expect_ident", inputs) {
+            Ok(_outputs) => {}
+            Err(e) => panic!("expect_ident failed: {}", e),
+        }
     }
 
     #[test]
     fn phase3_peek_kind_returns_option() {
-            // Test peek_kind on a simple token list
-            let output = compile_all_modules().expect("compilation should succeed");
+        // Test peek_kind on a simple token list
+        let output = compile_all_modules().expect("compilation should succeed");
 
-            // Step 1: Tokenize "module test"
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert(
-                "source".to_string(),
-                gunbc_ir::Value::Str("module test".into()),
-            );
-            let tok_result =
-                call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
+        // Step 1: Tokenize "module test"
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str("module test".into()),
+        );
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
 
-            // Step 2: Test peek_kind
-            let mut peek_inputs = HashMap::new();
-            let mut state = std::collections::BTreeMap::new();
-            state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
-            peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
+        // Step 2: Test peek_kind
+        let mut peek_inputs = HashMap::new();
+        let mut state = std::collections::BTreeMap::new();
+        state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
+        peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
-            match call_fn(&output, "peek_kind", peek_inputs) {
-                Ok(outputs) => {
-                    // peek_kind returns destructured Some: has "value" key
-                    assert!(
-                        outputs.contains_key("value"),
-                        "peek_kind should have 'value' key, got: {:?}",
-                        outputs.keys().collect::<Vec<_>>()
-                    );
-                }
-                Err(e) => panic!("peek_kind failed: {}", e),
+        match call_fn(&output, "peek_kind", peek_inputs) {
+            Ok(outputs) => {
+                // peek_kind returns destructured Some: has "value" key
+                assert!(
+                    outputs.contains_key("value"),
+                    "peek_kind should have 'value' key, got: {:?}",
+                    outputs.keys().collect::<Vec<_>>()
+                );
             }
+            Err(e) => panic!("peek_kind failed: {}", e),
+        }
     }
 
     #[test]
     fn phase3_parser_e2e() {
-            // Parser uses deep recursion via evaluator — needs large stack.
-            let output = compile_all_modules().expect("compilation should succeed");
+        // Parser uses deep recursion via evaluator — needs large stack.
+        let output = compile_all_modules().expect("compilation should succeed");
 
-            // Step 1: Tokenize - start with minimal input
-            let source = "module test";
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert(
-                "source".to_string(),
-                gunbc_ir::Value::Str(source.into()),
-            );
-            let tok_result =
-                call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list from tokenize, got: {:?}", other),
-            };
+        // Step 1: Tokenize - start with minimal input
+        let source = "module test";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list from tokenize, got: {:?}", other),
+        };
 
-            // Step 2: Parse
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs);
+        // Step 2: Parse
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs);
 
-            match parse_result {
-                Ok(outputs) => {
-                    // The parse function returns fields that may include _variant
-                    // Navigate to the module value, handling possible wrapping
-                    let module_val = outputs
-                        .get("module")
-                        .expect("should have 'module' key");
-                    // The module might be wrapped in a value field (from Some construction)
-                    let module = if let gunbc_ir::Value::Map(m) = module_val {
-                        if m.contains_key("value") && !m.contains_key("name") {
-                            m.get("value").unwrap()
-                        } else {
-                            module_val
-                        }
+        match parse_result {
+            Ok(outputs) => {
+                // The parse function returns fields that may include _variant
+                // Navigate to the module value, handling possible wrapping
+                let module_val = outputs.get("module").expect("should have 'module' key");
+                // The module might be wrapped in a value field (from Some construction)
+                let module = if let gunbc_ir::Value::Map(m) = module_val {
+                    if m.contains_key("value") && !m.contains_key("name") {
+                        m.get("value").unwrap()
                     } else {
                         module_val
-                    };
-                    if let gunbc_ir::Value::Map(mod_map) = module {
-                        let name = mod_map.get("name").expect("module should have name");
-                        assert_eq!(
-                            name,
-                            &gunbc_ir::Value::Str("test".to_string()),
-                            "module name should be 'test'"
-                        );
-                    } else {
-                        panic!("module is not a Map: {:?}", module);
                     }
-                }
-                Err(e) => {
-                    panic!("parser evaluation failed: {}", e);
+                } else {
+                    module_val
+                };
+                if let gunbc_ir::Value::Map(mod_map) = module {
+                    let name = mod_map.get("name").expect("module should have name");
+                    assert_eq!(
+                        name,
+                        &gunbc_ir::Value::Str("test".to_string()),
+                        "module name should be 'test'"
+                    );
+                } else {
+                    panic!("module is not a Map: {:?}", module);
                 }
             }
+            Err(e) => {
+                panic!("parser evaluation failed: {}", e);
+            }
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1051,258 +1052,297 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase3_parse_real_source() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let source = "module types_test\n\
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module types_test\n\
                 type SourceSpan { start: Int, end: Int }\n\
                 type Token { kind: TokenKind, span: SourceSpan }\n\
                 type TokenKind = Ident { name: String } | KwModule | KwFn | Eof\n\
                 type Param { name: String, type_expr: String }\n\
                 fn identity(x: Int) -> Int { x }\n\
-                ".to_string();
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
-            let tok_result =
-                call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
-            assert!(!tokens.is_empty(), "should produce tokens");
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs)
-                .expect("parse should succeed on multi-type source");
-            let module_val = parse_result.get("module").expect("should have 'module' key");
-            let module = if let gunbc_ir::Value::Map(m) = module_val {
-                if m.contains_key("value") && !m.contains_key("name") {
-                    m.get("value").unwrap()
-                } else {
-                    module_val
-                }
+                "
+        .to_string();
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        assert!(!tokens.is_empty(), "should produce tokens");
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs)
+            .expect("parse should succeed on multi-type source");
+        let module_val = parse_result
+            .get("module")
+            .expect("should have 'module' key");
+        let module = if let gunbc_ir::Value::Map(m) = module_val {
+            if m.contains_key("value") && !m.contains_key("name") {
+                m.get("value").unwrap()
             } else {
                 module_val
-            };
-            if let gunbc_ir::Value::Map(mod_map) = module {
-                assert!(mod_map.contains_key("name"), "parsed module should have 'name'");
-                assert!(mod_map.contains_key("items"), "parsed module should have 'items'");
-                if let Some(gunbc_ir::Value::List(items)) = mod_map.get("items") {
-                    assert!(!items.is_empty(), "should have at least one item");
-                }
-            } else {
-                panic!("module is not a Map: {:?}", module);
             }
+        } else {
+            module_val
+        };
+        if let gunbc_ir::Value::Map(mod_map) = module {
+            assert!(
+                mod_map.contains_key("name"),
+                "parsed module should have 'name'"
+            );
+            assert!(
+                mod_map.contains_key("items"),
+                "parsed module should have 'items'"
+            );
+            if let Some(gunbc_ir::Value::List(items)) = mod_map.get("items") {
+                assert!(!items.is_empty(), "should have at least one item");
+            }
+        } else {
+            panic!("module is not a Map: {:?}", module);
+        }
     }
 
     #[test]
     fn phase3_resolve_single_module() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let source = "module test\ntype Foo { x: Int }";
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
-            let module_val = parse_result.get("module").expect("should have 'module'");
-            let module = if let gunbc_ir::Value::Map(m) = module_val {
-                if m.contains_key("value") && !m.contains_key("name") {
-                    m.get("value").unwrap().clone()
-                } else { module_val.clone() }
-            } else { module_val.clone() };
-            let mut resolve_inputs = HashMap::new();
-            resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
-            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                .expect("resolve_modules ok");
-            let graph = if let Some(ret) = resolve_result.get("return") {
-                ret.clone()
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\ntype Foo { x: Int }";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+        let module_val = parse_result.get("module").expect("should have 'module'");
+        let module = if let gunbc_ir::Value::Map(m) = module_val {
+            if m.contains_key("value") && !m.contains_key("name") {
+                m.get("value").unwrap().clone()
             } else {
-                gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-            };
-            match &graph {
-                gunbc_ir::Value::Map(m) => {
-                    assert!(m.contains_key("modules"), "ModuleGraph should have 'modules'");
-                }
-                other => panic!("unexpected resolve result: {:?}", other),
+                module_val.clone()
             }
+        } else {
+            module_val.clone()
+        };
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        let resolve_result =
+            call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve_modules ok");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
+        match &graph {
+            gunbc_ir::Value::Map(m) => {
+                assert!(
+                    m.contains_key("modules"),
+                    "ModuleGraph should have 'modules'"
+                );
+            }
+            other => panic!("unexpected resolve result: {:?}", other),
+        }
     }
 
     #[test]
     fn phase3_typecheck_single_module() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let source = "module test\ntype Foo { x: Int }";
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
-            let module_val = parse_result.get("module").expect("should have 'module'");
-            let module = if let gunbc_ir::Value::Map(m) = module_val {
-                if m.contains_key("value") && !m.contains_key("name") {
-                    m.get("value").unwrap().clone()
-                } else { module_val.clone() }
-            } else { module_val.clone() };
-            let mut resolve_inputs = HashMap::new();
-            resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
-            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                .expect("resolve ok");
-            let graph = if let Some(ret) = resolve_result.get("return") {
-                ret.clone()
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\ntype Foo { x: Int }";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+        let module_val = parse_result.get("module").expect("should have 'module'");
+        let module = if let gunbc_ir::Value::Map(m) = module_val {
+            if m.contains_key("value") && !m.contains_key("name") {
+                m.get("value").unwrap().clone()
             } else {
-                gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-            };
-            let mut tc_inputs = HashMap::new();
-            tc_inputs.insert("graph".to_string(), graph);
-            let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
-            let typed_graph = if let Some(ret) = tc_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(tc_result.into_iter().collect())
-            };
-            if let gunbc_ir::Value::Map(m) = &typed_graph {
-                assert!(m.contains_key("modules"), "TypedGraph should have 'modules'");
-                assert!(m.contains_key("diagnostics"), "TypedGraph should have 'diagnostics'");
-            } else {
-                panic!("TypedGraph is not a Map: {:?}", typed_graph);
+                module_val.clone()
             }
+        } else {
+            module_val.clone()
+        };
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        let resolve_result =
+            call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph);
+        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+        let typed_graph = if let Some(ret) = tc_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(tc_result.into_iter().collect())
+        };
+        if let gunbc_ir::Value::Map(m) = &typed_graph {
+            assert!(
+                m.contains_key("modules"),
+                "TypedGraph should have 'modules'"
+            );
+            assert!(
+                m.contains_key("diagnostics"),
+                "TypedGraph should have 'diagnostics'"
+            );
+        } else {
+            panic!("TypedGraph is not a Map: {:?}", typed_graph);
+        }
     }
 
     #[test]
     fn phase3_emit_single_module() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let source = "module test\ntype Foo { x: Int }";
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
-            let module_val = parse_result.get("module").expect("should have 'module'");
-            let module = if let gunbc_ir::Value::Map(m) = module_val {
-                if m.contains_key("value") && !m.contains_key("name") {
-                    m.get("value").unwrap().clone()
-                } else { module_val.clone() }
-            } else { module_val.clone() };
-            let mut resolve_inputs = HashMap::new();
-            resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
-            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                .expect("resolve ok");
-            let graph = if let Some(ret) = resolve_result.get("return") {
-                ret.clone()
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\ntype Foo { x: Int }";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+        let module_val = parse_result.get("module").expect("should have 'module'");
+        let module = if let gunbc_ir::Value::Map(m) = module_val {
+            if m.contains_key("value") && !m.contains_key("name") {
+                m.get("value").unwrap().clone()
             } else {
-                gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-            };
-            let mut tc_inputs = HashMap::new();
-            tc_inputs.insert("graph".to_string(), graph);
-            let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
-            let typed_graph = if let Some(ret) = tc_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(tc_result.into_iter().collect())
-            };
-            let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
-                if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                    mods.clone()
-                } else { panic!("no modules in typed graph"); }
-            } else { panic!("typed graph not a map"); };
-            assert!(!typed_modules.is_empty());
-            let mut emit_inputs = HashMap::new();
-            emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-            let emit_result = call_fn(&output, "emit_module", emit_inputs)
-                .expect("emit_module ok");
-            let text_file = if let Some(ret) = emit_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(emit_result.into_iter().collect())
-            };
-            if let gunbc_ir::Value::Map(m) = &text_file {
-                assert!(m.contains_key("path"), "TextFile should have 'path'");
-                assert!(m.contains_key("content"), "TextFile should have 'content'");
-                if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
-                    assert!(
-                        content.contains("struct") || content.contains("pub"),
-                        "emitted content should contain Rust code"
-                    );
-                }
-            } else {
-                panic!("TextFile is not a Map: {:?}", text_file);
+                module_val.clone()
             }
+        } else {
+            module_val.clone()
+        };
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        let resolve_result =
+            call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph);
+        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+        let typed_graph = if let Some(ret) = tc_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(tc_result.into_iter().collect())
+        };
+        let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
+            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                mods.clone()
+            } else {
+                panic!("no modules in typed graph");
+            }
+        } else {
+            panic!("typed graph not a map");
+        };
+        assert!(!typed_modules.is_empty());
+        let mut emit_inputs = HashMap::new();
+        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
+        let text_file = if let Some(ret) = emit_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(emit_result.into_iter().collect())
+        };
+        if let gunbc_ir::Value::Map(m) = &text_file {
+            assert!(m.contains_key("path"), "TextFile should have 'path'");
+            assert!(m.contains_key("content"), "TextFile should have 'content'");
+            if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
+                assert!(
+                    content.contains("struct") || content.contains("pub"),
+                    "emitted content should contain Rust code"
+                );
+            }
+        } else {
+            panic!("TextFile is not a Map: {:?}", text_file);
+        }
     }
 
     #[test]
     fn phase3_full_pipeline() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let source = "module test\ntype Foo { x: Int }";
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
-            let module_val = parse_result.get("module").expect("should have 'module'");
-            let module = if let gunbc_ir::Value::Map(m) = module_val {
-                if m.contains_key("value") && !m.contains_key("name") {
-                    m.get("value").unwrap().clone()
-                } else { module_val.clone() }
-            } else { module_val.clone() };
-            let mut resolve_inputs = HashMap::new();
-            resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
-            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                .expect("resolve ok");
-            let graph = if let Some(ret) = resolve_result.get("return") {
-                ret.clone()
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = "module test\ntype Foo { x: Int }";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+        let module_val = parse_result.get("module").expect("should have 'module'");
+        let module = if let gunbc_ir::Value::Map(m) = module_val {
+            if m.contains_key("value") && !m.contains_key("name") {
+                m.get("value").unwrap().clone()
             } else {
-                gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-            };
-            let mut tc_inputs = HashMap::new();
-            tc_inputs.insert("graph".to_string(), graph);
-            let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
-            let typed_graph = if let Some(ret) = tc_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(tc_result.into_iter().collect())
-            };
-            let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
-                if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                    mods.clone()
-                } else { panic!("no modules"); }
-            } else { panic!("not a map"); };
-            let mut emit_inputs = HashMap::new();
-            emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-            let emit_result = call_fn(&output, "emit_module", emit_inputs)
-                .expect("emit_module ok");
-            let text_file = if let Some(ret) = emit_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(emit_result.into_iter().collect())
-            };
-            if let gunbc_ir::Value::Map(m) = &text_file {
-                if let Some(gunbc_ir::Value::Str(s)) = m.get("content") {
-                    assert!(
-                        s.contains("struct Foo"),
-                        "emitted Rust should contain 'struct Foo', got: {}",
-                        &s[..s.len().min(300)]
-                    );
-                }
-            } else {
-                panic!("not a TextFile map");
+                module_val.clone()
             }
+        } else {
+            module_val.clone()
+        };
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        let resolve_result =
+            call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph);
+        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+        let typed_graph = if let Some(ret) = tc_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(tc_result.into_iter().collect())
+        };
+        let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
+            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                mods.clone()
+            } else {
+                panic!("no modules");
+            }
+        } else {
+            panic!("not a map");
+        };
+        let mut emit_inputs = HashMap::new();
+        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
+        let text_file = if let Some(ret) = emit_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(emit_result.into_iter().collect())
+        };
+        if let gunbc_ir::Value::Map(m) = &text_file {
+            if let Some(gunbc_ir::Value::Str(s)) = m.get("content") {
+                assert!(
+                    s.contains("struct Foo"),
+                    "emitted Rust should contain 'struct Foo', got: {}",
+                    &s[..s.len().min(300)]
+                );
+            }
+        } else {
+            panic!("not a TextFile map");
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1334,39 +1374,39 @@ fn foo(item: String) -> String {
     /// Test that the tokenizer scans |> as PipeArrow.
     #[test]
     fn phase4_tokenizer_scans_pipe_arrow() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let mut inputs = HashMap::new();
-            inputs.insert(
-                "source".to_string(),
-                gunbc_ir::Value::Str("items |> count".to_string()),
-            );
-            let result = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
-            let json = value_to_json(&gunbc_ir::Value::Map(result.into_iter().collect()));
-            let json_str = json.to_string();
-            assert!(
-                json_str.contains("PipeArrow"),
-                "tokenize('items |> count') should produce PipeArrow token, got: {}",
-                &json_str[..json_str.len().min(500)]
-            );
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str("items |> count".to_string()),
+        );
+        let result = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
+        let json = value_to_json(&gunbc_ir::Value::Map(result.into_iter().collect()));
+        let json_str = json.to_string();
+        assert!(
+            json_str.contains("PipeArrow"),
+            "tokenize('items |> count') should produce PipeArrow token, got: {}",
+            &json_str[..json_str.len().min(500)]
+        );
     }
 
     /// Test that the tokenizer scans ?? as NullCoalesce.
     #[test]
     fn phase4_tokenizer_scans_null_coalesce() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let mut inputs = HashMap::new();
-            inputs.insert(
-                "source".to_string(),
-                gunbc_ir::Value::Str("x ?? y".to_string()),
-            );
-            let result = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
-            let json = value_to_json(&gunbc_ir::Value::Map(result.into_iter().collect()));
-            let json_str = json.to_string();
-            assert!(
-                json_str.contains("NullCoalesce"),
-                "tokenize('x ?? y') should produce NullCoalesce token, got: {}",
-                &json_str[..json_str.len().min(500)]
-            );
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str("x ?? y".to_string()),
+        );
+        let result = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
+        let json = value_to_json(&gunbc_ir::Value::Map(result.into_iter().collect()));
+        let json_str = json.to_string();
+        assert!(
+            json_str.contains("NullCoalesce"),
+            "tokenize('x ?? y') should produce NullCoalesce token, got: {}",
+            &json_str[..json_str.len().min(500)]
+        );
     }
 
     /// Test that parse.dag includes PipeArrow in kind_tag and infix_bp.
@@ -1469,44 +1509,46 @@ fn foo(item: String) -> String {
         );
     }
 
-
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let fixture = r#"module test
+        let output = compile_all_modules().expect("compilation should succeed");
+        let fixture = r#"module test
 
 fn example(items: List<String>) -> Int {
   items |> count
 }
 "#;
-            let mut inputs = HashMap::new();
-            inputs.insert("source".to_string(), gunbc_ir::Value::Str(fixture.to_string()));
-            let tokens = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
-            let token_list = tokens.get("return").cloned().unwrap_or_else(|| {
-                gunbc_ir::Value::List(
-                    tokens
-                        .values()
-                        .next()
-                        .cloned()
-                        .map(|v| {
-                            if let gunbc_ir::Value::List(l) = v {
-                                l
-                            } else {
-                                vec![v]
-                            }
-                        })
-                        .unwrap_or_default(),
-                )
-            });
-            // Just verify tokenization succeeds with pipe arrow
-            let json = value_to_json(&token_list);
-            let json_str = json.to_string();
-            assert!(
-                json_str.contains("PipeArrow"),
-                "tokenization of 'items |> count' should contain PipeArrow, got: {}",
-                &json_str[..json_str.len().min(500)]
-            );
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str(fixture.to_string()),
+        );
+        let tokens = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
+        let token_list = tokens.get("return").cloned().unwrap_or_else(|| {
+            gunbc_ir::Value::List(
+                tokens
+                    .values()
+                    .next()
+                    .cloned()
+                    .map(|v| {
+                        if let gunbc_ir::Value::List(l) = v {
+                            l
+                        } else {
+                            vec![v]
+                        }
+                    })
+                    .unwrap_or_default(),
+            )
+        });
+        // Just verify tokenization succeeds with pipe arrow
+        let json = value_to_json(&token_list);
+        let json_str = json.to_string();
+        assert!(
+            json_str.contains("PipeArrow"),
+            "tokenization of 'items |> count' should contain PipeArrow, got: {}",
+            &json_str[..json_str.len().min(500)]
+        );
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1547,55 +1589,60 @@ fn example(items: List<String>) -> Int {
     /// The full 12-file transitive closure is in phase5_gist_full_transitive_closure.
     #[test]
     fn phase5_gist_transitive_closure_v2_parse() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let root = workspace_root();
-            let files = [
-                // Smallest dep — exercises imports, service ops, type refs.
-                "dsl/extdeps/github/auth.dag",     // 24 lines
-            ];
-            for rel_path in &files {
-                let path = root.join(rel_path);
-                let source = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        let output = compile_all_modules().expect("compilation should succeed");
+        let root = workspace_root();
+        let files = [
+            // Smallest dep — exercises imports, service ops, type refs.
+            "dsl/extdeps/github/auth.dag", // 24 lines
+        ];
+        for rel_path in &files {
+            let path = root.join(rel_path);
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
 
-                // Tokenize via v2
-                let mut tok_inputs = HashMap::new();
-                tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
-                let tok_result = call_fn(&output, "tokenize", tok_inputs)
-                    .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
-                let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
-                    gunbc_ir::Value::List(
-                        tok_result.values().next().cloned()
-                            .map(|v| if let gunbc_ir::Value::List(l) = v { l } else { vec![v] })
-                            .unwrap_or_default(),
-                    )
-                });
+            // Tokenize via v2
+            let mut tok_inputs = HashMap::new();
+            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source));
+            let tok_result = call_fn(&output, "tokenize", tok_inputs)
+                .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
+            let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
+                gunbc_ir::Value::List(
+                    tok_result
+                        .values()
+                        .next()
+                        .cloned()
+                        .map(|v| {
+                            if let gunbc_ir::Value::List(l) = v {
+                                l
+                            } else {
+                                vec![v]
+                            }
+                        })
+                        .unwrap_or_default(),
+                )
+            });
 
-                // Parse via v2
-                let mut parse_inputs = HashMap::new();
-                parse_inputs.insert("tokens".to_string(), tokens);
-                let parse_result = call_fn(&output, "parse", parse_inputs)
-                    .unwrap_or_else(|e| panic!("{}: parse failed: {}", rel_path, e));
+            // Parse via v2
+            let mut parse_inputs = HashMap::new();
+            parse_inputs.insert("tokens".to_string(), tokens);
+            let parse_result = call_fn(&output, "parse", parse_inputs)
+                .unwrap_or_else(|e| panic!("{}: parse failed: {}", rel_path, e));
 
-                // Check for parse errors
-                let error = parse_result.get("error");
-                let has_error = match error {
-                    Some(gunbc_ir::Value::Unit) => false,
-                    Some(gunbc_ir::Value::Map(m)) if m.contains_key("value") => {
-                        !matches!(m.get("value"), Some(gunbc_ir::Value::Unit))
-                    }
-                    None => false,
-                    _ => false,
-                };
-                if has_error {
-                    let err_json = value_to_json(error.unwrap());
-                    panic!(
-                        "{}: v2 parse error: {}",
-                        rel_path,
-                        err_json
-                    );
+            // Check for parse errors
+            let error = parse_result.get("error");
+            let has_error = match error {
+                Some(gunbc_ir::Value::Unit) => false,
+                Some(gunbc_ir::Value::Map(m)) if m.contains_key("value") => {
+                    !matches!(m.get("value"), Some(gunbc_ir::Value::Unit))
                 }
+                None => false,
+                _ => false,
+            };
+            if has_error {
+                let err_json = value_to_json(error.unwrap());
+                panic!("{}: v2 parse error: {}", rel_path, err_json);
             }
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1609,9 +1656,11 @@ fn example(items: List<String>) -> Int {
         source: &str,
     ) -> gunbc_ir::Value {
         let mut tok_inputs = HashMap::new();
-        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.to_string()));
-        let tok_result = call_fn(output, "tokenize", tok_inputs)
-            .expect("tokenize should succeed");
+        tok_inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str(source.to_string()),
+        );
+        let tok_result = call_fn(output, "tokenize", tok_inputs).expect("tokenize should succeed");
         let tokens = match &tok_result["return"] {
             gunbc_ir::Value::List(t) => t.clone(),
             other => panic!("expected token list, got: {:?}", other),
@@ -1619,21 +1668,19 @@ fn example(items: List<String>) -> Int {
 
         let mut parse_inputs = HashMap::new();
         parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-        let parse_result = call_fn(output, "parse", parse_inputs)
-            .expect("parse should succeed");
+        let parse_result = call_fn(output, "parse", parse_inputs).expect("parse should succeed");
 
         // Check for parse errors before extracting module (S56 fix).
         if let Some(err_val) = parse_result.get("error") {
             if !matches!(err_val, gunbc_ir::Value::Unit) {
                 let preview = format!("{:?}", err_val);
-                panic!(
-                    "v2 parse error: {}",
-                    &preview[..preview.len().min(500)]
-                );
+                panic!("v2 parse error: {}", &preview[..preview.len().min(500)]);
             }
         }
 
-        let module_val = parse_result.get("module").expect("should have 'module' key");
+        let module_val = parse_result
+            .get("module")
+            .expect("should have 'module' key");
         // Unwrap Option wrapping (Some { value: ... })
         if let gunbc_ir::Value::Map(m) = module_val {
             if m.contains_key("value") && !m.contains_key("name") {
@@ -1641,12 +1688,17 @@ fn example(items: List<String>) -> Int {
                 // Validate module shape
                 if let gunbc_ir::Value::Map(ref mm) = module {
                     assert!(
-                        mm.contains_key("name") && mm.contains_key("imports") && mm.contains_key("items"),
+                        mm.contains_key("name")
+                            && mm.contains_key("imports")
+                            && mm.contains_key("items"),
                         "parsed module missing required fields, got keys: {:?}",
                         mm.keys().collect::<Vec<_>>()
                     );
                 } else {
-                    panic!("parsed module is not a Map: {:?}", std::mem::discriminant(&module));
+                    panic!(
+                        "parsed module is not a Map: {:?}",
+                        std::mem::discriminant(&module)
+                    );
                 }
                 return module;
             }
@@ -1667,76 +1719,81 @@ fn example(items: List<String>) -> Int {
     #[test]
     #[allow(clippy::disallowed_macros)]
     fn phase6_multi_module_synthetic() {
-            let output = compile_all_modules().expect("compilation should succeed");
+        let output = compile_all_modules().expect("compilation should succeed");
 
-            // Start with the simplest possible multi-module case.
-            let types_src = "module mylib.types\ntype Point { x: Int, y: Int }\n";
-            let funcs_src = "module mylib.funcs\nimport mylib.types { Point }\n";
+        // Start with the simplest possible multi-module case.
+        let types_src = "module mylib.types\ntype Point { x: Int, y: Int }\n";
+        let funcs_src = "module mylib.funcs\nimport mylib.types { Point }\n";
 
-            eprintln!("[test] tokenizing types_src ({} bytes)...", types_src.len());
-            let mod_types = v2_tokenize_and_parse(&output, types_src);
-            eprintln!("[test] tokenizing funcs_src ({} bytes)...", funcs_src.len());
-            let mod_funcs = v2_tokenize_and_parse(&output, funcs_src);
+        eprintln!("[test] tokenizing types_src ({} bytes)...", types_src.len());
+        let mod_types = v2_tokenize_and_parse(&output, types_src);
+        eprintln!("[test] tokenizing funcs_src ({} bytes)...", funcs_src.len());
+        let mod_funcs = v2_tokenize_and_parse(&output, funcs_src);
 
-            // Resolve
-            let mut resolve_inputs = HashMap::new();
-            resolve_inputs.insert(
-                "modules".to_string(),
-                gunbc_ir::Value::List(vec![mod_types, mod_funcs]),
-            );
-            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                .expect("resolve_modules should succeed");
-            let graph = if let Some(ret) = resolve_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-            };
+        // Resolve
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert(
+            "modules".to_string(),
+            gunbc_ir::Value::List(vec![mod_types, mod_funcs]),
+        );
+        let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
+            .expect("resolve_modules should succeed");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
 
-            // Check no resolve errors
-            if let gunbc_ir::Value::Map(ref m) = graph {
-                if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
-                    let errors: Vec<_> = diags.iter().filter(|d| {
+        // Check no resolve errors
+        if let gunbc_ir::Value::Map(ref m) = graph {
+            if let Some(gunbc_ir::Value::List(diags)) = m.get("diagnostics") {
+                let errors: Vec<_> = diags
+                    .iter()
+                    .filter(|d| {
                         if let gunbc_ir::Value::Map(dm) = d {
                             dm.get("severity").and_then(|s| match s {
                                 gunbc_ir::Value::Str(s) => Some(s.as_str()),
                                 gunbc_ir::Value::Enum { variant, .. } => Some(variant.as_str()),
                                 _ => None,
                             }) == Some("Error")
-                        } else { false }
-                    }).collect();
-                    assert!(
-                        errors.is_empty(),
-                        "resolve_modules produced errors: {:?}",
-                        errors
-                    );
-                }
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "resolve_modules produced errors: {:?}",
+                    errors
+                );
             }
+        }
 
-            // Typecheck
-            let mut tc_inputs = HashMap::new();
-            tc_inputs.insert("graph".to_string(), graph);
-            let tc_result = call_fn(&output, "typecheck", tc_inputs)
-                .expect("typecheck should succeed");
-            let typed_graph = if let Some(ret) = tc_result.get("return") {
-                ret.clone()
-            } else {
-                gunbc_ir::Value::Map(tc_result.into_iter().collect())
-            };
+        // Typecheck
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph);
+        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck should succeed");
+        let typed_graph = if let Some(ret) = tc_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(tc_result.into_iter().collect())
+        };
 
-            // Verify we have typed modules
-            if let gunbc_ir::Value::Map(ref m) = typed_graph {
-                if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
-                    assert_eq!(
-                        modules.len(), 2,
-                        "should have 2 typed modules, got {}",
-                        modules.len()
-                    );
-                } else {
-                    panic!("TypedGraph.modules not a list");
-                }
+        // Verify we have typed modules
+        if let gunbc_ir::Value::Map(ref m) = typed_graph {
+            if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
+                assert_eq!(
+                    modules.len(),
+                    2,
+                    "should have 2 typed modules, got {}",
+                    modules.len()
+                );
             } else {
-                panic!("typed_graph not a Map");
+                panic!("TypedGraph.modules not a list");
             }
+        } else {
+            panic!("typed_graph not a Map");
+        }
     }
 
     /// Feed gist.dag's full transitive dependency chain through the v2
@@ -1747,69 +1804,77 @@ fn example(items: List<String>) -> Int {
     /// not leak through as a resolve crash like "map requires a list, got Unit".
     #[test]
     fn phase6_parse_error_does_not_leak_to_resolve() {
-            let output = compile_all_modules().expect("compilation should succeed");
+        let output = compile_all_modules().expect("compilation should succeed");
 
-            // Deliberately malformed source: missing module declaration.
-            let bad_source = "fn orphan() -> Int { 42 }";
-            let mut tok_inputs = HashMap::new();
-            tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(bad_source.to_string()));
-            let tok_result = call_fn(&output, "tokenize", tok_inputs)
-                .expect("tokenize should succeed");
-            let tokens = match &tok_result["return"] {
-                gunbc_ir::Value::List(t) => t.clone(),
-                other => panic!("expected token list, got: {:?}", other),
-            };
+        // Deliberately malformed source: missing module declaration.
+        let bad_source = "fn orphan() -> Int { 42 }";
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert(
+            "source".to_string(),
+            gunbc_ir::Value::Str(bad_source.to_string()),
+        );
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize should succeed");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
 
-            let mut parse_inputs = HashMap::new();
-            parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            let parse_result = call_fn(&output, "parse", parse_inputs)
-                .expect("parse fn should not panic");
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result =
+            call_fn(&output, "parse", parse_inputs).expect("parse fn should not panic");
 
-            // The parse result must have a non-Unit error field.
-            let error_val = parse_result.get("error").expect("should have 'error' key");
-            assert!(
-                !matches!(error_val, gunbc_ir::Value::Unit),
-                "parse of malformed source should produce an error, got Unit"
-            );
+        // The parse result must have a non-Unit error field.
+        let error_val = parse_result.get("error").expect("should have 'error' key");
+        assert!(
+            !matches!(error_val, gunbc_ir::Value::Unit),
+            "parse of malformed source should produce an error, got Unit"
+        );
 
-            // The module field must be none/Unit — NOT a valid Module.
-            let module_val = parse_result.get("module").expect("should have 'module' key");
-            let is_none = matches!(module_val, gunbc_ir::Value::Unit)
-                || matches!(module_val, gunbc_ir::Value::Map(m) if m.get("_variant").and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None }) == Some("None"));
-            assert!(
-                is_none,
-                "parse of malformed source should return module=none, got: {:?}",
-                std::mem::discriminant(module_val)
-            );
+        // The module field must be none/Unit — NOT a valid Module.
+        let module_val = parse_result
+            .get("module")
+            .expect("should have 'module' key");
+        let is_none = matches!(module_val, gunbc_ir::Value::Unit)
+            || matches!(module_val, gunbc_ir::Value::Map(m) if m.get("_variant").and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None }) == Some("None"));
+        assert!(
+            is_none,
+            "parse of malformed source should return module=none, got: {:?}",
+            std::mem::discriminant(module_val)
+        );
     }
 
     /// Focused test: func with return type goes through typecheck without error.
     /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
     #[test]
     fn phase6_func_return_type_typecheck() {
-            let output = compile_all_modules().expect("compilation should succeed");
-            let src = "module test.auth\nfunc get_token() -> { token: Secret } {\n  return { token: \"mock\" }\n}\n";
-            let module = v2_tokenize_and_parse(&output, src);
+        let output = compile_all_modules().expect("compilation should succeed");
+        let src = "module test.auth\nfunc get_token() -> { token: Secret } {\n  return { token: \"mock\" }\n}\n";
+        let module = v2_tokenize_and_parse(&output, src);
 
-            let mut resolve_inputs = HashMap::new();
-            resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
-            let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-                .expect("resolve should succeed");
-            let graph = resolve_result.get("return").cloned()
-                .unwrap_or_else(|| gunbc_ir::Value::Map(resolve_result.into_iter().collect()));
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        let resolve_result =
+            call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve should succeed");
+        let graph = resolve_result
+            .get("return")
+            .cloned()
+            .unwrap_or_else(|| gunbc_ir::Value::Map(resolve_result.into_iter().collect()));
 
-            let mut tc_inputs = HashMap::new();
-            tc_inputs.insert("graph".to_string(), graph);
-            let tc_result = call_fn(&output, "typecheck", tc_inputs)
-                .expect("typecheck should succeed for func with return type");
-            let typed_graph = tc_result.get("return").cloned()
-                .unwrap_or_else(|| gunbc_ir::Value::Map(tc_result.into_iter().collect()));
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph);
+        let tc_result = call_fn(&output, "typecheck", tc_inputs)
+            .expect("typecheck should succeed for func with return type");
+        let typed_graph = tc_result
+            .get("return")
+            .cloned()
+            .unwrap_or_else(|| gunbc_ir::Value::Map(tc_result.into_iter().collect()));
 
-            if let gunbc_ir::Value::Map(ref m) = typed_graph {
-                if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
-                    assert_eq!(modules.len(), 1, "should have 1 typed module");
-                }
+        if let gunbc_ir::Value::Map(ref m) = typed_graph {
+            if let Some(gunbc_ir::Value::List(modules)) = m.get("modules") {
+                assert_eq!(modules.len(), 1, "should have 1 typed module");
             }
+        }
     }
 
     /// Feed gist.dag's full transitive dependency chain through the v2
@@ -1867,8 +1932,7 @@ fn example(items: List<String>) -> Int {
         // Step 3: Typecheck
         let mut tc_inputs = HashMap::new();
         tc_inputs.insert("graph".to_string(), graph.clone());
-        let tc_result = call_fn(&output, "typecheck", tc_inputs)
-            .expect("typecheck should succeed");
+        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck should succeed");
         let typed_graph = if let Some(ret) = tc_result.get("return") {
             ret.clone()
         } else {
@@ -1879,13 +1943,19 @@ fn example(items: List<String>) -> Int {
         let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
             if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
                 mods.clone()
-            } else { panic!("no modules in typed graph"); }
-        } else { panic!("typed graph not a map"); };
+            } else {
+                panic!("no modules in typed graph");
+            }
+        } else {
+            panic!("typed graph not a map");
+        };
 
         assert_eq!(
-            typed_modules.len(), dag_files.len(),
+            typed_modules.len(),
+            dag_files.len(),
             "should have {} typed modules, got {}",
-            dag_files.len(), typed_modules.len()
+            dag_files.len(),
+            typed_modules.len()
         );
 
         let mut emitted_files = Vec::new();
@@ -1992,11 +2062,15 @@ fn example(items: List<String>) -> Int {
             })
             .collect();
 
-        let modules: Vec<(&str, &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>])> =
-            parsed
-                .iter()
-                .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf.items.as_slice()))
-                .collect();
+        let modules: Vec<(
+            &str,
+            &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>],
+        )> = parsed
+            .iter()
+            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
+                (stem.as_str(), sf.items.as_slice())
+            })
+            .collect();
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
@@ -2025,11 +2099,7 @@ fn example(items: List<String>) -> Int {
 
         // All generated .rs files should be non-empty
         for f in &files {
-            assert!(
-                !f.content.is_empty(),
-                "{} is empty",
-                f.rel_path
-            );
+            assert!(!f.content.is_empty(), "{} is empty", f.rel_path);
         }
     }
 
@@ -2050,13 +2120,10 @@ fn example(items: List<String>) -> Int {
             })
             .collect();
 
-        let recursive_fields =
-            daglang_emit::type_codegen::compute_recursive_fields(&type_defs);
+        let recursive_fields = daglang_emit::type_codegen::compute_recursive_fields(&type_defs);
 
         // Expr should have recursive fields (e.g. FieldAccess::base is Expr)
-        let has_expr_recursive = recursive_fields
-            .iter()
-            .any(|(ty, _)| ty == "Expr");
+        let has_expr_recursive = recursive_fields.iter().any(|(ty, _)| ty == "Expr");
         assert!(
             has_expr_recursive,
             "Expr should have recursive fields, got: {:?}",
@@ -2064,9 +2131,7 @@ fn example(items: List<String>) -> Int {
         );
 
         // TypeExpr should have recursive fields (e.g. Optional::inner is TypeExpr)
-        let has_type_expr_recursive = recursive_fields
-            .iter()
-            .any(|(ty, _)| ty == "TypeExpr");
+        let has_type_expr_recursive = recursive_fields.iter().any(|(ty, _)| ty == "TypeExpr");
         assert!(
             has_type_expr_recursive,
             "TypeExpr should have recursive fields, got: {:?}",
@@ -2080,10 +2145,22 @@ fn example(items: List<String>) -> Int {
     fn v2_builtins_registered() {
         use gunbc_ir::patterns::collection::contract_for_name;
 
-        assert!(contract_for_name("char_at").is_some(), "char_at not registered");
-        assert!(contract_for_name("string_length").is_some(), "string_length not registered");
-        assert!(contract_for_name("substring").is_some(), "substring not registered");
-        assert!(contract_for_name("lookup").is_some(), "lookup not registered");
+        assert!(
+            contract_for_name("char_at").is_some(),
+            "char_at not registered"
+        );
+        assert!(
+            contract_for_name("string_length").is_some(),
+            "string_length not registered"
+        );
+        assert!(
+            contract_for_name("substring").is_some(),
+            "substring not registered"
+        );
+        assert!(
+            contract_for_name("lookup").is_some(),
+            "lookup not registered"
+        );
         assert!(contract_for_name("with").is_some(), "with not registered");
     }
 
@@ -2110,18 +2187,21 @@ fn example(items: List<String>) -> Int {
             })
             .collect();
 
-        let modules: Vec<(&str, &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>])> =
-            parsed
-                .iter()
-                .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf.items.as_slice()))
-                .collect();
+        let modules: Vec<(
+            &str,
+            &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>],
+        )> = parsed
+            .iter()
+            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
+                (stem.as_str(), sf.items.as_slice())
+            })
+            .collect();
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
         let tmp_dir = std::env::temp_dir().join("v2-compiler-check");
         let _ = std::fs::remove_dir_all(&tmp_dir);
-        daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files)
-            .expect("failed to write crate");
+        daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
 
         let output = std::process::Command::new("cargo")
             .arg("check")
@@ -2132,8 +2212,11 @@ fn example(items: List<String>) -> Int {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() {
             // Don't clean up — leave crate for inspection at tmp_dir
-            eprintln!("v2 crate written to: {}", tmp_dir.display());
-            panic!("cargo check failed:\n{}", stderr);
+            panic!(
+                "cargo check failed (crate at {}):\n{}",
+                tmp_dir.display(),
+                stderr
+            );
         }
 
         let _ = std::fs::remove_dir_all(&tmp_dir);

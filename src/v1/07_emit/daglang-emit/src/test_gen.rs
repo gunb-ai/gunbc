@@ -57,7 +57,6 @@ pub fn emit_dry_run_completion_test(
     })
 }
 
-
 /// Generate a type-appropriate mock response string for a port type.
 ///
 /// Instead of using a flat `"mock-response"` for all transport nodes,
@@ -115,7 +114,9 @@ pub fn witness_mock_responses(response_type: &str) -> Vec<String> {
         ],
         _ => {
             let one = typed_mock_for_response(response_type).to_string();
-            let alternate = match value_backing_for_type_id(response_type).unwrap_or(ValueBacking::Json) {
+            let alternate = match value_backing_for_type_id(response_type)
+                .unwrap_or(ValueBacking::Json)
+            {
                 ValueBacking::String | ValueBacking::Secret => "alt-mock-response".to_string(),
                 ValueBacking::Bool => "false".to_string(),
                 ValueBacking::Int | ValueBacking::Float => "2".to_string(),

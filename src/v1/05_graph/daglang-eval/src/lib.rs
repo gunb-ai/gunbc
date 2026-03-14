@@ -10,7 +10,7 @@ pub mod expr;
 
 pub use eval::*;
 pub use eval_core::*;
-pub use eval_stack::{EvalOutcome, evaluate_stack_with_diagnostics};
+pub use eval_stack::{evaluate_stack_with_diagnostics, EvalOutcome};
 pub use expr::*;
 
 #[cfg(test)]

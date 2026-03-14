@@ -189,6 +189,8 @@ pub struct TypedBinding {
 pub enum TypeError {
     /// A type name was used but not defined.
     UndefinedType(String),
+    /// A type expression could not be resolved into a supported registry shape.
+    UnresolvableType { ty: String, context: String },
     /// A field was accessed on a type that doesn't have it.
     NoSuchField { ty: String, field: String },
     /// Type mismatch in assignment or call.
@@ -465,6 +467,7 @@ impl TypeError {
             Self::BranchTypeMismatch { .. } => "TC038",
             Self::MatchArmTypeMismatch { .. } => "TC039",
             Self::NonExhaustiveMatch { .. } => "TC040",
+            Self::UnresolvableType { .. } => "TC041",
         }
     }
 
@@ -473,6 +476,9 @@ impl TypeError {
         match self {
             Self::UndefinedType(name) => Some(format!(
                 "check spelling of `{name}` — common types: String, Int, Bool, List<T>, Map<K,V>, Option<T>"
+            )),
+            Self::UnresolvableType { ty, .. } => Some(format!(
+                "ensure `{ty}` is defined and uses supported shapes; maps must be `Map<String, T>`"
             )),
             Self::TypeMismatch { expected, got } => Some(format!(
                 "change argument type to `{expected}` or add a conversion from `{got}`"
@@ -544,6 +550,7 @@ impl TypeError {
                 got: got.clone(),
             },
             Self::UndefinedType(name)
+            | Self::UnresolvableType { ty: name, .. }
             | Self::UnresolvedImport { target: name, .. }
             | Self::UnresolvedInterface {
                 interface: name, ..
@@ -587,6 +594,9 @@ impl std::fmt::Display for TypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UndefinedType(name) => write!(f, "undefined type `{name}`"),
+            Self::UnresolvableType { ty, context } => {
+                write!(f, "type `{ty}` cannot be resolved in `{context}`")
+            }
             Self::NoSuchField { ty, field } => {
                 write!(f, "type `{ty}` has no field `{field}`")
             }
@@ -970,27 +980,15 @@ fn typecheck_graph_modules_spanned(
             }
         }
         let (signatures, sig_errors) = collect_signatures(module, &context, &module_name);
-        errors.extend(sig_errors.into_iter().map(|error| SpannedTypeError {
-            error,
-            file: module_file.clone(),
-            module: module_name.clone(),
-            span: None, // collect_signatures doesn't track item spans yet
-        }));
+        errors.extend(sig_errors);
         typed_modules.push(TypedModule {
             graph_index,
             signatures,
         });
     }
 
-    let (dsl_type_registry, unresolved_types) = collect_dsl_type_registry(&graph.modules);
-
-    // S7: unresolved type names are collected during DSL type registration.
-    // These types are referenced in DSL definitions but couldn't be resolved
-    // from the registry — they fall back to identity placeholders. The
-    // ratchet_fail_open_types test tracks the known set. Once all DSL types
-    // propagate to the registry, this Vec will be empty and the transitional
-    // `resolve_field_type_dag_or_identity` wrapper can be deleted.
-    let _ = &unresolved_types;
+    let (dsl_type_registry, registry_errors) = collect_dsl_type_registry(&graph.modules);
+    errors.extend(registry_errors);
 
     errors
         .is_empty()
@@ -1001,6 +999,20 @@ fn typecheck_graph_modules_spanned(
             available_profiles: collect_available_profiles(&graph.modules),
         })
         .ok_or(errors)
+}
+
+#[derive(Debug, Clone)]
+struct RegistryUnresolved {
+    ty: String,
+    context: String,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryTypeDef<'a> {
+    def: &'a daglang_syntax::ast::TypeDef,
+    file: std::path::PathBuf,
+    module: String,
+    span: Option<daglang_syntax::span::Span>,
 }
 
 fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
@@ -1019,16 +1031,21 @@ fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
     params
 }
 
-fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<String>) {
-    let mut registry = TypeRegistry::new();
-    let mut unresolved_types: Vec<String> = Vec::new();
+fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<SpannedTypeError>) {
+    let mut registry = TypeRegistry::with_defaults();
+    let mut registry_errors = Vec::new();
 
     // Collect all type definitions across modules for two-pass registration.
-    let mut all_type_defs: Vec<&daglang_syntax::ast::TypeDef> = Vec::new();
+    let mut all_type_defs: Vec<RegistryTypeDef<'_>> = Vec::new();
     for module in modules {
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
-                all_type_defs.push(def);
+                all_type_defs.push(RegistryTypeDef {
+                    def,
+                    file: module.path.clone(),
+                    module: module.module_path.as_dotted(),
+                    span: Some(item.span),
+                });
             }
         }
     }
@@ -1037,18 +1054,21 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<S
     // This ensures forward references resolve to a known type instead of
     // triggering the fallback code path.
     for def in &all_type_defs {
-        registry.register(def.name.as_str(), gunbc_ir::type_lib::identity(&def.name));
+        registry.register(
+            def.def.name.as_str(),
+            gunbc_ir::type_lib::identity(&def.def.name),
+        );
     }
 
     // Build a dependency graph for topological ordering (Pass 2).
     // Alias types depend on their base type; Record types depend on their
     // field types. Sorting ensures base types register before derived types.
     let type_names: std::collections::HashSet<&str> =
-        all_type_defs.iter().map(|d| d.name.as_str()).collect();
+        all_type_defs.iter().map(|d| d.def.name.as_str()).collect();
     let mut deps: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
     for def in &all_type_defs {
         let mut my_deps = Vec::new();
-        match &def.body {
+        match &def.def.body {
             TypeBody::Alias(type_expr) => {
                 collect_type_deps_from_expr(type_expr, &type_names, &mut my_deps);
             }
@@ -1065,52 +1085,85 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<S
                 }
             }
         }
-        deps.insert(def.name.as_str(), my_deps);
+        deps.insert(def.def.name.as_str(), my_deps);
     }
-    let ordered = topological_sort_types(&all_type_defs, &deps);
+    let plain_defs: Vec<&daglang_syntax::ast::TypeDef> =
+        all_type_defs.iter().map(|d| d.def).collect();
+    let type_info_by_name: std::collections::HashMap<&str, &RegistryTypeDef<'_>> = all_type_defs
+        .iter()
+        .map(|def| (def.def.name.as_str(), def))
+        .collect();
+    let ordered = topological_sort_types(&plain_defs, &deps);
 
     // Pass 2: Re-register with resolved structural DAGs in topological order.
     for def in ordered {
-        register_type_def(def, &mut registry, &mut unresolved_types);
+        let mut unresolved = Vec::new();
+        register_type_def(def, &mut registry, &mut unresolved);
+        if let Some(info) = type_info_by_name.get(def.name.as_str()) {
+            registry_errors.extend(unresolved.into_iter().map(|issue| SpannedTypeError {
+                error: TypeError::UnresolvableType {
+                    ty: issue.ty,
+                    context: issue.context,
+                },
+                file: info.file.clone(),
+                module: info.module.clone(),
+                span: info.span,
+            }));
+        }
     }
 
     // Pass 3: Register inline record types from fn/func parameter and return types.
     // These aren't top-level type definitions but appear as anonymous structural
-    // types in callable signatures. resolve_field_type_dag registers them when
-    // it encounters TypeExpr::Record.
+    // types in callable signatures. Signature validation already reports bad
+    // inner types, so this pass registers them best-effort without emitting
+    // duplicate diagnostics.
     for module in modules {
         for item in &module.ast.items {
-            let params: &[Param] = match &item.node {
-                Item::FnDef(def) => &def.params,
-                Item::FuncDef(def) => &def.params,
-                Item::PatternDef(def) => &def.params,
-                _ => continue,
-            };
-            for param in params {
-                register_inline_records(&param.ty, &mut registry, &mut unresolved_types);
+            match &item.node {
+                Item::FnDef(def) => {
+                    for param in &def.params {
+                        register_inline_records(&param.ty, &mut registry);
+                    }
+                    register_inline_records(&def.return_type, &mut registry);
+                }
+                Item::FuncDef(def) => {
+                    for param in &def.params {
+                        register_inline_records(&param.ty, &mut registry);
+                    }
+                    for output in &def.outputs {
+                        register_inline_records(&output.ty, &mut registry);
+                    }
+                }
+                Item::PatternDef(def) => {
+                    for param in &def.params {
+                        register_inline_records(&param.ty, &mut registry);
+                    }
+                    for output in &def.outputs {
+                        register_inline_records(&output.ty, &mut registry);
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    (registry, unresolved_types)
+    (registry, registry_errors)
 }
 
 /// Recursively walk a type expression and register any inline record types.
-fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry, unresolved: &mut Vec<String>) {
+fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry) {
     match ty {
         TypeExpr::Record(_) => {
-            // resolve_field_type_dag handles the registration.
-            // Errors here are informational — the type will surface as
-            // unresolved when actually used in port construction.
-            resolve_field_type_dag_or_identity(ty, registry, unresolved);
+            let mut ignored = Vec::new();
+            resolve_field_type_dag_or_identity(ty, registry, &mut ignored, "<inline record>");
         }
         TypeExpr::Generic(_, args) => {
             for arg in args {
-                register_inline_records(arg, registry, unresolved);
+                register_inline_records(arg, registry);
             }
         }
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
-            register_inline_records(inner, registry, unresolved);
+            register_inline_records(inner, registry);
         }
         TypeExpr::Named(_) => {}
     }
@@ -1204,7 +1257,11 @@ fn topological_sort_types<'a>(
 }
 
 /// Register a single type definition into the registry (Pass 2 worker).
-fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegistry, unresolved: &mut Vec<String>) {
+fn register_type_def(
+    def: &daglang_syntax::ast::TypeDef,
+    registry: &mut TypeRegistry,
+    unresolved: &mut Vec<RegistryUnresolved>,
+) {
     match &def.body {
         TypeBody::Sum(variants) => {
             // Unit variants get "Unit" type, payload variants get resolved field DAGs.
@@ -1214,14 +1271,35 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
                     let dag = if variant.fields.is_empty() {
                         gunbc_ir::type_lib::unit()
                     } else if variant.fields.len() == 1 {
-                        resolve_field_type_dag_or_identity(&variant.fields[0].ty, registry, unresolved)
+                        resolve_field_type_dag_or_identity(
+                            &variant.fields[0].ty,
+                            registry,
+                            unresolved,
+                            format!(
+                                "type {}.{}.{}",
+                                def.name, variant.name, variant.fields[0].name
+                            ),
+                        )
                     } else {
                         // Multi-field payload variant: wrap fields as an anonymous product.
                         let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> =
                             variant
                                 .fields
                                 .iter()
-                                .map(|f| (f.name.as_str(), resolve_field_type_dag_or_identity(&f.ty, registry, unresolved)))
+                                .map(|f| {
+                                    (
+                                        f.name.as_str(),
+                                        resolve_field_type_dag_or_identity(
+                                            &f.ty,
+                                            registry,
+                                            unresolved,
+                                            format!(
+                                                "type {}.{}.{}",
+                                                def.name, variant.name, f.name
+                                            ),
+                                        ),
+                                    )
+                                })
                                 .collect();
                         gunbc_ir::type_lib::product_resolved(&variant.name, resolved_fields)
                     };
@@ -1237,7 +1315,12 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
             let resolved_fields: Vec<(&str, gunbc_ir::Dag<gunbc_ir::type_op::TypeOp>)> = fields
                 .iter()
                 .map(|field| {
-                    let dag = resolve_field_type_dag_or_identity(&field.ty, registry, unresolved);
+                    let dag = resolve_field_type_dag_or_identity(
+                        &field.ty,
+                        registry,
+                        unresolved,
+                        format!("type {}.{}", def.name, field.name),
+                    );
                     (field.name.as_str(), dag)
                 })
                 .collect();
@@ -1258,8 +1341,10 @@ fn register_type_def(def: &daglang_syntax::ast::TypeDef, registry: &mut TypeRegi
                 match base_dag_opt {
                     Some(dag) => dag,
                     None => {
-                        // Unresolved type alias base — identity fallback with warning.
-                        unresolved.push(base_name.clone());
+                        unresolved.push(RegistryUnresolved {
+                            ty: base_name.clone(),
+                            context: format!("type {}", def.name),
+                        });
                         gunbc_ir::type_lib::identity(&base_name)
                     }
                 }
@@ -1335,7 +1420,9 @@ fn resolve_field_type_dag(
                 return Ok(base_dag);
             } else {
                 let base_name = type_expr_to_string(inner);
-                return Ok(gunbc_ir::type_lib::refined_with_base(&base_name, base_dag, predicates));
+                return Ok(gunbc_ir::type_lib::refined_with_base(
+                    &base_name, base_dag, predicates,
+                ));
             }
         }
         TypeExpr::Record(fields) => {
@@ -1369,27 +1456,33 @@ fn resolve_field_type_dag(
         }
     } else {
         match base_dag_opt {
-            Some(dag) => Ok(gunbc_ir::type_lib::refined_with_base(&base_name, dag, predicates)),
+            Some(dag) => Ok(gunbc_ir::type_lib::refined_with_base(
+                &base_name, dag, predicates,
+            )),
             None => Ok(gunbc_ir::type_lib::refined(&base_name, predicates)),
         }
     }
 }
 
-/// Transitional wrapper: resolves a type DAG or falls back to identity with a warning.
+/// Transitional wrapper: resolves a type DAG or falls back to identity internally.
 ///
 /// Calls `resolve_field_type_dag` and, on failure, produces an identity placeholder
-/// while recording the unresolved type name. This preserves current behavior while
-/// making unresolved types visible. Once all DSL types are registered (S7 terminal
-/// state), this wrapper should be deleted and callers should use the Result directly.
+/// while recording the unresolved type and context. Typecheck converts those
+/// recorded misses into diagnostics and fails the compile, so the placeholder is
+/// only used to continue collecting additional errors in the same pass.
 fn resolve_field_type_dag_or_identity(
     ty: &TypeExpr,
     registry: &mut TypeRegistry,
-    unresolved: &mut Vec<String>,
+    unresolved: &mut Vec<RegistryUnresolved>,
+    context: impl Into<String>,
 ) -> gunbc_ir::Dag<gunbc_ir::type_op::TypeOp> {
     match resolve_field_type_dag(ty, registry) {
         Ok(dag) => dag,
         Err(type_name) => {
-            unresolved.push(type_name.clone());
+            unresolved.push(RegistryUnresolved {
+                ty: type_name.clone(),
+                context: context.into(),
+            });
             gunbc_ir::type_lib::identity(&type_name)
         }
     }
@@ -1463,11 +1556,26 @@ struct TypecheckContext<'a> {
     allow_unresolved_references: bool,
 }
 
+fn extend_spanned_item_errors(
+    out: &mut Vec<SpannedTypeError>,
+    item_errors: Vec<TypeError>,
+    file: &std::path::Path,
+    module: &str,
+    span: Option<daglang_syntax::span::Span>,
+) {
+    out.extend(item_errors.into_iter().map(|error| SpannedTypeError {
+        error,
+        file: file.to_path_buf(),
+        module: module.to_string(),
+        span,
+    }));
+}
+
 fn collect_signatures(
     module: &ResolvedModule,
     context: &TypecheckContext<'_>,
     module_name: &str,
-) -> (Vec<TypedItemSignature>, Vec<TypeError>) {
+) -> (Vec<TypedItemSignature>, Vec<SpannedTypeError>) {
     let mut errors = Vec::new();
     let mut module_known_types = context.known_types.clone();
     for import in &module.ast.imports {
@@ -1494,10 +1602,12 @@ fn collect_signatures(
     let pipeline_param_bindings = collect_pipeline_param_bindings(module);
 
     for item in &module.ast.items {
+        let item_span = Some(item.span);
+        let mut item_errors = Vec::new();
         match &item.node {
             Item::TypeDef(def) => {
                 if !seen_items.insert(def.name.clone()) {
-                    errors.push(TypeError::DuplicateDefinition {
+                    item_errors.push(TypeError::DuplicateDefinition {
                         module: module_name.to_string(),
                         name: def.name.clone(),
                     });
@@ -1507,13 +1617,13 @@ fn collect_signatures(
                 });
             }
             Item::FnDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
-                errors.extend(validate_params(
+                item_errors.extend(validate_params(
                     &def.name,
                     &def.params,
                     &item_known_types,
@@ -1523,7 +1633,7 @@ fn collect_signatures(
                 let (return_contract, outputs) = match &def.return_type {
                     TypeExpr::Record(fields) => {
                         for field in fields {
-                            errors.extend(validate_type_expr(
+                            item_errors.extend(validate_type_expr(
                                 &field.ty,
                                 &item_known_types,
                                 context.generic_arity_registry,
@@ -1542,7 +1652,7 @@ fn collect_signatures(
                         )
                     }
                     _ => {
-                        errors.extend(validate_type_expr(
+                        item_errors.extend(validate_type_expr(
                             &def.return_type,
                             &item_known_types,
                             context.generic_arity_registry,
@@ -1559,7 +1669,7 @@ fn collect_signatures(
                         )
                     }
                 };
-                errors.extend(validate_callable_body(
+                item_errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
                     return_contract,
@@ -1583,42 +1693,42 @@ fn collect_signatures(
                 }));
             }
             Item::FuncDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
-                errors.extend(validate_params(
+                item_errors.extend(validate_params(
                     &def.name,
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
                 ));
-                errors.extend(validate_outputs(
+                item_errors.extend(validate_outputs(
                     &def.name,
                     &def.outputs,
                     &item_known_types,
                     context.generic_arity_registry,
                 ));
-                errors.extend(validate_uses_clauses(
+                item_errors.extend(validate_uses_clauses(
                     &def.name,
                     &def.uses,
                     context.resource_type_registry,
                     context.allow_unresolved_references,
                 ));
-                errors.extend(validate_provides_clauses(
+                item_errors.extend(validate_provides_clauses(
                     &def.name,
                     &def.provides,
                     context.resource_type_registry,
                     context.allow_unresolved_references,
                 ));
-                errors.extend(validate_use_provide_binding_conflicts(
+                item_errors.extend(validate_use_provide_binding_conflicts(
                     &def.name,
                     &def.uses,
                     &def.provides,
                 ));
-                errors.extend(validate_callable_body(
+                item_errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
@@ -1649,31 +1759,31 @@ fn collect_signatures(
                 }));
             }
             Item::PatternDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
-                errors.extend(validate_params(
+                item_errors.extend(validate_params(
                     &def.name,
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
                 ));
-                errors.extend(validate_outputs(
+                item_errors.extend(validate_outputs(
                     &def.name,
                     &def.outputs,
                     &item_known_types,
                     context.generic_arity_registry,
                 ));
-                errors.extend(validate_uses_clauses(
+                item_errors.extend(validate_uses_clauses(
                     &def.name,
                     &def.uses,
                     context.resource_type_registry,
                     context.allow_unresolved_references,
                 ));
-                errors.extend(validate_callable_body(
+                item_errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
@@ -1704,18 +1814,18 @@ fn collect_signatures(
                 }));
             }
             Item::ServiceDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
-                errors.extend(validate_service_interface_conformance(
+                item_errors.extend(validate_service_interface_conformance(
                     def,
                     context.interface_registry,
                 ));
                 if let Some(ref scheme) = def.config.auth {
                     if !is_valid_auth_scheme(scheme) {
-                        errors.push(TypeError::InvalidAuthScheme {
+                        item_errors.push(TypeError::InvalidAuthScheme {
                             service: def.name.clone(),
                             scheme: scheme.clone(),
                         });
@@ -1727,12 +1837,12 @@ fn collect_signatures(
                 });
             }
             Item::ResourceDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
-                errors.extend(validate_resource_interface_conformance(
+                item_errors.extend(validate_resource_interface_conformance(
                     def,
                     context.interface_registry,
                 ));
@@ -1742,7 +1852,7 @@ fn collect_signatures(
                 });
             }
             Item::InterfaceDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
@@ -1753,12 +1863,12 @@ fn collect_signatures(
                 });
             }
             Item::PipelineDef(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
-                errors.extend(validate_pipeline_def(
+                item_errors.extend(validate_pipeline_def(
                     def,
                     &pipeline_param_bindings,
                     &body_context,
@@ -1779,16 +1889,30 @@ fn collect_signatures(
             | Item::DesignDef(_)
             | Item::ComponentDef(_)
             | Item::EnvironmentDef(_)
-            | Item::ProfileDef(_)
-            | Item::ParamDecl(_)
-            | Item::DataDef(_) => {}
+            | Item::ProfileDef(_) => {}
+            Item::ParamDecl(decl) => {
+                item_errors.extend(validate_type_expr(
+                    &decl.ty,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    &format!("param {}", decl.name),
+                ));
+            }
+            Item::DataDef(def) => {
+                item_errors.extend(validate_type_expr(
+                    &def.ty,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    &format!("data {}", def.name),
+                ));
+            }
             Item::ExternAssetDecl(def) => {
-                errors.extend(record_duplicate_item_name(
+                item_errors.extend(record_duplicate_item_name(
                     module_name,
                     &def.name,
                     &mut seen_items,
                 ));
-                errors.extend(validate_type_expr(
+                item_errors.extend(validate_type_expr(
                     &def.ty,
                     &module_known_types,
                     context.generic_arity_registry,
@@ -1796,6 +1920,13 @@ fn collect_signatures(
                 ));
             }
         }
+        extend_spanned_item_errors(
+            &mut errors,
+            item_errors,
+            &module.path,
+            module_name,
+            item_span,
+        );
     }
 
     (signatures, errors)
@@ -3080,7 +3211,12 @@ fn validate_callable_body(
                 }
                 None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
-            let mismatches = push_type_mismatch_if_needed(ty, &inferred, infer_context.variant_parents, infer_context.record_type_registry);
+            let mismatches = push_type_mismatch_if_needed(
+                ty,
+                &inferred,
+                infer_context.variant_parents,
+                infer_context.record_type_registry,
+            );
             errors.extend(mismatches);
         }
     }
@@ -3111,7 +3247,12 @@ fn validate_return_stmt(
                 infer_context,
             );
             errors.extend(infer_errors);
-            let mismatches = push_type_mismatch_if_needed(ty, &inferred, infer_context.variant_parents, infer_context.record_type_registry);
+            let mismatches = push_type_mismatch_if_needed(
+                ty,
+                &inferred,
+                infer_context.variant_parents,
+                infer_context.record_type_registry,
+            );
             errors.extend(mismatches);
         }
         ReturnContract::Record { fields: expected } => {
@@ -3125,7 +3266,12 @@ fn validate_return_stmt(
                 };
                 let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
-                let mismatches = push_type_mismatch_if_needed(expected_ty, &inferred, infer_context.variant_parents, infer_context.record_type_registry);
+                let mismatches = push_type_mismatch_if_needed(
+                    expected_ty,
+                    &inferred,
+                    infer_context.variant_parents,
+                    infer_context.record_type_registry,
+                );
                 errors.extend(mismatches);
             }
         }
@@ -3644,7 +3790,9 @@ fn push_type_mismatch_if_needed(
     }
 
     // v2 TC003 fix: "Record"/"Map" is compatible with a known struct type.
-    if (got == "Record" || got == "Map") && resolve_record_fields(expected, record_type_registry).is_some() {
+    if (got == "Record" || got == "Map")
+        && resolve_record_fields(expected, record_type_registry).is_some()
+    {
         return Vec::new();
     }
 
@@ -4100,6 +4248,15 @@ fn validate_type_expr(
             }
         }
         TypeExpr::Generic(name, args) => {
+            if name == "Map" && args.len() == 2 {
+                let key_type = type_expr_to_string(&args[0]);
+                if key_type != "String" {
+                    errors.push(TypeError::UnresolvableType {
+                        ty: type_expr_to_string(ty),
+                        context: context.to_string(),
+                    });
+                }
+            }
             if let Some(expected) = resolve_generic_arity(name, generic_arity_registry, known_types)
             {
                 if expected != args.len() {

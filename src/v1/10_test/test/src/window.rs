@@ -477,7 +477,6 @@ mod window_helper_tests {
             .expect("list input should be injected");
         assert_eq!(input, &Value::List(vec![Value::Int(1), Value::Int(2)]));
     }
-
 }
 
 #[cfg(test)]
@@ -774,4 +773,3 @@ mod assert_chain_outputs_tests {
         assert!(matches!(err, WindowError::MatcherFailed { .. }));
     }
 }
-

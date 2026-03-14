@@ -672,8 +672,7 @@ impl VerifyError {
             if let Some(file) = error.origin.file() {
                 diagnostic = diagnostic.with_file(std::path::PathBuf::from(file));
             }
-            if let (Some(start), Some(end)) = (error.origin.span_start(), error.origin.span_end())
-            {
+            if let (Some(start), Some(end)) = (error.origin.span_start(), error.origin.span_end()) {
                 diagnostic = diagnostic.with_span(daglang_contract::Span::new(start, end));
             }
         }
@@ -702,9 +701,12 @@ impl VerifyError {
             },
             VerifyError::CardinalityIncompatibility(error) => DiagnosticContext::Note(format!(
                 "edge {}.{} -> {}.{}: {} does not satisfy {}",
-                error.from_node.0, error.from_port.0,
-                error.to_node.0, error.to_port.0,
-                error.from_cardinality, error.to_cardinality,
+                error.from_node.0,
+                error.from_port.0,
+                error.to_node.0,
+                error.to_port.0,
+                error.from_cardinality,
+                error.to_cardinality,
             )),
             VerifyError::SubDag(..) | VerifyError::Fingerprint(..) => {
                 DiagnosticContext::Note(String::new())
@@ -1042,11 +1044,25 @@ fn validate_port_type_ids_recursive<T>(
     for node in &dag.nodes {
         // Check input ports.
         for port in &node.inputs {
-            check_port_type_id(&node.id, &port.name, PortDirection::Input, &port.type_id, registry, errors);
+            check_port_type_id(
+                &node.id,
+                &port.name,
+                PortDirection::Input,
+                &port.type_id,
+                registry,
+                errors,
+            );
         }
         // Check output ports.
         for port in &node.outputs {
-            check_port_type_id(&node.id, &port.name, PortDirection::Output, &port.type_id, registry, errors);
+            check_port_type_id(
+                &node.id,
+                &port.name,
+                PortDirection::Output,
+                &port.type_id,
+                registry,
+                errors,
+            );
         }
         // Recurse into SubDag inner DAGs.
         if let NodeBody::SubDag(inner, _) = &node.body {
@@ -2259,12 +2275,7 @@ mod tests {
     fn port_type_ids_empty_type_id_skipped() {
         let registry = TypeRegistry::with_core_types();
         let mut dag: Dag<()> = Dag::default();
-        dag.add_node(Node::opaque(
-            "n1",
-            vec![Port::new("in", "")],
-            vec![],
-            (),
-        ));
+        dag.add_node(Node::opaque("n1", vec![Port::new("in", "")], vec![], ()));
         let errors = validate_port_type_ids(&dag, &registry);
         assert!(errors.is_empty(), "empty type_id should be skipped");
     }
@@ -2275,7 +2286,11 @@ mod tests {
         let mut dag: Dag<()> = Dag::default();
         dag.add_node(Node::opaque(
             "n1",
-            vec![Port::resource("file:foo", "ResourceHandle", AccessMode::Read)],
+            vec![Port::resource(
+                "file:foo",
+                "ResourceHandle",
+                AccessMode::Read,
+            )],
             vec![],
             (),
         ));
@@ -2309,7 +2324,10 @@ mod tests {
             (),
         ));
         let errors = validate_port_type_ids(&dag, &registry);
-        assert!(errors.is_empty(), "Optional<String> should resolve: {errors:?}");
+        assert!(
+            errors.is_empty(),
+            "Optional<String> should resolve: {errors:?}"
+        );
     }
 
     #[test]
@@ -2353,7 +2371,9 @@ mod tests {
             "should catch unregistered type inside SubDag"
         );
         assert!(
-            errors.iter().any(|e| e.node_id.0 == "inner_node" && e.type_id.0 == "BogusInnerType"),
+            errors
+                .iter()
+                .any(|e| e.node_id.0 == "inner_node" && e.type_id.0 == "BogusInnerType"),
             "should include inner_node's BogusInnerType: {errors:?}"
         );
     }

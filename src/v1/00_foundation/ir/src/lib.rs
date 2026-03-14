@@ -212,11 +212,11 @@ pub use types::{
 };
 pub use validate::{
     validate_cardinality_compatibility, validate_cardinality_compatibility_with_registry,
-    validate_fingerprint_uniqueness, validate_port_type_ids,
-    validate_required_inputs, validate_resource_wiring, validate_resource_wiring_recursive,
-    validate_subdag_interfaces, verify_dag, verify_dag_with_registry, CardinalityIncompatibility,
-    FingerprintConflict, PortDirection, SubDagError, UnregisteredTypeError, UnwiredInputError,
-    UnwiredResource, VerifyError,
+    validate_fingerprint_uniqueness, validate_port_type_ids, validate_required_inputs,
+    validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
+    verify_dag, verify_dag_with_registry, CardinalityIncompatibility, FingerprintConflict,
+    PortDirection, SubDagError, UnregisteredTypeError, UnwiredInputError, UnwiredResource,
+    VerifyError,
 };
 pub use value::{
     SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,

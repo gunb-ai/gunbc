@@ -1,8 +1,8 @@
 //! Dry-run helper utilities shared across binaries.
 
 use gunbc_exec::BoundaryMocks;
-use gunbc_ir::{Dag, NodeId};
 use gunbc_ir::filename;
+use gunbc_ir::{Dag, NodeId};
 
 fn is_fs_env_node(node_id: &NodeId) -> bool {
     node_id
@@ -38,8 +38,8 @@ pub fn wire_fs_env_write_mock<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{Node, Port, PortName, Value};
     use crate::fs_env::FsEnv;
+    use gunbc_ir::{Node, Port, PortName, Value};
 
     #[test]
     fn wire_fs_env_write_mock_sets_value_when_node_exists() {

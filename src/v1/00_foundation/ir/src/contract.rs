@@ -141,9 +141,7 @@ pub enum WitnessError {
     },
     /// The base type is not a known primitive (String, Int, Bool, Unit, Json).
     /// Product/coproduct types should use `typed_witness_value` instead.
-    UnknownBaseType {
-        base: String,
-    },
+    UnknownBaseType { base: String },
 }
 
 impl fmt::Display for WitnessError {

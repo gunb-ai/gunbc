@@ -41,9 +41,7 @@ impl Executable for GenericPrepareOp {
             ServiceOperationSpec::Shell(shell_spec) => prepare_shell_request(shell_spec, inputs),
             ServiceOperationSpec::File(file_spec) => prepare_file_request(file_spec, inputs),
             ServiceOperationSpec::Local(local_spec) => prepare_local_request(local_spec, inputs),
-            ServiceOperationSpec::InterfaceStub { .. } => {
-                prepare_interface_stub_request(inputs)
-            }
+            ServiceOperationSpec::InterfaceStub { .. } => prepare_interface_stub_request(inputs),
         }
     }
 }
@@ -76,12 +74,9 @@ impl Executable for GenericParseOp {
                 &self.auth_scheme,
                 inputs,
             ),
-            ServiceOperationSpec::Shell(shell_spec) => parse_shell_response(
-                shell_spec,
-                &self.service_name,
-                &self.operation_name,
-                inputs,
-            ),
+            ServiceOperationSpec::Shell(shell_spec) => {
+                parse_shell_response(shell_spec, &self.service_name, &self.operation_name, inputs)
+            }
             ServiceOperationSpec::File(file_spec) => parse_file_response(file_spec, inputs),
             ServiceOperationSpec::Local(local_spec) => parse_local_response(local_spec, inputs),
             ServiceOperationSpec::InterfaceStub { .. } => {
@@ -98,7 +93,9 @@ impl Executable for GenericParseOp {
 
 /// Check if any input is Skipped. Returns the standard skip output for REST
 /// (request-only) if so.
-fn check_rest_skip(inputs: &HashMap<String, Value>) -> Option<Result<HashMap<String, Value>, ExecError>> {
+fn check_rest_skip(
+    inputs: &HashMap<String, Value>,
+) -> Option<Result<HashMap<String, Value>, ExecError>> {
     if inputs.values().any(|v| matches!(v, Value::Skipped)) {
         Some(OutputMap::new().value("request", Value::Skipped).ok())
     } else {
@@ -108,7 +105,9 @@ fn check_rest_skip(inputs: &HashMap<String, Value>) -> Option<Result<HashMap<Str
 
 /// Check if any input is Skipped. Returns the standard skip output for
 /// Shell/File/Local (request + skip flag) if so.
-fn check_transport_skip(inputs: &HashMap<String, Value>) -> Option<Result<HashMap<String, Value>, ExecError>> {
+fn check_transport_skip(
+    inputs: &HashMap<String, Value>,
+) -> Option<Result<HashMap<String, Value>, ExecError>> {
     if inputs.values().any(|v| matches!(v, Value::Skipped)) {
         Some(
             OutputMap::new()
@@ -413,8 +412,7 @@ fn prepare_shell_request(
             ArgvSegment::Literal(s) => {
                 // Handle complex interpolation: e.g., "{base}...{head}"
                 if s.contains('{') {
-                    let interpolated =
-                        interpolate_template(s, &inputs, &spec.input_fields)?;
+                    let interpolated = interpolate_template(s, &inputs, &spec.input_fields)?;
                     argv.push(interpolated);
                 } else {
                     argv.push(s.clone());
@@ -472,11 +470,7 @@ fn shell_trim_value(field: Option<&OutputFieldSpec>, text: String) -> Value {
     }
 }
 
-fn shell_exit_error(
-    service_name: &str,
-    operation_name: &str,
-    shell: &ShellResponse,
-) -> ExecError {
+fn shell_exit_error(service_name: &str, operation_name: &str, shell: &ShellResponse) -> ExecError {
     let stderr = shell.stderr.trim();
     let detail = if stderr.is_empty() {
         String::new()

@@ -645,13 +645,10 @@ fn c_type_from_shape(shape: &gunbc_ir::TypeShape) -> CType {
             CType::Ptr(Box::new(CType::Void))
         }
         TypeShape::Container(container) => match container {
-            ContainerShape::Optional(inner) | ContainerShape::List(inner)
-            | ContainerShape::Set(inner) => {
-                CType::Ptr(Box::new(c_type_from_shape(inner)))
-            }
-            ContainerShape::Map(_, value) => {
-                CType::Ptr(Box::new(c_type_from_shape(value)))
-            }
+            ContainerShape::Optional(inner)
+            | ContainerShape::List(inner)
+            | ContainerShape::Set(inner) => CType::Ptr(Box::new(c_type_from_shape(inner))),
+            ContainerShape::Map(_, value) => CType::Ptr(Box::new(c_type_from_shape(value))),
         },
         TypeShape::Brand(name, inner) => {
             if let Some(syntax) = crate::language_model::resolve_named(name, model) {

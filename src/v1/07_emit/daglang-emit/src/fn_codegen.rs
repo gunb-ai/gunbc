@@ -49,8 +49,8 @@
 
 use daglang_syntax::ast;
 use gunbc_ir::code_ir;
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::type_codegen::to_snake_case;
 
@@ -84,6 +84,8 @@ pub struct CompileContext {
     pub optional_params: HashSet<String>,
     /// Map from parameter name → type name (for v2 crate emit).
     pub param_types: std::collections::HashMap<String, String>,
+    /// Current function's return type name (for variant disambiguation in return position).
+    pub current_return_type: Option<String>,
 }
 
 impl Default for CompileContext {
@@ -105,19 +107,56 @@ impl CompileContext {
             fn_return_types: std::collections::HashMap::new(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
+            current_return_type: None,
         }
     }
+}
+
+/// Resolve a variant name to its parent enum, preferring the current function's
+/// return type when the variant is ambiguous (exists in multiple enums).
+fn resolve_variant_enum(name: &str, ctx: &CompileContext) -> Option<String> {
+    // Check if variant exists in the current return type's enum (priority)
+    if let Some(ret_type) = &ctx.current_return_type {
+        if let Some(variants) = ctx.enum_variants.get(ret_type.as_str()) {
+            if variants.contains(name) {
+                return Some(ret_type.clone());
+            }
+        }
+    }
+    // Fall back to global variant_to_enum map
+    ctx.variant_to_enum.get(name).cloned()
 }
 
 /// Compile a DSL `FnBody` into a list of abstract IR statements.
 pub fn compile_fn_body(body: &ast::FnBody, ctx: &CompileContext) -> Vec<code_ir::Stmt> {
     let mut counter: usize = 0;
     let len = body.stmts.len();
-    body.stmts
-        .iter()
-        .enumerate()
-        .map(|(i, s)| compile_stmt(s, i == len - 1, ctx, &mut counter))
-        .collect()
+    let mut current_ctx = ctx.clone();
+    let mut result = Vec::with_capacity(len);
+    for (i, s) in body.stmts.iter().enumerate() {
+        // Track let bindings that produce clearly optional values
+        if let ast::Stmt::Let(name, expr) = s {
+            if is_clearly_optional_ast_expr(expr) {
+                current_ctx.optional_params.insert(name.clone());
+            }
+        }
+        result.push(compile_stmt(s, i == len - 1, &current_ctx, &mut counter));
+    }
+    result
+}
+
+/// Check if an AST expression clearly produces an Option<T> value.
+fn is_clearly_optional_ast_expr(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => true,
+        ast::Expr::Call(name, _) if name == "Some" => true,
+        ast::Expr::Ident(name) if name == "null" => true,
+        ast::Expr::Literal(ast::Literal::None) => true,
+        ast::Expr::If(_, then_expr, Some(else_expr)) => {
+            is_null_ast_expr(then_expr) || is_null_ast_expr(else_expr)
+        }
+        _ => false,
+    }
 }
 
 /// Generate a unique temporary variable name from a monotonic counter.
@@ -131,7 +170,12 @@ fn fresh(counter: &mut usize, prefix: &str) -> String {
 // Statements
 // ---------------------------------------------------------------------------
 
-fn compile_stmt(stmt: &ast::Stmt, is_last: bool, ctx: &CompileContext, counter: &mut usize) -> code_ir::Stmt {
+fn compile_stmt(
+    stmt: &ast::Stmt,
+    is_last: bool,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Stmt {
     match stmt {
         ast::Stmt::Let(name, expr) => code_ir::Stmt::Let {
             name: escape_rust_keyword(name),
@@ -165,7 +209,11 @@ fn compile_stmt(stmt: &ast::Stmt, is_last: bool, ctx: &CompileContext, counter: 
     }
 }
 
-fn compile_return_fields(fields: &[(String, ast::Expr)], ctx: &CompileContext, counter: &mut usize) -> code_ir::Expr {
+fn compile_return_fields(
+    fields: &[(String, ast::Expr)],
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
     if fields.is_empty() {
         code_ir::Expr::Tuple(vec![])
     } else if fields.len() == 1 && (fields[0].0 == "value" || fields[0].0 == "return") {
@@ -179,39 +227,90 @@ fn compile_return_fields(fields: &[(String, ast::Expr)], ctx: &CompileContext, c
         let struct_name = infer_struct_name(&field_names, ctx);
         let opt_set = ctx.optional_fields.get(&struct_name);
         let field_types = ctx.struct_field_types.get(&struct_name);
+        let compiled_fields: Vec<(String, code_ir::Expr)> = fields
+            .iter()
+            .map(|(name, expr)| {
+                let compiled = compile_expr_in_field_context(expr, name, field_types, ctx, counter);
+                let is_opt = opt_set.is_some_and(|s| s.contains(name.as_str()));
+                let is_none = is_none_expr(&compiled);
+                let already_optional = is_opt && is_already_optional_expr(expr, ctx, &struct_name);
+                let compiled = if is_none {
+                    compiled
+                } else {
+                    clone_if_needed(compiled)
+                };
+                let mut result = if is_opt && !is_none && !already_optional {
+                    code_ir::Expr::Call {
+                        func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                        args: vec![compiled],
+                        obligation: None,
+                    }
+                } else {
+                    compiled
+                };
+                // Box wrapping for recursive fields
+                if needs_box_wrapping(&struct_name, name, ctx) {
+                    result = code_ir::Expr::Call {
+                        func: Box::new(code_ir::Expr::Path(vec![
+                            "Box".to_string(),
+                            "new".to_string(),
+                        ])),
+                        args: vec![result],
+                        obligation: None,
+                    };
+                }
+                (name.clone(), result)
+            })
+            .collect();
+        let all_fields = fill_missing_fields(&struct_name, compiled_fields, ctx);
         code_ir::Expr::Struct {
             name: struct_name.clone(),
-            fields: fields
-                .iter()
-                .map(|(name, expr)| {
-                    let compiled = compile_expr_in_field_context(expr, name, field_types, ctx, counter);
-                    let is_opt = opt_set.is_some_and(|s| s.contains(name.as_str()));
-                    let is_none = is_none_expr(&compiled);
-                    let already_optional = is_opt && is_already_optional_expr(expr, ctx);
-                    let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
-                    let mut result = if is_opt && !is_none && !already_optional {
-                        code_ir::Expr::Call {
-                            func: Box::new(code_ir::Expr::Var("Some".to_string())),
-                            args: vec![compiled],
-                            obligation: None,
-                        }
-                    } else {
-                        compiled
-                    };
-                    // Box wrapping for recursive fields
-                    if needs_box_wrapping(&struct_name, name, ctx) {
-                        result = code_ir::Expr::Call {
-                            func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
-                            args: vec![result],
-                            obligation: None,
-                        };
-                    }
-                    (name.clone(), result)
-                })
-                .collect(),
+            fields: all_fields,
             rest: None,
         }
     }
+}
+
+/// Fill in missing struct fields with default values.
+///
+/// After collecting provided fields, check the struct's field type map for any
+/// missing required fields. Optional fields get `None`, others get `Default::default()`.
+fn fill_missing_fields(
+    struct_name: &str,
+    provided: Vec<(String, code_ir::Expr)>,
+    ctx: &CompileContext,
+) -> Vec<(String, code_ir::Expr)> {
+    let Some(field_types) = ctx.struct_field_types.get(struct_name) else {
+        return provided;
+    };
+    let provided_names: HashSet<String> = provided.iter().map(|(n, _)| n.clone()).collect();
+    // Only fill if ALL provided fields exist in the struct definition.
+    // If any provided field is NOT in field_types, we may be matching the wrong
+    // struct (same name, different module) — bail out.
+    if !provided_names.iter().all(|n| field_types.contains_key(n)) {
+        return provided;
+    }
+    let opt_set = ctx.optional_fields.get(struct_name);
+    let mut result = provided;
+    for field_name in field_types.keys() {
+        if !provided_names.contains(field_name) {
+            let is_opt = opt_set.is_some_and(|s| s.contains(field_name.as_str()));
+            let default_expr = if is_opt {
+                code_ir::Expr::Path(vec!["None".to_string()])
+            } else {
+                code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Path(vec![
+                        "Default".to_string(),
+                        "default".to_string(),
+                    ])),
+                    args: vec![],
+                    obligation: None,
+                }
+            };
+            result.push((field_name.clone(), default_expr));
+        }
+    }
+    result
 }
 
 /// Infer a struct name from field names using the CompileContext's struct registry.
@@ -355,7 +454,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                     // Check if the source expression is already Optional (e.g.,
                     // accessing an Optional field from another struct). In that
                     // case, don't double-wrap in Some().
-                    let already_optional = is_opt && is_already_optional_expr(e, ctx);
+                    let already_optional = is_opt && is_already_optional_expr(e, ctx, &struct_name);
                     // Clone variable references to avoid use-after-move in struct fields
                     // (but don't clone None — it's Copy and cloning produces noise)
                     let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
@@ -379,6 +478,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                     (n.clone(), result)
                 })
                 .collect();
+            let ir_fields = fill_missing_fields(&struct_name, ir_fields, ctx);
             code_ir::Expr::Struct {
                 name: qualified_name,
                 fields: ir_fields,
@@ -431,13 +531,20 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
         }
         ast::Expr::Return(fields) => compile_return_fields(fields, ctx, counter),
         ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => compile_expr(inner, ctx, counter),
-        ast::Expr::Block(stmts) => code_ir::Expr::Block(
-            stmts
-                .iter()
-                .enumerate()
-                .map(|(index, stmt)| compile_stmt(stmt, index + 1 == stmts.len(), ctx, counter))
-                .collect(),
-        ),
+        ast::Expr::Block(stmts) => {
+            let len = stmts.len();
+            let mut block_ctx = ctx.clone();
+            let mut ir_stmts = Vec::with_capacity(len);
+            for (index, stmt) in stmts.iter().enumerate() {
+                if let ast::Stmt::Let(name, expr) = stmt {
+                    if is_clearly_optional_ast_expr(expr) {
+                        block_ctx.optional_params.insert(name.clone());
+                    }
+                }
+                ir_stmts.push(compile_stmt(stmt, index + 1 == len, &block_ctx, counter));
+            }
+            code_ir::Expr::Block(ir_stmts)
+        }
         ast::Expr::ServiceCall(_, _) | ast::Expr::Map(_) => {
             code_ir::Expr::RawCode(
                 "compile_error!(\"unsupported DSL construct: ServiceCall/Map not yet supported in fn codegen\");"
@@ -488,8 +595,8 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             method: "clone".to_string(),
             args: vec![],
         }
-    } else if let Some(enum_name) = ctx.variant_to_enum.get(name) {
-        code_ir::Expr::Path(vec![enum_name.clone(), name.to_string()])
+    } else if let Some(enum_name) = resolve_variant_enum(name, ctx) {
+        code_ir::Expr::Path(vec![enum_name, name.to_string()])
     } else {
         // Clone all variable references to prevent use-after-move (S76).
         // The Rust compiler optimizes away redundant clones. This is
@@ -513,14 +620,12 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
 /// Escape Rust reserved keywords for use as identifiers.
 fn escape_rust_keyword(name: &str) -> String {
     match name {
-        "mod" | "type" | "fn" | "let" | "mut" | "ref" | "self" | "super"
-        | "crate" | "pub" | "use" | "impl" | "trait" | "struct" | "enum"
-        | "match" | "if" | "else" | "for" | "while" | "loop" | "break"
-        | "continue" | "return" | "where" | "as" | "in" | "move" | "async"
-        | "await" | "dyn" | "static" | "const" | "extern" | "unsafe"
-        | "abstract" | "become" | "box" | "do" | "final" | "macro"
-        | "override" | "priv" | "try" | "typeof" | "unsized" | "virtual"
-        | "yield" => format!("r#{name}"),
+        "mod" | "type" | "fn" | "let" | "mut" | "ref" | "self" | "super" | "crate" | "pub"
+        | "use" | "impl" | "trait" | "struct" | "enum" | "match" | "if" | "else" | "for"
+        | "while" | "loop" | "break" | "continue" | "return" | "where" | "as" | "in" | "move"
+        | "async" | "await" | "dyn" | "static" | "const" | "extern" | "unsafe" | "abstract"
+        | "become" | "box" | "do" | "final" | "macro" | "override" | "priv" | "try" | "typeof"
+        | "unsized" | "virtual" | "yield" => format!("r#{name}"),
         _ => name.to_string(),
     }
 }
@@ -561,23 +666,49 @@ fn compile_intrinsic_call(
     let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter));
 
     match name {
-        "map" if args.len() == 2 => {
-            Some(compile_map_intrinsic(&collection.clone(), args.get(1).map(|(_, e)| e), ctx, counter))
-        }
-        "filter" if args.len() == 2 => {
-            Some(compile_filter_intrinsic(&collection.clone(), args.get(1).map(|(_, e)| e), ctx, counter))
-        }
+        "map" if args.len() == 2 => Some(compile_map_intrinsic(
+            &collection.clone(),
+            args.get(1).map(|(_, e)| e),
+            ctx,
+            counter,
+        )),
+        "filter" if args.len() == 2 => Some(compile_filter_intrinsic(
+            &collection.clone(),
+            args.get(1).map(|(_, e)| e),
+            ctx,
+            counter,
+        )),
         "fold" if args.len() >= 2 => {
-            let init = args.iter().find(|(n, _)| n.as_deref() == Some("init"))
-                .or_else(|| args.get(1)).map(|(_, e)| e);
-            let func = args.iter().find(|(n, _)| n.as_deref() == Some("f"))
-                .or_else(|| args.get(2)).map(|(_, e)| e);
-            Some(compile_fold_intrinsic(&collection.clone(), init, func, ctx, counter))
+            let init = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("init"))
+                .or_else(|| args.get(1))
+                .map(|(_, e)| e);
+            let func = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("f"))
+                .or_else(|| args.get(2))
+                .map(|(_, e)| e);
+            Some(compile_fold_intrinsic(
+                &collection.clone(),
+                init,
+                func,
+                ctx,
+                counter,
+            ))
         }
         "any" if args.len() == 2 => {
-            let pred = args.iter().find(|(n, _)| n.as_deref() == Some("predicate"))
-                .or_else(|| args.get(1)).map(|(_, e)| e);
-            Some(compile_any_intrinsic(&collection.clone(), pred, ctx, counter))
+            let pred = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("predicate"))
+                .or_else(|| args.get(1))
+                .map(|(_, e)| e);
+            Some(compile_any_intrinsic(
+                &collection.clone(),
+                pred,
+                ctx,
+                counter,
+            ))
         }
         "contains" if args.len() == 2 => {
             let target = compile_expr(&args[1].1, ctx, counter);
@@ -633,7 +764,10 @@ fn compile_intrinsic_call(
             let elem = fresh(counter, "elem");
             let first = fresh(counter, "first");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::RawCode("String::new()".to_string())),
+                code_ir::Stmt::let_mut(
+                    &result,
+                    code_ir::Expr::RawCode("String::new()".to_string()),
+                ),
                 code_ir::Stmt::let_mut(&first, code_ir::Expr::BoolLit(true)),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
@@ -665,23 +799,27 @@ fn compile_intrinsic_call(
                 code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
             ]))
         }
-        "last" if args.len() == 1 => {
-            Some(code_ir::Expr::MethodCall {
-                receiver: Box::new(code_ir::Expr::MethodCall {
-                    receiver: Box::new(collection.clone()),
-                    method: "last".to_string(),
-                    args: vec![],
-                }),
-                method: "cloned".to_string(),
+        "last" if args.len() == 1 => Some(code_ir::Expr::MethodCall {
+            receiver: Box::new(code_ir::Expr::MethodCall {
+                receiver: Box::new(collection.clone()),
+                method: "last".to_string(),
                 args: vec![],
-            })
-        }
+            }),
+            method: "cloned".to_string(),
+            args: vec![],
+        }),
         "split" if args.len() == 2 => {
             let delim = compile_expr(&args[1].1, ctx, counter);
             let result = fresh(counter, "split_parts");
             let elem = fresh(counter, "part");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+                code_ir::Stmt::let_mut(
+                    &result,
+                    code_ir::Expr::MacroCall {
+                        name: "vec".to_string(),
+                        args: vec![],
+                    },
+                ),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
                     iter: code_ir::Expr::MethodCall {
@@ -710,7 +848,13 @@ fn compile_intrinsic_call(
             let result = fresh(counter, "chars");
             let ch = fresh(counter, "ch");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+                code_ir::Stmt::let_mut(
+                    &result,
+                    code_ir::Expr::MacroCall {
+                        name: "vec".to_string(),
+                        args: vec![],
+                    },
+                ),
                 code_ir::Stmt::For {
                     binding: ch.clone(),
                     iter: code_ir::Expr::MethodCall {
@@ -746,7 +890,8 @@ fn compile_intrinsic_call(
                 ast::Expr::Record(name, fields) => {
                     let struct_name = name.clone().unwrap_or_else(|| {
                         // Infer struct name from field names
-                        let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                        let field_names: HashSet<&str> =
+                            fields.iter().map(|(n, _)| n.as_str()).collect();
                         infer_struct_name(&field_names, ctx)
                     });
                     let opt_set = ctx.optional_fields.get(&struct_name);
@@ -754,11 +899,17 @@ fn compile_intrinsic_call(
                     let ir_fields: Vec<(String, code_ir::Expr)> = fields
                         .iter()
                         .map(|(n, e)| {
-                            let compiled = compile_expr_in_field_context(e, n, field_types, ctx, counter);
+                            let compiled =
+                                compile_expr_in_field_context(e, n, field_types, ctx, counter);
                             let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
                             let is_none = is_none_expr(&compiled);
-                            let already_optional = is_opt && is_already_optional_expr(e, ctx);
-                            let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
+                            let already_optional =
+                                is_opt && is_already_optional_expr(e, ctx, &struct_name);
+                            let compiled = if is_none {
+                                compiled
+                            } else {
+                                clone_if_needed(compiled)
+                            };
                             let mut result = if is_opt && !is_none && !already_optional {
                                 code_ir::Expr::Call {
                                     func: Box::new(code_ir::Expr::Var("Some".to_string())),
@@ -771,7 +922,10 @@ fn compile_intrinsic_call(
                             // Box wrapping for recursive fields
                             if needs_box_wrapping(&struct_name, n, ctx) {
                                 result = code_ir::Expr::Call {
-                                    func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                                    func: Box::new(code_ir::Expr::Path(vec![
+                                        "Box".to_string(),
+                                        "new".to_string(),
+                                    ])),
                                     args: vec![result],
                                     obligation: None,
                                 };
@@ -788,7 +942,10 @@ fn compile_intrinsic_call(
                 _ => {
                     // Fallback: emit as runtime call
                     Some(code_ir::Expr::Call {
-                        func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "with".to_string()])),
+                        func: Box::new(code_ir::Expr::Path(vec![
+                            "v2_rt".to_string(),
+                            "with".to_string(),
+                        ])),
                         args: vec![cloned_base, compile_expr(&args[1].1, ctx, counter)],
                         obligation: None,
                     })
@@ -800,7 +957,10 @@ fn compile_intrinsic_call(
             let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
             let pos = resolve_named_or_positional(args, "pos", 1, ctx, counter);
             Some(code_ir::Expr::Call {
-                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "char_at".to_string()])),
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "char_at".to_string(),
+                ])),
                 args: vec![s, pos],
                 obligation: None,
             })
@@ -808,7 +968,10 @@ fn compile_intrinsic_call(
         "string_length" if args.len() == 1 => {
             let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
             Some(code_ir::Expr::Call {
-                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "string_length".to_string()])),
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "string_length".to_string(),
+                ])),
                 args: vec![s],
                 obligation: None,
             })
@@ -818,7 +981,10 @@ fn compile_intrinsic_call(
             let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
             let end = resolve_named_or_positional(args, "end", 2, ctx, counter);
             Some(code_ir::Expr::Call {
-                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "substring".to_string()])),
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "substring".to_string(),
+                ])),
                 args: vec![s, start, end],
                 obligation: None,
             })
@@ -827,7 +993,10 @@ fn compile_intrinsic_call(
             let table = resolve_named_or_positional(args, "table", 0, ctx, counter);
             let key = resolve_named_or_positional(args, "key", 1, ctx, counter);
             Some(code_ir::Expr::Call {
-                func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "lookup".to_string()])),
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "lookup".to_string(),
+                ])),
                 args: vec![table, key],
                 obligation: None,
             })
@@ -840,32 +1009,43 @@ fn compile_intrinsic_call(
             let mut result = compile_expr(&args[0].1, ctx, counter);
             for arg in &args[1..] {
                 result = code_ir::Expr::Call {
-                    func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "concat".to_string()])),
+                    func: Box::new(code_ir::Expr::Path(vec![
+                        "v2_rt".to_string(),
+                        "concat".to_string(),
+                    ])),
                     args: vec![result, compile_expr(&arg.1, ctx, counter)],
                     obligation: None,
                 };
             }
             Some(result)
         }
-        // count(list) → list.len() as i64
+        // count(list) → { let __len = list.len(); __len as i64 }
+        // Uses a temp variable so the collection stays as proper IR for substitution.
         "count" if args.len() == 1 => {
-            Some(code_ir::Expr::RawCode(format!(
-                "{}.len() as i64",
-                render_expr_inline(&collection.clone())
-            )))
+            let tmp = fresh(counter, "len");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::Let {
+                    name: tmp.clone(),
+                    expr: code_ir::Expr::MethodCall {
+                        receiver: Box::new(collection.clone()),
+                        method: "len".to_string(),
+                        args: vec![],
+                    },
+                    mutable: false,
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(format!("{tmp} as i64"))),
+            ]))
         }
         // first(list) → list.first().cloned()
-        "first" if args.len() == 1 => {
-            Some(code_ir::Expr::MethodCall {
-                receiver: Box::new(code_ir::Expr::MethodCall {
-                    receiver: Box::new(collection.clone()),
-                    method: "first".to_string(),
-                    args: vec![],
-                }),
-                method: "cloned".to_string(),
+        "first" if args.len() == 1 => Some(code_ir::Expr::MethodCall {
+            receiver: Box::new(code_ir::Expr::MethodCall {
+                receiver: Box::new(collection.clone()),
+                method: "first".to_string(),
                 args: vec![],
-            })
-        }
+            }),
+            method: "cloned".to_string(),
+            args: vec![],
+        }),
         // append(list, item) → { let mut v = list; v.push(item); v }
         "append" if args.len() == 2 => {
             let list = collection.clone();
@@ -888,7 +1068,8 @@ fn compile_intrinsic_call(
             let mapped = match &args[1].1 {
                 ast::Expr::Lambda(params, body) => {
                     let compiled = compile_expr(body, ctx, counter);
-                    params.first()
+                    params
+                        .first()
                         .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                         .unwrap_or(compiled)
                 }
@@ -899,7 +1080,13 @@ fn compile_intrinsic_call(
                 },
             };
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+                code_ir::Stmt::let_mut(
+                    &result,
+                    code_ir::Expr::MacroCall {
+                        name: "vec".to_string(),
+                        args: vec![],
+                    },
+                ),
                 code_ir::Stmt::For {
                     binding: elem,
                     iter: make_owned_iter(collection.clone()),
@@ -918,7 +1105,13 @@ fn compile_intrinsic_call(
             let idx = fresh(counter, "idx");
             let elem = fresh(counter, "elem");
             Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+                code_ir::Stmt::let_mut(
+                    &result,
+                    code_ir::Expr::MacroCall {
+                        name: "vec".to_string(),
+                        args: vec![],
+                    },
+                ),
                 code_ir::Stmt::For {
                     binding: format!("({idx}, {elem})"),
                     iter: code_ir::Expr::MethodCall {
@@ -1007,12 +1200,10 @@ fn compile_intrinsic_call(
             })
         }
         // parse_int(s) → s.parse::<i64>().ok()
-        "parse_int" if args.len() == 1 => {
-            Some(code_ir::Expr::RawCode(format!(
-                "{}.parse::<i64>().ok()",
-                render_expr_inline(&collection.clone())
-            )))
-        }
+        "parse_int" if args.len() == 1 => Some(code_ir::Expr::RawCode(format!(
+            "{}.parse::<i64>().ok()",
+            render_expr_inline(&collection.clone())
+        ))),
         // reverse(list) → { let mut v = list; v.reverse(); v }
         "reverse" if args.len() == 1 => {
             let v = fresh(counter, "reversed");
@@ -1027,13 +1218,11 @@ fn compile_intrinsic_call(
             ]))
         }
         // is_empty(list) → list.is_empty()
-        "is_empty" if args.len() == 1 => {
-            Some(code_ir::Expr::MethodCall {
-                receiver: Box::new(collection.clone()),
-                method: "is_empty".to_string(),
-                args: vec![],
-            })
-        }
+        "is_empty" if args.len() == 1 => Some(code_ir::Expr::MethodCall {
+            receiver: Box::new(collection.clone()),
+            method: "is_empty".to_string(),
+            args: vec![],
+        }),
         // skip(list, n) → list[n as usize..].to_vec()
         "skip" if args.len() == 2 => {
             let n = compile_expr(&args[1].1, ctx, counter);
@@ -1125,7 +1314,8 @@ fn compile_map_intrinsic(
     let mapped_value = match mapper {
         Some(ast::Expr::Lambda(params, body)) => {
             let compiled = compile_expr(body, ctx, counter);
-            params.first()
+            params
+                .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                 .unwrap_or(compiled)
         }
@@ -1137,7 +1327,13 @@ fn compile_map_intrinsic(
         None => code_ir::Expr::Var(elem.clone()),
     };
     code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+        code_ir::Stmt::let_mut(
+            &result,
+            code_ir::Expr::MacroCall {
+                name: "vec".to_string(),
+                args: vec![],
+            },
+        ),
         code_ir::Stmt::For {
             binding: elem,
             iter: make_owned_iter(collection.clone()),
@@ -1162,7 +1358,8 @@ fn compile_filter_intrinsic(
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
             let compiled = compile_expr(body, ctx, counter);
-            params.first()
+            params
+                .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                 .unwrap_or(compiled)
         }
@@ -1174,7 +1371,13 @@ fn compile_filter_intrinsic(
         None => code_ir::Expr::BoolLit(true),
     };
     code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall { name: "vec".to_string(), args: vec![] }),
+        code_ir::Stmt::let_mut(
+            &result,
+            code_ir::Expr::MacroCall {
+                name: "vec".to_string(),
+                args: vec![],
+            },
+        ),
         code_ir::Stmt::For {
             binding: elem.clone(),
             iter: make_owned_iter(collection.clone()),
@@ -1201,7 +1404,9 @@ fn compile_fold_intrinsic(
 ) -> code_ir::Expr {
     let acc = fresh(counter, "acc");
     let elem = fresh(counter, "elem");
-    let init_expr = init.map(|e| compile_expr(e, ctx, counter)).unwrap_or(code_ir::Expr::IntLit(0));
+    let init_expr = init
+        .map(|e| compile_expr(e, ctx, counter))
+        .unwrap_or(code_ir::Expr::IntLit(0));
     let body_expr = match func {
         Some(ast::Expr::Lambda(params, body)) => {
             let mut compiled = compile_expr(body, ctx, counter);
@@ -1215,7 +1420,10 @@ fn compile_fold_intrinsic(
         }
         Some(other) => code_ir::Expr::Call {
             func: Box::new(compile_expr(other, ctx, counter)),
-            args: vec![code_ir::Expr::Var(acc.clone()), code_ir::Expr::Var(elem.clone())],
+            args: vec![
+                code_ir::Expr::Var(acc.clone()),
+                code_ir::Expr::Var(elem.clone()),
+            ],
             obligation: None,
         },
         None => code_ir::Expr::Var(acc.clone()),
@@ -1245,7 +1453,8 @@ fn compile_any_intrinsic(
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
             let compiled = compile_expr(body, ctx, counter);
-            params.first()
+            params
+                .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                 .unwrap_or(compiled)
         }
@@ -1291,12 +1500,20 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
         code_ir::Expr::Field(receiver, field) => {
             code_ir::Expr::Field(Box::new(substitute_var(receiver, from, to)), field.clone())
         }
-        code_ir::Expr::Call { func, args, obligation } => code_ir::Expr::Call {
+        code_ir::Expr::Call {
+            func,
+            args,
+            obligation,
+        } => code_ir::Expr::Call {
             func: Box::new(substitute_var(func, from, to)),
             args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
             obligation: *obligation,
         },
-        code_ir::Expr::MethodCall { receiver, method, args } => code_ir::Expr::MethodCall {
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } => code_ir::Expr::MethodCall {
             receiver: Box::new(substitute_var(receiver, from, to)),
             method: method.clone(),
             args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
@@ -1310,28 +1527,57 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
             op: op.clone(),
             expr: Box::new(substitute_var(inner, from, to)),
         },
-        code_ir::Expr::If { cond, then_body, else_body } => code_ir::Expr::If {
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => code_ir::Expr::If {
             cond: Box::new(substitute_var(cond, from, to)),
-            then_body: then_body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
-            else_body: else_body.as_ref().map(|stmts| stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect()),
+            then_body: then_body
+                .iter()
+                .map(|s| substitute_var_in_stmt(s, from, to))
+                .collect(),
+            else_body: else_body.as_ref().map(|stmts| {
+                stmts
+                    .iter()
+                    .map(|s| substitute_var_in_stmt(s, from, to))
+                    .collect()
+            }),
         },
-        code_ir::Expr::Block(stmts) => {
-            code_ir::Expr::Block(stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect())
-        }
+        code_ir::Expr::Block(stmts) => code_ir::Expr::Block(
+            stmts
+                .iter()
+                .map(|s| substitute_var_in_stmt(s, from, to))
+                .collect(),
+        ),
         code_ir::Expr::Ref(inner) => code_ir::Expr::Ref(Box::new(substitute_var(inner, from, to))),
-        code_ir::Expr::RefMut(inner) => code_ir::Expr::RefMut(Box::new(substitute_var(inner, from, to))),
-        code_ir::Expr::Deref(inner) => code_ir::Expr::Deref(Box::new(substitute_var(inner, from, to))),
+        code_ir::Expr::RefMut(inner) => {
+            code_ir::Expr::RefMut(Box::new(substitute_var(inner, from, to)))
+        }
+        code_ir::Expr::Deref(inner) => {
+            code_ir::Expr::Deref(Box::new(substitute_var(inner, from, to)))
+        }
         code_ir::Expr::Struct { name, fields, rest } => code_ir::Expr::Struct {
             name: name.clone(),
-            fields: fields.iter().map(|(n, e)| (n.clone(), substitute_var(e, from, to))).collect(),
+            fields: fields
+                .iter()
+                .map(|(n, e)| (n.clone(), substitute_var(e, from, to)))
+                .collect(),
             rest: rest.as_ref().map(|r| Box::new(substitute_var(r, from, to))),
         },
         code_ir::Expr::Match { expr, arms } => code_ir::Expr::Match {
             expr: Box::new(substitute_var(expr, from, to)),
-            arms: arms.iter().map(|arm| code_ir::MatchArm {
-                pattern: arm.pattern.clone(),
-                body: arm.body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
-            }).collect(),
+            arms: arms
+                .iter()
+                .map(|arm| code_ir::MatchArm {
+                    pattern: arm.pattern.clone(),
+                    body: arm
+                        .body
+                        .iter()
+                        .map(|s| substitute_var_in_stmt(s, from, to))
+                        .collect(),
+                })
+                .collect(),
         },
         code_ir::Expr::Closure { args, body } => {
             // Don't substitute if the closure shadows the variable
@@ -1352,18 +1598,22 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
             name: name.clone(),
             args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
         },
-        code_ir::Expr::Tuple(items) => code_ir::Expr::Tuple(
-            items.iter().map(|a| substitute_var(a, from, to)).collect(),
-        ),
-        code_ir::Expr::Array(items) => code_ir::Expr::Array(
-            items.iter().map(|a| substitute_var(a, from, to)).collect(),
-        ),
+        code_ir::Expr::Tuple(items) => {
+            code_ir::Expr::Tuple(items.iter().map(|a| substitute_var(a, from, to)).collect())
+        }
+        code_ir::Expr::Array(items) => {
+            code_ir::Expr::Array(items.iter().map(|a| substitute_var(a, from, to)).collect())
+        }
     }
 }
 
 fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) -> code_ir::Stmt {
     match stmt {
-        code_ir::Stmt::Let { name, expr, mutable } => code_ir::Stmt::Let {
+        code_ir::Stmt::Let {
+            name,
+            expr,
+            mutable,
+        } => code_ir::Stmt::Let {
             name: name.clone(),
             expr: substitute_var(expr, from, to),
             mutable: *mutable,
@@ -1375,15 +1625,29 @@ fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) 
         code_ir::Stmt::Expr(expr) => code_ir::Stmt::Expr(substitute_var(expr, from, to)),
         code_ir::Stmt::TailExpr(expr) => code_ir::Stmt::TailExpr(substitute_var(expr, from, to)),
         code_ir::Stmt::Return(expr) => code_ir::Stmt::Return(substitute_var(expr, from, to)),
-        code_ir::Stmt::For { binding, iter, body } => code_ir::Stmt::For {
+        code_ir::Stmt::For {
+            binding,
+            iter,
+            body,
+        } => code_ir::Stmt::For {
             binding: binding.clone(),
             iter: substitute_var(iter, from, to),
-            body: body.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+            body: body
+                .iter()
+                .map(|s| substitute_var_in_stmt(s, from, to))
+                .collect(),
         },
         code_ir::Stmt::BlockScope(stmts) => code_ir::Stmt::BlockScope(
-            stmts.iter().map(|s| substitute_var_in_stmt(s, from, to)).collect(),
+            stmts
+                .iter()
+                .map(|s| substitute_var_in_stmt(s, from, to))
+                .collect(),
         ),
-        code_ir::Stmt::Bind { targets, intent, expr } => code_ir::Stmt::Bind {
+        code_ir::Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => code_ir::Stmt::Bind {
             targets: targets.clone(),
             intent: *intent,
             expr: substitute_var(expr, from, to),
@@ -1429,13 +1693,11 @@ fn clone_if_needed(expr: code_ir::Expr) -> code_ir::Expr {
                 }
             }
         }
-        code_ir::Expr::Field(_, _) => {
-            code_ir::Expr::MethodCall {
-                receiver: Box::new(expr),
-                method: "clone".to_string(),
-                args: vec![],
-            }
-        }
+        code_ir::Expr::Field(_, _) => code_ir::Expr::MethodCall {
+            receiver: Box::new(expr),
+            method: "clone".to_string(),
+            args: vec![],
+        },
         // Literals, calls, etc. are temporary values — don't clone
         _ => expr,
     }
@@ -1503,7 +1765,8 @@ fn compile_match(
     }
     // Infer the scrutinee's type so variant patterns can be resolved to the
     // correct parent enum (e.g., LitStr -> LiteralValue::LitStr, not TokenKind::LitStr).
-    let scrutinee_type = infer_scrutinee_type(scrutinee, ctx);
+    let scrutinee_type =
+        infer_scrutinee_type(scrutinee, ctx).or_else(|| infer_type_from_arms(arms, ctx));
     code_ir::Expr::Match {
         expr: Box::new(compiled_scrutinee),
         arms: arms
@@ -1533,6 +1796,40 @@ fn infer_scrutinee_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<String
         }
         _ => None,
     }
+}
+
+/// Infer the expected type from the match arms' variant patterns.
+///
+/// When `infer_scrutinee_type` can't determine the type (e.g. for match
+/// bindings), look at which enum contains the most variant names used
+/// in the arms. This disambiguates cases like `LitStr` which exists in
+/// both `TokenKind` and `LiteralValue`.
+fn infer_type_from_arms(arms: &[ast::MatchArm], ctx: &CompileContext) -> Option<String> {
+    let variant_names: Vec<&str> = arms
+        .iter()
+        .filter_map(|a| match &a.pattern {
+            ast::Pattern::Ident(name) if name != "null" && name != "_" => Some(name.as_str()),
+            ast::Pattern::Variant(name, _) if name != "Some" && name != "None" => {
+                Some(name.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    if variant_names.is_empty() {
+        return None;
+    }
+    // Find the enum that contains the most of these variants
+    let mut best: Option<(&String, usize)> = None;
+    for (enum_name, variants) in &ctx.enum_variants {
+        let count = variant_names
+            .iter()
+            .filter(|v| variants.contains(**v))
+            .count();
+        if count > 0 && best.is_none_or(|(_, bc)| count > bc) {
+            best = Some((enum_name, count));
+        }
+    }
+    best.map(|(name, _)| name.clone())
 }
 
 fn compile_match_arm(
@@ -1575,8 +1872,47 @@ fn compile_match_arm(
             }
         }
     }
+    // Track match bindings from optional fields so the body compilation
+    // knows they're already Option<T> and doesn't double-wrap in Some().
+    let body_ctx = if let ast::Pattern::Variant(variant_name, fields) = &arm.pattern {
+        let mut opt_bindings = Vec::new();
+        let mut type_bindings = Vec::new();
+        for (field_name, field_pat) in fields {
+            if let ast::Pattern::Ident(bind_name) = field_pat {
+                // Check if this field is optional in the variant's struct
+                if let Some(opt_fields) = ctx.optional_fields.get(variant_name.as_str()) {
+                    if opt_fields.contains(field_name.as_str()) {
+                        opt_bindings.push(bind_name.clone());
+                    }
+                }
+                // Track field type for scrutinee type inference on bindings
+                if let Some(field_types) = ctx.struct_field_types.get(variant_name.as_str()) {
+                    if let Some(ft) = field_types.get(field_name.as_str()) {
+                        type_bindings.push((bind_name.clone(), ft.clone()));
+                    }
+                }
+            }
+        }
+        if opt_bindings.is_empty() && type_bindings.is_empty() {
+            std::borrow::Cow::Borrowed(ctx)
+        } else {
+            let mut augmented = ctx.clone();
+            for name in opt_bindings {
+                augmented.optional_params.insert(name);
+            }
+            for (name, ty) in type_bindings {
+                augmented.param_types.insert(name, ty);
+            }
+            std::borrow::Cow::Owned(augmented)
+        }
+    } else {
+        std::borrow::Cow::Borrowed(ctx)
+    };
+
     let mut body = deref_stmts;
-    body.push(code_ir::Stmt::TailExpr(compile_expr(&arm.body, ctx, counter)));
+    body.push(code_ir::Stmt::TailExpr(compile_expr(
+        &arm.body, &body_ctx, counter,
+    )));
     code_ir::MatchArm { pattern, body }
 }
 
@@ -1676,7 +2012,11 @@ fn compile_pattern_typed(
                             format!("ref {n}")
                         } else {
                             let field_type = variant_field_types.and_then(|ft| ft.get(n.as_str()));
-                            format!("{}: {}", n, compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str())))
+                            format!(
+                                "{}: {}",
+                                n,
+                                compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()))
+                            )
                         }
                     })
                     .collect();
@@ -1738,7 +2078,11 @@ fn convert_trailing_tailexpr_to_return(mut stmts: Vec<code_ir::Stmt>) -> Vec<cod
                 let expr = std::mem::replace(expr, code_ir::Expr::Tuple(vec![]));
                 *last = code_ir::Stmt::Return(expr);
             }
-            code_ir::Stmt::Expr(code_ir::Expr::If { then_body, else_body, .. }) => {
+            code_ir::Stmt::Expr(code_ir::Expr::If {
+                then_body,
+                else_body,
+                ..
+            }) => {
                 *then_body = convert_trailing_tailexpr_to_return(std::mem::take(then_body));
                 if let Some(eb) = else_body {
                     *eb = convert_trailing_tailexpr_to_return(std::mem::take(eb));
@@ -1750,18 +2094,22 @@ fn convert_trailing_tailexpr_to_return(mut stmts: Vec<code_ir::Stmt>) -> Vec<cod
     stmts
 }
 
-fn expr_to_stmts(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> Vec<code_ir::Stmt> {
+fn expr_to_stmts(
+    expr: &ast::Expr,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> Vec<code_ir::Stmt> {
     match expr {
         ast::Expr::Return(fields) => {
-            vec![code_ir::Stmt::Return(compile_return_fields(fields, ctx, counter))]
+            vec![code_ir::Stmt::Return(compile_return_fields(
+                fields, ctx, counter,
+            ))]
         }
-        ast::Expr::Block(stmts) => {
-            stmts
-                .iter()
-                .enumerate()
-                .map(|(index, stmt)| compile_stmt(stmt, index + 1 == stmts.len(), ctx, counter))
-                .collect()
-        }
+        ast::Expr::Block(stmts) => stmts
+            .iter()
+            .enumerate()
+            .map(|(index, stmt)| compile_stmt(stmt, index + 1 == stmts.len(), ctx, counter))
+            .collect(),
         _ => {
             vec![code_ir::Stmt::TailExpr(compile_expr(expr, ctx, counter))]
         }
@@ -1772,7 +2120,11 @@ fn expr_to_stmts(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) ->
 // String interpolation
 // ---------------------------------------------------------------------------
 
-fn compile_string_interp(parts: &[ast::StringPart], ctx: &CompileContext, counter: &mut usize) -> code_ir::Expr {
+fn compile_string_interp(
+    parts: &[ast::StringPart],
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
     let mut template = String::new();
     let mut args = Vec::new();
     for part in parts {
@@ -1868,19 +2220,28 @@ fn is_likely_option_receiver_ctx(expr: &ast::Expr, ctx: &CompileContext) -> bool
 /// construction code uses the variant name as `struct_name`.
 fn needs_box_wrapping(struct_name: &str, field_name: &str, ctx: &CompileContext) -> bool {
     // Direct: (StructName, field_name)
-    if ctx.boxed_fields.contains(&(struct_name.to_string(), field_name.to_string())) {
+    if ctx
+        .boxed_fields
+        .contains(&(struct_name.to_string(), field_name.to_string()))
+    {
         return true;
     }
     // Variant qualified: (StructName, StructName::field_name)
     let qualified = format!("{struct_name}::{field_name}");
-    if ctx.boxed_fields.contains(&(struct_name.to_string(), qualified)) {
+    if ctx
+        .boxed_fields
+        .contains(&(struct_name.to_string(), qualified))
+    {
         return true;
     }
     // Via parent enum: if StructName is a variant of EnumName,
     // check (EnumName, StructName::field_name)
     if let Some(enum_name) = ctx.variant_to_enum.get(struct_name) {
         let variant_qualified = format!("{struct_name}::{field_name}");
-        if ctx.boxed_fields.contains(&(enum_name.clone(), variant_qualified)) {
+        if ctx
+            .boxed_fields
+            .contains(&(enum_name.clone(), variant_qualified))
+        {
             return true;
         }
     }
@@ -1892,14 +2253,21 @@ fn needs_box_wrapping(struct_name: &str, field_name: &str, ctx: &CompileContext)
 /// Returns true when the expression accesses a field that is itself `T?` in
 /// the source struct, meaning the compiled Rust type is already `Option<T>`
 /// and should NOT be wrapped in another `Some()`.
-fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext) -> bool {
+fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext, target_struct: &str) -> bool {
+    // Only check optionality against the specific target struct being constructed
+    let target_opt_fields = ctx.optional_fields.get(target_struct);
     match expr {
-        // field_access: x.field_name — check if field_name is optional in any known struct
+        // field_access: x.field_name — check if field_name is optional in the receiver's struct
         ast::Expr::FieldAccess(receiver, field_name) => {
-            // Try to determine the receiver's type from context
-            // For now, check if ANY struct has this field as optional
-            // and the receiver looks like a variable (common case: result.err)
             if let ast::Expr::Ident(_) = receiver.as_ref() {
+                // Check the receiver's struct type for optionality
+                if let Some(receiver_type) = infer_scrutinee_type(receiver, ctx) {
+                    if let Some(opt_fields) = ctx.optional_fields.get(&receiver_type) {
+                        return opt_fields.contains(field_name.as_str());
+                    }
+                }
+                // Fallback: check ALL structs — field accesses are specific enough
+                // that name-based matching is reliable (unlike bare identifiers).
                 for opt_fields in ctx.optional_fields.values() {
                     if opt_fields.contains(field_name.as_str()) {
                         return true;
@@ -1909,9 +2277,6 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext) -> bool {
             false
         }
         // Ident: check if the variable is a known optional parameter.
-        // Also check optional_fields, but only when the variable is NOT a
-        // known non-optional parameter (to avoid false positives where a
-        // parameter like `span: SourceSpan` matches `Diagnostic.span: Option<SourceSpan>`).
         ast::Expr::Ident(name) => {
             if ctx.optional_params.contains(name.as_str()) {
                 return true;
@@ -1921,10 +2286,9 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext) -> bool {
             if ctx.param_types.contains_key(name.as_str()) {
                 return false;
             }
-            for opt_fields in ctx.optional_fields.values() {
-                if opt_fields.contains(name.as_str()) {
-                    return true;
-                }
+            // Only check target struct's optional fields, not all structs
+            if let Some(opt_fields) = target_opt_fields {
+                return opt_fields.contains(name.as_str());
             }
             false
         }
@@ -1934,8 +2298,30 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext) -> bool {
         ast::Expr::Call(name, _) if name == "Some" => true,
         // Null coalesce (x ?? y): result is non-optional by definition
         ast::Expr::BinOp(_, ast::BinOp::NullCoalesce, _) => false,
-        // If/match that return optional values from both branches
-        // (conservative: don't double-wrap)
+        // If/else where one branch is null → result is already Option<T>
+        ast::Expr::If(_, then_expr, Some(else_expr)) => {
+            is_null_ast_expr(then_expr) || is_null_ast_expr(else_expr)
+        }
+        // If without else where the then branch is null
+        ast::Expr::If(_, then_expr, None) => is_null_ast_expr(then_expr),
+        _ => false,
+    }
+}
+
+/// Check if an AST expression is null/None.
+fn is_null_ast_expr(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::Ident(name) if name == "null" => true,
+        ast::Expr::Literal(ast::Literal::None) => true,
+        ast::Expr::Record(Some(name), _) if name == "None" => true,
+        // Block with single expression
+        ast::Expr::Block(stmts) if stmts.len() == 1 => {
+            if let ast::Stmt::Expr(e) = &stmts[0] {
+                is_null_ast_expr(e)
+            } else {
+                false
+            }
+        }
         _ => false,
     }
 }
@@ -1981,11 +2367,22 @@ fn compile_expr_in_field_context(
                     let ir_fields: Vec<(String, code_ir::Expr)> = fields
                         .iter()
                         .map(|(n, e)| {
-                            let compiled = compile_expr_in_field_context(e, n, variant_field_types, ctx, counter);
+                            let compiled = compile_expr_in_field_context(
+                                e,
+                                n,
+                                variant_field_types,
+                                ctx,
+                                counter,
+                            );
                             let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
                             let is_none = is_none_expr(&compiled);
-                            let already_optional = is_opt && is_already_optional_expr(e, ctx);
-                            let compiled = if is_none { compiled } else { clone_if_needed(compiled) };
+                            let already_optional =
+                                is_opt && is_already_optional_expr(e, ctx, record_name);
+                            let compiled = if is_none {
+                                compiled
+                            } else {
+                                clone_if_needed(compiled)
+                            };
                             let mut result = if is_opt && !is_none && !already_optional {
                                 code_ir::Expr::Call {
                                     func: Box::new(code_ir::Expr::Var("Some".to_string())),
@@ -1997,7 +2394,10 @@ fn compile_expr_in_field_context(
                             };
                             if needs_box_wrapping(record_name, n, ctx) {
                                 result = code_ir::Expr::Call {
-                                    func: Box::new(code_ir::Expr::Path(vec!["Box".to_string(), "new".to_string()])),
+                                    func: Box::new(code_ir::Expr::Path(vec![
+                                        "Box".to_string(),
+                                        "new".to_string(),
+                                    ])),
                                     args: vec![result],
                                     obligation: None,
                                 };
@@ -2005,6 +2405,7 @@ fn compile_expr_in_field_context(
                             (n.clone(), result)
                         })
                         .collect();
+                    let ir_fields = fill_missing_fields(record_name, ir_fields, ctx);
                     return code_ir::Expr::Struct {
                         name: qualified,
                         fields: ir_fields,
@@ -2181,7 +2582,7 @@ fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
         ast::Expr::Literal(ast::Literal::Float(_)) => "f64",
         ast::Expr::Literal(ast::Literal::Bool(_)) => "bool",
         ast::Expr::List(_) => "Vec<String>", // best-effort default
-        _ => "String", // fallback
+        _ => "String",                       // fallback
     }
 }
 
@@ -2195,7 +2596,11 @@ pub fn synthesize_anonymous_structs(
     fn_name: &str,
     body: &ast::FnBody,
     known_structs: &HashMap<String, HashMap<String, String>>,
-) -> (Vec<code_ir::Item>, HashMap<Vec<String>, String>, HashMap<String, HashMap<String, String>>) {
+) -> (
+    Vec<code_ir::Item>,
+    HashMap<Vec<String>, String>,
+    HashMap<String, HashMap<String, String>>,
+) {
     let shapes = collect_anonymous_record_shapes(body);
     let mut items = Vec::new();
     let mut name_map: HashMap<Vec<String>, String> = HashMap::new();
@@ -2228,8 +2633,7 @@ pub fn synthesize_anonymous_structs(
         }
 
         // Synthesize a struct name from the function name.
-        let pascal_fn = capitalize_first_char(&fn_name.replace('_', " "))
-            .replace(' ', "");
+        let pascal_fn = capitalize_first_char(&fn_name.replace('_', " ")).replace(' ', "");
         let struct_name = if idx == 0 {
             format!("__{pascal_fn}State")
         } else {
@@ -2377,7 +2781,11 @@ mod tests {
     #[test]
     fn compile_literal_bool() {
         let mut counter = 0usize;
-        let ir = compile_expr(&Expr::Literal(Literal::Bool(true)), &empty_ctx(), &mut counter);
+        let ir = compile_expr(
+            &Expr::Literal(Literal::Bool(true)),
+            &empty_ctx(),
+            &mut counter,
+        );
         assert!(matches!(ir, code_ir::Expr::BoolLit(true)));
     }
 
@@ -2391,7 +2799,9 @@ mod tests {
         );
         // String literals compile to "hello".to_string() for v2 compatibility.
         match &ir {
-            code_ir::Expr::MethodCall { receiver, method, .. } => {
+            code_ir::Expr::MethodCall {
+                receiver, method, ..
+            } => {
                 assert_eq!(method, "to_string");
                 assert!(
                     matches!(receiver.as_ref(), code_ir::Expr::Str(s) if s == "hello"),
@@ -2412,8 +2822,14 @@ mod tests {
                 // compile_ident now wraps non-__ variables with .clone() (S76),
                 // so the receiver is MethodCall(Var("block"), "clone").
                 match *receiver {
-                    code_ir::Expr::MethodCall { ref receiver, ref method, .. } => {
-                        assert!(matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "block"));
+                    code_ir::Expr::MethodCall {
+                        ref receiver,
+                        ref method,
+                        ..
+                    } => {
+                        assert!(
+                            matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "block")
+                        );
                         assert_eq!(method, "clone");
                     }
                     code_ir::Expr::Var(ref n) => assert_eq!(n, "block"),

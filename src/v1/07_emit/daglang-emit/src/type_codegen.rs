@@ -15,9 +15,7 @@
 //! ## Fn mapping
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
-use daglang_syntax::ast::{
-    DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant,
-};
+use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
 use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
 
@@ -67,7 +65,11 @@ pub fn type_expr_to_rust_with_registry(
             };
             if let Some(kind) = container_kind {
                 let inner = arg_strs.last().cloned().unwrap_or_default();
-                let key = if arg_strs.len() > 1 { Some(arg_strs[0].as_str()) } else { None };
+                let key = if arg_strs.len() > 1 {
+                    Some(arg_strs[0].as_str())
+                } else {
+                    None
+                };
                 language_model::resolve_container(kind, &inner, key, model)
                     .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")))
             } else {
@@ -99,7 +101,11 @@ pub fn type_expr_to_rust_with_registry(
                     _ => {}
                 }
             }
-            if props.width.is_some() || props.signed.is_some() || props.domain.is_some() || props.arithmetic {
+            if props.width.is_some()
+                || props.signed.is_some()
+                || props.domain.is_some()
+                || props.arithmetic
+            {
                 return crate::type_mapping::emit_shape(
                     &gunbc_ir::TypeShape::Platform(props),
                     crate::type_mapping::Backend::Rust,
@@ -284,7 +290,11 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
             // TEMPORARY bootstrap scaffolding (S81): In static context, List<String>
             // must emit &[&str] because string literals are &str, not String.
             let is_string_list = matches!(&args[0], TypeExpr::Named(n) if n == "String");
-            let static_elem_type = if is_string_list { "&str".to_string() } else { elem_type.clone() };
+            let static_elem_type = if is_string_list {
+                "&str".to_string()
+            } else {
+                elem_type.clone()
+            };
             let elem_type_name = match &args[0] {
                 TypeExpr::Named(n) => n.as_str(),
                 _ => &elem_type,
@@ -298,7 +308,10 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                     .join(",\n    "),
                 _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
             };
-            (format!("&[{static_elem_type}]"), format!("&[\n    {items}\n]"))
+            (
+                format!("&[{static_elem_type}]"),
+                format!("&[\n    {items}\n]"),
+            )
         }
         // Map<K, V> data: emit as a LazyLock static (HashMap can't be const)
         TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
@@ -614,13 +627,22 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
 
     // Augment context with synthesized struct field types and optional params
     // so compile_expr can resolve anonymous records and prevent double-wrapping.
-    let ctx = if new_field_types.is_empty() && optional_params.is_empty() && param_types.is_empty() {
-        std::borrow::Cow::Borrowed(ctx)
-    } else {
+    // Extract the return type name for variant disambiguation
+    let return_type_name = match &fd.return_type {
+        TypeExpr::Named(n) => Some(n.clone()),
+        TypeExpr::Optional(inner) => match inner.as_ref() {
+            TypeExpr::Named(n) => Some(n.clone()),
+            _ => None,
+        },
+        _ => None,
+    };
+
+    let ctx = {
         let mut augmented = ctx.clone();
         augmented.struct_field_types.extend(new_field_types);
         augmented.optional_params = optional_params;
         augmented.param_types = param_types;
+        augmented.current_return_type = return_type_name;
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -872,6 +894,7 @@ pub fn typedefs_to_source_file(
         fn_return_types: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
+        current_return_type: None,
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -989,6 +1012,7 @@ pub fn generate_types_for_modules(
             fn_return_types: std::collections::HashMap::new(),
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
+            current_return_type: None,
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1304,17 +1328,21 @@ pub fn typedef_to_code_ir_boxed(
                 derives.push("Copy".to_string());
                 derives.push("Hash".to_string());
             }
-            // Add a `#[default]` attribute on the first variant so enums
+            // Add a `#[default]` attribute on the first unit variant so enums
             // can derive Default — needed for struct fields that contain
             // enum types when the parent struct derives Default.
-            derives.push("Default".to_string());
+            // Rust only allows `#[default]` on unit variants (no fields).
+            let default_variant_idx = variants.iter().position(|v| v.fields.is_empty());
+            if default_variant_idx.is_some() {
+                derives.push("Default".to_string());
+            }
 
             let variant_strs: Vec<String> = variants
                 .iter()
                 .enumerate()
                 .map(|(i, v)| {
                     let base = format_variant_boxed(v, &td.name, recursive_fields);
-                    if i == 0 {
+                    if Some(i) == default_variant_idx {
                         format!("#[default]\n    {base}")
                     } else {
                         base
@@ -1322,13 +1350,33 @@ pub fn typedef_to_code_ir_boxed(
                 })
                 .collect();
 
-            vec![code_ir::Item::Enum(EnumDef {
+            let mut items = vec![code_ir::Item::Enum(EnumDef {
                 name: td.name.clone(),
                 is_pub: true,
                 derives,
                 variants: variant_strs,
                 doc: vec![],
-            })]
+            })];
+
+            // For enums without any unit variant, generate a manual impl Default
+            // that constructs the first variant with all fields defaulted.
+            if default_variant_idx.is_none() {
+                let first = &variants[0];
+                let default_fields: Vec<String> = first
+                    .fields
+                    .iter()
+                    .map(|f| format!("{}: Default::default()", f.name))
+                    .collect();
+                items.push(code_ir::Item::Raw(format!(
+                    "impl Default for {} {{\n    fn default() -> Self {{\n        {}::{} {{ {} }}\n    }}\n}}",
+                    td.name,
+                    td.name,
+                    first.name,
+                    default_fields.join(", ")
+                )));
+            }
+
+            items
         }
         TypeBody::Alias(type_expr) => {
             let rust_type = type_expr_to_rust(type_expr);

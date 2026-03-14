@@ -670,19 +670,37 @@ mod tests {
     #[test]
     fn diagnostic_rich_display_with_snippet() {
         let source = "func clippy_lint() {\n    actual_content: read_result.content,\n}\n";
-        let mut d = Diagnostic::new("VER004", "unwired required input: node 'compare' port 'actual_content'")
-            .with_file(PathBuf::from("dsl/std/patterns.dag"))
-            .with_span(Span::new(25, 39)) // "actual_content" on line 2
-            .with_help("wire a producer into `compare`.`actual_content`");
+        let mut d = Diagnostic::new(
+            "VER004",
+            "unwired required input: node 'compare' port 'actual_content'",
+        )
+        .with_file(PathBuf::from("dsl/std/patterns.dag"))
+        .with_span(Span::new(25, 39)) // "actual_content" on line 2
+        .with_help("wire a producer into `compare`.`actual_content`");
         d.resolve_source(source);
         let output = d.to_string();
         // Verify rich format is used (contains box drawing)
-        assert!(output.contains("┌─"), "should have box-drawing header: {output}");
-        assert!(output.contains("└─"), "should have box-drawing footer: {output}");
-        assert!(output.contains("actual_content"), "should show source line: {output}");
-        assert!(output.contains("^^^^"), "should have underline arrows: {output}");
+        assert!(
+            output.contains("┌─"),
+            "should have box-drawing header: {output}"
+        );
+        assert!(
+            output.contains("└─"),
+            "should have box-drawing footer: {output}"
+        );
+        assert!(
+            output.contains("actual_content"),
+            "should show source line: {output}"
+        );
+        assert!(
+            output.contains("^^^^"),
+            "should have underline arrows: {output}"
+        );
         assert!(output.contains("help"), "should have help text: {output}");
-        assert!(output.contains("dsl/std/patterns.dag"), "should have file path: {output}");
+        assert!(
+            output.contains("dsl/std/patterns.dag"),
+            "should have file path: {output}"
+        );
     }
 
     #[test]
@@ -694,14 +712,16 @@ mod tests {
         // Compact format — no box drawing
         assert!(output.contains("[VER004]"), "should have code: {output}");
         assert!(output.contains("test.dag"), "should have file: {output}");
-        assert!(!output.contains("┌─"), "should NOT have box drawing: {output}");
+        assert!(
+            !output.contains("┌─"),
+            "should NOT have box drawing: {output}"
+        );
     }
 
     #[test]
     fn resolve_source_populates_line_col() {
         let source = "line one\nline two\nline three\n";
-        let mut d = Diagnostic::new("E001", "test")
-            .with_span(Span::new(9, 17)); // "line two"
+        let mut d = Diagnostic::new("E001", "test").with_span(Span::new(9, 17)); // "line two"
         d.resolve_source(source);
         assert_eq!(d.line, Some(2));
         assert_eq!(d.column, Some(1));

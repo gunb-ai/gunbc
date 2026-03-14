@@ -1,7 +1,7 @@
 //! Shared FsEnv graph-builder helpers.
 
-use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port};
 use gunbc_ir::filename::{self, FilesystemHandle, Scope};
+use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port};
 use gunbc_ir::{FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT};
 
 /// Filesystem environment — acquires a FilesystemHandle.
@@ -33,7 +33,9 @@ impl FsEnv {
 }
 
 impl gunbc_exec::EnvNode for FsEnv {
-    fn env_outputs(&self) -> Result<std::collections::HashMap<String, gunbc_ir::Value>, gunbc_exec::ExecError> {
+    fn env_outputs(
+        &self,
+    ) -> Result<std::collections::HashMap<String, gunbc_ir::Value>, gunbc_exec::ExecError> {
         Ok(self.mock_outputs())
     }
 

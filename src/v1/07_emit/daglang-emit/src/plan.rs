@@ -381,8 +381,8 @@ fn topo_sort_dag(dag: &Dag<LoweredOp>) -> Result<Vec<String>, PlanError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::computation::{Cardinality, PureBody, TransportKind, TypedPort};
     use crate::computation::EmitCollectionFamily;
+    use crate::computation::{Cardinality, PureBody, TransportKind, TypedPort};
 
     #[test]
     fn emit_plan_round_trip() {

@@ -8,11 +8,11 @@
 
 use std::collections::HashMap;
 
+use crate::computation::EmitCollectionFamily;
 use crate::computation::{
     AggregateKind, Computation, JsonOpKind, PureBody, StringOpKind, TransportKind,
 };
 use crate::plan::{EmitPlan, EmitStep, InputBinding};
-use crate::computation::EmitCollectionFamily;
 use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
 use gunbc_ir::ValueExpr;
 
