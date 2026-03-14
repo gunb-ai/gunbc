@@ -128,6 +128,21 @@ pub fn assemble_v2_crate(
     // 4. Build optional_fields map
     let optional_fields = build_optional_fields(&all_type_defs);
 
+    // 4c. Build global fn_return_types (cross-module) for type inference in intrinsics
+    let global_fn_return_types: HashMap<String, String> = modules
+        .iter()
+        .flat_map(|(_, items)| {
+            items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+                    let ret = crate::type_codegen::type_expr_to_rust_pub(&fd.return_type);
+                    Some((rust_name, ret))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
     // 4b. Build cross-module enum_variants for context-aware variant resolution
     let all_enum_variants: HashMap<String, HashSet<String>> = all_type_defs
         .iter()
@@ -197,6 +212,7 @@ pub fn assemble_v2_crate(
             &all_enum_variants,
             &defined_type_signatures,
             &module_struct_field_ir_types,
+            &global_fn_return_types,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -356,6 +372,7 @@ fn emit_module(
     all_enum_variants: &HashMap<String, HashSet<String>>,
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
     struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
+    global_fn_return_types: &HashMap<String, String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -386,19 +403,6 @@ fn emit_module(
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
-    // Build fn_return_types from function definitions
-    let fn_return_types: HashMap<String, String> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::FnDef(fd) => {
-                let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                let ret = crate::type_codegen::type_expr_to_rust_pub(&fd.return_type);
-                Some((rust_name, ret))
-            }
-            _ => None,
-        })
-        .collect();
-
     let ctx = fn_codegen::CompileContext {
         data_names,
         data_map_names,
@@ -407,7 +411,7 @@ fn emit_module(
         struct_field_types: struct_field_types.clone(),
         enum_variants: enum_variants_map,
         boxed_fields: recursive_fields.clone(),
-        fn_return_types,
+        fn_return_types: global_fn_return_types.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir

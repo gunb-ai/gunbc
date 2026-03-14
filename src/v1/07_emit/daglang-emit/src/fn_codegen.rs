@@ -759,6 +759,7 @@ fn compile_intrinsic_call(
     match name {
         "map" if args.len() == 2 => Some(compile_map_intrinsic(
             &collection.clone(),
+            &args[0].1,
             args.get(1).map(|(_, e)| e),
             ctx,
             counter,
@@ -1406,6 +1407,7 @@ fn resolve_named_or_positional(
 
 fn compile_map_intrinsic(
     collection: &code_ir::Expr,
+    collection_ast: &ast::Expr,
     mapper: Option<&ast::Expr>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -1432,21 +1434,15 @@ fn compile_map_intrinsic(
     let body_is_optional = match mapper {
         Some(ast::Expr::Lambda(_, body)) => {
             is_clearly_optional_ast_expr(body) || {
-                // For field accesses (e.g. `p => p.module`), check if the field
-                // has IrType::Optional in ALL structs that define it.
+                // For field accesses (e.g. `p => p.module`), infer the collection's
+                // element type and check if the field is Optional in that struct.
                 if let ast::Expr::FieldAccess(_, field_name) = body.as_ref() {
-                    let mut found = false;
-                    let mut all_opt = true;
-                    for fields in ctx.struct_field_ir_types.values() {
-                        if let Some((_, ty)) = fields.iter().find(|(n, _)| n == field_name) {
-                            found = true;
-                            if !matches!(ty, IrType::Optional(_)) {
-                                all_opt = false;
-                                break;
-                            }
-                        }
-                    }
-                    found && all_opt
+                    infer_collection_element_struct(collection_ast, ctx)
+                        .and_then(|sn| ctx.struct_field_ir_types.get(&sn))
+                        .and_then(|fields| {
+                            fields.iter().find(|(n, _)| n == field_name)
+                        })
+                        .is_some_and(|(_, ty)| matches!(ty, IrType::Optional(_)))
                 } else {
                     false
                 }
@@ -2513,6 +2509,24 @@ fn is_null_ast_expr(expr: &ast::Expr) -> bool {
     }
 }
 
+/// Infer the element struct name from a collection AST expression.
+///
+/// For `Ident("x")` where `ir_scope["x"]` is `Generic("List", [Named("Foo")])`,
+/// returns `Some("Foo")`.
+fn infer_collection_element_struct(
+    collection_ast: &ast::Expr,
+    ctx: &CompileContext,
+) -> Option<String> {
+    let col_type = infer_ast_expr_type(collection_ast, ctx)?;
+    match col_type {
+        IrType::Generic(_, args) if !args.is_empty() => match &args[0] {
+            IrType::Named(n) => Some(n.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Infer the IrType of a DSL AST expression from the compile context.
 ///
 /// Returns `Some(IrType)` when the type can be determined from the context
@@ -2564,10 +2578,26 @@ fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType>
         ast::Expr::Call(name, _) if name == "parse_int" => {
             Some(IrType::Optional(Box::new(IrType::Int)))
         }
+        ast::Expr::Call(name, args) if name == "map" && args.len() >= 2 => {
+            // map(collection, mapper) → List<mapper_return_type>
+            let elem_type = match &args[1].1 {
+                ast::Expr::Lambda(_, body) => {
+                    infer_ast_expr_type(body, ctx).unwrap_or(IrType::Unknown)
+                }
+                _ => IrType::Unknown,
+            };
+            Some(IrType::Generic("List".to_string(), vec![elem_type]))
+        }
         ast::Expr::Call(name, _) => {
-            // Look up return type from fn_return_types → try to get the IrType
-            // We only have the Rust type string here; map known patterns
-            ctx.fn_return_types.get(name).map(|_| IrType::Unknown)
+            // Look up return type from fn_return_types → resolve to Named IrType
+            // when the return type corresponds to a known struct
+            ctx.fn_return_types.get(name).map(|ret_str| {
+                if ctx.struct_field_ir_types.contains_key(ret_str.as_str()) {
+                    IrType::Named(ret_str.clone())
+                } else {
+                    IrType::Unknown
+                }
+            })
         }
         _ => None,
     }
