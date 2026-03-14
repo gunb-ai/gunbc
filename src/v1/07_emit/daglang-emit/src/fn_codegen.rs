@@ -313,52 +313,21 @@ fn compile_return_fields(
         // Multi-field return: try to infer the struct name from context.
         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
         let struct_name = infer_struct_name(&field_names, ctx);
-        let opt_set = ctx.optional_fields.get(&struct_name);
         let field_types = ctx.struct_field_types.get(&struct_name);
         let compiled_fields: Vec<(String, code_ir::Expr)> = fields
             .iter()
             .map(|(name, expr)| {
-                let compiled = compile_expr_in_field_context(expr, name, field_types, ctx, counter);
-                let is_opt = opt_set.is_some_and(|s| s.contains(name.as_str()));
-                let is_none = is_none_expr(&compiled);
-                let already_optional = is_opt && is_already_optional_expr(expr, ctx, &struct_name);
-                let compiled = if is_none {
-                    compiled
-                } else {
-                    clone_if_needed(compiled)
-                };
-                let mut result = if is_opt && !is_none && !already_optional {
-                    code_ir::Expr::Call {
-                        func: Box::new(code_ir::Expr::Var("Some".to_string())),
-                        args: vec![compiled],
-                        obligation: None,
-                    }
-                } else {
-                    compiled
-                };
-                // Unwrap optional value for non-optional target field
-                if !is_opt
-                    && !is_none
-                    && matches!(infer_ast_expr_type(expr, ctx), Some(IrType::Optional(_)))
-                {
-                    result = code_ir::Expr::MethodCall {
-                        receiver: Box::new(result),
-                        method: "unwrap".to_string(),
-                        args: vec![],
-                    };
-                }
-                // Box wrapping for recursive fields
-                if needs_box_wrapping(&struct_name, name, ctx) {
-                    result = code_ir::Expr::Call {
-                        func: Box::new(code_ir::Expr::Path(vec![
-                            "Box".to_string(),
-                            "new".to_string(),
-                        ])),
-                        args: vec![result],
-                        obligation: None,
-                    };
-                }
-                (name.clone(), result)
+                (
+                    name.clone(),
+                    compile_struct_field_value(
+                        expr,
+                        &struct_name,
+                        name,
+                        field_types,
+                        ctx,
+                        counter,
+                    ),
+                )
             })
             .collect();
         let all_fields = fill_missing_fields(&struct_name, compiled_fields, ctx);
@@ -402,6 +371,68 @@ fn fill_missing_fields(
                 code_ir::Expr::Path(vec!["None".to_string()]),
             ));
         }
+    }
+    result
+}
+
+fn expr_carries_optional_value(expr: &ast::Expr, ctx: &CompileContext) -> bool {
+    match expr {
+        ast::Expr::Ident(name) if ctx.optional_params.contains(name.as_str()) => true,
+        _ => {
+            is_clearly_optional_ast_expr(expr)
+                || matches!(infer_ast_expr_type(expr, ctx), Some(IrType::Optional(_)))
+        }
+    }
+}
+
+fn optional_to_required_field_error(target_struct: &str, field_name: &str) -> code_ir::Expr {
+    code_ir::Expr::RawCode(format!(
+        "compile_error!(\"cannot assign optional value to required field '{}.{}'; make the unwrap or fallback explicit in the source\")",
+        target_struct, field_name
+    ))
+}
+
+fn compile_struct_field_value(
+    expr: &ast::Expr,
+    target_struct: &str,
+    field_name: &str,
+    field_types: Option<&std::collections::HashMap<String, String>>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    let compiled = compile_expr_in_field_context(expr, field_name, field_types, ctx, counter);
+    let is_opt = ctx
+        .optional_fields
+        .get(target_struct)
+        .is_some_and(|fields| fields.contains(field_name));
+    let is_none = is_none_expr(&compiled);
+    if !is_opt && (is_none || expr_carries_optional_value(expr, ctx)) {
+        return optional_to_required_field_error(target_struct, field_name);
+    }
+    let already_optional = is_opt && is_already_optional_expr(expr, ctx, target_struct);
+    let compiled = if is_none {
+        compiled
+    } else {
+        clone_if_needed(compiled)
+    };
+    let mut result = if is_opt && !is_none && !already_optional {
+        code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Var("Some".to_string())),
+            args: vec![compiled],
+            obligation: None,
+        }
+    } else {
+        compiled
+    };
+    if needs_box_wrapping(target_struct, field_name, ctx) {
+        result = code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Path(vec![
+                "Box".to_string(),
+                "new".to_string(),
+            ])),
+            args: vec![result],
+            obligation: None,
+        };
     }
     result
 }
@@ -533,59 +564,21 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             } else {
                 struct_name.clone()
             };
-            let opt_set = ctx.optional_fields.get(&struct_name);
             let field_types = ctx.struct_field_types.get(&struct_name);
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
                 .iter()
                 .map(|(n, e)| {
-                    let compiled = compile_expr_in_field_context(e, n, field_types, ctx, counter);
-                    let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
-                    // Check for None/null BEFORE cloning (clone_if_needed would
-                    // turn None into None.clone(), hiding it from is_none_expr).
-                    let is_none = is_none_expr(&compiled);
-                    // Check if the source expression is already Optional (e.g.,
-                    // accessing an Optional field from another struct). In that
-                    // case, don't double-wrap in Some().
-                    let already_optional = is_opt && is_already_optional_expr(e, ctx, &struct_name);
-                    // Clone variable references to avoid use-after-move in struct fields
-                    // (but don't clone None — it's Copy and cloning produces noise)
-                    let compiled = if is_none {
-                        compiled
-                    } else {
-                        clone_if_needed(compiled)
-                    };
-                    let mut result = if is_opt && !is_none && !already_optional {
-                        code_ir::Expr::Call {
-                            func: Box::new(code_ir::Expr::Var("Some".to_string())),
-                            args: vec![compiled],
-                            obligation: None,
-                        }
-                    } else {
-                        compiled
-                    };
-                    // Unwrap optional value for non-optional target field
-                    if !is_opt
-                        && !is_none
-                        && matches!(infer_ast_expr_type(e, ctx), Some(IrType::Optional(_)))
-                    {
-                        result = code_ir::Expr::MethodCall {
-                            receiver: Box::new(result),
-                            method: "unwrap".to_string(),
-                            args: vec![],
-                        };
-                    }
-                    // Wrap in Box::new() if this field is recursive
-                    if needs_box_wrapping(&struct_name, n, ctx) {
-                        result = code_ir::Expr::Call {
-                            func: Box::new(code_ir::Expr::Path(vec![
-                                "Box".to_string(),
-                                "new".to_string(),
-                            ])),
-                            args: vec![result],
-                            obligation: None,
-                        };
-                    }
-                    (n.clone(), result)
+                    (
+                        n.clone(),
+                        compile_struct_field_value(
+                            e,
+                            &struct_name,
+                            n,
+                            field_types,
+                            ctx,
+                            counter,
+                        ),
+                    )
                 })
                 .collect();
             let ir_fields = fill_missing_fields(&struct_name, ir_fields, ctx);
@@ -1029,54 +1022,21 @@ fn compile_intrinsic_call(
                             fields.iter().map(|(n, _)| n.as_str()).collect();
                         infer_struct_name(&field_names, ctx)
                     });
-                    let opt_set = ctx.optional_fields.get(&struct_name);
                     let field_types = ctx.struct_field_types.get(&struct_name);
                     let ir_fields: Vec<(String, code_ir::Expr)> = fields
                         .iter()
                         .map(|(n, e)| {
-                            let compiled =
-                                compile_expr_in_field_context(e, n, field_types, ctx, counter);
-                            let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
-                            let is_none = is_none_expr(&compiled);
-                            let already_optional =
-                                is_opt && is_already_optional_expr(e, ctx, &struct_name);
-                            let compiled = if is_none {
-                                compiled
-                            } else {
-                                clone_if_needed(compiled)
-                            };
-                            let mut result = if is_opt && !is_none && !already_optional {
-                                code_ir::Expr::Call {
-                                    func: Box::new(code_ir::Expr::Var("Some".to_string())),
-                                    args: vec![compiled],
-                                    obligation: None,
-                                }
-                            } else {
-                                compiled
-                            };
-                            // Unwrap optional value for non-optional target field
-                            if !is_opt
-                                && !is_none
-                                && matches!(infer_ast_expr_type(e, ctx), Some(IrType::Optional(_)))
-                            {
-                                result = code_ir::Expr::MethodCall {
-                                    receiver: Box::new(result),
-                                    method: "unwrap".to_string(),
-                                    args: vec![],
-                                };
-                            }
-                            // Box wrapping for recursive fields
-                            if needs_box_wrapping(&struct_name, n, ctx) {
-                                result = code_ir::Expr::Call {
-                                    func: Box::new(code_ir::Expr::Path(vec![
-                                        "Box".to_string(),
-                                        "new".to_string(),
-                                    ])),
-                                    args: vec![result],
-                                    obligation: None,
-                                };
-                            }
-                            (n.clone(), result)
+                            (
+                                n.clone(),
+                                compile_struct_field_value(
+                                    e,
+                                    &struct_name,
+                                    n,
+                                    field_types,
+                                    ctx,
+                                    counter,
+                                ),
+                            )
                         })
                         .collect();
                     Some(code_ir::Expr::Struct {
