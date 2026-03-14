@@ -203,6 +203,16 @@ mod tests {
         None
     }
 
+    fn source_file_value(path: &str, content: &str) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("path".to_string(), gunbc_ir::Value::Str(path.to_string()));
+        map.insert(
+            "content".to_string(),
+            gunbc_ir::Value::Str(content.to_string()),
+        );
+        gunbc_ir::Value::Map(map)
+    }
+
     #[test]
     fn phase0_fn_lambda_syntax() {
         let source = r#"module test
@@ -1844,6 +1854,77 @@ fn example(items: List<String>) -> Int {
         );
     }
 
+    #[test]
+    fn phase6_compile_file_filters_absent_parse_diagnostics() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "source".to_string(),
+            source_file_value("ok.dag", "module ok\n"),
+        );
+
+        let result = call_fn(&output, "compile_file", inputs).expect("compile_file should succeed");
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_file should return diagnostics");
+
+        match diagnostics {
+            gunbc_ir::Value::List(items) => {
+                assert!(
+                    items.is_empty(),
+                    "expected no diagnostics, got: {:?}",
+                    items
+                );
+            }
+            other => panic!("expected diagnostics list, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn phase6_compile_sources_filters_none_parse_diagnostics() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "sources".to_string(),
+            gunbc_ir::Value::List(vec![
+                source_file_value("good.dag", "module good\n"),
+                source_file_value("bad.dag", "fn orphan() -> Int { 42 }\n"),
+            ]),
+        );
+        inputs.insert(
+            "backend".to_string(),
+            gunbc_ir::Value::Enum {
+                ty: String::new(),
+                variant: "Rust".to_string(),
+            },
+        );
+
+        let result =
+            call_fn(&output, "compile_sources", inputs).expect("compile_sources should succeed");
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+
+        match diagnostics {
+            gunbc_ir::Value::List(items) => {
+                assert_eq!(
+                    items.len(),
+                    1,
+                    "expected one parse diagnostic, got: {:?}",
+                    items
+                );
+                assert!(
+                    items
+                        .iter()
+                        .all(|item| !matches!(item, gunbc_ir::Value::Unit)),
+                    "diagnostics should not contain Unit entries: {:?}",
+                    items
+                );
+            }
+            other => panic!("expected diagnostics list, got: {other:?}"),
+        }
+    }
+
     /// Focused test: func with return type goes through typecheck without error.
     /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
     #[test]
@@ -2309,8 +2390,7 @@ mod smoke {
 
         // Add `mod smoke_test;` to lib.rs
         let lib_path = tmp_dir.join("src/lib.rs");
-        let mut lib_content =
-            std::fs::read_to_string(&lib_path).expect("failed to read lib.rs");
+        let mut lib_content = std::fs::read_to_string(&lib_path).expect("failed to read lib.rs");
         lib_content.push_str("\n#[cfg(test)]\nmod smoke_test;\n");
         std::fs::write(&lib_path, &lib_content).expect("failed to write lib.rs");
 

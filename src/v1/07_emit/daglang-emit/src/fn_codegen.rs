@@ -319,14 +319,7 @@ fn compile_return_fields(
             .map(|(name, expr)| {
                 (
                     name.clone(),
-                    compile_struct_field_value(
-                        expr,
-                        &struct_name,
-                        name,
-                        field_types,
-                        ctx,
-                        counter,
-                    ),
+                    compile_struct_field_value(expr, &struct_name, name, field_types, ctx, counter),
                 )
             })
             .collect();
@@ -570,14 +563,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 .map(|(n, e)| {
                     (
                         n.clone(),
-                        compile_struct_field_value(
-                            e,
-                            &struct_name,
-                            n,
-                            field_types,
-                            ctx,
-                            counter,
-                        ),
+                        compile_struct_field_value(e, &struct_name, n, field_types, ctx, counter),
                     )
                 })
                 .collect();
@@ -794,7 +780,6 @@ fn compile_intrinsic_call(
     match name {
         "map" if args.len() == 2 => Some(compile_map_intrinsic(
             &collection.clone(),
-            &args[0].1,
             args.get(1).map(|(_, e)| e),
             ctx,
             counter,
@@ -1413,7 +1398,6 @@ fn resolve_named_or_positional(
 
 fn compile_map_intrinsic(
     collection: &code_ir::Expr,
-    collection_ast: &ast::Expr,
     mapper: Option<&ast::Expr>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -1435,79 +1419,25 @@ fn compile_map_intrinsic(
         },
         None => code_ir::Expr::Var(elem.clone()),
     };
-    // Check if the mapper body produces an optional value — if so, generate
-    // filter-map semantics (only push Some values) instead of bare push.
-    let body_is_optional = match mapper {
-        Some(ast::Expr::Lambda(_, body)) => {
-            is_clearly_optional_ast_expr(body) || {
-                // For field accesses (e.g. `p => p.module`), infer the collection's
-                // element type and check if the field is Optional in that struct.
-                if let ast::Expr::FieldAccess(_, field_name) = body.as_ref() {
-                    infer_collection_element_struct(collection_ast, ctx)
-                        .and_then(|sn| ctx.struct_field_ir_types.get(&sn))
-                        .and_then(|fields| fields.iter().find(|(n, _)| n == field_name))
-                        .is_some_and(|(_, ty)| matches!(ty, IrType::Optional(_)))
-                } else {
-                    false
-                }
-            }
-        }
-        _ => false,
-    };
-    if body_is_optional {
-        let inner = fresh(counter, "inner");
-        code_ir::Expr::Block(vec![
-            code_ir::Stmt::let_mut(
-                &result,
-                code_ir::Expr::MacroCall {
-                    name: "vec".to_string(),
-                    args: vec![],
-                },
-            ),
-            code_ir::Stmt::For {
-                binding: elem,
-                iter: make_owned_iter(collection.clone()),
-                body: vec![code_ir::Stmt::Expr(code_ir::Expr::Match {
-                    expr: Box::new(mapped_value),
-                    arms: vec![
-                        code_ir::MatchArm {
-                            pattern: format!("Some({inner})"),
-                            body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
-                                receiver: Box::new(code_ir::Expr::Var(result.clone())),
-                                method: "push".to_string(),
-                                args: vec![code_ir::Expr::Var(inner.clone())],
-                            })],
-                        },
-                        code_ir::MatchArm {
-                            pattern: "_".to_string(),
-                            body: vec![],
-                        },
-                    ],
-                })],
+    code_ir::Expr::Block(vec![
+        code_ir::Stmt::let_mut(
+            &result,
+            code_ir::Expr::MacroCall {
+                name: "vec".to_string(),
+                args: vec![],
             },
-            code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
-        ])
-    } else {
-        code_ir::Expr::Block(vec![
-            code_ir::Stmt::let_mut(
-                &result,
-                code_ir::Expr::MacroCall {
-                    name: "vec".to_string(),
-                    args: vec![],
-                },
-            ),
-            code_ir::Stmt::For {
-                binding: elem,
-                iter: make_owned_iter(collection.clone()),
-                body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
-                    receiver: Box::new(code_ir::Expr::Var(result.clone())),
-                    method: "push".to_string(),
-                    args: vec![mapped_value],
-                })],
-            },
-            code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
-        ])
-    }
+        ),
+        code_ir::Stmt::For {
+            binding: elem,
+            iter: make_owned_iter(collection.clone()),
+            body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                method: "push".to_string(),
+                args: vec![mapped_value],
+            })],
+        },
+        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+    ])
 }
 
 fn compile_filter_intrinsic(
@@ -1604,8 +1534,8 @@ fn compile_fold_intrinsic(
             // so that expressions like `[item]` resolve to the correct list type.
             let body_type = match func {
                 Some(ast::Expr::Lambda(params, body)) => {
-                    let elem_type = infer_ast_expr_type(collection_ast, ctx)
-                        .and_then(|t| match t {
+                    let elem_type =
+                        infer_ast_expr_type(collection_ast, ctx).and_then(|t| match t {
                             IrType::Generic(_, a) if !a.is_empty() => Some(a[0].clone()),
                             _ => None,
                         });
@@ -2554,28 +2484,6 @@ fn is_null_ast_expr(expr: &ast::Expr) -> bool {
     }
 }
 
-/// Infer the IrType of a DSL AST expression from the compile context.
-///
-/// Returns `Some(IrType)` when the type can be determined from the context
-/// (variable lookups, struct field types, function return types), `None` otherwise.
-/// Infer the element struct name from a collection AST expression.
-///
-/// For `Ident("x")` where `ir_scope["x"]` is `Generic("List", [Named("Foo")])`,
-/// returns `Some("Foo")`.
-fn infer_collection_element_struct(
-    collection_ast: &ast::Expr,
-    ctx: &CompileContext,
-) -> Option<String> {
-    let col_type = infer_ast_expr_type(collection_ast, ctx)?;
-    match col_type {
-        IrType::Generic(_, args) if !args.is_empty() => match &args[0] {
-            IrType::Named(n) => Some(n.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
 fn named_type_from_ir(ty: &IrType) -> Option<String> {
     match ty {
         IrType::Named(name) => Some(name.clone()),
@@ -2660,8 +2568,7 @@ fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType>
         }
         // If/else: try then branch, fall back to else branch
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
-            infer_ast_expr_type(then_expr, ctx)
-                .or_else(|| infer_ast_expr_type(else_expr, ctx))
+            infer_ast_expr_type(then_expr, ctx).or_else(|| infer_ast_expr_type(else_expr, ctx))
         }
         ast::Expr::If(_, then_expr, None) => infer_ast_expr_type(then_expr, ctx),
         // Block: infer from the last statement
@@ -2709,58 +2616,21 @@ fn compile_expr_in_field_context(
                 if variants.contains(record_name.as_str()) {
                     // Re-compile this record with the correct enum qualification
                     let qualified = format!("{type_name}::{record_name}");
-                    let opt_set = ctx.optional_fields.get(record_name.as_str());
                     let variant_field_types = ctx.struct_field_types.get(record_name.as_str());
                     let ir_fields: Vec<(String, code_ir::Expr)> = fields
                         .iter()
                         .map(|(n, e)| {
-                            let compiled = compile_expr_in_field_context(
-                                e,
-                                n,
-                                variant_field_types,
-                                ctx,
-                                counter,
-                            );
-                            let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
-                            let is_none = is_none_expr(&compiled);
-                            let already_optional =
-                                is_opt && is_already_optional_expr(e, ctx, record_name);
-                            let compiled = if is_none {
-                                compiled
-                            } else {
-                                clone_if_needed(compiled)
-                            };
-                            let mut result = if is_opt && !is_none && !already_optional {
-                                code_ir::Expr::Call {
-                                    func: Box::new(code_ir::Expr::Var("Some".to_string())),
-                                    args: vec![compiled],
-                                    obligation: None,
-                                }
-                            } else {
-                                compiled
-                            };
-                            // Unwrap optional value for non-optional target field
-                            if !is_opt
-                                && !is_none
-                                && matches!(infer_ast_expr_type(e, ctx), Some(IrType::Optional(_)))
-                            {
-                                result = code_ir::Expr::MethodCall {
-                                    receiver: Box::new(result),
-                                    method: "unwrap".to_string(),
-                                    args: vec![],
-                                };
-                            }
-                            if needs_box_wrapping(record_name, n, ctx) {
-                                result = code_ir::Expr::Call {
-                                    func: Box::new(code_ir::Expr::Path(vec![
-                                        "Box".to_string(),
-                                        "new".to_string(),
-                                    ])),
-                                    args: vec![result],
-                                    obligation: None,
-                                };
-                            }
-                            (n.clone(), result)
+                            (
+                                n.clone(),
+                                compile_struct_field_value(
+                                    e,
+                                    record_name,
+                                    n,
+                                    variant_field_types,
+                                    ctx,
+                                    counter,
+                                ),
+                            )
                         })
                         .collect();
                     let ir_fields = fill_missing_fields(record_name, ir_fields, ctx);
@@ -3678,7 +3548,7 @@ mod tests {
     }
 
     #[test]
-    fn map_intrinsic_filters_optional_mapper_results() {
+    fn map_intrinsic_preserves_optional_mapper_results() {
         let mut counter = 0usize;
         let expr = Expr::Call(
             "map".into(),
@@ -3697,20 +3567,98 @@ mod tests {
             ],
         );
         let ir = compile_expr(&expr, &empty_ctx(), &mut counter);
-        // parse_int is optional-producing, so map generates filter-map (match Some/None)
         match ir {
             code_ir::Expr::Block(stmts) => match &stmts[1] {
                 code_ir::Stmt::For { body, .. } => match &body[0] {
-                    code_ir::Stmt::Expr(code_ir::Expr::Match { arms, .. }) => {
-                        assert_eq!(arms.len(), 2);
-                        assert!(arms[0].pattern.starts_with("Some("));
-                        assert_eq!(arms[1].pattern, "_");
+                    code_ir::Stmt::Expr(code_ir::Expr::MethodCall { method, args, .. }) => {
+                        assert_eq!(method, "push");
+                        assert_eq!(args.len(), 1);
+                        assert!(
+                            !matches!(args[0], code_ir::Expr::Match { .. }),
+                            "map should preserve optional mapper results instead of rewriting to filter_map"
+                        );
                     }
-                    other => panic!("expected Match in for-body, got: {other:?}"),
+                    other => panic!("expected push call in for-body, got: {other:?}"),
                 },
                 other => panic!("expected For in map lowering, got: {other:?}"),
             },
             other => panic!("expected Block, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn record_construction_rejects_optional_value_for_required_field() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "Target".to_string(),
+            [("required".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Source".to_string(),
+            vec![("maybe".to_string(), IrType::Optional(Box::new(IrType::Str)))],
+        );
+        ctx.ir_scope
+            .insert("src".to_string(), IrType::Named("Source".to_string()));
+
+        let expr = Expr::Record(
+            Some("Target".into()),
+            vec![(
+                "required".into(),
+                Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
+            )],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct { fields, .. } => match &fields[0].1 {
+                code_ir::Expr::RawCode(code) => assert!(
+                    code.contains("compile_error!")
+                        && code.contains("Target.required")
+                        && code.contains("optional value"),
+                    "expected compile_error! marker, got: {code}"
+                ),
+                other => panic!("expected compile_error! marker, got: {other:?}"),
+            },
+            other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn return_record_rejects_optional_value_for_required_field() {
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "Target".to_string(),
+            [("required".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Source".to_string(),
+            vec![("maybe".to_string(), IrType::Optional(Box::new(IrType::Str)))],
+        );
+        ctx.ir_scope
+            .insert("src".to_string(), IrType::Named("Source".to_string()));
+
+        let body = FnBody {
+            stmts: vec![Stmt::Return(vec![(
+                "required".into(),
+                Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
+            )])],
+        };
+
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Struct { fields, .. }) => match &fields[0].1 {
+                code_ir::Expr::RawCode(code) => assert!(
+                    code.contains("compile_error!") && code.contains("Target.required"),
+                    "expected compile_error! marker, got: {code}"
+                ),
+                other => panic!("expected compile_error! marker, got: {other:?}"),
+            },
+            other => panic!("expected TailExpr(Struct), got: {other:?}"),
         }
     }
 

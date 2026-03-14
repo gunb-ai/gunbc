@@ -423,8 +423,11 @@ fn emit_module(
     for item in items {
         match &item.node {
             Item::TypeDef(td) => {
-                // Skip types already defined with identical structure in upstream modules.
-                // (S81: suppress structurally identical duplicates)
+                // TEMPORARY bootstrap-only nominality compromise (S81):
+                // suppress same-name upstream duplicates only when their full
+                // structural signature matches exactly. This is still structural
+                // dedupe, not sound nominal typing, and should be removed once
+                // cross-module type identity is modeled authoritatively.
                 let this_signature = type_def_signature(td);
                 if upstream_type_signatures
                     .get(&td.name)
