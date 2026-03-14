@@ -863,6 +863,7 @@ pub fn typedefs_to_source_file(
     }
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_map_names: std::collections::HashSet::new(),
         optional_fields,
         variant_to_enum,
         struct_field_types,
@@ -979,6 +980,7 @@ pub fn generate_types_for_modules(
         }
         let fn_ctx = fn_codegen::CompileContext {
             data_names: fn_data_names,
+            data_map_names: std::collections::HashSet::new(),
             optional_fields: opt_fields,
             variant_to_enum: v2e,
             struct_field_types: sft,

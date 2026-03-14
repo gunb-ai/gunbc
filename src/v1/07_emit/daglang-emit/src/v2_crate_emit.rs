@@ -341,6 +341,21 @@ fn emit_module(
         })
         .collect();
 
+    // Collect data names that are Map types (need `&` reference instead of `.clone()`)
+    let data_map_names: HashSet<String> = items
+        .iter()
+        .filter_map(|item| match &item.node {
+            Item::DataDef(dd) => {
+                if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Generic(name, _) if name == "Map") {
+                    Some(dd.name.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .collect();
+
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
@@ -359,6 +374,7 @@ fn emit_module(
 
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_map_names,
         optional_fields: optional_fields.clone(),
         variant_to_enum: variant_to_enum.clone(),
         struct_field_types: struct_field_types.clone(),
