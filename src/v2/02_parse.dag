@@ -2357,7 +2357,7 @@ fn parse_expr_loop(state: ParserState, lhs: Expr, min_bp: Int) -> ExprResult {
             let op_kind = adv.token.kind
             // Special case: dot is field access
             if kind_tag(kind: op_kind) == "Dot" {
-              let r = expect_ident(state: adv.state)
+              let r = expect_name(state: adv.state)
               if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
               let span = current_span(state: state)
               let new_lhs = FieldAccess { base: lhs, field: r.name, span: span }
@@ -2436,7 +2436,7 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
 // Supports: lhs |> method, lhs |> method(args), lhs |> method(name: arg)
 fn parse_pipe_rhs(state: ParserState, receiver: Expr, span: SourceSpan) -> ExprResult {
   let dummy_expr = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
-  let r = expect_ident(state: state)
+  let r = expect_name(state: state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let method = r.name
   let s = r.state
