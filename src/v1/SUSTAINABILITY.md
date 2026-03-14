@@ -746,3 +746,129 @@ exactly the 5 points that call `eval_expr_s` with a subsequent push
 | S77 | v2 codegen: `infer_struct_name()` guesses struct type from field names | OPEN — workaround for anonymous records in .dag having no explicit type. Wrong inference causes E0308 errors. Remove when .dag records are named or typed. | 2026-03-13 |
 | S78 | v2 codegen: hardcoded materialized types in `std_types_prelude()` | OPEN — `SourceSpan`, `BindingPower`, `ItemResult`, etc. manually defined in Rust because v1 emitter can't resolve cross-module imports. Remove when v2 compiler resolves imports. | 2026-03-13 |
 | S79 | v2 codegen: hardcoded `module_prelude()` cross-module imports | OPEN — `use crate::v2_core::*` etc. should be derived from .dag `import` declarations. Remove when v2 compiler resolves imports. | 2026-03-13 |
+
+---
+
+## Heuristic elimination roadmap
+
+Each v1 bootstrap heuristic (S81) exists because the codegen lacks
+information that the v2 compiler will have. This roadmap maps each
+heuristic to the **modeling decision or language feature** that makes
+it unnecessary. Ordered by dependency — earlier items unblock later ones.
+
+### Phase A: Type-aware emission (eliminates S76, S77, S78, S81 bulk)
+
+The v2 emitter receives typed IR. Every emission decision that the v1
+codegen guesses from naming patterns, the v2 emitter reads from types.
+
+| Heuristic | What v2 emitter does instead |
+|-----------|------------------------------|
+| `clone_if_needed` (S76) | Emitter tracks variable liveness. Last use = move, earlier use = borrow. Per-backend: Rust emits `.clone()`, C emits nothing, Go emits nothing. |
+| `infer_struct_name` (S77) | Typechecker resolves anonymous records to their structural type. Emitter knows the type — no guessing. |
+| `Box::new()` wrapping | Emitter checks `TypeExpr` for recursion. Rust emitter emits `Box::new()`. C emitter emits `malloc`. Go emitter emits nothing (implicit). Verilog: N/A (no recursion in hardware types). |
+| `Some()`/`None` injection | `TypeExpr::Optional` in the typed IR. Rust emitter emits `Some`/`None`. C emitter emits non-NULL/NULL. Go emitter emits value/nil. |
+| `.as_str()` insertion | Rust emitter knows when a `String` is matched and emits `.as_str()`. Other backends don't need this — their string types are uniform. |
+| `..Default::default()` | Emitter has all field types. Constructs complete struct literals per-backend. No default-filling needed. |
+| `is_option_expr` double-wrap prevention | Typechecker resolves optionality. Emitter knows source and target types — no guessing whether a value is already `Option`. |
+
+**Modeling decision:** No new language features needed. The v2 typechecker
+already resolves types to `TypeExpr` values. The emitter reads those
+values and makes per-backend decisions.
+
+### Phase B: Import resolution (eliminates S78, S79)
+
+The v2 resolver traces `import` declarations and builds a cross-module
+type environment. Each module knows which types are defined locally vs
+imported.
+
+| Heuristic | What v2 resolver does instead |
+|-----------|-------------------------------|
+| `std_types_prelude()` (S78) | Imported types come from the resolved module graph. `SourceSpan`, `BindingPower` are defined in their .dag modules and imported by name. No hand-written Rust definitions. |
+| `module_prelude()` (S79) | Per-module `use` statements derived from resolved imports. Each module imports exactly what its `import` declarations specify. |
+
+**Modeling decision:** Already designed. `03_resolve.dag` builds a
+`ModuleGraph` with `ResolvedImport` entries. The emitter reads these
+to generate correct import statements per-backend.
+
+### Phase C: Variant disambiguation (eliminates ambiguous LitStr/BinOpKind)
+
+Multiple enums share variant names (`LitStr` in both `TokenKind` and
+`LiteralValue`, `Add` in both `BinOpKind` and arithmetic). The v1
+codegen resolves by "first definition wins" — positional, not structural.
+
+| Decision | Options |
+|----------|---------|
+| **Option 1: Qualified variants in .dag source** | `LiteralValue.LitStr { value: s }` instead of bare `LitStr`. Requires parser change to support `Type.Variant` syntax. Explicit, no ambiguity, maps to every backend. |
+| **Option 2: Typechecker resolves from context** | The typechecker knows the expected type from the field being assigned or the match scrutinee type. Resolves `LitStr` → `LiteralValue::LitStr` when the context expects `LiteralValue`. Already partially implemented in v1 — extend to full coverage in v2. |
+| **Option 3: Rename to eliminate overlap** | Rename `LiteralValue::LitStr` to `StrLiteral` etc. Breaks the natural naming. Not recommended. |
+
+**Recommended:** Option 2 for v2 (the typechecker handles it). Option 1
+as a language feature for explicitness when disambiguation is needed.
+
+### Phase D: Optionality as a structural property (eliminates double-wrapping)
+
+The `.dag` language uses `T?` for optional types. The v1 codegen doesn't
+track which values are optional vs required, so it guesses from field
+names, parameter types, and expression shapes.
+
+| Decision | Modeling |
+|----------|---------|
+| **Optional fields are typed** | `TypeExpr::Optional { inner: T }` is already in the type system. The emitter checks source and target optionality before wrapping. |
+| **Optional parameters are typed** | Function params with `T?` produce optional bindings. The typechecker carries this through the body. |
+| **Backend rendering** | Rust: `Option<T>`, `Some(v)`, `None`. C: `T*`, `&v`, `NULL`. Go: `*T`, `&v`, `nil`. Verilog: valid bit + data bus. |
+
+**Modeling decision:** Already modeled in the type system. The issue is
+purely that the v1 codegen doesn't read the types. v2 does.
+
+### Phase E: Ownership as backend concern, not IR concern (eliminates S76)
+
+The `.dag` language has value semantics — every binding is a value, not
+a reference. How that maps to target memory management is a backend
+decision:
+
+| Backend | Strategy |
+|---------|----------|
+| Rust | Ownership analysis: last use = move, earlier = clone or borrow. Emit `.clone()` only when needed. |
+| C | Copy semantics for small types, pointer + refcount for large. Or arena allocation. |
+| Go | GC handles it. All values are implicitly shared. |
+| Verilog | Wire assignment. No memory management. Values are signals. |
+| PSPICE | Node voltages. No memory management. Values are circuit parameters. |
+
+**Modeling decision:** The `.dag` language does not expose ownership,
+borrowing, or memory management. These are backend concerns. The code_ir
+should represent "this value is used here and here" — the backend decides
+whether that means clone, borrow, share, or wire.
+
+### Phase F: Static data as language-level constants
+
+`data` definitions in `.dag` (e.g., `data keywords: Map<String, TokenKind>`)
+are compile-time constant tables. The v1 codegen emits them differently per
+container type (List → `static &[T]`, Map → `LazyLock<HashMap>`) with
+Rust-specific patterns.
+
+| Backend | Strategy |
+|---------|----------|
+| Rust | `static` or `lazy_static` depending on type complexity. |
+| C | `const` arrays, or generated init functions for maps. |
+| Go | Package-level `var` with init. |
+| Verilog | ROM or lookup table. |
+
+**Modeling decision:** `data` is a constant definition. The code_ir should
+represent it as `ConstDef { name, type, value }`. Each backend renders
+the constant in its idiom. The v1 codegen should not inject `LazyLock` at
+the IR level — that belongs in `render_rust.rs`.
+
+### Summary: what dies with self-hosting
+
+When the v2 compiler achieves self-hosting, the following v1 code becomes
+dead and should be deleted:
+
+- `fn_codegen.rs` — entire file (replaced by v2 emitter)
+- `v2_crate_emit.rs` — entire file (replaced by v2 pipeline)
+- `v2_runtime_shim.rs` — entire file (replaced by proper stdlib)
+- `synthesize_anonymous_structs()` — entire function
+- `clone_if_needed()`, `is_option_expr()`, `is_none_expr()` — all heuristics
+- `std_types_prelude()`, `module_prelude()` — all hardcoded scaffolding
+- `infer_struct_name()`, `infer_field_type_from_expr()` — all type guessing
+- `compile_intrinsic_call()` Rust-specific intrinsic handlers — replaced by
+  per-backend intrinsic rendering

@@ -341,6 +341,7 @@ fn emit_module(
         boxed_fields: recursive_fields.clone(),
         fn_return_types,
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
+        param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
     };
 
     for item in items {

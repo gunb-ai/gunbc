@@ -595,14 +595,32 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .map(|p| p.name.clone())
         .collect();
 
+    // S81: Collect parameter name → type name map for scrutinee type inference
+    let param_types: std::collections::HashMap<String, String> = fd
+        .params
+        .iter()
+        .map(|p| {
+            let type_name = match &p.ty {
+                TypeExpr::Named(n) => n.clone(),
+                TypeExpr::Optional(inner) => match inner.as_ref() {
+                    TypeExpr::Named(n) => n.clone(),
+                    _ => type_expr_to_rust(&p.ty),
+                },
+                _ => type_expr_to_rust(&p.ty),
+            };
+            (p.name.clone(), type_name)
+        })
+        .collect();
+
     // Augment context with synthesized struct field types and optional params
     // so compile_expr can resolve anonymous records and prevent double-wrapping.
-    let ctx = if new_field_types.is_empty() && optional_params.is_empty() {
+    let ctx = if new_field_types.is_empty() && optional_params.is_empty() && param_types.is_empty() {
         std::borrow::Cow::Borrowed(ctx)
     } else {
         let mut augmented = ctx.clone();
         augmented.struct_field_types.extend(new_field_types);
         augmented.optional_params = optional_params;
+        augmented.param_types = param_types;
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -853,6 +871,7 @@ pub fn typedefs_to_source_file(
         boxed_fields: std::collections::HashSet::new(),
         fn_return_types: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(),
+        param_types: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -968,6 +987,7 @@ pub fn generate_types_for_modules(
             boxed_fields: std::collections::HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
             optional_params: std::collections::HashSet::new(),
+            param_types: std::collections::HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }

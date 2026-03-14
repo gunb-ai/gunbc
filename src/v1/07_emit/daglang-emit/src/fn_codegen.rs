@@ -81,6 +81,9 @@ pub struct CompileContext {
     /// Set of parameter names that have optional types (T? → Option<T>).
     /// Used to prevent double-wrapping when passing optional params to optional fields.
     pub optional_params: HashSet<String>,
+    /// TEMPORARY bootstrap scaffolding (S81): Map from parameter name to type name.
+    /// Used to resolve ambiguous variant patterns in match expressions.
+    pub param_types: HashMap<String, String>,
 }
 
 impl Default for CompileContext {
@@ -100,6 +103,7 @@ impl CompileContext {
             boxed_fields: HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
             optional_params: HashSet::new(),
+            param_types: HashMap::new(),
         }
     }
 }
@@ -267,7 +271,20 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
                 }
                 code_ir::Expr::Field(Box::new(compiled), rust_field)
             } else {
-                code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field)
+                let field_expr = code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), rust_field.clone());
+                // S81: Auto-deref boxed fields that are ONLY boxed in ALL structs
+                // that have them. Only deref when the field name is EXCLUSIVELY
+                // a boxed field (not sometimes plain, sometimes boxed).
+                // Use a targeted list of field+type pairs known to be Box<T>.
+                let is_known_boxed = matches!(
+                    rust_field.as_str(),
+                    "resource" | "status"
+                );
+                if is_known_boxed {
+                    code_ir::Expr::Deref(Box::new(field_expr))
+                } else {
+                    field_expr
+                }
             }
         }
         ast::Expr::Call(name, args) => {
@@ -359,7 +376,11 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
                     // Clone variable references to avoid use-after-move in struct fields
                     let compiled = clone_if_needed(compiled);
                     let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
-                    let mut result = if is_opt && !is_none_expr(&compiled) && !is_option_expr(&compiled, ctx) {
+                    // S81: Also check if the value variable likely holds Option<T>
+                    // already (e.g., set from an optional field destructuring).
+                    let value_is_option = is_option_expr(&compiled, ctx)
+                        || is_var_likely_option(&compiled, n, ctx);
+                    let mut result = if is_opt && !is_none_expr(&compiled) && !value_is_option {
                         code_ir::Expr::Call {
                             func: Box::new(code_ir::Expr::Var("Some".to_string())),
                             args: vec![compiled],
@@ -820,7 +841,21 @@ fn compile_intrinsic_call(
             })
         }
         "lookup" if args.len() == 2 => {
-            let table = resolve_named_or_positional(args, "table", 0, ctx);
+            // TEMPORARY bootstrap scaffolding (S81): lookup takes &HashMap but
+            // the table is typically a LazyLock<HashMap>. For data table identifiers,
+            // emit &*TABLE_NAME (deref LazyLock then reference). For other expressions,
+            // emit a reference to the compiled expression.
+            let table = match &args[0].1 {
+                ast::Expr::Ident(name) if ctx.data_names.contains(name.as_str()) => {
+                    // Data table: emit &*SCREAMING_NAME
+                    code_ir::Expr::Ref(Box::new(code_ir::Expr::Deref(
+                        Box::new(code_ir::Expr::Var(to_screaming_snake(name)))
+                    )))
+                }
+                _ => {
+                    code_ir::Expr::Ref(Box::new(compile_expr(&args[0].1, ctx)))
+                }
+            };
             let key = resolve_named_or_positional(args, "key", 1, ctx);
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), "lookup".to_string()])),
@@ -1062,10 +1097,11 @@ fn compile_intrinsic_call(
                 }],
             })
         }
-        // parse_int(s) → s.parse::<i64>().ok()
+        // TEMPORARY bootstrap scaffolding (S81): parse_int returns i64 with
+        // unwrap_or(0) since DAG code uses the result as non-optional i64.
         "parse_int" if args.len() == 1 => {
             Some(code_ir::Expr::RawCode(format!(
-                "{}.parse::<i64>().ok()",
+                "{}.parse::<i64>().unwrap_or(0)",
                 render_expr_inline(&collection())
             )))
         }
@@ -1534,6 +1570,9 @@ fn compile_match(
     ctx: &CompileContext,
 ) -> code_ir::Expr {
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
+    // TEMPORARY bootstrap scaffolding (S81): Infer the scrutinee type to
+    // resolve ambiguous variant patterns (e.g., LitStr → LiteralValue vs TokenKind).
+    let scrutinee_type = infer_scrutinee_type(scrutinee, ctx);
     // When matching against string literal patterns, add .as_str() to the
     // scrutinee so Rust can compare String with &str patterns. Only apply
     // when the scrutinee is a variable or field access (not a temporary).
@@ -1554,22 +1593,77 @@ fn compile_match(
         expr: Box::new(match_expr),
         arms: arms
             .iter()
-            .map(|a| compile_match_arm(a, has_none_arm, ctx))
+            .map(|a| compile_match_arm(a, has_none_arm, scrutinee_type.as_deref(), ctx))
             .collect(),
+    }
+}
+
+/// TEMPORARY bootstrap scaffolding (S81): Infer the type of a match scrutinee
+/// from parameter types or field access context. Returns the type name if resolvable.
+fn infer_scrutinee_type(scrutinee: &ast::Expr, ctx: &CompileContext) -> Option<String> {
+    match scrutinee {
+        // field access: x.field_name → look up field type in struct_field_types
+        ast::Expr::FieldAccess(_, field_name) => {
+            for (_struct_name, fields) in &ctx.struct_field_types {
+                if let Some(field_type) = fields.get(field_name.as_str()) {
+                    // Only return enum types (types that have variants)
+                    if ctx.enum_variants.contains_key(field_type.as_str()) {
+                        return Some(field_type.clone());
+                    }
+                }
+            }
+            None
+        }
+        // Variable: check parameter types first, then field names
+        ast::Expr::Ident(name) => {
+            // Check if it's a function parameter with known type
+            if let Some(param_type) = ctx.param_types.get(name.as_str()) {
+                if ctx.enum_variants.contains_key(param_type.as_str()) {
+                    return Some(param_type.clone());
+                }
+            }
+            // Check if variable name matches a known field name with enum type
+            for (_struct_name, fields) in &ctx.struct_field_types {
+                if let Some(field_type) = fields.get(name.as_str()) {
+                    if ctx.enum_variants.contains_key(field_type.as_str()) {
+                        return Some(field_type.clone());
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 
 fn compile_match_arm(
     arm: &ast::MatchArm,
     option_context: bool,
+    scrutinee_type: Option<&str>,
     ctx: &CompileContext,
 ) -> code_ir::MatchArm {
-    let mut pattern = compile_pattern(&arm.pattern, ctx);
+    // TEMPORARY bootstrap scaffolding (S81): Collect string literal sub-pattern
+    // guards from variant patterns. Rust can't match String fields against &str
+    // literals, so we bind the field and add a match arm guard.
+    let mut string_guards = collect_string_literal_guards(&arm.pattern, ctx);
+    let mut pattern = compile_pattern_with_context(&arm.pattern, ctx, scrutinee_type);
     if option_context
         && !is_null_pattern(&arm.pattern)
         && !matches!(arm.pattern, ast::Pattern::Wildcard)
     {
-        pattern = format!("Some({pattern})");
+        // S81: When wrapping in Some(), string literal patterns need special
+        // handling: Some("literal") doesn't work in Rust because String != &str.
+        // Convert to Some(ref __s) with a guard.
+        if let ast::Pattern::Literal(ast::Literal::String(s)) = &arm.pattern {
+            let guard_name = "__str_match";
+            pattern = format!("Some(ref {guard_name})");
+            string_guards.push(format!("{guard_name} == \"{s}\""));
+        } else {
+            pattern = format!("Some({pattern})");
+        }
+    }
+    if !string_guards.is_empty() {
+        pattern = format!("{pattern} if {}", string_guards.join(" && "));
     }
     // Auto-deref boxed bindings: when a match pattern destructures a variant
     // with boxed fields (e.g., TypeExpr::Container { element, .. }), add
@@ -1599,6 +1693,25 @@ fn compile_match_arm(
         pattern,
         body: body_stmts,
     }
+}
+
+/// TEMPORARY bootstrap scaffolding (S81): Collect string literal sub-patterns
+/// from variant patterns that need to become match arm guards.
+/// Returns guard strings like `name == "from"` for `Ident { name: "from" }`.
+fn collect_string_literal_guards(pat: &ast::Pattern, ctx: &CompileContext) -> Vec<String> {
+    let mut guards = Vec::new();
+    if let ast::Pattern::Variant(name, fields) = pat {
+        let variant_fields = ctx.struct_field_types.get(name.as_str());
+        for (field_name, sub_pattern) in fields {
+            if let ast::Pattern::Literal(ast::Literal::String(s)) = sub_pattern {
+                let field_type = variant_fields.and_then(|ft| ft.get(field_name.as_str()));
+                if field_type.map_or(false, |t| t == "String") {
+                    guards.push(format!("{field_name} == \"{s}\""));
+                }
+            }
+        }
+    }
+    guards
 }
 
 fn is_null_pattern(pat: &ast::Pattern) -> bool {
@@ -1669,7 +1782,7 @@ fn compile_pattern_with_context(
                 format!("Some({})", compile_pattern_with_context(&fields[0].1, ctx, None))
             } else {
                 // Look up field types for this variant to provide context to sub-patterns
-                let parent_enum = expected_type
+                let _parent_enum = expected_type
                     .and_then(|_| Some(name.as_str()))
                     .or_else(|| ctx.variant_to_enum.get(name.as_str()).map(|s| s.as_str()));
                 let variant_fields = ctx.struct_field_types.get(name.as_str());
@@ -1678,6 +1791,13 @@ fn compile_pattern_with_context(
                     .map(|(n, p)| {
                         // Look up field type for context-aware sub-pattern compilation
                         let field_type = variant_fields.and_then(|ft| ft.get(n.as_str()));
+                        // S81: When matching a String field against a string literal,
+                        // bind the field instead (the guard is at the arm level).
+                        if let ast::Pattern::Literal(ast::Literal::String(_)) = p {
+                            if field_type.map_or(false, |t| t == "String") {
+                                return format!("ref {n}");
+                            }
+                        }
                         format!("{}: {}", n, compile_pattern_with_context(p, ctx, field_type.map(|s| s.as_str())))
                     })
                     .collect();
@@ -1866,6 +1986,37 @@ fn is_option_value_access(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
     if let code_ir::Expr::Var(name) = expr {
         let escaped = name.strip_prefix("r#").unwrap_or(name);
         return ctx.optional_fields.values().any(|opt| opt.contains(escaped));
+    }
+    false
+}
+
+/// TEMPORARY bootstrap scaffolding (S81): Check if a variable expression likely
+/// holds an Option<T> value because it was derived from an optional field.
+/// Used to prevent double-wrapping: if a variable name matches the field name
+/// being set AND that field name is optional in some other struct, the value
+/// was likely extracted from an optional field and is already Option<T>.
+fn is_var_likely_option(expr: &code_ir::Expr, field_name: &str, ctx: &CompileContext) -> bool {
+    // Extract the variable name from the expression (handle .clone() wrapping)
+    let var_name = match expr {
+        code_ir::Expr::MethodCall { receiver, method, .. } if method == "clone" => {
+            match receiver.as_ref() {
+                code_ir::Expr::Var(name) => Some(name.as_str()),
+                _ => None,
+            }
+        }
+        code_ir::Expr::Var(name) => Some(name.as_str()),
+        _ => None,
+    };
+    if let Some(name) = var_name {
+        let escaped = name.strip_prefix("r#").unwrap_or(name);
+        // Only flag if the variable name matches the field being set AND
+        // the variable name is optional in some struct AND it's NOT a function parameter
+        if escaped == field_name
+            && !ctx.param_types.contains_key(escaped)
+            && ctx.optional_fields.values().any(|opt| opt.contains(escaped))
+        {
+            return true;
+        }
     }
     false
 }
