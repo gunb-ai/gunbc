@@ -868,13 +868,15 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                // Parse the modules that the compiled parser can handle.
-                // 02_parse.dag (3300 lines) causes OOM from S76 cloning.
-                // 03_resolve through 06_pipeline fail on multi-line lambda
-                // syntax after |> pipe — a parser bug to fix in the next session.
+                // Parse all modules except 02_parse.dag (3300 lines —
+                // S76 clone_if_needed causes OOM on files this large).
                 let modules: Vec<(&str, &str, &str)> = vec![
                     ("00_core.dag", CORE_DAG_SOURCE, "v2.std.core"),
                     ("01_tokenize.dag", TOKENIZE_DAG_SOURCE, "v2.compiler.tokenize"),
+                    ("03_resolve.dag", RESOLVE_DAG_SOURCE, "v2.compiler.resolve"),
+                    ("04_typecheck.dag", TYPECHECK_DAG_SOURCE, "v2.compiler.typecheck"),
+                    ("05_emit.dag", EMIT_DAG_SOURCE, "v2.compiler.emit"),
+                    ("06_pipeline.dag", PIPELINE_DAG_SOURCE, "v2.compiler.pipeline"),
                 ];
                 for (file, source, expected_name) in &modules {{
                     let tokens = tokenize(source.to_string());
