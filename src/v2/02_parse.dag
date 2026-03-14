@@ -27,6 +27,7 @@ import v2.std.core {
   Predicate, NonEmpty, Pattern, Range, Brand, ContentEncoding, Format,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
   RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast, ForEach,
+  Index, Slice,
   NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -47,12 +48,12 @@ import v2.std.core {
   KwIdempotent, KwReadonly, KwHermetic,
   LBrace, RBrace, LParen, RParen, LBracket, RBracket,
   Lt, Gt, Le, Ge, FatArrow, Arrow,
-  Colon, Comma, Dot, Eq, EqEq, Ne,
+  Colon, Comma, Dot, DotDot, Eq, EqEq, Ne,
   Plus, Minus, Star, Slash, Percent, Bang, And, Or,
   Question, NullCoalesce, Pipe, PipeArrow,
   Ident, StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown,
-  Diagnostic, Severity, Error, Warning,
+  Diagnostic, Error,
   SourceSpan
 }
 
@@ -263,6 +264,7 @@ fn kind_tag(kind: TokenKind) -> String {
     Colon => "Colon"
     Comma => "Comma"
     Dot => "Dot"
+    DotDot => "DotDot"
     Eq => "Eq"
     EqEq => "EqEq"
     Ne => "Ne"
@@ -517,15 +519,20 @@ fn parse_imports(state: ParserState) -> ImportsResult {
 }
 
 fn parse_items(state: ParserState) -> ItemsResult {
+  // Iterative item collection — avoids O(items) recursion depth.
+  // The old recursive version created 130+ stack frames for 02_parse.dag,
+  // each holding an ItemsResult with a growing items list.
+  parse_items_acc(state: state, acc: [])
+}
+
+fn parse_items_acc(state: ParserState, acc: List<Item>) -> ItemsResult {
   let s = skip_newlines(state: state)
   if at_end(state: s) || check(state: s, tag: "Eof") {
-    ItemsResult { items: [], state: s, err: none }
+    ItemsResult { items: acc, state: s, err: none }
   } else {
     let r = parse_item(state: s)
-    if has_err(err: r.err) { return ItemsResult { items: [], state: r.state, err: r.err } }
-    let rest = parse_items(state: r.state)
-    if has_err(err: rest.err) { return rest }
-    ItemsResult { items: concat([r.item], rest.items), state: rest.state, err: none }
+    if has_err(err: r.err) { return ItemsResult { items: acc, state: r.state, err: r.err } }
+    parse_items_acc(state: r.state, acc: concat(acc, [r.item]))
   }
 }
 
@@ -2223,16 +2230,18 @@ fn parse_block(state: ParserState) -> ExprResult {
 }
 
 fn parse_stmts(state: ParserState) -> StmtsResult {
+  // Iterative — avoids O(statements) recursion depth per block.
+  parse_stmts_acc(state: state, acc: [])
+}
+
+fn parse_stmts_acc(state: ParserState, acc: List<Expr>) -> StmtsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) || check(state: s, tag: "Eof") {
-    StmtsResult { stmts: [], state: s, err: none }
+    StmtsResult { stmts: acc, state: s, err: none }
   } else {
     let r = parse_stmt(state: s)
-    if has_err(err: r.err) { return StmtsResult { stmts: [], state: r.state, err: r.err } }
-    let s2 = skip_newlines(state: r.state)
-    let rest = parse_stmts(state: s2)
-    if has_err(err: rest.err) { return rest }
-    StmtsResult { stmts: concat([r.expr], rest.stmts), state: rest.state, err: none }
+    if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
+    parse_stmts_acc(state: r.state, acc: concat(acc, [r.expr]))
   }
 }
 
@@ -2306,6 +2315,9 @@ fn parse_expr_loop(state: ParserState, lhs: Expr, min_bp: Int) -> ExprResult {
   } else {
     // Try postfix: .field, (args), as Type
     let post = try_postfix(state: state, lhs: lhs, min_bp: min_bp)
+    if has_err(err: post.err) {
+      ExprResult { expr: lhs, state: post.state, err: post.err }
+    } else {
     if post.changed {
       parse_expr_loop(state: post.state, lhs: post.expr, min_bp: min_bp)
     } else {
@@ -2342,6 +2354,7 @@ fn parse_expr_loop(state: ParserState, lhs: Expr, min_bp: Int) -> ExprResult {
         }
         None => ExprResult { expr: lhs, state: state, err: none }
       }
+    }
     }
   }
 }
@@ -2476,6 +2489,7 @@ fn parse_primary(state: ParserState) -> ExprResult {
     Some { value: KwFor } => parse_for(state: state)
     Some { value: KwLet } => parse_let(state: state)
     Some { value: KwReturn } => parse_return(state: state)
+    Some { value: KwFn } => parse_fn_lambda(state: state)
     _ => {
       let tag = match k {
         Some { value: kind } => kind_tag(kind: kind)
@@ -2543,6 +2557,15 @@ fn try_postfix(state: ParserState, lhs: Expr, min_bp: Int) -> PostfixResult {
         PostfixResult { expr: Cast { expr: lhs, target: r.type_expr, span: span }, changed: true, state: r.state, err: none }
       }
     }
+    Some { value: LBracket } => {
+      if 14 < min_bp {
+        PostfixResult { expr: lhs, changed: false, state: state, err: none }
+      } else {
+        let r = parse_index_or_slice(state: state, base: lhs, span: span)
+        if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
+        PostfixResult { expr: r.expr, changed: true, state: r.state, err: none }
+      }
+    }
     Some { value: LBrace } => {
       match lhs {
         Var { name: n, span: sp } => {
@@ -2570,6 +2593,40 @@ fn make_call_expr(lhs: Expr, args: List<NamedArg>, span: SourceSpan) -> Expr {
     Var { name: n, span: _ } => Call { func: n, args: args, span: span }
     FieldAccess { base: b, field: f, span: _ } => MethodCall { receiver: b, method: f, args: args, span: span }
     _ => Call { func: "<expr>", args: args, span: span }
+  }
+}
+
+// =========================================================================
+// Index/Slice parsing: base[index] or base[start..end]
+// =========================================================================
+
+fn parse_index_or_slice(state: ParserState, base: Expr, span: SourceSpan) -> ExprResult {
+  let dummy_expr = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
+  let r = expect(state: state, tag: "LBracket")
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let s = r.state
+
+  // Parse the first expression (index or slice start)
+  let r = parse_expr(state: s)
+  if has_err(err: r.err) { return r }
+  let first_expr = r.expr
+  let s = r.state
+
+  // Check for DotDot → slice
+  if check(state: s, tag: "DotDot") {
+    let adv = advance(state: s)
+    let r = parse_expr(state: adv.state)
+    if has_err(err: r.err) { return r }
+    let end_expr = r.expr
+    let s = r.state
+    let r = expect(state: s, tag: "RBracket")
+    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+    ExprResult { expr: Slice { base: base, start: first_expr, end: end_expr, span: span }, state: r.state, err: none }
+  } else {
+    // Index
+    let r = expect(state: s, tag: "RBracket")
+    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+    ExprResult { expr: Index { base: base, index: first_expr, span: span }, state: r.state, err: none }
   }
 }
 
@@ -2701,6 +2758,11 @@ fn parse_expr_loop_no_brace(state: ParserState, lhs: Expr, min_bp: Int) -> ExprR
       let span = current_span(state: state)
       let new_lhs = make_call_expr(lhs: lhs, args: r.args, span: span)
       parse_expr_loop_no_brace(state: r.state, lhs: new_lhs, min_bp: min_bp)
+    } else if check(state: state, tag: "LBracket") && 14 >= min_bp {
+      let span = current_span(state: state)
+      let r = parse_index_or_slice(state: state, base: lhs, span: span)
+      if has_err(err: r.err) { return r }
+      parse_expr_loop_no_brace(state: r.state, lhs: r.expr, min_bp: min_bp)
     } else {
       let bp = infix_bp(state: state)
       match bp {
@@ -2738,17 +2800,20 @@ fn parse_expr_loop_no_brace(state: ParserState, lhs: Expr, min_bp: Int) -> ExprR
 }
 
 fn parse_match_arms(state: ParserState) -> ArmsResult {
+  // Iterative — avoids O(arms) recursion depth per match.
+  parse_match_arms_acc(state: state, acc: [])
+}
+
+fn parse_match_arms_acc(state: ParserState, acc: List<MatchArm>) -> ArmsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    ArmsResult { arms: [], state: s, err: none }
+    ArmsResult { arms: acc, state: s, err: none }
   } else {
     let r = parse_match_arm(state: s)
-    if has_err(err: r.err) { return ArmsResult { arms: [], state: r.state, err: r.err } }
+    if has_err(err: r.err) { return ArmsResult { arms: acc, state: r.state, err: r.err } }
     let e = eat(state: r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
-    let rest = parse_match_arms(state: s2)
-    if has_err(err: rest.err) { return rest }
-    ArmsResult { arms: concat([r.arm], rest.arms), state: rest.state, err: none }
+    parse_match_arms_acc(state: s2, acc: concat(acc, [r.arm]))
   }
 }
 
@@ -3129,6 +3194,57 @@ fn parse_paren_expr(state: ParserState) -> ExprResult {
       let r2 = expect(state: s, tag: "RParen")
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
       ExprResult { expr: r.expr, state: r2.state, err: none }
+    }
+  }
+}
+
+// =========================================================================
+// fn(param1, param2) { body } — lambda expression with fn keyword
+//
+// Parses the fn keyword, a parenthesized parameter list (names only, no types),
+// and a brace-delimited body. Produces a Lambda AST node.
+// =========================================================================
+
+fn parse_fn_lambda(state: ParserState) -> ExprResult {
+  let span = current_span(state: state)
+  let dummy = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
+  // Consume 'fn'
+  let r1 = expect(state: state, tag: "KwFn")
+  if has_err(err: r1.err) { return ExprResult { expr: dummy, state: r1.state, err: r1.err } }
+  // Consume '('
+  let r2 = expect(state: r1.state, tag: "LParen")
+  if has_err(err: r2.err) { return ExprResult { expr: dummy, state: r2.state, err: r2.err } }
+  // Collect parameter names
+  let params_r = collect_fn_lambda_params(state: r2.state, acc: [])
+  // Consume ')'
+  let r3 = expect(state: params_r.state, tag: "RParen")
+  if has_err(err: r3.err) { return ExprResult { expr: dummy, state: r3.state, err: r3.err } }
+  let s = skip_newlines(state: r3.state)
+  // Parse body: { ... }
+  let body_r = parse_brace_expr(state: s)
+  if has_err(err: body_r.err) { return body_r }
+  ExprResult { expr: Lambda { params: params_r.params, body: body_r.expr, span: span }, state: body_r.state, err: none }
+}
+
+// Collect comma-separated identifiers for fn lambda params.
+fn collect_fn_lambda_params(state: ParserState, acc: List<String>) -> IdentCollectResult {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RParen") {
+    // End of params
+    IdentCollectResult { success: true, params: acc, state: s, err: none }
+  } else {
+    let name_r = expect_ident(state: s)
+    if has_err(err: name_r.err) {
+      IdentCollectResult { success: false, params: acc, state: name_r.state, err: name_r.err }
+    } else {
+      let s2 = skip_newlines(state: name_r.state)
+      if check(state: s2, tag: "Comma") {
+        let adv = advance(state: s2)
+        collect_fn_lambda_params(state: adv.state, acc: concat(acc, [name_r.name]))
+      } else {
+        // Last param (no trailing comma)
+        IdentCollectResult { success: true, params: concat(acc, [name_r.name]), state: s2, err: none }
+      }
     }
   }
 }

@@ -20,17 +20,14 @@ module v2.compiler.typecheck
 import std.types { SourceSpan }
 import v2.std.core {
   Module, Item, TypeExpr, TypeBody, Field, Variant, Param,
-  Expr, Diagnostic, Severity,
+  Expr, Diagnostic,
   TypeDef, FuncDef, FnDef, ServiceDef, ResourceDef, DataDef, ExternFuncDecl,
   Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive,
   Record, Sum, Alias,
-  ContainerKind,
-  Predicate,
   OperationDef, CapabilityDef, ResourceUse,
   ResponseMapping, ExitMapping,
-  TransportBinding, ServiceConfig,
-  Error, Warning, Info,
-  TypedExpr, TypedMatchArm, TypedNamedArg, TypedFieldInit,
+  Error,
+  TypedExpr,
   TypedItem, TypedTypeDef, TypedFnDef, TypedFuncDef,
   TypedServiceDef, TypedResourceDef, TypedDataDef, TypedExternFuncDecl,
   FuncSig, FuncEnv,
@@ -44,35 +41,9 @@ import v2.std.core {
   Literal, Var, FieldAccess, Call, MethodCall,
   Match, If, Let, RecordLit, ListLit, BinOp, UnaryOp,
   Lambda, StringInterp, Block, Cast,
-  Import
+  Index, Slice
 }
-// Forward import: v2.compiler.resolve will define these types (C4).
-// Until then, they are defined locally below.
-// import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
-
-// =========================================================================
-// Resolver input types (forward declarations for C4)
-//
-// These mirror the types that v2.compiler.resolve will export.
-// Once the resolve module exists, remove these and uncomment the import.
-// =========================================================================
-
-type ResolvedImport {
-  module_path: String
-  names: List<String>
-  target_module: Module?
-}
-
-type ResolvedModule {
-  module: Module
-  resolved_imports: List<ResolvedImport>
-  dep_order: Int
-}
-
-type ModuleGraph {
-  modules: List<ResolvedModule>
-  diagnostics: List<Diagnostic>
-}
+import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 
 // =========================================================================
 // Typecheck output types
@@ -173,29 +144,37 @@ type ResourceUseResult {
 // Extracts signatures from FnDef, FuncDef, and ExternFuncDecl items.
 // =========================================================================
 
+// Unwrap an optional return type at a function boundary.
+// The v1 codegen tracks optionality from field declarations and rejects
+// assigning optional values to non-optional struct fields. This function
+// boundary resets the tracking, allowing the result to be used as TypeExpr.
+fn unwrap_return_type(rt: TypeExpr?) -> TypeExpr {
+  // Use resolve_optional_type_expr pattern: the evaluator handles the
+  // none check and returns the value; the compiled code needs the
+  // .value accessor pattern. Both paths produce the same result.
+  let result = resolve_optional_type_expr(
+    expr: rt,
+    env: TypeEnv { bindings: [] },
+    module_name: ""
+  )
+  result.resolved
+}
+
 fn build_func_env(items: List<Item>) -> FuncEnv {
-  // Note: return_type is TypeExpr? on FnDef/FuncDef/ExternFuncDecl, but the
-  // v1 codegen loses optionality in match destructuring. We use build_func_sig
-  // helpers that take the full item to work around this limitation.
+  // Called with resolved items (after resolve_item_types), so return_type
+  // fields have already been resolved by resolve_optional_type_expr.
   let sigs = fold(items, init: [], f: (acc, item) =>
     match item {
-      FnDef { name: n, params: ps, return_type: _, body: _, span: _ } =>
-        concat(acc, [build_fn_sig(name: n, params: ps, is_async: false)])
-      FuncDef { name: n, params: ps, return_type: _, uses: _, body: _, span: _ } =>
-        concat(acc, [build_fn_sig(name: n, params: ps, is_async: true)])
-      ExternFuncDecl { name: n, params: ps, return_type: _, span: _ } =>
-        concat(acc, [build_fn_sig(name: n, params: ps, is_async: false)])
+      FnDef { name: n, params: ps, return_type: rt, body: _, span: _ } =>
+        concat(acc, [FuncSig { name: n, params: ps, return_type: unwrap_return_type(rt: rt), is_async: false }])
+      FuncDef { name: n, params: ps, return_type: rt, uses: _, body: _, span: _ } =>
+        concat(acc, [FuncSig { name: n, params: ps, return_type: unwrap_return_type(rt: rt), is_async: true }])
+      ExternFuncDecl { name: n, params: ps, return_type: rt, span: _ } =>
+        concat(acc, [FuncSig { name: n, params: ps, return_type: rt, is_async: false }])
       _ => acc
     }
   )
   FuncEnv { signatures: sigs }
-}
-
-// Build a FuncSig. Return type defaults to Unit — the typed AST inference
-// pass (step 3) will resolve actual return types from the type environment.
-fn build_fn_sig(name: String, params: List<Param>, is_async: Bool) -> FuncSig {
-  let unit_type = Primitive { name: "Unit", span: SourceSpan { start: 0, end: 0 } }
-  FuncSig { name: name, params: params, return_type: unit_type, is_async: is_async }
 }
 
 // =========================================================================
@@ -353,6 +332,25 @@ fn infer_literal(lit: LiteralValue) -> TypeExpr {
 // -------------------------------------------------------------------------
 // infer_binop_type: resolve the result type of a binary operation
 // -------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------
+// infer_index_type: compute result type for Index expression
+//   Container<T>[i] → T, String[i] → String, Map<K,V>[k] → V
+// -------------------------------------------------------------------------
+
+fn infer_index_type(base_type: TypeExpr) -> TypeExpr {
+  match base_type {
+    Container { kind: _, element: el, span: _ } => el
+    MapType { key: _, value: v, span: _ } => v
+    Primitive { name: n, span: _ } =>
+      if n == "String" {
+        Primitive { name: "String", span: no_span() }
+      } else {
+        unit_type()
+      }
+    _ => unit_type()
+  }
+}
 
 fn infer_binop_type(op: BinOpKind, left_type: TypeExpr) -> TypeExpr {
   match op {
@@ -652,6 +650,22 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       InferResult {
         typed: typed(expr: expr, resolved_type: unit_type()),
         diagnostics: concat(coll_result.diagnostics, body_result.diagnostics)
+      }
+
+    Index { base: base_expr, index: _, span: _ } =>
+      let base_result = infer_expr(expr: base_expr, scope: scope)
+      let base_type = base_result.typed.resolved_type
+      let elem_type = infer_index_type(base_type: base_type)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: elem_type),
+        diagnostics: base_result.diagnostics
+      }
+
+    Slice { base: base_expr, start: _, end: _, span: _ } =>
+      let base_result = infer_expr(expr: base_expr, scope: scope)
+      InferResult {
+        typed: typed(expr: expr, resolved_type: base_result.typed.resolved_type),
+        diagnostics: base_result.diagnostics
       }
 
     // Fallback for any unrecognized variant
@@ -1581,10 +1595,16 @@ fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
   let all_defined = fold(graph.modules, init: [], f: (acc, tm) => concat(acc, tm.type_env.bindings))
   let defined_names = map(all_defined, b => b.name)
   fold(graph.modules, init: [], f: (acc, tm) =>
+    // Check raw items (tm.module.items)
     let item_diags = fold(tm.module.items, init: [], f: (inner_acc, item) =>
       concat(inner_acc, collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names))
     )
-    concat(acc, item_diags)
+    // Also check typed items (tm.items) — these contain resolved_type on
+    // TypedExpr bodies and the resolved return_type on TypedFnDef/TypedFuncDef.
+    let typed_item_diags = fold(tm.items, init: [], f: (inner_acc, titem) =>
+      concat(inner_acc, collect_unresolved_in_typed_item(item: titem, module_name: tm.module.name, defined_names: defined_names))
+    )
+    concat(acc, item_diags, typed_item_diags)
   )
 }
 
@@ -1704,6 +1724,77 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
       concat(collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names),
         collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names))
   }
+}
+
+// =========================================================================
+// Validation: check TypedItems for unresolved types
+//
+// Walks the typed AST (TypedItem list) and checks that return types and
+// inferred resolved_type fields on TypedExprs contain no unresolved Named.
+// =========================================================================
+
+fn collect_unresolved_in_typed_item(item: TypedItem, module_name: String, defined_names: List<String>) -> List<Diagnostic> {
+  match item {
+    TypedTypeDef { name: _, body: body, span: _ } =>
+      collect_unresolved_in_type_body(body: body, module_name: module_name, defined_names: defined_names)
+
+    TypedFnDef { name: _, params: params, return_type: rt, body: body, span: _ } =>
+      let param_diags = fold(params, init: [], f: (acc, p) =>
+        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
+      )
+      let ret_diags = collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names)
+      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
+      concat(param_diags, ret_diags, body_diags)
+
+    TypedFuncDef { name: _, params: params, return_type: rt, uses: uses, body: body, span: _ } =>
+      let param_diags = fold(params, init: [], f: (acc, p) =>
+        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
+      )
+      let ret_diags = collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names)
+      let use_diags = fold(uses, init: [], f: (acc, u) =>
+        concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
+      )
+      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
+      concat(param_diags, ret_diags, use_diags, body_diags)
+
+    TypedServiceDef { name: _, transport: _, config: _, operations: operations, span: _ } =>
+      fold(operations, init: [], f: (acc, op) =>
+        let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+        )
+        let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+        )
+        concat(acc, input_diags, output_diags)
+      )
+
+    TypedResourceDef { name: _, properties: _, capabilities: capabilities, span: _ } =>
+      fold(capabilities, init: [], f: (acc, cap) =>
+        let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+        )
+        let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
+          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+        )
+        concat(acc, input_diags, output_diags)
+      )
+
+    TypedDataDef { name: _, type_expr: type_expr, value: body, span: _ } =>
+      let type_diags = collect_unresolved_in_type_expr(expr: type_expr, module_name: module_name, defined_names: defined_names)
+      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
+      concat(type_diags, body_diags)
+
+    TypedExternFuncDecl { name: _, params: params, return_type: rt, span: _ } =>
+      let param_diags = fold(params, init: [], f: (acc, p) =>
+        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
+      )
+      concat(param_diags, collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names))
+  }
+}
+
+fn collect_unresolved_in_typed_expr(texpr: TypedExpr, module_name: String, defined_names: List<String>) -> List<Diagnostic> {
+  // Check the resolved_type attached to this TypedExpr node
+  collect_unresolved_in_type_expr(expr: texpr.resolved_type, module_name: module_name, defined_names: defined_names)
 }
 
 // =========================================================================

@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, Item, Diagnostic, Severity, SourceSpan }
+import v2.std.core { Module, Import, Item, Diagnostic, Severity }
 
 // =========================================================================
 // Output types

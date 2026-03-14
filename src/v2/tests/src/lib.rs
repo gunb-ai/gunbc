@@ -2114,13 +2114,10 @@ fn example(items: List<String>) -> Int {
             })
             .collect();
 
-        let modules: Vec<(
-            &str,
-            &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>],
-        )> = parsed
+        let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
             .iter()
             .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
-                (stem.as_str(), sf.items.as_slice())
+                (stem.as_str(), sf)
             })
             .collect();
 
@@ -2239,13 +2236,10 @@ fn example(items: List<String>) -> Int {
             })
             .collect();
 
-        let modules: Vec<(
-            &str,
-            &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>],
-        )> = parsed
+        let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
             .iter()
             .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
-                (stem.as_str(), sf.items.as_slice())
+                (stem.as_str(), sf)
             })
             .collect();
 
@@ -2381,13 +2375,10 @@ fn example(items: List<String>) -> Int {
             })
             .collect();
 
-        let modules: Vec<(
-            &str,
-            &[daglang_syntax::span::Spanned<daglang_syntax::ast::Item>],
-        )> = parsed
+        let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
             .iter()
             .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| {
-                (stem.as_str(), sf.items.as_slice())
+                (stem.as_str(), sf)
             })
             .collect();
 

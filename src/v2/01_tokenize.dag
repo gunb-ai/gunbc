@@ -23,7 +23,7 @@ import v2.std.core {
   KwIdempotent, KwReadonly, KwHermetic,
   LBrace, RBrace, LParen, RParen, LBracket, RBracket,
   Lt, Gt, Le, Ge, FatArrow, Arrow,
-  Colon, Comma, Dot, Eq, EqEq, Ne,
+  Colon, Comma, Dot, DotDot, Eq, EqEq, Ne,
   Plus, Minus, Star, Slash, Percent, Bang, And, Or,
   Question, NullCoalesce, Pipe, PipeArrow,
   LitStr, LitInt, LitFloat, Ident,
@@ -154,6 +154,7 @@ fn scan_token(state: TokenizerState, ch: String) -> TokenizerState {
   if ch == "|" && next_ch == ">" { return emit(state: state, kind: PipeArrow, len: 2) }
   if ch == "|" { return emit(state: state, kind: Pipe, len: 1) }
   if ch == "?" && next_ch == "?" { return emit(state: state, kind: NullCoalesce, len: 2) }
+  if ch == "." && next_ch == "." { return emit(state: state, kind: DotDot, len: 2) }
 
   // Single-character operators not in the table
   if ch == "=" { return emit(state: state, kind: Eq, len: 1) }

@@ -52,7 +52,7 @@ type TokenKind
   // Relational / arrow
   | Lt | Gt | Le | Ge | FatArrow | Arrow
   // Separators
-  | Colon | Comma | Dot
+  | Colon | Comma | Dot | DotDot
   // Assignment / equality
   | Eq | EqEq | Ne
   // Arithmetic
@@ -214,6 +214,8 @@ type Expr
   | Block { stmts: List<Expr>, span: SourceSpan }
   | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
   | ForEach { variable: String, collection: Expr, body: Expr, span: SourceSpan }
+  | Index { base: Expr, index: Expr, span: SourceSpan }
+  | Slice { base: Expr, start: Expr, end: Expr, span: SourceSpan }
 
 type NamedArg { name: String?, value: Expr }
 type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
@@ -348,22 +350,6 @@ type Severity = Error | Warning
 type TypedExpr {
   expr: Expr
   resolved_type: TypeExpr
-}
-
-type TypedMatchArm {
-  pattern: MatchPattern
-  guard: TypedExpr?
-  body: TypedExpr
-}
-
-type TypedNamedArg {
-  name: String?
-  value: TypedExpr
-}
-
-type TypedFieldInit {
-  name: String
-  value: TypedExpr
 }
 
 type TypedItem

@@ -10,7 +10,7 @@
 module v2.compiler.pipeline
 
 import v2.std.core {
-  Module, Diagnostic, CompileResult
+  Diagnostic, CompileResult
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
