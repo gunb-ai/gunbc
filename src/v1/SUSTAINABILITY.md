@@ -470,6 +470,13 @@ emitter knows about `malloc` and `NULL`. The Go emitter knows about
 implicit heap allocation and `nil`. No heuristics needed — the types
 tell the emitter what to do.
 
+**Design guide:** The DAG type system is compositional — similar to
+protobuf message stacking. Products, sums, primitives, containers.
+This should map naturally across all targets including hardware
+description languages (Verilog, PSPICE). If a type construct or IR
+node only makes sense for languages with heaps and garbage collectors,
+it's too coupled to software runtime assumptions.
+
 **Interim principle:** Every Rust-specific construct added to fn_codegen
 during bootstrap must be documented here and must NOT be migrated to
 the v2 emitter. The v2 emitter should derive these from type information,

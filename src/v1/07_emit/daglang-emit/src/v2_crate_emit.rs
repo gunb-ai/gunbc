@@ -122,7 +122,12 @@ pub fn assemble_v2_crate(
         })
         .collect();
 
-    // 5. Emit each module
+    // 5. Emit each module, tracking type definitions to suppress exact duplicates
+    // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
+    // structurally identical types (same name AND same fields) get their duplicate
+    // definitions suppressed, so cross-module references use the upstream type
+    // via `use crate::upstream::*`.
+    let mut defined_type_fields: HashMap<String, Vec<String>> = HashMap::new();
     for (dag_stem, items) in modules {
         let rust_mod = match V2_MODULE_MAP.iter().find(|(stem, _)| stem == dag_stem) {
             Some((_, rust_name)) => *rust_name,
@@ -136,7 +141,20 @@ pub fn assemble_v2_crate(
             &struct_field_types,
             &optional_fields,
             &all_enum_variants,
+            &defined_type_fields,
         );
+        // Track which types this module defines WITH their field names
+        for item in items.iter() {
+            if let Item::TypeDef(td) = &item.node {
+                let fields: Vec<String> = match &td.body {
+                    daglang_syntax::ast::TypeBody::Record(fs) => {
+                        fs.iter().map(|f| f.name.clone()).collect()
+                    }
+                    _ => vec![],
+                };
+                defined_type_fields.entry(td.name.clone()).or_insert(fields);
+            }
+        }
         let mut content = module_prelude(dag_stem);
         content.push_str(&render_rust::render_rust_source(&source));
         files.push(GeneratedFile {
@@ -256,6 +274,9 @@ fn module_prelude(dag_stem: &str) -> String {
         "04_typecheck" => {
             prelude.push_str("use crate::parse::*;\n");
             prelude.push_str("use crate::resolve::*;\n");
+            // S81: fold init inference picks ParseStageResult from pipeline —
+            // import it so the generated code compiles
+            prelude.push_str("use crate::pipeline::ParseStageResult;\n");
         }
         "05_emit" => {
             prelude.push_str("use crate::parse::*;\n");
@@ -282,6 +303,7 @@ fn emit_module(
     struct_field_types: &HashMap<String, HashMap<String, String>>,
     optional_fields: &HashMap<String, HashSet<String>>,
     all_enum_variants: &HashMap<String, HashSet<String>>,
+    upstream_type_fields: &HashMap<String, Vec<String>>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -324,6 +346,19 @@ fn emit_module(
     for item in items {
         match &item.node {
             Item::TypeDef(td) => {
+                // Skip types already defined with identical fields in upstream modules
+                // (S81: suppress structurally identical duplicates)
+                if let Some(upstream_fields) = upstream_type_fields.get(&td.name) {
+                    let this_fields: Vec<String> = match &td.body {
+                        daglang_syntax::ast::TypeBody::Record(fs) => {
+                            fs.iter().map(|f| f.name.clone()).collect()
+                        }
+                        _ => vec![],
+                    };
+                    if &this_fields == upstream_fields {
+                        continue;
+                    }
+                }
                 ir_items.extend(type_codegen::typedef_to_code_ir_boxed(td, recursive_fields));
             }
             Item::FnDef(fd) => {

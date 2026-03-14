@@ -258,7 +258,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             // expressions that produce Option<T>.
             if rust_field == "value" {
                 let compiled = compile_expr(receiver, ctx);
-                if is_option_expr(&compiled, ctx) {
+                if is_option_value_access(&compiled, ctx) {
                     return code_ir::Expr::MethodCall {
                         receiver: Box::new(compiled),
                         method: "unwrap".to_string(),
@@ -744,9 +744,32 @@ fn compile_intrinsic_call(
             match &args[1].1 {
                 ast::Expr::Record(name, fields) => {
                     let struct_name = name.clone().unwrap_or_else(|| {
-                        // Infer struct name from field names
+                        // TEMPORARY bootstrap scaffolding (S81): For `with()`,
+                        // infer struct name using SUBSET matching — the update
+                        // record only contains the changed fields, not all fields
+                        // of the struct. Find the struct with the fewest extra fields
+                        // that contains all update fields.
                         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-                        infer_struct_name(&field_names, ctx)
+                        let candidates: Vec<(&String, usize)> = ctx
+                            .struct_field_types
+                            .iter()
+                            .filter(|(_, ft)| field_names.iter().all(|f| ft.contains_key(*f)))
+                            .map(|(sn, ft)| (sn, ft.len()))
+                            .collect();
+                        if candidates.len() == 1 {
+                            candidates[0].0.clone()
+                        } else if candidates.len() > 1 {
+                            // Prefer non-synthesized names (not starting with __)
+                            // then smallest superset
+                            let mut sorted = candidates;
+                            sorted.sort_by_key(|(name, count)| {
+                                let is_synth = if name.starts_with("__") { 1usize } else { 0 };
+                                (is_synth, *count)
+                            });
+                            sorted[0].0.clone()
+                        } else {
+                            String::new()
+                        }
                     });
                     let ir_fields: Vec<(String, code_ir::Expr)> = fields
                         .iter()
@@ -1820,6 +1843,31 @@ fn is_option_expr(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
         // unwrap_or_else returns T, not Option<T> — don't flag it
         _ => false,
     }
+}
+
+/// TEMPORARY bootstrap scaffolding (S81): Check if `.value` access on this
+/// expression should be emitted as `.unwrap()` (Option unwrap pattern).
+/// Returns true when the expression is known to produce Option<T> — either
+/// through the is_option_expr check, or because the variable name matches
+/// a known optional field name (from pattern destructuring).
+fn is_option_value_access(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    if is_option_expr(expr, ctx) {
+        return true;
+    }
+    // Check if it's a .clone() on something that's an option value access
+    if let code_ir::Expr::MethodCall { receiver, method, .. } = expr {
+        if method == "clone" {
+            return is_option_value_access(receiver, ctx);
+        }
+    }
+    // Check if the variable name matches a known optional field in any struct/variant.
+    // This catches variables bound from pattern destructuring like:
+    //   Item::FuncDef { return_type, .. } where return_type is Option<TypeExpr>
+    if let code_ir::Expr::Var(name) = expr {
+        let escaped = name.strip_prefix("r#").unwrap_or(name);
+        return ctx.optional_fields.values().any(|opt| opt.contains(escaped));
+    }
+    false
 }
 
 /// Compile a field value expression with type-aware variant resolution.
