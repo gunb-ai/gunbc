@@ -718,6 +718,15 @@ pub fn eval_builtin_call(
                 _ => Err(EvalError::new("lookup requires (Map, String)")),
             }
         }
+        "reverse" => match require_builtin_arg("list", 0, args) {
+            Err(e) => Err(e),
+            Ok(Value::List(list)) => {
+                let mut reversed = list.clone();
+                reversed.reverse();
+                Ok(Value::List(reversed))
+            }
+            _ => Err(EvalError::new("reverse requires a List")),
+        },
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             let mut map = BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(name.to_string()));

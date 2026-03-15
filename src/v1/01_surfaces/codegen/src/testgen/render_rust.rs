@@ -345,6 +345,23 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 out
             }
             Stmt::Item(item) => self.render_item(item, indent),
+            Stmt::Loop { body } => {
+                let mut out = format!("{}loop {{\n", pad);
+                for stmt in body {
+                    out.push_str(&self.render_stmt(stmt, indent + 1));
+                }
+                writeln!(out, "{}}}", pad).unwrap();
+                out
+            }
+            Stmt::Continue => format!("{}continue;\n", pad),
+            Stmt::Break(expr) => {
+                let rendered = self.render_expr(expr);
+                if rendered == "()" {
+                    format!("{}break;\n", pad)
+                } else {
+                    format!("{}break {};\n", pad, rendered)
+                }
+            }
         }
     }
 
