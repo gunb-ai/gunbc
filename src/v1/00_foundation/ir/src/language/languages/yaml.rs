@@ -11,6 +11,7 @@
 
 use crate::dag::{Dag, Port};
 use crate::language::LanguageOp;
+use crate::language::traits::comment::add_line_comment;
 use crate::node::Node;
 
 /// YAML format static configuration.
@@ -51,7 +52,7 @@ pub fn build_yaml_subdag() -> Node<LanguageOp> {
 
 /// Generate YAML comment.
 pub fn yaml_comment(text: &str) -> String {
-    format!("{} {}", YAML.comment_prefix, text)
+    add_line_comment(text, YAML.comment_prefix)
 }
 
 #[cfg(test)]
@@ -90,5 +91,10 @@ mod tests {
     #[test]
     fn test_yaml_comment() {
         assert_eq!(yaml_comment("test"), "# test");
+    }
+
+    #[test]
+    fn test_yaml_comment_multiline() {
+        assert_eq!(yaml_comment("before\n\nafter"), "# before\n#\n# after");
     }
 }
