@@ -501,6 +501,11 @@ fn foo(item: String) -> String {
         assert_parses_strict("src/v2/06_pipeline.dag");
     }
 
+    #[test]
+    fn phase0_shared_behavioral_parses_strict() {
+        assert_parses_strict("dsl/shared/behavioral.dag");
+    }
+
     // ═════════════════════════════════════════════════════════════════════
     // Phase 1: Compilation gate — v1 compiler can compile each v2 module
     // ═════════════════════════════════════════════════════════════════════
@@ -1813,7 +1818,7 @@ fn example(items: List<String>) -> Int {
     // ═════════════════════════════════════════════════════════════════════
     // Phase 5: gist.dag transitive closure — v1 parser gate
     //
-    // All 12 files in gist.dag's transitive closure must parse without
+    // All 11 files in gist.dag's transitive closure must parse without
     // errors through the v1 parser. (The v2 parser gate is phase 5b.)
     // ═════════════════════════════════════════════════════════════════════
 
@@ -1822,7 +1827,6 @@ fn example(items: List<String>) -> Int {
     fn phase5_gist_transitive_closure_v1_parse() {
         let files = [
             "dsl/std/types.dag",
-            "dsl/std/behavioral.dag",
             "dsl/std/errors.dag",
             "dsl/std/resources.dag",
             "dsl/extdeps/cloud/cloud.dag",
@@ -2384,17 +2388,142 @@ fn example(items: List<String>) -> Int {
         }
     }
 
+    #[test]
+    fn phase6_typecheck_rejects_cross_function_param_leak() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn uses_missing() -> Int { ghost }\nfn carries_param(ghost: Int) -> Int { ghost }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("undefined variable 'ghost'")),
+            "cross-function param names must not leak through FuncEnv: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase6_block_let_scope_threads_forward() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn scoped() -> Int {\n  let x = 1\n  x\n}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "block-local let bindings should be visible to later statements: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase6_if_else_branch_is_inferred() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn choose(cond: Bool) -> Int { if cond { 1 } else { \"x\" } }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("if branches resolve to incompatible types")),
+            "else branches should be typechecked, not ignored: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase6_for_each_binds_loop_variable() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn walk() -> Unit { for ch in \"abc\" { ch } }\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "for-each loop variables should be available inside the loop body: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase6_emit_non_empty_wrappers_validate_deserialize() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[("main.dag", "module main\ndata answer: Int = 42\n")],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "non-empty wrapper emission should compile cleanly: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main.rs");
+        assert!(
+            main_rs.contains("impl<'de, T> Deserialize<'de> for NonEmptyVec<T>")
+                && main_rs.contains("NonEmptyVec::new(items).map_err(serde::de::Error::custom)")
+                && main_rs.contains("impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>")
+                && main_rs
+                    .contains("NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)"),
+            "non-empty wrappers should validate deserialization invariants:\n{}",
+            main_rs
+        );
+    }
+
     /// Feed gist.dag's full transitive dependency chain through the v2
     /// pipeline: tokenize → parse → resolve → typecheck → emit.
     ///
     /// This is the Level 1 acceptance gate: v2 can process the real gist
-    /// tool and its 11 transitive dependencies.
+    /// tool and its 10 transitive dependencies.
     ///
     /// No stack overflow: the explicit-stack evaluator handles deep mutual
-    /// recursion via heap continuations. However, evaluating 12 real .dag
+    /// recursion via heap continuations. However, evaluating 11 real .dag
     /// files consumes >16GB heap in debug mode (interpreter overhead).
     #[test]
-    #[ignore = "OOM in debug mode — 12 .dag files exceed 16GB heap (not a stack issue)"]
+    #[ignore = "OOM in debug mode — 11 .dag files exceed 16GB heap (not a stack issue)"]
     fn phase6_gist_full_pipeline() {
         let output = compile_all_modules().expect("compilation should succeed");
         let root = workspace_root();
@@ -2403,7 +2532,6 @@ fn example(items: List<String>) -> Int {
         let dag_files = vec![
             "dsl/std/types.dag",
             "dsl/std/resources.dag",
-            "dsl/std/behavioral.dag",
             "dsl/std/errors.dag",
             "dsl/extdeps/cloud/cloud.dag",
             "dsl/extdeps/cloud/gcp/gcp.dag",

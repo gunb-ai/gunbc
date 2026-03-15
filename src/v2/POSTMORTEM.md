@@ -81,15 +81,18 @@ src/v2
     └── src
 
 dsl/std
-├── behavioral.dag
 ├── errors.dag
 ├── resources.dag
 └── types.dag
+
+dsl/shared
+└── behavioral.dag
 ```
 
 `src/v2/tests/**` is part of the directory scope above, but not part of
 the compiler pipeline proper. Pass 1 scanned the 7 compiler modules plus
-the 4 `dsl/std` files they depend on.
+the 3 `dsl/std` files they depend on, and the restored shared
+`dsl/shared/behavioral.dag` vocabulary file.
 
 Canonical numbered file order for repeated end-to-end scans:
 
@@ -98,7 +101,7 @@ Canonical numbered file order for repeated end-to-end scans:
 | 01 | `src/v2/00_core.dag` | Shared compiler contracts and AST/type surface |
 | 02 | `dsl/std/types.dag` | Standard type vocabulary imported by the pipeline |
 | 03 | `dsl/std/resources.dag` | Standard resource vocabulary imported by the pipeline |
-| 04 | `dsl/std/behavioral.dag` | Behavioral stdlib shapes referenced by the pipeline |
+| 04 | `dsl/shared/behavioral.dag` | Shared behavioral vocabulary kept out of `std/` |
 | 05 | `dsl/std/errors.dag` | Canonical error-shape vocabulary |
 | 06 | `src/v2/01_tokenize.dag` | Tokenizer |
 | 07 | `src/v2/02_parse.dag` | Parser |
@@ -188,7 +191,7 @@ the same end-to-end order.
 **`[03] dsl/std/resources.dag`**
 - No confirmed pipeline invariant violation on pass 1.
 
-**`[04] dsl/std/behavioral.dag`**
+**`[04] dsl/shared/behavioral.dag`**
 - No confirmed pipeline invariant violation on pass 1.
 
 **`[05] dsl/std/errors.dag`**
@@ -303,7 +306,7 @@ the typed graph and emitted Rust.
 **`[03] dsl/std/resources.dag`**
 - No new confirmed findings on pass 6.
 
-**`[04] dsl/std/behavioral.dag`**
+**`[04] dsl/shared/behavioral.dag`**
 - No new confirmed findings on pass 6.
 
 **`[05] dsl/std/errors.dag`**
@@ -1145,8 +1148,10 @@ iterative cut stack depth from O(n) to O(max-nesting-depth).
 
 **Current convergence state:**
 
-- 2/7 modules self-parse successfully: `00_core.dag`, `01_tokenize.dag`
-- 5/7 modules blocked on the three parser bugs documented above
+- 6/7 modules self-parse successfully: `00_core.dag`, `01_tokenize.dag`,
+  `03_resolve.dag`, `04_typecheck.dag`, `05_emit.dag`, `06_pipeline.dag`
+- The `expect_name` keyword-named-arg fix is verified in self-parse
+  coverage; only `02_parse.dag` remains excluded on the S76/OOM path
 - Regression tests added: `phase4_parse_multiline_pipe_chain`,
   `phase4_parse_fn_lambda_in_call_arg`, `phase4_parse_keyword_named_arg`
 

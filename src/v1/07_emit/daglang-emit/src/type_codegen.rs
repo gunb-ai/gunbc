@@ -70,8 +70,14 @@ pub fn type_expr_to_rust_with_registry(
                 } else {
                     None
                 };
-                language_model::resolve_container(kind, &inner, key, model)
-                    .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")))
+                let resolved = language_model::resolve_container(kind, &inner, key, model)
+                    .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")));
+                // Wrap List in Rc<> for O(1) clone (S76 fix)
+                if kind == ContainerKind::List {
+                    format!("Rc<{}>", resolved)
+                } else {
+                    resolved
+                }
             } else {
                 let mapped = crate::type_mapping::resolve_and_emit(
                     name,
@@ -236,7 +242,7 @@ fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
         }
         TypeExpr::Generic(name, args) => {
             let mapped = match name.as_str() {
-                "List" => "Vec".to_string(),
+                "List" => "Rc<Vec".to_string(),
                 "Map" => "std::collections::HashMap".to_string(),
                 "Set" => "std::collections::HashSet".to_string(),
                 other => crate::type_mapping::resolve_and_emit(
@@ -246,7 +252,11 @@ fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
                 ),
             };
             let arg_strs: Vec<String> = args.iter().map(type_expr_to_static_rust).collect();
-            format!("{}<{}>", mapped, arg_strs.join(", "))
+            if name == "List" {
+                format!("{}<{}>>", mapped, arg_strs.join(", "))
+            } else {
+                format!("{}<{}>", mapped, arg_strs.join(", "))
+            }
         }
         TypeExpr::Optional(inner) => {
             format!("Option<{}>", type_expr_to_static_rust(inner))
@@ -1512,7 +1522,7 @@ mod tests {
     }
 
     #[test]
-    fn generic_list_maps_to_vec() {
+    fn generic_list_maps_to_rc_vec() {
         let td = TypeDef {
             name: "Line".to_string(),
             params: vec![],
@@ -1534,7 +1544,7 @@ mod tests {
         let items = typedef_to_code_ir(&td);
         match &items[0] {
             code_ir::Item::Struct(s) => {
-                assert_eq!(s.fields[0].1, "Vec<Span>");
+                assert_eq!(s.fields[0].1, "Rc<Vec<Span>>");
                 assert_eq!(s.fields[1].1, "i64");
             }
             _ => panic!("expected Struct"),

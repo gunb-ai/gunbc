@@ -406,6 +406,7 @@ fn module_prelude(dag_stem: &str, imports: &[Spanned<Import>]) -> String {
     // Import commonly-used runtime functions directly for unqualified calls
     prelude.push_str("use crate::v2_rt::{scan_while, scan_to_eol, skip_horizontal_ws, code_point, from_code_point, scan_string_end};\n");
     prelude.push_str("use std::collections::HashMap;\n");
+    prelude.push_str("use std::rc::Rc;\n");
     // Map type alias is defined only in v2_core to avoid redefinition conflicts
     if dag_stem == "00_core" {
         prelude.push_str("pub type Map<K, V> = HashMap<K, V>;\n");
@@ -830,7 +831,7 @@ mod generated_tests {{
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo {{ x: Int, name: String }}\nfn add(a: Int, b: Int) -> Int {{ a + b }}\n".to_string(),
                 }};
-                let result = crate::pipeline::compile_sources(vec![source]);
+                let result = crate::pipeline::compile_sources(std::rc::Rc::new(vec![source]));
 
                 // Should produce at least one output file
                 assert!(
@@ -868,11 +869,12 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                // Parse all modules except 02_parse.dag (3300 lines —
-                // S76 clone_if_needed causes OOM on files this large).
+                // Parse all 7 modules including 02_parse.dag (3600+ lines).
+                // Rc<Vec<T>> wrapping (S76 fix) makes this feasible — clone is O(1).
                 let modules: Vec<(&str, &str, &str)> = vec![
                     ("00_core.dag", CORE_DAG_SOURCE, "v2.std.core"),
                     ("01_tokenize.dag", TOKENIZE_DAG_SOURCE, "v2.compiler.tokenize"),
+                    ("02_parse.dag", PARSE_DAG_SOURCE, "v2.compiler.parse"),
                     ("03_resolve.dag", RESOLVE_DAG_SOURCE, "v2.compiler.resolve"),
                     ("04_typecheck.dag", TYPECHECK_DAG_SOURCE, "v2.compiler.typecheck"),
                     ("05_emit.dag", EMIT_DAG_SOURCE, "v2.compiler.emit"),

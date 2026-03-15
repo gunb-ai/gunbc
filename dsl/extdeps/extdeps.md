@@ -40,7 +40,7 @@ knowledge, just math and structure.
 ```
 std/types.dag        "What is a refined type? A branded type? A sum type?"
 std/coordination.dag "What is a CAS mechanism? A lease? A delivery guarantee?"
-std/behavioral.dag   "What is a side effect? Determinism? A failure mode?"
+shared/behavioral.dag "What is a side effect? Determinism? A failure mode?"
 std/rate_limit.dag   "What is a rate limit? A backoff strategy? A retry trigger?"
 std/errors.dag       "What is an HTTP error shape? An auth error?"
 std/fermi.dag        "What is an order of magnitude?"
@@ -172,7 +172,7 @@ eliminates ambiguous `core.dag` files and makes the module path tautological:
 
 ### Layer 3: Provider Services
 
-Individual API services compose Layer 2 (provider core) with Layer 0
+Individual API services compose Layer 2 (provider core) with shared
 (behavioral vocabulary) to model specific endpoints.
 
 ```
@@ -183,7 +183,7 @@ extdeps/github/gists.dag              "What is the GitHub Gists API?"
 ```
 
 Secret Manager example — types match the real API, operations match real
-endpoints, behaviors composed from `std/behavioral.dag`:
+endpoints, behaviors composed from `shared/behavioral.dag`:
 
 ```dag
 // Spec: https://cloud.google.com/secret-manager/docs/reference/rest
@@ -211,7 +211,7 @@ service gcp.SecretManager {
   }
 }
 
-// Behaviors composed from std/behavioral.dag vocabulary
+// Behaviors composed from shared/behavioral.dag vocabulary
 data access_version_behavior: OperationBehavior = {
   side_effects: ReadOnly,
   idempotent: true,
@@ -291,7 +291,7 @@ Layer 2  cloud/gcp/gcp.dag ──────────── "What is GCP?" (
 Layer 1  cloud/cloud.dag ──────────── "What is a cloud provider?" (abstract)
            │  imports
 Layer 0  std/errors.dag ──────────── "What is an HTTP error?"
-         std/behavioral.dag ──────── "What is idempotency?"
+         shared/behavioral.dag ──── "What is idempotency?"
          std/coordination.dag ────── "What is CAS?"
          std/rate_limit.dag ──────── "What is a retry policy?"
 ```
@@ -321,7 +321,7 @@ is causal: transport cost → magnitude → budget check.
 **behavioral → cloud services → coordination providers**:
 
 ```
-std/behavioral.dag              Layer 0: OperationBehavior schema
+shared/behavioral.dag           Shared layer: OperationBehavior schema
     ↓ imported by
 cloud/gcp/secret_manager.dag   Layer 3: access_version_behavior data
 coordination/gcs.dag            Layer 3: gcs_put_behavior data

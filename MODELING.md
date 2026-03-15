@@ -284,7 +284,7 @@ Pattern matching should operate on type structure, not string extraction.
 |------|--------|
 | `std/policy.dag` | Duplicate of `types.dag`, 7-line file |
 | `std/cloud.dag` | Duplicate of `types.dag`, structurally incompatible AuthScheme |
-| `std/behavioral.dag` | Invented taxonomy — no standard grounding. Pure application layer. |
+| `std/behavioral.dag` | Moved to `shared/behavioral.dag` to keep the vocabulary shared but outside `std/`. |
 
 Behavioral imports and `operation_behaviors` data blocks removed from
 8 extdeps files (cargo, git, gists, anthropic, openai, iam, secret_manager, sts).
@@ -299,7 +299,6 @@ The v2 compiler inherits v1's worst anti-pattern: silent defaults on
 lookup miss. These mask real errors that cascade into wrong generated code.
 
 **04_typecheck.dag** (21+ instances):
-- `lookup_in_scope` → `unit_type()` on undefined variable
 - `lookup_field_type` → `unit_type()` on missing field or non-Product type
 - `infer_method_call_type` → `unit_type()` for unknown methods
 - `infer_expr` wildcard `_ =>` → `unit_type()` for unhandled expression types

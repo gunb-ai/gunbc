@@ -92,6 +92,12 @@ type InferResult {
   diagnostics: List<Diagnostic>
 }
 
+type BlockInferState {
+  scope: InferScope
+  diagnostics: List<Diagnostic>
+  last_type: TypeExpr
+}
+
 type TypedItemResult {
   item: TypedItem
   diagnostics: List<Diagnostic>
@@ -227,48 +233,17 @@ fn ok_infer(expr: Expr, resolved_type: TypeExpr) -> InferResult {
 }
 
 // -------------------------------------------------------------------------
-// lookup_in_scope: look up a variable name in locals, then func params,
-// then type_env. Returns Primitive "Unit" if not found.
+// lookup_in_scope: look up a variable name in lexical locals only.
+//
+// Function params are installed into locals by build_params_scope().
 // -------------------------------------------------------------------------
 
-fn lookup_in_scope(scope: InferScope, name: String) -> TypeExpr {
-  // 1. Check locals
+fn lookup_in_scope(scope: InferScope, name: String) -> TypeExpr? {
   let local_matches = filter(scope.locals, b => b.name == name)
   if count(local_matches) > 0 {
     let found = first(local_matches)
     match found {
-      Some { value: binding } => binding.resolved
-      None => unit_type()
-    }
-  } else {
-    // 2. Check func_env params — look through all signatures for a matching param
-    let param_type = lookup_in_func_params(func_env: scope.func_env, name: name)
-    match param_type {
-      Some { value: te } => te
-      None =>
-        // 3. Check type_env (type names)
-        let type_match = lookup_type(env: scope.type_env, name: name)
-        match type_match {
-          Some { value: te } => te
-          None => unit_type()
-        }
-    }
-  }
-}
-
-// -------------------------------------------------------------------------
-// lookup_in_func_params: search all FuncSig params for a name
-// -------------------------------------------------------------------------
-
-fn lookup_in_func_params(func_env: FuncEnv, name: String) -> TypeExpr? {
-  let all_params = fold(func_env.signatures, init: [], f: (acc, sig) =>
-    concat(acc, sig.params)
-  )
-  let matches = filter(all_params, p => p.name == name)
-  if count(matches) > 0 {
-    let found = first(matches)
-    match found {
-      Some { value: p } => Some { value: p.type_expr }
+      Some { value: binding } => Some { value: binding.resolved }
       None => None
     }
   } else {
@@ -397,6 +372,15 @@ fn is_string_type(type_expr: TypeExpr) -> Bool {
 }
 
 fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
+  Diagnostic {
+    severity: Error,
+    message: message,
+    span: Some { value: span },
+    module_name: Some { value: module_name }
+  }
+}
+
+fn inference_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
   Diagnostic {
     severity: Error,
     message: message,
@@ -621,6 +605,31 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
   }
 }
 
+fn scope_after_stmt(stmt: Expr, stmt_type: TypeExpr, scope: InferScope) -> InferScope {
+  match stmt {
+    Let { name: name, value: _, body: body, span: _ } =>
+      if body == none {
+        extend_scope(scope: scope, name: name, resolved: stmt_type)
+      } else {
+        scope
+      }
+    _ => scope
+  }
+}
+
+fn for_each_element_type(type_expr: TypeExpr) -> TypeExpr {
+  match normalize_access_type(type_expr: type_expr) {
+    Container { kind: _, element: element, span: _ } => element
+    Primitive { name: name, span: _ } =>
+      if name == "String" {
+        Primitive { name: "String", span: no_span() }
+      } else {
+        unit_type()
+      }
+    _ => unit_type()
+  }
+}
+
 // -------------------------------------------------------------------------
 // infer_expr: the main recursive function
 //
@@ -633,8 +642,21 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     Literal { value: lit, span: _ } =>
       ok_infer(expr: expr, resolved_type: infer_literal(lit: lit))
 
-    Var { name: name, span: _ } =>
-      ok_infer(expr: expr, resolved_type: lookup_in_scope(scope: scope, name: name))
+    Var { name: name, span: span } =>
+      let value_match = lookup_in_scope(scope: scope, name: name)
+      match value_match {
+        Some { value: resolved } =>
+          ok_infer(expr: expr, resolved_type: resolved)
+        None =>
+          InferResult {
+            typed: typed(expr: expr, resolved_type: unit_type()),
+            diagnostics: [inference_error(
+              message: concat("undefined variable '", name, "'"),
+              span: span,
+              module_name: scope.module_name
+            )]
+          }
+      }
 
     FieldAccess { base: base_expr, field: field_name, span: _ } =>
       let base_result = infer_expr(expr: base_expr, scope: scope)
@@ -694,12 +716,43 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         diagnostics: concat(scrut_result.diagnostics, arm_diags)
       }
 
-    If { condition: cond, then_branch: then_expr, else_branch: _, span: _ } =>
+    If { condition: cond, then_branch: then_expr, else_branch: else_expr, span: span } =>
       let cond_result = infer_expr(expr: cond, scope: scope)
       let then_result = infer_expr(expr: then_expr, scope: scope)
-      InferResult {
-        typed: typed(expr: expr, resolved_type: then_result.typed.resolved_type),
-        diagnostics: concat(cond_result.diagnostics, then_result.diagnostics)
+      match else_expr {
+        Some { value: else_branch } =>
+          let else_result = infer_expr(expr: else_branch, scope: scope)
+          let branch_diags = if type_expr_equals(
+            left: then_result.typed.resolved_type,
+            right: else_result.typed.resolved_type
+          ) {
+            []
+          } else {
+            [inference_error(
+              message: concat(
+                "if branches resolve to incompatible types: ",
+                type_expr_shape(type_expr: then_result.typed.resolved_type),
+                " vs ",
+                type_expr_shape(type_expr: else_result.typed.resolved_type)
+              ),
+              span: span,
+              module_name: scope.module_name
+            )]
+          }
+          let resolved_type = if count(branch_diags) > 0 {
+            unit_type()
+          } else {
+            then_result.typed.resolved_type
+          }
+          InferResult {
+            typed: typed(expr: expr, resolved_type: resolved_type),
+            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics, else_result.diagnostics, branch_diags)
+          }
+        None =>
+          InferResult {
+            typed: typed(expr: expr, resolved_type: unit_type()),
+            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics)
+          }
       }
 
     Let { name: let_name, value: let_value, body: _, span: _ } =>
@@ -761,21 +814,26 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
 
     Block { stmts: stmts, span: _ } =>
       if count(stmts) > 0 {
-        // Infer each statement, return type of last
-        let stmt_results = map(stmts, s => infer_expr(expr: s, scope: scope))
-        let all_diags = fold(stmt_results, init: [], f: (acc, sr) => concat(acc, sr.diagnostics))
-        let last_result = last(stmt_results)
-        match last_result {
-          Some { value: sr } =>
-            InferResult {
-              typed: typed(expr: expr, resolved_type: sr.typed.resolved_type),
-              diagnostics: all_diags
-            }
-          None =>
-            InferResult {
-              typed: typed(expr: expr, resolved_type: unit_type()),
-              diagnostics: all_diags
-            }
+        let state = fold(stmts, init: BlockInferState {
+          scope: scope,
+          diagnostics: [],
+          last_type: unit_type()
+        }, f: (acc, stmt) =>
+          let stmt_result = infer_expr(expr: stmt, scope: acc.scope)
+          let next_scope = scope_after_stmt(
+            stmt: stmt,
+            stmt_type: stmt_result.typed.resolved_type,
+            scope: acc.scope
+          )
+          BlockInferState {
+            scope: next_scope,
+            diagnostics: concat(acc.diagnostics, stmt_result.diagnostics),
+            last_type: stmt_result.typed.resolved_type
+          }
+        )
+        InferResult {
+          typed: typed(expr: expr, resolved_type: state.last_type),
+          diagnostics: state.diagnostics
         }
       } else {
         ok_infer(expr: expr, resolved_type: unit_type())
@@ -788,9 +846,11 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         diagnostics: inner_result.diagnostics
       }
 
-    ForEach { variable: _, collection: coll, body: body_expr, span: _ } =>
+    ForEach { variable: variable, collection: coll, body: body_expr, span: _ } =>
       let coll_result = infer_expr(expr: coll, scope: scope)
-      let body_result = infer_expr(expr: body_expr, scope: scope)
+      let elem_type = for_each_element_type(type_expr: coll_result.typed.resolved_type)
+      let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
+      let body_result = infer_expr(expr: body_expr, scope: body_scope)
       InferResult {
         typed: typed(expr: expr, resolved_type: unit_type()),
         diagnostics: concat(coll_result.diagnostics, body_result.diagnostics)

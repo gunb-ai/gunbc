@@ -591,14 +591,14 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             body: Box::new(compile_expr(body, ctx, counter)),
         },
         ast::Expr::List(elements) => {
-            // DSL List<T> maps to Rust Vec<T>, so use vec![] not [].
-            code_ir::Expr::MacroCall {
+            // DSL List<T> maps to Rust Rc<Vec<T>>, so use Rc::new(vec![...]).
+            rc_wrap(code_ir::Expr::MacroCall {
                 name: "vec".to_string(),
                 args: elements
                     .iter()
                     .map(|e| compile_expr(e, ctx, counter))
                     .collect(),
-            }
+            })
         }
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx, counter),
         ast::Expr::For(binding, iter_expr, _passthrough, body) => {
@@ -640,7 +640,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                         args: vec![push_expr],
                     })],
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result_var)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result_var))),
             ])
         }
         ast::Expr::Return(fields) => compile_return_fields(fields, ctx, counter),
@@ -991,7 +991,7 @@ fn compile_intrinsic_call(
                         }],
                     })],
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
             ]))
         }
         // v2 compiler intrinsics: immutable record update
@@ -1145,22 +1145,21 @@ fn compile_intrinsic_call(
             method: "cloned".to_string(),
             args: vec![],
         }),
-        // append(list, item) → { let mut v = list; v.push(item); v }
+        // append(list, item) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.push(item); Rc::new(v) }
         "append" if args.len() == 2 => {
             let list = collection.clone();
             let item = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "appended");
-            Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&v, list),
-                code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
-                    receiver: Box::new(code_ir::Expr::Var(v.clone())),
-                    method: "push".to_string(),
-                    args: vec![item],
-                }),
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
-            ]))
+            let mut stmts = rc_unwrap_stmts(&v, list, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                method: "push".to_string(),
+                args: vec![item],
+            }));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
         }
-        // flat_map(list, f) → { let mut r = vec![]; for e in list { r.extend(f(e)); } r }
+        // flat_map(list, f) → { let mut r = vec![]; for e in list { r.extend(f(e)); } Rc::new(r) }
         "flat_map" if args.len() == 2 => {
             let result = fresh(counter, "flat_mapped");
             let elem = fresh(counter, "elem");
@@ -1192,13 +1191,21 @@ fn compile_intrinsic_call(
                     body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::Var(result.clone())),
                         method: "extend".to_string(),
-                        args: vec![mapped],
+                        args: vec![code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::MethodCall {
+                                receiver: Box::new(mapped),
+                                method: "iter".to_string(),
+                                args: vec![],
+                            }),
+                            method: "cloned".to_string(),
+                            args: vec![],
+                        }],
                     })],
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
             ]))
         }
-        // enumerate(list) → list.iter().enumerate().map(|(i, e)| (i as i64, e.clone())).collect()
+        // enumerate(list) → { let mut r = vec![]; for (i, e) in list.iter().enumerate() { r.push((i as i64, e.clone())); } Rc::new(r) }
         "enumerate" if args.len() == 1 => {
             let result = fresh(counter, "enumerated");
             let idx = fresh(counter, "idx");
@@ -1230,45 +1237,43 @@ fn compile_intrinsic_call(
                         ))],
                     })],
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
             ]))
         }
-        // sort_by(list, key_fn) → { let mut v = list; v.sort_by_key(key_fn); v }
+        // sort_by(list, key_fn) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.sort_by_key(key_fn); Rc::new(v) }
         "sort_by" if args.len() == 2 => {
             let list = collection.clone();
             let key_fn = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "sorted");
-            Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&v, list),
-                code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
-                    receiver: Box::new(code_ir::Expr::Var(v.clone())),
-                    method: "sort_by_key".to_string(),
-                    args: vec![key_fn],
-                }),
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
-            ]))
+            let mut stmts = rc_unwrap_stmts(&v, list, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                method: "sort_by_key".to_string(),
+                args: vec![key_fn],
+            }));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
         }
-        // drop_last(list) → list[..list.len()-1].to_vec()
+        // drop_last(list) → Rc::new(list[..list.len()-1].to_vec())
         "drop_last" if args.len() == 1 => {
             let list = collection.clone();
             Some(code_ir::Expr::RawCode(format!(
-                "{{ let __v = {}; __v[..__v.len().saturating_sub(1)].to_vec() }}",
+                "{{ let __v = {}; Rc::new(__v[..__v.len().saturating_sub(1)].to_vec()) }}",
                 render_expr_inline(&list)
             )))
         }
-        // replace_last(list, value) → { let mut v = list; if let Some(last) = v.last_mut() { *last = value; } v }
+        // replace_last(list, value) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; if let Some(last) = v.last_mut() { *last = value; } Rc::new(v) }
         "replace_last" if args.len() == 2 => {
             let list = collection.clone();
             let value = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "replaced");
-            Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&v, list),
-                code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
-                    "if let Some(__last) = {v}.last_mut() {{ *__last = {}; }}",
-                    render_expr_inline(&value)
-                ))),
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
-            ]))
+            let mut stmts = rc_unwrap_stmts(&v, list, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                "if let Some(__last) = {v}.last_mut() {{ *__last = {}; }}",
+                render_expr_inline(&value)
+            ))));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
         }
         // starts_with(s, prefix) → s.starts_with(prefix.as_str())
         "starts_with" if args.len() == 2 => {
@@ -1303,18 +1308,17 @@ fn compile_intrinsic_call(
             "{}.parse::<i64>().ok()",
             render_expr_inline(&collection.clone())
         ))),
-        // reverse(list) → { let mut v = list; v.reverse(); v }
+        // reverse(list) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.reverse(); Rc::new(v) }
         "reverse" if args.len() == 1 => {
             let v = fresh(counter, "reversed");
-            Some(code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&v, collection.clone()),
-                code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
-                    receiver: Box::new(code_ir::Expr::Var(v.clone())),
-                    method: "reverse".to_string(),
-                    args: vec![],
-                }),
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(v)),
-            ]))
+            let mut stmts = rc_unwrap_stmts(&v, collection.clone(), counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                method: "reverse".to_string(),
+                args: vec![],
+            }));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
         }
         // is_empty(list) → list.is_empty()
         "is_empty" if args.len() == 1 => Some(code_ir::Expr::MethodCall {
@@ -1322,20 +1326,20 @@ fn compile_intrinsic_call(
             method: "is_empty".to_string(),
             args: vec![],
         }),
-        // skip(list, n) → list[n as usize..].to_vec()
+        // skip(list, n) → Rc::new(list[n as usize..].to_vec())
         "skip" if args.len() == 2 => {
             let n = compile_expr(&args[1].1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
-                "{{ let __s = {}; __s[({}) as usize..].to_vec() }}",
+                "{{ let __s = {}; Rc::new(__s[({}) as usize..].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
                 render_expr_inline(&n)
             )))
         }
-        // take(list, n) → list[..n as usize].to_vec()
+        // take(list, n) → Rc::new(list[..n as usize].to_vec())
         "take" if args.len() == 2 => {
             let n = compile_expr(&args[1].1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
-                "{{ let __t = {}; __t[..({}) as usize].to_vec() }}",
+                "{{ let __t = {}; Rc::new(__t[..({}) as usize].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
                 render_expr_inline(&n)
             )))
@@ -1442,7 +1446,7 @@ fn compile_map_intrinsic(
                 args: vec![mapped_value],
             })],
         },
-        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+        code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
     ])
 }
 
@@ -1490,7 +1494,7 @@ fn compile_filter_intrinsic(
                 else_body: None,
             })],
         },
-        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+        code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
     ])
 }
 
@@ -2310,12 +2314,14 @@ fn compile_string_interp(
 // Helpers — static iteration, string concat, Option wrapping
 // ---------------------------------------------------------------------------
 
-/// When a compiled collection expression is a `.clone()` call on a static
-/// data table, replace `STATIC.clone()` with `STATIC.iter().cloned()` so
-/// the for-loop iterates by value.  For non-static collections, returns
-/// the expression unchanged.
+/// Convert a collection expression into an owned iterator.
+///
+/// For static data (`STATIC.clone()`), strips the clone and uses `STATIC.iter().cloned()`.
+/// For all other expressions (including `Rc<Vec<T>>`), uses `.iter().cloned()` which
+/// works via Deref for Rc<Vec<T>>.
 fn make_owned_iter(collection: code_ir::Expr) -> code_ir::Expr {
     match &collection {
+        // Static data: STATIC.clone() → STATIC.iter().cloned()
         code_ir::Expr::MethodCall {
             receiver,
             method,
@@ -2329,12 +2335,52 @@ fn make_owned_iter(collection: code_ir::Expr) -> code_ir::Expr {
             method: "cloned".to_string(),
             args: vec![],
         },
-        _ => collection,
+        // Rc<Vec<T>> and other collections: expr.iter().cloned()
+        _ => code_ir::Expr::MethodCall {
+            receiver: Box::new(code_ir::Expr::MethodCall {
+                receiver: Box::new(collection),
+                method: "iter".to_string(),
+                args: vec![],
+            }),
+            method: "cloned".to_string(),
+            args: vec![],
+        },
     }
 }
 
 fn is_none_expr(expr: &code_ir::Expr) -> bool {
     matches!(expr, code_ir::Expr::Var(name) if name == "None")
+}
+
+/// Wrap an expression in `Rc::new(...)` for Rc<Vec<T>> list wrapping.
+fn rc_wrap(expr: code_ir::Expr) -> code_ir::Expr {
+    code_ir::Expr::Call {
+        func: Box::new(code_ir::Expr::Path(vec![
+            "Rc".to_string(),
+            "new".to_string(),
+        ])),
+        args: vec![expr],
+        obligation: None,
+    }
+}
+
+/// Produce statements that Rc-unwrap an expression into a mutable Vec:
+///   let __rc = expr;           // substitutable by substitute_var
+///   let mut var = Rc::try_unwrap(__rc).unwrap_or_else(|rc| (*rc).clone());
+///
+/// The intermediate `__rc` variable ensures substitute_var can still
+/// replace variable references inside `expr` (unlike RawCode).
+fn rc_unwrap_stmts(var_name: &str, expr: code_ir::Expr, counter: &mut usize) -> Vec<code_ir::Stmt> {
+    let rc_var = fresh(counter, "rc");
+    vec![
+        code_ir::Stmt::let_bind(&rc_var, expr),
+        code_ir::Stmt::let_mut(
+            var_name,
+            code_ir::Expr::RawCode(format!(
+                "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
+            )),
+        ),
+    ]
 }
 
 /// Check if a receiver expression likely produces an Option<T>.

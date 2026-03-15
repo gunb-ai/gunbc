@@ -679,7 +679,7 @@ The old recursive evaluator is deleted.
 - `LoweredExpr::Return` removed — return is now statement-only.
   `Block` and `For` remain as expression forms because they genuinely
   return values (accepted permanent, S67-2).
-- Debug-mode OOM: evaluating 12 real .dag files (gist pipeline) exceeds
+- Debug-mode OOM: evaluating 11 real .dag files (gist pipeline) exceeds
   16GB heap. Not a stack issue — interpreter overhead from cloning
   Values through deep call chains. Release mode or self-hosting would
   resolve this.
