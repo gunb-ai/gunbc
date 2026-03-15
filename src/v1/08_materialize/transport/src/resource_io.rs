@@ -142,6 +142,10 @@ impl ResourceIo for TransportIo {
             )))),
         }
     }
+
+    fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, ResourceError> {
+        std::fs::canonicalize(path).map_err(ResourceError::from)
+    }
 }
 
 fn exec_to_resource(err: gunbc_exec::ExecError) -> ResourceError {

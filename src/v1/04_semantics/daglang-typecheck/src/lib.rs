@@ -548,9 +548,8 @@ impl TypeError {
 
     /// Convert to the shared compiler diagnostic shape with mandatory source location.
     pub fn to_located_diagnostic(&self, primary: LocatedSpan) -> Diagnostic {
-        let mut diagnostic =
-            Diagnostic::located(self.code(), self.to_string(), primary)
-                .with_context(self.diagnostic_context());
+        let mut diagnostic = Diagnostic::located(self.code(), self.to_string(), primary)
+            .with_context(self.diagnostic_context());
         if let Some(help) = self.help() {
             diagnostic = diagnostic.with_help(help);
         }

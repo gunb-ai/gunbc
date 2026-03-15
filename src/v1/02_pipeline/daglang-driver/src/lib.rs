@@ -2817,18 +2817,20 @@ fn run() -> Bool {
             }],
         };
         let diagnostics = verification_diagnostics_with_sources(
-            vec![gunbc_ir::VerifyError::UnwiredInput(gunbc_ir::UnwiredInputError {
-                node_id: "run".to_string(),
-                node_name: "run".to_string(),
-                port_name: "input".to_string(),
-                origin: NodeOrigin::UserCode {
-                    file: "sample/main.dag".to_string(),
-                    module: "sample.main".to_string(),
-                    item: "run".to_string(),
-                    span_start: 19,
-                    span_end: 22,
+            vec![gunbc_ir::VerifyError::UnwiredInput(
+                gunbc_ir::UnwiredInputError {
+                    node_id: "run".to_string(),
+                    node_name: "run".to_string(),
+                    port_name: "input".to_string(),
+                    origin: NodeOrigin::UserCode {
+                        file: "sample/main.dag".to_string(),
+                        module: "sample.main".to_string(),
+                        item: "run".to_string(),
+                        span_start: 19,
+                        span_end: 22,
+                    },
                 },
-            })],
+            )],
             &graph,
         );
 
@@ -2838,8 +2840,14 @@ fn run() -> Bool {
             diagnostic.file.as_deref(),
             Some(Path::new("sample/main.dag"))
         );
-        assert!(diagnostic.span.is_some(), "verification diagnostic must carry a span");
-        assert!(diagnostic.snippet.is_some(), "verification diagnostic should resolve source");
+        assert!(
+            diagnostic.span.is_some(),
+            "verification diagnostic must carry a span"
+        );
+        assert!(
+            diagnostic.snippet.is_some(),
+            "verification diagnostic should resolve source"
+        );
     }
 
     #[test]

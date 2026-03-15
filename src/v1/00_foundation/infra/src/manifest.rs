@@ -42,8 +42,8 @@ pub struct ManifestEntry {
     #[serde(default)]
     pub outputs: Vec<PathBuf>,
 
-    /// Input file paths that were hashed when this entry was created.
-    /// Used for diagnostics and debugging stale resources.
+    /// Canonical input file paths that were hashed when this entry was created.
+    /// Used by freshness checks, diagnostics, and stale-resource debugging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_files: Option<Vec<String>>,
 }

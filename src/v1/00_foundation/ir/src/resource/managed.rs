@@ -80,6 +80,8 @@ pub trait ResourceIo {
     fn command_output(&self, command: &str, args: &[String]) -> Result<Vec<u8>, ResourceError>;
     /// Get a file's modification time.
     fn file_mtime(&self, path: &Path) -> Result<SystemTime, ResourceError>;
+    /// Resolve a file path to its canonical filesystem path.
+    fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, ResourceError>;
 }
 
 /// A resource that can be acquired with freshness checking.
@@ -279,9 +281,12 @@ pub fn compute_key_with_files(
                 builder = builder.update(b"glob\0");
                 builder = update_len_prefixed(builder, pattern);
 
-                let mut paths = io.glob_paths(pattern)?;
-                paths.sort();
-                for path in paths {
+                let mut canonical_paths = Vec::new();
+                for path in io.glob_paths(pattern)? {
+                    canonical_paths.push(io.canonicalize_path(&path)?);
+                }
+                canonical_paths.sort();
+                for path in canonical_paths {
                     let contents = io.read_file(&path)?;
                     builder = builder.update_file_content(&path, &contents);
                     file_paths.push(path.to_string_lossy().into_owned());
@@ -290,10 +295,11 @@ pub fn compute_key_with_files(
             }
             InputPattern::File(path) => {
                 builder = builder.update(b"file\0");
-                let contents = io.read_file(path)?;
-                builder = builder.update_file_content(path, &contents);
+                let canonical_path = io.canonicalize_path(path)?;
+                let contents = io.read_file(&canonical_path)?;
+                builder = builder.update_file_content(&canonical_path, &contents);
                 file_count += 1;
-                file_paths.push(path.to_string_lossy().into_owned());
+                file_paths.push(canonical_path.to_string_lossy().into_owned());
             }
             InputPattern::Env(var) => {
                 let value = std::env::var(var).unwrap_or_default();
@@ -416,7 +422,8 @@ pub fn check_manifest_freshness<R: ManagedResource>(
             let mtime_note: Option<String>;
 
             for pattern in &mtime_inputs.glob_patterns {
-                let mut paths = match io.glob_paths(pattern) {
+                let mut canonical_paths = Vec::new();
+                let paths = match io.glob_paths(pattern) {
                     Ok(p) => p,
                     Err(e) => {
                         mtime_fallback_reason =
@@ -424,8 +431,25 @@ pub fn check_manifest_freshness<R: ManagedResource>(
                         break;
                     }
                 };
-                paths.sort();
                 for path in paths {
+                    let canonical_path = match io.canonicalize_path(&path) {
+                        Ok(path) => path,
+                        Err(e) => {
+                            mtime_fallback_reason = Some(format!(
+                                "canonicalize failed for '{}': {}",
+                                path.display(),
+                                e
+                            ));
+                            break;
+                        }
+                    };
+                    canonical_paths.push(canonical_path);
+                }
+                if mtime_fallback_reason.is_some() {
+                    break;
+                }
+                canonical_paths.sort();
+                for path in canonical_paths {
                     match io.file_mtime(&path) {
                         Ok(modified) => files.push(FileMtime { path, modified }),
                         Err(e) => {
@@ -442,9 +466,20 @@ pub fn check_manifest_freshness<R: ManagedResource>(
 
             if mtime_fallback_reason.is_none() {
                 for path in &mtime_inputs.files {
-                    match io.file_mtime(path) {
+                    let canonical_path = match io.canonicalize_path(path) {
+                        Ok(path) => path,
+                        Err(e) => {
+                            mtime_fallback_reason = Some(format!(
+                                "canonicalize failed for '{}': {}",
+                                path.display(),
+                                e
+                            ));
+                            break;
+                        }
+                    };
+                    match io.file_mtime(&canonical_path) {
                         Ok(modified) => files.push(FileMtime {
-                            path: path.clone(),
+                            path: canonical_path,
                             modified,
                         }),
                         Err(e) => {
@@ -597,8 +632,8 @@ impl ManagedResource for SimpleResource {
 
         // In a real implementation, this would invoke the provider DAG.
         // For now, return a computed entry based on declared inputs.
-        let (key, file_count) = compute_key_from_def(&self.def, manifest, io)?;
-        Ok(ManifestEntry::new(key, file_count))
+        let (key, file_count, input_files) = self.compute_key_with_file_list(manifest, io)?;
+        Ok(ManifestEntry::new(key, file_count).with_input_files(input_files))
     }
 }
 
@@ -618,11 +653,18 @@ mod tests {
     struct TestIo {
         files: RefCell<HashMap<PathBuf, Vec<u8>>>,
         mtimes: RefCell<HashMap<PathBuf, SystemTime>>,
+        canonical_paths: RefCell<HashMap<PathBuf, PathBuf>>,
     }
 
     impl TestIo {
         fn write_text(&self, path: &Path, contents: &str) {
             let _ = self.write_file(path, contents.as_bytes());
+        }
+
+        fn add_canonical_alias(&self, alias: &Path, canonical: &Path) {
+            self.canonical_paths
+                .borrow_mut()
+                .insert(alias.to_path_buf(), canonical.to_path_buf());
         }
     }
 
@@ -681,6 +723,19 @@ mod tests {
                     path.display()
                 )))
             })
+        }
+
+        fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, ResourceError> {
+            if let Some(canonical) = self.canonical_paths.borrow().get(path) {
+                return Ok(canonical.clone());
+            }
+            if self.files.borrow().contains_key(path) {
+                return Ok(path.to_path_buf());
+            }
+            Err(ResourceError::Io(io::Error::other(format!(
+                "canonical path not found: {}",
+                path.display()
+            ))))
         }
     }
 
@@ -979,6 +1034,59 @@ mod tests {
                 );
             }
             other => panic!("expected Stale with diagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn simple_resource_records_canonical_input_paths_and_stales_same_count_substitution() {
+        let io = TestIo::default();
+        let canonical_one = PathBuf::from("real/one.rs");
+        let canonical_two = PathBuf::from("real/two.rs");
+        let alias_one = PathBuf::from("alias/one.rs");
+        let alias_two = PathBuf::from("alias/two.rs");
+
+        io.write_text(&canonical_one, "fn one() {}\n");
+        io.write_text(&canonical_two, "fn two() {}\n");
+        io.add_canonical_alias(&alias_one, &canonical_one);
+        io.add_canonical_alias(&alias_two, &canonical_two);
+
+        let def_v1 = ResourceDef::new(ResourceId::new("test:canonical_inputs"))
+            .with_input(InputPattern::file(&alias_one))
+            .with_provider(super::super::def::DagRef::new("test_provider"));
+        let resource_v1 = SimpleResource::new(def_v1.clone());
+        let mut manifest = ResourceManifest::new();
+        let entry = resource_v1
+            .create(&manifest, &io)
+            .expect("initial manifest entry should be created");
+
+        assert_eq!(entry.input_file_count, 1);
+        assert_eq!(
+            entry.input_files,
+            Some(vec![canonical_one.to_string_lossy().into_owned()])
+        );
+        manifest.insert(def_v1.id.clone(), entry);
+
+        let def_v2 = ResourceDef::new(ResourceId::new("test:canonical_inputs"))
+            .with_input(InputPattern::file(&alias_two));
+        let resource_v2 = SimpleResource::new(def_v2);
+
+        let freshness = check_manifest_freshness(
+            &resource_v2,
+            &manifest,
+            FreshnessOptions {
+                output_exists: Some(true),
+                use_mtime: true,
+            },
+            &io,
+        );
+        match freshness {
+            ManifestFreshness::Stale(reason) => {
+                assert!(
+                    reason.contains("InputFilesChanged"),
+                    "same-count path substitution should surface input path change: {reason}"
+                );
+            }
+            other => panic!("expected Stale from same-count path substitution, got {other:?}"),
         }
     }
 

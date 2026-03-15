@@ -230,7 +230,10 @@ fn located_typecheck_diagnostics_use_contract_located_construction() {
         diagnostic.file.as_deref(),
         Some(std::path::Path::new("sample/invalid.dag"))
     );
-    assert!(diagnostic.span.is_some(), "located diagnostics must carry a span");
+    assert!(
+        diagnostic.span.is_some(),
+        "located diagnostics must carry a span"
+    );
 }
 
 #[test]

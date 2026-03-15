@@ -27,8 +27,7 @@ pub fn run_compile_pipeline(
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
-    )
-    ?;
+    )?;
     let extern_assets = collect_extern_assets(&typed);
     let dsl_registry = typed.dsl_type_registry();
     let process_env_resolver = |name: &str| -> Option<String> { std::env::var(name).ok() };
