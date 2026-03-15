@@ -88,6 +88,7 @@ pub enum TokenKind {
     Gt,
     FatArrow,
     Arrow,
+    DoubleColon,
     Colon,
     Comma,
     Dot,
@@ -201,6 +202,7 @@ impl TokenKind {
             Self::Gt => ">",
             Self::FatArrow => "=>",
             Self::Arrow => "->",
+            Self::DoubleColon => "::",
             Self::Colon => ":",
             Self::Comma => ",",
             Self::Dot => ".",
@@ -460,7 +462,12 @@ impl<'a> Lexer<'a> {
             }
             b':' => {
                 self.advance();
-                self.tok(TokenKind::Colon, start)
+                if self.peek() == b':' {
+                    self.advance();
+                    self.tok(TokenKind::DoubleColon, start)
+                } else {
+                    self.tok(TokenKind::Colon, start)
+                }
             }
             b',' => {
                 self.advance();
@@ -864,10 +871,11 @@ mod tests {
     #[test]
     fn operators() {
         assert_eq!(
-            kinds("=> -> == != <= >= && || ??"),
+            kinds("=> -> :: == != <= >= && || ??"),
             vec![
                 TokenKind::FatArrow,
                 TokenKind::Arrow,
+                TokenKind::DoubleColon,
                 TokenKind::EqEq,
                 TokenKind::Ne,
                 TokenKind::Le,

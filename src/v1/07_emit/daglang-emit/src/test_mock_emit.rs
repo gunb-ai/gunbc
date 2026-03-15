@@ -297,7 +297,7 @@ fn is_transport_response_value(expr: &Expr) -> bool {
 /// `file_response`) produce `spec.transport_mock(...)`, all other values
 /// produce `spec.boundary(...)`.
 fn emit_mock_apply(out: &mut String, mock: &MockDecl, indent: &str) {
-    let node_id = mock.node_segments.join("/");
+    let node_id = mock.node_ref.as_source_node_id();
     let port = &mock.port;
     let value_expr = emit_value_expr(&mock.value);
 
@@ -318,7 +318,7 @@ fn emit_mock_apply(out: &mut String, mock: &MockDecl, indent: &str) {
 
 /// Emit an input application statement.
 fn emit_input_apply(out: &mut String, input: &InputDecl, indent: &str) {
-    let node_id = input.node_segments.join("/");
+    let node_id = input.node_ref.as_source_node_id();
     let port = &input.port;
     let value_expr = emit_value_expr(&input.value);
     writeln!(
@@ -686,6 +686,7 @@ fn emit_inline_expr(expr: &Expr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use daglang_syntax::ast::TestNodeRef;
     use daglang_syntax::parser;
 
     #[test]
@@ -750,8 +751,10 @@ test dag_viz_snapshot {
         assert_eq!(test_file.tests.len(), 1);
         assert_eq!(test_file.tests[0].inputs.len(), 1);
         assert_eq!(
-            test_file.tests[0].inputs[0].node_segments,
-            vec!["render_snapshot"]
+            test_file.tests[0].inputs[0].node_ref,
+            TestNodeRef::Local {
+                node_segments: vec!["render_snapshot".into()],
+            }
         );
         assert_eq!(test_file.tests[0].inputs[0].port, "topology_json");
     }
@@ -770,20 +773,52 @@ test gist_upload_test {
 
         assert_eq!(test_file.tests[0].mocks.len(), 2);
         assert_eq!(
-            test_file.tests[0].mocks[0].node_segments,
-            vec!["gist_upload", "execute"]
+            test_file.tests[0].mocks[0].node_ref,
+            TestNodeRef::Local {
+                node_segments: vec!["gist_upload".into(), "execute".into()],
+            }
         );
         assert_eq!(test_file.tests[0].mocks[0].port, "response");
         assert_eq!(
-            test_file.tests[0].mocks[1].node_segments,
-            vec![
-                "gist_upload",
-                "cloud_credential",
-                "gcp_wif_secret",
-                "parse_set_iam"
-            ]
+            test_file.tests[0].mocks[1].node_ref,
+            TestNodeRef::Local {
+                node_segments: vec![
+                    "gist_upload".into(),
+                    "cloud_credential".into(),
+                    "gcp_wif_secret".into(),
+                    "parse_set_iam".into(),
+                ],
+            }
         );
         assert_eq!(test_file.tests[0].mocks[1].port, "ok");
+    }
+
+    #[test]
+    fn qualified_test_node_paths_emit_qualified_node_ids() {
+        let source = r#"
+test qualified_refs {
+    mock tools.shared::build/execute.response -> rest_response(200, { ok: true })
+    input tools.shared::build.prepare.arg -> "value"
+}
+"#;
+
+        let ast = parser::parse(source).expect("should parse");
+        let test_file = TestFile::from_source(&ast);
+
+        let config = TestEmitConfig {
+            dag_builder: "crate::build_graph()".to_string(),
+            auto_mock_fn: "crate::auto_mock_spec".to_string(),
+            output_dir: "test".to_string(),
+            tool_name: None,
+            signature_fn: None,
+        };
+
+        let output = emit_test_mock_file(&test_file, &config);
+
+        assert!(
+            output.contains("spec.transport_mock(\"tools.shared::build/execute\", \"response\"")
+        );
+        assert!(output.contains("spec.input_mock(\"tools.shared::build/prepare\", \"arg\""));
     }
 
     #[test]

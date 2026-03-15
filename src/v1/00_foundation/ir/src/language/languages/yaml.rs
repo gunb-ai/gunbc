@@ -10,8 +10,8 @@
 //! - Comment prefix: `#`
 
 use crate::dag::{Dag, Port};
-use crate::language::LanguageOp;
 use crate::language::traits::comment::add_line_comment;
+use crate::language::LanguageOp;
 use crate::node::Node;
 
 /// YAML format static configuration.

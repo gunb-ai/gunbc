@@ -447,7 +447,10 @@ mod tests {
     #[test]
     fn node_identity_from_origin_returns_none_for_unknown() {
         assert!(NodeIdentity::from_origin(&NodeOrigin::Unknown).is_none());
-        assert!(NodeIdentity::from_origin(&NodeOrigin::Stdlib { module: "std".into() }).is_none());
+        assert!(NodeIdentity::from_origin(&NodeOrigin::Stdlib {
+            module: "std".into()
+        })
+        .is_none());
     }
 
     #[test]

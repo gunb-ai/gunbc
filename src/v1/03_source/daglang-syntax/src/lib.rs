@@ -497,14 +497,63 @@ pub mod ast {
         pub skip: bool,
     }
 
+    /// A node reference inside an inline test block.
+    ///
+    /// Local references are resolved against the surrounding module. Qualified
+    /// references carry their target module explicitly at parse time.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum TestNodeRef {
+        Local {
+            node_segments: Vec<String>,
+        },
+        Qualified {
+            module: ModulePath,
+            node_segments: Vec<String>,
+        },
+    }
+
+    impl TestNodeRef {
+        pub fn local(node_segments: Vec<String>) -> Self {
+            Self::Local { node_segments }
+        }
+
+        pub fn qualified(module: ModulePath, node_segments: Vec<String>) -> Self {
+            Self::Qualified {
+                module,
+                node_segments,
+            }
+        }
+
+        pub fn node_segments(&self) -> &[String] {
+            match self {
+                Self::Local { node_segments } | Self::Qualified { node_segments, .. } => {
+                    node_segments
+                }
+            }
+        }
+
+        /// Render the node ID exactly as written by the test reference.
+        ///
+        /// Local references stay unqualified; qualified references retain their
+        /// explicit module prefix.
+        pub fn as_source_node_id(&self) -> String {
+            let node_id = self.node_segments().join("/");
+            match self {
+                Self::Local { .. } => node_id,
+                Self::Qualified { module, .. } => format!("{module}::{node_id}"),
+            }
+        }
+    }
+
     /// A mock declaration: `mock <node_path>.<port> -> <value>`.
     ///
-    /// The `node_segments` are joined with `/` to form the DAG node ID.
+    /// The node reference preserves whether the target was written relative to
+    /// the local module or explicitly qualified as `module.path::node/path`.
     /// The last dotted segment is the port name.
     #[derive(Debug, Clone)]
     pub struct MockDecl {
-        /// Node path segments (joined with `/` to form node ID).
-        pub node_segments: Vec<String>,
+        /// Node reference targeted by this mock.
+        pub node_ref: TestNodeRef,
         /// Port name (the segment after the last `.`).
         pub port: String,
         /// The mock value expression.
@@ -514,7 +563,7 @@ pub mod ast {
     /// An input declaration: `input <node_path>.<port> = <value>`.
     #[derive(Debug, Clone)]
     pub struct InputDecl {
-        pub node_segments: Vec<String>,
+        pub node_ref: TestNodeRef,
         pub port: String,
         pub value: Expr,
     }

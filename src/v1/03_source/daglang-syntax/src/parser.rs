@@ -2745,13 +2745,36 @@ impl Parser {
         Ok(LetDecl { name, value })
     }
 
-    /// Parse a mock target path: `seg1/seg2/.../segN.port` or bare `port`
+    /// Parse a mock/input target path.
+    ///
+    /// Local targets use `seg1/seg2/.../segN.port`. Qualified targets use
+    /// `module.path::seg1/seg2/.../segN.port`.
     ///
     /// Segments before the last `.` are joined with `/` to form the node ID.
-    /// The segment after the last `.` is the port name.
-    /// If no `.` is present, the identifier is treated as a bare port name
-    /// with an empty node path (broadcast-style input).
-    fn parse_mock_target(&mut self) -> Result<(Vec<String>, String), ParseError> {
+    /// The segment after the last `.` is the port name. If no `.` is present,
+    /// the identifier is treated as a bare port name with an empty node path
+    /// (broadcast-style input).
+    fn parse_mock_target(&mut self) -> Result<(TestNodeRef, String), ParseError> {
+        let checkpoint = self.pos;
+        let first = self.expect_ident()?;
+        let mut module_segments = vec![first];
+        while self.eat(&TokenKind::Dot) {
+            module_segments.push(self.expect_ident()?);
+        }
+        if self.eat(&TokenKind::DoubleColon) {
+            let (node_segments, port) = self.parse_local_mock_target_tail()?;
+            return Ok((
+                TestNodeRef::qualified(module_segments.into(), node_segments),
+                port,
+            ));
+        }
+
+        self.pos = checkpoint;
+        let (node_segments, port) = self.parse_local_mock_target_tail()?;
+        Ok((TestNodeRef::local(node_segments), port))
+    }
+
+    fn parse_local_mock_target_tail(&mut self) -> Result<(Vec<String>, String), ParseError> {
         let first = self.expect_ident()?;
 
         // Collect path segments separated by `/`
@@ -2795,11 +2818,11 @@ impl Parser {
     /// Parse: `mock <target> -> <expr>`
     fn parse_mock_decl(&mut self) -> Result<MockDecl, ParseError> {
         self.expect(&TokenKind::Mock)?;
-        let (node_segments, port) = self.parse_mock_target()?;
+        let (node_ref, port) = self.parse_mock_target()?;
         self.expect(&TokenKind::Arrow)?;
         let value = self.parse_expr(0)?;
         Ok(MockDecl {
-            node_segments,
+            node_ref,
             port,
             value,
         })
@@ -2808,11 +2831,11 @@ impl Parser {
     /// Parse: `input <target> -> <expr>`
     fn parse_input_decl(&mut self) -> Result<InputDecl, ParseError> {
         self.expect(&TokenKind::Input)?;
-        let (node_segments, port) = self.parse_mock_target()?;
+        let (node_ref, port) = self.parse_mock_target()?;
         self.expect(&TokenKind::Arrow)?;
         let value = self.parse_expr(0)?;
         Ok(InputDecl {
-            node_segments,
+            node_ref,
             port,
             value,
         })
@@ -3759,9 +3782,9 @@ impl Parser {
         match flatten_path(&callee) {
             Some(path) if path.len() == 1 => Ok(Expr::Call(path[0].clone(), args)),
             Some(path) => Ok(Expr::ServiceCall(path, args)),
-            None => Err(self.err(
-                "call expressions require an identifier or dotted path callee".into(),
-            )),
+            None => {
+                Err(self.err("call expressions require an identifier or dotted path callee".into()))
+            }
         }
     }
 
@@ -5215,6 +5238,36 @@ service rest.T {
                 assert!(op.mock_responses.is_empty());
             }
             other => panic!("expected ServiceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_test_targets_preserve_local_and_qualified_node_refs() {
+        let source = r#"
+            test node_refs {
+                mock local/execute.response -> rest_response(200, { ok: true })
+                input tools.shared::shared_node.prepare.arg -> "value"
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::TestDef(def) => {
+                assert_eq!(
+                    def.mocks[0].node_ref,
+                    TestNodeRef::Local {
+                        node_segments: vec!["local".into(), "execute".into()],
+                    }
+                );
+                assert_eq!(
+                    def.inputs[0].node_ref,
+                    TestNodeRef::Qualified {
+                        module: ModulePath::new(vec!["tools".into(), "shared".into()]),
+                        node_segments: vec!["shared_node".into(), "prepare".into()],
+                    }
+                );
+                assert_eq!(def.inputs[0].port, "arg");
+            }
+            other => panic!("expected TestDef, got {other:?}"),
         }
     }
 
