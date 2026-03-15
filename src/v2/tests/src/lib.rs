@@ -2583,7 +2583,7 @@ fn example(items: List<String>) -> Int {
     /// recursion via heap continuations. However, evaluating 11 real .dag
     /// files consumes >16GB heap in debug mode (interpreter overhead).
     #[test]
-    #[ignore = "OOM in debug mode — 11 .dag files exceed 16GB heap (not a stack issue)"]
+    #[ignore = "Stack overflow in re-entrant evaluator — eval_non_sibling_call_raw nests Rust frames for 11 .dag files"]
     fn phase6_gist_full_pipeline() {
         let output = compile_all_modules().expect("compilation should succeed");
         let root = workspace_root();

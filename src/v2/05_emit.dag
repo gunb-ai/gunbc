@@ -153,7 +153,7 @@ fn lookup_item(registry: List<ItemInfo>, name: String) -> ItemInfo? {
   first(matches)
 }
 
-fn lookup_func_sig(scope: InferScope, name: String) -> FuncSig? {
+fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> FuncSig? {
   let matches = scope.func_env.signatures |> filter(sig => sig.name == name)
   first(matches)
 }
@@ -171,7 +171,7 @@ fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> Lis
   if has_unnamed {
     return args
   }
-  match lookup_func_sig(scope: scope, name: func) {
+  match lookup_func_sig_in_scope(scope: scope, name: func) {
     None => args
     Some { value: sig } => {
       let ordered = sig.params |> fold(init: [], f: (acc, param) =>
