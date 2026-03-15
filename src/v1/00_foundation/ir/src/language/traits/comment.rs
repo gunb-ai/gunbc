@@ -160,6 +160,17 @@ mod tests {
             Some("<!-- ")
         );
         assert_eq!(comment_syntax_for("html").unwrap().block_end, Some(" -->"));
-        assert_eq!(comment_syntax_for("python"), None);
+        assert_eq!(
+            comment_syntax_for("python").unwrap().line_prefix,
+            Some("#")
+        );
+        assert_eq!(
+            comment_syntax_for("typescript").unwrap().line_prefix,
+            Some("//")
+        );
+        assert_eq!(
+            comment_syntax_for("typescript").unwrap().block_start,
+            Some("/*")
+        );
     }
 }

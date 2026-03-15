@@ -48,21 +48,23 @@ use std::path::Path;
 pub use categories::{build_config_format_subdag, build_turing_complete_subdag};
 pub use languages::{
     build_css_subdag, build_gitignore_subdag, build_html_subdag, build_makefile_subdag,
-    build_markdown_subdag, build_rust_subdag, build_toml_subdag, build_yaml_subdag,
+    build_markdown_subdag, build_python_subdag, build_rust_subdag, build_toml_subdag,
+    build_typescript_subdag, build_yaml_subdag,
 };
 pub use patterns::{build_glob_subdag, build_regex_subdag, build_variable_syntax_subdag};
 pub use traits::{
     build_comment_prefix_subdag, build_naming_conventions_subdag, build_type_system_mapping_subdag,
     convert_for_language, map_type, naming_for_language, optional_wrapper, LanguageNaming,
-    TypeMapping, PYTHON_NAMING, PYTHON_TYPES, RUST_NAMING, RUST_TYPES, TYPESCRIPT_NAMING,
-    TYPESCRIPT_TYPES,
+    TypeMapping,
 };
 
 // Re-exports - Static configurations
 pub use languages::{
     rust_type, CssConfig, GitignoreConfig, HtmlConfig, MakeTarget, MakefileConfig, MarkdownConfig,
-    RustConfig, TomlConfig, YamlConfig, CSS, DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME,
-    GITIGNORE, HTML, MAKEFILE, MARKDOWN, RUST, TOML, YAML,
+    PythonConfig, RustConfig, TomlConfig, TypeScriptConfig, YamlConfig, CSS,
+    DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME, GITIGNORE, HTML, MAKEFILE, MARKDOWN,
+    PYTHON, PYTHON_NAMING, PYTHON_TYPES, RUST, RUST_NAMING, RUST_TYPES, TOML, TYPESCRIPT,
+    TYPESCRIPT_NAMING, TYPESCRIPT_TYPES, YAML,
 };
 
 // Re-exports - Rendering functions
@@ -229,7 +231,7 @@ fn split_into_words(name: &str) -> Vec<String> {
 /// ├── Pattern SubDags: regex, glob, variable_syntax
 /// ├── Trait SubDags: type_system, naming, comment_prefix
 /// ├── Category SubDags: turing_complete, config_format
-/// └── Language SubDags: rust, gitignore, makefile, yaml, toml
+/// └── Language SubDags: rust, python, typescript, gitignore, makefile, yaml, toml
 /// ```
 pub fn build_languages_dag() -> Dag<LanguageOp> {
     let mut dag = Dag::new();
@@ -250,6 +252,8 @@ pub fn build_languages_dag() -> Dag<LanguageOp> {
 
     // Language/Format SubDags
     dag.add_node(build_rust_subdag());
+    dag.add_node(build_python_subdag());
+    dag.add_node(build_typescript_subdag());
     dag.add_node(build_gitignore_subdag());
     dag.add_node(build_makefile_subdag());
     dag.add_node(build_html_subdag());
@@ -267,6 +271,8 @@ pub(crate) struct LanguageMetadata {
     pub file_extensions: &'static [&'static str],
     pub file_patterns: &'static [&'static str],
     pub comment_syntax: Option<CommentSyntax>,
+    pub type_mapping: Option<&'static TypeMapping>,
+    pub naming: Option<&'static LanguageNaming>,
 }
 
 const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
@@ -280,6 +286,34 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: Some(RUST.block_comment_close),
             doc_prefix: Some(RUST.doc_comment_prefix),
         }),
+        type_mapping: Some(&RUST_TYPES),
+        naming: Some(&RUST_NAMING),
+    },
+    LanguageMetadata {
+        id: PYTHON.id,
+        file_extensions: PYTHON.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(PYTHON.comment_prefix),
+            block_start: None,
+            block_end: None,
+            doc_prefix: None,
+        }),
+        type_mapping: Some(&PYTHON_TYPES),
+        naming: Some(&PYTHON_NAMING),
+    },
+    LanguageMetadata {
+        id: TYPESCRIPT.id,
+        file_extensions: TYPESCRIPT.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(TYPESCRIPT.comment_prefix),
+            block_start: Some(TYPESCRIPT.block_comment_open),
+            block_end: Some(TYPESCRIPT.block_comment_close),
+            doc_prefix: None,
+        }),
+        type_mapping: Some(&TYPESCRIPT_TYPES),
+        naming: Some(&TYPESCRIPT_NAMING),
     },
     LanguageMetadata {
         id: GITIGNORE.id,
@@ -291,6 +325,8 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: None,
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
     LanguageMetadata {
         id: MAKEFILE.id,
@@ -302,6 +338,8 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: None,
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
     LanguageMetadata {
         id: HTML.id,
@@ -313,6 +351,8 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: Some(HTML.comment_close),
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
     LanguageMetadata {
         id: CSS.id,
@@ -324,6 +364,8 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: Some(CSS.comment_close),
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
     LanguageMetadata {
         id: MARKDOWN.id,
@@ -335,6 +377,8 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: Some(MARKDOWN.comment_close),
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
     LanguageMetadata {
         id: YAML.id,
@@ -346,6 +390,8 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: None,
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
     LanguageMetadata {
         id: TOML.id,
@@ -357,13 +403,19 @@ const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
             block_end: None,
             doc_prefix: None,
         }),
+        type_mapping: None,
+        naming: None,
     },
 ];
 
 pub(crate) fn language_metadata_for(id: &str) -> Option<&'static LanguageMetadata> {
+    let resolved = match id {
+        "javascript" => "typescript",
+        other => other,
+    };
     LANGUAGE_METADATA_REGISTRY
         .iter()
-        .find(|metadata| metadata.id == id)
+        .find(|metadata| metadata.id == resolved)
 }
 
 fn filename_matches_pattern(filename: &str, pattern: &str) -> bool {
@@ -490,6 +542,8 @@ mod tests {
         assert!(dag.get_node(&"turing_complete".into()).is_some());
         assert!(dag.get_node(&"config_format".into()).is_some());
         assert!(dag.get_node(&"rust".into()).is_some());
+        assert!(dag.get_node(&"python".into()).is_some());
+        assert!(dag.get_node(&"typescript".into()).is_some());
         assert!(dag.get_node(&"gitignore".into()).is_some());
         assert!(dag.get_node(&"makefile".into()).is_some());
     }

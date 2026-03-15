@@ -12,9 +12,5 @@ pub mod type_system;
 pub use comment::build_comment_prefix_subdag;
 pub use naming::{
     build_naming_conventions_subdag, convert_for_language, naming_for_language, LanguageNaming,
-    PYTHON_NAMING, RUST_NAMING, TYPESCRIPT_NAMING,
 };
-pub use type_system::{
-    build_type_system_mapping_subdag, map_type, optional_wrapper, TypeMapping, PYTHON_TYPES,
-    RUST_TYPES, TYPESCRIPT_TYPES,
-};
+pub use type_system::{build_type_system_mapping_subdag, map_type, optional_wrapper, TypeMapping};

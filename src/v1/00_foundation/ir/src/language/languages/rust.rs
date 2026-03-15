@@ -15,6 +15,9 @@
 //! - Naming: snake_case functions, PascalCase types
 
 use crate::dag::{Dag, Port};
+use crate::language::traits::naming::LanguageNaming;
+use crate::language::traits::type_system::TypeMapping;
+use crate::language::NamingCase;
 use crate::language::LanguageOp;
 use crate::node::Node;
 
@@ -44,6 +47,27 @@ pub const RUST: RustConfig = RustConfig {
     statement_terminator: ";",
     block_open: "{",
     block_close: "}",
+};
+
+/// Rust type mappings.
+pub const RUST_TYPES: TypeMapping = TypeMapping {
+    string: "String",
+    int: "i64",
+    float: "f64",
+    bool: "bool",
+    bytes: "Vec<u8>",
+    list_template: "Vec<{0}>",
+    optional_template: "Option<{0}>",
+    map_template: "HashMap<{0}, {1}>",
+};
+
+/// Rust naming conventions.
+pub const RUST_NAMING: LanguageNaming = LanguageNaming {
+    type_case: NamingCase::PascalCase,
+    function_case: NamingCase::SnakeCase,
+    variable_case: NamingCase::SnakeCase,
+    constant_case: NamingCase::ScreamingSnakeCase,
+    module_case: NamingCase::SnakeCase,
 };
 
 /// Build the Rust language SubDag node.
