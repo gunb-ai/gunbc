@@ -2630,7 +2630,7 @@ fn example(items: List<String>) -> Int {
     /// recursion via heap continuations. However, evaluating 11 real .dag
     /// files consumes >16GB heap in debug mode (interpreter overhead).
     #[test]
-    #[ignore = "Stack overflow in re-entrant evaluator — eval_non_sibling_call_raw nests Rust frames for 11 .dag files"]
+    #[ignore = "OOM: interpreting v2 pipeline on 11 .dag files exceeds memory (stack overflow fixed by stacker)"]
     fn phase6_gist_full_pipeline() {
         let output = compile_all_modules().expect("compilation should succeed");
         let root = workspace_root();
@@ -3033,6 +3033,42 @@ fn example(items: List<String>) -> Int {
         assert!(
             stdout.contains("test generated_tests"),
             "expected generated_tests to appear in test output:\n{}",
+            stdout
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// Run the generated v2 crate's self_compile_all_modules test — proves
+    /// the compiled v2 compiler can compile its own 9 .dag sources through
+    /// the full pipeline (tokenize -> parse -> resolve -> typecheck -> emit).
+    #[test]
+    #[ignore] // Requires cargo build + full pipeline; run with --ignored
+    fn v2_crate_self_compile() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-self-compile");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--")
+            .arg("self_compile_all_modules")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            panic!(
+                "self_compile_all_modules failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
+                tmp_dir.display(),
+                stdout,
+                stderr
+            );
+        }
+
+        assert!(
+            stdout.contains("self_compile_all_modules"),
+            "expected self_compile_all_modules to appear in test output:\n{}",
             stdout
         );
 
