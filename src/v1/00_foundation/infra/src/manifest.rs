@@ -100,6 +100,17 @@ impl ResourceManifest {
             )
         })?;
 
+        if manifest.version != Self::CURRENT_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Unsupported manifest version {} (expected {})",
+                    manifest.version,
+                    Self::CURRENT_VERSION
+                ),
+            ));
+        }
+
         Ok(manifest)
     }
 
@@ -224,6 +235,18 @@ mod tests {
     fn test_manifest_parse_invalid_json() {
         let err = ResourceManifest::from_json_str("{not json}").unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn test_manifest_rejects_unsupported_version() {
+        let mut manifest = ResourceManifest::new();
+        manifest.version = ResourceManifest::CURRENT_VERSION + 1;
+
+        let json = manifest.to_json_pretty().expect("serialize failed");
+        let err = ResourceManifest::from_json_str(&json).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("Unsupported manifest version"));
     }
 
     #[test]
