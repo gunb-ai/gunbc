@@ -3,8 +3,8 @@
 //! These traits capture the algebraic structure that types like [`Cardinality`]
 //! already implement. Extracting them into traits enables:
 //!
-//! - **Reuse**: Any type with lattice structure (predicates, type contracts, etc.)
-//!   can implement the same traits and get property-based test coverage for free.
+//! - **Reuse**: Any type with comparable algebraic structure (predicates, type
+//!   contracts, encodings, etc.) can expose the same generic interface.
 //! - **Composition**: Generic algorithms over lattices (e.g., fixed-point iteration,
 //!   constraint propagation) work for any implementor.
 //! - **Documentation**: The algebraic laws are explicit in the trait contracts.
@@ -31,8 +31,10 @@
 //!
 //! # Laws
 //!
-//! Implementors must satisfy these algebraic laws. The property-based tests
-//! in this module verify them for [`Cardinality`].
+//! Implementors must satisfy these algebraic laws. [`Cardinality`] keeps its
+//! exhaustive algebra-law coverage alongside its primary implementation in
+//! [`crate::types`]; this module only checks that the trait adapters forward
+//! to those operations correctly.
 //!
 //! **PartialOrder:**
 //! - Reflexivity: `a.leq(&a)` is true
@@ -200,107 +202,6 @@ mod tests {
         ];
         for c in &cases {
             assert!(c.leq(&top), "{c} should be ≤ top");
-        }
-    }
-}
-
-// =============================================================================
-// Property-based tests
-// =============================================================================
-
-#[cfg(test)]
-mod proptests {
-    use super::*;
-    use proptest::prelude::*;
-
-    fn arb_cardinality() -> impl Strategy<Value = Cardinality> {
-        (0u32..10, prop::option::of(0u32..10)).prop_map(|(min, max)| {
-            let max = max.map(|m| m.max(min));
-            Cardinality { min, max }
-        })
-    }
-
-    proptest! {
-        // --- PartialOrder laws ---
-
-        #[test]
-        fn partial_order_reflexive(c in arb_cardinality()) {
-            prop_assert!(c.leq(&c));
-        }
-
-        #[test]
-        fn partial_order_transitive(
-            a in arb_cardinality(),
-            b in arb_cardinality(),
-            c in arb_cardinality()
-        ) {
-            if a.leq(&b) && b.leq(&c) {
-                prop_assert!(a.leq(&c));
-            }
-        }
-
-        #[test]
-        fn partial_order_antisymmetric(a in arb_cardinality(), b in arb_cardinality()) {
-            if a.leq(&b) && b.leq(&a) {
-                prop_assert_eq!(a, b);
-            }
-        }
-
-        // --- Join laws via trait ---
-
-        #[test]
-        fn trait_join_commutative(a in arb_cardinality(), b in arb_cardinality()) {
-            prop_assert_eq!(
-                <Cardinality as JoinSemilattice>::join(a, b),
-                <Cardinality as JoinSemilattice>::join(b, a)
-            );
-        }
-
-        #[test]
-        fn trait_join_upper_bound(a in arb_cardinality(), b in arb_cardinality()) {
-            let j = <Cardinality as JoinSemilattice>::join(a, b);
-            prop_assert!(a.leq(&j));
-            prop_assert!(b.leq(&j));
-        }
-
-        // --- Meet laws via trait ---
-
-        #[test]
-        fn trait_meet_commutative(a in arb_cardinality(), b in arb_cardinality()) {
-            prop_assert_eq!(
-                <Cardinality as MeetSemilattice>::meet(a, b),
-                <Cardinality as MeetSemilattice>::meet(b, a)
-            );
-        }
-
-        #[test]
-        fn trait_meet_lower_bound(a in arb_cardinality(), b in arb_cardinality()) {
-            if let Some(m) = <Cardinality as MeetSemilattice>::meet(a, b) {
-                prop_assert!(m.leq(&a));
-                prop_assert!(m.leq(&b));
-            }
-        }
-
-        // --- Bounded lattice ---
-
-        #[test]
-        fn everything_leq_top(c in arb_cardinality()) {
-            prop_assert!(c.leq(&<Cardinality as BoundedLattice>::top()));
-        }
-
-        // --- Absorption laws (Lattice) ---
-
-        #[test]
-        fn trait_absorption_join_meet(a in arb_cardinality(), b in arb_cardinality()) {
-            if let Some(m) = <Cardinality as MeetSemilattice>::meet(a, b) {
-                prop_assert_eq!(<Cardinality as JoinSemilattice>::join(a, m), a);
-            }
-        }
-
-        #[test]
-        fn trait_absorption_meet_join(a in arb_cardinality(), b in arb_cardinality()) {
-            let j = <Cardinality as JoinSemilattice>::join(a, b);
-            prop_assert_eq!(<Cardinality as MeetSemilattice>::meet(a, j), Some(a));
         }
     }
 }
