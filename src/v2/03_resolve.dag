@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, Item, Diagnostic, Severity }
+import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Item, Diagnostic, Severity }
 
 // =========================================================================
 // Output types
@@ -32,7 +32,7 @@ type ResolvedModule {
 
 type ResolvedImport {
   module_path: String
-  names: List<String>
+  names: ImportNames
   target_module: Module?
 }
 
@@ -87,19 +87,29 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     None => []
   }
 
-  // Phase 4: assign dep_order from the sorted order
+  // Phase 4: assign dep_order from the sorted order.
+  // Modules not in the sorted output (cycle members) get no dep_order
+  // and are excluded from the acyclic result.
   let sorted_names = topo_result.sorted
-  let resolved_modules = modules |> enumerate |> map(pair =>
+  let acyclic_resolved = modules |> enumerate |> flat_map(pair =>
     let idx = pair.first
     let m = pair.second
-    let dep_order = find_index_in_list(names: sorted_names, target: m.name)
-    ResolvedModule {
-      module: m,
-      resolved_imports: get_at_index(items: resolved_imports_list, index: idx),
-      dep_order: dep_order
+    match find_index_in_list(names: sorted_names, target: m.name) {
+      Some { value: order } =>
+        match get_at_index(items: resolved_imports_list, index: idx) {
+          // get_at_index is on parallel arrays (same enumerate index) — None is
+          // unreachable. Default to [] only as a safe fallback.
+          Some { value: imps } =>
+            [ResolvedModule {
+              module: m,
+              resolved_imports: imps,
+              dep_order: order
+            }]
+          None => []
+        }
+      None => []
     }
   )
-  let acyclic_resolved = resolved_modules |> filter(m => m.dep_order >= 0)
 
   // Sort resolved modules by dep_order (leaves first)
   let sorted_resolved = acyclic_resolved |> sort_by(m => m.dep_order)
@@ -155,17 +165,6 @@ type ImportResolveResult {
   diagnostics: List<Diagnostic>
 }
 
-fn is_wildcard_import_names(names: List<String>) -> Bool {
-  if names |> count == 1 {
-    match first(names) {
-      Some { value: name } => name == "*"
-      None => false
-    }
-  } else {
-    false
-  }
-}
-
 // Resolve a single import: find target module, validate imported names.
 fn resolve_import(
   import: Import,
@@ -193,19 +192,19 @@ fn resolve_import(
     Some { value: target_mod } => {
       // Validate each imported name exists in the target
       let exported = get_exported_names(module: target_mod)
-      let name_diags = if is_wildcard_import_names(names: import.names) {
-        []
-      } else {
-        import.names
-          |> filter(name => exported |> any(e => e == name) == false)
-          |> map(missing_name =>
-            Diagnostic {
-              severity: Error,
-              message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
-              span: Some { value: import.span },
-              module_name: Some { value: importing_module }
-            }
-          )
+      let name_diags = match import.names {
+        ImportAll => []
+        ImportSpecific { names: specific_names } =>
+          specific_names
+            |> filter(name => exported |> any(e => e == name) == false)
+            |> map(missing_name =>
+              Diagnostic {
+                severity: Error,
+                message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
+                span: Some { value: import.span },
+                module_name: Some { value: importing_module }
+              }
+            )
       }
       ImportResolveResult {
         resolved: ResolvedImport {
@@ -381,10 +380,15 @@ fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
 // One step of Kahn's algorithm: find all zero-in-degree nodes,
 // emit them (sorted), and decrement neighbors' in-degrees.
 fn kahn_step(state: KahnState) -> KahnStepResult {
-  // Find all nodes with in-degree 0 that aren't already sorted
+  // Find all nodes with in-degree 0 that aren't already sorted.
+  // get_at_index_int on parallel arrays (in_degrees indexed by enumerate) — None
+  // is unreachable by construction. Treat None as non-zero (skip the node).
   let zero_nodes = state.module_names |> enumerate
     |> filter(pair =>
-      let deg = get_at_index_int(items: state.in_degrees, index: pair.first)
+      let deg = match get_at_index_int(items: state.in_degrees, index: pair.first) {
+        Some { value: d } => d
+        None => -1
+      }
       deg == 0 && (state.sorted |> any(s => s == pair.second) == false)
     )
     |> map(pair => pair.second)
@@ -397,11 +401,15 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
   // Add zero-degree nodes to sorted output
   let new_sorted = concat(state.sorted, zero_nodes)
 
-  // Decrement in-degrees: for each edge from a zero_node, decrement target
+  // Decrement in-degrees: for each edge from a zero_node, decrement target.
+  // get_at_index_int on parallel arrays — None is unreachable. Treat None as -1.
   let new_in_degrees = state.module_names |> enumerate |> map(pair =>
     let idx = pair.first
     let name = pair.second
-    let current_deg = get_at_index_int(items: state.in_degrees, index: idx)
+    let current_deg = match get_at_index_int(items: state.in_degrees, index: idx) {
+      Some { value: d } => d
+      None => -1
+    }
     // Count how many edges point to this node FROM a zero_node
     let decrements = state.edges
       |> filter(e => e.to_module == name && (zero_nodes |> any(z => z == e.from_module)))
@@ -435,31 +443,33 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
 // maps or arrays. Indices are computed via enumerate + filter.
 // =========================================================================
 
-// Find the index of a name in a list. Returns -1 if not found.
-fn find_index_in_list(names: List<String>, target: String) -> Int {
+// Find the index of a name in a list. Returns None if not found.
+fn find_index_in_list(names: List<String>, target: String) -> Int? {
   let matches = names |> enumerate |> filter(pair => pair.second == target)
   match matches |> first {
-    Some { value: pair } => pair.first
-    None => -1
+    Some { value: pair } => Some { value: pair.first }
+    None => None
   }
 }
 
 // Get element at index from a list of ResolvedImport lists.
-// Returns empty list if index is out of bounds.
-fn get_at_index(items: List<List<ResolvedImport>>, index: Int) -> List<ResolvedImport> {
+// Returns None if index is out of bounds (indicates a compiler bug — parallel
+// arrays should always have matching indices).
+fn get_at_index(items: List<List<ResolvedImport>>, index: Int) -> List<ResolvedImport>? {
   let matches = items |> enumerate |> filter(pair => pair.first == index)
   match matches |> first {
-    Some { value: pair } => pair.second
-    None => []
+    Some { value: pair } => Some { value: pair.second }
+    None => None
   }
 }
 
 // Get element at index from a list of Ints.
-// Returns 0 if index is out of bounds.
-fn get_at_index_int(items: List<Int>, index: Int) -> Int {
+// Returns None if index is out of bounds (indicates a compiler bug — parallel
+// arrays should always have matching indices).
+fn get_at_index_int(items: List<Int>, index: Int) -> Int? {
   let matches = items |> enumerate |> filter(pair => pair.first == index)
   match matches |> first {
-    Some { value: pair } => pair.second
-    None => 0
+    Some { value: pair } => Some { value: pair.second }
+    None => None
   }
 }
