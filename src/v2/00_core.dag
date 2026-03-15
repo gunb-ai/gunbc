@@ -321,6 +321,12 @@ type CapabilityDef {
 }
 
 // =========================================================================
+// Render target — which language the emitter produces.
+// =========================================================================
+
+type RenderTarget = Rust | Python
+
+// =========================================================================
 // Compiler output
 //
 // The compiler produces files and diagnostics. No DAG, no IR, no
