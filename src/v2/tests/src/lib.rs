@@ -92,6 +92,8 @@ mod tests {
             root.join("src/v2/03_resolve.dag"),
             root.join("src/v2/04_typecheck.dag"),
             root.join("src/v2/05_emit.dag"),
+            root.join("src/v2/05_emit_rust.dag"),
+            root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/06_pipeline.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
@@ -227,6 +229,13 @@ mod tests {
                     .collect(),
             ),
         );
+        // RenderTarget::Rust variant value
+        let mut target_map = std::collections::BTreeMap::new();
+        target_map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Rust".to_string()),
+        );
+        inputs.insert("target".to_string(), gunbc_ir::Value::Map(target_map));
         let result =
             call_fn(output, "compile_sources", inputs).expect("compile_sources should succeed");
         if let Some(gunbc_ir::Value::Map(map)) = result.get("return") {
@@ -1547,37 +1556,37 @@ fn foo(item: String) -> String {
         );
     }
 
-    /// Test that emit.dag handles NullCoalesce emission.
+    /// Test that emit_rust.dag handles NullCoalesce emission.
     #[test]
     fn phase4_emit_handles_null_coalesce() {
-        let source = read_v2_file("src/v2/05_emit.dag");
+        let source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
             source.contains("unwrap_or_else"),
-            "emit.dag should emit unwrap_or_else for null coalesce"
+            "emit_rust.dag should emit unwrap_or_else for null coalesce"
         );
     }
 
-    /// Test that emit.dag handles for-loop emission.
+    /// Test that emit_rust.dag handles for-loop emission.
     #[test]
     fn phase4_emit_handles_for_loop() {
-        let source = read_v2_file("src/v2/05_emit.dag");
+        let source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
             source.contains("emit_for_each"),
-            "emit.dag should contain emit_for_each function"
+            "emit_rust.dag should contain emit_for_each function"
         );
         assert!(
             source.contains("into_iter"),
-            "emit.dag should emit .into_iter().map() for for-loops"
+            "emit_rust.dag should emit .into_iter().map() for for-loops"
         );
     }
 
-    /// Test that emit.dag generates Cargo.toml.
+    /// Test that emit_rust.dag generates Cargo.toml.
     #[test]
     fn phase4_emit_generates_cargo_toml() {
-        let source = read_v2_file("src/v2/05_emit.dag");
+        let source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
             source.contains("emit_cargo_toml"),
-            "emit.dag should contain emit_cargo_toml function"
+            "emit_rust.dag should contain emit_cargo_toml function"
         );
     }
 
@@ -1655,13 +1664,14 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase6_emit_preserves_field_provenance_and_named_arg_ordering() {
-        let source = read_v2_file("src/v2/05_emit.dag");
+        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
-            source.contains("serde(rename = "),
-            "emit.dag should preserve from_key through serde rename attributes"
+            rust_source.contains("serde(rename = "),
+            "emit_rust.dag should preserve from_key through serde rename attributes"
         );
+        let core_source = read_v2_file("src/v2/05_emit.dag");
         assert!(
-            source.contains("order_call_args"),
+            core_source.contains("order_call_args"),
             "emit.dag should reorder named arguments using function signatures"
         );
     }
@@ -2163,6 +2173,13 @@ fn example(items: List<String>) -> Int {
                 source_file_value("bad.dag", "fn orphan() -> Int { 42 }\n"),
             ]),
         );
+        // RenderTarget::Rust variant value
+        let mut target_map = std::collections::BTreeMap::new();
+        target_map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Rust".to_string()),
+        );
+        inputs.insert("target".to_string(), gunbc_ir::Value::Map(target_map));
         let result =
             call_fn(&output, "compile_sources", inputs).expect("compile_sources should succeed");
         let diagnostics = result
@@ -2723,6 +2740,8 @@ fn example(items: List<String>) -> Int {
             ("03_resolve", "src/v2/03_resolve.dag"),
             ("04_typecheck", "src/v2/04_typecheck.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
+            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
+            ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
         ];
 
@@ -2849,6 +2868,8 @@ fn example(items: List<String>) -> Int {
             ("03_resolve", "src/v2/03_resolve.dag"),
             ("04_typecheck", "src/v2/04_typecheck.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
+            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
+            ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
         ];
 
@@ -2986,6 +3007,8 @@ fn example(items: List<String>) -> Int {
             ("03_resolve", "src/v2/03_resolve.dag"),
             ("04_typecheck", "src/v2/04_typecheck.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
+            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
+            ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
         ];
 
@@ -3006,6 +3029,7 @@ fn example(items: List<String>) -> Int {
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
 
-        eprintln!("v2 crate written to: {}", out_dir.display());
+        // v2 crate written to out_dir
+        let _ = &out_dir;
     }
 }
