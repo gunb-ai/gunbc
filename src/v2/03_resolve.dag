@@ -220,15 +220,29 @@ fn resolve_import(
 // Exported names
 // =========================================================================
 
-// Extract all item names from a module that can be imported.
+// Extract all names from a module that can be imported.
 // Every top-level item (type, fn, func, service, resource, data,
 // extern func) contributes its name. Sum-type variants also contribute
 // their names so callers can import variant constructors directly.
+// Explicitly imported names are re-exported: if module A does
+// `import B { Foo }`, then importers of A can also see Foo.
 fn get_exported_names(module: Module) -> List<String> {
   let item_names = module.items |> map(item => get_item_name(item: item))
   let variant_names = module.items
     |> flat_map(item => get_variant_names(item: item))
-  concat(item_names, variant_names)
+  let imported_names = module.imports
+    |> flat_map(imp => get_import_specific_names(names: imp.names))
+  concat(item_names, variant_names, imported_names)
+}
+
+// Extract explicitly named imports from an ImportNames value.
+// Wildcard imports (ImportAll) are not re-exported since the target
+// module's full export list is not available at this point.
+fn get_import_specific_names(names: ImportNames) -> List<String> {
+  match names {
+    ImportAll => []
+    ImportSpecific { names: ns } => ns
+  }
 }
 
 // Extract the primary name from an item.

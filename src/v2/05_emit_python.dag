@@ -40,7 +40,7 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, ItemInfo, InterpPart,
   no_span, empty_emit_scope, module_emit_scope,
   infer_expr_type, scope_after_expr,
-  build_item_registry, lookup_item, lookup_func_sig, named_arg_matches, order_call_args,
+  build_item_registry, lookup_item, named_arg_matches, order_call_args,
   is_service_call_receiver, extract_service_name,
   collect_service_calls, collect_service_calls_from_args, unique_strings,
   has_nested_records, emit_data_value_json, escape_json_string,

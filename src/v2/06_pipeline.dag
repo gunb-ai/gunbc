@@ -20,7 +20,9 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.typecheck { typecheck_and_validate, TypedGraph }
-import v2.compiler.emit { emit_target, EmitResult }
+import v2.compiler.emit { EmitResult }
+import v2.compiler.emit_rust { emit_rust }
+import v2.compiler.emit_python { emit_python }
 
 // =========================================================================
 // Types
@@ -104,7 +106,10 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     // Stage 5: Emit target-language files.
     // Dispatches to the appropriate renderer based on RenderTarget.
     // Precondition: no errors from any prior stage.
-    let emit_result = emit_target(typed: typed, target: target)
+    let emit_result = match target {
+      Rust => emit_rust(typed: typed)
+      Python => emit_python(typed: typed)
+    }
 
     CompileResult {
       files: emit_result.files,

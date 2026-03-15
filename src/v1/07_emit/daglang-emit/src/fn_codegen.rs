@@ -3467,55 +3467,53 @@ enum SelfCallPosition {
 /// `fn_name` is the Rust (snake_case) name of the current function.
 fn classify_self_calls(stmts: &[code_ir::Stmt], fn_name: &str) -> Vec<SelfCallPosition> {
     let mut positions = Vec::new();
-    for stmt in stmts {
-        classify_self_calls_in_stmt(stmt, fn_name, &mut positions);
-    }
+    classify_self_calls_in_stmts(stmts, fn_name, &mut positions, true);
     positions
+}
+
+fn classify_self_calls_in_stmts(
+    stmts: &[code_ir::Stmt],
+    fn_name: &str,
+    positions: &mut Vec<SelfCallPosition>,
+    tail_context: bool,
+) {
+    let last_idx = stmts.len().saturating_sub(1);
+    for (idx, stmt) in stmts.iter().enumerate() {
+        let stmt_tail = tail_context && idx == last_idx;
+        classify_self_calls_in_stmt(stmt, fn_name, positions, stmt_tail);
+    }
 }
 
 fn classify_self_calls_in_stmt(
     stmt: &code_ir::Stmt,
     fn_name: &str,
     positions: &mut Vec<SelfCallPosition>,
+    tail_context: bool,
 ) {
     match stmt {
         code_ir::Stmt::Return(expr) => {
-            // return expr; — if expr is a self-call, it's tail.
-            if is_self_call(expr, fn_name) {
-                positions.push(SelfCallPosition::Tail);
-            } else {
-                classify_self_calls_in_expr(expr, fn_name, positions);
-            }
+            classify_self_calls_in_expr(expr, fn_name, positions, true);
         }
         code_ir::Stmt::TailExpr(expr) => {
-            // Implicit return — if expr is a self-call, it's tail.
-            if is_self_call(expr, fn_name) {
-                positions.push(SelfCallPosition::Tail);
-            } else {
-                classify_self_calls_in_expr(expr, fn_name, positions);
-            }
+            classify_self_calls_in_expr(expr, fn_name, positions, tail_context);
         }
         code_ir::Stmt::Expr(expr) => {
             // Expression statement (not returned) — any self-call here is non-tail.
-            classify_self_calls_in_expr(expr, fn_name, positions);
+            classify_self_calls_in_expr(expr, fn_name, positions, false);
         }
         code_ir::Stmt::Let { expr, .. } => {
             // let x = expr; — expr is not returned, so any self-call is non-tail.
-            classify_self_calls_in_expr(expr, fn_name, positions);
+            classify_self_calls_in_expr(expr, fn_name, positions, false);
         }
         code_ir::Stmt::Assign { value, .. } => {
-            classify_self_calls_in_expr(value, fn_name, positions);
+            classify_self_calls_in_expr(value, fn_name, positions, false);
         }
         code_ir::Stmt::For { body, iter, .. } => {
-            classify_self_calls_in_expr(iter, fn_name, positions);
-            for s in body {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
+            classify_self_calls_in_expr(iter, fn_name, positions, false);
+            classify_self_calls_in_stmts(body, fn_name, positions, false);
         }
         code_ir::Stmt::BlockScope(stmts) | code_ir::Stmt::Loop { body: stmts } => {
-            for s in stmts {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
+            classify_self_calls_in_stmts(stmts, fn_name, positions, false);
         }
         code_ir::Stmt::Item(_)
         | code_ir::Stmt::Comment(_)
@@ -3531,16 +3529,20 @@ fn classify_self_calls_in_expr(
     expr: &code_ir::Expr,
     fn_name: &str,
     positions: &mut Vec<SelfCallPosition>,
+    tail_context: bool,
 ) {
     match expr {
         code_ir::Expr::Call { func, args, .. } => {
             if is_self_call_by_func(func, fn_name) {
-                // Self-call in a non-tail context (inside another expression).
-                positions.push(SelfCallPosition::NonTail);
+                positions.push(if tail_context {
+                    SelfCallPosition::Tail
+                } else {
+                    SelfCallPosition::NonTail
+                });
             }
-            // Also scan inside args.
+            classify_self_calls_in_expr(func, fn_name, positions, false);
             for arg in args {
-                classify_self_calls_in_expr(arg, fn_name, positions);
+                classify_self_calls_in_expr(arg, fn_name, positions, false);
             }
         }
         code_ir::Expr::If {
@@ -3548,62 +3550,51 @@ fn classify_self_calls_in_expr(
             then_body,
             else_body,
         } => {
-            classify_self_calls_in_expr(cond, fn_name, positions);
-            // The last stmt of an if-branch can be tail if the if is itself in tail position.
-            // But we are scanning from the stmt level where tail classification already happened.
-            // Here we need to recurse into branches to find self-calls inside them.
-            for s in then_body {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
+            classify_self_calls_in_expr(cond, fn_name, positions, false);
+            classify_self_calls_in_stmts(then_body, fn_name, positions, tail_context);
             if let Some(else_stmts) = else_body {
-                for s in else_stmts {
-                    classify_self_calls_in_stmt(s, fn_name, positions);
-                }
+                classify_self_calls_in_stmts(else_stmts, fn_name, positions, tail_context);
             }
         }
         code_ir::Expr::Match { expr: scrutinee, arms } => {
-            classify_self_calls_in_expr(scrutinee, fn_name, positions);
+            classify_self_calls_in_expr(scrutinee, fn_name, positions, false);
             for arm in arms {
-                for s in &arm.body {
-                    classify_self_calls_in_stmt(s, fn_name, positions);
-                }
+                classify_self_calls_in_stmts(&arm.body, fn_name, positions, tail_context);
             }
         }
         code_ir::Expr::Block(stmts) => {
-            for s in stmts {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
+            classify_self_calls_in_stmts(stmts, fn_name, positions, tail_context);
         }
         code_ir::Expr::MethodCall { receiver, args, .. } => {
-            classify_self_calls_in_expr(receiver, fn_name, positions);
+            classify_self_calls_in_expr(receiver, fn_name, positions, false);
             for arg in args {
-                classify_self_calls_in_expr(arg, fn_name, positions);
+                classify_self_calls_in_expr(arg, fn_name, positions, false);
             }
         }
         code_ir::Expr::Field(inner, _) | code_ir::Expr::Deref(inner) | code_ir::Expr::Ref(inner) | code_ir::Expr::RefMut(inner) => {
-            classify_self_calls_in_expr(inner, fn_name, positions);
+            classify_self_calls_in_expr(inner, fn_name, positions, false);
         }
         code_ir::Expr::BinOp { left, right, .. } => {
-            classify_self_calls_in_expr(left, fn_name, positions);
-            classify_self_calls_in_expr(right, fn_name, positions);
+            classify_self_calls_in_expr(left, fn_name, positions, false);
+            classify_self_calls_in_expr(right, fn_name, positions, false);
         }
         code_ir::Expr::UnaryOp { expr: inner, .. } => {
-            classify_self_calls_in_expr(inner, fn_name, positions);
+            classify_self_calls_in_expr(inner, fn_name, positions, false);
         }
         code_ir::Expr::Struct { fields, rest, .. } => {
             for (_, v) in fields {
-                classify_self_calls_in_expr(v, fn_name, positions);
+                classify_self_calls_in_expr(v, fn_name, positions, false);
             }
             if let Some(r) = rest {
-                classify_self_calls_in_expr(r, fn_name, positions);
+                classify_self_calls_in_expr(r, fn_name, positions, false);
             }
         }
         code_ir::Expr::Closure { body, .. } => {
-            classify_self_calls_in_expr(body, fn_name, positions);
+            classify_self_calls_in_expr(body, fn_name, positions, false);
         }
         code_ir::Expr::FormatStr { args, .. } | code_ir::Expr::MacroCall { args, .. } | code_ir::Expr::Tuple(args) | code_ir::Expr::Array(args) => {
             for arg in args {
-                classify_self_calls_in_expr(arg, fn_name, positions);
+                classify_self_calls_in_expr(arg, fn_name, positions, false);
             }
         }
         // Leaf expressions: no sub-expressions to scan.
@@ -3615,11 +3606,6 @@ fn classify_self_calls_in_expr(
         | code_ir::Expr::BoolLit(_)
         | code_ir::Expr::RawCode(_) => {}
     }
-}
-
-/// Check if an expression is a direct self-call: `fn_name(...)`.
-fn is_self_call(expr: &code_ir::Expr, fn_name: &str) -> bool {
-    matches!(expr, code_ir::Expr::Call { func, .. } if is_self_call_by_func(func, fn_name))
 }
 
 fn is_self_call_by_func(func: &code_ir::Expr, fn_name: &str) -> bool {
@@ -3944,7 +3930,7 @@ fn try_replace_tail_call_in_compound(
 
 fn stmt_has_self_call(stmt: &code_ir::Stmt, fn_name: &str) -> bool {
     let mut positions = Vec::new();
-    classify_self_calls_in_stmt(stmt, fn_name, &mut positions);
+    classify_self_calls_in_stmt(stmt, fn_name, &mut positions, false);
     !positions.is_empty()
 }
 
@@ -5175,5 +5161,30 @@ mod tests {
             }
             other => panic!("expected Expr(If), got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn tco_rejects_tail_expr_inside_non_tail_if_expression() {
+        let body = vec![
+            code_ir::Stmt::Expr(code_ir::Expr::If {
+                cond: Box::new(code_ir::Expr::Var("cond".into())),
+                then_body: vec![code_ir::Stmt::TailExpr(self_call(
+                    "f",
+                    vec![code_ir::Expr::BinOp {
+                        left: Box::new(code_ir::Expr::Var("n".into())),
+                        op: "-".into(),
+                        right: Box::new(code_ir::Expr::IntLit(1)),
+                    }],
+                ))],
+                else_body: Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::IntLit(0))]),
+            }),
+            code_ir::Stmt::Return(code_ir::Expr::Var("n".into())),
+        ];
+
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "tail expressions nested under a non-tail if-expression must block TCO"
+        );
     }
 }
