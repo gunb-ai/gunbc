@@ -794,6 +794,19 @@ fn eval_expr_s<'a>(
     current_fn: FnId,
     is_tail_position: bool,
 ) -> ExprResult {
+    stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {
+        eval_expr_s_inner(expr, env, ctx, stack, current_fn, is_tail_position)
+    })
+}
+
+fn eval_expr_s_inner<'a>(
+    expr: &'a LoweredExpr,
+    env: &Env,
+    ctx: &'a EvalContext<'a>,
+    stack: &mut Vec<Continuation<'a>>,
+    current_fn: FnId,
+    is_tail_position: bool,
+) -> ExprResult {
     match expr {
         LoweredExpr::IfElse { cond, then_, else_ } => match eval_expr(cond, env, ctx) {
             Ok(c) => {
@@ -1029,6 +1042,10 @@ fn eval_block_s<'a>(
 // `eval_block_s` / `eval_match_s` which can push continuations.
 
 fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
+    stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || eval_expr_inner(expr, env, ctx))
+}
+
+fn eval_expr_inner(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
     match expr {
         LoweredExpr::Literal(lit) => Ok(eval_literal(lit)),
         LoweredExpr::Ident(name) => eval_ident(name, env, ctx),
@@ -1239,6 +1256,17 @@ fn eval_call_args(
 }
 
 fn eval_non_sibling_call_raw(
+    name: &str,
+    args: &[(Option<String>, LoweredExpr)],
+    env: &Env,
+    ctx: &EvalContext,
+) -> Result<Value, EvalError> {
+    stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {
+        eval_non_sibling_call_inner(name, args, env, ctx)
+    })
+}
+
+fn eval_non_sibling_call_inner(
     name: &str,
     args: &[(Option<String>, LoweredExpr)],
     env: &Env,

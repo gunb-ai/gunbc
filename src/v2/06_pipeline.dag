@@ -6,17 +6,21 @@
 //
 // Pipeline: tokenize -> parse -> resolve -> typecheck -> emit
 // Each stage is a pure function. The pipeline wires them together.
+//
+// The emit stage dispatches to per-target renderers based on
+// RenderTarget (Rust, Python). Adding a new target means adding a
+// renderer module — no pipeline changes needed.
 
 module v2.compiler.pipeline
 
 import v2.std.core {
-  Diagnostic, CompileResult
+  Diagnostic, CompileResult, RenderTarget
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.typecheck { typecheck_and_validate, TypedGraph }
-import v2.compiler.emit { emit_rust, EmitResult }
+import v2.compiler.emit { emit_target, EmitResult }
 
 // =========================================================================
 // Types
@@ -48,7 +52,8 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 
 // Pure compiler pipeline: sources in, compiled files out.
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
-fn compile_sources(sources: List<SourceFile>) -> CompileResult {
+// The target parameter selects the output language (Rust, Python).
+fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileResult {
   // Stage 1: Tokenize each source file
   let tokenized = map(sources, s => tokenize(source: s.content))
 
@@ -96,9 +101,10 @@ fn compile_sources(sources: List<SourceFile>) -> CompileResult {
       }
     }
 
-    // Stage 5: Emit target-language files
+    // Stage 5: Emit target-language files.
+    // Dispatches to the appropriate renderer based on RenderTarget.
     // Precondition: no errors from any prior stage.
-    let emit_result = emit_rust(typed: typed)
+    let emit_result = emit_target(typed: typed, target: target)
 
     CompileResult {
       files: emit_result.files,

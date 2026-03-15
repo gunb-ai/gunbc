@@ -13,17 +13,27 @@ those in the docs listed below.
 
 ## Current state
 
-As of 2026-03-14:
-- The v2 compiler bootstrap path exists and emits a generated Rust crate.
-- The generated crate passes `cargo check`.
-- `cargo build` and runtime smoke tests exist as slower gates.
-- The active team priority is getting the v2 compiler working end-to-end without
-  destabilizing the current bootstrap path.
+As of 2026-03-15 (post Track A/B/C integration):
+- 10 v2 modules (~9,600 lines). All parse with zero diagnostics.
+- Generated Rust crate passes `cargo check`, `cargo build`, and `cargo test`.
+- 81 active tests pass, 4 ignored (3 slow cargo gates pass, 1 evaluator stack overflow).
+- Emission architecture split: target-agnostic core + Rust/Python renderers.
+- Type system is honest: no `unit_type()` fabrication, no sentinel values.
+- v1 codegen has TCO for self-tail-recursive functions (tokenize_loop is iterative).
 
-This means the repo needs two things at once:
-- one trunk thread fixing whatever blocks the bootstrap path
-- several low-conflict side threads that keep momentum without stomping on the
-  active `.dag` compiler modules
+### Completed tracks (2026-03-15)
+
+| Track | What | Files |
+|-------|------|-------|
+| A | Emission split: `05_emit.dag` → core + `05_emit_rust.dag` + `05_emit_python.dag`. `RenderTarget = Rust \| Python`. Pipeline dispatches via `emit_target`. | 00_core, 05_emit, 05_emit_rust (new), 05_emit_python (new), 06_pipeline |
+| B | Kill fabrication bugs: `lookup_field_type` → `TypeExpr?`, resolve sentinels → `Option`/panic, `serde_json::Value` fallbacks → `compile_error!`, `ImportNames` sum type. | 00_core, 02_parse, 03_resolve, 04_typecheck, 05_emit |
+| C | Tail-call optimization: `Stmt::Loop/Continue/Break` in code_ir, detection + transformation in fn_codegen, all renderers updated. | v1 code_ir, fn_codegen, render_rust, render_go, render_c, testgen |
+
+### Integration findings
+
+- **S82:** Flattened function namespace caused `lookup_func_sig` collision → fixed
+- **S83:** Re-entrant evaluator stack overflow on 11 .dag files → self-hosting eliminates
+- **S84:** v2 emitter has no TCO pass → critical for self-hosting
 
 ## Canonical docs
 
@@ -31,6 +41,7 @@ This means the repo needs two things at once:
 |-----|------|-----------|
 | `src/v2/WORKBOARD.md` | Canonical entrypoint for current compiler work | Queue, priorities, parallel lanes, doc map change |
 | `src/v2/DESIGN.md` | Target architecture and design rules for v2 | The intended compiler shape changes |
+| `src/v2/PERFORMANCE.md` | Time/space complexity audit of all v2 pipeline stages | A perf finding is proven or a structural fix lands |
 | `src/v2/POSTMORTEM.md` | Exhaustive debt ledger and audit evidence | A new finding is proven and needs permanent record |
 | `src/v1/SUSTAINABILITY.md` | Root-cause theory across the codebase | A finding changes the sustainability model itself |
 | `README.md` | Public repo overview | External-facing overview changes |
@@ -87,62 +98,72 @@ If a fix touches the backend boundary, type boundary, or emitted crate shape:
 
 ## Near-term queue
 
-### P0: keep the bootstrap path working
+### P0: v2 emitter TCO pass (S84 — CRITICAL for self-hosting)
 
-Definition:
-- generated Rust crate stays at least `cargo check` clean
-- blocking parser, resolver, typecheck, and emit bugs get fixed first
+Track C added TCO to v1's `fn_codegen.rs`. But the v2 emitter
+(`05_emit_rust.dag`) does not perform this transformation. When v2
+compiles itself, the generated Rust will stack-overflow on recursive
+functions like `tokenize_loop`.
 
 Scope:
-- correctness bugs in `src/v2/*.dag`
-- smallest possible fixes
-- every fix should add or tighten a test if feasible
+- New module (e.g. `04b_tco.dag`) that operates on typed IR between
+  typecheck and emit
+- Detect self-tail-recursive functions (all self-calls in tail position)
+- Rewrite to loop+reassign+continue structure
+- Per-target renderers emit `loop {}` (Rust) / `while True:` (Python)
+- Must handle the common patterns: accumulator-style recursion,
+  state-machine recursion (tokenize_loop, parse_*)
 
-### P1: stop losing work to one-thread-only execution
+### P1: recursive TypedExpr (PERFORMANCE.md P1)
 
-Do in parallel:
-- extract actionable tasks from `src/v2/POSTMORTEM.md`
-- keep this workboard current
-- split tasks by touched files, not by topic names
+The emitter re-runs `infer_expr` on raw `Expr` subtrees because
+`TypedExpr` only carries a type at the root, not recursively. This is
+both a correctness risk and the #1 performance bottleneck.
 
-Definition of done:
-- at least 3-5 side-thread tasks always exist that do not require editing the
-  same `.dag` compiler file
+Scope:
+- Change `TypedExpr` to carry type info at every subexpression
+- Typecheck produces a fully-typed tree in one pass
+- Emit reads types directly — no `infer_expr` import
+- Affects: 04_typecheck.dag, 05_emit.dag, 05_emit_rust.dag, 05_emit_python.dag
 
-### P2: restore one canonical backend boundary
+### P2: eliminate O(n²) patterns (PERFORMANCE.md P2–P3)
 
-Current mismatch:
-- design says pre-emit pipeline should be backend-neutral
-- implementation currently calls `emit_rust` directly in `src/v2/06_pipeline.dag`
+- Replace `concat(acc, [x])` accumulation with reverse-build-then-reverse
+- Index resolve lookups by module name (currently linear scan)
+- Fix `check_duplicate_modules` quadratic check
 
-Do now:
-- capture the intended interface and migration steps
-- add tests or doc notes that make the boundary explicit
+Scope: 01_tokenize.dag, 02_parse.dag, 03_resolve.dag
 
-Do later:
-- land the actual `Backend` parameter and dispatch when the trunk is quieter
+### P3: Python emission tests (Track D)
 
-### P3: harden emitted-crate verification
+Track A added `05_emit_python.dag` but no tests validate the output.
 
-Safe parallel tasks:
-- clarify which tests are syntax-only, semantic, build, and runtime
-- tighten generated-crate assertions
-- reduce reliance on ad hoc string checks where a stronger test is available
+Scope:
+- Emit .py from a fixture via `emit_target(typed, Python)`
+- Validate syntax (`python -m py_compile` or `ast.parse`)
+- Run any emitted Python test suite
+- Add to ignored test suite (slow gate)
 
-Primary files:
-- `src/v2/tests/src/lib.rs`
-- `src/v1/07_emit/daglang-emit/src/v2_crate_emit.rs`
+### P4: namespace collision guard (S82)
 
-### P4: keep docs converged
+`compile_all_modules()` should detect and reject duplicate function
+names across modules. Currently silent — last-loaded module wins.
 
-Current problem:
-- design intent, postmortem findings, and active work status live in separate
-  places with no clear entrypoint
+Scope: `src/v2/tests/src/lib.rs` — add a check in `compile_all_modules()`
 
-Policy:
-- status and queue live here
-- architecture lives in `src/v2/DESIGN.md`
-- exhaustive findings live in `src/v2/POSTMORTEM.md`
+### P5: harden emitted-crate verification
+
+- Clarify which tests are syntax-only, semantic, build, and runtime
+- Tighten generated-crate assertions
+- Add Python crate verification (Track D)
+
+### DONE (completed 2026-03-15)
+
+- ~~P2 (old): restore one canonical backend boundary~~ — Track A: `RenderTarget`, `emit_target` dispatch
+- ~~Track A: emission architecture split~~ — merged
+- ~~Track B: kill fabrication bugs~~ — merged
+- ~~Track C: tail-call optimization in v1 codegen~~ — merged
+- ~~S82: lookup_func_sig name collision~~ — fixed
 
 ## Candidate slices from current backlog
 

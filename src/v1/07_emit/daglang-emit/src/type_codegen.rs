@@ -702,9 +702,18 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         }
     };
 
+    // Tail-call optimization: if all self-recursive calls are in tail position,
+    // transform the function body to use a loop instead of recursion.
+    let rust_fn_name = to_snake_case(&fd.name);
+    let param_names: Vec<String> = fd.params.iter().map(|p| p.name.clone()).collect();
+    let body = match fn_codegen::apply_tco(&rust_fn_name, &param_names, &body) {
+        Some(tco_body) => tco_body,
+        None => body,
+    };
+
     let mut items = synth_items;
     items.push(code_ir::Item::Fn(code_ir::FnDef {
-        name: to_snake_case(&fd.name),
+        name: rust_fn_name,
         is_pub: true,
         params,
         return_type: Some(ret),
