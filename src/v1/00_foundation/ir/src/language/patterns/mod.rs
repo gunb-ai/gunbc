@@ -1,9 +1,9 @@
 //! Pattern SubDags: Foundation patterns that other SubDags compose.
 //!
 //! These are the lowest-level building blocks:
-//! - [`Regex`]: Pattern matching and validation
-//! - [`GlobPatterns`]: File matching (composes Regex)
-//! - [`VariableSyntax`]: Template expansion
+//! - [`build_regex_subdag`]: Pattern matching and validation
+//! - [`build_glob_subdag`]: File matching (composes regex)
+//! - [`build_variable_syntax_subdag`]: Template expansion
 
 pub mod glob;
 pub mod regex;
