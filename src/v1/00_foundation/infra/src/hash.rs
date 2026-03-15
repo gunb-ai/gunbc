@@ -114,18 +114,22 @@ impl HashBuilder {
 
     /// Add the output of a command to the hash.
     ///
-    /// Hashes the stdout bytes from the command.
-    /// Format: "cmd:" tag + command name + NUL + stdout bytes
+    /// Hashes the command, its args, and stdout bytes.
+    /// Format: "cmd:" tag + len(command) + command + arg_count +
+    /// repeated len(arg) + arg + len(stdout) + stdout
     pub fn update_command_output_bytes(
         mut self,
         command: &str,
-        _args: &[String],
+        args: &[String],
         stdout: &[u8],
     ) -> Self {
         self.hasher.update(b"cmd:");
-        self.hasher.update(command.as_bytes());
-        self.hasher.update([0u8]);
-        self.hasher.update(stdout);
+        update_len_prefixed_bytes(&mut self.hasher, command.as_bytes());
+        self.hasher.update((args.len() as u64).to_le_bytes());
+        for arg in args {
+            update_len_prefixed_bytes(&mut self.hasher, arg.as_bytes());
+        }
+        update_len_prefixed_bytes(&mut self.hasher, stdout);
         self
     }
 
@@ -149,13 +153,16 @@ pub fn hash_parts(parts: &[&str]) -> String {
         // Length-prefix each part to prevent collision attacks.
         // Without this, ["a", "b:c"] and ["a:b", "c"] would both hash
         // to the same bytes "a:b:c" and produce identical hashes.
-        let len = part.len() as u64;
-        hasher.update(len.to_le_bytes());
-        hasher.update(part.as_bytes());
+        update_len_prefixed_bytes(&mut hasher, part.as_bytes());
     }
     let result = hasher.finalize();
     // Use first 16 bytes as hex (32 chars)
     hex::encode(&result[..16])
+}
+
+fn update_len_prefixed_bytes(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
 }
 
 #[cfg(test)]
@@ -235,10 +242,10 @@ mod tests {
     #[test]
     fn test_update_command_output_bytes_different_args() {
         let h1 = HashBuilder::new()
-            .update_command_output_bytes("echo", &["hello".to_string()], b"hello\n")
+            .update_command_output_bytes("echo", &["hello".to_string()], b"shared\n")
             .finalize();
         let h2 = HashBuilder::new()
-            .update_command_output_bytes("echo", &["world".to_string()], b"world\n")
+            .update_command_output_bytes("echo", &["world".to_string()], b"shared\n")
             .finalize();
         assert_ne!(h1, h2);
     }
