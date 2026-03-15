@@ -77,12 +77,16 @@ pub struct Diagnostic {
     pub message: String,
     /// Source location. Not optional for user-facing errors.
     pub span: Option<Span>,
+    /// Stable file identity when the diagnostic originated from a `LocatedSpan`.
+    pub file_id: Option<FileId>,
     /// Which `.dag` file.
     pub file: Option<PathBuf>,
     /// 1-based line number (derived from span + source text).
     pub line: Option<usize>,
     /// 1-based column number (derived from span + source text).
     pub column: Option<usize>,
+    /// Primary source label (for example, "defined here") when available.
+    pub primary_label: Option<String>,
     /// Structured context for programmatic handling.
     pub context: DiagnosticContext,
     /// Concrete suggestion for resolving the contradiction.
@@ -102,9 +106,11 @@ impl Diagnostic {
             code,
             message: message.into(),
             span: Some(primary.span),
+            file_id: Some(primary.file),
             file: None, // FileId-based resolution deferred to Phase 2 (FileTable)
             line: None,
             column: None,
+            primary_label: Some(primary.label),
             context: DiagnosticContext::Note(String::new()),
             help: None,
             related: Vec::new(),
@@ -121,9 +127,11 @@ impl Diagnostic {
             code,
             message: message.into(),
             span: None,
+            file_id: None,
             file: None,
             line: None,
             column: None,
+            primary_label: None,
             context: DiagnosticContext::Note(String::new()),
             help: None,
             related: Vec::new(),
@@ -642,6 +650,8 @@ mod tests {
         assert_eq!(d.code, "TC001");
         assert!(d.span.is_some());
         assert_eq!(d.span.unwrap().start, 10);
+        assert_eq!(d.file_id, Some(FileId(0)));
+        assert_eq!(d.primary_label.as_deref(), Some("here"));
     }
 
     #[test]
