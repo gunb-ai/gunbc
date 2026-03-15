@@ -719,24 +719,9 @@ impl Port {
         type_id: impl Into<TypeId>,
         expected: Value,
     ) -> Self {
-        let type_id = type_id.into();
-        let type_optional = type_id.0.ends_with('?');
-        let presence = if type_optional {
-            PresenceMode::Optional
-        } else {
-            PresenceMode::Required
-        };
-        Self {
-            name: name.into(),
-            type_id,
-            cardinality: Cardinality::ONE,
-
-            guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
-            resource_access: None,
-            type_optional,
-            presence,
-            log_detail: None,
-        }
+        let mut port = Self::with_cardinality(name, type_id, Cardinality::ONE);
+        port.guard = Some(Predicate::Equals(value_to_predicate_value(&expected)));
+        port
     }
 
     /// Create a port with a guard and explicit cardinality (internal use only).
@@ -749,24 +734,9 @@ impl Port {
         cardinality: Cardinality,
         guard: Predicate,
     ) -> Self {
-        let type_id = type_id.into();
-        let type_optional = type_id.0.ends_with('?');
-        let presence = if type_optional {
-            PresenceMode::Optional
-        } else {
-            PresenceMode::Required
-        };
-        Self {
-            name: name.into(),
-            type_id,
-            cardinality,
-
-            guard: Some(guard),
-            resource_access: None,
-            type_optional,
-            presence,
-            log_detail: None,
-        }
+        let mut port = Self::with_cardinality(name, type_id, cardinality);
+        port.guard = Some(guard);
+        port
     }
 
     /// Check if this port has a guard and if the guard passes for the given value.
@@ -916,24 +886,9 @@ pub mod build {
     /// The executor skips the node when `check_guard(value)` returns false.
     /// Useful for testing guard/skip branch coverage.
     pub fn guarded(name: &str, type_id: &str, expected: Value) -> Port {
-        let type_id: TypeId = type_id.into();
-        let type_optional = type_id.0.ends_with('?');
-        let presence = if type_optional {
-            PresenceMode::Optional
-        } else {
-            PresenceMode::Required
-        };
-        Port {
-            name: name.into(),
-            type_id,
-            cardinality: Cardinality::ONE,
-
-            guard: Some(Predicate::Equals(value_to_predicate_value(&expected))),
-            resource_access: None,
-            type_optional,
-            presence,
-            log_detail: None,
-        }
+        let mut port = Port::with_cardinality(name, type_id, Cardinality::ONE);
+        port.guard = Some(Predicate::Equals(value_to_predicate_value(&expected)));
+        port
     }
 
     /// Create a resource port for `res:*` convention.
@@ -1171,6 +1126,23 @@ mod tests {
     #[should_panic(expected = "invalid type_id 'Set'")]
     fn test_port_rejects_set_type_alias() {
         let _ = Port::with_cardinality("items", "Set", Cardinality::ONE_OR_MORE);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid type_id 'List'")]
+    fn test_guarded_port_rejects_list_type_alias() {
+        let _ = Port::guarded("items", "List", Value::Bool(true));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid type_id 'Set'")]
+    fn test_guarded_port_with_cardinality_rejects_set_type_alias() {
+        let _ = Port::guarded_with_cardinality(
+            "items",
+            "Set",
+            Cardinality::ONE_OR_MORE,
+            Predicate::Equals(PredicateValue::Bool(true)),
+        );
     }
 
     #[test]
