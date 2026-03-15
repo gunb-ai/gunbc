@@ -457,6 +457,14 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
                 output_type: "Any",
             },
         ),
+        (
+            "concat",
+            BuiltinContract {
+                arity: 2,
+                params: &["a", "b"],
+                output_type: "Any",
+            },
+        ),
     ]
 }
 
