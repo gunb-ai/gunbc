@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -129,6 +129,8 @@ help:
 	@echo "  infra [ENVIRONMENT=...] [RUNTIME=...] [SPEC_TARGETS=... ...] [TARGET=... ...] [SKIP=... ...]  - Infra"
 	@echo "  readme   - Readme"
 	@echo "  workflow   - Workflow"
+	@echo ""
+	@echo "  ci  - Run the exact CI pipeline (lint + test, matches .github/workflows/ci.yml)"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make bootstrap-dry)"
 
@@ -258,4 +260,11 @@ readme: ensure-codegen
 readme-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-readme -q --release -- --dry-run strict
 
+# ============================================================================
+# CI — mirrors .github/workflows/ci.yml exactly
+# ============================================================================
 
+ci:
+	RUSTFLAGS="-D warnings" cargo clippy --workspace --exclude gunbc-codegen -- -D warnings
+	RUSTFLAGS="-D warnings" cargo clippy -p gunbc-codegen --lib -- -D warnings
+	RUSTFLAGS="-D warnings" cargo test --workspace --exclude gunbc-codegen

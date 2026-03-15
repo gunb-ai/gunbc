@@ -3449,6 +3449,504 @@ fn find_record_in_expr<'a>(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Tail-Call Optimization (TCO)
+// ---------------------------------------------------------------------------
+
+/// Classification of self-recursive calls in a function body.
+#[derive(Debug, PartialEq, Eq)]
+enum SelfCallPosition {
+    /// The call result is directly returned (tail position).
+    Tail,
+    /// The call result is used in a non-tail context (consumed by another expr).
+    NonTail,
+}
+
+/// Scan a statement list for self-recursive calls and classify each as tail or non-tail.
+/// `fn_name` is the Rust (snake_case) name of the current function.
+fn classify_self_calls(stmts: &[code_ir::Stmt], fn_name: &str) -> Vec<SelfCallPosition> {
+    let mut positions = Vec::new();
+    for stmt in stmts {
+        classify_self_calls_in_stmt(stmt, fn_name, &mut positions);
+    }
+    positions
+}
+
+fn classify_self_calls_in_stmt(
+    stmt: &code_ir::Stmt,
+    fn_name: &str,
+    positions: &mut Vec<SelfCallPosition>,
+) {
+    match stmt {
+        code_ir::Stmt::Return(expr) => {
+            // return expr; — if expr is a self-call, it's tail.
+            if is_self_call(expr, fn_name) {
+                positions.push(SelfCallPosition::Tail);
+            } else {
+                classify_self_calls_in_expr(expr, fn_name, positions);
+            }
+        }
+        code_ir::Stmt::TailExpr(expr) => {
+            // Implicit return — if expr is a self-call, it's tail.
+            if is_self_call(expr, fn_name) {
+                positions.push(SelfCallPosition::Tail);
+            } else {
+                classify_self_calls_in_expr(expr, fn_name, positions);
+            }
+        }
+        code_ir::Stmt::Expr(expr) => {
+            // Expression statement (not returned) — any self-call here is non-tail.
+            classify_self_calls_in_expr(expr, fn_name, positions);
+        }
+        code_ir::Stmt::Let { expr, .. } => {
+            // let x = expr; — expr is not returned, so any self-call is non-tail.
+            classify_self_calls_in_expr(expr, fn_name, positions);
+        }
+        code_ir::Stmt::Assign { value, .. } => {
+            classify_self_calls_in_expr(value, fn_name, positions);
+        }
+        code_ir::Stmt::For { body, iter, .. } => {
+            classify_self_calls_in_expr(iter, fn_name, positions);
+            for s in body {
+                classify_self_calls_in_stmt(s, fn_name, positions);
+            }
+        }
+        code_ir::Stmt::BlockScope(stmts) | code_ir::Stmt::Loop { body: stmts } => {
+            for s in stmts {
+                classify_self_calls_in_stmt(s, fn_name, positions);
+            }
+        }
+        code_ir::Stmt::Item(_)
+        | code_ir::Stmt::Comment(_)
+        | code_ir::Stmt::Blank
+        | code_ir::Stmt::Continue
+        | code_ir::Stmt::Assert(_)
+        | code_ir::Stmt::Bind { .. }
+        | code_ir::Stmt::Break(_) => {}
+    }
+}
+
+fn classify_self_calls_in_expr(
+    expr: &code_ir::Expr,
+    fn_name: &str,
+    positions: &mut Vec<SelfCallPosition>,
+) {
+    match expr {
+        code_ir::Expr::Call { func, args, .. } => {
+            if is_self_call_by_func(func, fn_name) {
+                // Self-call in a non-tail context (inside another expression).
+                positions.push(SelfCallPosition::NonTail);
+            }
+            // Also scan inside args.
+            for arg in args {
+                classify_self_calls_in_expr(arg, fn_name, positions);
+            }
+        }
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            classify_self_calls_in_expr(cond, fn_name, positions);
+            // The last stmt of an if-branch can be tail if the if is itself in tail position.
+            // But we are scanning from the stmt level where tail classification already happened.
+            // Here we need to recurse into branches to find self-calls inside them.
+            for s in then_body {
+                classify_self_calls_in_stmt(s, fn_name, positions);
+            }
+            if let Some(else_stmts) = else_body {
+                for s in else_stmts {
+                    classify_self_calls_in_stmt(s, fn_name, positions);
+                }
+            }
+        }
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
+            classify_self_calls_in_expr(scrutinee, fn_name, positions);
+            for arm in arms {
+                for s in &arm.body {
+                    classify_self_calls_in_stmt(s, fn_name, positions);
+                }
+            }
+        }
+        code_ir::Expr::Block(stmts) => {
+            for s in stmts {
+                classify_self_calls_in_stmt(s, fn_name, positions);
+            }
+        }
+        code_ir::Expr::MethodCall { receiver, args, .. } => {
+            classify_self_calls_in_expr(receiver, fn_name, positions);
+            for arg in args {
+                classify_self_calls_in_expr(arg, fn_name, positions);
+            }
+        }
+        code_ir::Expr::Field(inner, _) | code_ir::Expr::Deref(inner) | code_ir::Expr::Ref(inner) | code_ir::Expr::RefMut(inner) => {
+            classify_self_calls_in_expr(inner, fn_name, positions);
+        }
+        code_ir::Expr::BinOp { left, right, .. } => {
+            classify_self_calls_in_expr(left, fn_name, positions);
+            classify_self_calls_in_expr(right, fn_name, positions);
+        }
+        code_ir::Expr::UnaryOp { expr: inner, .. } => {
+            classify_self_calls_in_expr(inner, fn_name, positions);
+        }
+        code_ir::Expr::Struct { fields, rest, .. } => {
+            for (_, v) in fields {
+                classify_self_calls_in_expr(v, fn_name, positions);
+            }
+            if let Some(r) = rest {
+                classify_self_calls_in_expr(r, fn_name, positions);
+            }
+        }
+        code_ir::Expr::Closure { body, .. } => {
+            classify_self_calls_in_expr(body, fn_name, positions);
+        }
+        code_ir::Expr::FormatStr { args, .. } | code_ir::Expr::MacroCall { args, .. } | code_ir::Expr::Tuple(args) | code_ir::Expr::Array(args) => {
+            for arg in args {
+                classify_self_calls_in_expr(arg, fn_name, positions);
+            }
+        }
+        // Leaf expressions: no sub-expressions to scan.
+        code_ir::Expr::Value(_)
+        | code_ir::Expr::Var(_)
+        | code_ir::Expr::Str(_)
+        | code_ir::Expr::Path(_)
+        | code_ir::Expr::IntLit(_)
+        | code_ir::Expr::BoolLit(_)
+        | code_ir::Expr::RawCode(_) => {}
+    }
+}
+
+/// Check if an expression is a direct self-call: `fn_name(...)`.
+fn is_self_call(expr: &code_ir::Expr, fn_name: &str) -> bool {
+    matches!(expr, code_ir::Expr::Call { func, .. } if is_self_call_by_func(func, fn_name))
+}
+
+fn is_self_call_by_func(func: &code_ir::Expr, fn_name: &str) -> bool {
+    matches!(func, code_ir::Expr::Var(name) if name == fn_name)
+}
+
+/// Attempt tail-call optimization on a compiled function body.
+///
+/// Returns `Some(transformed_body)` if all self-recursive calls are in tail position,
+/// `None` if the function is not eligible for TCO.
+///
+/// `fn_name` is the Rust (snake_case) function name.
+/// `param_names` are the function's parameter names (in order).
+pub fn apply_tco(
+    fn_name: &str,
+    param_names: &[String],
+    body: &[code_ir::Stmt],
+) -> Option<Vec<code_ir::Stmt>> {
+    let positions = classify_self_calls(body, fn_name);
+
+    // No self-calls → not recursive, nothing to optimize.
+    if positions.is_empty() {
+        return None;
+    }
+
+    // Any non-tail self-call → not eligible.
+    if positions.contains(&SelfCallPosition::NonTail) {
+        return None;
+    }
+
+    // All self-calls are in tail position. Transform.
+    //
+    // To handle local `let` bindings that shadow parameter names (common in DSL code
+    // like `let acc = concat(acc, [item])`), we use unique loop-variable names:
+    //
+    //   let mut __tco_p_state = state;    // move param into loop var
+    //   let mut __tco_p_acc = acc;
+    //   loop {
+    //       let state = __tco_p_state.clone();  // bind original name each iteration
+    //       let acc = __tco_p_acc.clone();
+    //       // ... original body ...
+    //       // tail call becomes: __tco_p_state = new_val; __tco_p_acc = new_val; continue;
+    //       // non-recursive return becomes: break result;
+    //   }
+    let loop_vars: Vec<String> = param_names.iter().map(|p| format!("__tco_p_{p}")).collect();
+
+    // 1. Before loop: move params into mutable loop variables.
+    let mut preamble: Vec<code_ir::Stmt> = param_names
+        .iter()
+        .zip(loop_vars.iter())
+        .map(|(param, lv)| code_ir::Stmt::Let {
+            name: lv.clone(),
+            mutable: true,
+            expr: code_ir::Expr::Var(param.clone()),
+            ir_type: None,
+        })
+        .collect();
+
+    // 2. At loop start: bind original names from loop vars.
+    let rebind_stmts: Vec<code_ir::Stmt> = param_names
+        .iter()
+        .zip(loop_vars.iter())
+        .map(|(param, lv)| code_ir::Stmt::Let {
+            name: param.clone(),
+            mutable: false,
+            expr: code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(lv.clone())),
+                method: "clone".to_string(),
+                args: vec![],
+            },
+            ir_type: None,
+        })
+        .collect();
+
+    // 3. Transform body: replace tail calls and returns.
+    let transformed = transform_body_for_tco(body, fn_name, &loop_vars);
+
+    let mut loop_body = rebind_stmts;
+    loop_body.extend(transformed);
+
+    preamble.push(code_ir::Stmt::Loop { body: loop_body });
+    Some(preamble)
+}
+
+/// Transform a statement list, replacing tail self-calls with continue and returns with break.
+fn transform_body_for_tco(
+    stmts: &[code_ir::Stmt],
+    fn_name: &str,
+    param_names: &[String],
+) -> Vec<code_ir::Stmt> {
+    stmts
+        .iter()
+        .map(|s| transform_stmt_for_tco(s, fn_name, param_names))
+        .collect()
+}
+
+fn transform_stmt_for_tco(
+    stmt: &code_ir::Stmt,
+    fn_name: &str,
+    param_names: &[String],
+) -> code_ir::Stmt {
+    match stmt {
+        code_ir::Stmt::Return(expr) => {
+            if let Some(reassign) = try_replace_tail_call(expr, fn_name, param_names) {
+                reassign
+            } else {
+                code_ir::Stmt::Break(expr.clone())
+            }
+        }
+        code_ir::Stmt::TailExpr(expr) => {
+            if let Some(reassign) = try_replace_tail_call(expr, fn_name, param_names) {
+                reassign
+            } else {
+                code_ir::Stmt::Break(expr.clone())
+            }
+        }
+        code_ir::Stmt::Expr(expr) => {
+            // An expression statement containing an if/match with tail calls in branches
+            // needs to be walked through. But a bare expression-statement that isn't in
+            // tail position stays as-is.
+            code_ir::Stmt::Expr(transform_expr_for_tco(expr, fn_name, param_names))
+        }
+        code_ir::Stmt::Let {
+            name,
+            mutable,
+            expr,
+            ir_type,
+        } => code_ir::Stmt::Let {
+            name: name.clone(),
+            mutable: *mutable,
+            expr: expr.clone(),
+            ir_type: ir_type.clone(),
+        },
+        code_ir::Stmt::Assign { dest, value } => code_ir::Stmt::Assign {
+            dest: dest.clone(),
+            value: value.clone(),
+        },
+        code_ir::Stmt::For {
+            binding,
+            iter,
+            body,
+        } => code_ir::Stmt::For {
+            binding: binding.clone(),
+            iter: iter.clone(),
+            body: body.clone(),
+        },
+        code_ir::Stmt::BlockScope(inner) => {
+            code_ir::Stmt::BlockScope(transform_body_for_tco(inner, fn_name, param_names))
+        }
+        code_ir::Stmt::Loop { body } => code_ir::Stmt::Loop {
+            body: body.clone(),
+        },
+        code_ir::Stmt::Item(item) => code_ir::Stmt::Item(item.clone()),
+        code_ir::Stmt::Comment(c) => code_ir::Stmt::Comment(c.clone()),
+        code_ir::Stmt::Blank => code_ir::Stmt::Blank,
+        code_ir::Stmt::Continue => code_ir::Stmt::Continue,
+        code_ir::Stmt::Break(e) => code_ir::Stmt::Break(e.clone()),
+        code_ir::Stmt::Assert(a) => code_ir::Stmt::Assert(a.clone()),
+        code_ir::Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => code_ir::Stmt::Bind {
+            targets: targets.clone(),
+            intent: *intent,
+            expr: expr.clone(),
+        },
+    }
+}
+
+/// Transform an expression that may contain if/match with tail calls in branches.
+fn transform_expr_for_tco(
+    expr: &code_ir::Expr,
+    fn_name: &str,
+    param_names: &[String],
+) -> code_ir::Expr {
+    match expr {
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => code_ir::Expr::If {
+            cond: cond.clone(),
+            then_body: transform_body_for_tco(then_body, fn_name, param_names),
+            else_body: else_body
+                .as_ref()
+                .map(|stmts| transform_body_for_tco(stmts, fn_name, param_names)),
+        },
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => code_ir::Expr::Match {
+            expr: scrutinee.clone(),
+            arms: arms
+                .iter()
+                .map(|arm| code_ir::MatchArm {
+                    pattern: arm.pattern.clone(),
+                    body: transform_body_for_tco(&arm.body, fn_name, param_names),
+                })
+                .collect(),
+        },
+        code_ir::Expr::Block(stmts) => {
+            code_ir::Expr::Block(transform_body_for_tco(stmts, fn_name, param_names))
+        }
+        other => other.clone(),
+    }
+}
+
+/// If `expr` is a self-call `fn_name(arg0, arg1, ...)`, produce a `BlockScope`
+/// containing parameter reassignments followed by `Continue`.
+/// Returns `None` if `expr` is not a self-call.
+fn try_replace_tail_call(
+    expr: &code_ir::Expr,
+    fn_name: &str,
+    param_names: &[String],
+) -> Option<code_ir::Stmt> {
+    let code_ir::Expr::Call { func, args, .. } = expr else {
+        // Check if the expression is an if/match that contains tail calls in branches.
+        return try_replace_tail_call_in_compound(expr, fn_name, param_names);
+    };
+    if !is_self_call_by_func(func, fn_name) {
+        return None;
+    }
+
+    // Build: { let __tco_0 = arg0; ...; param0 = __tco_0; ...; continue; }
+    // We use temporaries to avoid order-dependent assignment issues
+    // (e.g., `fn f(a, b) -> ... f(b, a)` would break with direct assignment).
+    let mut stmts = Vec::with_capacity(param_names.len() * 2 + 1);
+
+    // Phase 1: evaluate all args into temporaries.
+    let temps: Vec<String> = (0..param_names.len())
+        .map(|i| format!("__tco_{i}"))
+        .collect();
+    for (i, arg) in args.iter().enumerate() {
+        if i < param_names.len() {
+            stmts.push(code_ir::Stmt::Let {
+                name: temps[i].clone(),
+                mutable: false,
+                expr: arg.clone(),
+                ir_type: None,
+            });
+        }
+    }
+
+    // Phase 2: assign temporaries to parameters.
+    for (i, param) in param_names.iter().enumerate() {
+        if i < args.len() {
+            stmts.push(code_ir::Stmt::Assign {
+                dest: code_ir::Expr::Var(param.clone()),
+                value: code_ir::Expr::Var(temps[i].clone()),
+            });
+        }
+    }
+
+    stmts.push(code_ir::Stmt::Continue);
+    Some(code_ir::Stmt::BlockScope(stmts))
+}
+
+/// Handle if/match expressions where the tail call is inside a branch.
+fn try_replace_tail_call_in_compound(
+    expr: &code_ir::Expr,
+    fn_name: &str,
+    param_names: &[String],
+) -> Option<code_ir::Stmt> {
+    match expr {
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            let has_self_calls = then_body.iter().any(|s| stmt_has_self_call(s, fn_name))
+                || else_body
+                    .as_ref()
+                    .is_some_and(|stmts| stmts.iter().any(|s| stmt_has_self_call(s, fn_name)));
+            if has_self_calls {
+                Some(code_ir::Stmt::Expr(code_ir::Expr::If {
+                    cond: cond.clone(),
+                    then_body: transform_body_for_tco(then_body, fn_name, param_names),
+                    else_body: else_body
+                        .as_ref()
+                        .map(|stmts| transform_body_for_tco(stmts, fn_name, param_names)),
+                }))
+            } else {
+                None
+            }
+        }
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => {
+            let has_self_calls = arms
+                .iter()
+                .any(|arm| arm.body.iter().any(|s| stmt_has_self_call(s, fn_name)));
+            if has_self_calls {
+                Some(code_ir::Stmt::Expr(code_ir::Expr::Match {
+                    expr: scrutinee.clone(),
+                    arms: arms
+                        .iter()
+                        .map(|arm| code_ir::MatchArm {
+                            pattern: arm.pattern.clone(),
+                            body: transform_body_for_tco(&arm.body, fn_name, param_names),
+                        })
+                        .collect(),
+                }))
+            } else {
+                None
+            }
+        }
+        code_ir::Expr::Block(stmts) => {
+            let has_self_calls = stmts.iter().any(|s| stmt_has_self_call(s, fn_name));
+            if has_self_calls {
+                Some(code_ir::Stmt::Expr(code_ir::Expr::Block(
+                    transform_body_for_tco(stmts, fn_name, param_names),
+                )))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn stmt_has_self_call(stmt: &code_ir::Stmt, fn_name: &str) -> bool {
+    let mut positions = Vec::new();
+    classify_self_calls_in_stmt(stmt, fn_name, &mut positions);
+    !positions.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4404,5 +4902,275 @@ mod tests {
             }],
         })];
         assert!(body_has_empty_construct(&stmts));
+    }
+
+    // =====================================================================
+    // Tail-Call Optimization (TCO) tests
+    // =====================================================================
+
+    /// Build a self-call expression: `fn_name(args...)`
+    fn self_call(fn_name: &str, args: Vec<code_ir::Expr>) -> code_ir::Expr {
+        code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Var(fn_name.to_string())),
+            args,
+            obligation: None,
+        }
+    }
+
+    #[test]
+    fn tco_detects_simple_tail_recursion() {
+        // fn f(n) { return f(n - 1); }
+        let body = vec![code_ir::Stmt::Return(self_call(
+            "f",
+            vec![code_ir::Expr::BinOp {
+                left: Box::new(code_ir::Expr::Var("n".into())),
+                op: "-".into(),
+                right: Box::new(code_ir::Expr::IntLit(1)),
+            }],
+        ))];
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(result.is_some(), "simple tail recursion should be eligible");
+        let transformed = result.unwrap();
+        // Structure: let mut __tco_p_n = n; loop { let n = __tco_p_n.clone(); ... }
+        assert_eq!(transformed.len(), 2, "should have 1 preamble let + 1 loop");
+        assert!(
+            matches!(&transformed[0], code_ir::Stmt::Let { name, mutable: true, .. } if name == "__tco_p_n"),
+            "first stmt should be mutable let for loop var"
+        );
+        assert!(
+            matches!(&transformed[1], code_ir::Stmt::Loop { .. }),
+            "second stmt should be a loop"
+        );
+    }
+
+    #[test]
+    fn tco_rejects_non_tail_recursion() {
+        // fn f(n) { let x = f(n - 1); return x + 1; }
+        let body = vec![
+            code_ir::Stmt::Let {
+                name: "x".into(),
+                mutable: false,
+                expr: self_call(
+                    "f",
+                    vec![code_ir::Expr::BinOp {
+                        left: Box::new(code_ir::Expr::Var("n".into())),
+                        op: "-".into(),
+                        right: Box::new(code_ir::Expr::IntLit(1)),
+                    }],
+                ),
+                ir_type: None,
+            },
+            code_ir::Stmt::Return(code_ir::Expr::BinOp {
+                left: Box::new(code_ir::Expr::Var("x".into())),
+                op: "+".into(),
+                right: Box::new(code_ir::Expr::IntLit(1)),
+            }),
+        ];
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(result.is_none(), "non-tail recursion should NOT be eligible");
+    }
+
+    #[test]
+    fn tco_rejects_mixed_tail_and_non_tail() {
+        // fn f(n) { let x = f(n - 1); return f(x); }
+        // First call is non-tail (result stored in x), second is tail.
+        let body = vec![
+            code_ir::Stmt::Let {
+                name: "x".into(),
+                mutable: false,
+                expr: self_call(
+                    "f",
+                    vec![code_ir::Expr::BinOp {
+                        left: Box::new(code_ir::Expr::Var("n".into())),
+                        op: "-".into(),
+                        right: Box::new(code_ir::Expr::IntLit(1)),
+                    }],
+                ),
+                ir_type: None,
+            },
+            code_ir::Stmt::Return(self_call("f", vec![code_ir::Expr::Var("x".into())])),
+        ];
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "mixed tail/non-tail should NOT be eligible"
+        );
+    }
+
+    #[test]
+    fn tco_skips_non_recursive_function() {
+        // fn f(n) { return n + 1; }
+        let body = vec![code_ir::Stmt::Return(code_ir::Expr::BinOp {
+            left: Box::new(code_ir::Expr::Var("n".into())),
+            op: "+".into(),
+            right: Box::new(code_ir::Expr::IntLit(1)),
+        })];
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(result.is_none(), "non-recursive function should return None");
+    }
+
+    #[test]
+    fn tco_does_not_optimize_mutual_recursion() {
+        // fn f(n) { return g(n); }
+        // Since g != f, there are no self-calls, so apply_tco returns None.
+        let body = vec![code_ir::Stmt::Return(code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Var("g".into())),
+            args: vec![code_ir::Expr::Var("n".into())],
+            obligation: None,
+        })];
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "mutual recursion (call to different fn) should return None"
+        );
+    }
+
+    #[test]
+    fn tco_tail_call_in_if_branches() {
+        // fn f(state) {
+        //   if cond { return f(new_state); }
+        //   else { return state; }
+        // }
+        let body = vec![code_ir::Stmt::TailExpr(code_ir::Expr::If {
+            cond: Box::new(code_ir::Expr::Var("cond".into())),
+            then_body: vec![code_ir::Stmt::Return(self_call(
+                "f",
+                vec![code_ir::Expr::Var("new_state".into())],
+            ))],
+            else_body: Some(vec![code_ir::Stmt::Return(code_ir::Expr::Var(
+                "state".into(),
+            ))]),
+        })];
+        let result = apply_tco("f", &["state".into()], &body);
+        assert!(
+            result.is_some(),
+            "tail calls inside if branches should be eligible"
+        );
+
+        // Verify the structure: the else branch should have break, then branch should have continue.
+        let transformed = result.unwrap();
+        let loop_body = match &transformed[1] {
+            code_ir::Stmt::Loop { body } => body,
+            other => panic!("expected Loop, got: {other:?}"),
+        };
+        // After the rebind stmt, there should be a Break(If{...}) or Expr(If{...}).
+        match &loop_body[1] {
+            code_ir::Stmt::Break(code_ir::Expr::If { then_body, else_body, .. }) => {
+                // Then branch has a tail call → should have BlockScope with continue.
+                assert!(
+                    then_body.iter().any(|s| matches!(s, code_ir::Stmt::BlockScope(inner) if inner.iter().any(|s2| matches!(s2, code_ir::Stmt::Continue)))),
+                    "then branch should contain continue for the tail call"
+                );
+                // Else branch has a non-recursive return → should have break.
+                assert!(
+                    else_body.as_ref().unwrap().iter().any(|s| matches!(s, code_ir::Stmt::Break(_))),
+                    "else branch should contain break for the non-recursive return"
+                );
+            }
+            code_ir::Stmt::Expr(code_ir::Expr::If { then_body, else_body, .. }) => {
+                assert!(
+                    then_body.iter().any(|s| matches!(s, code_ir::Stmt::BlockScope(inner) if inner.iter().any(|s2| matches!(s2, code_ir::Stmt::Continue)))),
+                    "then branch should contain continue for the tail call"
+                );
+                assert!(
+                    else_body.as_ref().unwrap().iter().any(|s| matches!(s, code_ir::Stmt::Break(_))),
+                    "else branch should contain break for the non-recursive return"
+                );
+            }
+            other => panic!("expected Break(If) or Expr(If), got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tco_transform_generates_parameter_reassignment() {
+        // fn f(a, b) { return f(b, a); }
+        let body = vec![code_ir::Stmt::Return(self_call(
+            "f",
+            vec![
+                code_ir::Expr::Var("b".into()),
+                code_ir::Expr::Var("a".into()),
+            ],
+        ))];
+        let result = apply_tco("f", &["a".into(), "b".into()], &body);
+        assert!(result.is_some());
+        let transformed = result.unwrap();
+
+        // Structure:
+        //   let mut __tco_p_a = a;
+        //   let mut __tco_p_b = b;
+        //   loop {
+        //     let a = __tco_p_a.clone();
+        //     let b = __tco_p_b.clone();
+        //     { let __tco_0 = b; let __tco_1 = a; __tco_p_a = __tco_0; __tco_p_b = __tco_1; continue; }
+        //   }
+        assert_eq!(transformed.len(), 3, "2 preamble lets + 1 loop");
+        let loop_body = match &transformed[2] {
+            code_ir::Stmt::Loop { body } => body,
+            other => panic!("expected Loop, got: {other:?}"),
+        };
+
+        // First 2 stmts are rebinds, then the transformed tail call.
+        assert!(loop_body.len() >= 3, "loop body should have rebinds + transformed stmt");
+        let block = match &loop_body[2] {
+            code_ir::Stmt::BlockScope(stmts) => stmts,
+            other => panic!("expected BlockScope for tail call, got: {other:?}"),
+        };
+
+        // Should have: 2 let bindings + 2 assignments + 1 continue = 5 stmts
+        assert_eq!(
+            block.len(),
+            5,
+            "expected 5 stmts (2 temps + 2 assigns + continue), got {}",
+            block.len()
+        );
+        assert!(
+            matches!(&block[4], code_ir::Stmt::Continue),
+            "last stmt should be Continue"
+        );
+    }
+
+    #[test]
+    fn tco_transform_non_recursive_return_becomes_break() {
+        // fn f(n) { if n == 0 { return 0; } return f(n - 1); }
+        let body = vec![
+            code_ir::Stmt::Expr(code_ir::Expr::If {
+                cond: Box::new(code_ir::Expr::BinOp {
+                    left: Box::new(code_ir::Expr::Var("n".into())),
+                    op: "==".into(),
+                    right: Box::new(code_ir::Expr::IntLit(0)),
+                }),
+                then_body: vec![code_ir::Stmt::Return(code_ir::Expr::IntLit(0))],
+                else_body: None,
+            }),
+            code_ir::Stmt::TailExpr(self_call(
+                "f",
+                vec![code_ir::Expr::BinOp {
+                    left: Box::new(code_ir::Expr::Var("n".into())),
+                    op: "-".into(),
+                    right: Box::new(code_ir::Expr::IntLit(1)),
+                }],
+            )),
+        ];
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(result.is_some());
+        let transformed = result.unwrap();
+
+        // Structure: let mut __tco_p_n = n; loop { let n = ...; <body> }
+        let loop_body = match &transformed[1] {
+            code_ir::Stmt::Loop { body } => body,
+            other => panic!("expected Loop, got: {other:?}"),
+        };
+
+        // Skip rebind stmt (index 0), look at the if (index 1).
+        match &loop_body[1] {
+            code_ir::Stmt::Expr(code_ir::Expr::If { then_body, .. }) => {
+                assert!(
+                    matches!(&then_body[0], code_ir::Stmt::Break(code_ir::Expr::IntLit(0))),
+                    "non-recursive return should become break, got: {:?}",
+                    then_body[0]
+                );
+            }
+            other => panic!("expected Expr(If), got: {other:?}"),
+        }
     }
 }

@@ -84,6 +84,29 @@ hard failures into silent wrong behavior. (See POSTMORTEM FC-7:
 `scalar_witness_for_base` fabricated `Str("<Type>")` instead of
 returning `None`.)
 
+### Heuristics indicate lost structure
+
+Heuristics are a code smell in compiler and runtime logic. String
+matching, score-based classification, best-effort guessing, "close
+enough" defaults, and inference from naming conventions usually mean
+the pipeline has already thrown away information that should have been
+structural.
+
+**The principle:** do not tune the heuristic first. Trace the pipeline
+upstream until you find where the needed fact stopped being explicit,
+then restore that structure as close to the source as practical.
+
+**The test:** if a code path has to guess from strings, partial shapes,
+error text, or naming patterns, the real bug is upstream information
+loss. The preferred fix is to carry the missing fact in the type/IR/API
+boundary instead of improving the guess.
+
+**The fix:** push structure earlier in the pipeline so the downstream
+stage can make an exact decision. If the local change cannot safely
+repair the upstream contract yet, fail clearly or record a follow-up
+task naming where the information degraded and what explicit structure
+should replace the heuristic.
+
 ### No parallel implementations
 
 When the same computation exists in two forms (e.g., an AST interpreter

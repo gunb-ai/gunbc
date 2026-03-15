@@ -369,6 +369,23 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             out
         }
         Stmt::Item(item) => render_item(item, indent),
+        Stmt::Loop { body } => {
+            let mut out = format!("{}loop {{\n", pad);
+            for s in body {
+                out.push_str(&render_stmt(s, indent + 1));
+            }
+            writeln!(out, "{}}}", pad).unwrap();
+            out
+        }
+        Stmt::Continue => format!("{}continue;\n", pad),
+        Stmt::Break(expr) => {
+            let rendered = render_expr(expr);
+            if rendered == "()" {
+                format!("{}break;\n", pad)
+            } else {
+                format!("{}break {};\n", pad, rendered)
+            }
+        }
     }
 }
 
@@ -984,5 +1001,44 @@ mod tests {
         assert!(rendered.contains("pub fn main(path: String) -> Result<(), ExecError> {"));
         assert!(rendered.contains("execute_transport(req)?"));
         assert!(rendered.contains("Ok(())"));
+    }
+
+    // -- Loop / Continue / Break rendering --
+
+    #[test]
+    fn render_loop_continue_break() {
+        let loop_stmt = Stmt::Loop {
+            body: vec![
+                Stmt::Expr(Expr::If {
+                    cond: Box::new(Expr::BinOp {
+                        left: Box::new(Expr::var("n")),
+                        op: "==".to_string(),
+                        right: Box::new(Expr::IntLit(0)),
+                    }),
+                    then_body: vec![Stmt::Break(Expr::var("result"))],
+                    else_body: None,
+                }),
+                Stmt::Assign {
+                    dest: Expr::var("n"),
+                    value: Expr::BinOp {
+                        left: Box::new(Expr::var("n")),
+                        op: "-".to_string(),
+                        right: Box::new(Expr::IntLit(1)),
+                    },
+                },
+                Stmt::Continue,
+            ],
+        };
+        let rendered = render_stmt(&loop_stmt, 0);
+        assert!(rendered.contains("loop {"), "should render loop keyword");
+        assert!(rendered.contains("break result;"), "should render break with value");
+        assert!(rendered.contains("continue;"), "should render continue");
+    }
+
+    #[test]
+    fn render_break_unit_omits_value() {
+        let stmt = Stmt::Break(Expr::Tuple(vec![]));
+        let rendered = render_stmt(&stmt, 0);
+        assert_eq!(rendered.trim(), "break;", "break () should render as bare break");
     }
 }

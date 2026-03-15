@@ -394,6 +394,21 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
                 }
             }
         }
+        Stmt::Loop { body } => {
+            // C: while(1) { ... }
+            let c_body = lower_body(body, in_fallible_fn, config);
+            out.push(CStmt::Comment("loop {".to_string()));
+            for s in c_body {
+                out.push(s);
+            }
+            out.push(CStmt::Comment("}".to_string()));
+        }
+        Stmt::Continue => {
+            out.push(CStmt::Comment("continue".to_string()));
+        }
+        Stmt::Break(_) => {
+            out.push(CStmt::Comment("break".to_string()));
+        }
     }
 }
 
