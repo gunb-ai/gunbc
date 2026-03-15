@@ -15,7 +15,7 @@
 //! let middleware = MetricsMiddleware::new(sink);
 //! ```
 
-use crate::classify::ClassifiedErrorKind;
+use crate::classify::{classify_transport_error, ClassifiedErrorKind};
 use crate::middleware::{
     MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, TransportMiddleware,
 };
@@ -308,8 +308,7 @@ impl TransportMiddleware for MetricsMiddleware {
             return PostProcessOutcome::Abort(error);
         }
 
-        // Classify error based on message content
-        let error_kind = classify_exec_error(&error_msg);
+        let error_kind = classify_transport_error(&error_msg).kind;
         self.sink.record_error(&ctx.operation_id, error_kind);
 
         PostProcessOutcome::Abort(error)
@@ -339,54 +338,6 @@ fn extract_status(response: &TransportResponse) -> Option<u16> {
         TransportResponse::Http(r) => Some(r.status),
         _ => None,
     }
-}
-
-/// Classify an execution error based on message content.
-///
-/// This is a best-effort heuristic for errors that don't have structured
-/// classification (e.g., ExecError from transport failures).
-fn classify_exec_error(message: &str) -> ClassifiedErrorKind {
-    let lower = message.to_ascii_lowercase();
-
-    // Auth errors
-    if lower.contains("auth")
-        || lower.contains("credential")
-        || lower.contains("unauthorized")
-        || lower.contains("forbidden")
-        || lower.contains("invalid api key")
-        || lower.contains("token")
-    {
-        return ClassifiedErrorKind::Auth;
-    }
-
-    // Rate limit errors
-    if lower.contains("rate limit") || lower.contains("too many requests") || lower.contains("429")
-    {
-        return ClassifiedErrorKind::RateLimit;
-    }
-
-    // Client errors (config, serialization, validation)
-    if lower.contains("invalid")
-        || lower.contains("missing")
-        || lower.contains("config")
-        || lower.contains("serializ")
-        || lower.contains("deserializ")
-        || lower.contains("parse")
-    {
-        return ClassifiedErrorKind::Client;
-    }
-
-    // Server errors
-    if lower.contains("server")
-        || lower.contains("internal error")
-        || lower.contains("5xx")
-        || lower.contains("500")
-    {
-        return ClassifiedErrorKind::Server;
-    }
-
-    // Default to network for connection/timeout issues
-    ClassifiedErrorKind::Network
 }
 
 #[cfg(test)]

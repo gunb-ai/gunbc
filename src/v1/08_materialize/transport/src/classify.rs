@@ -110,12 +110,51 @@ pub fn classify_http_response(
 /// Classify a transport-layer execution failure (no HTTP status available).
 pub fn classify_transport_error(message: &str) -> ClassifiedResponse {
     ClassifiedResponse {
-        kind: ClassifiedErrorKind::Network,
+        kind: classify_transport_error_kind(message),
         provider: ResponseProvider::Generic,
         status: None,
         message: Some(message.to_string()),
         retry_after_ms: None,
     }
+}
+
+fn classify_transport_error_kind(message: &str) -> ClassifiedErrorKind {
+    let lower = message.to_ascii_lowercase();
+
+    if message_has_auth_indicator(Some(message)) {
+        return ClassifiedErrorKind::Auth;
+    }
+    if message_has_rate_limit_indicator(Some(message)) || lower.contains("429") {
+        return ClassifiedErrorKind::RateLimit;
+    }
+    if lower.contains("invalid")
+        || lower.contains("missing")
+        || lower.contains("config")
+        || lower.contains("serializ")
+        || lower.contains("deserializ")
+        || lower.contains("parse")
+        || lower.contains("unsupported")
+        || lower.contains("unexpected")
+    {
+        return ClassifiedErrorKind::Client;
+    }
+    if lower.contains("server")
+        || lower.contains("internal error")
+        || lower.contains("5xx")
+        || lower.contains("500")
+        || lower.contains("502")
+        || lower.contains("503")
+        || lower.contains("504")
+        || lower.contains("service unavailable")
+        || lower.contains("bad gateway")
+        || lower.contains("gateway timeout")
+    {
+        return ClassifiedErrorKind::Server;
+    }
+    if message_has_network_indicator(&lower) {
+        return ClassifiedErrorKind::Network;
+    }
+    ClassifiedErrorKind::Unknown
 }
 
 fn classify_status(
@@ -223,6 +262,25 @@ fn message_has_rate_limit_indicator(message: Option<&str>) -> bool {
                 || lower.contains("too many requests")
         })
         .unwrap_or(false)
+}
+
+fn message_has_network_indicator(message: &str) -> bool {
+    message.contains("network")
+        || message.contains("timeout")
+        || message.contains("timed out")
+        || message.contains("transient")
+        || message.contains("connection")
+        || message.contains("connect")
+        || message.contains("dns")
+        || message.contains("tls")
+        || message.contains("socket")
+        || message.contains("broken pipe")
+        || message.contains("refused")
+        || message.contains("reset by peer")
+        || message.contains("unreachable")
+        || message.contains("eof")
+        || message.contains("http request failed")
+        || message.contains("i/o")
 }
 
 fn parse_retry_after_ms(headers: &HashMap<String, String>) -> Option<u64> {
@@ -489,6 +547,13 @@ mod tests {
         let classified = classify_transport_error("connect timeout");
         assert_eq!(classified.kind, ClassifiedErrorKind::Network);
         assert!(classified.retryable());
+    }
+
+    #[test]
+    fn classify_transport_error_does_not_fabricate_network_for_client_errors() {
+        let classified = classify_transport_error("failed to serialize body");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Client);
+        assert!(!classified.retryable());
     }
 
     // Middleware integration tests
