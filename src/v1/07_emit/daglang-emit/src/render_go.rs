@@ -308,6 +308,19 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             out
         }
         Stmt::Item(item) => render_item(item, indent),
+        Stmt::Loop { body } => {
+            let mut out = format!("{}for {{\n", pad);
+            for s in body {
+                out.push_str(&render_stmt(s, indent + 1));
+            }
+            writeln!(out, "{}}}", pad).unwrap();
+            out
+        }
+        Stmt::Continue => format!("{}continue\n", pad),
+        Stmt::Break(expr) => {
+            // Go doesn't have break-with-value; use a variable.
+            format!("{}_ = {} // break\n", pad, render_expr(expr))
+        }
     }
 }
 

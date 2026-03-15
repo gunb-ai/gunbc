@@ -173,6 +173,13 @@ pub enum Stmt {
     Item(Item),
     /// **Tier 0.** Lexical block statement `{ stmts }` for isolating variable scope without returning a value.
     BlockScope(Vec<Stmt>),
+    /// **Tier 0.** Infinite loop: `loop { body }`. Used by tail-call optimization
+    /// to replace self-recursive functions with iteration.
+    Loop { body: Vec<Stmt> },
+    /// **Tier 0.** Continue to next loop iteration (used in TCO-transformed loops).
+    Continue,
+    /// **Tier 0.** Break from a loop with a value: `break expr;`
+    Break(Expr),
 }
 
 /// Binding target for managed-language multi-target bindings.
@@ -472,7 +479,9 @@ pub fn is_abstract(stmt: &Stmt) -> bool {
         Stmt::Comment(_) | Stmt::Blank => true,
         Stmt::TailExpr(_) => false,
         Stmt::For { iter, body, .. } => is_abstract_expr(iter) && body.iter().all(is_abstract),
-        Stmt::BlockScope(stmts) => stmts.iter().all(is_abstract),
+        Stmt::BlockScope(stmts) | Stmt::Loop { body: stmts } => stmts.iter().all(is_abstract),
+        Stmt::Continue => true,
+        Stmt::Break(expr) => is_abstract_expr(expr),
         Stmt::Item(item) => is_abstract_item(item),
     }
 }

@@ -1536,11 +1536,13 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 Self::collect_idents_from_expr(dest, used);
                 Self::collect_idents_from_expr(value, used);
             }
-            Stmt::BlockScope(stmts) => {
+            Stmt::BlockScope(stmts) | Stmt::Loop { body: stmts } => {
                 for s in stmts {
                     Self::collect_idents_from_stmt(s, used);
                 }
             }
+            Stmt::Continue => {}
+            Stmt::Break(expr) => Self::collect_idents_from_expr(expr, used),
         }
     }
 
