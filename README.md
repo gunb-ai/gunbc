@@ -74,7 +74,7 @@ See `src/v2/DESIGN.md` for the full design and target type models.
 ## The Invariants
 
 Detailed compiler/runtime invariants and testing rules live in
-`INVARIANTS.md`. The list below is the repo-level summary.
+`src/v1/README.md`. The list below is the repo-level summary.
 
 ### 1. Performance is a contract
 
