@@ -307,9 +307,18 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
                 }
             }
         }
-        ast::Expr::Lambda(_, body) => {
+        ast::Expr::Lambda(params, body) => {
             // Lambda may be called multiple times — treat captures as multi-use.
-            count_ident_uses_expr(body, counts, 2);
+            // But lambda parameters are local — count them separately and exclude
+            // from the outer scope to avoid spurious .clone() after substitution.
+            let mut inner_counts = HashMap::new();
+            count_ident_uses_expr(body, &mut inner_counts, 1);
+            for (name, inner_count) in inner_counts {
+                if !params.contains(&name) {
+                    // Captured variable — weight=2 since lambda may run multiple times
+                    *counts.entry(name).or_insert(0) += inner_count.max(1) * 2;
+                }
+            }
         }
         ast::Expr::List(elems) => {
             for e in elems {
@@ -2559,11 +2568,13 @@ fn compile_pattern_typed(
                             format!("ref {n}")
                         } else {
                             let field_type = variant_field_types.and_then(|ft| ft.get(n.as_str()));
-                            format!(
-                                "{}: {}",
-                                n,
-                                compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()))
-                            )
+                            let compiled = compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()));
+                            // Use shorthand field pattern when binding name matches field name
+                            if compiled == *n {
+                                n.clone()
+                            } else {
+                                format!("{n}: {compiled}")
+                            }
                         }
                     })
                     .collect();

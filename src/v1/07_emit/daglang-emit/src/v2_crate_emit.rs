@@ -316,7 +316,7 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
 fn emit_lib_rs(modules: &[(&str, &SourceFile)]) -> String {
     let mut out = String::new();
     out.push_str("//! v2 DAG compiler — generated from .dag source files.\n\n");
-    out.push_str("#![allow(unused_imports, unused_variables, unused_mut, dead_code, unreachable_patterns, clippy::all)]\n\n");
+    out.push_str("#![allow(unused_imports, unused_variables, unused_mut, dead_code, unreachable_patterns, suspicious_double_ref_op, non_shorthand_field_patterns, clippy::all)]\n\n");
 
     // Module declarations
     for (_, sf) in modules {
