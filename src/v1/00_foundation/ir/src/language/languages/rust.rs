@@ -24,6 +24,8 @@ pub struct RustConfig {
     pub name: &'static str,
     pub file_extensions: &'static [&'static str],
     pub comment_prefix: &'static str,
+    pub block_comment_open: &'static str,
+    pub block_comment_close: &'static str,
     pub doc_comment_prefix: &'static str,
     pub statement_terminator: &'static str,
     pub block_open: &'static str,
@@ -36,6 +38,8 @@ pub const RUST: RustConfig = RustConfig {
     name: "Rust",
     file_extensions: &[".rs"],
     comment_prefix: "//",
+    block_comment_open: "/*",
+    block_comment_close: "*/",
     doc_comment_prefix: "///",
     statement_terminator: ";",
     block_open: "{",
@@ -57,6 +61,8 @@ pub const RUST: RustConfig = RustConfig {
 /// Outputs:
 /// - `id`: String - Language ID ("rust")
 /// - `extensions`: List - File extensions ([".rs"])
+/// - `block_comment_open`: String - Block comment start ("/*")
+/// - `block_comment_close`: String - Block comment end ("*/")
 /// - `concrete_type`: String (optional) - Mapped type
 /// - `converted_name`: String (optional) - Converted name
 pub fn build_rust_subdag() -> Node<LanguageOp> {
@@ -71,6 +77,8 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
             Port::scalar("name", "String"),
             Port::list("extensions", "List<String>"),
             Port::scalar("comment_prefix", "String"),
+            Port::scalar("block_comment_open", "String"),
+            Port::scalar("block_comment_close", "String"),
             Port::scalar("doc_comment_prefix", "String"),
         ],
         LanguageOp::RustConfig,
@@ -146,6 +154,14 @@ mod tests {
         assert!(node.outputs.iter().any(|p| p.name.0 == "id"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "extensions"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "comment_prefix"));
+        assert!(node
+            .outputs
+            .iter()
+            .any(|p| p.name.0 == "block_comment_open"));
+        assert!(node
+            .outputs
+            .iter()
+            .any(|p| p.name.0 == "block_comment_close"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "concrete_type"));
     }
 
@@ -187,5 +203,7 @@ mod tests {
         assert_eq!(RUST.id, "rust");
         assert_eq!(RUST.file_extensions, &[".rs"]);
         assert_eq!(RUST.comment_prefix, "//");
+        assert_eq!(RUST.block_comment_open, "/*");
+        assert_eq!(RUST.block_comment_close, "*/");
     }
 }

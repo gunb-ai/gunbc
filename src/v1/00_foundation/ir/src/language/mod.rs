@@ -42,6 +42,7 @@ pub mod patterns;
 pub mod traits;
 
 use crate::dag::Dag;
+use std::path::Path;
 
 // Re-exports - SubDag builders
 pub use categories::{build_config_format_subdag, build_turing_complete_subdag};
@@ -69,6 +70,7 @@ pub use languages::{
     css_comment, html_comment, markdown_comment, render_code_block, render_html_document,
     toml_comment, yaml_comment,
 };
+use traits::comment::CommentSyntax;
 
 /// Operations within the Languages DAG.
 ///
@@ -259,39 +261,141 @@ pub fn build_languages_dag() -> Dag<LanguageOp> {
     dag
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LanguageMetadata {
+    pub id: &'static str,
+    pub file_extensions: &'static [&'static str],
+    pub file_patterns: &'static [&'static str],
+    pub comment_syntax: Option<CommentSyntax>,
+}
+
+const LANGUAGE_METADATA_REGISTRY: &[LanguageMetadata] = &[
+    LanguageMetadata {
+        id: RUST.id,
+        file_extensions: RUST.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(RUST.comment_prefix),
+            block_start: Some(RUST.block_comment_open),
+            block_end: Some(RUST.block_comment_close),
+            doc_prefix: Some(RUST.doc_comment_prefix),
+        }),
+    },
+    LanguageMetadata {
+        id: GITIGNORE.id,
+        file_extensions: &[],
+        file_patterns: GITIGNORE.file_patterns,
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(GITIGNORE.comment_prefix),
+            block_start: None,
+            block_end: None,
+            doc_prefix: None,
+        }),
+    },
+    LanguageMetadata {
+        id: MAKEFILE.id,
+        file_extensions: &[],
+        file_patterns: MAKEFILE.file_patterns,
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(MAKEFILE.comment_prefix),
+            block_start: None,
+            block_end: None,
+            doc_prefix: None,
+        }),
+    },
+    LanguageMetadata {
+        id: HTML.id,
+        file_extensions: HTML.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: None,
+            block_start: Some(HTML.comment_open),
+            block_end: Some(HTML.comment_close),
+            doc_prefix: None,
+        }),
+    },
+    LanguageMetadata {
+        id: CSS.id,
+        file_extensions: CSS.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: None,
+            block_start: Some(CSS.comment_open),
+            block_end: Some(CSS.comment_close),
+            doc_prefix: None,
+        }),
+    },
+    LanguageMetadata {
+        id: MARKDOWN.id,
+        file_extensions: MARKDOWN.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: None,
+            block_start: Some(MARKDOWN.comment_open),
+            block_end: Some(MARKDOWN.comment_close),
+            doc_prefix: None,
+        }),
+    },
+    LanguageMetadata {
+        id: YAML.id,
+        file_extensions: YAML.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(YAML.comment_prefix),
+            block_start: None,
+            block_end: None,
+            doc_prefix: None,
+        }),
+    },
+    LanguageMetadata {
+        id: TOML.id,
+        file_extensions: TOML.file_extensions,
+        file_patterns: &[],
+        comment_syntax: Some(CommentSyntax {
+            line_prefix: Some(TOML.comment_prefix),
+            block_start: None,
+            block_end: None,
+            doc_prefix: None,
+        }),
+    },
+];
+
+pub(crate) fn language_metadata_for(id: &str) -> Option<&'static LanguageMetadata> {
+    LANGUAGE_METADATA_REGISTRY
+        .iter()
+        .find(|metadata| metadata.id == id)
+}
+
+fn filename_matches_pattern(filename: &str, pattern: &str) -> bool {
+    match pattern.strip_prefix('*') {
+        Some(suffix) => filename.ends_with(suffix),
+        None => filename == pattern,
+    }
+}
+
+fn language_metadata_for_file(filename: &str) -> Option<&'static LanguageMetadata> {
+    let basename = Path::new(filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(filename);
+
+    LANGUAGE_METADATA_REGISTRY.iter().find(|metadata| {
+        metadata
+            .file_extensions
+            .iter()
+            .any(|ext| filename.ends_with(ext))
+            || metadata
+                .file_patterns
+                .iter()
+                .any(|pattern| filename_matches_pattern(basename, pattern))
+    })
+}
+
 /// Detect language from filename using the Languages DAG.
 ///
 /// This replaces the ad-hoc `detect_language()` function in lib/markdown.
 pub fn detect_language_from_file(filename: &str) -> Option<&'static str> {
-    // Static mapping derived from language SubDag configurations
-    // In the future, this could query the actual Languages DAG
-    let mappings: &[(&[&str], &str)] = &[
-        (&[".rs"], "rust"),
-        (&[".py"], "python"),
-        (&[".js"], "javascript"),
-        (&[".ts", ".tsx"], "typescript"),
-        (&[".go"], "go"),
-        (&[".md"], "markdown"),
-        (&[".toml"], "toml"),
-        (&[".json"], "json"),
-        (&[".yaml", ".yml"], "yaml"),
-        (&[".sh", ".bash"], "bash"),
-        (&[".c", ".h"], "c"),
-        (&[".cpp", ".hpp", ".cc"], "cpp"),
-        (&[".java"], "java"),
-        (&[".rb"], "ruby"),
-        (&[".html"], "html"),
-        (&[".css"], "css"),
-        (&[".sql"], "sql"),
-    ];
-
-    for (extensions, lang_id) in mappings {
-        if extensions.iter().any(|ext| filename.ends_with(ext)) {
-            return Some(lang_id);
-        }
-    }
-
-    None
+    language_metadata_for_file(filename).map(|metadata| metadata.id)
 }
 
 /// Get markdown code fence identifier for a file.
@@ -352,8 +456,17 @@ mod tests {
     #[test]
     fn test_detect_language_from_file() {
         assert_eq!(detect_language_from_file("foo.rs"), Some("rust"));
-        assert_eq!(detect_language_from_file("bar.py"), Some("python"));
-        assert_eq!(detect_language_from_file("baz.ts"), Some("typescript"));
+        assert_eq!(detect_language_from_file("config/bar.yml"), Some("yaml"));
+        assert_eq!(
+            detect_language_from_file("docs/readme.markdown"),
+            Some("markdown")
+        );
+        assert_eq!(detect_language_from_file("Makefile"), Some("makefile"));
+        assert_eq!(
+            detect_language_from_file("build/tools.mk"),
+            Some("makefile")
+        );
+        assert_eq!(detect_language_from_file(".gitignore"), Some("gitignore"));
         assert_eq!(detect_language_from_file("unknown.xyz"), None);
     }
 
