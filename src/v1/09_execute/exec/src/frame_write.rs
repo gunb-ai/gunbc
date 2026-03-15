@@ -96,7 +96,15 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     is_tty: bool,
     last_frame_lines: &mut usize,
 ) -> std::io::Result<()> {
-    let overwrite = is_tty && frame.cursor_action == CursorAction::Overwrite;
+    let overwrite = match frame.cursor_action {
+        CursorAction::Overwrite => is_tty,
+        CursorAction::Append => false,
+        CursorAction::Clear => {
+            return Err(std::io::Error::other(
+                "CursorAction::Clear is not supported by FrameWriter",
+            ));
+        }
+    };
     let num_lines = frame.lines.len();
 
     let mut buf: Vec<u8> = Vec::with_capacity(4096);
@@ -340,5 +348,20 @@ mod tests {
             "Expected at least 3 per-line clears (1 content + 2 leftover), got {clear_count}"
         );
         assert!(output.contains("x\n"));
+    }
+
+    #[test]
+    fn test_write_frame_clear_returns_error() {
+        let mut buf = Vec::new();
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
+
+        let frame = make_frame(vec!["clear me"], CursorAction::Clear);
+        let err = writer.write_frame(&frame, &mut buf).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "CursorAction::Clear is not supported by FrameWriter"
+        );
+        assert!(buf.is_empty(), "unsupported action should not write partial output");
     }
 }
