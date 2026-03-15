@@ -128,13 +128,15 @@ fn emit_imports(imports: List<Import>) -> String {
   } else {
     let import_lines = imports |> map(imp =>
       let mod_name = module_to_filename(name: imp.module_path)
-      if is_wildcard_import_names(names: imp.names) {
-        concat("use crate::", mod_name, "::*;")
-      } else if imp.names |> count == 0 {
-        ""
-      } else {
-        let names_str = imp.names |> join(separator: ", ")
-        concat("use crate::", mod_name, "::{", names_str, "};")
+      match imp.names {
+        ImportAll => concat("use crate::", mod_name, "::*;")
+        ImportSpecific { names: specific_names } =>
+          if specific_names |> count == 0 {
+            ""
+          } else {
+            let names_str = specific_names |> join(separator: ", ")
+            concat("use crate::", mod_name, "::{", names_str, "};")
+          }
       }
     )
     import_lines |> filter(line => line != "") |> join(separator: "\n")
