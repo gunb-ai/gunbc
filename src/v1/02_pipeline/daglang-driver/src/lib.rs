@@ -1798,7 +1798,7 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
         .ast
         .items
         .iter()
-        .any(|item| item.node.as_callable().is_some() || matches!(item.node, Item::PipelineDef(_)))
+        .any(|item| item.node.produces_executable_dag())
 }
 
 /// Merge two sorted path lists into one sorted, deduplicated list.

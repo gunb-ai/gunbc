@@ -78,4 +78,42 @@ impl Item {
             _ => None,
         }
     }
+
+    /// Returns whether this item lowers to an executable DAG definition.
+    pub fn produces_executable_dag(&self) -> bool {
+        self.as_callable().is_some() || matches!(self, Item::PipelineDef(_))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parser::parse;
+
+    #[test]
+    fn produces_executable_dag_matches_executable_item_variants() {
+        let ast = parse(
+            r#"
+            module test.exec
+
+            type Alias = String
+            fn pure_fn(x: Int) -> Int { x }
+            func effectful_fn(name: String) -> { ok: Bool } {
+              return { ok: true }
+            }
+            pattern my_pattern(x: String) -> { done: Bool } {
+              return { done: true }
+            }
+            pipeline deploy {}
+        "#,
+        )
+        .expect("source should parse");
+
+        let executable_flags: Vec<bool> = ast
+            .items
+            .iter()
+            .map(|item| item.node.produces_executable_dag())
+            .collect();
+
+        assert_eq!(executable_flags, vec![false, true, true, true, true]);
+    }
 }

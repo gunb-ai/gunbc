@@ -47,11 +47,7 @@ pub struct CompilableModule {
     pub dsl_path: String,
     /// Dot-separated module name (e.g., "tools.bootstrap").
     pub module_name: String,
-    /// Number of callable items in the module (func, fn, pattern, pipeline).
-    ///
-    /// Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs` —
-    /// the canonical set of item types that produce executable DAGs.
-    /// If a new callable item type is added to the AST, both must be updated.
+    /// Number of items in the module that produce executable DAGs.
     pub callable_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
@@ -134,18 +130,10 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Result<Option<Compilab
     let ast = daglang_syntax::parser::parse(&source)
         .map_err(|e| format!("cannot parse {}: {e:?}", path.display()))?;
 
-    // Count callable items — these are the item types that produce executable DAGs.
-    // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
-    use daglang_syntax::ast::Item;
     let callable_count = ast
         .items
         .iter()
-        .filter(|item| {
-            matches!(
-                item.node,
-                Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
-            )
-        })
+        .filter(|item| item.node.produces_executable_dag())
         .count();
 
     if callable_count == 0 {
