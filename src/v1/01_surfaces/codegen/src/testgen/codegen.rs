@@ -43,9 +43,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, value_compatible_with_type_id, value_kind_name, Cardinality, Dag,
-    NodeId, NodeKind, Os, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry,
-    Value, ValueExpr,
+    contract, parse_map_type_id, value_compatible_with_type_id_in_registry, value_kind_name,
+    Cardinality, Dag, NodeId, NodeKind, Os, SecretString, SeedPlaceholderPolicy,
+    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FailureVariant, FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -122,8 +122,8 @@ fn mock_value_kind_name(value: &Value) -> &'static str {
     value_kind_name(value)
 }
 
-fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
-    value_compatible_with_type_id(port_type, value)
+fn mock_types_compatible(port_type: &str, value: &Value, registry: &TypeRegistry) -> bool {
+    value_compatible_with_type_id_in_registry(port_type, value, registry)
 }
 
 /// Configuration for test generation.
@@ -815,7 +815,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == tm.port) {
                     let expected = &port.type_id.0;
                     let actual = mock_value_kind_name(&tm.value);
-                    if !mock_types_compatible(expected, &tm.value) {
+                    if !mock_types_compatible(expected, &tm.value, &self.type_registry) {
                         mismatches.push((
                             tm.node.clone(),
                             tm.port.clone(),
@@ -837,7 +837,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == bm.port) {
                     let expected = &port.type_id.0;
                     let actual = mock_value_kind_name(&bm.value);
-                    if !mock_types_compatible(expected, &bm.value) {
+                    if !mock_types_compatible(expected, &bm.value, &self.type_registry) {
                         mismatches.push((
                             bm.node.clone(),
                             bm.port.clone(),
@@ -859,7 +859,7 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                 if let Some(port) = node.inputs.iter().find(|p| p.name.0 == im.port) {
                     let expected = &port.type_id.0;
                     let actual = mock_value_kind_name(&im.value);
-                    if !mock_types_compatible(expected, &im.value) {
+                    if !mock_types_compatible(expected, &im.value, &self.type_registry) {
                         mismatches.push((
                             im.node.clone(),
                             im.port.clone(),

@@ -911,12 +911,14 @@ pub fn typedefs_to_source_file(
         enum_variants,
         boxed_fields: std::collections::HashSet::new(),
         fn_return_types: std::collections::HashMap::new(),
+        fn_param_types: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
         current_return_ir_type: None,
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types: std::collections::HashMap::new(),
+        use_counts: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1032,12 +1034,14 @@ pub fn generate_types_for_modules(
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
+            fn_param_types: std::collections::HashMap::new(),
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
             current_return_ir_type: None,
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: std::collections::HashMap::new(),
+            use_counts: std::collections::HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }

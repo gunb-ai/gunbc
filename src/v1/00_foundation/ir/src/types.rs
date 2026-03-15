@@ -1736,6 +1736,13 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return true;
     }
 
+    // Typed enum values carry their declared type name.
+    if let Value::Enum { ty, .. } = value {
+        if ty == type_id {
+            return true;
+        }
+    }
+
     // Any matches anything
     if type_id == "Any" {
         return true;
@@ -1790,7 +1797,10 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
     }
 
     // Handle types accept Map backing (serialized as maps at runtime)
-    if (type_id == "FilesystemHandle" || type_id == "NetworkHandle" || type_id == "ToolHandle")
+    if (type_id == "FilesystemHandle"
+        || type_id == "NetworkHandle"
+        || type_id == "ToolHandle"
+        || type_id == "ResourceHandle")
         && kind == ValueKind::Map
     {
         return true;
@@ -1801,6 +1811,22 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
     // types are incompatible — callers must ensure types are registered.
     value_backing_for_type_id(type_id)
         .map(|backing| backing.accepts_value_kind(kind))
+        .unwrap_or(false)
+}
+
+/// Like [`value_compatible_with_type_id`] but consults a registry for DSL-defined
+/// nominal types when the core-only compatibility path is insufficient.
+pub fn value_compatible_with_type_id_in_registry(
+    type_id: &str,
+    value: &crate::value::Value,
+    registry: &crate::TypeRegistry,
+) -> bool {
+    if value_compatible_with_type_id(type_id, value) {
+        return true;
+    }
+    registry
+        .value_backing(&TypeId::from(type_id))
+        .map(|backing| backing.accepts_value_kind(value.kind()))
         .unwrap_or(false)
 }
 
@@ -2172,6 +2198,10 @@ mod tests {
                 "token".to_string(),
                 Value::Secret(crate::SecretString::new("secret-token")),
             )]))
+        ));
+        assert!(value_compatible_with_type_id(
+            "ResourceHandle",
+            &crate::resource::mock_resource_handle_value(crate::ResourceId::new("test:handle")),
         ));
         assert!(value_compatible_with_type_id("Any", &Value::Skipped));
 

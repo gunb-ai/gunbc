@@ -5,7 +5,7 @@ language grows by one type, one expression form, or one transport, how
 many files need editing? The sustainable compiler is one where that
 number is 1.
 
-This ledger tracks open violations. See `src/v1/README.md` for the invariants.
+This ledger tracks open violations. See `INVARIANTS.md` for the invariants.
 
 ---
 

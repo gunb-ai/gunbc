@@ -106,6 +106,18 @@ impl<R> PartialEq for ResourceHandle<R> {
 
 impl<R> Eq for ResourceHandle<R> {}
 
+/// Create a valid handle-shaped [`Value`] for DryRun and test wiring.
+///
+/// This is the single authority for the runtime encoding of `ResourceHandle`
+/// values outside this module.
+pub fn mock_resource_handle_value(resource_id: ResourceId) -> Value {
+    Value::from(ResourceHandle::<()> {
+        resource_id,
+        key: ContentHash::empty(),
+        _marker: PhantomData,
+    })
+}
+
 /// Convert a ResourceHandle to a Value for passing through DAG edges.
 impl<R> From<ResourceHandle<R>> for Value {
     fn from(handle: ResourceHandle<R>) -> Self {

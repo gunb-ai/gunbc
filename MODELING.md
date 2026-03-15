@@ -1,6 +1,6 @@
 # DAG Modeling Guidelines
 
-Companion to `SUSTAINABILITY.md` (code quality) and `src/v1/README.md`
+Companion to `SUSTAINABILITY.md` (code quality) and `INVARIANTS.md`
 (compiler invariants). This document covers the **modeling quality** of
 `.dag` source files — the domain models themselves, not the compiler that
 processes them.

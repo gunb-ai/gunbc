@@ -393,6 +393,22 @@ fn render_rust_bind_target(target: &BindTarget) -> String {
 // Expression rendering
 // ===========================================================================
 
+fn needs_grouping_in_operator(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::If { .. } | Expr::Match { .. } | Expr::Block(_) | Expr::Closure { .. } | Expr::Struct { .. }
+    )
+}
+
+fn render_operator_operand(expr: &Expr) -> String {
+    let rendered = render_expr(expr);
+    if needs_grouping_in_operator(expr) {
+        format!("({rendered})")
+    } else {
+        rendered
+    }
+}
+
 fn render_expr(expr: &Expr) -> String {
     match expr {
         Expr::Value(v) => render_value_expr(v),
@@ -459,10 +475,15 @@ fn render_expr(expr: &Expr) -> String {
             }
         }
         Expr::BinOp { left, op, right } => {
-            format!("{} {} {}", render_expr(left), op, render_expr(right))
+            format!(
+                "{} {} {}",
+                render_operator_operand(left),
+                op,
+                render_operator_operand(right)
+            )
         }
         Expr::UnaryOp { op, expr } => {
-            format!("{}{}", op, render_expr(expr))
+            format!("{}{}", op, render_operator_operand(expr))
         }
         Expr::IntLit(n) => n.to_string(),
         Expr::BoolLit(b) => b.to_string(),
@@ -819,6 +840,25 @@ mod tests {
             body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
         };
         assert_eq!(render_expr(&expr), "|n| n >= 2");
+    }
+
+    #[test]
+    fn render_expr_binop_parenthesizes_if_operand() {
+        let expr = Expr::If {
+            cond: Box::new(Expr::var("flag")),
+            then_body: vec![Stmt::Expr(Expr::BoolLit(true))],
+            else_body: Some(vec![Stmt::Expr(Expr::BoolLit(false))]),
+        }
+        .bin_op("==", Expr::BoolLit(false));
+        let rendered = render_expr(&expr);
+        assert!(
+            rendered.starts_with("(if flag {"),
+            "if-expression operand must be parenthesized, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("}) == false"),
+            "comparison should keep the if-expression grouped, got: {rendered}"
+        );
     }
 
     // -- C1.7: Question mark operator --

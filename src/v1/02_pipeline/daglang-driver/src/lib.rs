@@ -2377,6 +2377,29 @@ fn run(values: List<String>) -> String {
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[test]
+    fn compute_source_digest_canonicalizes_input_paths() {
+        let root = unique_temp_dir("source_digest_canonical_path");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(&file, "module sample\nfn run() -> Unit {}\n")
+            .expect("failed to write source");
+
+        let spelled_with_dot = root.join(".").join("sample.dag");
+        let canonical = std::fs::canonicalize(&file).expect("canonical path should resolve");
+
+        let digest_from_raw =
+            compute_source_digest(&[spelled_with_dot]).expect("raw path digest should succeed");
+        let digest_from_canonical =
+            compute_source_digest(&[canonical]).expect("canonical path digest should succeed");
+        assert_eq!(
+            digest_from_raw, digest_from_canonical,
+            "source digest should be independent of path spelling aliases"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     // DELETED: compile_with_exec_runtime_layer_emits_exec_runtime_bundle
     // Blocked on: RF-E5 (PureRender fn body delegate gap — exec-runtime can't classify Callable with fn_body).
     // Restore when exec-runtime gains fn body classification support.

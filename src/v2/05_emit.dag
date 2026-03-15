@@ -192,8 +192,8 @@ fn named_arg_matches(arg: NamedArg, name: String) -> Bool {
 }
 
 fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
-  let all_named = args |> any(arg => arg.name == none) == false
-  if all_named == false {
+  let has_unnamed = args |> any(arg => arg.name == none)
+  if has_unnamed {
     return args
   }
   match lookup_func_sig(scope: scope, name: func) {
@@ -1282,7 +1282,7 @@ fn emit_file_call(operation: OperationDef) -> String {
 
 fn emit_local_call(operation: OperationDef) -> String {
   concat("// Local binding — direct function call\n",
-    rust_ident(name: operation.name), "()")
+    "Ok(", rust_ident(name: operation.name), "())")
 }
 
 // =========================================================================

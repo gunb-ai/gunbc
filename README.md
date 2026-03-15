@@ -73,7 +73,18 @@ See `src/v2/DESIGN.md` for the full design and target type models.
 
 ## The Invariants
 
-### 1. Domain lives in the DSL, not in Rust
+Detailed compiler/runtime invariants and testing rules live in
+`INVARIANTS.md`. The list below is the repo-level summary.
+
+### 1. Performance is a contract
+
+Worst-case runtime and space usage are part of correctness. For any
+non-trivial interface or hot path, we should know the upper bound ahead
+of time and choose the data structures to match it. Accidental quadratic
+behavior, repeated rescans, reparsing, or large incidental clones are
+repo-level bugs, not later optimization work.
+
+### 2. Domain lives in the DSL, not in Rust
 
 `dsl/` is the source of truth for types, data, service contracts, and
 workflows. If something can be expressed in `.dag` files, it must not be
@@ -92,7 +103,7 @@ The compiler pipeline (`src/02_pipeline/` through `src/07_emit/`) transforms
 target-language source code. The interpreter executes the IR directly.
 Neither knows what the domain is.
 
-### 2. World I/O is structural, not annotated
+### 3. World I/O is structural, not annotated
 
 A DAG node either does I/O or it doesn't, and you can tell by looking at
 the graph.
@@ -107,7 +118,7 @@ All other crates build `TransportRequest` values (pure) and consume
 `TransportResponse` values (pure). Dry-run replaces transport nodes with
 mocks. Pure nodes always run.
 
-### 3. An extdeps module implements a specification, not an abstraction of one
+### 4. An extdeps module implements a specification, not an abstraction of one
 
 Every `dsl/extdeps/` module models a real external system grounded in its
 actual API documentation — real field names, real endpoints, real versions.
@@ -115,7 +126,7 @@ If you can't link to a spec, you're inventing one.
 
 See `dsl/extdeps/extdeps.md` for the full fidelity invariant and grading.
 
-### 4. Each compiler phase is a pure function from input to output
+### 5. Each compiler phase is a pure function from input to output
 
 ```
 source text -> syntax -> resolve -> typecheck -> lower -> derive -> emit
@@ -124,7 +135,7 @@ source text -> syntax -> resolve -> typecheck -> lower -> derive -> emit
 No phase mutates its input. No phase performs I/O except filesystem reads
 during import resolution. The compiler never executes the DAGs it produces.
 
-### 5. Composition through layers, not abstraction
+### 6. Composition through layers, not abstraction
 
 ```
 Layer 0  std/errors.dag             "What is an HTTP error?"
@@ -139,14 +150,14 @@ Each layer only knows about layers below it. Adding a new external
 dependency means instantiating existing vocabulary, not inventing new
 abstractions.
 
-### 6. The interpreter maps IR to execution — nothing more
+### 7. The interpreter maps IR to execution — nothing more
 
 The interpreter (`gunbc-interp`) dispatches `LoweredOp` nodes: pure ops
 go to the evaluator, I/O ops go to the transport layer. It does not
 contain domain logic (that's DSL) or compiler logic (that's the pipeline).
 Every `extern func` backed by Rust is ratcheted and must be justified.
 
-### 7. Every expression lowers to structural DAG nodes or the compilation fails
+### 8. Every expression lowers to structural DAG nodes or the compilation fails
 
 The lowerer must produce a graph where every node has explicit typed ports
 and every data dependency is an edge. No node may carry an opaque AST
@@ -159,7 +170,7 @@ The `lower_expr` function enforces this: it returns `Result` (not
 A new `Expr` variant added to the parser without a corresponding lowering
 arm is a Rust compile error.
 
-### 8. Correctness by construction, not by validation
+### 9. Correctness by construction, not by validation
 
 Invariants are enforced by the type system and by the structure of the
 compiler's data types — not by validation passes that scan for violations
