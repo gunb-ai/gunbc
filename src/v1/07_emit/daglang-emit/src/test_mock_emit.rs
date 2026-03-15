@@ -41,7 +41,8 @@
 //! ```
 
 use daglang_syntax::ast::{
-    ExpectStmt, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile, TestDef,
+    ExpectStmt, ExpectTarget, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile,
+    TestDef,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -330,91 +331,75 @@ fn emit_input_apply(out: &mut String, input: &InputDecl, indent: &str) {
 
 /// Emit an expect assertion as a live_expected_output or expected_output.
 fn emit_expect_apply(out: &mut String, expect: &ExpectStmt, indent: &str) {
-    match expect {
-        ExpectStmt::Eq(lhs, rhs) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let value = emit_value_expr(rhs);
-                writeln!(
-                    out,
-                    "{indent}spec = spec.expected_output(\"{node}\", \"{port}\", {value});"
-                )
-                .unwrap();
-            }
-        }
-        ExpectStmt::Contains(lhs, rhs) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let substr = emit_string_literal(rhs);
-                writeln!(
-                    out,
-                    "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::contains({substr}));"
-                )
-                .unwrap();
-            }
-        }
-        ExpectStmt::Is(lhs, type_name) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let matcher = match type_name.as_str() {
-                    "String" => "gunbc_test::OutputMatcher::IsString",
-                    "Secret" => "gunbc_test::OutputMatcher::IsSecret",
-                    "Bool" => "gunbc_test::OutputMatcher::IsBool",
-                    "Int" => "gunbc_test::OutputMatcher::IsInt",
-                    "NonEmpty" => "gunbc_test::OutputMatcher::NonEmpty",
-                    _ => "gunbc_test::OutputMatcher::Any",
-                };
-                writeln!(
-                    out,
-                    "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", {matcher});"
-                )
-                .unwrap();
-            }
-        }
-        ExpectStmt::Truthy(lhs) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                writeln!(
-                    out,
-                    "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::NonEmpty);"
-                )
-                .unwrap();
-            }
-        }
-        // For comparison operators, use NonEmpty as a baseline assertion
-        ExpectStmt::Ne(lhs, _)
-        | ExpectStmt::Lt(lhs, _)
-        | ExpectStmt::Gt(lhs, _)
-        | ExpectStmt::Le(lhs, _)
-        | ExpectStmt::Ge(lhs, _) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                writeln!(
-                    out,
-                    "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::NonEmpty);"
-                )
-                .unwrap();
-            }
+    /// Render the node ID for an expect target.
+    fn expect_node_id(target: &ExpectTarget) -> String {
+        match target {
+            ExpectTarget::Result { .. } => TERMINAL_NODE_SENTINEL.to_string(),
+            ExpectTarget::Node { node_ref, .. } => node_ref.as_source_node_id(),
         }
     }
-}
 
-/// Extract (node_id, port_name) from a `result.field` expression.
-///
-/// `result.foo` maps to [`TERMINAL_NODE_SENTINEL`] with output port "foo".
-/// The actual node ID resolution happens at testgen time when the DAG is available.
-fn extract_result_path(expr: &Expr) -> Option<(String, String)> {
-    match expr {
-        Expr::FieldAccess(base, field) => {
-            if let Expr::Ident(name) = base.as_ref() {
-                if name == "result" {
-                    return Some((TERMINAL_NODE_SENTINEL.to_string(), field.clone()));
-                }
-                // `node.port` — direct node reference
-                return Some((name.clone(), field.clone()));
-            }
-            // `a.b.c` → node = a/b, port = c
-            if let Some((parent_node, parent_port)) = extract_result_path(base) {
-                return Some((format!("{parent_node}/{parent_port}"), field.clone()));
-            }
-            None
+    match expect {
+        ExpectStmt::Eq(target, rhs) => {
+            let node = expect_node_id(target);
+            let port = target.port();
+            let value = emit_value_expr(rhs);
+            writeln!(
+                out,
+                "{indent}spec = spec.expected_output(\"{node}\", \"{port}\", {value});"
+            )
+            .unwrap();
         }
-        _ => None,
+        ExpectStmt::Contains(target, rhs) => {
+            let node = expect_node_id(target);
+            let port = target.port();
+            let substr = emit_string_literal(rhs);
+            writeln!(
+                out,
+                "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::contains({substr}));"
+            )
+            .unwrap();
+        }
+        ExpectStmt::Is(target, type_name) => {
+            let node = expect_node_id(target);
+            let port = target.port();
+            let matcher = match type_name.as_str() {
+                "String" => "gunbc_test::OutputMatcher::IsString",
+                "Secret" => "gunbc_test::OutputMatcher::IsSecret",
+                "Bool" => "gunbc_test::OutputMatcher::IsBool",
+                "Int" => "gunbc_test::OutputMatcher::IsInt",
+                "NonEmpty" => "gunbc_test::OutputMatcher::NonEmpty",
+                _ => "gunbc_test::OutputMatcher::Any",
+            };
+            writeln!(
+                out,
+                "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", {matcher});"
+            )
+            .unwrap();
+        }
+        ExpectStmt::Truthy(target) => {
+            let node = expect_node_id(target);
+            let port = target.port();
+            writeln!(
+                out,
+                "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::NonEmpty);"
+            )
+            .unwrap();
+        }
+        // For comparison operators, use NonEmpty as a baseline assertion
+        ExpectStmt::Ne(target, _)
+        | ExpectStmt::Lt(target, _)
+        | ExpectStmt::Gt(target, _)
+        | ExpectStmt::Le(target, _)
+        | ExpectStmt::Ge(target, _) => {
+            let node = expect_node_id(target);
+            let port = target.port();
+            writeln!(
+                out,
+                "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::NonEmpty);"
+            )
+            .unwrap();
+        }
     }
 }
 

@@ -575,27 +575,55 @@ pub mod ast {
         pub value: Expr,
     }
 
+    /// The left-hand side of an expect assertion: a structured path identifying
+    /// which node output to check.
+    ///
+    /// `result.port` targets the DAG's terminal output. All other references
+    /// follow the same local-vs-qualified scheme as mock/input targets.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ExpectTarget {
+        /// `result.port` — the DAG's terminal output.
+        Result { port: String },
+        /// `node_ref.port` — a specific node's output.
+        Node { node_ref: TestNodeRef, port: String },
+    }
+
+    impl ExpectTarget {
+        pub fn port(&self) -> &str {
+            match self {
+                Self::Result { port } | Self::Node { port, .. } => port,
+            }
+        }
+
+        pub fn node_ref(&self) -> Option<&TestNodeRef> {
+            match self {
+                Self::Result { .. } => None,
+                Self::Node { node_ref, .. } => Some(node_ref),
+            }
+        }
+    }
+
     /// An expect assertion.
     #[derive(Debug, Clone)]
     pub enum ExpectStmt {
-        /// `expect <expr> == <expr>`
-        Eq(Expr, Expr),
-        /// `expect <expr> != <expr>`
-        Ne(Expr, Expr),
-        /// `expect <expr> < <expr>`
-        Lt(Expr, Expr),
-        /// `expect <expr> > <expr>`
-        Gt(Expr, Expr),
-        /// `expect <expr> <= <expr>`
-        Le(Expr, Expr),
-        /// `expect <expr> >= <expr>`
-        Ge(Expr, Expr),
-        /// `expect <expr> contains <string_expr>`
-        Contains(Expr, Expr),
-        /// `expect <expr> is <type_name>` (e.g., String, Bool, Int, NonEmpty)
-        Is(Expr, String),
-        /// `expect <expr>` -- truthiness check
-        Truthy(Expr),
+        /// `expect <target> == <expr>`
+        Eq(ExpectTarget, Expr),
+        /// `expect <target> != <expr>`
+        Ne(ExpectTarget, Expr),
+        /// `expect <target> < <expr>`
+        Lt(ExpectTarget, Expr),
+        /// `expect <target> > <expr>`
+        Gt(ExpectTarget, Expr),
+        /// `expect <target> <= <expr>`
+        Le(ExpectTarget, Expr),
+        /// `expect <target> >= <expr>`
+        Ge(ExpectTarget, Expr),
+        /// `expect <target> contains <string_expr>`
+        Contains(ExpectTarget, Expr),
+        /// `expect <target> is <type_name>` (e.g., String, Bool, Int, NonEmpty)
+        Is(ExpectTarget, String),
+        /// `expect <target>` -- truthiness check
+        Truthy(ExpectTarget),
     }
 
     // ── Expressions (fn bodies) ─────────────────────────────────────

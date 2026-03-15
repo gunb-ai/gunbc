@@ -2841,59 +2841,80 @@ impl Parser {
         })
     }
 
-    /// Parse: `expect <expr> <comparison> <expr>`
-    ///        `expect <expr> contains <expr>`
-    ///        `expect <expr> is <TypeName>`
-    ///        `expect <expr>`
+    /// Parse the target of an expect assertion as a structured path.
+    ///
+    /// `result.port` is recognized as the terminal output. Everything else
+    /// is parsed as a mock-style node reference (`node.port` or
+    /// `module::node.port`).
+    fn parse_expect_target(&mut self) -> Result<ExpectTarget, ParseError> {
+        let checkpoint = self.pos;
+        let first = self.expect_ident()?;
+
+        if first == "result" {
+            self.expect(&TokenKind::Dot)?;
+            let port = self.expect_ident()?;
+            return Ok(ExpectTarget::Result { port });
+        }
+
+        // Not `result` — backtrack and parse as a mock-style target.
+        self.pos = checkpoint;
+        let (node_ref, port) = self.parse_mock_target()?;
+        Ok(ExpectTarget::Node { node_ref, port })
+    }
+
+    /// Parse: `expect <target> <comparison> <expr>`
+    ///        `expect <target> contains <expr>`
+    ///        `expect <target> is <TypeName>`
+    ///        `expect <target>`
     fn parse_expect_stmt(&mut self) -> Result<ExpectStmt, ParseError> {
         self.expect(&TokenKind::Expect)?;
-        let lhs = self.parse_expr(0)?;
+        let target = self.parse_expect_target()?;
 
         match &self.peek().kind {
             TokenKind::EqEq => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Eq(lhs, rhs))
+                Ok(ExpectStmt::Eq(target, rhs))
             }
             TokenKind::Ne => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Ne(lhs, rhs))
+                Ok(ExpectStmt::Ne(target, rhs))
             }
             TokenKind::Lt => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Lt(lhs, rhs))
+                Ok(ExpectStmt::Lt(target, rhs))
             }
             TokenKind::Gt => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Gt(lhs, rhs))
+                Ok(ExpectStmt::Gt(target, rhs))
             }
             TokenKind::Le => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Le(lhs, rhs))
+                Ok(ExpectStmt::Le(target, rhs))
             }
             TokenKind::Ge => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Ge(lhs, rhs))
+                Ok(ExpectStmt::Ge(target, rhs))
             }
             TokenKind::Contains => {
                 self.advance();
                 let rhs = self.parse_expr(0)?;
-                Ok(ExpectStmt::Contains(lhs, rhs))
+                Ok(ExpectStmt::Contains(target, rhs))
             }
             // `is <TypeName>` — keyword `is` parsed as Ident("is")
             TokenKind::Ident(s) if s == "is" => {
                 self.advance();
                 let type_name = self.expect_ident()?;
-                Ok(ExpectStmt::Is(lhs, type_name))
+                Ok(ExpectStmt::Is(target, type_name))
             }
             _ => {
                 // Just a truthiness check
-                Ok(ExpectStmt::Truthy(lhs))
+                Ok(ExpectStmt::Truthy(target))
             }
         }
     }
@@ -5266,6 +5287,77 @@ service rest.T {
                     }
                 );
                 assert_eq!(def.inputs[0].port, "arg");
+            }
+            other => panic!("expected TestDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_expect_targets_preserve_structured_paths() {
+        let source = r#"
+            test expect_paths {
+                expect result.content is String
+                expect result.model == "gpt-4o"
+                expect local.execute.ok
+                expect tools.shared::shared_node.execute.done
+            }
+        "#;
+        let ast = parse_or_panic(source);
+        match &ast.items[0].node {
+            Item::TestDef(def) => {
+                assert_eq!(def.expects.len(), 4);
+
+                // result.content → ExpectTarget::Result
+                match &def.expects[0] {
+                    ExpectStmt::Is(ExpectTarget::Result { port }, type_name) => {
+                        assert_eq!(port, "content");
+                        assert_eq!(type_name, "String");
+                    }
+                    other => panic!("expected Is(Result), got {other:?}"),
+                }
+
+                // result.model → ExpectTarget::Result
+                match &def.expects[1] {
+                    ExpectStmt::Eq(ExpectTarget::Result { port }, _) => {
+                        assert_eq!(port, "model");
+                    }
+                    other => panic!("expected Eq(Result), got {other:?}"),
+                }
+
+                // local.execute.ok → ExpectTarget::Node with local ref
+                match &def.expects[2] {
+                    ExpectStmt::Truthy(ExpectTarget::Node { node_ref, port }) => {
+                        assert_eq!(
+                            *node_ref,
+                            TestNodeRef::Local {
+                                node_segments: vec!["local".into(), "execute".into()],
+                            }
+                        );
+                        assert_eq!(port, "ok");
+                    }
+                    other => panic!("expected Truthy(Node/Local), got {other:?}"),
+                }
+
+                // tools.shared::shared_node.execute.done → ExpectTarget::Node with qualified ref
+                match &def.expects[3] {
+                    ExpectStmt::Truthy(ExpectTarget::Node { node_ref, port }) => {
+                        assert_eq!(
+                            *node_ref,
+                            TestNodeRef::Qualified {
+                                module: ModulePath::new(vec![
+                                    "tools".into(),
+                                    "shared".into()
+                                ]),
+                                node_segments: vec![
+                                    "shared_node".into(),
+                                    "execute".into()
+                                ],
+                            }
+                        );
+                        assert_eq!(port, "done");
+                    }
+                    other => panic!("expected Truthy(Node/Qualified), got {other:?}"),
+                }
             }
             other => panic!("expected TestDef, got {other:?}"),
         }
