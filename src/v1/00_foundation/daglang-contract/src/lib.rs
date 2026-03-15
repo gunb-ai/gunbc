@@ -135,16 +135,21 @@ impl Diagnostic {
     pub fn with_line_col(mut self, line: usize, col: usize) -> Self {
         self.line = Some(line);
         self.column = Some(col);
+        self.snippet = None;
         self
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
         self.span = Some(span);
+        self.line = None;
+        self.column = None;
+        self.snippet = None;
         self
     }
 
     pub fn with_file(mut self, file: PathBuf) -> Self {
         self.file = Some(file);
+        self.snippet = None;
         self
     }
 
@@ -726,5 +731,39 @@ mod tests {
         assert_eq!(d.line, Some(2));
         assert_eq!(d.column, Some(1));
         assert!(d.snippet.is_some());
+    }
+
+    #[test]
+    fn location_mutators_invalidate_stale_source_metadata() {
+        let source = "line one\nline two\nline three\n";
+        let mut d = Diagnostic::new("E001", "test")
+            .with_file(PathBuf::from("old.dag"))
+            .with_span(Span::new(9, 17));
+        d.resolve_source(source);
+        assert_eq!(d.line, Some(2));
+        assert_eq!(d.column, Some(1));
+        assert!(d.snippet.is_some());
+
+        d = d.with_file(PathBuf::from("new.dag"));
+        assert_eq!(d.line, Some(2));
+        assert_eq!(d.column, Some(1));
+        assert!(d.snippet.is_none());
+
+        d.resolve_source(source);
+        assert!(
+            d.snippet
+                .as_deref()
+                .is_some_and(|snippet| snippet.contains("new.dag"))
+        );
+
+        d = d.with_span(Span::new(0, 8));
+        assert_eq!(d.line, None);
+        assert_eq!(d.column, None);
+        assert!(d.snippet.is_none());
+
+        d = d.with_line_col(1, 1);
+        assert_eq!(d.line, Some(1));
+        assert_eq!(d.column, Some(1));
+        assert!(d.snippet.is_none());
     }
 }
