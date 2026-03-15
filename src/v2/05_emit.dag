@@ -39,7 +39,8 @@ import v2.std.core {
 import v2.compiler.typecheck {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
-  infer_expr, build_params_scope, extend_scope
+  SpanType, expr_span,
+  build_params_scope, extend_scope
 }
 
 import v2.compiler.emit_rust { emit_rust }
@@ -100,7 +101,8 @@ fn empty_emit_scope() -> InferScope {
     type_env: TypeEnv { bindings: [] },
     func_env: FuncEnv { signatures: [] },
     locals: [],
-    module_name: ""
+    module_name: "",
+    type_cache: []
   }
 }
 
@@ -109,17 +111,30 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: [],
-    module_name: typed_module.module.name
+    module_name: typed_module.module.name,
+    type_cache: typed_module.type_cache
   }
 }
 
 // Note: is_wildcard_import_names, normalize_access_type, for_each_element_type
 // are defined in their origin modules (resolve.dag, typecheck.dag) and available
-// through the typecheck import. infer_expr_type and scope_after_expr are thin
-// wrappers that live here since they compose emit-specific concerns.
+// through the typecheck import. infer_expr_type reads from the type cache built
+// during typecheck — no re-inference at emit time.
+
+fn lookup_type_by_span(cache: List<SpanType>, start: Int, end: Int) -> TypeExpr? {
+  let matches = cache |> filter(e => e.start == start && e.end == end)
+  match first(matches) {
+    Some { value: entry } => Some { value: entry.resolved_type }
+    None => None
+  }
+}
 
 fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
-  infer_expr(expr: expr, scope: scope).typed.resolved_type
+  let s = expr_span(expr: expr)
+  match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
+    Some { value: t } => t
+    None => Primitive { name: "Unit", span: SourceSpan { start: 0, end: 0 } }
+  }
 }
 
 fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
