@@ -1637,6 +1637,63 @@ fn foo(item: String) -> String {
         );
     }
 
+    /// Test that emit_rust.dag has tail-call optimization support.
+    /// TCO-eligible functions should emit `loop` + `continue` instead of
+    /// direct self-recursion.
+    #[test]
+    fn phase4_emit_has_tco_support() {
+        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+        assert!(
+            rust_source.contains("emit_tco_body"),
+            "emit_rust.dag should contain emit_tco_body function for TCO rendering"
+        );
+        assert!(
+            rust_source.contains("emit_tco_expr"),
+            "emit_rust.dag should contain emit_tco_expr for TCO expression rendering"
+        );
+        assert!(
+            rust_source.contains("emit_tco_reassign"),
+            "emit_rust.dag should contain emit_tco_reassign for parameter reassignment"
+        );
+        assert!(
+            rust_source.contains("loop {"),
+            "emit_rust.dag should emit Rust loop for TCO-eligible functions"
+        );
+        assert!(
+            rust_source.contains("continue;"),
+            "emit_rust.dag should emit continue for tail self-calls"
+        );
+        assert!(
+            rust_source.contains("break "),
+            "emit_rust.dag should emit break for non-recursive returns in TCO"
+        );
+
+        let python_source = read_v2_file("src/v2/05_emit_python.dag");
+        assert!(
+            python_source.contains("emit_py_tco_body"),
+            "emit_python.dag should contain emit_py_tco_body function for TCO rendering"
+        );
+        assert!(
+            python_source.contains("while True:"),
+            "emit_python.dag should emit Python while True for TCO-eligible functions"
+        );
+        assert!(
+            python_source.contains("continue"),
+            "emit_python.dag should emit continue for tail self-calls in Python"
+        );
+
+        // Verify the shared classification functions exist in 05_emit.dag
+        let emit_source = read_v2_file("src/v2/05_emit.dag");
+        assert!(
+            emit_source.contains("fn expr_has_self_call"),
+            "emit.dag should contain expr_has_self_call for shared TCO classification"
+        );
+        assert!(
+            emit_source.contains("fn has_non_tail_self_call"),
+            "emit.dag should contain has_non_tail_self_call for shared TCO classification"
+        );
+    }
+
     /// Test that the parse.dag where clause machinery exists.
     #[test]
     fn phase4_parse_supports_where_clause() {
