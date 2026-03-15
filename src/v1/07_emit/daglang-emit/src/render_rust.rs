@@ -228,9 +228,7 @@ fn render_ir_type(ty: &IrType) -> String {
         IrType::Generic(name, args) => {
             let rendered_args: Vec<String> = args.iter().map(render_ir_type).collect();
             match name.as_str() {
-                "List" => {
-                    return format!("Rc<Vec<{}>>", rendered_args.join(", "));
-                }
+                "List" => format!("Rc<Vec<{}>>", rendered_args.join(", ")),
                 "Map" => format!("std::collections::HashMap<{}>", rendered_args.join(", ")),
                 other => format!("{}<{}>", other, rendered_args.join(", ")),
             }
