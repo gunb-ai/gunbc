@@ -64,8 +64,9 @@ pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
 ///
 /// 1. **Brand** — recurse into inner SubDag (brand name ≠ structural base)
 /// 2. **Wrap** (List/Optional/Set/Map) — recurse into inner SubDag (element type)
-/// 3. **Identity** — return the output type name
-/// 4. **Product/Coproduct** — return the output type name
+/// 3. **Named base SubDag** — recurse into `base_type` from refined aliases
+/// 4. **Identity** — return the output type name
+/// 5. **Product/Coproduct** — return the output type name
 pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
     // Brand nodes first — recurse to find the structural base type.
     for node in &type_dag.nodes {
@@ -84,6 +85,16 @@ pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
                 if let Some(inner) = inner_type_dag(type_dag) {
                     return base_type(inner);
                 }
+            }
+        }
+    }
+    // Refined aliases built with `refined_with_base()` preserve their base
+    // structure in a named `base_type` SubDag. Recurse through that before
+    // falling back to local Identity/Product/Coproduct nodes.
+    for node in &type_dag.nodes {
+        if node.id.0 == "base_type" {
+            if let NodeBody::SubDag(inner, _) = &node.body {
+                return base_type(inner);
             }
         }
     }
@@ -1884,10 +1895,38 @@ mod tests {
         let string_type = type_lib::string();
         let url_type = type_lib::url();
         let int_type = type_lib::int();
+        let branded_int = type_lib::branded(
+            "Milliseconds",
+            type_lib::refined_with_base(
+                "Int",
+                type_lib::int(),
+                vec![Predicate::InRange { min: 0, max: 10_000 }],
+            ),
+        );
 
         assert_eq!(base_type(&string_type), Some("String".to_string()));
         assert_eq!(base_type(&url_type), Some("String".to_string()));
         assert_eq!(base_type(&int_type), Some("Int".to_string()));
+        assert_eq!(base_type(&branded_int), Some("Int".to_string()));
+    }
+
+    #[test]
+    fn test_witnesses_for_branded_refined_int_preserve_int_backing() {
+        let branded_int = type_lib::branded(
+            "Milliseconds",
+            type_lib::refined_with_base(
+                "Int",
+                type_lib::int(),
+                vec![Predicate::InRange { min: 0, max: 10_000 }],
+            ),
+        );
+
+        let witnesses = witnesses_checked(&branded_int)
+            .expect("branded refined ints should produce witnesses");
+        assert!(
+            witnesses.iter().any(|w| matches!(w.value, Value::Int(_))),
+            "expected at least one Int witness, got {witnesses:?}"
+        );
     }
 
     #[test]

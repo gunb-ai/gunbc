@@ -68,7 +68,7 @@ pub use defs::{
 };
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
 pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
-pub use handle::{HandleParseError, ResourceHandle};
+pub use handle::{mock_resource_handle_value, HandleParseError, ResourceHandle};
 pub use managed::{
     check_manifest_freshness, compute_key_with_files, load_manifest, load_manifest_default,
     save_manifest, save_manifest_default, update_resource_manifest, FreshnessOptions,

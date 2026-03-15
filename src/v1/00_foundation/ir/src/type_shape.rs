@@ -217,7 +217,15 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
         return Ok(TypeShape::Platform(props));
     }
 
-    // Priority 6: Identity node => Opaque with the type name from the port.
+    // Priority 6: Refined aliases built with `refined_with_base()` preserve
+    // their structural base in a named `base_type` SubDag. Recurse through
+    // that once we've ruled out platform-primitive refinements added at the
+    // current level (e.g. Float32 adds Domain on top of Word32).
+    if let Some(base) = named_subdag(dag, "base_type") {
+        return type_shape(base);
+    }
+
+    // Priority 7: Identity node => Opaque with the type name from the port.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Identity) = &node.body {
             if let Some(output) = node.outputs.first() {
@@ -556,6 +564,35 @@ mod tests {
                 assert_eq!(**inner, TypeShape::Opaque("String".to_string()));
             }
             other => panic!("expected Container(Set(...)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn shape_of_refined_with_base_string_alias_reuses_base_shape() {
+        let refined = type_lib::refined_with_base(
+            "FilePath",
+            type_lib::string(),
+            vec![Predicate::NonEmpty],
+        );
+        let shape = type_shape(&refined).unwrap();
+        assert_eq!(shape, TypeShape::Opaque("String".to_string()));
+    }
+
+    #[test]
+    fn shape_of_product_with_refined_with_base_fields_stays_product() {
+        let file_path = type_lib::refined_with_base(
+            "FilePath",
+            type_lib::string(),
+            vec![Predicate::NonEmpty],
+        );
+        let record = type_lib::product_resolved("FileEntry", vec![("path", file_path)]);
+        let shape = type_shape(&record).unwrap();
+        match shape {
+            TypeShape::Product(Some(name), fields) => {
+                assert_eq!(name, "FileEntry");
+                assert_eq!(fields, vec![("path".to_string(), TypeShape::Opaque("String".to_string()))]);
+            }
+            other => panic!("expected Product, got {:?}", other),
         }
     }
 

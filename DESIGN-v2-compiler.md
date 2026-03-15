@@ -1,5 +1,12 @@
 # v2: Self-hosted compiler design
 
+Canonical docs:
+- `src/v2/WORKBOARD.md` for current status and work queue
+- `src/v2/DESIGN.md` for the canonical v2 design
+
+This file is kept for continuity with older references. New design updates
+should go to `src/v2/DESIGN.md` rather than being duplicated here.
+
 ## Premise
 
 The v0/v1 compiler exists to eliminate glue bugs in downstream systems,
@@ -672,7 +679,7 @@ The old recursive evaluator is deleted.
 - `LoweredExpr::Return` removed — return is now statement-only.
   `Block` and `For` remain as expression forms because they genuinely
   return values (accepted permanent, S67-2).
-- Debug-mode OOM: evaluating 12 real .dag files (gist pipeline) exceeds
+- Debug-mode OOM: evaluating 11 real .dag files (gist pipeline) exceeds
   16GB heap. Not a stack issue — interpreter overhead from cloning
   Values through deep call chains. Release mode or self-hosting would
   resolve this.

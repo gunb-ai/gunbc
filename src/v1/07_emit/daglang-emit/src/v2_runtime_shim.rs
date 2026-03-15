@@ -8,6 +8,7 @@
 pub const V2_RUNTIME_SOURCE: &str = r#"//! Runtime shims for v2 compiler intrinsic operations.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 // ---------------------------------------------------------------------------
 // Concat trait — resolves the DAG `concat(a, b)` intrinsic for all sequence
@@ -31,6 +32,14 @@ impl<T> Concat for Vec<T> {
     fn concat(mut self, other: Vec<T>) -> Vec<T> {
         self.extend(other);
         self
+    }
+}
+
+impl<T: Clone> Concat for Rc<Vec<T>> {
+    fn concat(self, other: Self) -> Self {
+        let mut v = Rc::try_unwrap(self).unwrap_or_else(|rc| (*rc).clone());
+        v.extend(Rc::try_unwrap(other).unwrap_or_else(|rc| (*rc).clone()));
+        Rc::new(v)
     }
 }
 
@@ -132,7 +141,11 @@ pub fn scan_string_end(s: impl AsRef<str>, start: i64) -> i64 {
     let mut pos = start.max(0) as usize;
     while pos < chars.len() {
         if chars[pos] == '\\' {
-            pos += 2;
+            if pos + 1 < chars.len() {
+                pos += 2;
+            } else {
+                return chars.len() as i64;
+            }
         } else if chars[pos] == '"' {
             return (pos + 1) as i64;
         } else {

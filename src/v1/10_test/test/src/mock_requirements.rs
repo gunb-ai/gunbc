@@ -22,8 +22,9 @@
 use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{
-    value_compatible_with_type_id, value_kind_name as ir_value_kind_name, Cardinality, NodeId,
-    NodeKind, PortName, TypeId, Value,
+    value_compatible_with_type_id, value_compatible_with_type_id_in_registry,
+    value_kind_name as ir_value_kind_name, Cardinality, NodeId, NodeKind, PortName, TypeId,
+    TypeRegistry, Value,
 };
 use std::collections::HashSet;
 use std::error::Error;
@@ -175,6 +176,7 @@ impl Error for MockIncompleteError {}
 pub struct MockRequirements {
     dag_name: String,
     slots: Vec<MockSlot>,
+    type_registry: Option<TypeRegistry>,
     filled: HashSet<(NodeId, PortName)>,
     boundary_mocks: Vec<BoundaryMock>,
     transport_mocks: Vec<TransportMock>,
@@ -192,6 +194,7 @@ impl MockRequirements {
         Self {
             dag_name: dag_name.into(),
             slots: Vec::new(),
+            type_registry: None,
             filled: HashSet::new(),
             boundary_mocks: Vec::new(),
             transport_mocks: Vec::new(),
@@ -218,6 +221,12 @@ impl MockRequirements {
         self
     }
 
+    /// Attach a type registry so DSL-defined nominal types validate structurally.
+    pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
+        self.type_registry = Some(registry);
+        self
+    }
+
     /// Add multiple slots.
     pub fn with_slots(mut self, slots: impl IntoIterator<Item = MockSlot>) -> Self {
         self.slots.extend(slots);
@@ -241,13 +250,17 @@ impl MockRequirements {
     }
 
     /// Check if a value type is compatible with an expected type.
-    fn types_compatible(expected: &str, value: &Value) -> bool {
-        value_compatible_with_type_id(expected, value)
+    fn types_compatible(&self, expected: &str, value: &Value) -> bool {
+        if let Some(registry) = &self.type_registry {
+            value_compatible_with_type_id_in_registry(expected, value, registry)
+        } else {
+            value_compatible_with_type_id(expected, value)
+        }
     }
 
     /// Validate a value against a slot's type.
     fn validate_type(&self, slot: &MockSlot, value: &Value) -> Result<(), MockTypeError> {
-        if !Self::types_compatible(&slot.type_id.0, value) {
+        if !self.types_compatible(&slot.type_id.0, value) {
             return Err(MockTypeError::TypeMismatch {
                 node: slot.node_id.0.clone(),
                 port: slot.port_name.0.clone(),

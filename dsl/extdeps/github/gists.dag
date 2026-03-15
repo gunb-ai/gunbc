@@ -10,9 +10,6 @@
 module extdeps.github.gists
 
 import extdeps.github.github { GitHubUser }
-import std.behavioral {
-  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
-}
 import std.types { Timestamp }
 import std.errors { GitHubErrorShape }
 
@@ -37,63 +34,6 @@ type Gist {
   updated_at: Timestamp
   url: String
 }
-
-// ── Operation behaviors ───────────────────────────────────────────
-
-type GistOperationBehavior {
-  operation: String
-  behavior: OperationBehavior
-}
-
-data operation_behaviors: List<GistOperationBehavior> = [
-  {
-    operation: "create",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: Deterministic,
-      failure_modes: [
-        { name: "ValidationError", condition: "empty_files", http_status: 422, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [{ description: "gist scope", kind: Capability }],
-      assumptions: [],
-      unknowns: []
-    }
-  },
-  {
-    operation: "get",
-    behavior: {
-      side_effects: ReadOnly,
-      idempotent: true,
-      idempotency_keys: null,
-      determinism: Deterministic,
-      failure_modes: [{ name: "NotFound", condition: "gist_absent", http_status: 404, recoverable: false, retry_safe: false }],
-      edge_cases: [],
-      confidence: Documented,
-      prerequisites: [],
-      assumptions: ["Public gists are readable without authentication"],
-      unknowns: []
-    }
-  },
-  {
-    operation: "delete",
-    behavior: {
-      side_effects: WritesState,
-      idempotent: true,
-      idempotency_keys: ["gist_id"],
-      determinism: Deterministic,
-      failure_modes: [{ name: "NotFound", condition: "gist_absent", http_status: 404, recoverable: false, retry_safe: false }],
-      edge_cases: [{ description: "deleting a gist is permanent and cannot be undone", trigger: "delete_confirmed", severity: High }],
-      confidence: Documented,
-      prerequisites: [{ description: "gist ownership", kind: Capability }],
-      assumptions: [],
-      unknowns: []
-    }
-  }
-]
 
 // ── Service: REST transport wiring ──────────────────────────────
 

@@ -26,12 +26,13 @@ import v2.std.core {
   Field, Variant, Param, ResourceUse,
   Predicate, NonEmpty, Pattern, Range, Brand, ContentEncoding, Format,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
-  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast,
+  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast, ForEach,
+  Index, Slice,
   NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   BinOpKind, Add, Sub, Mul, Div, Mod,
-  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, Concat, NullCoalesce,
+  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   TransportBinding, RestBinding, ShellBinding, FileBinding, LocalBinding,
@@ -47,12 +48,12 @@ import v2.std.core {
   KwIdempotent, KwReadonly, KwHermetic,
   LBrace, RBrace, LParen, RParen, LBracket, RBracket,
   Lt, Gt, Le, Ge, FatArrow, Arrow,
-  Colon, Comma, Dot, Eq, EqEq, Ne,
+  Colon, Comma, Dot, DotDot, Eq, EqEq, Ne,
   Plus, Minus, Star, Slash, Percent, Bang, And, Or,
   Question, NullCoalesce, Pipe, PipeArrow,
   Ident, StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown,
-  Diagnostic, Severity, Error, Warning, Info,
+  Diagnostic, Error,
   SourceSpan
 }
 
@@ -153,11 +154,7 @@ type DescResult { desc: String?, state: ParserState }
 // =========================================================================
 
 fn peek(state: ParserState) -> Token? {
-  if state.pos >= count(state.tokens) {
-    none
-  } else {
-    first(skip(state.tokens, n: state.pos))
-  }
+  get(state.tokens, state.pos)
 }
 
 fn peek_kind(state: ParserState) -> TokenKind? {
@@ -263,6 +260,7 @@ fn kind_tag(kind: TokenKind) -> String {
     Colon => "Colon"
     Comma => "Comma"
     Dot => "Dot"
+    DotDot => "DotDot"
     Eq => "Eq"
     EqEq => "EqEq"
     Ne => "Ne"
@@ -405,6 +403,28 @@ fn skip_newlines(state: ParserState) -> ParserState {
   }
 }
 
+// Skip newlines only if the next non-newline token is a continuation
+// operator (|> or .). This allows multi-line pipe chains and method chains
+// without breaking statement boundaries.
+fn skip_continuation_newlines(state: ParserState) -> ParserState {
+  if check(state: state, tag: "Newline") {
+    let s = skip_newlines(state: state)
+    let k = peek_kind(state: s)
+    let tag = match k {
+      Some { value: kind } => kind_tag(kind: kind)
+      None => ""
+    }
+    if tag == "PipeArrow" || tag == "Dot" {
+      s
+    } else {
+      // Not a continuation — return original state (keep newlines)
+      state
+    }
+  } else {
+    state
+  }
+}
+
 // Eat: consume the token if it matches, otherwise leave state unchanged.
 fn eat(state: ParserState, tag: String) -> EatResult {
   if check(state: state, tag: tag) {
@@ -434,7 +454,7 @@ fn is_keyword_name(state: ParserState) -> Bool {
 // =========================================================================
 
 fn parse_dotted_ident(state: ParserState) -> NameResult {
-  let r = expect_ident(state: state)
+  let r = expect_name(state: state)
   if has_err(err: r.err) { return r }
   parse_dotted_ident_rest(state: r.state, acc: r.name)
 }
@@ -442,7 +462,7 @@ fn parse_dotted_ident(state: ParserState) -> NameResult {
 fn parse_dotted_ident_rest(state: ParserState, acc: String) -> NameResult {
   let e = eat(state: state, tag: "Dot")
   if e.consumed {
-    let r = expect_ident(state: e.state)
+    let r = expect_name(state: e.state)
     if has_err(err: r.err) { return r }
     parse_dotted_ident_rest(state: r.state, acc: "{acc}.{r.name}")
   } else {
@@ -504,28 +524,35 @@ fn parse_module(state: ParserState) -> ModuleResult {
 }
 
 fn parse_imports(state: ParserState) -> ImportsResult {
+  parse_imports_acc(state: state, acc: [])
+}
+
+fn parse_imports_acc(state: ParserState, acc: List<Import>) -> ImportsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "KwImport") {
     let r = parse_import(state: s)
     if has_err(err: r.err) { return ImportsResult { imports: [], state: r.state, err: r.err } }
-    let rest = parse_imports(state: r.state)
-    if has_err(err: rest.err) { return rest }
-    ImportsResult { imports: concat([r.import], rest.imports), state: rest.state, err: none }
+    parse_imports_acc(state: r.state, acc: concat(acc, [r.import]))
   } else {
-    ImportsResult { imports: [], state: s, err: none }
+    ImportsResult { imports: acc, state: s, err: none }
   }
 }
 
 fn parse_items(state: ParserState) -> ItemsResult {
+  // Iterative item collection — avoids O(items) recursion depth.
+  // The old recursive version created 130+ stack frames for 02_parse.dag,
+  // each holding an ItemsResult with a growing items list.
+  parse_items_acc(state: state, acc: [])
+}
+
+fn parse_items_acc(state: ParserState, acc: List<Item>) -> ItemsResult {
   let s = skip_newlines(state: state)
   if at_end(state: s) || check(state: s, tag: "Eof") {
-    ItemsResult { items: [], state: s, err: none }
+    ItemsResult { items: acc, state: s, err: none }
   } else {
     let r = parse_item(state: s)
-    if has_err(err: r.err) { return ItemsResult { items: [], state: r.state, err: r.err } }
-    let rest = parse_items(state: r.state)
-    if has_err(err: rest.err) { return rest }
-    ItemsResult { items: concat([r.item], rest.items), state: rest.state, err: none }
+    if has_err(err: r.err) { return ItemsResult { items: acc, state: r.state, err: r.err } }
+    parse_items_acc(state: r.state, acc: concat(acc, [r.item]))
   }
 }
 
@@ -557,16 +584,25 @@ fn parse_import(state: ParserState) -> ImportResult {
     let imp = Import { module_path: mod_path, names: names, span: start_span }
     ImportResult { import: imp, state: s, err: none }
   } else {
+    // Bare import (no braces): import all from module.
+    // Uses ["*"] as sentinel to distinguish from empty block import foo.bar {}
+    // which produces names: []. The core Import type (00_core.dag) defines
+    // names as List<String>, so we cannot use Optional to distinguish the two
+    // cases. The sentinel "*" is not a valid identifier in the language.
     let s = skip_newlines(state: s)
-    let imp = Import { module_path: mod_path, names: [], span: start_span }
+    let imp = Import { module_path: mod_path, names: ["*"], span: start_span }
     ImportResult { import: imp, state: s, err: none }
   }
 }
 
 fn parse_import_names(state: ParserState) -> NamesResult {
+  parse_import_names_acc(state: state, acc: [])
+}
+
+fn parse_import_names_acc(state: ParserState, acc: List<String>) -> NamesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") {
-    NamesResult { names: [], state: s, err: none }
+    NamesResult { names: acc, state: s, err: none }
   } else {
     let r = parse_dotted_ident(state: s)
     if has_err(err: r.err) { return NamesResult { names: [], state: r.state, err: r.err } }
@@ -574,9 +610,7 @@ fn parse_import_names(state: ParserState) -> NamesResult {
     let s = skip_newlines(state: r.state)
     let e = eat(state: s, tag: "Comma")
     let s = skip_newlines(state: if e.consumed { e.state } else { s })
-    let rest = parse_import_names(state: s)
-    if has_err(err: rest.err) { return rest }
-    NamesResult { names: concat([name], rest.names), state: rest.state, err: none }
+    parse_import_names_acc(state: s, acc: concat(acc, [name]))
   }
 }
 
@@ -653,9 +687,9 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
       let r = parse_variant_fields(state: s, vname: first_name)
       if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
       let first_variant = r.variant
-      let rest = parse_more_variants(state: r.state)
+      let rest = parse_more_variants_acc(state: r.state, acc: [first_variant])
       if has_err(err: rest.err) { return ItemResult { item: dummy, state: rest.state, err: rest.err } }
-      let variants = concat([first_variant], rest.variants)
+      let variants = rest.variants
       let body = Sum { variants: variants }
       let item = TypeDef { name: name, body: body, span: start_span }
       ItemResult { item: item, state: skip_newlines(state: rest.state), err: none }
@@ -699,15 +733,18 @@ fn try_where_clause(state: ParserState, base_te: TypeExpr, start_span: SourceSpa
 
 // parse_predicates: comma-separated list of predicate(args).
 fn parse_predicates(state: ParserState) -> PredsResult {
+  parse_predicates_acc(state: state, acc: [])
+}
+
+fn parse_predicates_acc(state: ParserState, acc: List<Predicate>) -> PredsResult {
   let r = parse_single_predicate(state: state)
   if has_err(err: r.err) { return PredsResult { predicates: [], state: r.state, err: r.err } }
+  let acc = concat(acc, [r.predicate])
   let e = eat(state: r.state, tag: "Comma")
   if e.consumed {
-    let rest = parse_predicates(state: skip_newlines(state: e.state))
-    if has_err(err: rest.err) { return rest }
-    PredsResult { predicates: concat([r.predicate], rest.predicates), state: rest.state, err: none }
+    parse_predicates_acc(state: skip_newlines(state: e.state), acc: acc)
   } else {
-    PredsResult { predicates: [r.predicate], state: r.state, err: none }
+    PredsResult { predicates: acc, state: r.state, err: none }
   }
 }
 
@@ -857,6 +894,10 @@ fn parse_variant_fields(state: ParserState, vname: String) -> VariantResult {
 }
 
 fn parse_more_variants(state: ParserState) -> VariantsResult {
+  parse_more_variants_acc(state: state, acc: [])
+}
+
+fn parse_more_variants_acc(state: ParserState, acc: List<Variant>) -> VariantsResult {
   let s = skip_newlines(state: state)
   let e = eat(state: s, tag: "Pipe")
   if e.consumed {
@@ -865,11 +906,9 @@ fn parse_more_variants(state: ParserState) -> VariantsResult {
     if has_err(err: r.err) { return VariantsResult { variants: [], state: r.state, err: r.err } }
     let r2 = parse_variant_fields(state: r.state, vname: r.name)
     if has_err(err: r2.err) { return VariantsResult { variants: [], state: r2.state, err: r2.err } }
-    let rest = parse_more_variants(state: r2.state)
-    if has_err(err: rest.err) { return rest }
-    VariantsResult { variants: concat([r2.variant], rest.variants), state: rest.state, err: none }
+    parse_more_variants_acc(state: r2.state, acc: concat(acc, [r2.variant]))
   } else {
-    VariantsResult { variants: [], state: s, err: none }
+    VariantsResult { variants: acc, state: s, err: none }
   }
 }
 
@@ -973,9 +1012,13 @@ fn maybe_optional(state: ParserState, te: TypeExpr, start_span: SourceSpan) -> T
 // =========================================================================
 
 fn parse_field_list(state: ParserState) -> FieldsResult {
+  parse_field_list_acc(state: state, acc: [])
+}
+
+fn parse_field_list_acc(state: ParserState, acc: List<Field>) -> FieldsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || check(state: s, tag: "RParen") || at_end(state: s) {
-    FieldsResult { fields: [], state: s, err: none }
+    FieldsResult { fields: acc, state: s, err: none }
   } else {
     // Accept identifiers OR keywords as field names (keywords like "type",
     // "resource", "capability" are valid field names in record definitions).
@@ -985,11 +1028,9 @@ fn parse_field_list(state: ParserState) -> FieldsResult {
       let s2 = r.state
       let e = eat(state: s2, tag: "Comma")
       let s3 = skip_newlines(state: if e.consumed { e.state } else { s2 })
-      let rest = parse_field_list(state: s3)
-      if has_err(err: rest.err) { return rest }
-      FieldsResult { fields: concat([r.field], rest.fields), state: rest.state, err: none }
+      parse_field_list_acc(state: s3, acc: concat(acc, [r.field]))
     } else {
-      FieldsResult { fields: [], state: s, err: none }
+      FieldsResult { fields: acc, state: s, err: none }
     }
   }
 }
@@ -1160,18 +1201,20 @@ fn parse_uses_clause(state: ParserState) -> UsesResult {
 }
 
 fn parse_uses_list(state: ParserState) -> UsesResult {
+  parse_uses_list_acc(state: state, acc: [])
+}
+
+fn parse_uses_list_acc(state: ParserState, acc: List<ResourceUse>) -> UsesResult {
   let r = parse_uses_entry(state: state)
   if has_err(err: r.err) { return UsesResult { uses: [], state: r.state, err: r.err } }
-  let first = r.resource_use
+  let acc = concat(acc, [r.resource_use])
   let s = r.state
 
   let e = eat(state: s, tag: "Comma")
   if e.consumed {
-    let rest = parse_uses_list(state: e.state)
-    if has_err(err: rest.err) { return rest }
-    UsesResult { uses: concat([first], rest.uses), state: rest.state, err: none }
+    parse_uses_list_acc(state: e.state, acc: acc)
   } else {
-    UsesResult { uses: [first], state: s, err: none }
+    UsesResult { uses: acc, state: s, err: none }
   }
 }
 
@@ -1642,9 +1685,13 @@ fn parse_op_body_entries(
 
 // Parse exit block entries: code => Type optional_description
 fn parse_exit_entries(state: ParserState) -> ExitEntriesResult {
+  parse_exit_entries_acc(state: state, acc: [])
+}
+
+fn parse_exit_entries_acc(state: ParserState, acc: List<ExitMapping>) -> ExitEntriesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    ExitEntriesResult { entries: [], state: s, err: none }
+    ExitEntriesResult { entries: acc, state: s, err: none }
   } else {
     let r = parse_status_pattern(state: s)
     if has_err(err: r.err) { return ExitEntriesResult { entries: [], state: r.state, err: r.err } }
@@ -1665,31 +1712,30 @@ fn parse_exit_entries(state: ParserState) -> ExitEntriesResult {
     let entry = ExitMapping { code: code, type_expr: r3.type_expr, description: desc_r.desc }
     let e = eat(state: desc_r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
-    let rest = parse_exit_entries(state: s2)
-    if has_err(err: rest.err) { return rest }
-    ExitEntriesResult { entries: concat([entry], rest.entries), state: rest.state, err: none }
+    parse_exit_entries_acc(state: s2, acc: concat(acc, [entry]))
   }
 }
 
 fn parse_operation_modifiers(state: ParserState) -> ModsResult {
+  parse_operation_modifiers_acc(state: state, acc: [])
+}
+
+fn parse_operation_modifiers_acc(state: ParserState, acc: List<OperationModifier>) -> ModsResult {
   let k = peek_kind(state: state)
   match k {
     Some { value: KwIdempotent } => {
       let adv = advance(state: state)
-      let rest = parse_operation_modifiers(state: adv.state)
-      ModsResult { modifiers: concat([Idempotent], rest.modifiers), state: rest.state, err: none }
+      parse_operation_modifiers_acc(state: adv.state, acc: concat(acc, [Idempotent]))
     }
     Some { value: KwReadonly } => {
       let adv = advance(state: state)
-      let rest = parse_operation_modifiers(state: adv.state)
-      ModsResult { modifiers: concat([Readonly], rest.modifiers), state: rest.state, err: none }
+      parse_operation_modifiers_acc(state: adv.state, acc: concat(acc, [Readonly]))
     }
     Some { value: KwHermetic } => {
       let adv = advance(state: state)
-      let rest = parse_operation_modifiers(state: adv.state)
-      ModsResult { modifiers: concat([Hermetic], rest.modifiers), state: rest.state, err: none }
+      parse_operation_modifiers_acc(state: adv.state, acc: concat(acc, [Hermetic]))
     }
-    _ => ModsResult { modifiers: [], state: state, err: none }
+    _ => ModsResult { modifiers: acc, state: state, err: none }
   }
 }
 
@@ -1705,7 +1751,7 @@ fn parse_status_pattern(state: ParserState) -> ExprResult {
     Some { value: LitInt { value: n } } => {
       // Check if next token is Ident("xx") → wildcard like 5xx
       if state.pos + 1 < count(state.tokens) {
-        let next_tok = first(skip(state.tokens, n: state.pos + 1))
+        let next_tok = get(state.tokens, state.pos + 1)
         match next_tok {
           Some { value: t } => {
             match t.kind {
@@ -1766,9 +1812,13 @@ fn parse_optional_response_block(state: ParserState) -> ResponsesResult {
 }
 
 fn parse_response_entries(state: ParserState) -> RespEntriesResult {
+  parse_response_entries_acc(state: state, acc: [])
+}
+
+fn parse_response_entries_acc(state: ParserState, acc: List<ResponseMapping>) -> RespEntriesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    RespEntriesResult { entries: [], state: s, err: none }
+    RespEntriesResult { entries: acc, state: s, err: none }
   } else {
     let r = parse_status_pattern(state: s)
     if has_err(err: r.err) { return RespEntriesResult { entries: [], state: r.state, err: r.err } }
@@ -1780,9 +1830,7 @@ fn parse_response_entries(state: ParserState) -> RespEntriesResult {
     let entry = ResponseMapping { status: status, type_expr: r3.type_expr }
     let e = eat(state: r3.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r3.state })
-    let rest = parse_response_entries(state: s2)
-    if has_err(err: rest.err) { return rest }
-    RespEntriesResult { entries: concat([entry], rest.entries), state: rest.state, err: none }
+    parse_response_entries_acc(state: s2, acc: concat(acc, [entry]))
   }
 }
 
@@ -1805,9 +1853,13 @@ fn parse_optional_mock_response_block(state: ParserState) -> MocksResult {
 }
 
 fn parse_mock_response_entries(state: ParserState) -> MockEntriesResult {
+  parse_mock_response_entries_acc(state: state, acc: [])
+}
+
+fn parse_mock_response_entries_acc(state: ParserState, acc: List<MockResponseDef>) -> MockEntriesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    MockEntriesResult { entries: [], state: s, err: none }
+    MockEntriesResult { entries: acc, state: s, err: none }
   } else {
     let r = parse_status_pattern(state: s)
     if has_err(err: r.err) { return MockEntriesResult { entries: [], state: r.state, err: r.err } }
@@ -1829,9 +1881,7 @@ fn parse_mock_response_entries(state: ParserState) -> MockEntriesResult {
     let entry = MockResponseDef { status: status, body: body, description: desc_r.desc }
     let e = eat(state: desc_r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
-    let rest = parse_mock_response_entries(state: s2)
-    if has_err(err: rest.err) { return rest }
-    MockEntriesResult { entries: concat([entry], rest.entries), state: rest.state, err: none }
+    parse_mock_response_entries_acc(state: s2, acc: concat(acc, [entry]))
   }
 }
 
@@ -2137,8 +2187,13 @@ fn parse_params(state: ParserState) -> ParamsResult {
 }
 
 fn parse_param_list(state: ParserState) -> ParamsResult {
+  parse_param_list_acc(state: state, acc: [])
+}
+
+fn parse_param_list_acc(state: ParserState, acc: List<Param>) -> ParamsResult {
   let r = parse_param(state: state)
   if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
+  let acc = concat(acc, [r.param])
   let s = r.state
 
   let e = eat(state: s, tag: "Comma")
@@ -2146,21 +2201,19 @@ fn parse_param_list(state: ParserState) -> ParamsResult {
     let s2 = skip_newlines(state: e.state)
     if check(state: s2, tag: "RParen") {
       // Trailing comma
-      ParamsResult { params: [r.param], state: s2, err: none }
+      ParamsResult { params: acc, state: s2, err: none }
     } else {
-      let rest = parse_param_list(state: s2)
-      if has_err(err: rest.err) { return rest }
-      ParamsResult { params: concat([r.param], rest.params), state: rest.state, err: none }
+      parse_param_list_acc(state: s2, acc: acc)
     }
   } else {
-    ParamsResult { params: [r.param], state: s, err: none }
+    ParamsResult { params: acc, state: s, err: none }
   }
 }
 
 fn parse_param(state: ParserState) -> ParamResult {
   let start_span = current_span(state: state)
   let dummy_param = Param { name: "", type_expr: Named { name: "", span: start_span }, default_value: none, span: start_span }
-  let r = expect_ident(state: state)
+  let r = expect_name(state: state)
   if has_err(err: r.err) { return ParamResult { param: dummy_param, state: r.state, err: r.err } }
   let name = r.name
 
@@ -2218,16 +2271,18 @@ fn parse_block(state: ParserState) -> ExprResult {
 }
 
 fn parse_stmts(state: ParserState) -> StmtsResult {
+  // Iterative — avoids O(statements) recursion depth per block.
+  parse_stmts_acc(state: state, acc: [])
+}
+
+fn parse_stmts_acc(state: ParserState, acc: List<Expr>) -> StmtsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) || check(state: s, tag: "Eof") {
-    StmtsResult { stmts: [], state: s, err: none }
+    StmtsResult { stmts: acc, state: s, err: none }
   } else {
     let r = parse_stmt(state: s)
-    if has_err(err: r.err) { return StmtsResult { stmts: [], state: r.state, err: r.err } }
-    let s2 = skip_newlines(state: r.state)
-    let rest = parse_stmts(state: s2)
-    if has_err(err: rest.err) { return rest }
-    StmtsResult { stmts: concat([r.expr], rest.stmts), state: rest.state, err: none }
+    if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
+    parse_stmts_acc(state: r.state, acc: concat(acc, [r.expr]))
   }
 }
 
@@ -2250,7 +2305,7 @@ fn parse_stmt(state: ParserState) -> ExprResult {
 // Peek two tokens: is pos+1 an Eq (=) token? Used for bare assignment detection.
 fn peek_is_eq_after_ident(state: ParserState) -> Bool {
   if state.pos + 1 < count(state.tokens) {
-    let next_tok = first(skip(state.tokens, n: state.pos + 1))
+    let next_tok = get(state.tokens, state.pos + 1)
     match next_tok {
       Some { value: t } => kind_tag(kind: t.kind) == "Eq"
       None => false
@@ -2299,23 +2354,29 @@ fn parse_expr_loop(state: ParserState, lhs: Expr, min_bp: Int) -> ExprResult {
   if at_end(state: state) || check(state: state, tag: "Eof") {
     ExprResult { expr: lhs, state: state, err: none }
   } else {
+    // Skip newlines if the next non-newline token is a continuation operator
+    // (|> or .) — these operators work across line breaks.
+    let s = skip_continuation_newlines(state: state)
     // Try postfix: .field, (args), as Type
-    let post = try_postfix(state: state, lhs: lhs, min_bp: min_bp)
+    let post = try_postfix(state: s, lhs: lhs, min_bp: min_bp)
+    if has_err(err: post.err) {
+      ExprResult { expr: lhs, state: post.state, err: post.err }
+    } else {
     if post.changed {
       parse_expr_loop(state: post.state, lhs: post.expr, min_bp: min_bp)
     } else {
-      // Try infix: binary operators
-      let bp = infix_bp(state: state)
+      // Try infix: binary operators (use s which has continuation newlines skipped)
+      let bp = infix_bp(state: s)
       match bp {
         Some { value: bps } => {
           if bps.left < min_bp {
-            ExprResult { expr: lhs, state: state, err: none }
+            ExprResult { expr: lhs, state: s, err: none }
           } else {
-            let adv = advance(state: state)
+            let adv = advance(state: s)
             let op_kind = adv.token.kind
             // Special case: dot is field access
             if kind_tag(kind: op_kind) == "Dot" {
-              let r = expect_ident(state: adv.state)
+              let r = expect_name(state: adv.state)
               if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
               let span = current_span(state: state)
               let new_lhs = FieldAccess { base: lhs, field: r.name, span: span }
@@ -2335,8 +2396,9 @@ fn parse_expr_loop(state: ParserState, lhs: Expr, min_bp: Int) -> ExprResult {
             }
           }
         }
-        None => ExprResult { expr: lhs, state: state, err: none }
+        None => ExprResult { expr: lhs, state: s, err: none }
       }
+    }
     }
   }
 }
@@ -2345,7 +2407,7 @@ fn infix_bp(state: ParserState) -> BindingPower? {
   let k = peek_kind(state: state)
   match k {
     Some { value: PipeArrow }    => Some { value: BindingPower { left: 0, right: 1 } }
-    Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 0 } }
+    Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 2 } }
     Some { value: Or }       => Some { value: BindingPower { left: 2, right: 3 } }
     Some { value: And }      => Some { value: BindingPower { left: 4, right: 5 } }
     Some { value: EqEq }     => Some { value: BindingPower { left: 6, right: 7 } }
@@ -2380,6 +2442,10 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
     And => BinAnd
     Or => BinOr
     NullCoalesce => NullCoalesce
+    // All other tokens are not binary operators. This function is only called
+    // after infix_bp confirms the token is an operator, so this arm is
+    // unreachable in correct usage. Returns Add as a defensive fallback —
+    // the parser will produce a type error downstream.
     _ => Add
   }
 }
@@ -2389,10 +2455,11 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
 // Supports: lhs |> method, lhs |> method(args), lhs |> method(name: arg)
 fn parse_pipe_rhs(state: ParserState, receiver: Expr, span: SourceSpan) -> ExprResult {
   let dummy_expr = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
-  let r = expect_ident(state: state)
+  let r = expect_name(state: state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let method = r.name
   let s = r.state
+  let s = skip_newlines(state: s)
 
   // Check for (args) after method name
   if check(state: s, tag: "LParen") {
@@ -2467,13 +2534,59 @@ fn parse_primary(state: ParserState) -> ExprResult {
     Some { value: KwFor } => parse_for(state: state)
     Some { value: KwLet } => parse_let(state: state)
     Some { value: KwReturn } => parse_return(state: state)
+    Some { value: KwFn } => parse_fn_lambda(state: state)
     _ => {
-      let tag = match k {
-        Some { value: kind } => kind_tag(kind: kind)
-        None => "EOF"
+      // Keywords used as variable names (e.g., module, type, pattern).
+      let kw_name = keyword_to_name(state: state)
+      match kw_name {
+        Some { value: n } => parse_ident_expr(state: state, name: n)
+        None => {
+          let tag = match k {
+            Some { value: kind } => kind_tag(kind: kind)
+            None => "EOF"
+          }
+          ExprResult { expr: Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) } }
+        }
       }
-      ExprResult { expr: Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) } }
     }
+  }
+}
+
+// =========================================================================
+// Lambda body — single expression OR implicit block (let/return start)
+// =========================================================================
+
+fn parse_lambda_body(state: ParserState) -> ExprResult {
+  let s = skip_newlines(state: state)
+  let k = peek_kind(state: s)
+  let is_block = match k {
+    Some { value: KwLet } => true
+    Some { value: KwReturn } => true
+    _ => false
+  }
+  if is_block {
+    let r = parse_lambda_stmts(state: s, acc: [])
+    if has_err(err: r.err) { return ExprResult { expr: Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }, state: r.state, err: r.err } }
+    let span = current_span(state: s)
+    if count(r.stmts) == 1 {
+      ExprResult { expr: first(r.stmts).value, state: r.state, err: none }
+    } else {
+      ExprResult { expr: Block { stmts: r.stmts, span: span }, state: r.state, err: none }
+    }
+  } else {
+    parse_expr(state: s)
+  }
+}
+
+// Collect statements for implicit lambda block, stopping at ) or } or EOF.
+fn parse_lambda_stmts(state: ParserState, acc: List<Expr>) -> StmtsResult {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RParen") || check(state: s, tag: "RBrace") || at_end(state: s) || check(state: s, tag: "Eof") {
+    StmtsResult { stmts: acc, state: s, err: none }
+  } else {
+    let r = parse_stmt(state: s)
+    if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
+    parse_lambda_stmts(state: r.state, acc: concat(acc, [r.expr]))
   }
 }
 
@@ -2486,10 +2599,10 @@ fn parse_ident_expr(state: ParserState, name: String) -> ExprResult {
   let adv = advance(state: state)
   let s = adv.state
 
-  // Check for lambda: name => body
+  // Check for lambda: name => body (may be multi-line: name =>\n  body)
   if check(state: s, tag: "FatArrow") {
     let adv2 = advance(state: s)
-    let r = parse_expr(state: adv2.state)
+    let r = parse_lambda_body(state: adv2.state)
     if has_err(err: r.err) { return r }
     ExprResult { expr: Lambda { params: [name], body: r.expr, span: span }, state: r.state, err: none }
   } else {
@@ -2534,6 +2647,15 @@ fn try_postfix(state: ParserState, lhs: Expr, min_bp: Int) -> PostfixResult {
         PostfixResult { expr: Cast { expr: lhs, target: r.type_expr, span: span }, changed: true, state: r.state, err: none }
       }
     }
+    Some { value: LBracket } => {
+      if 14 < min_bp {
+        PostfixResult { expr: lhs, changed: false, state: state, err: none }
+      } else {
+        let r = parse_index_or_slice(state: state, base: lhs, span: span)
+        if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
+        PostfixResult { expr: r.expr, changed: true, state: r.state, err: none }
+      }
+    }
     Some { value: LBrace } => {
       match lhs {
         Var { name: n, span: sp } => {
@@ -2565,6 +2687,40 @@ fn make_call_expr(lhs: Expr, args: List<NamedArg>, span: SourceSpan) -> Expr {
 }
 
 // =========================================================================
+// Index/Slice parsing: base[index] or base[start..end]
+// =========================================================================
+
+fn parse_index_or_slice(state: ParserState, base: Expr, span: SourceSpan) -> ExprResult {
+  let dummy_expr = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
+  let r = expect(state: state, tag: "LBracket")
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let s = r.state
+
+  // Parse the first expression (index or slice start)
+  let r = parse_expr(state: s)
+  if has_err(err: r.err) { return r }
+  let first_expr = r.expr
+  let s = r.state
+
+  // Check for DotDot → slice
+  if check(state: s, tag: "DotDot") {
+    let adv = advance(state: s)
+    let r = parse_expr(state: adv.state)
+    if has_err(err: r.err) { return r }
+    let end_expr = r.expr
+    let s = r.state
+    let r = expect(state: s, tag: "RBracket")
+    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+    ExprResult { expr: Slice { base: base, start: first_expr, end: end_expr, span: span }, state: r.state, err: none }
+  } else {
+    // Index
+    let r = expect(state: s, tag: "RBracket")
+    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+    ExprResult { expr: Index { base: base, index: first_expr, span: span }, state: r.state, err: none }
+  }
+}
+
+// =========================================================================
 // 25. parse_call_args: (arg: val, arg2: val2)
 // =========================================================================
 
@@ -2587,54 +2743,57 @@ fn parse_call_args(state: ParserState) -> ArgsResult {
 }
 
 fn parse_arg_list(state: ParserState) -> ArgsResult {
+  parse_arg_list_acc(state: state, acc: [])
+}
+
+fn parse_arg_list_acc(state: ParserState, acc: List<NamedArg>) -> ArgsResult {
   let s = skip_newlines(state: state)
   let r = parse_single_arg(state: s)
   if has_err(err: r.err) { return ArgsResult { args: [], state: r.state, err: r.err } }
+  let acc = concat(acc, [r.arg])
   let s = r.state
 
   let e = eat(state: s, tag: "Comma")
   if e.consumed {
     let s2 = skip_newlines(state: e.state)
     if check(state: s2, tag: "RParen") {
-      ArgsResult { args: [r.arg], state: s2, err: none }
+      ArgsResult { args: acc, state: s2, err: none }
     } else {
-      let rest = parse_arg_list(state: s2)
-      if has_err(err: rest.err) { return rest }
-      ArgsResult { args: concat([r.arg], rest.args), state: rest.state, err: none }
+      parse_arg_list_acc(state: s2, acc: acc)
     }
   } else {
-    ArgsResult { args: [r.arg], state: s, err: none }
+    ArgsResult { args: acc, state: s, err: none }
   }
 }
 
 fn parse_single_arg(state: ParserState) -> ArgResult {
   let dummy_arg = NamedArg { name: none, value: Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } } }
-  if is_ident(state: state) {
-    let k = peek_kind(state: state)
-    match k {
-      Some { value: Ident { name: n } } => {
-        let save_pos = state.pos
-        let adv = advance(state: state)
-        if check(state: adv.state, tag: "Colon") {
-          let adv2 = advance(state: adv.state)
-          let r = parse_expr(state: adv2.state)
-          if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
-          let arg = NamedArg { name: Some { value: n }, value: r.expr }
-          ArgResult { arg: arg, state: r.state, err: none }
-        } else {
-          let restored = with(state, { pos: save_pos })
-          let r = parse_expr(state: restored)
-          if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
-          let arg = NamedArg { name: none, value: r.expr }
-          ArgResult { arg: arg, state: r.state, err: none }
-        }
-      }
-      _ => {
-        let r = parse_expr(state: state)
-        if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
-        let arg = NamedArg { name: none, value: r.expr }
-        ArgResult { arg: arg, state: r.state, err: none }
-      }
+  // Try to parse as a named argument (ident: value or keyword: value).
+  // Uses expect_name which handles both identifiers and keywords.
+  let is_name_token = is_ident(state: state) || is_keyword_name(state: state)
+  if is_name_token {
+    let save_pos = state.pos
+    let name_r = expect_name(state: state)
+    if has_err(err: name_r.err) {
+      // Shouldn't happen since is_name_token is true, but handle gracefully
+      let r = parse_expr(state: state)
+      if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
+      let arg = NamedArg { name: none, value: r.expr }
+      ArgResult { arg: arg, state: r.state, err: none }
+    } else if check(state: name_r.state, tag: "Colon") {
+      // Named argument: name: value
+      let adv = advance(state: name_r.state)
+      let r = parse_expr(state: adv.state)
+      if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
+      let arg = NamedArg { name: Some { value: name_r.name }, value: r.expr }
+      ArgResult { arg: arg, state: r.state, err: none }
+    } else {
+      // Not a named arg — restore and parse as positional expression
+      let restored = with(state, { pos: save_pos })
+      let r = parse_expr(state: restored)
+      if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
+      let arg = NamedArg { name: none, value: r.expr }
+      ArgResult { arg: arg, state: r.state, err: none }
     }
   } else {
     let r = parse_expr(state: state)
@@ -2686,60 +2845,71 @@ fn parse_expr_loop_no_brace(state: ParserState, lhs: Expr, min_bp: Int) -> ExprR
   if at_end(state: state) || check(state: state, tag: "Eof") || check(state: state, tag: "LBrace") {
     ExprResult { expr: lhs, state: state, err: none }
   } else {
-    if check(state: state, tag: "LParen") && 14 >= min_bp {
-      let r = parse_call_args(state: state)
+    // Skip newlines if the next non-newline token is a continuation operator
+    // (|> or .) — same as parse_expr_loop, enables multi-line pipe chains.
+    let s = skip_continuation_newlines(state: state)
+    if check(state: s, tag: "LParen") && 14 >= min_bp {
+      let r = parse_call_args(state: s)
       if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
-      let span = current_span(state: state)
+      let span = current_span(state: s)
       let new_lhs = make_call_expr(lhs: lhs, args: r.args, span: span)
       parse_expr_loop_no_brace(state: r.state, lhs: new_lhs, min_bp: min_bp)
+    } else if check(state: s, tag: "LBracket") && 14 >= min_bp {
+      let span = current_span(state: s)
+      let r = parse_index_or_slice(state: s, base: lhs, span: span)
+      if has_err(err: r.err) { return r }
+      parse_expr_loop_no_brace(state: r.state, lhs: r.expr, min_bp: min_bp)
     } else {
-      let bp = infix_bp(state: state)
+      let bp = infix_bp(state: s)
       match bp {
         Some { value: bps } => {
           if bps.left < min_bp {
-            ExprResult { expr: lhs, state: state, err: none }
+            ExprResult { expr: lhs, state: s, err: none }
           } else {
-            let adv = advance(state: state)
+            let adv = advance(state: s)
             let op_kind = adv.token.kind
             if kind_tag(kind: op_kind) == "Dot" {
-              let r = expect_ident(state: adv.state)
+              let r = expect_name(state: adv.state)
               if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
-              let span = current_span(state: state)
+              let span = current_span(state: s)
               let new_lhs = FieldAccess { base: lhs, field: r.name, span: span }
               parse_expr_loop_no_brace(state: r.state, lhs: new_lhs, min_bp: min_bp)
             } else if kind_tag(kind: op_kind) == "PipeArrow" {
-              let span = current_span(state: state)
+              let span = current_span(state: s)
               let r = parse_pipe_rhs(state: adv.state, receiver: lhs, span: span)
               if has_err(err: r.err) { return r }
               parse_expr_loop_no_brace(state: r.state, lhs: r.expr, min_bp: min_bp)
             } else {
               let r = parse_expr_bp_no_brace(state: adv.state, min_bp: bps.right)
               if has_err(err: r.err) { return r }
-              let span = current_span(state: state)
+              let span = current_span(state: s)
               let binop = token_to_binop(kind: op_kind)
               let new_lhs = BinOp { op: binop, left: lhs, right: r.expr, span: span }
               parse_expr_loop_no_brace(state: r.state, lhs: new_lhs, min_bp: min_bp)
             }
           }
         }
-        None => ExprResult { expr: lhs, state: state, err: none }
+        None => ExprResult { expr: lhs, state: s, err: none }
       }
     }
   }
 }
 
 fn parse_match_arms(state: ParserState) -> ArmsResult {
+  // Iterative — avoids O(arms) recursion depth per match.
+  parse_match_arms_acc(state: state, acc: [])
+}
+
+fn parse_match_arms_acc(state: ParserState, acc: List<MatchArm>) -> ArmsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    ArmsResult { arms: [], state: s, err: none }
+    ArmsResult { arms: acc, state: s, err: none }
   } else {
     let r = parse_match_arm(state: s)
-    if has_err(err: r.err) { return ArmsResult { arms: [], state: r.state, err: r.err } }
+    if has_err(err: r.err) { return ArmsResult { arms: acc, state: r.state, err: r.err } }
     let e = eat(state: r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
-    let rest = parse_match_arms(state: s2)
-    if has_err(err: rest.err) { return rest }
-    ArmsResult { arms: concat([r.arm], rest.arms), state: rest.state, err: none }
+    parse_match_arms_acc(state: s2, acc: concat(acc, [r.arm]))
   }
 }
 
@@ -2766,12 +2936,141 @@ fn parse_match_arm(state: ParserState) -> ArmResult {
   let r = if check(state: s, tag: "LBrace") {
     parse_block(state: s)
   } else {
-    parse_expr(state: s)
+    parse_match_arm_body(state: s)
   }
   if has_err(err: r.err) { return ArmResult { arm: dummy_arm, state: r.state, err: r.err } }
 
   let arm = MatchArm { pattern: pat, guard: guard, body: r.expr }
   ArmResult { arm: arm, state: r.state, err: none }
+}
+
+// Parse match arm body: single expression or implicit block (let/return).
+// Implicit blocks collect statements until } or a new arm start.
+fn parse_match_arm_body(state: ParserState) -> ExprResult {
+  let k = peek_kind(state: state)
+  let is_block = match k {
+    Some { value: KwLet } => true
+    Some { value: KwReturn } => true
+    _ => false
+  }
+  if is_block {
+    let r = parse_match_arm_stmts(state: state, acc: [])
+    if has_err(err: r.err) { return ExprResult { expr: Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }, state: r.state, err: r.err } }
+    let span = current_span(state: state)
+    if count(r.stmts) == 1 {
+      ExprResult { expr: first(r.stmts).value, state: r.state, err: none }
+    } else {
+      ExprResult { expr: Block { stmts: r.stmts, span: span }, state: r.state, err: none }
+    }
+  } else {
+    parse_expr(state: state)
+  }
+}
+
+// Collect statements for implicit match arm block.
+// Stops at } or when the next tokens look like a new arm (e.g., Name =>, _ =>).
+fn parse_match_arm_stmts(state: ParserState, acc: List<Expr>) -> StmtsResult {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RBrace") || at_end(state: s) || check(state: s, tag: "Eof") {
+    StmtsResult { stmts: acc, state: s, err: none }
+  } else if looks_like_arm_start(state: s) {
+    StmtsResult { stmts: acc, state: s, err: none }
+  } else {
+    let r = parse_stmt(state: s)
+    if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
+    parse_match_arm_stmts(state: r.state, acc: concat(acc, [r.expr]))
+  }
+}
+
+// Check if current position looks like the start of a new match arm.
+// Returns true for: Name =>, Name { ... } =>, _ =>
+fn looks_like_arm_start(state: ParserState) -> Bool {
+  let k = peek_kind(state: state)
+  match k {
+    Some { value: Ident { name: n } } => {
+      if n == "_" {
+        // _ => is a wildcard arm
+        peek_is_fat_arrow_at(state: state, offset: 1)
+      } else if is_uppercase_start(name: n) {
+        // Name => or Name { ... } =>
+        if peek_is_fat_arrow_at(state: state, offset: 1) {
+          true
+        } else if peek_is_tag_at(state: state, offset: 1, tag: "LBrace") {
+          scan_for_fat_arrow_after_braces(state: state, start_offset: 2)
+        } else {
+          false
+        }
+      } else {
+        false
+      }
+    }
+    _ => false
+  }
+}
+
+// Check if token at (pos + offset) is a FatArrow.
+fn peek_is_fat_arrow_at(state: ParserState, offset: Int) -> Bool {
+  if state.pos + offset < count(state.tokens) {
+    let tok = get(state.tokens, state.pos + offset)
+    match tok {
+      Some { value: t } => kind_tag(kind: t.kind) == "FatArrow"
+      None => false
+    }
+  } else {
+    false
+  }
+}
+
+// Check if token at (pos + offset) has the given tag.
+fn peek_is_tag_at(state: ParserState, offset: Int, tag: String) -> Bool {
+  if state.pos + offset < count(state.tokens) {
+    let tok = get(state.tokens, state.pos + offset)
+    match tok {
+      Some { value: t } => kind_tag(kind: t.kind) == tag
+      None => false
+    }
+  } else {
+    false
+  }
+}
+
+// Scan forward from start_offset to find matching } then =>.
+fn scan_for_fat_arrow_after_braces(state: ParserState, start_offset: Int) -> Bool {
+  scan_braces_depth(state: state, idx: state.pos + start_offset, depth: 1)
+}
+
+fn scan_braces_depth(state: ParserState, idx: Int, depth: Int) -> Bool {
+  if idx >= count(state.tokens) || depth <= 0 {
+    if depth == 0 {
+      // Check if token at idx is FatArrow
+      if idx < count(state.tokens) {
+        let tok = get(state.tokens, idx)
+        match tok {
+          Some { value: t } => kind_tag(kind: t.kind) == "FatArrow"
+          None => false
+        }
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  } else {
+    let tok = get(state.tokens, idx)
+    match tok {
+      Some { value: t } => {
+        let tag = kind_tag(kind: t.kind)
+        if tag == "LBrace" {
+          scan_braces_depth(state: state, idx: idx + 1, depth: depth + 1)
+        } else if tag == "RBrace" {
+          scan_braces_depth(state: state, idx: idx + 1, depth: depth - 1)
+        } else {
+          scan_braces_depth(state: state, idx: idx + 1, depth: depth)
+        }
+      }
+      None => false
+    }
+  }
 }
 
 fn parse_optional_guard(state: ParserState) -> GuardResult {
@@ -2842,34 +3141,33 @@ fn parse_variant_pattern(state: ParserState, name: String) -> PatternResult {
 }
 
 fn parse_variant_bindings_brace(state: ParserState) -> BindingsResult {
+  parse_variant_bindings_brace_acc(state: state, acc: [])
+}
+
+fn parse_variant_bindings_brace_acc(state: ParserState, acc: List<FieldBinding>) -> BindingsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    BindingsResult { field_bindings: [], state: s, err: none }
+    BindingsResult { field_bindings: acc, state: s, err: none }
   } else {
-    let r = expect_ident(state: s)
+    let r = expect_name(state: s)
     if has_err(err: r.err) { return BindingsResult { field_bindings: [], state: r.state, err: r.err } }
     let field_name = r.name
     let s = r.state
 
     let e = eat(state: s, tag: "Colon")
     if e.consumed {
-      let r2 = expect_ident(state: e.state)
+      let r2 = parse_pattern(state: e.state)
       if has_err(err: r2.err) { return BindingsResult { field_bindings: [], state: r2.state, err: r2.err } }
-      let binding_name = r2.name
       let s2 = r2.state
       let e2 = eat(state: s2, tag: "Comma")
       let s3 = skip_newlines(state: if e2.consumed { e2.state } else { s2 })
-      let rest = parse_variant_bindings_brace(state: s3)
-      if has_err(err: rest.err) { return rest }
-      let fb = FieldBinding { field_name: field_name, binding: Bind { name: binding_name } }
-      BindingsResult { field_bindings: concat([fb], rest.field_bindings), state: rest.state, err: none }
+      let fb = FieldBinding { field_name: field_name, binding: r2.pattern }
+      parse_variant_bindings_brace_acc(state: s3, acc: concat(acc, [fb]))
     } else {
       let e2 = eat(state: s, tag: "Comma")
       let s2 = skip_newlines(state: if e2.consumed { e2.state } else { s })
-      let rest = parse_variant_bindings_brace(state: s2)
-      if has_err(err: rest.err) { return rest }
       let fb = FieldBinding { field_name: field_name, binding: Bind { name: field_name } }
-      BindingsResult { field_bindings: concat([fb], rest.field_bindings), state: rest.state, err: none }
+      parse_variant_bindings_brace_acc(state: s2, acc: concat(acc, [fb]))
     }
   }
 }
@@ -2973,13 +3271,10 @@ fn parse_for(state: ParserState) -> ExprResult {
   if has_err(err: r.err) { return r }
   let body = r.expr
 
-  let for_expr = Call {
-    func: "for",
-    args: [
-      NamedArg { name: Some { value: "var" }, value: Literal { value: LitStr { value: var_name }, span: span } },
-      NamedArg { name: Some { value: "collection" }, value: collection },
-      NamedArg { name: Some { value: "body" }, value: Lambda { params: [var_name], body: body, span: span } }
-    ],
+  let for_expr = ForEach {
+    variable: var_name,
+    collection: collection,
+    body: body,
     span: span
   }
   ExprResult { expr: for_expr, state: r.state, err: none }
@@ -3006,17 +3301,19 @@ fn parse_record_literal(state: ParserState, name: String, span: SourceSpan) -> E
 }
 
 fn parse_field_init_list(state: ParserState) -> FieldInitsResult {
+  parse_field_init_list_acc(state: state, acc: [])
+}
+
+fn parse_field_init_list_acc(state: ParserState, acc: List<FieldInit>) -> FieldInitsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    FieldInitsResult { fields: [], state: s, err: none }
+    FieldInitsResult { fields: acc, state: s, err: none }
   } else {
     let r = parse_field_init(state: s)
     if has_err(err: r.err) { return FieldInitsResult { fields: [], state: r.state, err: r.err } }
     let e = eat(state: r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
-    let rest = parse_field_init_list(state: s2)
-    if has_err(err: rest.err) { return rest }
-    FieldInitsResult { fields: concat([r.field], rest.fields), state: rest.state, err: none }
+    parse_field_init_list_acc(state: s2, acc: concat(acc, [r.field]))
   }
 }
 
@@ -3076,17 +3373,19 @@ fn parse_list_literal(state: ParserState) -> ExprResult {
 }
 
 fn parse_expr_list_until(state: ParserState, end_tag: String) -> ExprsResult {
+  parse_expr_list_until_acc(state: state, end_tag: end_tag, acc: [])
+}
+
+fn parse_expr_list_until_acc(state: ParserState, end_tag: String, acc: List<Expr>) -> ExprsResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: end_tag) || at_end(state: s) {
-    ExprsResult { exprs: [], state: s, err: none }
+    ExprsResult { exprs: acc, state: s, err: none }
   } else {
     let r = parse_expr(state: s)
     if has_err(err: r.err) { return ExprsResult { exprs: [], state: r.state, err: r.err } }
     let e = eat(state: r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r.state })
-    let rest = parse_expr_list_until(state: s2, end_tag: end_tag)
-    if has_err(err: rest.err) { return rest }
-    ExprsResult { exprs: concat([r.expr], rest.exprs), state: rest.state, err: none }
+    parse_expr_list_until_acc(state: s2, end_tag: end_tag, acc: concat(acc, [r.expr]))
   }
 }
 
@@ -3113,7 +3412,7 @@ fn parse_paren_expr(state: ParserState) -> ExprResult {
   } else {
     let lambda_r = try_lambda_params(state: s)
     if lambda_r.is_lambda {
-      let r = parse_expr(state: lambda_r.state)
+      let r = parse_lambda_body(state: lambda_r.state)
       if has_err(err: r.err) { return r }
       ExprResult { expr: Lambda { params: lambda_r.params, body: r.expr, span: span }, state: r.state, err: none }
     } else {
@@ -3123,6 +3422,57 @@ fn parse_paren_expr(state: ParserState) -> ExprResult {
       let r2 = expect(state: s, tag: "RParen")
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
       ExprResult { expr: r.expr, state: r2.state, err: none }
+    }
+  }
+}
+
+// =========================================================================
+// fn(param1, param2) { body } — lambda expression with fn keyword
+//
+// Parses the fn keyword, a parenthesized parameter list (names only, no types),
+// and a brace-delimited body. Produces a Lambda AST node.
+// =========================================================================
+
+fn parse_fn_lambda(state: ParserState) -> ExprResult {
+  let span = current_span(state: state)
+  let dummy = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
+  // Consume 'fn'
+  let r1 = expect(state: state, tag: "KwFn")
+  if has_err(err: r1.err) { return ExprResult { expr: dummy, state: r1.state, err: r1.err } }
+  // Consume '('
+  let r2 = expect(state: r1.state, tag: "LParen")
+  if has_err(err: r2.err) { return ExprResult { expr: dummy, state: r2.state, err: r2.err } }
+  // Collect parameter names
+  let params_r = collect_fn_lambda_params(state: r2.state, acc: [])
+  // Consume ')'
+  let r3 = expect(state: params_r.state, tag: "RParen")
+  if has_err(err: r3.err) { return ExprResult { expr: dummy, state: r3.state, err: r3.err } }
+  let s = skip_newlines(state: r3.state)
+  // Parse body: { ... }
+  let body_r = parse_brace_expr(state: s)
+  if has_err(err: body_r.err) { return body_r }
+  ExprResult { expr: Lambda { params: params_r.params, body: body_r.expr, span: span }, state: body_r.state, err: none }
+}
+
+// Collect comma-separated identifiers for fn lambda params.
+fn collect_fn_lambda_params(state: ParserState, acc: List<String>) -> IdentCollectResult {
+  let s = skip_newlines(state: state)
+  if check(state: s, tag: "RParen") {
+    // End of params
+    IdentCollectResult { success: true, params: acc, state: s, err: none }
+  } else {
+    let name_r = expect_ident(state: s)
+    if has_err(err: name_r.err) {
+      IdentCollectResult { success: false, params: acc, state: name_r.state, err: name_r.err }
+    } else {
+      let s2 = skip_newlines(state: name_r.state)
+      if check(state: s2, tag: "Comma") {
+        let adv = advance(state: s2)
+        collect_fn_lambda_params(state: adv.state, acc: concat(acc, [name_r.name]))
+      } else {
+        // Last param (no trailing comma)
+        IdentCollectResult { success: true, params: concat(acc, [name_r.name]), state: s2, err: none }
+      }
     }
   }
 }
@@ -3268,7 +3618,8 @@ fn parse_brace_expr(state: ParserState) -> ExprResult {
         }
       }
       _ => {
-        if (is_ident(state: s) || is_keyword_name(state: s)) && peek_is_colon_after_ident(state: s) {
+        let ident_or_keyword = is_ident(state: s) || is_keyword_name(state: s)
+        if ident_or_keyword && peek_is_colon_after_ident(state: s) {
           let r = parse_field_init_list(state: s)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
           let s2 = skip_newlines(state: r.state)
@@ -3302,7 +3653,7 @@ fn parse_brace_expr(state: ParserState) -> ExprResult {
 fn peek_is_colon_after_ident(state: ParserState) -> Bool {
   // Peek two tokens ahead: ident then colon
   if state.pos + 1 < count(state.tokens) {
-    let next_tok = first(skip(state.tokens, n: state.pos + 1))
+    let next_tok = get(state.tokens, state.pos + 1)
     match next_tok {
       Some { value: t } => kind_tag(kind: t.kind) == "Colon"
       None => false

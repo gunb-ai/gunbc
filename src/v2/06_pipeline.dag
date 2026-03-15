@@ -2,23 +2,21 @@
 //
 // The compiler reads .dag source files and emits target-language source
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
-// function. The only I/O is reading source files (Filesystem.read).
+// function.
 //
 // Pipeline: tokenize -> parse -> resolve -> typecheck -> emit
 // Each stage is a pure function. The pipeline wires them together.
 
 module v2.compiler.pipeline
 
-import std.types { FilePath, SourceSpan }
-import std.resources { Filesystem }
 import v2.std.core {
-  Module, Token, TextFile, Diagnostic, CompileResult
+  Diagnostic, CompileResult
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.typecheck { typecheck_and_validate, TypedGraph }
-import v2.compiler.emit { emit_rust }
+import v2.compiler.emit { emit_rust, EmitResult }
 
 // =========================================================================
 // Types
@@ -27,39 +25,6 @@ import v2.compiler.emit { emit_rust }
 type SourceFile {
   path: String
   content: String
-}
-
-type Backend = Rust | Python
-
-type StageResult {
-  value: List<Module>
-  diagnostics: List<Diagnostic>
-}
-
-type TokenizeResult {
-  tokens: List<Token>
-  diagnostics: List<Diagnostic>
-}
-
-type ParseStageResult {
-  modules: List<Module>
-  diagnostics: List<Diagnostic>
-}
-
-// Result of compiling a single source file — module (if parse succeeded)
-// plus any diagnostics. Follows the value+diagnostics pattern.
-type CompileFileResult {
-  module: Module?
-  diagnostics: List<Diagnostic>
-}
-
-// =========================================================================
-// Source reading (effectful)
-// =========================================================================
-
-fn read_source(path: FilePath) -> SourceFile {
-  let content = Filesystem.read(path: path)
-  SourceFile { path: path, content: content.content }
 }
 
 // =========================================================================
@@ -78,25 +43,12 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 }
 
 // =========================================================================
-// Single-file convenience wrapper
-// =========================================================================
-
-// Compile a single source file through all stages.
-// Returns the parsed module (if successful) and any diagnostics.
-fn compile_file(source: SourceFile) -> CompileFileResult {
-  let tokens = tokenize(source: source.content)
-  let result = parse(tokens: tokens)
-  let errors = collect_diagnostics(parse_results: [result])
-  CompileFileResult { module: result.module, diagnostics: errors }
-}
-
-// =========================================================================
 // Full pipeline
 // =========================================================================
 
 // Pure compiler pipeline: sources in, compiled files out.
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
-fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult {
+fn compile_sources(sources: List<SourceFile>) -> CompileResult {
   // Stage 1: Tokenize each source file
   let tokenized = map(sources, s => tokenize(source: s.content))
 
@@ -146,14 +98,11 @@ fn compile_sources(sources: List<SourceFile>, backend: Backend) -> CompileResult
 
     // Stage 5: Emit target-language files
     // Precondition: no errors from any prior stage.
-    let files = match backend {
-      Rust => emit_rust(typed: typed)
-      Python => []
-    }
+    let emit_result = emit_rust(typed: typed)
 
     CompileResult {
-      files: files,
-      diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics)
+      files: emit_result.files,
+      diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics, emit_result.diagnostics)
     }
   }
 }

@@ -1,7 +1,33 @@
-# src/ — Compiler and Runtime
+# Compiler and Runtime Invariants
 
-All Rust crates live here. The DSL compiler pipeline, execution engine,
-IR, and runtime operations.
+This document governs the engineering invariants for the compiler and
+runtime code, especially the Rust implementation in `src/v1/`.
+
+## Performance Invariant
+
+Performance is a correctness property for this repo, not a cleanup pass
+for later. For every exposed interface, reusable helper, and hot path,
+we should know the worst-case time and space bound before we commit to
+the design.
+
+The standard is not "fast enough on today's inputs." The standard is
+"the asymptotic behavior is understood, intentional, and appropriate for
+the role this code plays." Accidental quadratic behavior, repeated full
+rescans, hidden reparsing, and large incidental clones are design bugs.
+
+**The rule:** choose the data structure and algorithm that satisfy the
+required bound up front. Complexity is part of the interface contract,
+especially for APIs that may be called inside larger traversals.
+
+**The test:** if you cannot state the upper bound for a non-trivial
+algorithm or interface, the design is incomplete. If a call pattern
+turns one scan into `N` scans, or one allocation into `N` large clones,
+assume the implementation is wrong until proven otherwise.
+
+**The fix:** write down the dominant operations, then implement to the
+target bound directly. Prefer one-time indexing over repeated lookup,
+single-pass structural walks over nested rescans, and data ownership
+that avoids whole-structure cloning in loops.
 
 ## Sustainability Invariants
 

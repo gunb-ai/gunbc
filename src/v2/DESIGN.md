@@ -1,5 +1,10 @@
 # v2: Self-hosted compiler
 
+Operational entrypoint: `src/v2/WORKBOARD.md`
+
+Use this file for target architecture and design rules. Keep current status,
+queue management, and parallel work planning in `src/v2/WORKBOARD.md`.
+
 ## Premise
 
 The v0/v1 compiler exists to eliminate glue bugs in downstream systems,

@@ -226,13 +226,12 @@ fn render_ir_type(ty: &IrType) -> String {
     match ty {
         IrType::Named(n) => n.clone(),
         IrType::Generic(name, args) => {
-            let rust_name = match name.as_str() {
-                "List" => "Vec",
-                "Map" => "std::collections::HashMap",
-                other => other,
-            };
             let rendered_args: Vec<String> = args.iter().map(render_ir_type).collect();
-            format!("{}<{}>", rust_name, rendered_args.join(", "))
+            match name.as_str() {
+                "List" => format!("Rc<Vec<{}>>", rendered_args.join(", ")),
+                "Map" => format!("std::collections::HashMap<{}>", rendered_args.join(", ")),
+                other => format!("{}<{}>", other, rendered_args.join(", ")),
+            }
         }
         IrType::Optional(inner) => format!("Option<{}>", render_ir_type(inner)),
         IrType::Bool => "bool".to_string(),
@@ -264,6 +263,13 @@ fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
             // Only annotate if we have a concrete element type (not Unknown)
             matches!(ir_type, IrType::Generic(n, args) if n == "List"
                 && !args.iter().any(|a| matches!(a, IrType::Unknown)))
+        }
+        // Rc::new(vec![]) also needs annotation
+        Expr::Call { func, args, .. }
+            if args.len() == 1
+                && matches!(func.as_ref(), Expr::Path(segments) if segments == &["Rc", "new"]) =>
+        {
+            needs_type_annotation(&args[0], ir_type)
         }
         _ => false,
     }
@@ -385,6 +391,22 @@ fn render_rust_bind_target(target: &BindTarget) -> String {
 // Expression rendering
 // ===========================================================================
 
+fn needs_grouping_in_operator(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::If { .. } | Expr::Match { .. } | Expr::Block(_) | Expr::Closure { .. } | Expr::Struct { .. }
+    )
+}
+
+fn render_operator_operand(expr: &Expr) -> String {
+    let rendered = render_expr(expr);
+    if needs_grouping_in_operator(expr) {
+        format!("({rendered})")
+    } else {
+        rendered
+    }
+}
+
 fn render_expr(expr: &Expr) -> String {
     match expr {
         Expr::Value(v) => render_value_expr(v),
@@ -451,10 +473,15 @@ fn render_expr(expr: &Expr) -> String {
             }
         }
         Expr::BinOp { left, op, right } => {
-            format!("{} {} {}", render_expr(left), op, render_expr(right))
+            format!(
+                "{} {} {}",
+                render_operator_operand(left),
+                op,
+                render_operator_operand(right)
+            )
         }
         Expr::UnaryOp { op, expr } => {
-            format!("{}{}", op, render_expr(expr))
+            format!("{}{}", op, render_operator_operand(expr))
         }
         Expr::IntLit(n) => n.to_string(),
         Expr::BoolLit(b) => b.to_string(),
@@ -811,6 +838,25 @@ mod tests {
             body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
         };
         assert_eq!(render_expr(&expr), "|n| n >= 2");
+    }
+
+    #[test]
+    fn render_expr_binop_parenthesizes_if_operand() {
+        let expr = Expr::If {
+            cond: Box::new(Expr::var("flag")),
+            then_body: vec![Stmt::Expr(Expr::BoolLit(true))],
+            else_body: Some(vec![Stmt::Expr(Expr::BoolLit(false))]),
+        }
+        .bin_op("==", Expr::BoolLit(false));
+        let rendered = render_expr(&expr);
+        assert!(
+            rendered.starts_with("(if flag {"),
+            "if-expression operand must be parenthesized, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("}) == false"),
+            "comparison should keep the if-expression grouped, got: {rendered}"
+        );
     }
 
     // -- C1.7: Question mark operator --

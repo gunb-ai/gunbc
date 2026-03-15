@@ -70,8 +70,14 @@ pub fn type_expr_to_rust_with_registry(
                 } else {
                     None
                 };
-                language_model::resolve_container(kind, &inner, key, model)
-                    .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")))
+                let resolved = language_model::resolve_container(kind, &inner, key, model)
+                    .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")));
+                // Wrap List in Rc<> for O(1) clone (S76 fix)
+                if kind == ContainerKind::List {
+                    format!("Rc<{}>", resolved)
+                } else {
+                    resolved
+                }
             } else {
                 let mapped = crate::type_mapping::resolve_and_emit(
                     name,
@@ -236,7 +242,7 @@ fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
         }
         TypeExpr::Generic(name, args) => {
             let mapped = match name.as_str() {
-                "List" => "Vec".to_string(),
+                "List" => "Rc<Vec".to_string(),
                 "Map" => "std::collections::HashMap".to_string(),
                 "Set" => "std::collections::HashSet".to_string(),
                 other => crate::type_mapping::resolve_and_emit(
@@ -246,7 +252,11 @@ fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
                 ),
             };
             let arg_strs: Vec<String> = args.iter().map(type_expr_to_static_rust).collect();
-            format!("{}<{}>", mapped, arg_strs.join(", "))
+            if name == "List" {
+                format!("{}<{}>>", mapped, arg_strs.join(", "))
+            } else {
+                format!("{}<{}>", mapped, arg_strs.join(", "))
+            }
         }
         TypeExpr::Optional(inner) => {
             format!("Option<{}>", type_expr_to_static_rust(inner))
@@ -901,12 +911,14 @@ pub fn typedefs_to_source_file(
         enum_variants,
         boxed_fields: std::collections::HashSet::new(),
         fn_return_types: std::collections::HashMap::new(),
+        fn_param_types: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
         current_return_ir_type: None,
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types: std::collections::HashMap::new(),
+        use_counts: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1022,12 +1034,14 @@ pub fn generate_types_for_modules(
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
+            fn_param_types: std::collections::HashMap::new(),
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
             current_return_ir_type: None,
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: std::collections::HashMap::new(),
+            use_counts: std::collections::HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1211,8 +1225,10 @@ pub fn compute_recursive_fields(
     let mut visited = HashSet::new();
     let mut on_stack = HashSet::new();
 
-    for type_name in all_type_names.iter() {
-        if !visited.contains(type_name) {
+    let mut sorted_type_names: Vec<&String> = all_type_names.iter().collect();
+    sorted_type_names.sort();
+    for type_name in &sorted_type_names {
+        if !visited.contains(*type_name as &str) {
             dfs_find_cycles(
                 type_name,
                 &graph,
@@ -1510,7 +1526,7 @@ mod tests {
     }
 
     #[test]
-    fn generic_list_maps_to_vec() {
+    fn generic_list_maps_to_rc_vec() {
         let td = TypeDef {
             name: "Line".to_string(),
             params: vec![],
@@ -1532,7 +1548,7 @@ mod tests {
         let items = typedef_to_code_ir(&td);
         match &items[0] {
             code_ir::Item::Struct(s) => {
-                assert_eq!(s.fields[0].1, "Vec<Span>");
+                assert_eq!(s.fields[0].1, "Rc<Vec<Span>>");
                 assert_eq!(s.fields[1].1, "i64");
             }
             _ => panic!("expected Struct"),

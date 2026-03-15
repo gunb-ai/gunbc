@@ -345,6 +345,14 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
             },
         ),
         (
+            "get",
+            BuiltinContract {
+                arity: 2,
+                params: &["collection", "index"],
+                output_type: "Any",
+            },
+        ),
+        (
             "max_by",
             BuiltinContract {
                 arity: 2,
@@ -454,6 +462,14 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
             BuiltinContract {
                 arity: 2,
                 params: &["record", "updates"],
+                output_type: "Any",
+            },
+        ),
+        (
+            "concat",
+            BuiltinContract {
+                arity: 2,
+                params: &["a", "b"],
                 output_type: "Any",
             },
         ),
@@ -570,6 +586,7 @@ mod tests {
         for name in [
             "first",
             "last",
+            "get",
             "starts_with",
             "ends_with",
             "repeat",
