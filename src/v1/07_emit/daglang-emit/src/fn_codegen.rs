@@ -355,7 +355,9 @@ fn fill_missing_fields(
     }
     let opt_set = ctx.optional_fields.get(struct_name);
     let mut result = provided;
-    for field_name in field_types.keys() {
+    let mut field_names: Vec<&String> = field_types.keys().collect();
+    field_names.sort();
+    for field_name in field_names {
         if !provided_names.contains(field_name)
             && opt_set.is_some_and(|s| s.contains(field_name.as_str()))
         {
@@ -1104,7 +1106,9 @@ fn compile_intrinsic_call(
         "concat" if args.len() >= 2 => {
             // Binary: concat(a, b) → v2_rt::concat(a, b)
             // Variadic: concat(a, b, c) → v2_rt::concat(v2_rt::concat(a, b), c)
-            let mut result = compile_expr(&args[0].1, ctx, counter);
+            // Strip outer .clone() from first arg so Rc refcount stays 1 →
+            // try_unwrap succeeds → in-place Vec::extend → O(1) amortized append.
+            let mut result = strip_outer_clone(compile_expr(&args[0].1, ctx, counter));
             for arg in &args[1..] {
                 result = code_ir::Expr::Call {
                     func: Box::new(code_ir::Expr::Path(vec![
@@ -1136,18 +1140,40 @@ fn compile_intrinsic_call(
             ]))
         }
         // first(list) → list.first().cloned()
-        "first" if args.len() == 1 => Some(code_ir::Expr::MethodCall {
-            receiver: Box::new(code_ir::Expr::MethodCall {
-                receiver: Box::new(collection.clone()),
-                method: "first".to_string(),
+        // Fuses first(skip(list, n)) → list.get(n as usize).cloned() — O(1) vs O(n).
+        "first" if args.len() == 1 => {
+            if let ast::Expr::Call(skip_name, skip_args) = &args[0].1 {
+                if skip_name == "skip" && skip_args.len() == 2 {
+                    let list = clone_if_needed(compile_expr(&skip_args[0].1, ctx, counter));
+                    let idx = compile_expr(&skip_args[1].1, ctx, counter);
+                    return Some(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::MethodCall {
+                            receiver: Box::new(list),
+                            method: "get".to_string(),
+                            args: vec![code_ir::Expr::RawCode(format!(
+                                "({}) as usize",
+                                render_expr_inline(&idx)
+                            ))],
+                        }),
+                        method: "cloned".to_string(),
+                        args: vec![],
+                    });
+                }
+            }
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection.clone()),
+                    method: "first".to_string(),
+                    args: vec![],
+                }),
+                method: "cloned".to_string(),
                 args: vec![],
-            }),
-            method: "cloned".to_string(),
-            args: vec![],
-        }),
+            })
+        }
         // append(list, item) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.push(item); Rc::new(v) }
         "append" if args.len() == 2 => {
-            let list = collection.clone();
+            // Strip outer .clone() so Rc::try_unwrap succeeds for in-place push.
+            let list = strip_outer_clone(collection.clone());
             let item = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
@@ -1848,6 +1874,20 @@ fn clone_if_needed(expr: code_ir::Expr) -> code_ir::Expr {
         },
         // Literals, calls, etc. are temporary values — don't clone
         _ => expr,
+    }
+}
+
+/// Strip the outer `.clone()` from a compiled expression, producing a move.
+/// Used for intrinsics that consume their first argument (concat, append) so
+/// that `Rc::try_unwrap` in the runtime sees refcount 1 and mutates in place.
+fn strip_outer_clone(expr: code_ir::Expr) -> code_ir::Expr {
+    if matches!(&expr, code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty()) {
+        match expr {
+            code_ir::Expr::MethodCall { receiver, .. } => *receiver,
+            _ => unreachable!(),
+        }
+    } else {
+        expr
     }
 }
 
@@ -3299,6 +3339,44 @@ mod tests {
                     name == "optional"
                         && matches!(expr, code_ir::Expr::Path(parts) if parts == &["None"])
                 }));
+            }
+            other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_record_fills_missing_optional_fields_in_sorted_order() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "Config".to_string(),
+            [
+                ("required".to_string(), "String".to_string()),
+                ("optional_b".to_string(), "Option<String>".to_string()),
+                ("optional_a".to_string(), "Option<String>".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ctx.optional_fields.insert(
+            "Config".to_string(),
+            ["optional_b".to_string(), "optional_a".to_string()]
+                .into_iter()
+                .collect(),
+        );
+
+        let expr = Expr::Record(
+            Some("Config".into()),
+            vec![(
+                "required".into(),
+                Expr::Literal(Literal::String("ok".into())),
+            )],
+        );
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct { fields, .. } => {
+                let names: Vec<_> = fields.into_iter().map(|(name, _)| name).collect();
+                assert_eq!(names, vec!["required", "optional_a", "optional_b"]);
             }
             other => panic!("expected Struct, got: {other:?}"),
         }

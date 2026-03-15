@@ -154,11 +154,7 @@ type DescResult { desc: String?, state: ParserState }
 // =========================================================================
 
 fn peek(state: ParserState) -> Token? {
-  if state.pos >= count(state.tokens) {
-    none
-  } else {
-    first(skip(state.tokens, n: state.pos))
-  }
+  get(state.tokens, state.pos)
 }
 
 fn peek_kind(state: ParserState) -> TokenKind? {
@@ -1739,7 +1735,7 @@ fn parse_status_pattern(state: ParserState) -> ExprResult {
     Some { value: LitInt { value: n } } => {
       // Check if next token is Ident("xx") → wildcard like 5xx
       if state.pos + 1 < count(state.tokens) {
-        let next_tok = first(skip(state.tokens, n: state.pos + 1))
+        let next_tok = get(state.tokens, state.pos + 1)
         match next_tok {
           Some { value: t } => {
             match t.kind {
@@ -2286,7 +2282,7 @@ fn parse_stmt(state: ParserState) -> ExprResult {
 // Peek two tokens: is pos+1 an Eq (=) token? Used for bare assignment detection.
 fn peek_is_eq_after_ident(state: ParserState) -> Bool {
   if state.pos + 1 < count(state.tokens) {
-    let next_tok = first(skip(state.tokens, n: state.pos + 1))
+    let next_tok = get(state.tokens, state.pos + 1)
     match next_tok {
       Some { value: t } => kind_tag(kind: t.kind) == "Eq"
       None => false
@@ -2988,7 +2984,7 @@ fn looks_like_arm_start(state: ParserState) -> Bool {
 // Check if token at (pos + offset) is a FatArrow.
 fn peek_is_fat_arrow_at(state: ParserState, offset: Int) -> Bool {
   if state.pos + offset < count(state.tokens) {
-    let tok = first(skip(state.tokens, n: state.pos + offset))
+    let tok = get(state.tokens, state.pos + offset)
     match tok {
       Some { value: t } => kind_tag(kind: t.kind) == "FatArrow"
       None => false
@@ -3001,7 +2997,7 @@ fn peek_is_fat_arrow_at(state: ParserState, offset: Int) -> Bool {
 // Check if token at (pos + offset) has the given tag.
 fn peek_is_tag_at(state: ParserState, offset: Int, tag: String) -> Bool {
   if state.pos + offset < count(state.tokens) {
-    let tok = first(skip(state.tokens, n: state.pos + offset))
+    let tok = get(state.tokens, state.pos + offset)
     match tok {
       Some { value: t } => kind_tag(kind: t.kind) == tag
       None => false
@@ -3021,7 +3017,7 @@ fn scan_braces_depth(state: ParserState, idx: Int, depth: Int) -> Bool {
     if depth == 0 {
       // Check if token at idx is FatArrow
       if idx < count(state.tokens) {
-        let tok = first(skip(state.tokens, n: idx))
+        let tok = get(state.tokens, idx)
         match tok {
           Some { value: t } => kind_tag(kind: t.kind) == "FatArrow"
           None => false
@@ -3033,7 +3029,7 @@ fn scan_braces_depth(state: ParserState, idx: Int, depth: Int) -> Bool {
       false
     }
   } else {
-    let tok = first(skip(state.tokens, n: idx))
+    let tok = get(state.tokens, idx)
     match tok {
       Some { value: t } => {
         let tag = kind_tag(kind: t.kind)
@@ -3626,7 +3622,7 @@ fn parse_brace_expr(state: ParserState) -> ExprResult {
 fn peek_is_colon_after_ident(state: ParserState) -> Bool {
   // Peek two tokens ahead: ident then colon
   if state.pos + 1 < count(state.tokens) {
-    let next_tok = first(skip(state.tokens, n: state.pos + 1))
+    let next_tok = get(state.tokens, state.pos + 1)
     match next_tok {
       Some { value: t } => kind_tag(kind: t.kind) == "Colon"
       None => false

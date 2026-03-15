@@ -99,9 +99,10 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
       dep_order: dep_order
     }
   )
+  let acyclic_resolved = resolved_modules |> filter(m => m.dep_order >= 0)
 
   // Sort resolved modules by dep_order (leaves first)
-  let sorted_resolved = resolved_modules |> sort_by(m => m.dep_order)
+  let sorted_resolved = acyclic_resolved |> sort_by(m => m.dep_order)
 
   ModuleGraph {
     modules: sorted_resolved,
@@ -137,7 +138,9 @@ fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleRe
   let results = module.imports |> map(imp =>
     resolve_import(import: imp, modules: all_modules, importing_module: module.name)
   )
-  let resolved = results |> map(r => r.resolved)
+  let resolved = results
+    |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
+    |> map(r => r.resolved)
   let diags = results |> map(r => r.diagnostics)
     |> fold(init: [], f: fn(acc, d) { concat(acc, d) })
   ModuleResolveResult {

@@ -24,6 +24,7 @@ import v2.std.core {
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
+  FuncSig,
   TypedItem,
   TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
   TypedResourceDef, TypedDataDef, TypedExternFuncDecl
@@ -175,6 +176,45 @@ fn build_item_registry(items: List<TypedItem>) -> List<ItemInfo> {
 fn lookup_item(registry: List<ItemInfo>, name: String) -> ItemInfo? {
   let matches = registry |> filter(i => i.name == name)
   first(matches)
+}
+
+fn lookup_func_sig(scope: InferScope, name: String) -> FuncSig? {
+  let matches = scope.func_env.signatures |> filter(sig => sig.name == name)
+  first(matches)
+}
+
+fn named_arg_matches(arg: NamedArg, name: String) -> Bool {
+  if arg.name == none {
+    false
+  } else {
+    arg.name.value == name
+  }
+}
+
+fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
+  let all_named = args |> any(arg => arg.name == none) == false
+  if all_named == false {
+    return args
+  }
+  match lookup_func_sig(scope: scope, name: func) {
+    None => args
+    Some { value: sig } => {
+      let ordered = sig.params |> fold(init: [], f: (acc, param) =>
+        match args |> filter(arg => named_arg_matches(arg: arg, name: param.name)) |> first {
+          Some { value: arg } => concat(acc, [arg])
+          None => acc
+        }
+      )
+      let leftovers = args |> filter(arg =>
+        if arg.name == none {
+          true
+        } else {
+          sig.params |> any(param => param.name == arg.name.value) == false
+        }
+      )
+      concat(ordered, leftovers)
+    }
+  }
 }
 
 // =========================================================================
@@ -367,11 +407,15 @@ fn emit_struct_field(field: Field) -> String {
   } else {
     emit_type_expr(type_expr: field.type_expr)
   }
+  let rename_attr = match field.from_key {
+    Some { value: key } => concat("    #[serde(rename = \"", key, "\")]\n")
+    None => ""
+  }
   let default_doc = match field.default_value {
     Some { value: expr } => concat("    /// Default: ", emit_expr(expr: expr, registry: []), "\n")
     None => ""
   }
-  concat(default_doc, "    pub ", rust_ident(name: field.name), ": ", ty, ",")
+  concat(rename_attr, default_doc, "    pub ", rust_ident(name: field.name), ": ", ty, ",")
 }
 
 fn emit_enum_def(name: String, variants: List<Variant>) -> String {
@@ -689,7 +733,8 @@ fn emit_string_literal(s: String) -> String {
 // =========================================================================
 
 fn emit_call(func: String, args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
-  let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry, scope: scope))
+  let ordered_args = order_call_args(args: args, func: func, scope: scope)
+  let arg_strs = ordered_args |> map(a => emit_call_arg(arg: a, registry: registry, scope: scope))
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
@@ -763,11 +808,16 @@ fn emit_call_arg(arg: NamedArg, registry: List<ItemInfo>, scope: InferScope) -> 
 fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
   // Service call: git.Core.CurrentBranch() → git_core.current_branch().await?
   if is_service_call_receiver(receiver: receiver) {
-    let svc_name = extract_service_name(receiver: receiver)
-    let var_name = service_var_name(service_name: svc_name)
-    let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry, scope: scope))
-    let args_str = arg_strs |> join(separator: ", ")
-    concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
+    match extract_service_name(receiver: receiver) {
+      Some { value: svc_name } => {
+        let var_name = service_var_name(service_name: svc_name)
+        let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry, scope: scope))
+        let args_str = arg_strs |> join(separator: ", ")
+        concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
+      }
+      None =>
+        "todo!(\"unsupported service receiver\")"
+    }
   } else {
     let recv_str = emit_expr_in_scope(expr: receiver, registry: registry, scope: scope)
     let first_arg_str = emit_first_arg(args: args, registry: registry, scope: scope)
@@ -799,7 +849,7 @@ fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, regist
 fn emit_first_arg(args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
   match args |> first {
     Some { value: a } => emit_call_arg(arg: a, registry: registry, scope: scope)
-    None => "\"\""
+    None => "todo!(\"missing method argument\")"
   }
 }
 
@@ -887,18 +937,19 @@ fn emit_let(name: String, value: Expr, body: Expr?, registry: List<ItemInfo>, sc
 // =========================================================================
 
 fn emit_record_lit(type_name: String?, fields: List<FieldInit>, registry: List<ItemInfo>, scope: InferScope) -> String {
-  let prefix = match type_name {
-    Some { value: tn } => concat(tn, " ")
-    None => ""
-  }
-  if fields |> count == 0 {
-    concat(prefix, "{}")
-  } else {
-    let field_strs = fields |> map(f =>
-      concat("    ", rust_ident(name: f.name), ": ", emit_expr_in_scope(expr: f.value, registry: registry, scope: scope), ",")
-    )
-    let fields_str = field_strs |> join(separator: "\n")
-    concat(prefix, "{\n", fields_str, "\n}")
+  match type_name {
+    None =>
+      "todo!(\"anonymous record literal emission requires a named type\")"
+    Some { value: tn } =>
+      if fields |> count == 0 {
+        concat(tn, " {}")
+      } else {
+        let field_strs = fields |> map(f =>
+          concat("    ", rust_ident(name: f.name), ": ", emit_expr_in_scope(expr: f.value, registry: registry, scope: scope), ",")
+        )
+        let fields_str = field_strs |> join(separator: "\n")
+        concat(tn, " {\n", fields_str, "\n}")
+      }
   }
 }
 
@@ -1515,14 +1566,14 @@ fn is_service_call_receiver(receiver: Expr) -> Bool {
   }
 }
 
-fn extract_service_name(receiver: Expr) -> String {
+fn extract_service_name(receiver: Expr) -> String? {
   match receiver {
     FieldAccess { base: b, field: f, span: _ } =>
       match b {
-        Var { name: ns, span: _ } => concat(ns, ".", f)
-        _ => "Unknown"
+        Var { name: ns, span: _ } => Some { value: concat(ns, ".", f) }
+        _ => none
       }
-    _ => "Unknown"
+    _ => none
   }
 }
 
@@ -1537,7 +1588,10 @@ fn collect_service_calls(expr: Expr) -> List<String> {
   match expr {
     MethodCall { receiver: r, method: _, args: a, span: _ } => {
       let self_calls = if is_service_call_receiver(receiver: r) {
-        [extract_service_name(receiver: r)]
+        match extract_service_name(receiver: r) {
+          Some { value: service_name } => [service_name]
+          None => []
+        }
       } else {
         collect_service_calls(expr: r)
       }

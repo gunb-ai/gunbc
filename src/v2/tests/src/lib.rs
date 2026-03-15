@@ -1623,6 +1623,49 @@ fn foo(item: String) -> String {
         );
     }
 
+    #[test]
+    fn phase6_resolve_filters_failed_imports_and_cycles() {
+        let source = read_v2_file("src/v2/03_resolve.dag");
+        assert!(
+            source.contains("acyclic_resolved"),
+            "resolve.dag should filter cycle members before downstream sorting"
+        );
+        assert!(
+            source.contains("r.resolved.target_module != none"),
+            "resolve.dag should drop unresolved imports from resolved_imports"
+        );
+        assert!(
+            source.contains("r.diagnostics |> count == 0"),
+            "resolve.dag should keep only fully-resolved imports"
+        );
+    }
+
+    #[test]
+    fn phase6_typecheck_resolves_and_validates_expression_tree_types() {
+        let source = read_v2_file("src/v2/04_typecheck.dag");
+        assert!(
+            source.contains("fn resolve_expr_types"),
+            "typecheck.dag should walk expression trees during type resolution"
+        );
+        assert!(
+            source.contains("collect_unresolved_in_expr"),
+            "typecheck.dag should validate unresolved types inside expression trees"
+        );
+    }
+
+    #[test]
+    fn phase6_emit_preserves_field_provenance_and_named_arg_ordering() {
+        let source = read_v2_file("src/v2/05_emit.dag");
+        assert!(
+            source.contains("serde(rename = "),
+            "emit.dag should preserve from_key through serde rename attributes"
+        );
+        assert!(
+            source.contains("order_call_args"),
+            "emit.dag should reorder named arguments using function signatures"
+        );
+    }
+
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
