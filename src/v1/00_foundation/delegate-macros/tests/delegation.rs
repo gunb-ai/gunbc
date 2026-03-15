@@ -3,6 +3,8 @@ use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
 struct TestOp {
@@ -43,10 +45,57 @@ impl Mockable for TestOp {
     }
 }
 
+#[derive(Debug, Clone)]
+struct GenericTestOp<T> {
+    inner: TestOp,
+    _marker: PhantomData<T>,
+}
+
+impl<T> GenericTestOp<T> {
+    fn new(label: &'static str) -> Self {
+        Self {
+            inner: TestOp { label },
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: Debug> Executable for GenericTestOp<T> {
+    fn execute(
+        &self,
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        self.inner.execute(inputs)
+    }
+}
+
+impl<T: Debug> Mockable for GenericTestOp<T> {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.inner.mock_outputs()
+    }
+
+    fn cardinality_inputs(&self) -> Vec<CardinalityTestInput> {
+        self.inner.cardinality_inputs()
+    }
+
+    fn error_cases(&self) -> Vec<ErrorTestCase> {
+        self.inner.error_cases()
+    }
+}
+
 #[derive(Debug, Clone, DelegateExecutable, DelegateMockable)]
 enum WrappedOp {
     Alpha(TestOp),
     Beta(TestOp),
+}
+
+#[derive(Debug, Clone, DelegateExecutable, DelegateMockable)]
+enum GenericWrappedOp<T>
+where
+    T: Clone + Debug,
+{
+    Alpha(GenericTestOp<T>),
+    Beta(GenericTestOp<T>),
 }
 
 #[test]
@@ -63,4 +112,22 @@ fn delegate_mockable_calls_inner_variant_methods() {
     assert_eq!(outputs.get("mock").and_then(Value::as_str), Some("alpha"));
     assert_eq!(op.cardinality_inputs().len(), 1);
     assert_eq!(op.error_cases().len(), 1);
+}
+
+#[test]
+fn delegate_derives_preserve_generics_and_where_clauses() {
+    let execute_op = GenericWrappedOp::<u8>::Beta(GenericTestOp::new("generic-beta"));
+    let out = execute_op
+        .execute(HashMap::new())
+        .expect("delegated execute");
+    assert_eq!(out.get("label").and_then(Value::as_str), Some("generic-beta"));
+
+    let mock_op = GenericWrappedOp::<u8>::Alpha(GenericTestOp::new("generic-alpha"));
+    let outputs = mock_op.mock_outputs();
+    assert_eq!(
+        outputs.get("mock").and_then(Value::as_str),
+        Some("generic-alpha")
+    );
+    assert_eq!(mock_op.cardinality_inputs().len(), 1);
+    assert_eq!(mock_op.error_cases().len(), 1);
 }
