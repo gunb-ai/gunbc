@@ -27,6 +27,12 @@ fn default_fs_handle() -> Value {
     fs.into()
 }
 
+fn default_resource_handle() -> Value {
+    gunbc_ir::resource::mock_resource_handle_value(gunbc_ir::ResourceId::new(
+        "test:auto_mock",
+    ))
+}
+
 fn merged_registry(dsl_registry: Option<&TypeRegistry>) -> TypeRegistry {
     let mut registry = TypeRegistry::with_core_types();
     if let Some(dsl) = dsl_registry {
@@ -208,6 +214,7 @@ fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
+        "ResourceHandle" => default_resource_handle(),
         _ => {
             if let Some(value) = typed_witness_value(type_id, registry) {
                 return value;
@@ -500,7 +507,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(
     dsl_registry: Option<&TypeRegistry>,
 ) -> MockSpec {
     let registry = merged_registry(dsl_registry);
-    let mut reqs = extract_mock_requirements(dag, name);
+    let mut reqs = extract_mock_requirements(dag, name).with_type_registry(registry.clone());
     let lowered =
         gunbc_exec::lower(dag).unwrap_or_else(|error| panic!("failed to lower {name}: {error}"));
     for node in &lowered.dag.nodes {
@@ -1037,5 +1044,16 @@ mod tests {
             Value::Unit
         );
         assert_eq!(default_value_for_type("String?", &registry), Value::Unit);
+    }
+
+    #[test]
+    fn default_value_for_resource_handle_uses_runtime_encoding() {
+        #[derive(Clone)]
+        struct TestResource;
+
+        let registry = TypeRegistry::with_core_types();
+        let value = default_value_for_type("ResourceHandle", &registry);
+        let parsed: Result<gunbc_ir::resource::ResourceHandle<TestResource>, _> = (&value).try_into();
+        assert!(parsed.is_ok(), "resource handle default should round-trip through runtime parser");
     }
 }

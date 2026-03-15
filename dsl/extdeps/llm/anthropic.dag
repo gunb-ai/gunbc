@@ -9,9 +9,6 @@
 module extdeps.llm.anthropic
 
 import extdeps.llm.llm { Role, StopReason, TokenUsage }
-import std.behavioral {
-  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
-}
 import std.errors { AnthropicErrorShape }
 
 // ── Models ────────────────────────────────────────────────────────
@@ -76,39 +73,6 @@ data current_api_version: AnthropicApiVersion = {
   version: "2023-06-01",
   header: "anthropic-version"
 }
-
-// ── Operation behaviors ───────────────────────────────────────────
-
-type AnthropicOperationBehavior {
-  operation: String
-  behavior: OperationBehavior
-}
-
-data operation_behaviors: List<AnthropicOperationBehavior> = [
-  {
-    operation: "messages",
-    behavior: {
-      side_effects: WritesExternal,
-      idempotent: false,
-      idempotency_keys: null,
-      determinism: NonDeterministic,
-      failure_modes: [
-        { name: "RateLimited", condition: "too_many_requests", http_status: 429, recoverable: true, retry_safe: true },
-        { name: "Overloaded", condition: "server_overloaded", http_status: 529, recoverable: true, retry_safe: true },
-        { name: "InvalidRequest", condition: "malformed_input", http_status: 400, recoverable: false, retry_safe: false },
-        { name: "AuthError", condition: "invalid_api_key", http_status: 401, recoverable: false, retry_safe: false }
-      ],
-      edge_cases: [
-        { description: "extended thinking adds latency and increases token usage", trigger: "thinking_enabled", severity: Medium },
-        { description: "tool use may produce multiple content blocks per response", trigger: "tools_provided", severity: Low }
-      ],
-      confidence: Documented,
-      prerequisites: [{ description: "valid Anthropic API key", kind: Credential }],
-      assumptions: ["Response content is UTF-8 text"],
-      unknowns: ["Exact retry-after header behavior under sustained load"]
-    }
-  }
-]
 
 // ── Service: REST transport wiring ──────────────────────────────
 

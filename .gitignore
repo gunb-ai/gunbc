@@ -67,3 +67,15 @@ node_modules/
 # --- Interactive auth/session transcripts ---
 # Should never be committed; may contain OAuth URLs or session state
 out.txt
+
+# --- OpenClaw workspace artifacts ---
+# The OpenClaw control plane lives in ~/ctrl, not in this repo
+/.openclaw/
+/AGENTS.md
+/HEARTBEAT.md
+/IDENTITY.md
+/SOUL.md
+/TOOLS.md
+/USER.md
+/WORKBOARD.md
+/scripts/openclaw/

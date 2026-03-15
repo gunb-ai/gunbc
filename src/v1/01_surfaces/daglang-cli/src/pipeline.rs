@@ -1525,6 +1525,7 @@ mod tests {
         let real = root.join("real.dag");
         let link = root.join("link.dag");
         fs::write(&real, "module sample.broken\nfn").expect("failed to write malformed source");
+        let canonical_real = fs::canonicalize(&real).expect("real source should canonicalize");
         symlink(&real, &link).expect("failed to create file symlink");
 
         let context = PipelineContext {
@@ -1545,7 +1546,7 @@ mod tests {
             result
                 .diagnostics()
                 .iter()
-                .all(|diag| diag.file.as_ref() == Some(&real)),
+                .all(|diag| diag.file.as_ref() == Some(&canonical_real)),
             "target-file parse diagnostics should reference canonical real path: {:?}",
             result.diagnostics()
         );

@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, Item, Diagnostic, Severity, SourceSpan }
+import v2.std.core { Module, Import, Item, Diagnostic, Severity }
 
 // =========================================================================
 // Output types
@@ -99,9 +99,10 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
       dep_order: dep_order
     }
   )
+  let acyclic_resolved = resolved_modules |> filter(m => m.dep_order >= 0)
 
   // Sort resolved modules by dep_order (leaves first)
-  let sorted_resolved = resolved_modules |> sort_by(m => m.dep_order)
+  let sorted_resolved = acyclic_resolved |> sort_by(m => m.dep_order)
 
   ModuleGraph {
     modules: sorted_resolved,
@@ -137,7 +138,9 @@ fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleRe
   let results = module.imports |> map(imp =>
     resolve_import(import: imp, modules: all_modules, importing_module: module.name)
   )
-  let resolved = results |> map(r => r.resolved)
+  let resolved = results
+    |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
+    |> map(r => r.resolved)
   let diags = results |> map(r => r.diagnostics)
     |> fold(init: [], f: fn(acc, d) { concat(acc, d) })
   ModuleResolveResult {
@@ -150,6 +153,17 @@ fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleRe
 type ImportResolveResult {
   resolved: ResolvedImport
   diagnostics: List<Diagnostic>
+}
+
+fn is_wildcard_import_names(names: List<String>) -> Bool {
+  if names |> count == 1 {
+    match first(names) {
+      Some { value: name } => name == "*"
+      None => false
+    }
+  } else {
+    false
+  }
 }
 
 // Resolve a single import: find target module, validate imported names.
@@ -179,16 +193,20 @@ fn resolve_import(
     Some { value: target_mod } => {
       // Validate each imported name exists in the target
       let exported = get_exported_names(module: target_mod)
-      let name_diags = import.names
-        |> filter(name => exported |> any(e => e == name) == false)
-        |> map(missing_name =>
-          Diagnostic {
-            severity: Error,
-            message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
-            span: Some { value: import.span },
-            module_name: Some { value: importing_module }
-          }
-        )
+      let name_diags = if is_wildcard_import_names(names: import.names) {
+        []
+      } else {
+        import.names
+          |> filter(name => exported |> any(e => e == name) == false)
+          |> map(missing_name =>
+            Diagnostic {
+              severity: Error,
+              message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
+              span: Some { value: import.span },
+              module_name: Some { value: importing_module }
+            }
+          )
+      }
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import.module_path,
@@ -410,24 +428,6 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
 // =========================================================================
 // Cycle detection
 //
-// Returns the names of modules that form a cycle, or None if acyclic.
-// Delegates to the topological sort — any unsorted modules are in cycles.
-// =========================================================================
-
-fn detect_cycle(modules: List<Module>) -> List<String>? {
-  let topo = topological_sort(modules: modules)
-  let module_names = modules |> map(m => m.name)
-  let sorted_count = topo.sorted |> count
-  let total_count = module_names |> count
-  if sorted_count == total_count {
-    None
-  } else {
-    let cycle_members = module_names
-      |> filter(name => topo.sorted |> any(s => s == name) == false)
-    Some { value: cycle_members }
-  }
-}
-
 // =========================================================================
 // Utility functions
 //

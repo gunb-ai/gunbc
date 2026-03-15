@@ -18,23 +18,16 @@
 //!   anonymous records. In a self-hosted compiler, these would come from the .dag
 //!   type definitions themselves.
 //!
-//! - **`module_prelude()`**: Hardcodes cross-module `use` statements. Should be
-//!   derived from `import` declarations in each .dag file.
-//!
 //! - **Hardcoded `struct_field_types` entries**: Manual registry of the materialized
 //!   types' field layouts. Should be generated from the type definitions.
 //!
-//! - **`V2_MODULE_MAP`**: Hardcoded .dag stem → Rust module name mapping. Should
-//!   be derived from module declarations.
-//!
-//! All of these exist because the v1 emitter's pipeline doesn't have a "resolve
-//! imports" phase — it works on individual parsed modules without cross-module
-//! knowledge. The v2 compiler's resolve phase handles this properly.
+//! - **`module_prelude()`**: Derived from each .dag file's module declaration and
+//!   import list.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use daglang_syntax::ast::{Item, TypeBody, TypeDef};
+use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
 
@@ -43,18 +36,6 @@ use crate::render_rust;
 use crate::type_codegen;
 use crate::v2_runtime_shim;
 
-/// Mapping from v2 .dag file stems to Rust module names.
-/// `core` is reserved in Rust, so 00_core.dag maps to `v2_core`.
-const V2_MODULE_MAP: &[(&str, &str)] = &[
-    ("00_core", "v2_core"),
-    ("01_tokenize", "tokenize"),
-    ("02_parse", "parse"),
-    ("03_resolve", "resolve"),
-    ("04_typecheck", "typecheck"),
-    ("05_emit", "emit"),
-    ("06_pipeline", "pipeline"),
-];
-
 /// A generated file with its path relative to the crate root and content.
 #[derive(Debug)]
 pub struct GeneratedFile {
@@ -62,20 +43,33 @@ pub struct GeneratedFile {
     pub content: String,
 }
 
+fn rust_mod_for_module_path(path: &str) -> String {
+    let leaf = path.rsplit('.').next().unwrap_or(path);
+    match leaf {
+        "core" => "v2_core".to_string(),
+        other => other.replace('-', "_"),
+    }
+}
+
+fn rust_mod_for_source_file(sf: &SourceFile) -> Option<String> {
+    sf.module_path
+        .as_ref()
+        .map(|module_path| rust_mod_for_module_path(&module_path.node.as_dotted()))
+}
+
 /// Assemble a complete Rust crate from parsed v2 module ASTs.
 ///
-/// `modules` is a list of (dag_stem, parsed_items) pairs, where dag_stem
-/// is e.g. "00_core" and parsed_items are the AST items from that file.
-pub fn assemble_v2_crate(
-    modules: &[(&str, &[daglang_syntax::span::Spanned<Item>])],
-) -> Vec<GeneratedFile> {
+/// `modules` is a list of (dag_stem, source_file) pairs, where dag_stem
+/// is e.g. "00_core" and source_file is the full parsed AST including
+/// imports and items.
+pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> {
     let mut files = Vec::new();
 
     // 1. Collect all type definitions across modules for recursive field analysis
     let all_type_defs: Vec<&TypeDef> = modules
         .iter()
-        .flat_map(|(_, items)| {
-            items.iter().filter_map(|item| match &item.node {
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
                 Item::TypeDef(td) => Some(td),
                 _ => None,
             })
@@ -131,12 +125,30 @@ pub fn assemble_v2_crate(
     // 4c. Build global fn_return_types (cross-module) for type inference in intrinsics
     let global_fn_return_types: HashMap<String, String> = modules
         .iter()
-        .flat_map(|(_, items)| {
-            items.iter().filter_map(|item| match &item.node {
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
                 Item::FnDef(fd) => {
                     let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    let ret = crate::type_codegen::type_expr_to_rust_pub(&fd.return_type);
+                    let ret = type_expr_to_rust_name(&fd.return_type);
                     Some((rust_name, ret))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
+    let global_fn_param_types: HashMap<String, Vec<(String, String)>> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+                    let params = fd
+                        .params
+                        .iter()
+                        .map(|param| (param.name.clone(), type_expr_to_rust_name(&param.ty)))
+                        .collect();
+                    Some((rust_name, params))
                 }
                 _ => None,
             })
@@ -166,11 +178,11 @@ pub fn assemble_v2_crate(
     // Initialize with hardcoded materialized types from std_types_prelude
     let mut visible_type_names: HashSet<String> =
         HashSet::from(["SourceSpan".to_string(), "BindingPower".to_string()]);
-    for (dag_stem, items) in modules {
-        let rust_mod = match V2_MODULE_MAP.iter().find(|(stem, _)| stem == dag_stem) {
-            Some((_, rust_name)) => *rust_name,
-            None => continue,
+    for (_dag_stem, sf) in modules {
+        let Some(rust_mod) = rust_mod_for_source_file(sf) else {
+            continue;
         };
+        let items = &sf.items;
 
         // Add this module's type names AND variant names to the visible set
         for item in items.iter() {
@@ -213,6 +225,7 @@ pub fn assemble_v2_crate(
             &defined_type_signatures,
             &module_struct_field_ir_types,
             &global_fn_return_types,
+            &global_fn_param_types,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -222,7 +235,7 @@ pub fn assemble_v2_crate(
                     .or_insert_with(|| type_def_signature(td));
             }
         }
-        let mut content = module_prelude(dag_stem);
+        let mut content = module_prelude(sf);
         content.push_str(&render_rust::render_rust_source(&source));
         files.push(GeneratedFile {
             rel_path: format!("src/{}.rs", rust_mod),
@@ -231,7 +244,7 @@ pub fn assemble_v2_crate(
     }
 
     // 6. Emit lib.rs with mod declarations and cross-module uses
-    let lib_content = emit_lib_rs();
+    let lib_content = emit_lib_rs(modules);
     files.push(GeneratedFile {
         rel_path: "src/lib.rs".to_string(),
         content: lib_content,
@@ -243,7 +256,41 @@ pub fn assemble_v2_crate(
         content: v2_runtime_shim::V2_RUNTIME_SOURCE.to_string(),
     });
 
-    // 8. Emit Cargo.toml (standalone — not part of any workspace)
+    // 8. Emit generated test module
+    //    Read all 7 v2 .dag source files at crate-assembly time so the
+    //    self-compile test can embed them as const strings in the generated crate.
+    let dag_sources = {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        // daglang-emit lives at src/v1/07_emit/daglang-emit/, workspace root is 4 up
+        let workspace_root = manifest_dir
+            .ancestors()
+            .nth(4)
+            .expect("could not find workspace root from CARGO_MANIFEST_DIR");
+        let dag_files = [
+            ("00_core", "src/v2/00_core.dag"),
+            ("01_tokenize", "src/v2/01_tokenize.dag"),
+            ("02_parse", "src/v2/02_parse.dag"),
+            ("03_resolve", "src/v2/03_resolve.dag"),
+            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("05_emit", "src/v2/05_emit.dag"),
+            ("06_pipeline", "src/v2/06_pipeline.dag"),
+        ];
+        dag_files
+            .iter()
+            .map(|(stem, rel_path)| {
+                let dag_path = workspace_root.join(rel_path);
+                let content = std::fs::read_to_string(&dag_path)
+                    .unwrap_or_else(|e| panic!("failed to read {}: {}", dag_path.display(), e));
+                (stem.to_string(), content)
+            })
+            .collect::<Vec<(String, String)>>()
+    };
+    files.push(GeneratedFile {
+        rel_path: "src/generated_tests.rs".to_string(),
+        content: emit_test_module(&dag_sources),
+    });
+
+    // 9. Emit Cargo.toml (standalone — not part of any workspace)
     let mut cargo_toml = render_rust::render_cargo_toml("v2-compiler", &[]);
     cargo_toml.push_str("\n[workspace]\n");
     files.push(GeneratedFile {
@@ -266,16 +313,19 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
     Ok(())
 }
 
-fn emit_lib_rs() -> String {
+fn emit_lib_rs(modules: &[(&str, &SourceFile)]) -> String {
     let mut out = String::new();
     out.push_str("//! v2 DAG compiler — generated from .dag source files.\n\n");
-    out.push_str("#![allow(unused_imports, unused_variables, unused_mut, dead_code, unreachable_patterns, clippy::all)]\n\n");
+    out.push_str("#![allow(unused_imports, unused_variables, unused_mut, dead_code, unreachable_patterns, suspicious_double_ref_op, non_shorthand_field_patterns, clippy::all)]\n\n");
 
     // Module declarations
-    for (_, rust_mod) in V2_MODULE_MAP {
-        out.push_str(&format!("pub mod {};\n", rust_mod));
+    for (_, sf) in modules {
+        if let Some(rust_mod) = rust_mod_for_source_file(sf) {
+            out.push_str(&format!("pub mod {};\n", rust_mod));
+        }
     }
     out.push_str("pub mod v2_rt;\n");
+    out.push_str("\n#[cfg(test)]\nmod generated_tests;\n");
 
     out
 }
@@ -308,18 +358,38 @@ pub struct BindingPower {
 "#
 }
 
-/// Generate module-level prelude: use statements for cross-module types.
-fn module_prelude(dag_stem: &str) -> String {
+/// Generate module-level prelude from import declarations and the module path.
+fn module_prelude(source_file: &SourceFile) -> String {
     let mut prelude = String::new();
+    let current_module = source_file
+        .module_path
+        .as_ref()
+        .map(|path| path.node.as_dotted())
+        .unwrap_or_default();
 
-    // Core module gets materialized std.types imports
-    if dag_stem == "00_core" {
-        prelude.push_str(std_types_prelude());
+    // Derive cross-module `use crate::*` from import declarations
+    let mut has_std_types_import = false;
+    let mut has_v2_core_import = false;
+    for import in &source_file.imports {
+        let dotted = import.node.path.as_dotted();
+        if dotted == "std.types" {
+            has_std_types_import = true;
+            continue; // handled below via std_types_prelude()
+        }
+        if dotted == "v2.std.core" {
+            has_v2_core_import = true;
+        }
+        if dotted != current_module {
+            let rust_mod = rust_mod_for_module_path(&dotted);
+            prelude.push_str(&format!("use crate::{}::*;\n", rust_mod));
+        }
     }
 
-    // All non-core modules import everything from v2_core
-    if dag_stem != "00_core" {
-        prelude.push_str("use crate::v2_core::*;\n");
+    // Modules that import std.types get materialized type definitions,
+    // but only if they don't also import v2.std.core (which already
+    // contains these definitions via its own std.types import).
+    if has_std_types_import && !has_v2_core_import {
+        prelude.push_str(std_types_prelude());
     }
 
     // All modules get access to the runtime shims and std collections
@@ -327,35 +397,10 @@ fn module_prelude(dag_stem: &str) -> String {
     // Import commonly-used runtime functions directly for unqualified calls
     prelude.push_str("use crate::v2_rt::{scan_while, scan_to_eol, skip_horizontal_ws, code_point, from_code_point, scan_string_end};\n");
     prelude.push_str("use std::collections::HashMap;\n");
+    prelude.push_str("use std::rc::Rc;\n");
     // Map type alias is defined only in v2_core to avoid redefinition conflicts
-    if dag_stem == "00_core" {
+    if current_module == "v2.std.core" {
         prelude.push_str("pub type Map<K, V> = HashMap<K, V>;\n");
-    }
-
-    // Module-specific cross-imports
-    match dag_stem {
-        "02_parse" => {
-            prelude.push_str("use crate::tokenize::*;\n");
-        }
-        "03_resolve" => {
-            prelude.push_str("use crate::parse::*;\n");
-        }
-        "04_typecheck" => {
-            prelude.push_str("use crate::parse::*;\n");
-            prelude.push_str("use crate::resolve::*;\n");
-        }
-        "05_emit" => {
-            prelude.push_str("use crate::parse::*;\n");
-            prelude.push_str("use crate::typecheck::*;\n");
-        }
-        "06_pipeline" => {
-            prelude.push_str("use crate::tokenize::*;\n");
-            prelude.push_str("use crate::parse::*;\n");
-            prelude.push_str("use crate::resolve::*;\n");
-            prelude.push_str("use crate::typecheck::*;\n");
-            prelude.push_str("use crate::emit::*;\n");
-        }
-        _ => {}
     }
 
     prelude.push('\n');
@@ -373,6 +418,7 @@ fn emit_module(
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
     struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
     global_fn_return_types: &HashMap<String, String>,
+    global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -412,12 +458,14 @@ fn emit_module(
         enum_variants: enum_variants_map,
         boxed_fields: recursive_fields.clone(),
         fn_return_types: global_fn_return_types.clone(),
+        fn_param_types: global_fn_param_types.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
         current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
         struct_field_ir_types: struct_field_ir_types.clone(),
+        use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
     };
 
     for item in items {
@@ -463,21 +511,32 @@ fn emit_module(
 }
 
 /// Build variant_name → enum_name map from type definitions.
-/// For ambiguous variants (present in multiple enums), picks the first match.
-/// This is imperfect but produces compilable code in most cases — the user
-/// would need to explicitly qualify in the .dag source for true ambiguity.
 fn build_variant_to_enum(type_defs: &[&TypeDef]) -> HashMap<String, String> {
-    let mut map = HashMap::new();
+    let mut candidates: HashMap<String, Vec<String>> = HashMap::new();
     for td in type_defs {
         if let TypeBody::Sum(variants) = &td.body {
             for v in variants {
-                // First definition wins. This means the order of type definitions
-                // matters for ambiguous variants, which matches .dag file order.
-                map.entry(v.name.clone()).or_insert_with(|| td.name.clone());
+                candidates
+                    .entry(v.name.clone())
+                    .or_default()
+                    .push(td.name.clone());
             }
         }
     }
-    map
+    candidates
+        .into_iter()
+        .map(|(variant, mut enums)| {
+            enums.sort();
+            enums.dedup();
+            (
+                variant,
+                enums
+                    .into_iter()
+                    .next()
+                    .expect("variant has at least one enum"),
+            )
+        })
+        .collect()
 }
 
 /// Build struct_name → { field_name → field_type_name } map.
@@ -563,27 +622,36 @@ enum TypeDefSignature {
 fn type_def_signature(td: &TypeDef) -> TypeDefSignature {
     match &td.body {
         TypeBody::Alias(type_expr) => TypeDefSignature::Alias(type_expr_to_string(type_expr)),
-        TypeBody::Record(fields) => TypeDefSignature::Record(
-            fields
+        TypeBody::Record(fields) => {
+            let mut normalized: Vec<(String, String)> = fields
                 .iter()
                 .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
-                .collect(),
-        ),
-        TypeBody::Sum(variants) => TypeDefSignature::Sum(
-            variants
+                .collect();
+            normalized.sort_by(|(name_a, ty_a), (name_b, ty_b)| {
+                name_a.cmp(name_b).then_with(|| ty_a.cmp(ty_b))
+            });
+            TypeDefSignature::Record(normalized)
+        }
+        TypeBody::Sum(variants) => {
+            let mut normalized: Vec<(String, Vec<(String, String)>)> = variants
                 .iter()
                 .map(|variant| {
-                    (
-                        variant.name.clone(),
-                        variant
-                            .fields
-                            .iter()
-                            .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
-                            .collect(),
-                    )
+                    let mut fields: Vec<(String, String)> = variant
+                        .fields
+                        .iter()
+                        .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
+                        .collect();
+                    fields.sort_by(|(name_a, ty_a), (name_b, ty_b)| {
+                        name_a.cmp(name_b).then_with(|| ty_a.cmp(ty_b))
+                    });
+                    (variant.name.clone(), fields)
                 })
-                .collect(),
-        ),
+                .collect();
+            normalized.sort_by(|(name_a, fields_a), (name_b, fields_b)| {
+                name_a.cmp(name_b).then_with(|| fields_a.cmp(fields_b))
+            });
+            TypeDefSignature::Sum(normalized)
+        }
     }
 }
 
@@ -621,19 +689,256 @@ fn build_optional_fields(type_defs: &[&TypeDef]) -> HashMap<String, HashSet<Stri
     map
 }
 
+/// Emit a test module containing `#[test]` functions for the generated v2 crate.
+///
+/// These tests exercise the generated tokenizer and parser on representative inputs,
+/// proving that the emitted Rust code executes correctly. The tests are part of the
+/// crate assembly itself — they travel with the generated crate, not with the test
+/// harness.
+///
+/// `dag_sources` contains all 7 v2 .dag source files as (stem, content) pairs,
+/// embedded as const strings in the generated test module so the compiled v2
+/// compiler can process its own source files through the full pipeline.
+fn emit_test_module(dag_sources: &[(String, String)]) -> String {
+    // Pick the right raw string delimiter for each source.
+    // We use r##"..."## so the content can contain r#"..."# sequences.
+    // If any source contains "## we escalate to r###"..."###.
+    fn raw_delimiters(source: &str) -> (&'static str, &'static str) {
+        if source.contains("\"##") {
+            ("r###\"", "\"###")
+        } else {
+            ("r##\"", "\"##")
+        }
+    }
+
+    // Build const declarations for each .dag source file
+    let mut const_decls = String::new();
+    let const_names = [
+        ("00_core", "CORE_DAG_SOURCE"),
+        ("01_tokenize", "TOKENIZE_DAG_SOURCE"),
+        ("02_parse", "PARSE_DAG_SOURCE"),
+        ("03_resolve", "RESOLVE_DAG_SOURCE"),
+        ("04_typecheck", "TYPECHECK_DAG_SOURCE"),
+        ("05_emit", "EMIT_DAG_SOURCE"),
+        ("06_pipeline", "PIPELINE_DAG_SOURCE"),
+    ];
+    for (stem, const_name) in &const_names {
+        let content = dag_sources
+            .iter()
+            .find(|(s, _)| s == stem)
+            .unwrap_or_else(|| panic!("missing .dag source for {}", stem));
+        let (open, close) = raw_delimiters(&content.1);
+        const_decls.push_str(&format!(
+            "    const {}: &str = {}{}{};\n",
+            const_name, open, content.1, close
+        ));
+    }
+
+    format!(
+        r#"#[cfg(test)]
+mod generated_tests {{
+    use crate::tokenize::tokenize;
+
+{const_decls}
+    #[test]
+    fn tokenize_produces_tokens() {{
+        let tokens = tokenize("fn foo() -> Int {{ 42 }}".to_string());
+        assert!(!tokens.is_empty(), "tokenize should produce at least one token");
+    }}
+
+    #[test]
+    fn tokenize_ends_with_eof() {{
+        let tokens = tokenize("type Foo {{ x: Int }}".to_string());
+        let last = tokens.last().expect("should have tokens");
+        assert!(
+            matches!(last.kind, crate::v2_core::TokenKind::Eof),
+            "last token should be Eof, got {{:?}}",
+            last.kind
+        );
+    }}
+
+    #[test]
+    fn tokenize_fn_keyword() {{
+        let tokens = tokenize("fn".to_string());
+        // Should have at least KwFn and Eof
+        assert!(tokens.len() >= 2, "expected at least 2 tokens, got {{}}", tokens.len());
+        assert!(
+            matches!(tokens[0].kind, crate::v2_core::TokenKind::KwFn),
+            "first token should be KwFn, got {{:?}}",
+            tokens[0].kind
+        );
+    }}
+
+    #[test]
+    fn tokenize_count_stable() {{
+        let tokens = tokenize("module test\ntype Foo {{ x: Int }}".to_string());
+        // Non-trivial input should produce multiple tokens
+        assert!(tokens.len() > 5, "non-trivial input should produce multiple tokens, got {{}}", tokens.len());
+    }}
+
+    #[test]
+    fn parse_trivial_module() {{
+        let tokens = tokenize("module test\ntype Foo {{ x: Int }}\n".to_string());
+        let result = crate::parse::parse(tokens);
+        // ParseResult should have a module
+        assert!(result.module.is_some(), "valid module should parse successfully");
+    }}
+
+    /// Self-parse test: the compiled v2 compiler tokenizes and parses its own
+    /// tokenizer source (01_tokenize.dag). This is the self-hosting seed — if
+    /// the generated compiler can parse its own source, it can bootstrap.
+    #[test]
+    fn self_parse_tokenize_dag() {{
+        // The generated parser uses recursive descent which requires extra stack
+        // for non-trivial inputs (same as v1 evaluator's with_parser_stack).
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {{
+                // Tokenize the v2 compiler's own tokenizer source
+                let tokens = tokenize(TOKENIZE_DAG_SOURCE.to_string());
+
+                // Token list should be non-empty
+                assert!(!tokens.is_empty(), "tokenizing 01_tokenize.dag should produce tokens");
+
+                // Should end with Eof
+                let last = tokens.last().expect("should have tokens");
+                assert!(
+                    matches!(last.kind, crate::v2_core::TokenKind::Eof),
+                    "last token should be Eof, got {{:?}}",
+                    last.kind
+                );
+
+                // Parse the tokens
+                let result = crate::parse::parse(tokens);
+
+                // Parse should succeed with a module
+                assert!(
+                    result.module.is_some(),
+                    "parsing 01_tokenize.dag should produce a module"
+                );
+
+                // Module name should be "v2.compiler.tokenize"
+                let module = result.module.as_ref().unwrap();
+                assert_eq!(
+                    module.name,
+                    "v2.compiler.tokenize",
+                    "module name should be v2.compiler.tokenize, got {{}}",
+                    module.name
+                );
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("self-parse test panicked");
+    }}
+
+    /// Phase 2 pipeline test: feed a self-contained single-module .dag source
+    /// through the full compile pipeline (tokenize -> parse -> resolve ->
+    /// typecheck -> emit) and verify the result has output files with no errors.
+    #[test]
+    fn pipeline_trivial_module() {{
+        // The full pipeline uses recursive descent in resolve/typecheck/emit,
+        // so give it the same 16MB stack as self-parse.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {{
+                let source = crate::pipeline::SourceFile {{
+                    path: "test.dag".to_string(),
+                    content: "module test\ntype Foo {{ x: Int, name: String }}\nfn add(a: Int, b: Int) -> Int {{ a + b }}\n".to_string(),
+                }};
+                let result = crate::pipeline::compile_sources(std::rc::Rc::new(vec![source]));
+
+                // Should produce at least one output file
+                assert!(
+                    !result.files.is_empty(),
+                    "compile_sources should produce output files, got none"
+                );
+
+                // Should have zero error diagnostics
+                let errors: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .collect();
+                assert!(
+                    errors.is_empty(),
+                    "compile_sources should produce no errors, got {{:?}}",
+                    errors
+                );
+
+                // At least one file should have non-empty content
+                let has_content = result.files.iter().any(|f| !f.content.is_empty());
+                assert!(
+                    has_content,
+                    "at least one output file should have non-empty content"
+                );
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("pipeline_trivial_module test panicked");
+    }}
+
+    /// Incremental self-parse: tokenize and parse each of the 7 v2 .dag
+    /// source files individually. Proves the compiled compiler can process
+    /// its own complete source at the tokenize+parse level.
+    #[test]
+    fn self_parse_all_modules() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                // Parse all 7 modules including 02_parse.dag (3600+ lines).
+                // Rc<Vec<T>> wrapping (S76 fix) makes this feasible — clone is O(1).
+                let modules: Vec<(&str, &str, &str)> = vec![
+                    ("00_core.dag", CORE_DAG_SOURCE, "v2.std.core"),
+                    ("01_tokenize.dag", TOKENIZE_DAG_SOURCE, "v2.compiler.tokenize"),
+                    ("02_parse.dag", PARSE_DAG_SOURCE, "v2.compiler.parse"),
+                    ("03_resolve.dag", RESOLVE_DAG_SOURCE, "v2.compiler.resolve"),
+                    ("04_typecheck.dag", TYPECHECK_DAG_SOURCE, "v2.compiler.typecheck"),
+                    ("05_emit.dag", EMIT_DAG_SOURCE, "v2.compiler.emit"),
+                    ("06_pipeline.dag", PIPELINE_DAG_SOURCE, "v2.compiler.pipeline"),
+                ];
+                for (file, source, expected_name) in &modules {{
+                    let tokens = tokenize(source.to_string());
+                    assert!(
+                        !tokens.is_empty(),
+                        "{{}} should produce tokens", file
+                    );
+                    assert!(
+                        matches!(tokens.last().unwrap().kind, crate::v2_core::TokenKind::Eof),
+                        "{{}} should end with Eof", file
+                    );
+                    let result = crate::parse::parse(tokens);
+                    assert!(
+                        result.module.is_some(),
+                        "{{}} should parse successfully, error: {{:?}}", file, result.error
+                    );
+                    let module = result.module.as_ref().unwrap();
+                    assert_eq!(
+                        module.name, *expected_name,
+                        "{{}} module name should be {{}}, got {{}}", file, expected_name, module.name
+                    );
+                }}
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("self-parse-all test panicked");
+    }}
+}}
+"#,
+        const_decls = const_decls,
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::assemble_v2_crate;
+    use super::{assemble_v2_crate, build_variant_to_enum, type_def_signature};
+    use daglang_syntax::ast::{Item, TypeDef};
 
-    fn parse_items(source: &str) -> Vec<daglang_syntax::span::Spanned<daglang_syntax::ast::Item>> {
+    fn parse_source(source: &str) -> daglang_syntax::ast::SourceFile {
         daglang_syntax::parser::parse(source)
             .unwrap_or_else(|errors| panic!("parse failed: {errors:?}"))
-            .items
     }
 
     #[test]
     fn assemble_v2_crate_keeps_same_name_records_with_different_field_types() {
-        let core_items = parse_items(
+        let core_sf = parse_source(
             r#"
 module v2.std.core
 
@@ -642,7 +947,7 @@ type Shared {
 }
 "#,
         );
-        let tokenize_items = parse_items(
+        let tokenize_sf = parse_source(
             r#"
 module v2.compiler.tokenize
 
@@ -652,10 +957,7 @@ type Shared {
 "#,
         );
 
-        let modules = vec![
-            ("00_core", core_items.as_slice()),
-            ("01_tokenize", tokenize_items.as_slice()),
-        ];
+        let modules = vec![("00_core", &core_sf), ("01_tokenize", &tokenize_sf)];
         let files = assemble_v2_crate(&modules);
 
         let core_file = files
@@ -677,5 +979,130 @@ type Shared {
             "downstream module should emit its distinct Shared definition:\n{}",
             tokenize_file.content
         );
+    }
+
+    #[test]
+    fn assemble_v2_crate_derives_rust_module_names_from_module_declarations() {
+        let core_sf = parse_source(
+            r#"
+module v2.std.core
+
+type Shared {
+  value: String
+}
+"#,
+        );
+        let pipeline_sf = parse_source(
+            r#"
+module v2.compiler.pipeline
+
+fn main() -> Int { 0 }
+"#,
+        );
+
+        let modules = vec![
+            ("not_the_stem", &core_sf),
+            ("also_not_the_stem", &pipeline_sf),
+        ];
+        let files = assemble_v2_crate(&modules);
+
+        assert!(
+            files.iter().any(|file| file.rel_path == "src/v2_core.rs"),
+            "core module should derive v2_core.rs from its declaration"
+        );
+        assert!(
+            files.iter().any(|file| file.rel_path == "src/pipeline.rs"),
+            "pipeline module should derive pipeline.rs from its declaration"
+        );
+    }
+
+    #[test]
+    fn assemble_v2_crate_cargo_toml_has_no_dev_opt_level_override() {
+        let core_sf = parse_source(
+            r#"
+module v2.std.core
+
+type Shared {
+  value: String
+}
+"#,
+        );
+
+        let files = assemble_v2_crate(&[("00_core", &core_sf)]);
+        let cargo = files
+            .iter()
+            .find(|file| file.rel_path == "Cargo.toml")
+            .expect("Cargo.toml emitted");
+        assert!(
+            !cargo.content.contains("opt-level = 1"),
+            "generated Cargo.toml should not pin dev opt-level:\n{}",
+            cargo.content
+        );
+    }
+
+    #[test]
+    fn build_variant_to_enum_uses_deterministic_tiebreak() {
+        let left_sf = parse_source(
+            r#"
+module sample.left
+
+type Zeta = Shared | Tail
+"#,
+        );
+        let right_sf = parse_source(
+            r#"
+module sample.right
+
+type Alpha = Shared | Other
+"#,
+        );
+
+        let type_defs: Vec<&TypeDef> = [&left_sf, &right_sf]
+            .into_iter()
+            .flat_map(|sf| {
+                sf.items.iter().filter_map(|item| match &item.node {
+                    Item::TypeDef(td) => Some(td),
+                    _ => None,
+                })
+            })
+            .collect();
+
+        let variant_map = build_variant_to_enum(&type_defs);
+        assert_eq!(variant_map.get("Shared"), Some(&"Alpha".to_string()));
+    }
+
+    #[test]
+    fn type_def_signature_ignores_record_field_order() {
+        let left_sf = parse_source(
+            r#"
+module sample.left
+
+type Pair {
+  left: Int
+  right: String
+}
+"#,
+        );
+        let right_sf = parse_source(
+            r#"
+module sample.right
+
+type Pair {
+  right: String
+  left: Int
+}
+"#,
+        );
+
+        let left = match &left_sf.items[0].node {
+            Item::TypeDef(td) => td,
+            other => panic!("expected typedef, got {other:?}"),
+        };
+        let right = match &right_sf.items[0].node {
+            Item::TypeDef(td) => td,
+            other => panic!("expected typedef, got {other:?}"),
+        };
+
+        assert_eq!(type_def_signature(left), type_def_signature(right));
     }
 }

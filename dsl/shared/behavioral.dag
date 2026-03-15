@@ -1,9 +1,9 @@
-// std/behavioral.dag -- Behavioral vocabulary for external-system modeling.
+// shared/behavioral.dag -- Shared behavioral vocabulary for external-system modeling.
 //
-// Canonical operation behavior schema ported from the-gunbai Understanding
-// model and used by Lane 4 extdeps + interface contracts.
+// Kept out of std/: this is a shared cross-domain contract vocabulary, not a
+// universal primitive library surface.
 
-module std.behavioral
+module shared.behavioral
 
 // How an operation affects the world.
 type SideEffects = ReadOnly | WritesState | WritesExternal
@@ -39,7 +39,7 @@ type Prerequisite {
   kind: PrerequisiteKind
 }
 
-// Shared contract types used by all interface definitions.
+// Shared contract types used by interface and provider definitions.
 type CapabilityBehaviorContract {
   capability: String
   behavior: OperationBehavior

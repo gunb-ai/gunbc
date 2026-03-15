@@ -638,6 +638,10 @@ fn expr_to_string(expr: &Expr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::{
+        value_compatible_with_type_id_in_registry, TypeId, TypeRegistry, Value, ValueBacking,
+    };
+    use std::collections::BTreeMap;
 
     #[test]
     fn discover_compilable_modules_finds_tools() {
@@ -703,6 +707,27 @@ mod tests {
             AutoTestgenResult::Skipped { reason } => {
                 panic!("bootstrap should compile, but got: {reason}");
             }
+        }
+    }
+
+    #[test]
+    fn compiled_dsl_registry_preserves_map_backing_for_structural_record_inputs() {
+        let result = build_gunbc_dsl_graph("tools/bootstrap.dag", BuildOpts::default())
+            .expect("bootstrap should compile");
+        let mut registry = TypeRegistry::with_core_types();
+        registry.merge(&result.dsl_type_registry);
+
+        let map = Value::Map(BTreeMap::new());
+        for ty in ["FileEntry", "ConfigFormat", "Language"] {
+            assert_eq!(
+                registry.value_backing(&TypeId::from(ty)),
+                Ok(ValueBacking::Map),
+                "{ty} should remain map-backed after merging DSL registry",
+            );
+            assert!(
+                value_compatible_with_type_id_in_registry(ty, &map, &registry),
+                "{ty} should accept Value::Map in mock compatibility checks",
+            );
         }
     }
 

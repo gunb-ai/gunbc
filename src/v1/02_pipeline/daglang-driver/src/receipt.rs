@@ -1,6 +1,7 @@
 use super::*;
 
 use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -8,20 +9,33 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
-pub(crate) fn compute_source_digest_from_module_graph(module_graph: &ModuleGraph) -> String {
-    let mut source_hashes: Vec<String> = module_graph
-        .modules
-        .iter()
-        .map(|module| {
-            format!(
-                "{}:{}",
-                module.path.display(),
-                sha256_hex(module.source.as_bytes())
-            )
-        })
+fn canonical_source_path(path: &Path) -> Result<PathBuf, std::io::Error> {
+    #[allow(clippy::disallowed_methods)]
+    std::fs::canonicalize(path).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("cannot canonicalize {} for source digest: {e}", path.display()),
+        )
+    })
+}
+
+fn compute_digest_from_entries(entries: impl IntoIterator<Item = (PathBuf, String)>) -> String {
+    let mut source_hashes: Vec<String> = entries
+        .into_iter()
+        .map(|(path, content_hash)| format!("{}:{content_hash}", path.display()))
         .collect();
     source_hashes.sort();
+    source_hashes.dedup();
     sha256_hex(source_hashes.join("\n").as_bytes())
+}
+
+pub(crate) fn compute_source_digest_from_module_graph(module_graph: &ModuleGraph) -> String {
+    compute_digest_from_entries(
+        module_graph
+            .modules
+            .iter()
+            .map(|module| (module.path.clone(), sha256_hex(module.source.as_bytes()))),
+    )
 }
 
 /// Compute a deterministic compilation receipt from the compilation artifacts.
@@ -75,17 +89,20 @@ pub fn compute_source_digest_for_context(context: &DriverContext) -> Result<Stri
 ///
 /// Build-time filesystem access (compiler bootstrap exception).
 pub fn compute_source_digest(source_paths: &[PathBuf]) -> Result<String, std::io::Error> {
-    let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
+    let mut entries: Vec<(PathBuf, String)> = Vec::with_capacity(source_paths.len());
     for path in source_paths {
+        let canonical_path = canonical_source_path(path)?;
         #[allow(clippy::disallowed_methods)]
-        let content = std::fs::read(path).map_err(|e| {
+        let content = std::fs::read(&canonical_path).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
-                format!("cannot read {} for source digest: {e}", path.display()),
+                format!(
+                    "cannot read {} for source digest: {e}",
+                    canonical_path.display()
+                ),
             )
         })?;
-        source_hashes.push(format!("{}:{}", path.display(), sha256_hex(&content)));
+        entries.push((canonical_path, sha256_hex(&content)));
     }
-    source_hashes.sort();
-    Ok(sha256_hex(source_hashes.join("\n").as_bytes()))
+    Ok(compute_digest_from_entries(entries))
 }

@@ -1618,6 +1618,30 @@ fn eval_intrinsic_inner(
             }
             _ => Err(EvalError::new("first requires a list")),
         },
+        "get" => {
+            let idx_expr = rest.first().map(|(_, e)| e);
+            match (receiver, idx_expr) {
+                (Value::List(items), Some(e)) => {
+                    let idx = match eval_expr(e, env, ctx)? {
+                        Value::Int(i) => i as usize,
+                        other => {
+                            return Err(EvalError::new(format!(
+                                "get index must be Int, got {other:?}"
+                            )))
+                        }
+                    };
+                    let mut m = BTreeMap::new();
+                    if let Some(item) = items.into_iter().nth(idx) {
+                        m.insert("_variant".into(), Value::Str("Some".into()));
+                        m.insert("value".into(), item);
+                    } else {
+                        m.insert("_variant".into(), Value::Str("None".into()));
+                    }
+                    Ok(Value::Map(m))
+                }
+                _ => Err(EvalError::new("get requires a list and an index")),
+            }
+        }
         "last" => match receiver {
             Value::List(items) => {
                 let mut m = BTreeMap::new();
@@ -1928,7 +1952,19 @@ fn eval_intrinsic_inner(
                 ))),
             }
         }
-        _ => Err(EvalError::new(format!("unknown intrinsic call: {name}"))),
+        _ => {
+            // Pure intrinsics share the eval_core builtin table. Only the
+            // lambda/sibling-fn cases stay in this explicit-stack layer.
+            let mut evaluated = Vec::with_capacity(args.len());
+            evaluated.push((args[0].0.clone(), receiver));
+            for (arg_name, arg_expr) in rest {
+                evaluated.push((arg_name.clone(), eval_expr(arg_expr, env, ctx)?));
+            }
+            match eval_builtin_call(name, &evaluated) {
+                Some(result) => result,
+                None => Err(EvalError::new(format!("unknown intrinsic call: {name}"))),
+            }
+        }
     }
 }
 
