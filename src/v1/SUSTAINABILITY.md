@@ -62,8 +62,9 @@ Discovered via IAM preflight incident (2026-03-09); affected code deleted.
 ### Branch 7: Untyped runtime — accepted debt
 
 The v1 evaluator works but is bounded by:
-- **S52:** Parser mutual recursion not covered by TCO. Not a correctness
-  issue — bounded by AST depth, tests use `with_parser_stack(16MB)`.
+- **S52:** Parser mutual recursion not covered by TCO. — MITIGATED (stacker)
+  `stacker::maybe_grow` handles deep recursion automatically. Not a correctness
+  issue — bounded by AST depth.
 - **Performance:** `Env::from_inputs` clones on every non-self call (partially
   mitigated with `Rc<HashMap>` COW). Map field flattening clones every field.
 
@@ -75,12 +76,13 @@ The v1 evaluator works but is bounded by:
 
 **Terminal state:** Self-hosting eliminates the evaluator entirely.
 
-### Branch 8: Type-unaware codegen (all die with self-hosting)
+### Branch 8: Type-unaware codegen — TERMINAL (dies with self-hosting)
 
 fn_codegen compiles .dag function bodies to Rust without type information.
-Every decision requiring type info is heuristic.
+Every decision requiring type info is heuristic. All findings in this branch
+are terminal — v2 replaces v1, eliminating the entire codegen path.
 
-**S81: fn_codegen emits Rust, not code_ir — CRITICAL.** ~15 Rust-specific
+**S81: fn_codegen emits Rust, not code_ir — TERMINAL.** ~15 Rust-specific
 heuristics injected directly into IR: `clone_if_needed()`, `Box::new()`,
 `Some()`/`None`, `.as_str()`, `..Default::default()`, `LazyLock`, `Deref`/`*`.
 
@@ -90,10 +92,10 @@ render. DAG nodes are **facts** — target-agnostic assertions about computation
 in backends, not IR. The structural test: can you swap the backend without
 changing the IR?
 
-**S76:** `clone_if_needed()` — blind ownership heuristic. ~300 unnecessary clones.
-**S77:** `infer_struct_name()` — field-name matching for anonymous records. Wrong on overlapping fields.
-**S78:** Materialized types in `std_types_prelude()` — hand-written because v1 can't resolve cross-module imports.
-**S79:** Hardcoded cross-module imports in `module_prelude()` — should derive from `import` declarations.
+**S76:** `clone_if_needed()` — blind ownership heuristic. ~300 unnecessary clones. — TERMINAL
+**S77:** `infer_struct_name()` — field-name matching for anonymous records. Wrong on overlapping fields. — TERMINAL
+**S78:** Materialized types in `std_types_prelude()` — hand-written because v1 can't resolve cross-module imports. — TERMINAL
+**S79:** Hardcoded cross-module imports in `module_prelude()` — should derive from `import` declarations. — TERMINAL
 
 ### Standalone
 
@@ -158,14 +160,14 @@ and won't flatten namespaces.
 **Mitigation until then:** `compile_all_modules()` should detect and reject
 duplicate function names across modules.
 
-**S83: Re-entrant evaluator stack overflow on deep call chains.**
+**S83: Re-entrant evaluator stack overflow on deep call chains. — FIXED (stacker)**
 `eval_non_sibling_call_raw` calls `evaluate_stack` re-entrantly for sibling
 function calls inside intrinsic lambdas (map/filter/fold). Each re-entrant call
 adds ~20 Rust stack frames. Processing 11 real .dag files through the v2
 typechecker exceeds the default 8MB thread stack.
 **Terminal state:** Self-hosting eliminates the evaluator.
-**Workaround:** Increase thread stack (`RUST_MIN_STACK=64MB`) or spawn the
-test on a thread with `std::thread::Builder::new().stack_size()`.
+**Fix:** `stacker::maybe_grow` added to re-entrant call sites, growing the
+stack on demand. No manual stack size tuning needed.
 
 **S84: v2 emitter has no TCO pass — CRITICAL for self-hosting.**
 Track C added tail-call optimization to v1's `fn_codegen.rs` (Stmt::Loop +
