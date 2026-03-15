@@ -6195,19 +6195,7 @@ fn derive_service_call_metadata(
                 if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
         );
 
-    // S45: Explicit annotation is authoritative; unknown values fail fast.
-    // Falls back to service-name inference only when no annotation is present.
-    let response_provider =
-        match service.config.response_provider.as_deref() {
-            Some(name) => Some(name.parse::<ResponseProvider>().map_err(|e| {
-                LowerError::InvalidAnnotation {
-                    service: service.name.clone(),
-                    annotation: "response_provider".to_string(),
-                    detail: e,
-                }
-            })?),
-            None => infer_response_provider(&service.name),
-        };
+    let response_provider = response_provider_for_service(service)?;
 
     Ok(ServiceCallMetadata {
         service: service.name.clone(),
@@ -6218,6 +6206,21 @@ fn derive_service_call_metadata(
         spec,
         response_provider,
     })
+}
+
+fn response_provider_for_service(
+    service: &ServiceDef,
+) -> Result<Option<ResponseProvider>, LowerError> {
+    match service.config.response_provider.as_deref() {
+        Some(name) => Ok(Some(name.parse::<ResponseProvider>().map_err(|e| {
+            LowerError::InvalidAnnotation {
+                service: service.name.clone(),
+                annotation: "response_provider".to_string(),
+                detail: e,
+            }
+        })?)),
+        None => Ok(infer_response_provider(&service.name)),
+    }
 }
 
 // ============================================================================
@@ -6386,7 +6389,7 @@ fn derive_operation_spec(
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation)
+            Ok(derive_rest_spec(service, operation)?
                 .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
@@ -6441,13 +6444,8 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
 fn derive_middleware_config(
     service: &ServiceDef,
     _operation: &OperationDef,
-) -> Option<TransportMiddlewareConfig> {
+) -> Result<Option<TransportMiddlewareConfig>, LowerError> {
     let config = &service.config;
-
-    // Only produce middleware config if at least one block is defined.
-    if config.rate_limits.is_empty() && config.retry.is_none() {
-        return None;
-    }
 
     let rate_limit = config.rate_limits.first().map(|rl| {
         // Store raw requests and window — let the runtime do precise math.
@@ -6505,23 +6503,28 @@ fn derive_middleware_config(
         }
     });
 
+    let response_provider = response_provider_for_service(service)?;
+
     // TL-15: parse_provider_error_shapes is always false — the transport layer
     // uses only error_shape JSON-path extraction.
-    let response_classification =
-        infer_response_provider(&service.name).map(|provider| ResponseClassification {
-            provider,
-            prioritize_auth_errors: true,
-            parse_provider_error_shapes: false,
-            error_shape: error_shape.clone(),
-            output_shape: None, // Per-operation output shapes are on RestOperationSpec.
-        });
+    let response_classification = response_provider.map(|provider| ResponseClassification {
+        provider,
+        prioritize_auth_errors: true,
+        parse_provider_error_shapes: false,
+        error_shape: error_shape.clone(),
+        output_shape: None, // Per-operation output shapes are on RestOperationSpec.
+    });
 
-    Some(TransportMiddlewareConfig {
+    if rate_limit.is_none() && retry.is_none() && response_classification.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(TransportMiddlewareConfig {
         rate_limit,
         retry,
         credential: None, // Credential config is wired separately via auth_scheme.
         response_classification,
-    })
+    }))
 }
 
 // S45: `parse_response_provider` removed — use `ResponseProvider::from_str`
@@ -6589,11 +6592,14 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
         .collect()
 }
 
-fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
+fn derive_rest_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
         Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
-        _ => return None,
+        _ => return Ok(None),
     };
 
     let headers = match &operation.transport {
@@ -6621,7 +6627,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     });
 
     // Derive middleware config from rate_limit/retry blocks (TL-12).
-    let middleware = derive_middleware_config(service, operation);
+    let middleware = derive_middleware_config(service, operation)?;
 
     // Derive response mapping from response {} blocks (SL-9).
     let response_mapping = derive_response_mapping(&operation.response);
@@ -6660,7 +6666,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         })
     };
 
-    Some(RestOperationSpec {
+    Ok(Some(RestOperationSpec {
         endpoint,
         method,
         path_template,
@@ -6674,7 +6680,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         response_mapping,
         output_shape,
         mock_responses,
-    })
+    }))
 }
 
 /// Convert a list of argv expressions from `shell(["cmd", "{param}"])` to ArgvSegments.

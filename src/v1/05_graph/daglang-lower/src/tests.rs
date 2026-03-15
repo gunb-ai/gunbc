@@ -729,6 +729,30 @@ fn shell_output_parsing_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> ShellOu
     }
 }
 
+fn rest_spec_for_node<'a>(dag: &'a Dag<LoweredOp>, node_id: &str) -> &'a RestOperationSpec {
+    let node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == node_id)
+        .expect("transport node should exist");
+    let metadata = match &node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be present"),
+        gunbc_ir::node::NodeBody::SubDag(..) => {
+            panic!("expected opaque lowered node for transport metadata")
+        }
+    };
+    let spec = metadata
+        .spec
+        .as_ref()
+        .expect("service metadata should include operation spec");
+    match spec {
+        ServiceOperationSpec::Rest(spec) => spec,
+        other => panic!("expected rest operation spec, got {other:?}"),
+    }
+}
+
 #[test]
 fn shell_explicit_parse_mode_overrides_inferred() {
     // After annotation removal, parse mode is inferred from output types.
@@ -4050,4 +4074,57 @@ fn response_provider_from_str_recognizes_all_variants() {
         ResponseProvider::Generic
     );
     assert!("unknown_provider".parse::<ResponseProvider>().is_err());
+}
+
+#[test]
+fn rest_middleware_uses_authoritative_response_provider_annotation_without_rate_limit_blocks() {
+    use gunbc_ir::transport::middleware::ResponseProvider;
+
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/provider_annotation_middleware.dag",
+        r#"module sample.services
+service custom.Api {
+  config {
+    endpoint: "https://api.example.com"
+    response_provider: GitHub
+    error_shape: { status: 400, error_type_path: "$.error.type", message_path: "$.error.message", retryable: false }
+  }
+  operation Fetch {
+    input { item_id: String }
+    output { ok: Bool }
+    transport rest { method: GET, path: "/v1/items/\{item_id\}" }
+  }
+}
+func run() -> { ok: Bool } {
+  result = custom.Api.Fetch(item_id: "123")
+  return { ok: result.ok }
+}"#,
+    )]);
+
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let spec = rest_spec_for_node(&dag, "execute_transport_sample_services_custom_Api_Fetch");
+    let middleware = spec.middleware.as_ref().expect(
+        "response classification should preserve middleware metadata even without rate_limit/retry",
+    );
+    let classification = middleware
+        .response_classification
+        .as_ref()
+        .expect("response_provider annotation should produce response classification metadata");
+
+    assert_eq!(classification.provider, ResponseProvider::GitHub);
+    assert!(!classification.parse_provider_error_shapes);
+    assert_eq!(
+        classification
+            .error_shape
+            .as_ref()
+            .and_then(|shape| shape.code_path.as_deref()),
+        Some("$.error.type")
+    );
+    assert_eq!(
+        classification
+            .error_shape
+            .as_ref()
+            .map(|shape| shape.message_path.as_str()),
+        Some("$.error.message")
+    );
 }
