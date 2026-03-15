@@ -182,27 +182,21 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
             return Ok(match kind {
-                WrapperKind::Optional => TypeShape::Container(ContainerShape::Optional(
-                    Box::new(type_shape(required_named_subdag(
-                        dag,
-                        "inner_type",
-                        "optional wrapper",
-                    )?)?),
-                )),
-                WrapperKind::List | WrapperKind::NonEmptyList => TypeShape::Container(
-                    ContainerShape::List(Box::new(type_shape(required_named_subdag(
-                        dag,
-                        "element_type",
-                        "list wrapper",
-                    )?)?)),
-                ),
-                WrapperKind::Set | WrapperKind::NonEmptySet => TypeShape::Container(
-                    ContainerShape::Set(Box::new(type_shape(required_named_subdag(
-                        dag,
-                        "element_type",
-                        "set wrapper",
-                    )?)?)),
-                ),
+                WrapperKind::Optional => {
+                    TypeShape::Container(ContainerShape::Optional(Box::new(type_shape(
+                        required_named_subdag(dag, "inner_type", "optional wrapper")?,
+                    )?)))
+                }
+                WrapperKind::List | WrapperKind::NonEmptyList => {
+                    TypeShape::Container(ContainerShape::List(Box::new(type_shape(
+                        required_named_subdag(dag, "element_type", "list wrapper")?,
+                    )?)))
+                }
+                WrapperKind::Set | WrapperKind::NonEmptySet => {
+                    TypeShape::Container(ContainerShape::Set(Box::new(type_shape(
+                        required_named_subdag(dag, "element_type", "set wrapper")?,
+                    )?)))
+                }
                 WrapperKind::Map => {
                     let key_shape =
                         type_shape(required_named_subdag(dag, "key_type", "map wrapper")?)?;

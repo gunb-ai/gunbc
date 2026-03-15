@@ -23,9 +23,7 @@
 //! }
 //! ```
 
-use crate::classify::{
-    classify_exec_error, classify_for_middleware, ClassifiedErrorKind,
-};
+use crate::classify::{classify_exec_error, classify_for_middleware, ClassifiedErrorKind};
 use crate::middleware::{
     MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, TransportMiddleware,
 };
@@ -723,7 +721,11 @@ mod tests {
             assert!(matches!(outcome, PostProcessOutcome::Abort(_)));
         }
 
-        assert!(!mw.circuit_breaker.as_ref().expect("circuit breaker").is_open());
+        assert!(!mw
+            .circuit_breaker
+            .as_ref()
+            .expect("circuit breaker")
+            .is_open());
     }
 
     #[test]
@@ -748,6 +750,10 @@ mod tests {
         );
 
         assert!(matches!(outcome, PostProcessOutcome::Abort(_)));
-        assert!(!mw.circuit_breaker.as_ref().expect("circuit breaker").is_open());
+        assert!(!mw
+            .circuit_breaker
+            .as_ref()
+            .expect("circuit breaker")
+            .is_open());
     }
 }

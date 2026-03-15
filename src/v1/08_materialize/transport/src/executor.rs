@@ -45,8 +45,7 @@ impl TransportError {
     }
 
     pub fn into_exec_error(self, ctx: impl std::fmt::Display) -> ExecError {
-        ExecError::new(format!("{}: {}", ctx, self.message))
-            .with_transport_failure_kind(self.kind)
+        ExecError::new(format!("{}: {}", ctx, self.message)).with_transport_failure_kind(self.kind)
     }
 }
 
@@ -134,12 +133,22 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
         Some(body) => match req.send_string(body) {
             Ok(resp) => resp,
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => return Err(TransportError::network(format!("http request failed: {}", e))),
+            Err(e) => {
+                return Err(TransportError::network(format!(
+                    "http request failed: {}",
+                    e
+                )))
+            }
         },
         None => match req.call() {
             Ok(resp) => resp,
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => return Err(TransportError::network(format!("http request failed: {}", e))),
+            Err(e) => {
+                return Err(TransportError::network(format!(
+                    "http request failed: {}",
+                    e
+                )))
+            }
         },
     };
 

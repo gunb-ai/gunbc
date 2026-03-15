@@ -138,7 +138,14 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
             "RestResponse",
         )
         .with_required_fields(&["url", "method"])
-        .with_optional_fields(&["headers", "body", "auth", "query", "timeout_ms", "requires_auth"])
+        .with_optional_fields(&[
+            "headers",
+            "body",
+            "auth",
+            "query",
+            "timeout_ms",
+            "requires_auth",
+        ])
         .with_response_fields(&["status", "headers", "body"])
         .with_field_routes(&[("timeout_ms", "rest_timeout_ms")]),
         TransportBehavior::new(

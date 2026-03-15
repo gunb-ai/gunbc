@@ -339,6 +339,7 @@ fn extract_status(response: &TransportResponse) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::{ExecError, TransportFailureKind};
     use gunbc_ir::transport::{LocalRequest, LocalResponse, TransportMiddlewareConfig};
     use std::thread;
     use std::time::Duration;
@@ -410,6 +411,36 @@ mod tests {
         assert!(matches!(outcome, PostProcessOutcome::Complete(_)));
         assert_eq!(sink.response_count(), 1);
         assert!(sink.total_duration_ms() >= 10);
+    }
+
+    #[test]
+    fn metrics_middleware_records_structured_transport_error_kind() {
+        let sink = Arc::new(InMemoryMetricsSink::new());
+        let mw = MetricsMiddleware::new(sink.clone());
+        let config = Arc::new(TransportMiddlewareConfig::default());
+        let shared = Arc::new(crate::middleware::SharedMiddlewareState::new());
+        let mut ctx =
+            crate::middleware::MiddlewareContext::new("test.op", true, false, config, shared);
+        let request = TransportRequest::Local(LocalRequest {
+            inputs: serde_json::json!({}),
+        });
+
+        let outcome = mw.pre_request(request.clone(), &mut ctx);
+        assert!(matches!(outcome, MiddlewareOutcome::Continue(_)));
+
+        let outcome = mw.on_error(
+            &request,
+            ExecError::new("connection reset")
+                .with_transport_failure_kind(TransportFailureKind::Network),
+            &mut ctx,
+        );
+
+        assert!(matches!(outcome, PostProcessOutcome::Abort(_)));
+        assert_eq!(sink.error_count(), 1);
+        assert_eq!(
+            sink.errors_by_kind().get(&ClassifiedErrorKind::Network),
+            Some(&1)
+        );
     }
 
     #[test]

@@ -243,7 +243,8 @@ fn execute_parse_tcp_response(
 /// This function is NOT exported - it's only callable from within this crate.
 /// External code must use `TransportOps::Execute` nodes in a DAG.
 pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
-    execute_transport_with_backend(request).map_err(|error| error.into_exec_error("transport error"))
+    execute_transport_with_backend(request)
+        .map_err(|error| error.into_exec_error("transport error"))
 }
 
 #[cfg(test)]

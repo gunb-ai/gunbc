@@ -589,8 +589,8 @@ mod tests {
 
     #[test]
     fn classify_exec_error_uses_structured_transport_failure_kind() {
-        let error =
-            ExecError::new("connection reset").with_transport_failure_kind(TransportFailureKind::Network);
+        let error = ExecError::new("connection reset")
+            .with_transport_failure_kind(TransportFailureKind::Network);
 
         let classified = classify_exec_error(&error).expect("classification");
         assert_eq!(classified.kind, ClassifiedErrorKind::Network);

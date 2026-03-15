@@ -362,6 +362,9 @@ mod tests {
             err.to_string(),
             "CursorAction::Clear is not supported by FrameWriter"
         );
-        assert!(buf.is_empty(), "unsupported action should not write partial output");
+        assert!(
+            buf.is_empty(),
+            "unsupported action should not write partial output"
+        );
     }
 }
