@@ -17,8 +17,7 @@
 use crate::backend::execute_transport_with_backend;
 use gunbc_exec::{
     optional_bool_strict, optional_int_strict, optional_str_strict, require_int, require_request,
-    require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
-    TransportResponseExt,
+    require_response, require_str, ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::resource::RESOURCE_CREDENTIAL;
 use gunbc_ir::transport::{TcpRequest, TransportRequest, TransportResponse};
@@ -244,7 +243,7 @@ fn execute_parse_tcp_response(
 /// This function is NOT exported - it's only callable from within this crate.
 /// External code must use `TransportOps::Execute` nodes in a DAG.
 pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
-    execute_transport_with_backend(request).exec_context("transport error")
+    execute_transport_with_backend(request).map_err(|error| error.into_exec_error("transport error"))
 }
 
 #[cfg(test)]

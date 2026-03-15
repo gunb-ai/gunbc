@@ -15,7 +15,7 @@
 //! let middleware = MetricsMiddleware::new(sink);
 //! ```
 
-use crate::classify::{classify_transport_error, ClassifiedErrorKind};
+use crate::classify::{classify_exec_error, ClassifiedErrorKind};
 use crate::middleware::{
     MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, TransportMiddleware,
 };
@@ -302,14 +302,10 @@ impl TransportMiddleware for MetricsMiddleware {
         // Clean up timing state
         self.timings.lock().unwrap().remove(&ctx.request_id);
 
-        // Don't record synthetic cleanup errors as real failures
-        let error_msg = error.to_string();
-        if error_msg.contains("pipeline cleanup") {
+        let Some(classified) = classify_exec_error(&error) else {
             return PostProcessOutcome::Abort(error);
-        }
-
-        let error_kind = classify_transport_error(&error_msg).kind;
-        self.sink.record_error(&ctx.operation_id, error_kind);
+        };
+        self.sink.record_error(&ctx.operation_id, classified.kind);
 
         PostProcessOutcome::Abort(error)
     }

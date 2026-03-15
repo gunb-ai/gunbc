@@ -33,7 +33,7 @@ use crate::middleware::{
 };
 use crate::rate_limit::RateLimitMiddleware;
 use crate::retry::RetryMiddleware;
-use gunbc_exec::{ExecError, IntoExecResult};
+use gunbc_exec::{ExecError, TransportFailureKind};
 use gunbc_ir::transport::{TransportMiddlewareConfig, TransportRequest, TransportResponse};
 use std::sync::Arc;
 
@@ -252,7 +252,8 @@ impl TransportPipeline {
             executor(&request)
         } else {
             // Use crate-internal executor
-            crate::backend::execute_transport_with_backend(&request).exec_context("transport error")
+            crate::backend::execute_transport_with_backend(&request)
+                .map_err(|error| error.into_exec_error("transport error"))
         };
 
         // Post-process result
@@ -306,7 +307,8 @@ impl TransportPipeline {
         ctx: &mut MiddlewareContext,
     ) {
         // Create a synthetic cleanup error - layers use this to clean up state
-        let cleanup_error = ExecError::new("pipeline cleanup (request did not complete)");
+        let cleanup_error = ExecError::new("pipeline cleanup (request did not complete)")
+            .with_transport_failure_kind(TransportFailureKind::PipelineCleanup);
 
         // Call on_error for layers 0..count in reverse order (inner to outer cleanup)
         for layer in self.layers[..count].iter().rev() {

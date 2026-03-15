@@ -24,7 +24,7 @@
 //! ```
 
 use crate::classify::{
-    classify_for_middleware, classify_transport_error, ClassifiedErrorKind,
+    classify_exec_error, classify_for_middleware, ClassifiedErrorKind,
 };
 use crate::middleware::{
     MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, TransportMiddleware,
@@ -409,15 +409,9 @@ impl TransportMiddleware for RetryMiddleware {
         error: ExecError,
         ctx: &mut MiddlewareContext,
     ) -> PostProcessOutcome {
-        // Don't process synthetic pipeline cleanup errors - just pass through
-        // without affecting circuit breaker state or attempting retry
-        let error_msg = error.to_string();
-        if error_msg.contains("pipeline cleanup") {
+        let Some(classified) = classify_exec_error(&error) else {
             return PostProcessOutcome::Abort(error);
-        }
-
-        // Classify the error
-        let classified = classify_transport_error(&error_msg);
+        };
 
         // Only downstream service failures should affect circuit state.
         if let Some(cb) = &self.circuit_breaker {
@@ -452,6 +446,7 @@ impl TransportMiddleware for RetryMiddleware {
 mod tests {
     use super::*;
     use crate::middleware::SharedMiddlewareState;
+    use gunbc_exec::TransportFailureKind;
     use gunbc_ir::transport::{LocalRequest, RestResponse, TransportMiddlewareConfig};
     use std::sync::Arc;
 
@@ -721,12 +716,38 @@ mod tests {
         for _ in 0..3 {
             let outcome = mw.on_error(
                 &request,
-                ExecError::new("failed to serialize body"),
+                ExecError::new("failed to serialize body")
+                    .with_transport_failure_kind(TransportFailureKind::Client),
                 &mut ctx,
             );
             assert!(matches!(outcome, PostProcessOutcome::Abort(_)));
         }
 
+        assert!(!mw.circuit_breaker.as_ref().expect("circuit breaker").is_open());
+    }
+
+    #[test]
+    fn retry_middleware_ignores_structural_pipeline_cleanup() {
+        let config = RetryConfig {
+            circuit_breaker: Some(cb_config()),
+            ..basic_retry_config()
+        };
+        let mw = RetryMiddleware::new(config);
+        let mw_config = Arc::new(TransportMiddlewareConfig::default());
+        let shared = Arc::new(SharedMiddlewareState::new());
+        let mut ctx = MiddlewareContext::new("test", true, false, mw_config, shared);
+        let request = TransportRequest::Local(LocalRequest {
+            inputs: serde_json::json!({}),
+        });
+
+        let outcome = mw.on_error(
+            &request,
+            ExecError::new("pipeline cleanup (request did not complete)")
+                .with_transport_failure_kind(TransportFailureKind::PipelineCleanup),
+            &mut ctx,
+        );
+
+        assert!(matches!(outcome, PostProcessOutcome::Abort(_)));
         assert!(!mw.circuit_breaker.as_ref().expect("circuit breaker").is_open());
     }
 }

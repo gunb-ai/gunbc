@@ -10,6 +10,7 @@
 //! functions exist in this module — the compiler emits all provider knowledge
 //! as `ErrorShapeExtraction` config (TL-14 / TL-16).
 
+use gunbc_exec::{ExecError, TransportFailureKind};
 use gunbc_ir::transport::{
     ErrorShapeExtraction, HttpResponse, ResponseClassification, ResponseProvider, RestResponse,
 };
@@ -116,6 +117,35 @@ pub fn classify_transport_error(message: &str) -> ClassifiedResponse {
         message: Some(message.to_string()),
         retry_after_ms: None,
     }
+}
+
+impl From<TransportFailureKind> for ClassifiedErrorKind {
+    fn from(kind: TransportFailureKind) -> Self {
+        match kind {
+            TransportFailureKind::Auth => Self::Auth,
+            TransportFailureKind::RateLimit => Self::RateLimit,
+            TransportFailureKind::Client => Self::Client,
+            TransportFailureKind::Server => Self::Server,
+            TransportFailureKind::Network => Self::Network,
+            TransportFailureKind::PipelineCleanup | TransportFailureKind::Unknown => Self::Unknown,
+        }
+    }
+}
+
+/// Classify an execution error that already carries transport failure structure.
+pub(crate) fn classify_exec_error(error: &ExecError) -> Option<ClassifiedResponse> {
+    let kind = error.transport_failure_kind()?;
+    if kind == TransportFailureKind::PipelineCleanup {
+        return None;
+    }
+
+    Some(ClassifiedResponse {
+        kind: kind.into(),
+        provider: ResponseProvider::Generic,
+        status: None,
+        message: Some(error.message().to_string()),
+        retry_after_ms: None,
+    })
 }
 
 fn classify_transport_error_kind(message: &str) -> ClassifiedErrorKind {
@@ -378,6 +408,7 @@ pub fn is_success(response: &TransportResponse) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::{ExecError, TransportFailureKind};
     use gunbc_ir::transport::{HttpResponse, RestResponse};
 
     /// Helper: Build a policy with error_shape for GitHub-style errors.
@@ -554,6 +585,25 @@ mod tests {
         let classified = classify_transport_error("failed to serialize body");
         assert_eq!(classified.kind, ClassifiedErrorKind::Client);
         assert!(!classified.retryable());
+    }
+
+    #[test]
+    fn classify_exec_error_uses_structured_transport_failure_kind() {
+        let error =
+            ExecError::new("connection reset").with_transport_failure_kind(TransportFailureKind::Network);
+
+        let classified = classify_exec_error(&error).expect("classification");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Network);
+        assert_eq!(classified.message, Some("connection reset".to_string()));
+        assert!(classified.retryable());
+    }
+
+    #[test]
+    fn classify_exec_error_ignores_pipeline_cleanup() {
+        let error = ExecError::new("pipeline cleanup (request did not complete)")
+            .with_transport_failure_kind(TransportFailureKind::PipelineCleanup);
+
+        assert!(classify_exec_error(&error).is_none());
     }
 
     // Middleware integration tests
