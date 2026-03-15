@@ -773,6 +773,35 @@ mod tests {
     }
 
     #[test]
+    fn build_emit_plan_fails_fast_on_interpreter_only_primitive() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "extract_field",
+            vec![Port::scalar("record", "Json")],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "extract_field".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                },
+            },
+        ));
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+
+        let error = build_emit_plan(&dag, &artifacts).expect_err("interpreter-only ops must fail");
+
+        assert!(matches!(
+            error,
+            PlanError::ClassifyFailed {
+                ref node_id,
+                ref detail,
+            } if node_id == "extract_field"
+                && detail.contains("GetField(name) is interpreter-only and cannot be emitted")
+        ));
+    }
+
+    #[test]
     fn build_makegen_plan_data_flow_wiring() {
         let dag = build_makegen_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
