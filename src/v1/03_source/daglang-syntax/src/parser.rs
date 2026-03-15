@@ -3759,7 +3759,9 @@ impl Parser {
         match flatten_path(&callee) {
             Some(path) if path.len() == 1 => Ok(Expr::Call(path[0].clone(), args)),
             Some(path) => Ok(Expr::ServiceCall(path, args)),
-            None => Ok(Expr::Call("<expr>".into(), args)),
+            None => Err(self.err(
+                "call expressions require an identifier or dotted path callee".into(),
+            )),
         }
     }
 
@@ -4075,6 +4077,17 @@ service github.Gist {
         );
         assert!(
             err.message.contains("expected identifier for `auth_input`"),
+            "unexpected parse error: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parse_call_expr_rejects_non_path_callee() {
+        let err = parse_expr_only_err("(1 + 2)(3)");
+        assert!(
+            err.message
+                .contains("call expressions require an identifier or dotted path callee"),
             "unexpected parse error: {}",
             err.message
         );
