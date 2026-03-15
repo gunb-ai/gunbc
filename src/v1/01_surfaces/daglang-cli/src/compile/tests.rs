@@ -159,6 +159,14 @@ fn run() -> String { return 42 }
         error.contains("type mismatch: expected `String`, got `Int`"),
         "check should surface type mismatch details: {error}"
     );
+    assert!(
+        error.contains(&fixture.to_string_lossy()),
+        "check diagnostics should include the source file path: {error}"
+    );
+    assert!(
+        error.contains(":2:"),
+        "check diagnostics should include the source line: {error}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup check invalid fixture");
 }

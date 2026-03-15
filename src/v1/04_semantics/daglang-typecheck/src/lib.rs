@@ -26,7 +26,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use daglang_contract::{Diagnostic, DiagnosticContext};
+use daglang_contract::{Diagnostic, DiagnosticContext, FileId, LocatedSpan};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
     Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause,
@@ -387,39 +387,42 @@ impl std::fmt::Display for TypecheckWarning {
 
 /// A type error enriched with source location information.
 ///
-/// Wraps `TypeError` with the file path and module name where the error occurred.
+/// Wraps `TypeError` with mandatory source identity for user-facing diagnostics.
 /// The driver uses this to populate `Diagnostic.file` and resolve `line:col` from
 /// `ResolvedModule.source`.
 #[derive(Debug)]
 pub struct SpannedTypeError {
     pub error: TypeError,
+    pub file_id: FileId,
     pub file: std::path::PathBuf,
     pub module: String,
     /// Byte offset span of the AST item that caused this error.
-    pub span: Option<daglang_syntax::span::Span>,
+    pub span: daglang_syntax::span::Span,
 }
 
 impl SpannedTypeError {
+    fn primary_span(&self) -> LocatedSpan {
+        LocatedSpan {
+            file: self.file_id,
+            span: daglang_contract::Span {
+                start: self.span.start,
+                end: self.span.end,
+            },
+            label: "here".to_string(),
+        }
+    }
+
     /// Convert to a `Diagnostic` with file location.
     pub fn to_diagnostic(&self) -> daglang_contract::Diagnostic {
-        let mut diag = self.error.to_diagnostic().with_file(self.file.clone());
-        if let Some(span) = self.span {
-            diag = diag.with_span(daglang_contract::Span {
-                start: span.start,
-                end: span.end,
-            });
-        }
-        diag
+        self.error
+            .to_located_diagnostic(self.primary_span())
+            .with_file(self.file.clone())
     }
 
     /// Convert to a `Diagnostic` with file and resolved line:col.
     pub fn to_diagnostic_with_source(&self, source: &str) -> daglang_contract::Diagnostic {
-        let mut diag = self.to_diagnostic();
-        if let Some(span) = self.span {
-            let (line, col) = daglang_contract::byte_to_line_col(source, span.start);
-            diag = diag.with_line_col(line, col);
-        }
-        diag
+        let (line, col) = daglang_contract::byte_to_line_col(source, self.span.start);
+        self.to_diagnostic().with_line_col(line, col)
     }
 }
 
@@ -537,6 +540,17 @@ impl TypeError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         let mut diagnostic =
             Diagnostic::new(self.code(), self.to_string()).with_context(self.diagnostic_context());
+        if let Some(help) = self.help() {
+            diagnostic = diagnostic.with_help(help);
+        }
+        diagnostic
+    }
+
+    /// Convert to the shared compiler diagnostic shape with mandatory source location.
+    pub fn to_located_diagnostic(&self, primary: LocatedSpan) -> Diagnostic {
+        let mut diagnostic =
+            Diagnostic::located(self.code(), self.to_string(), primary)
+                .with_context(self.diagnostic_context());
         if let Some(help) = self.help() {
             diagnostic = diagnostic.with_help(help);
         }
@@ -962,6 +976,7 @@ fn typecheck_graph_modules_spanned(
 
     for (graph_index, module) in graph.modules.iter().enumerate() {
         let module_name = module.module_path.as_dotted();
+        let module_file_id = file_id_for_graph_index(graph_index);
         let module_file = module.path.clone();
         if !options.allow_unresolved_imports {
             for import in &module.ast.imports {
@@ -972,14 +987,16 @@ fn typecheck_graph_modules_spanned(
                             module: module_name.clone(),
                             target,
                         },
+                        file_id: module_file_id,
                         file: module_file.clone(),
                         module: module_name.clone(),
-                        span: Some(import.span),
+                        span: import.span,
                     });
                 }
             }
         }
-        let (signatures, sig_errors) = collect_signatures(module, &context, &module_name);
+        let (signatures, sig_errors) =
+            collect_signatures(module, module_file_id, &context, &module_name);
         errors.extend(sig_errors);
         typed_modules.push(TypedModule {
             graph_index,
@@ -1010,9 +1027,10 @@ struct RegistryUnresolved {
 #[derive(Debug, Clone)]
 struct RegistryTypeDef<'a> {
     def: &'a daglang_syntax::ast::TypeDef,
+    file_id: FileId,
     file: std::path::PathBuf,
     module: String,
-    span: Option<daglang_syntax::span::Span>,
+    span: daglang_syntax::span::Span,
 }
 
 fn collect_pipeline_params(modules: &[ResolvedModule]) -> Vec<PipelineParam> {
@@ -1037,14 +1055,15 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<S
 
     // Collect all type definitions across modules for two-pass registration.
     let mut all_type_defs: Vec<RegistryTypeDef<'_>> = Vec::new();
-    for module in modules {
+    for (graph_index, module) in modules.iter().enumerate() {
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
                 all_type_defs.push(RegistryTypeDef {
                     def,
+                    file_id: file_id_for_graph_index(graph_index),
                     file: module.path.clone(),
                     module: module.module_path.as_dotted(),
-                    span: Some(item.span),
+                    span: item.span,
                 });
             }
         }
@@ -1105,6 +1124,7 @@ fn collect_dsl_type_registry(modules: &[ResolvedModule]) -> (TypeRegistry, Vec<S
                     ty: issue.ty,
                     context: issue.context,
                 },
+                file_id: info.file_id,
                 file: info.file.clone(),
                 module: info.module.clone(),
                 span: info.span,
@@ -1559,12 +1579,14 @@ struct TypecheckContext<'a> {
 fn extend_spanned_item_errors(
     out: &mut Vec<SpannedTypeError>,
     item_errors: Vec<TypeError>,
+    file_id: FileId,
     file: &std::path::Path,
     module: &str,
-    span: Option<daglang_syntax::span::Span>,
+    span: daglang_syntax::span::Span,
 ) {
     out.extend(item_errors.into_iter().map(|error| SpannedTypeError {
         error,
+        file_id,
         file: file.to_path_buf(),
         module: module.to_string(),
         span,
@@ -1573,6 +1595,7 @@ fn extend_spanned_item_errors(
 
 fn collect_signatures(
     module: &ResolvedModule,
+    file_id: FileId,
     context: &TypecheckContext<'_>,
     module_name: &str,
 ) -> (Vec<TypedItemSignature>, Vec<SpannedTypeError>) {
@@ -1602,7 +1625,7 @@ fn collect_signatures(
     let pipeline_param_bindings = collect_pipeline_param_bindings(module);
 
     for item in &module.ast.items {
-        let item_span = Some(item.span);
+        let item_span = item.span;
         let mut item_errors = Vec::new();
         match &item.node {
             Item::TypeDef(def) => {
@@ -1923,6 +1946,7 @@ fn collect_signatures(
         extend_spanned_item_errors(
             &mut errors,
             item_errors,
+            file_id,
             &module.path,
             module_name,
             item_span,
@@ -1930,6 +1954,10 @@ fn collect_signatures(
     }
 
     (signatures, errors)
+}
+
+fn file_id_for_graph_index(graph_index: usize) -> FileId {
+    FileId(u32::try_from(graph_index).expect("module graph index should fit in u32"))
 }
 
 fn collect_pipeline_param_bindings(module: &ResolvedModule) -> HashMap<String, ValueType> {
