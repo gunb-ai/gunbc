@@ -4128,3 +4128,39 @@ func run() -> { ok: Bool } {
         Some("$.error.message")
     );
 }
+
+#[test]
+fn explicit_error_shape_without_authoritative_response_provider_fails_closed() {
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/error_shape_requires_provider.dag",
+        r#"module sample.services
+service custom.Api {
+  config {
+    endpoint: "https://api.example.com"
+    error_shape: { status: 400, error_type_path: "$.error.type", message_path: "$.error.message", retryable: false }
+  }
+  operation Fetch {
+    input { item_id: String }
+    output { ok: Bool }
+    transport rest { method: GET, path: "/v1/items/\{item_id\}" }
+  }
+}
+func run() -> { ok: Bool } {
+  result = custom.Api.Fetch(item_id: "123")
+  return { ok: result.ok }
+}"#,
+    )]);
+
+    let error = lower_typed_project(&typed).expect_err("lowering should fail");
+    assert!(matches!(
+        error,
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } if service == "custom.Api"
+            && operation == "Fetch"
+            && detail.contains("error_shape")
+            && detail.contains("response_provider")
+    ));
+}

@@ -6443,7 +6443,7 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
 /// Derive transport middleware config from service config blocks (TL-12).
 fn derive_middleware_config(
     service: &ServiceDef,
-    _operation: &OperationDef,
+    operation: &OperationDef,
 ) -> Result<Option<TransportMiddlewareConfig>, LowerError> {
     let config = &service.config;
 
@@ -6504,6 +6504,13 @@ fn derive_middleware_config(
     });
 
     let response_provider = response_provider_for_service(service)?;
+    if error_shape.is_some() && response_provider.is_none() {
+        return Err(LowerError::InvalidTransportSpec {
+            service: service.name.clone(),
+            operation: operation.name.clone(),
+            detail: "service config declares `error_shape` but no authoritative `response_provider` is available; add `response_provider: Generic|GitHub|Gcp|Anthropic|OpenAi`".to_string(),
+        });
+    }
 
     // TL-15: parse_provider_error_shapes is always false — the transport layer
     // uses only error_shape JSON-path extraction.
