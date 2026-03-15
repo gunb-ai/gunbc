@@ -119,33 +119,67 @@ parsing annotation), S45/S46 (provider/transport metadata stamping).
 
 ---
 
-## V2 self-hosting gap analysis (updated 2026-03-14)
+## V2 self-hosting gap analysis (updated 2026-03-15)
 
-**V2 source:** 7 modules, 7,311 lines, all parse with zero diagnostics.
-**Test status:** 59 pass, 0 fail, 2 ignored (OOM + cargo check gate).
+**V2 source:** 10 modules (~9,600 lines), all parse with zero diagnostics.
+**Test status:** 81 pass, 0 fail, 4 ignored (3 slow cargo gates + 1 evaluator stack overflow).
 
 **What works today:**
 - Module discovery, parsing, type codegen, fn codegen (records, match,
   if/else, for, lambda, string interp, intrinsics, `with()`, `concat()`)
 - Recursive type detection, Rust rendering, crate assembly, runtime shims
+- Target-agnostic emission architecture (Rust + Python renderers)
+- Honest type system (no fabrication in lookup/resolve/emit paths)
+- v1 TCO pass for recursive .dag functions (tokenize_loop is iterative)
 
-**Current state: 115 compile errors in generated v2 Rust crate.**
-(Down from 2204 initial → 829 → 115.)
-
-| Error | Count | Root cause |
-|-------|-------|------------|
-| E0308 type mismatches | 59 | String/i64, anon struct names, remaining Option |
-| E0382 use-after-move | 26 | Multi-use String fields in match arms (S76) |
-| E0609 `.value` on `Option` | 9 | Need `.unwrap()` for `Some{value:x}` access |
-| E0425 missing values | 2 | Variable scoping in generated code |
-| E0282 type annotation | 1 | Inference gap |
-| E0063 missing field | 1 | Struct field mismatch |
+**Generated v2 crate: cargo check passes.** 3 of 4 ignored tests pass
+(cargo build, cargo test, emit-to-target). The 4th (`phase6_gist_full_pipeline`)
+passes typecheck but stack-overflows in the v1 evaluator (see S83 below).
 
 **Path forward:**
-1. Fix `.value` on `Option<T>` → emit `.unwrap()` (9 errors)
-2. Add `.clone()` for multi-use String match bindings (26 errors)
-3. Fix anonymous struct naming (8 errors)
-4. Remaining type mismatches need deeper type tracking (50 errors)
+1. Fix remaining type mismatches in generated code
+2. v2 emitter TCO pass (S84) — required for self-hosting
+3. Evaluator stack depth for full gist pipeline (S83) — bootstrapping only
+
+### Risks identified during Track A–C integration (2026-03-15)
+
+**S82: Flattened function namespace causes silent overwrites.**
+All v2 modules' functions are merged into one `HashMap<String, LoweredFnBody>`
+for the evaluator. Name collisions silently overwrite — the last module loaded
+wins. `lookup_func_sig` was defined in both `04_typecheck.dag` and `05_emit.dag`
+with different signatures. The emit version overwrote the typecheck version,
+causing `unbound variable: scope` when the typechecker called it with the wrong
+parameter names.
+**Fix applied:** Renamed emit's version to `lookup_func_sig_in_scope`.
+**Systemic risk:** Any future name collision will produce the same class of bug
+with a misleading error message. The flattened namespace has no module isolation.
+**Terminal state:** Self-hosting. The v2 compiler resolves imports structurally
+and won't flatten namespaces.
+**Mitigation until then:** `compile_all_modules()` should detect and reject
+duplicate function names across modules.
+
+**S83: Re-entrant evaluator stack overflow on deep call chains.**
+`eval_non_sibling_call_raw` calls `evaluate_stack` re-entrantly for sibling
+function calls inside intrinsic lambdas (map/filter/fold). Each re-entrant call
+adds ~20 Rust stack frames. Processing 11 real .dag files through the v2
+typechecker exceeds the default 8MB thread stack.
+**Terminal state:** Self-hosting eliminates the evaluator.
+**Workaround:** Increase thread stack (`RUST_MIN_STACK=64MB`) or spawn the
+test on a thread with `std::thread::Builder::new().stack_size()`.
+
+**S84: v2 emitter has no TCO pass — CRITICAL for self-hosting.**
+Track C added tail-call optimization to v1's `fn_codegen.rs` (Stmt::Loop +
+parameter reassignment). This fixes the bootstrapping path: v1 compiles v2 .dag
+files into iterative Rust. **But the v2 emitter (`05_emit_rust.dag`) does not
+perform this transformation.** When v2 compiles itself, the generated Rust will
+use recursive calls for functions like `tokenize_loop`, `resolve_imports`,
+`collect_service_calls`, and every `fold` accumulator pattern. This will
+stack-overflow at runtime, exactly as v1 did before Track C.
+**Required:** Add a TCO analysis + transformation pass to the v2 emission
+pipeline, analogous to what Track C added to v1. The v2 version should operate
+on the typed IR (between typecheck and emit), detecting self-tail-recursive
+functions and rewriting them to use a loop construct that the per-target
+renderers can emit (`loop {}` for Rust, `while True:` for Python).
 
 ---
 
@@ -203,7 +237,7 @@ All ratchets are one-way (lists can only shrink).
 
 ---
 
-## Resolved summary (67 findings, 2026-03-10 through 2026-03-14)
+## Resolved summary (70 findings, 2026-03-10 through 2026-03-15)
 
 | Theme | Findings | Resolution pattern |
 |-------|----------|--------------------|
@@ -215,3 +249,4 @@ All ratchets are one-way (lists can only shrink).
 | Code quality | S6, S9, S63, S65, S66, S69, S71, S74 | Purity fixes, crate deps, dead code removal |
 | Foundation | R1–R6 | Deleted duplicates, structural walks, removed fabrication |
 | Test quality | BUG-6, E3.2 | Promoted aliases, non-tautological assertions |
+| v2 integration | S82 (namespace collision), G8/G12–G14 (fabrication) | Renamed, honest return types, sum types for sentinels |
