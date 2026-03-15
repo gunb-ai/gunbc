@@ -1,7 +1,7 @@
 use gunbc_delegate_macros::{DelegateExecutable, DelegateMockable};
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
-use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
+use gunbc_test::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -110,8 +110,21 @@ fn delegate_mockable_calls_inner_variant_methods() {
     let op = WrappedOp::Alpha(TestOp { label: "alpha" });
     let outputs = op.mock_outputs();
     assert_eq!(outputs.get("mock").and_then(Value::as_str), Some("alpha"));
-    assert_eq!(op.cardinality_inputs().len(), 1);
-    assert_eq!(op.error_cases().len(), 1);
+
+    let cardinality_inputs = op.cardinality_inputs();
+    assert_eq!(cardinality_inputs.len(), 1);
+    let input = &cardinality_inputs[0];
+    assert_eq!(input.port, "input");
+    assert_eq!(input.count, 1);
+    assert_eq!(input.value.as_str(), Some("alpha"));
+    assert!(matches!(&input.expected, ExpectedBehavior::Succeeds));
+
+    let error_cases = op.error_cases();
+    assert_eq!(error_cases.len(), 1);
+    let error_case = &error_cases[0];
+    assert_eq!(error_case.name, "invalid_input");
+    assert_eq!(error_case.inputs.get("input"), Some(&Value::Unit));
+    assert_eq!(error_case.expected_error, "bad input");
 }
 
 #[test]
@@ -128,6 +141,19 @@ fn delegate_derives_preserve_generics_and_where_clauses() {
         outputs.get("mock").and_then(Value::as_str),
         Some("generic-alpha")
     );
-    assert_eq!(mock_op.cardinality_inputs().len(), 1);
-    assert_eq!(mock_op.error_cases().len(), 1);
+
+    let cardinality_inputs = mock_op.cardinality_inputs();
+    assert_eq!(cardinality_inputs.len(), 1);
+    let input = &cardinality_inputs[0];
+    assert_eq!(input.port, "input");
+    assert_eq!(input.count, 1);
+    assert_eq!(input.value.as_str(), Some("generic-alpha"));
+    assert!(matches!(&input.expected, ExpectedBehavior::Succeeds));
+
+    let error_cases = mock_op.error_cases();
+    assert_eq!(error_cases.len(), 1);
+    let error_case = &error_cases[0];
+    assert_eq!(error_case.name, "invalid_input");
+    assert_eq!(error_case.inputs.get("input"), Some(&Value::Unit));
+    assert_eq!(error_case.expected_error, "bad input");
 }
