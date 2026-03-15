@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
@@ -19,7 +20,21 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
                 source: source.to_string(),
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let module_lookup = modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
+    let mut modules = modules;
+    for module in &mut modules {
+        module.dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .collect::<Vec<_>>();
+    }
     ModuleGraph { modules }
 }
 
