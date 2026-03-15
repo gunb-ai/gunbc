@@ -129,7 +129,7 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
         )
         .with_required_fields(&["url", "method"])
         .with_optional_fields(&["headers", "body", "timeout_ms"])
-        .with_response_fields(&["status", "headers", "body", "error"])
+        .with_response_fields(&["status", "headers", "body"])
         .with_field_routes(&[("timeout_ms", "http_timeout_ms")]),
         TransportBehavior::new(
             "transport.rest",
@@ -138,8 +138,8 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
             "RestResponse",
         )
         .with_required_fields(&["url", "method"])
-        .with_optional_fields(&["headers", "body", "timeout_ms"])
-        .with_response_fields(&["status", "headers", "body", "error"])
+        .with_optional_fields(&["headers", "body", "auth", "query", "timeout_ms", "requires_auth"])
+        .with_response_fields(&["status", "headers", "body"])
         .with_field_routes(&[("timeout_ms", "rest_timeout_ms")]),
         TransportBehavior::new(
             "transport.file",
@@ -148,12 +148,13 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
             "FileResponse",
         )
         .with_required_fields(&["path", "operation"])
-        .with_optional_fields(&["content", "append", "create_dirs"])
+        .with_optional_fields(&["content", "create_parents"])
         .with_response_fields(&[
             "path",
             "operation",
             "success",
             "content",
+            "bytes",
             "exists",
             "error",
         ]),
@@ -164,8 +165,16 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
             "ShellResponse",
         )
         .with_required_fields(&["command"])
-        .with_optional_fields(&["args", "cwd", "env", "stdin", "timeout_ms", "passthrough"])
-        .with_response_fields(&["exit_code", "stdout", "stderr", "success", "error"]),
+        .with_optional_fields(&[
+            "args",
+            "cwd",
+            "env",
+            "stdin",
+            "timeout_ms",
+            "passthrough",
+            "semantics",
+        ])
+        .with_response_fields(&["exit_code", "stdout", "stderr"]),
         TransportBehavior::new(
             "transport.local",
             TransportKind::LocalDirect,
@@ -180,6 +189,141 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::{
+        AuthScheme, Credential, FileOp, FileRequest, FileResponse, Hermeticity, HttpMethod,
+        HttpRequest, HttpResponse, LocalRequest, LocalResponse, RestRequest, RestResponse, Secret,
+        ShellRequest, ShellResponse, TcpRequest, TcpResponse,
+    };
+    use serde::Serialize;
+    use serde_json::json;
+    use std::collections::{BTreeSet, HashMap};
+
+    fn object_fields<T: Serialize>(value: T) -> BTreeSet<String> {
+        let serde_json::Value::Object(fields) =
+            serde_json::to_value(value).expect("transport shape should serialize")
+        else {
+            panic!("transport shape should serialize as an object");
+        };
+
+        fields.into_iter().map(|(field, _)| field).collect()
+    }
+
+    fn request_fields(spec: &TransportBehavior) -> BTreeSet<String> {
+        spec.required_request_fields
+            .iter()
+            .chain(spec.optional_request_fields.iter())
+            .cloned()
+            .collect()
+    }
+
+    fn response_fields(spec: &TransportBehavior) -> BTreeSet<String> {
+        spec.response_fields.iter().cloned().collect()
+    }
+
+    fn sample_shapes(kind: TransportKind) -> (BTreeSet<String>, BTreeSet<String>) {
+        match kind {
+            TransportKind::Tcp => (
+                object_fields(TcpRequest {
+                    host: "localhost".to_string(),
+                    port: 8080,
+                    data: Some("ping".to_string()),
+                    write_timeout_ms: Some(5_000),
+                    read_timeout_ms: Some(10_000),
+                }),
+                object_fields(TcpResponse {
+                    connected: true,
+                    data: Some("pong".to_string()),
+                    bytes_sent: 4,
+                    bytes_received: 4,
+                    error: None,
+                }),
+            ),
+            TransportKind::Http => (
+                object_fields(
+                    HttpRequest::post("https://example.com")
+                        .header("content-type", "application/json")
+                        .body(r#"{"ok":true}"#)
+                        .timeout(5_000),
+                ),
+                object_fields(HttpResponse {
+                    status: 200,
+                    headers: HashMap::from([(
+                        "content-type".to_string(),
+                        "application/json".to_string(),
+                    )]),
+                    body: "{}".to_string(),
+                }),
+            ),
+            TransportKind::Rest => (
+                object_fields(RestRequest {
+                    url: "https://example.com/items".to_string(),
+                    method: HttpMethod::Post,
+                    headers: HashMap::from([(
+                        "content-type".to_string(),
+                        "application/json".to_string(),
+                    )]),
+                    body: Some(json!({ "ok": true })),
+                    auth: Some(Credential::new(
+                        Secret::static_value("token"),
+                        AuthScheme::Bearer,
+                    )),
+                    query: HashMap::from([("page".to_string(), "1".to_string())]),
+                    timeout_ms: Some(5_000),
+                    requires_auth: true,
+                }),
+                object_fields(RestResponse {
+                    status: 200,
+                    headers: HashMap::from([(
+                        "content-type".to_string(),
+                        "application/json".to_string(),
+                    )]),
+                    body: json!({ "ok": true }),
+                }),
+            ),
+            TransportKind::File => (
+                object_fields(FileRequest {
+                    path: "/tmp/example.txt".to_string(),
+                    operation: FileOp::Write,
+                    content: Some("body".to_string()),
+                    create_parents: true,
+                }),
+                object_fields(FileResponse {
+                    path: "/tmp/example.txt".to_string(),
+                    operation: FileOp::ReadBytes,
+                    success: true,
+                    content: Some("body".to_string()),
+                    bytes: Some(vec![1, 2, 3]),
+                    exists: Some(true),
+                    error: None,
+                }),
+            ),
+            TransportKind::Shell => (
+                object_fields(
+                    ShellRequest::new("echo")
+                        .args(["hello"])
+                        .cwd("/tmp")
+                        .env("KEY", "value")
+                        .stdin("input")
+                        .timeout(5_000)
+                        .passthrough(true)
+                        .with_semantics("transport.shell.exec", Hermeticity::Hermetic),
+                ),
+                object_fields(ShellResponse {
+                    exit_code: 0,
+                    stdout: "hello\n".to_string(),
+                    stderr: String::new(),
+                }),
+            ),
+            TransportKind::LocalDirect => (
+                object_fields(LocalRequest {
+                    inputs: json!({ "value": 1 }),
+                }),
+                object_fields(LocalResponse {
+                    outputs: json!({ "value": 2 }),
+                }),
+            ),
+        }
+    }
 
     #[test]
     fn default_behaviors_cover_all_core_transport_families() {
@@ -222,5 +366,24 @@ mod tests {
             rest.invocation_contract(),
             InvocationContract::Protocol { protocol, .. } if protocol == "rest"
         ));
+    }
+
+    #[test]
+    fn default_behavior_field_catalog_matches_transport_structs() {
+        for spec in default_transport_behaviors() {
+            let (request_shape, response_shape) = sample_shapes(spec.transport);
+            assert_eq!(
+                request_fields(&spec),
+                request_shape,
+                "request field catalog drifted for {}",
+                spec.id
+            );
+            assert_eq!(
+                response_fields(&spec),
+                response_shape,
+                "response field catalog drifted for {}",
+                spec.id
+            );
+        }
     }
 }
