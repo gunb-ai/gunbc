@@ -168,7 +168,7 @@ fn extract_node_examples<T>(
 ) {
     for node in &dag.nodes {
         let node_id_str = &node.id.0;
-        let identity = match NodeIdentity::from_node_id(node_id_str) {
+        let identity = match NodeIdentity::from_origin(&node.origin) {
             Some(id) => id,
             None => continue,
         };
@@ -208,11 +208,19 @@ fn extract_edge_examples<T>(
     edge_examples: &mut Vec<EdgeExample>,
 ) {
     for edge in &dag.edges {
-        let from_identity = match NodeIdentity::from_node_id(&edge.from_node.0) {
+        let from_node = match dag.get_node(&edge.from_node) {
+            Some(n) => n,
+            None => continue,
+        };
+        let from_identity = match NodeIdentity::from_origin(&from_node.origin) {
             Some(id) => id,
             None => continue,
         };
-        let to_identity = match NodeIdentity::from_node_id(&edge.to_node.0) {
+        let to_node_ref = match dag.get_node(&edge.to_node) {
+            Some(n) => n,
+            None => continue,
+        };
+        let to_identity = match NodeIdentity::from_origin(&to_node_ref.origin) {
             Some(id) => id,
             None => continue,
         };
@@ -301,7 +309,7 @@ pub fn enrich_corpus_with_type_witnesses<T>(
     use gunbc_test::{is_redacted_type, normalize_value};
 
     for node in &dag.nodes {
-        let identity = match NodeIdentity::from_node_id(&node.id.0) {
+        let identity = match NodeIdentity::from_origin(&node.origin) {
             Some(id) => id,
             None => continue,
         };
@@ -388,7 +396,7 @@ pub fn enrich_corpus_with_type_witnesses<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{Dag, Edge, Node, NodeId, Port, TypeId};
+    use gunbc_ir::{Dag, Edge, Node, NodeId, NodeOrigin, Port, TypeId};
     use gunbc_test::MockSpec;
 
     /// A trivial passthrough op for testing.
@@ -404,20 +412,36 @@ mod tests {
         }
     }
 
+    fn test_origin(module: &str, item: &str) -> NodeOrigin {
+        NodeOrigin::UserCode {
+            file: "test.dag".into(),
+            module: module.into(),
+            item: item.into(),
+            span_start: 0,
+            span_end: 0,
+        }
+    }
+
     fn make_simple_dag() -> Dag<PassthroughOp> {
         let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            NodeId("mod_a::node_a".into()),
-            vec![Port::new("in1", TypeId::new("String"))],
-            vec![Port::new("out1", TypeId::new("String"))],
-            PassthroughOp,
-        ));
-        dag.add_node(Node::opaque(
-            NodeId("mod_b::node_b".into()),
-            vec![Port::new("in1", TypeId::new("String"))],
-            vec![Port::new("out1", TypeId::new("String"))],
-            PassthroughOp,
-        ));
+        dag.add_node(
+            Node::opaque(
+                NodeId("mod_a::node_a".into()),
+                vec![Port::new("in1", TypeId::new("String"))],
+                vec![Port::new("out1", TypeId::new("String"))],
+                PassthroughOp,
+            )
+            .with_origin(test_origin("mod_a", "node_a")),
+        );
+        dag.add_node(
+            Node::opaque(
+                NodeId("mod_b::node_b".into()),
+                vec![Port::new("in1", TypeId::new("String"))],
+                vec![Port::new("out1", TypeId::new("String"))],
+                PassthroughOp,
+            )
+            .with_origin(test_origin("mod_b", "node_b")),
+        );
         dag.add_edge(Edge::new(
             NodeId("mod_a::node_a".into()),
             "out1",

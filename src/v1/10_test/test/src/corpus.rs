@@ -4,7 +4,7 @@
 //! from **all** workflows it appears in, not just one. The corpus types model
 //! this cross-workflow accumulation.
 
-use gunbc_ir::{NodeId, Value};
+use gunbc_ir::{NodeId, NodeOrigin, Value};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -36,20 +36,19 @@ impl NodeIdentity {
         }
     }
 
-    /// Parse a node identity from a node ID string.
+    /// Extract callable identity from lowerer-stamped origin metadata.
     ///
-    /// Node IDs follow the convention `module::callable` or
-    /// `module::callable::sub_id`. Returns `None` if the ID doesn't
-    /// contain at least one `::` separator.
-    pub fn from_node_id(node_id: &str) -> Option<Self> {
-        let parts: Vec<&str> = node_id.splitn(3, "::").collect();
-        if parts.len() >= 2 {
-            Some(Self {
-                module: parts[0].to_string(),
-                callable: parts[1].to_string(),
-            })
-        } else {
-            None
+    /// Reads the module and callable name directly from the structured
+    /// `NodeOrigin` on the node, rather than parsing the `NodeId` string.
+    /// Returns `None` for `Stdlib` or `Unknown` origins.
+    pub fn from_origin(origin: &NodeOrigin) -> Option<Self> {
+        match origin {
+            NodeOrigin::UserCode { module, item, .. }
+            | NodeOrigin::PatternExpansion { module, item, .. } => Some(Self {
+                module: module.clone(),
+                callable: item.clone(),
+            }),
+            NodeOrigin::Stdlib { .. } | NodeOrigin::Unknown => None,
         }
     }
 }
@@ -417,16 +416,38 @@ mod tests {
     }
 
     #[test]
-    fn node_identity_from_node_id() {
-        let id = NodeIdentity::from_node_id("std.render::format_heading::sub1").unwrap();
+    fn node_identity_from_origin_user_code() {
+        let origin = NodeOrigin::UserCode {
+            file: "dsl/std/render.dag".into(),
+            module: "std.render".into(),
+            item: "format_heading".into(),
+            span_start: 0,
+            span_end: 100,
+        };
+        let id = NodeIdentity::from_origin(&origin).unwrap();
         assert_eq!(id.module, "std.render");
         assert_eq!(id.callable, "format_heading");
+    }
 
-        let id2 = NodeIdentity::from_node_id("std.render::format_heading").unwrap();
-        assert_eq!(id2.module, "std.render");
-        assert_eq!(id2.callable, "format_heading");
+    #[test]
+    fn node_identity_from_origin_pattern_expansion() {
+        let origin = NodeOrigin::PatternExpansion {
+            file: "dsl/svc/api.dag".into(),
+            module: "svc.api".into(),
+            item: "fetch_data".into(),
+            span_start: 10,
+            span_end: 50,
+            pattern_kind: "service_call".into(),
+        };
+        let id = NodeIdentity::from_origin(&origin).unwrap();
+        assert_eq!(id.module, "svc.api");
+        assert_eq!(id.callable, "fetch_data");
+    }
 
-        assert!(NodeIdentity::from_node_id("no_separator").is_none());
+    #[test]
+    fn node_identity_from_origin_returns_none_for_unknown() {
+        assert!(NodeIdentity::from_origin(&NodeOrigin::Unknown).is_none());
+        assert!(NodeIdentity::from_origin(&NodeOrigin::Stdlib { module: "std".into() }).is_none());
     }
 
     #[test]
