@@ -17,7 +17,8 @@
 module v2.compiler.parse
 
 import v2.std.core {
-  Module, Import, Item, TypeDef, FuncDef, FnDef, ServiceDef,
+  Module, Import, ImportNames, ImportAll, ImportSpecific,
+  Item, TypeDef, FuncDef, FnDef, ServiceDef,
   ResourceDef, DataDef, ExternFuncDecl,
   TypeExpr, Named, Product, Coproduct, Container, Refined, Optional,
   MapType, Primitive,
@@ -562,12 +563,13 @@ fn parse_items_acc(state: ParserState, acc: List<Item>) -> ItemsResult {
 
 fn parse_import(state: ParserState) -> ImportResult {
   let start_span = current_span(state: state)
+  let err_import = Import { module_path: "", names: ImportSpecific { names: [] }, span: start_span }
   let r = expect(state: state, tag: "KwImport")
-  if has_err(err: r.err) { return ImportResult { import: Import { module_path: "", names: [], span: start_span }, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
   let s = r.state
 
   let r = parse_dotted_ident(state: s)
-  if has_err(err: r.err) { return ImportResult { import: Import { module_path: "", names: [], span: start_span }, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
   let mod_path = r.name
   let s = r.state
 
@@ -575,22 +577,18 @@ fn parse_import(state: ParserState) -> ImportResult {
   let e = eat(state: s, tag: "LBrace")
   if e.consumed {
     let r = parse_import_names(state: e.state)
-    if has_err(err: r.err) { return ImportResult { import: Import { module_path: "", names: [], span: start_span }, state: r.state, err: r.err } }
+    if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
     let names = r.names
     let s = r.state
     let r = expect(state: s, tag: "RBrace")
-    if has_err(err: r.err) { return ImportResult { import: Import { module_path: "", names: [], span: start_span }, state: r.state, err: r.err } }
+    if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
     let s = skip_newlines(state: r.state)
-    let imp = Import { module_path: mod_path, names: names, span: start_span }
+    let imp = Import { module_path: mod_path, names: ImportSpecific { names: names }, span: start_span }
     ImportResult { import: imp, state: s, err: none }
   } else {
     // Bare import (no braces): import all from module.
-    // Uses ["*"] as sentinel to distinguish from empty block import foo.bar {}
-    // which produces names: []. The core Import type (00_core.dag) defines
-    // names as List<String>, so we cannot use Optional to distinguish the two
-    // cases. The sentinel "*" is not a valid identifier in the language.
     let s = skip_newlines(state: s)
-    let imp = Import { module_path: mod_path, names: ["*"], span: start_span }
+    let imp = Import { module_path: mod_path, names: ImportAll, span: start_span }
     ImportResult { import: imp, state: s, err: none }
   }
 }

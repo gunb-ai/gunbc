@@ -13,7 +13,7 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Import,
+  Import, ImportNames, ImportAll, ImportSpecific,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
@@ -69,17 +69,6 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     func_env: typed_module.func_env,
     locals: [],
     module_name: typed_module.module.name
-  }
-}
-
-fn is_wildcard_import_names(names: List<String>) -> Bool {
-  if names |> count == 1 {
-    match first(names) {
-      Some { value: name } => name == "*"
-      None => false
-    }
-  } else {
-    false
   }
 }
 
@@ -261,13 +250,15 @@ fn emit_imports(imports: List<Import>) -> String {
   } else {
     let import_lines = imports |> map(imp =>
       let mod_name = module_to_filename(name: imp.module_path)
-      if is_wildcard_import_names(names: imp.names) {
-        concat("use crate::", mod_name, "::*;")
-      } else if imp.names |> count == 0 {
-        ""
-      } else {
-        let names_str = imp.names |> join(separator: ", ")
-        concat("use crate::", mod_name, "::{", names_str, "};")
+      match imp.names {
+        ImportAll => concat("use crate::", mod_name, "::*;")
+        ImportSpecific { names: specific_names } =>
+          if specific_names |> count == 0 {
+            ""
+          } else {
+            let names_str = specific_names |> join(separator: ", ")
+            concat("use crate::", mod_name, "::{", names_str, "};")
+          }
       }
     )
     import_lines |> filter(line => line != "") |> join(separator: "\n")
@@ -502,14 +493,18 @@ fn emit_product_type_expr(name: String?, fields: List<Field>) -> String {
     None => {
       // Anonymous product — no named Rust type exists.
       if fields |> count == 1 {
-        // Single-field anonymous record → emit as the field type directly
+        // Single-field anonymous record -> emit as the field type directly
         match fields |> first {
           Some { value: f } => emit_type_expr(type_expr: f.type_expr)
-          None => "serde_json::Value"
+          // Unreachable: count == 1 guarantees first succeeds.
+          // Emit compile_error! so Rust rejects instead of silently fabricating.
+          None => "compile_error!(\"anonymous product with count==1 but no first field — type system bug\")"
         }
       } else {
-        // Multi-field anonymous record → serde_json::Value
-        "serde_json::Value"
+        // Multi-field anonymous record without a name means the type system
+        // failed to name this product upstream. Emit compile_error! so the
+        // generated Rust rejects rather than silently using a bag type.
+        "compile_error!(\"anonymous multi-field product reached emitter — type system must name all multi-field records\")"
       }
     }
   }
@@ -519,9 +514,10 @@ fn emit_coproduct_type_expr(name: String?, variants: List<Variant>) -> String {
   match name {
     Some { value: n } => n
     None => {
-      // Anonymous coproduct — not directly representable in Rust.
-      // Fall back to serde_json::Value for maximum flexibility.
-      "serde_json::Value"
+      // Anonymous coproduct without a name means the type system failed to
+      // name this coproduct upstream. Emit compile_error! so the generated
+      // Rust rejects rather than silently using a bag type.
+      "compile_error!(\"anonymous coproduct reached emitter — type system must name all coproducts\")"
     }
   }
 }
