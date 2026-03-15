@@ -175,7 +175,11 @@ fn resolve_variant_enum(name: &str, ctx: &CompileContext) -> Option<String> {
     ctx.variant_to_enum.get(name).cloned()
 }
 
-fn qualifies_variant(expected_type: Option<&str>, variant_name: &str, ctx: &CompileContext) -> bool {
+fn qualifies_variant(
+    expected_type: Option<&str>,
+    variant_name: &str,
+    ctx: &CompileContext,
+) -> bool {
     expected_type
         .and_then(|ty| ctx.enum_variants.get(ty).map(|variants| (ty, variants)))
         .is_some_and(|(_, variants)| variants.contains(variant_name))
@@ -909,9 +913,12 @@ fn compile_expr_typed(
         ast::Expr::If(cond, then_expr, else_expr) => {
             compile_if_typed(cond, then_expr, else_expr, ctx, expected_type, counter)
         }
-        ast::Expr::Block(stmts) => {
-            code_ir::Expr::Block(compile_stmt_sequence_typed(stmts, ctx, expected_type, counter))
-        }
+        ast::Expr::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence_typed(
+            stmts,
+            ctx,
+            expected_type,
+            counter,
+        )),
         _ => compile_expr(expr, ctx, counter),
     }
 }
@@ -2137,7 +2144,8 @@ fn clone_if_needed(expr: code_ir::Expr) -> code_ir::Expr {
 /// Used for intrinsics that consume their first argument (concat, append) so
 /// that `Rc::try_unwrap` in the runtime sees refcount 1 and mutates in place.
 fn strip_outer_clone(expr: code_ir::Expr) -> code_ir::Expr {
-    if matches!(&expr, code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty()) {
+    if matches!(&expr, code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty())
+    {
         match expr {
             code_ir::Expr::MethodCall { receiver, .. } => *receiver,
             _ => unreachable!(),
@@ -2568,7 +2576,8 @@ fn compile_pattern_typed(
                             format!("ref {n}")
                         } else {
                             let field_type = variant_field_types.and_then(|ft| ft.get(n.as_str()));
-                            let compiled = compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()));
+                            let compiled =
+                                compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()));
                             // Use shorthand field pattern when binding name matches field name
                             if compiled == *n {
                                 n.clone()
@@ -2700,13 +2709,8 @@ fn compile_stmt_sequence_typed(
     let mut result = Vec::with_capacity(len);
     for (index, stmt) in stmts.iter().enumerate() {
         track_binding_before_compile(stmt, &mut current_ctx);
-        let compiled = compile_stmt_typed(
-            stmt,
-            index + 1 == len,
-            &current_ctx,
-            expected_type,
-            counter,
-        );
+        let compiled =
+            compile_stmt_typed(stmt, index + 1 == len, &current_ctx, expected_type, counter);
         track_binding_after_compile(stmt, &compiled, &mut current_ctx);
         result.push(compiled);
     }
@@ -2722,12 +2726,7 @@ fn compile_stmt_typed(
 ) -> code_ir::Stmt {
     if is_last {
         if let ast::Stmt::Expr(expr) = stmt {
-            return code_ir::Stmt::TailExpr(compile_expr_typed(
-                expr,
-                ctx,
-                expected_type,
-                counter,
-            ));
+            return code_ir::Stmt::TailExpr(compile_expr_typed(expr, ctx, expected_type, counter));
         }
     }
     compile_stmt(stmt, is_last, ctx, counter)
@@ -3970,10 +3969,8 @@ mod tests {
     fn some_pattern_uses_inner_expected_type_for_variant_resolution() {
         let mut counter = 0usize;
         let mut ctx = CompileContext::new();
-        ctx.ir_scope.insert(
-            "value".to_string(),
-            IrType::Named("TokenKind".to_string()),
-        );
+        ctx.ir_scope
+            .insert("value".to_string(), IrType::Named("TokenKind".to_string()));
         ctx.enum_variants.insert(
             "TokenKind".to_string(),
             ["LitStr".to_string()].into_iter().collect(),

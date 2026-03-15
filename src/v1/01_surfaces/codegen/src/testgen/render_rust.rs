@@ -161,7 +161,9 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             Expr::Ref(expr) => format!("&{}", self.render_expr(expr)),
             Expr::RefMut(expr) => format!("&mut {}", self.render_expr(expr)),
             Expr::Path(segments) => segments.join("::"),
-            Expr::Struct { name, fields, rest, .. } => {
+            Expr::Struct {
+                name, fields, rest, ..
+            } => {
                 let field_strs: Vec<String> = fields
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k, self.render_expr(v)))

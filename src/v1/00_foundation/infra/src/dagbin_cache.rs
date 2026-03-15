@@ -307,7 +307,10 @@ mod tests {
 
         let cache = DagbinCache::new(&dir);
         let result = cache.exists("digest");
-        assert!(result.is_err(), "non-NotFound filesystem errors must propagate");
+        assert!(
+            result.is_err(),
+            "non-NotFound filesystem errors must propagate"
+        );
 
         fs::remove_file(&dir).ok();
     }

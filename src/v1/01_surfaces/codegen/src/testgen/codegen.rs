@@ -1589,7 +1589,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Self::record_ident(first, used);
                 }
             }
-            Expr::Struct { name, fields, rest, .. } => {
+            Expr::Struct {
+                name, fields, rest, ..
+            } => {
                 Self::record_ident(name, used);
                 for (_, expr) in fields {
                     Self::collect_idents_from_expr(expr, used);

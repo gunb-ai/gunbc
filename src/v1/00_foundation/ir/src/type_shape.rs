@@ -569,28 +569,25 @@ mod tests {
 
     #[test]
     fn shape_of_refined_with_base_string_alias_reuses_base_shape() {
-        let refined = type_lib::refined_with_base(
-            "FilePath",
-            type_lib::string(),
-            vec![Predicate::NonEmpty],
-        );
+        let refined =
+            type_lib::refined_with_base("FilePath", type_lib::string(), vec![Predicate::NonEmpty]);
         let shape = type_shape(&refined).unwrap();
         assert_eq!(shape, TypeShape::Opaque("String".to_string()));
     }
 
     #[test]
     fn shape_of_product_with_refined_with_base_fields_stays_product() {
-        let file_path = type_lib::refined_with_base(
-            "FilePath",
-            type_lib::string(),
-            vec![Predicate::NonEmpty],
-        );
+        let file_path =
+            type_lib::refined_with_base("FilePath", type_lib::string(), vec![Predicate::NonEmpty]);
         let record = type_lib::product_resolved("FileEntry", vec![("path", file_path)]);
         let shape = type_shape(&record).unwrap();
         match shape {
             TypeShape::Product(Some(name), fields) => {
                 assert_eq!(name, "FileEntry");
-                assert_eq!(fields, vec![("path".to_string(), TypeShape::Opaque("String".to_string()))]);
+                assert_eq!(
+                    fields,
+                    vec![("path".to_string(), TypeShape::Opaque("String".to_string()))]
+                );
             }
             other => panic!("expected Product, got {:?}", other),
         }

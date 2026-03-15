@@ -61,10 +61,7 @@ impl<T> GenericTestOp<T> {
 }
 
 impl<T: Debug> Executable for GenericTestOp<T> {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         self.inner.execute(inputs)
     }
 }
@@ -133,7 +130,10 @@ fn delegate_derives_preserve_generics_and_where_clauses() {
     let out = execute_op
         .execute(HashMap::new())
         .expect("delegated execute");
-    assert_eq!(out.get("label").and_then(Value::as_str), Some("generic-beta"));
+    assert_eq!(
+        out.get("label").and_then(Value::as_str),
+        Some("generic-beta")
+    );
 
     let mock_op = GenericWrappedOp::<u8>::Alpha(GenericTestOp::new("generic-alpha"));
     let outputs = mock_op.mock_outputs();

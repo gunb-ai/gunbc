@@ -441,13 +441,14 @@ impl<T> DagBuilder<T> {
     ///
     /// # Errors
     ///
-    /// Returns `BuilderError::DuplicateNodeId` if a node with the same ID already exists.
+    /// - Returns `BuilderError::DuplicateNodeId` if a node with the same ID already exists.
+    /// - Returns `BuilderError::InternalInvariant` if `dep` does not belong to this builder.
     pub fn add_node_after(
         &mut self,
         node: Node<T>,
         dep: &NodeRef<T>,
     ) -> Result<NodeRef<T>, BuilderError> {
-        let generation = dep.generation + 1;
+        let generation = self.generation_for_existing_node(dep.id())? + 1;
         self.add_node_with_generation(node, generation)
     }
 
@@ -458,18 +459,24 @@ impl<T> DagBuilder<T> {
     /// # Errors
     ///
     /// - `BuilderError::InternalInvariant` if `deps` is empty (use `add_root_node` instead).
+    /// - `BuilderError::InternalInvariant` if any dependency does not belong to this builder.
     /// - `BuilderError::DuplicateNodeId` if a node with the same ID already exists.
     pub fn add_node_after_all(
         &mut self,
         node: Node<T>,
         deps: &[&NodeRef<T>],
     ) -> Result<NodeRef<T>, BuilderError> {
-        let max_gen = deps.iter().map(|d| d.generation).max().ok_or_else(|| {
-            BuilderError::InternalInvariant(
+        if deps.is_empty() {
+            return Err(BuilderError::InternalInvariant(
                 "deps must not be empty; use add_root_node for nodes with no dependencies"
                     .to_string(),
-            )
-        })?;
+            ));
+        }
+
+        let mut max_gen = 0;
+        for dep in deps {
+            max_gen = max_gen.max(self.generation_for_existing_node(dep.id())?);
+        }
         let generation = max_gen + 1;
         self.add_node_with_generation(node, generation)
     }
@@ -517,6 +524,15 @@ impl<T> DagBuilder<T> {
         })
     }
 
+    fn generation_for_existing_node(&self, node_id: &NodeId) -> Result<usize, BuilderError> {
+        self.generations.get(node_id).copied().ok_or_else(|| {
+            BuilderError::InternalInvariant(format!(
+                "node reference '{}' does not belong to this builder",
+                node_id
+            ))
+        })
+    }
+
     /// Add an edge between an output port and an input port.
     ///
     /// The edge is validated immediately:
@@ -534,16 +550,6 @@ impl<T> DagBuilder<T> {
     /// - `BuilderError::FanInOnScalar` if multiple edges target a scalar/optional input
     /// - `BuilderError::FanInCardinalityOverflow` if aggregate fan-in exceeds bounded list input
     pub fn add_edge(&mut self, from: OutputRef<T>, to: InputRef<T>) -> Result<(), BuilderError> {
-        // Check generation ordering (cycle prevention)
-        if from.generation >= to.generation {
-            return Err(BuilderError::CycleDetected {
-                from: from.node_id.clone(),
-                to: to.node_id.clone(),
-                from_gen: from.generation,
-                to_gen: to.generation,
-            });
-        }
-
         // Find the source and target nodes
         let from_node = self.nodes.iter().find(|n| n.id == from.node_id);
         let to_node = self.nodes.iter().find(|n| n.id == to.node_id);
@@ -565,6 +571,19 @@ impl<T> DagBuilder<T> {
                 port: to.port.clone(),
                 kind: PortKind::Input,
             })?;
+
+        let from_generation = self.generation_for_existing_node(&from.node_id)?;
+        let to_generation = self.generation_for_existing_node(&to.node_id)?;
+
+        // Generations recorded in node refs are advisory; the builder-owned map is authoritative.
+        if from_generation >= to_generation {
+            return Err(BuilderError::CycleDetected {
+                from: from.node_id.clone(),
+                to: to.node_id.clone(),
+                from_gen: from_generation,
+                to_gen: to_generation,
+            });
+        }
 
         if let Err(error) = self.type_registry.validate_type_expr(&from_port.type_id) {
             return Err(BuilderError::InvalidTypeExpression {
@@ -1053,6 +1072,85 @@ mod tests {
                 assert!(msg.contains("gen 0"));
             }
             _ => panic!("Expected CycleDetected error"),
+        }
+    }
+
+    #[test]
+    fn test_add_node_after_rejects_foreign_dependency_ref() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+        let mut foreign_builder: DagBuilder<String> = DagBuilder::new();
+
+        let foreign_dep = foreign_builder
+            .add_root_node(test_node("foreign", vec![], vec![]))
+            .unwrap();
+
+        let result = builder.add_node_after(test_node("local", vec![], vec![]), &foreign_dep);
+
+        match result {
+            Err(BuilderError::InternalInvariant(message)) => {
+                assert!(message.contains("does not belong to this builder"));
+                assert!(message.contains("foreign"));
+            }
+            other => panic!("expected foreign dependency ref to be rejected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_foreign_refs_cannot_bypass_cycle_detection() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+
+        let node_a = test_node("a", vec![("in", "String")], vec![("out", "String")]);
+        let node_b = test_node("b", vec![("in", "String")], vec![("out", "String")]);
+        let node_c = test_node("c", vec![("in", "String")], vec![("out", "String")]);
+
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_node_after(node_b, &a).unwrap();
+        let c = builder.add_node_after(node_c, &b).unwrap();
+
+        builder.add_edge(a.out("out"), b.in_port("in")).unwrap();
+        builder.add_edge(b.out("out"), c.in_port("in")).unwrap();
+
+        let mut foreign_from: DagBuilder<String> = DagBuilder::new();
+        let forged_c = foreign_from
+            .add_root_node(test_node(
+                "c",
+                vec![("in", "String")],
+                vec![("out", "String")],
+            ))
+            .unwrap();
+
+        let mut foreign_to: DagBuilder<String> = DagBuilder::new();
+        let foreign_root = foreign_to
+            .add_root_node(test_node("root", vec![], vec![("out", "String")]))
+            .unwrap();
+        let foreign_mid = foreign_to
+            .add_node_after(
+                test_node("mid", vec![("in", "String")], vec![("out", "String")]),
+                &foreign_root,
+            )
+            .unwrap();
+        let forged_b = foreign_to
+            .add_node_after(
+                test_node("b", vec![("in", "String")], vec![("out", "String")]),
+                &foreign_mid,
+            )
+            .unwrap();
+
+        let result = builder.add_edge(forged_c.out("out"), forged_b.in_port("in"));
+
+        match result {
+            Err(BuilderError::CycleDetected {
+                from,
+                to,
+                from_gen,
+                to_gen,
+            }) => {
+                assert_eq!(from.0.as_str(), "c");
+                assert_eq!(to.0.as_str(), "b");
+                assert_eq!(from_gen, 2);
+                assert_eq!(to_gen, 1);
+            }
+            other => panic!("expected CycleDetected from builder-owned generations, got {other:?}"),
         }
     }
 

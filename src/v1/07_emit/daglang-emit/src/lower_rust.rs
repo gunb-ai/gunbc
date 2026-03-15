@@ -321,7 +321,12 @@ fn lower_expr(expr: &Expr, in_fallible_fn: bool, config: &RustConfig) -> Expr {
             args: args.clone(),
             body: Box::new(lower_expr(body, in_fallible_fn, config)),
         },
-        Expr::Struct { name, fields, rest, field_types } => Expr::Struct {
+        Expr::Struct {
+            name,
+            fields,
+            rest,
+            field_types,
+        } => Expr::Struct {
             name: name.clone(),
             fields: fields
                 .iter()

@@ -760,11 +760,10 @@ mod tests {
         assert!(d.snippet.is_none());
 
         d.resolve_source(source);
-        assert!(
-            d.snippet
-                .as_deref()
-                .is_some_and(|snippet| snippet.contains("new.dag"))
-        );
+        assert!(d
+            .snippet
+            .as_deref()
+            .is_some_and(|snippet| snippet.contains("new.dag")));
 
         d = d.with_span(Span::new(0, 8));
         assert_eq!(d.line, None);
