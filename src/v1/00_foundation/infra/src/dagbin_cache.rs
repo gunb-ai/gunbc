@@ -104,10 +104,17 @@ impl DagbinCache {
 
     /// Check whether a cached entry exists for the given digest without reading it.
     ///
+    /// Returns `Ok(true)` when the cache entry exists, `Ok(false)` when it does
+    /// not, and propagates other filesystem errors instead of fabricating a miss.
+    ///
     /// Build-time filesystem access (bootstrap exception).
     #[allow(clippy::disallowed_methods)]
-    pub fn exists(&self, source_digest: &str) -> bool {
-        self.dagbin_path(source_digest).exists()
+    pub fn exists(&self, source_digest: &str) -> io::Result<bool> {
+        match std::fs::metadata(self.dagbin_path(source_digest)) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     /// Remove a cached entry by source digest.
@@ -197,10 +204,10 @@ mod tests {
         let cache = DagbinCache::new(&dir);
         let digest = "exist_check";
 
-        assert!(!cache.exists(digest));
+        assert!(!cache.exists(digest).expect("exists should succeed"));
 
         cache.store(digest, b"data").expect("store should succeed");
-        assert!(cache.exists(digest));
+        assert!(cache.exists(digest).expect("exists should succeed"));
 
         fs::remove_dir_all(&dir).ok();
     }
@@ -212,11 +219,11 @@ mod tests {
         let digest = "evict_me";
 
         cache.store(digest, b"data").expect("store should succeed");
-        assert!(cache.exists(digest));
+        assert!(cache.exists(digest).expect("exists should succeed"));
 
         let removed = cache.evict(digest).expect("evict should succeed");
         assert!(removed);
-        assert!(!cache.exists(digest));
+        assert!(!cache.exists(digest).expect("exists should succeed"));
 
         // Evicting again returns false
         let removed = cache.evict(digest).expect("evict should succeed");
@@ -239,8 +246,8 @@ mod tests {
 
         let count = cache.clear().expect("clear should succeed");
         assert_eq!(count, 2);
-        assert!(!cache.exists("digest1"));
-        assert!(!cache.exists("digest2"));
+        assert!(!cache.exists("digest1").expect("exists should succeed"));
+        assert!(!cache.exists("digest2").expect("exists should succeed"));
 
         fs::remove_dir_all(&dir).ok();
     }
@@ -289,5 +296,19 @@ mod tests {
         }
 
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn exists_propagates_filesystem_errors() {
+        let dir = temp_cache_dir("exists_error");
+        fs::create_dir_all(dir.parent().expect("temp dir should have parent"))
+            .expect("parent dir should be created");
+        fs::write(&dir, b"not a directory").expect("cache dir placeholder should be written");
+
+        let cache = DagbinCache::new(&dir);
+        let result = cache.exists("digest");
+        assert!(result.is_err(), "non-NotFound filesystem errors must propagate");
+
+        fs::remove_file(&dir).ok();
     }
 }
