@@ -3005,7 +3005,5 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
-
-        eprintln!("v2 crate written to: {}", out_dir.display());
     }
 }

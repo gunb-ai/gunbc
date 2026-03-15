@@ -77,8 +77,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     resolve_module_imports(module: m, all_modules: modules)
   )
   let resolved_imports_list = resolve_results |> map(r => r.resolved_imports)
-  let import_diags = resolve_results |> map(r => r.diagnostics)
-    |> fold(init: [], f: fn(acc, diags) { concat(acc, diags) })
+  let import_diags = resolve_results |> flat_map(r => r.diagnostics)
 
   // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules)
@@ -141,8 +140,7 @@ fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleRe
   let resolved = results
     |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
     |> map(r => r.resolved)
-  let diags = results |> map(r => r.diagnostics)
-    |> fold(init: [], f: fn(acc, d) { concat(acc, d) })
+  let diags = results |> flat_map(r => r.diagnostics)
   ModuleResolveResult {
     resolved_imports: resolved,
     diagnostics: diags
@@ -230,8 +228,7 @@ fn resolve_import(
 fn get_exported_names(module: Module) -> List<String> {
   let item_names = module.items |> map(item => get_item_name(item: item))
   let variant_names = module.items
-    |> map(item => get_variant_names(item: item))
-    |> fold(init: [], f: fn(acc, names) { concat(acc, names) })
+    |> flat_map(item => get_variant_names(item: item))
   concat(item_names, variant_names)
 }
 
@@ -283,24 +280,40 @@ fn get_module_deps(module: Module) -> List<String> {
 // =========================================================================
 
 // Check for duplicate module declarations (same name appearing twice).
+// DuplicateCheckState — fold accumulator for seen-set duplicate detection.
+type DuplicateCheckState {
+  seen_names: List<String>
+  diagnostics: List<Diagnostic>
+}
+
 fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
-  // For each module, check if any earlier module has the same name.
-  // This produces a diagnostic for each duplicate (the second occurrence).
-  modules |> enumerate |> map(pair =>
-    let idx = pair.first
-    let m = pair.second
-    let earlier = modules |> enumerate
-      |> filter(other => other.first < idx && other.second.name == m.name)
-    match earlier |> first {
-      Some { value: _ } => [Diagnostic {
-        severity: Error,
-        message: concat("duplicate module declaration: '", m.name, "'"),
-        span: Some { value: m.span },
-        module_name: Some { value: m.name }
-      }]
-      None => []
+  // Fold over modules maintaining a seen-names list.
+  // For each module, check if its name is already in the seen list.
+  // If so, emit a diagnostic. Then add the name to the seen list.
+  // This is O(n*m) where m is unique names, avoiding the O(n²) nested enumerate+filter.
+  let result = modules |> fold(init: DuplicateCheckState {
+    seen_names: [],
+    diagnostics: []
+  }, f: fn(state, m) {
+    let is_dup = state.seen_names |> any(name => name == m.name)
+    if is_dup {
+      DuplicateCheckState {
+        seen_names: state.seen_names,
+        diagnostics: concat(state.diagnostics, [Diagnostic {
+          severity: Error,
+          message: concat("duplicate module declaration: '", m.name, "'"),
+          span: Some { value: m.span },
+          module_name: Some { value: m.name }
+        }])
+      }
+    } else {
+      DuplicateCheckState {
+        seen_names: concat(state.seen_names, [m.name]),
+        diagnostics: state.diagnostics
+      }
     }
-  ) |> fold(init: [], f: fn(acc, diags) { concat(acc, diags) })
+  })
+  result.diagnostics
 }
 
 // =========================================================================
@@ -320,12 +333,11 @@ type TopoResult {
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
   let all_edges = modules
-    |> map(m =>
+    |> flat_map(m =>
       get_module_deps(module: m) |> map(dep =>
         DepEdge { from_module: dep, to_module: m.name }
       )
     )
-    |> fold(init: [], f: fn(acc, edges) { concat(acc, edges) })
 
   // Compute initial in-degrees
   let initial_in_degrees = module_names |> map(name =>
