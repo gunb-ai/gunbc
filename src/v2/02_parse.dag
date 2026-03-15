@@ -3129,15 +3129,14 @@ fn parse_variant_bindings_brace(state: ParserState) -> BindingsResult {
 
     let e = eat(state: s, tag: "Colon")
     if e.consumed {
-      let r2 = expect_name(state: e.state)
+      let r2 = parse_pattern(state: e.state)
       if has_err(err: r2.err) { return BindingsResult { field_bindings: [], state: r2.state, err: r2.err } }
-      let binding_name = r2.name
       let s2 = r2.state
       let e2 = eat(state: s2, tag: "Comma")
       let s3 = skip_newlines(state: if e2.consumed { e2.state } else { s2 })
       let rest = parse_variant_bindings_brace(state: s3)
       if has_err(err: rest.err) { return rest }
-      let fb = FieldBinding { field_name: field_name, binding: Bind { name: binding_name } }
+      let fb = FieldBinding { field_name: field_name, binding: r2.pattern }
       BindingsResult { field_bindings: concat([fb], rest.field_bindings), state: rest.state, err: none }
     } else {
       let e2 = eat(state: s, tag: "Comma")
