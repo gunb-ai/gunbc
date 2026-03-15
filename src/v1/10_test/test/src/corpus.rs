@@ -118,21 +118,116 @@ pub struct CorpusExample {
     pub expectation: Expectation,
 }
 
-impl CorpusExample {
-    /// Compute a dedup key: (workflow, hash of sorted input entries).
-    fn dedup_key(&self) -> (String, u64) {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+enum CorpusValueKey {
+    Unit,
+    Bool(bool),
+    Str(String),
+    Int(i64),
+    Float(u64),
+    Bytes(Vec<u8>),
+    List(Vec<CorpusValueKey>),
+    Set(Vec<CorpusValueKey>),
+    Map(Vec<(String, CorpusValueKey)>),
+    Json(CanonicalJsonKey),
+    Request(CanonicalJsonKey),
+    Response(CanonicalJsonKey),
+    Secret(String),
+    Enum { ty: String, variant: String },
+    Skipped,
+}
 
-        let mut hasher = DefaultHasher::new();
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+enum CanonicalJsonKey {
+    Null,
+    Bool(bool),
+    Number(String),
+    String(String),
+    Array(Vec<CanonicalJsonKey>),
+    Object(Vec<(String, CanonicalJsonKey)>),
+}
+
+impl CanonicalJsonKey {
+    fn from_serialized_json(value: serde_json::Value) -> Self {
+        Self::from_json(&value)
+    }
+
+    fn from_json(value: &serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Bool(value) => Self::Bool(*value),
+            serde_json::Value::Number(value) => Self::Number(value.to_string()),
+            serde_json::Value::String(value) => Self::String(value.clone()),
+            serde_json::Value::Array(values) => {
+                Self::Array(values.iter().map(Self::from_json).collect())
+            }
+            serde_json::Value::Object(values) => {
+                let mut entries: Vec<(String, CanonicalJsonKey)> = values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), Self::from_json(value)))
+                    .collect();
+                entries.sort_by(|left, right| left.0.cmp(&right.0));
+                Self::Object(entries)
+            }
+        }
+    }
+}
+
+impl CorpusValueKey {
+    fn from_value(value: &Value) -> Self {
+        match value {
+            Value::Unit => Self::Unit,
+            Value::Bool(value) => Self::Bool(*value),
+            Value::Str(value) => Self::Str(value.clone()),
+            Value::Int(value) => Self::Int(*value),
+            Value::Float(value) => Self::Float(value.to_bits()),
+            Value::Bytes(value) => Self::Bytes(value.clone()),
+            Value::List(values) => Self::List(values.iter().map(Self::from_value).collect()),
+            Value::Set(values) => {
+                let mut entries: Vec<CorpusValueKey> =
+                    values.iter().map(Self::from_value).collect();
+                entries.sort();
+                Self::Set(entries)
+            }
+            Value::Map(values) => Self::Map(
+                values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), Self::from_value(value)))
+                    .collect(),
+            ),
+            Value::Json(value) => Self::Json(CanonicalJsonKey::from_json(value)),
+            Value::Request(value) => Self::Request(CanonicalJsonKey::from_serialized_json(
+                serde_json::to_value(value).unwrap_or_else(|err| {
+                    panic!("transport request should serialize for corpus dedup: {err}")
+                }),
+            )),
+            Value::Response(value) => Self::Response(CanonicalJsonKey::from_serialized_json(
+                serde_json::to_value(value).unwrap_or_else(|err| {
+                    panic!("transport response should serialize for corpus dedup: {err}")
+                }),
+            )),
+            Value::Secret(value) => {
+                Self::Secret(value.expose_plaintext_for_transport().to_string())
+            }
+            Value::Enum { ty, variant } => Self::Enum {
+                ty: ty.clone(),
+                variant: variant.clone(),
+            },
+            Value::Skipped => Self::Skipped,
+        }
+    }
+}
+
+impl CorpusExample {
+    /// Compute a dedup key: (workflow, structurally keyed input entries).
+    fn dedup_key(&self) -> (String, Vec<(String, CorpusValueKey)>) {
         let mut keys: Vec<&String> = self.inputs.keys().collect();
         keys.sort();
-        for k in keys {
-            k.hash(&mut hasher);
-            // Hash the debug representation as a stable proxy for Value
-            format!("{:?}", self.inputs[k]).hash(&mut hasher);
-        }
-        (self.provenance.workflow.clone(), hasher.finish())
+        let entries = keys
+            .into_iter()
+            .map(|key| (key.clone(), CorpusValueKey::from_value(&self.inputs[key])))
+            .collect();
+        (self.provenance.workflow.clone(), entries)
     }
 }
 
@@ -351,6 +446,35 @@ mod tests {
         corpus.add(make_example("wf2", "hello")); // same input, different workflow
         corpus.dedup();
         assert_eq!(corpus.len(), 2);
+    }
+
+    #[test]
+    fn corpus_dedup_treats_set_inputs_as_order_independent() {
+        let mut inputs_a = HashMap::new();
+        inputs_a.insert(
+            "in".to_string(),
+            Value::set(vec![Value::Str("a".into()), Value::Str("b".into())]),
+        );
+        let mut inputs_b = HashMap::new();
+        inputs_b.insert(
+            "in".to_string(),
+            Value::set(vec![Value::Str("b".into()), Value::Str("a".into())]),
+        );
+
+        let mut corpus = MockCorpus::new();
+        corpus.add(CorpusExample {
+            provenance: make_provenance("wf1"),
+            inputs: inputs_a,
+            expectation: Expectation::TypeContractOnly,
+        });
+        corpus.add(CorpusExample {
+            provenance: make_provenance("wf1"),
+            inputs: inputs_b,
+            expectation: Expectation::TypeContractOnly,
+        });
+
+        corpus.dedup();
+        assert_eq!(corpus.len(), 1);
     }
 
     #[test]
