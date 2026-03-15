@@ -43,6 +43,7 @@ pub const PYTHON_TYPES: TypeMapping = TypeMapping {
     float: "float",
     bool: "bool",
     bytes: "bytes",
+    json: "Any",
     list_template: "list[{0}]",
     optional_template: "{0} | None",
     map_template: "dict[{0}, {1}]",

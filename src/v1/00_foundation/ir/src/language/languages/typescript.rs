@@ -47,6 +47,7 @@ pub const TYPESCRIPT_TYPES: TypeMapping = TypeMapping {
     float: "number",
     bool: "boolean",
     bytes: "Uint8Array",
+    json: "unknown",
     list_template: "{0}[]",
     optional_template: "{0} | undefined",
     map_template: "Record<{0}, {1}>",

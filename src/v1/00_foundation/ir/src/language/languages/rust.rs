@@ -56,6 +56,7 @@ pub const RUST_TYPES: TypeMapping = TypeMapping {
     float: "f64",
     bool: "bool",
     bytes: "Vec<u8>",
+    json: "serde_json::Value",
     list_template: "Vec<{0}>",
     optional_template: "Option<{0}>",
     map_template: "HashMap<{0}, {1}>",
@@ -124,35 +125,11 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
 }
 
 /// Map an abstract type to Rust type.
+///
+/// Delegates to `map_type(_, "rust")` which reads from `RUST_TYPES`.
 pub fn rust_type(abstract_type: &str) -> String {
-    match abstract_type {
-        "String" => "String".to_string(),
-        "Int" => "i64".to_string(),
-        "Float" => "f64".to_string(),
-        "Bool" => "bool".to_string(),
-        "Bytes" => "Vec<u8>".to_string(),
-        "Json" => "serde_json::Value".to_string(),
-        _ if abstract_type.starts_with("List<") => {
-            let inner = &abstract_type[5..abstract_type.len() - 1];
-            format!("Vec<{}>", rust_type(inner))
-        }
-        _ if abstract_type.starts_with("Optional<") => {
-            let inner = &abstract_type[9..abstract_type.len() - 1];
-            format!("Option<{}>", rust_type(inner))
-        }
-        _ if abstract_type.starts_with("Map<") => {
-            // Map<K, V> -> HashMap<K, V>
-            let inner = &abstract_type[4..abstract_type.len() - 1];
-            if let Some(comma_pos) = inner.find(',') {
-                let k = inner[..comma_pos].trim();
-                let v = inner[comma_pos + 1..].trim();
-                format!("HashMap<{}, {}>", rust_type(k), rust_type(v))
-            } else {
-                abstract_type.to_string()
-            }
-        }
-        _ => abstract_type.to_string(), // Pass through unknown types
-    }
+    crate::language::map_type(abstract_type, "rust")
+        .unwrap_or_else(|| abstract_type.to_string())
 }
 
 #[cfg(test)]
@@ -212,6 +189,7 @@ mod tests {
         assert_eq!(rust_type("Float"), "f64");
         assert_eq!(rust_type("Bool"), "bool");
         assert_eq!(rust_type("Bytes"), "Vec<u8>");
+        assert_eq!(rust_type("Json"), "serde_json::Value");
     }
 
     #[test]

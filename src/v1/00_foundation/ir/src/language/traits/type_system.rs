@@ -24,6 +24,7 @@ pub struct TypeMapping {
     pub float: &'static str,
     pub bool: &'static str,
     pub bytes: &'static str,
+    pub json: &'static str,
     pub list_template: &'static str,
     pub optional_template: &'static str,
     pub map_template: &'static str,
@@ -73,6 +74,7 @@ pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
         "Float" => mapping.float.to_string(),
         "Bool" => mapping.bool.to_string(),
         "Bytes" => mapping.bytes.to_string(),
+        "Json" => mapping.json.to_string(),
         _ if abstract_type.starts_with("List<") => {
             let inner = &abstract_type[5..abstract_type.len() - 1];
             let inner_type = map_type(inner, language)?;
