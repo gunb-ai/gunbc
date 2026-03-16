@@ -81,7 +81,7 @@ use daglang_derive::{DerivedArtifacts, ProgressManifest, TestObligations};
 pub use daglang_lower::extract_output_paths;
 use daglang_lower::{
     CallableKind, CallableObligation, CollectionOpKind, LoweredFnBody, LoweredOp,
-    ObligationCategory, ServiceCallMetadata, ServiceOperationSpec, TransportObligation,
+    ServiceCallMetadata, ServiceOperationSpec, TransportObligation,
 };
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag};
 use std::collections::{BTreeSet, HashSet};
@@ -520,20 +520,18 @@ fn symbols_from_classified(input: &EmitInput) -> Vec<CollectedSymbol> {
     let mut symbols = Vec::new();
 
     for c in &input.callables {
-        let obligation_cat: ObligationCategory = c.obligation.into();
         symbols.push(CollectedSymbol {
             name: sanitize_identifier(&format!("{}_{}", c.module, c.name)),
             spec: None,
-            service_phase: service_transport_phase(obligation_cat),
+            service_phase: None,
         });
     }
 
     for t in &input.transports {
-        let obligation_cat: ObligationCategory = t.phase.into();
         symbols.push(CollectedSymbol {
             name: sanitize_identifier(&format!("{}_{}", t.module, t.name)),
             spec: t.service_metadata.spec.clone(),
-            service_phase: service_transport_phase(obligation_cat),
+            service_phase: Some(t.phase.into()),
         });
     }
 
@@ -1071,23 +1069,6 @@ fn emit_middleware_inline_funcs(
         .map(|(name, config)| emit_fn(name, config))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn service_transport_phase(
-    obligation: ObligationCategory,
-) -> Option<service_emit::ServiceTransportPhase> {
-    match obligation {
-        ObligationCategory::ServiceTransportPrepare => {
-            Some(service_emit::ServiceTransportPhase::Prepare)
-        }
-        ObligationCategory::ServiceTransportExecute => {
-            Some(service_emit::ServiceTransportPhase::Execute)
-        }
-        ObligationCategory::ServiceTransportParse => {
-            Some(service_emit::ServiceTransportPhase::Parse)
-        }
-        _ => None,
-    }
 }
 
 fn require_embedded_asset<'a>(

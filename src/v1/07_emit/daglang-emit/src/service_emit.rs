@@ -15,7 +15,7 @@
 
 use daglang_lower::{
     ArgvSegment, FieldSpec, RestOperationSpec, ServiceOperationSpec, ShellOperationSpec,
-    ShellOutputParsing,
+    ShellOutputParsing, TransportObligation,
 };
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RetryBackoff, TransportMiddlewareConfig,
@@ -23,14 +23,24 @@ use gunbc_ir::transport::middleware::{
 
 /// Explicit service transport phase for generated operation nodes.
 ///
-/// The lowerer already provides structural phase metadata via
-/// `ObligationCategory` (prepare/execute/parse). Emission should consume that
-/// metadata directly instead of re-parsing callable name prefixes.
+/// Maps 1:1 from the lowerer's `TransportObligation` (prepare/execute/parse)
+/// via the `From` impl below. Emission consumes the phase directly — no
+/// intermediate `ObligationCategory` roundtrip needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServiceTransportPhase {
     Prepare,
     Execute,
     Parse,
+}
+
+impl From<TransportObligation> for ServiceTransportPhase {
+    fn from(o: TransportObligation) -> Self {
+        match o {
+            TransportObligation::Prepare => Self::Prepare,
+            TransportObligation::Execute => Self::Execute,
+            TransportObligation::Parse => Self::Parse,
+        }
+    }
 }
 
 // ===========================================================================
