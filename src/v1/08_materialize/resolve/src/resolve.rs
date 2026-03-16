@@ -40,7 +40,7 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
-use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
+use gunbc_ir::{Cardinality, Dag, Edge, Node, NodeKind, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 
@@ -769,7 +769,7 @@ fn resolve_lowered_dag_impl(
             static_fingerprint: None,
             origin: node.origin.clone(),
         };
-        normalize_release_resource_inputs(&mut resolved_node);
+        normalize_release_resource_inputs(node, &mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
@@ -820,8 +820,8 @@ fn collect_sibling_fn_bodies(
     fns
 }
 
-fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
-    if !node.id.0.starts_with("release_resource_") {
+fn normalize_release_resource_inputs(lowered: &Node<LoweredOp>, node: &mut Node<DynOp>) {
+    if lowered.kind != NodeKind::ResourceRelease {
         return;
     }
     for input in &mut node.inputs {
@@ -2145,10 +2145,10 @@ mod tests {
     }
 
     #[test]
-    fn normalize_release_resource_inputs_uses_list_cardinality() {
+    fn normalize_release_resource_inputs_uses_structural_resource_release_kind() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
-            "release_resource_std_resources_Filesystem",
+            "release_filesystem",
             vec![Port::new("resource_handle", "ResourceHandle")],
             vec![Port::new("released", "Bool")],
             LoweredOp::Callable {
@@ -2160,11 +2160,12 @@ mod tests {
                 resource_target: None,
                 fn_body: None,
             },
-        ));
+        )
+        .with_kind(NodeKind::ResourceRelease));
 
         let resolved = resolve_lowered_dag_with(&dag).expect("release node should resolve");
         let release_node = resolved
-            .get_node(&"release_resource_std_resources_Filesystem".into())
+            .get_node(&"release_filesystem".into())
             .expect("release node should exist");
         let handle_port = release_node
             .inputs
