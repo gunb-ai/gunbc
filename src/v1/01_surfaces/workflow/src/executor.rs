@@ -89,6 +89,7 @@ pub fn execute_workflow_plan(
     dry_run: bool,
 ) -> ExecutionSummary {
     let run_start = Instant::now();
+    let is_ci = std::env::var("GITHUB_ACTIONS").is_ok();
     let mut results = Vec::new();
     let mut executed = 0usize;
     let mut failed = 0usize;
@@ -110,7 +111,7 @@ pub fn execute_workflow_plan(
                 duration_ms: 0,
                 miss_reason: Some(miss_reason.clone()),
             });
-            emit_unit_status(&node_plan.node_id, UnitStatus::Skipped);
+            emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Skipped);
             continue;
         }
 
@@ -126,13 +127,13 @@ pub fn execute_workflow_plan(
                 duration_ms: 0,
                 miss_reason: Some(miss_reason.clone()),
             });
-            emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+            emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Executed { success: true });
             continue;
         };
 
         if dry_run {
             executed += 1;
-            emit_unit_status(&node_plan.node_id, UnitStatus::DryRun(&cmd.label));
+            emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::DryRun(&cmd.label));
             results.push(UnitResult {
                 node_id: node_plan.node_id.clone(),
                 success: true,
@@ -144,7 +145,7 @@ pub fn execute_workflow_plan(
             continue;
         }
 
-        emit_unit_status(&node_plan.node_id, UnitStatus::Running(&cmd.label));
+        emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Running(&cmd.label));
         let unit_start = Instant::now();
         let execution_outcome = run_unit_command(cmd);
         let duration_ms = unit_start.elapsed().as_millis() as u64;
@@ -152,19 +153,19 @@ pub fn execute_workflow_plan(
 
         let (success, pending_approval) = match execution_outcome {
             CommandExecutionOutcome::Success => {
-                emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+                emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Executed { success: true });
                 (true, false)
             }
             CommandExecutionOutcome::PendingApproval => {
                 pending_approvals += 1;
                 has_failure = true;
-                emit_unit_status(&node_plan.node_id, UnitStatus::PendingApproval);
+                emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::PendingApproval);
                 (false, true)
             }
             CommandExecutionOutcome::Failure => {
                 failed += 1;
                 has_failure = true;
-                emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: false });
+                emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Executed { success: false });
                 (false, false)
             }
         };
@@ -227,8 +228,7 @@ enum UnitStatus<'a> {
     Skipped,
 }
 
-fn emit_unit_status(node_id: &NodeId, status: UnitStatus<'_>) {
-    let is_ci = std::env::var("GITHUB_ACTIONS").is_ok();
+fn emit_unit_status(node_id: &NodeId, is_ci: bool, status: UnitStatus<'_>) {
     match status {
         UnitStatus::Running(label) => {
             if is_ci {
