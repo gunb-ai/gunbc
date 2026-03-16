@@ -966,12 +966,18 @@ mod generated_tests {{
                 // Regression baseline: error count must not increase.
                 // Current known errors (10): 9 unresolved re-exports + 1 false cycle.
                 // As the resolver improves, lower this ceiling toward 0.
-                // When error_count reaches 0, add back: assert output files
-                // are non-empty and contain `pub fn`.
+                // When error_count reaches 0, assert output files are non-empty.
                 assert!(
                     error_count <= 10,
                     "self-compile error count regressed: {{}} errors (ceiling 10): {{:?}}",
                     error_count, errors
+                );
+
+                // Pipeline must complete without OOM. Output files depend on
+                // resolver errors reaching 0 — tracked above.
+                eprintln!(
+                    "self-compile completed: {{}} errors, {{}} output files",
+                    error_count, result.files.len()
                 );
             }})
             .expect("failed to spawn thread")
