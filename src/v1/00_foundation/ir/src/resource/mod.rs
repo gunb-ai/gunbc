@@ -82,7 +82,7 @@ pub use state::{ExecMode, ResourceState};
 // Original resource.rs content below (conflict detection, Resource trait, etc.)
 // ============================================================================
 
-use crate::dag::Dag;
+use crate::dag::{Dag, Port};
 use crate::node::{Node, NodeBody, NodeKind};
 use crate::types::NodeId;
 use crate::{SecretString, Value};
@@ -596,11 +596,16 @@ pub fn validate_resource_ordering<T>(
     }
 }
 
-/// Derive resource accesses from `res:*` input ports in a DAG.
+fn declared_resource_access(port: &Port) -> Option<(ResourceId, AccessMode)> {
+    port.resource_access
+        .map(|mode| (ResourceId::new(normalize_resource_id(&port.name.0)), mode))
+}
+
+/// Derive resource accesses from declared resource input ports in a DAG.
 ///
 /// Walks all nodes in the DAG and extracts `ResourceAccess` entries from
-/// input ports whose names start with `res:`. Requires `port.resource_access`
-/// to be explicitly set on all `res:*` ports.
+/// input ports with explicit `resource_access` metadata. Legacy `res:*` ports
+/// that are missing `resource_access` remain a hard error.
 pub fn derive_resource_accesses<T>(
     dag: &Dag<T>,
 ) -> Result<Vec<ResourceAccess>, Vec<ResourceAccessError>> {
@@ -608,18 +613,15 @@ pub fn derive_resource_accesses<T>(
     let mut errors = Vec::new();
     for node in &dag.nodes {
         for port in &node.inputs {
-            if let Some(res_name) = port.name.0.strip_prefix("res:") {
-                let resource_id = ResourceId::new(normalize_resource_id(res_name));
-                match port.resource_access {
-                    Some(mode) => {
-                        accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode))
-                    }
-                    None => errors.push(ResourceAccessError {
-                        node_id: node.id.clone(),
-                        port_name: port.name.0.clone(),
-                        resource_id,
-                    }),
-                }
+            if let Some((resource_id, mode)) = declared_resource_access(port) {
+                accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode));
+            } else if port.name.0.starts_with(RESOURCE_PORT_PREFIX) {
+                let resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
+                errors.push(ResourceAccessError {
+                    node_id: node.id.clone(),
+                    port_name: port.name.0.clone(),
+                    resource_id,
+                });
             }
         }
     }
@@ -645,7 +647,7 @@ pub fn detect_resource_conflicts<T>(
 // M10: Mandatory Resource Declarations
 // ============================================================================
 
-/// A node that performs side-effects but declares no `res:*` resource port.
+/// A node that performs side-effects but declares no resource-access input port.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingResourceDeclaration {
     /// The offending node.
@@ -698,15 +700,17 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
 
 /// Check whether a node declares at least one resource input port.
 fn has_resource_port<T>(node: &Node<T>) -> bool {
-    node.inputs.iter().any(|p| p.resource_access.is_some())
+    node.inputs
+        .iter()
+        .any(|p| declared_resource_access(p).is_some())
 }
 
 /// Validate that all effectful nodes declare resource ports.
 ///
 /// For each node in the DAG, determines if it is effectful (transport executor,
 /// tool environment, resource environment, tool consumer) and checks whether it
-/// declares at least one `res:*` input port. Effectful nodes without resource
-/// ports are returned as violations.
+/// declares at least one input port with explicit `resource_access`. Effectful
+/// nodes without resource ports are returned as violations.
 ///
 /// SubDag wrapper nodes are skipped — their resource ports are auto-inferred from
 /// inner DAGs. Validation recurses into SubDags to check inner nodes.
@@ -1035,6 +1039,23 @@ mod tests {
         let file = accesses.iter().find(|a| a.resource_id.0 == "file").unwrap();
         assert_eq!(file.node_id.0, "node_b");
         assert_eq!(file.mode, AccessMode::Write);
+    }
+
+    #[test]
+    fn test_derive_resource_accesses_from_annotated_non_res_ports() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
+            vec![],
+            "op_a".to_string(),
+        ));
+
+        let accesses = derive_resource_accesses(&dag).expect("resource accesses should derive");
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].node_id.0, "node_a");
+        assert_eq!(accesses[0].resource_id.0, "tool:clippy");
+        assert_eq!(accesses[0].mode, AccessMode::Read);
     }
 
     #[test]
@@ -1424,6 +1445,37 @@ mod tests {
 
         let violations = validate_resource_completeness(&dag);
         assert!(violations.is_empty(), "properly declared node should pass");
+    }
+
+    #[test]
+    fn test_validate_resource_completeness_and_conflicts_share_annotated_non_res_contract() {
+        let shared_tool_port =
+            Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Exclusive);
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "tool_a",
+                vec![shared_tool_port.clone()],
+                vec![],
+                "op_a".to_string(),
+            )
+            .with_kind(NodeKind::ToolEnvironment),
+        );
+        dag.add_node(
+            Node::opaque("tool_b", vec![shared_tool_port], vec![], "op_b".to_string())
+                .with_kind(NodeKind::ToolEnvironment),
+        );
+
+        let violations = validate_resource_completeness(&dag);
+        assert!(
+            violations.is_empty(),
+            "resource_access should satisfy completeness even without a res: prefix"
+        );
+
+        let conflicts = detect_resource_conflicts(&dag)
+            .expect("annotated non-res ports should participate in conflict detection");
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].resource_id.0, "tool:clippy");
     }
 
     #[test]

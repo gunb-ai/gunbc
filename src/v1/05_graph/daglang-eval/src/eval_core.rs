@@ -618,7 +618,7 @@ pub fn eval_builtin_call(
             } else {
                 Err(EvalError::new("'map_merge' requires two maps"))
             }
-        },
+        }
         "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
         "code_point" => {
             let val = require_builtin_arg("c", 0, args);

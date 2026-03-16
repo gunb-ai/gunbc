@@ -1503,7 +1503,8 @@ mod tests {
             Node::opaque(
                 "env",
                 vec![],
-                vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
+                vec![Port::scalar("tool:clippy", "ToolHandle")
+                    .with_resource_access(AccessMode::Read)],
                 (),
             )
             .with_kind(NodeKind::ToolEnvironment),
@@ -1511,7 +1512,8 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "lint",
-                vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
+                vec![Port::scalar("tool:clippy", "ToolHandle")
+                    .with_resource_access(AccessMode::Read)],
                 vec![Port::scalar("result", "String")],
                 (),
             )
@@ -1545,7 +1547,8 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "lint",
-                vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
+                vec![Port::scalar("tool:clippy", "ToolHandle")
+                    .with_resource_access(AccessMode::Read)],
                 vec![Port::scalar("result", "String")],
                 (),
             )

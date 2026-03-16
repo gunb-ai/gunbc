@@ -363,7 +363,10 @@ mod tests {
             "_variant".to_string(),
             gunbc_ir::Value::Str("Primitive".to_string()),
         );
-        map.insert("name".to_string(), gunbc_ir::Value::Str("String".to_string()));
+        map.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("String".to_string()),
+        );
         map.insert("span".to_string(), zero_span_value());
         gunbc_ir::Value::Map(map)
     }
@@ -379,10 +382,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn product_type_value(
-        name: Option<&str>,
-        fields: Vec<gunbc_ir::Value>,
-    ) -> gunbc_ir::Value {
+    fn product_type_value(name: Option<&str>, fields: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -420,10 +420,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn literal_expr_value(
-        literal: gunbc_ir::Value,
-        span: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
+    fn literal_expr_value(literal: gunbc_ir::Value, span: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -441,11 +438,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn span_type_value(
-        start: i64,
-        end: i64,
-        resolved_type: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
+    fn span_type_value(start: i64, end: i64, resolved_type: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert("start".to_string(), gunbc_ir::Value::Int(start));
         map.insert("end".to_string(), gunbc_ir::Value::Int(end));
@@ -1636,7 +1629,10 @@ fn foo(item: String) -> String {
         assert!(!typed_modules.is_empty());
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1709,7 +1705,10 @@ fn foo(item: String) -> String {
         };
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -2599,7 +2598,10 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -2648,7 +2650,10 @@ fn example(items: List<String>) -> Int {
         ];
         let scope = infer_scope_value(
             type_env_value(vec![
-                type_binding_value("Config", product_type_value(Some("Config"), exact_fields.clone())),
+                type_binding_value(
+                    "Config",
+                    product_type_value(Some("Config"), exact_fields.clone()),
+                ),
                 type_binding_value(
                     "ConfigExpanded",
                     product_type_value(Some("ConfigExpanded"), wider_fields),
@@ -2677,7 +2682,10 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -3161,7 +3169,10 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+            emit_inputs.insert(
+                "registry".to_string(),
+                gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+            );
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()
