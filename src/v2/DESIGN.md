@@ -1,9 +1,8 @@
 # v2: Self-hosted compiler
 
-Operational entrypoint: `src/v2/WORKBOARD.md`
-
-Use this file for target architecture and design rules. Keep current status,
-queue management, and parallel work planning in `src/v2/WORKBOARD.md`.
+Use this file for target architecture and design rules. Current status
+and gap analysis live in `ROADMAP.md`. The sustainability ledger tracking
+open violations is `src/v1/SUSTAINABILITY.md`.
 
 ## Premise
 

@@ -25,26 +25,33 @@ definitions, no extern funcs. It has 11 transitive dependencies (including
 
 ### Gap analysis
 
-#### P0: Typecheck performance rewrite
+#### P0: Recursive type support (S85) — current gist pipeline blocker
 
-The v2 typechecker OOMs when processing 10+ modules in debug mode. Root cause:
-the .dag language has no hash maps, so every name lookup is `list |> filter |>
-first` -- O(n) per lookup, O(n*m) per module, O(n*m*k) for cross-module
-resolution. With 11 modules containing hundreds of definitions, this explodes.
+The gist pipeline OOMs on `std.types` (item 55 of 101: `CredentialFlow`).
+Root cause: recursive sum type triggers infinite recursion in the resolver
+due to dropped cycle-detection state (S85). This is not an algorithmic
+scaling issue — it is a missing language feature.
 
 **Required work:**
-1. Profile the generated v2 crate's typecheck on gist's 11 dependencies
-   (identify the hot path -- likely `lookup_type`, `lookup_func_sig`, or scope
-   extension)
-2. Rewrite the typechecker's lookup strategy. Options:
-   - Add `Map<K,V>` as a DSL built-in type with O(1) lookup (language change)
-   - Move lookup-heavy functions to Rust runtime shims (pragmatic)
-   - Restructure the typechecker to batch-build lookup tables per module as
-     flat sorted lists with binary search (pure DSL, no language change)
-3. Verify: `self_compile_all_modules` completes full pipeline without OOM
+1. Thread `resolving` through `resolve_field`, `resolve_variant`,
+   `resolve_param` and their callers (signature changes) — smallest safe fix
+2. Add a recursive-type test case through the full pipeline:
+   `type Node = Leaf | Branch { children: List<Node> }`
+3. Terminal: SCC analysis on the type dependency graph during resolve,
+   producing cycle metadata carried structurally on `TypeBinding`
 
-**Acceptance gate:** v2 compiler runs its full pipeline (tokenize through emit)
-on its own 10 modules in debug mode without exceeding 4GB heap.
+**Acceptance gate:** v2 compiler resolves `std.types` (101 type definitions
+including recursive types) without OOM. Full pipeline completes for gist's
+11 transitive dependencies.
+
+#### Separate concern: lookup complexity (partially addressed)
+
+The v2 typechecker previously used list-based environments for all name
+lookups — O(n) per lookup, O(n*m*k) for cross-module resolution. This was
+a real scaling bottleneck but is now **partially addressed**: type cache,
+item registry, and module index all use `Map<K,V>` with O(1) lookups
+(documented in SUSTAINABILITY.md gap analysis). Further optimization may
+be needed as the module count grows, but this is not the current blocker.
 
 #### P1: TCO pass for emitted code (S84)
 
@@ -102,79 +109,75 @@ produces the same dry-run output as v1's `make gist-dry`.
 2. Verify all three variants: `gist`, `gist_diff`, `gist_recent`
 3. Python target: `python gist.py` produces equivalent output
 
-#### P1.5: Unify emitters via language specifications
+#### P1.5: Language specifications and emitter layering
 
 The current v2 emitters (`05_emit_rust.dag`, `05_emit_python.dag`) are 1000+
-line monoliths with hardcoded language knowledge. This violates the same
-principle the extdeps follow: **external systems are modeled as structural
-facts, not as code.**
+line monoliths with hardcoded language knowledge. Much of this knowledge —
+naming conventions, keywords, literal spellings, comment syntax, import
+syntax, type mappings — is surface spelling that belongs in language
+specifications, not in code.
 
-A programming language's syntax is an external specification, just like
-GitHub's REST API. The codebase already has this insight — `dsl/std/languages.dag`
-models languages as compositional facts (type mappings, naming conventions,
-comment syntax). The v1 architecture also has a target-agnostic `code_ir` with
-tiered lowering. But the v2 emitters bypass both, embedding language knowledge
-directly in rendering logic.
+The codebase already has this insight: `dsl/std/languages.dag` models
+languages as compositional facts. The fix is to **separate spelling from
+semantics** and **shrink the per-backend emitters**, not to replace them
+with a single template-driven renderer.
 
-**The fix: language-specification-driven rendering.**
+A fully template-driven single emitter would recreate heuristics inside
+the templates, because ownership, borrowing, async strategy, TCO lowering,
+operator precedence, destructuring, and error propagation are not just
+syntax — they are irreducible semantic differences between target languages.
 
-The pattern already exists in the codebase:
-- `dsl/extdeps/github/gists.dag` models "what is the GitHub Gists API" as facts
-- `dsl/std/languages.dag` models "what is Rust" as facts
-- A renderer should consume these facts the same way a transport consumes an
-  API spec — mechanically, with no language-specific code paths
+**The layered approach:**
+
+1. **Language specs in `languages.dag`** for spelling and idiom metadata:
+   naming conventions, keywords, type name mappings, comment syntax, import
+   syntax, literal format strings. This is data derivable from language
+   reference docs — model it the same way extdeps models API endpoints.
+
+2. **Structural typed/code IR for semantics.** The typed graph from
+   typecheck carries the semantic facts. Per-backend lowerers consume
+   these facts, not raw AST.
+
+3. **Thin per-backend lowerers** for irreducible semantic differences:
+   Rust ownership/borrowing and `Result<T,E>` error propagation, Python's
+   `__init__` pattern and exception handling, Go's multi-return error
+   handling. These stay as code in per-backend modules — but they should
+   be small (consulting the language spec for spelling) rather than
+   1000-line monoliths that mix spelling with semantics.
 
 **Required work:**
 
-1. **Extend `languages.dag` into a full rendering specification.** The current
-   model covers naming and type mapping. It needs:
-   - Statement syntax: how a let-binding, function def, match/if, for-loop
-     looks in each language
-   - Expression syntax: operator precedence, string interpolation, method calls
-   - Module system: imports, visibility, module declarations
-   - Idioms: error handling (Result/try vs exceptions), async patterns,
-     ownership (Rust-specific)
+1. Extend `languages.dag` to cover statement syntax templates, expression
+   syntax patterns, and module system conventions — all derivable from
+   real language reference docs.
 
-   Each of these is a structural fact about the language, derivable from its
-   specification. Model them the same way extdeps models API endpoints — real
-   syntax from real language references.
+2. Refactor per-backend emitters to consult language specs for spelling
+   decisions (type names, naming conventions, comment format, import
+   syntax) instead of hardcoding them.
 
-2. **Replace per-language emitters with a single data-driven renderer.** One
-   `05_emit.dag` module that:
-   - Takes a `TypedGraph` + `Language` specification
-   - Walks the typed AST
-   - At each node, consults the language spec for the rendering
-   - Produces target text
+3. Extract shared emission logic (structural dispatch, scope management,
+   tree walking) into `05_emit.dag` — this is already partially done.
 
-   The renderer is a pure function: `render(typed_graph, language_spec) -> files`.
-   Adding Go means adding `data go_language: LanguageSpec = { ... }`, not
-   writing a new 1000-line emitter module.
+4. Validate: emitted Rust still passes `cargo check`, emitted Python
+   still passes `py_compile`.
 
-3. **Validate with existing targets.** The unified renderer must produce
-   identical output to the current `05_emit_rust.dag` and `05_emit_python.dag`
-   for gist's 11 modules. Diff the output to prove equivalence.
+**What this does NOT do:** Delete per-backend emitters or aim for a single
+renderer. Adding Go means writing a thin Go lowerer that handles Go-specific
+semantics (multi-return errors, goroutine patterns, interface satisfaction)
+and consults `languages.dag` for Go spelling. The lowerer should be small
+because the language spec carries most of the surface knowledge.
 
-4. **Delete `05_emit_rust.dag` and `05_emit_python.dag`** once the unified
-   renderer produces equivalent output.
-
-**What stays language-specific:** Idioms that can't be expressed as syntax
-templates (Rust ownership/borrowing, Python's `__init__` pattern, Go's
-multi-return error handling). These are modeled as language-specific rendering
-strategies in the spec, not as code in the renderer. The spec says "Rust
-functions return `Result<T, E>`"; the renderer applies that mechanically.
-
-**Acceptance gate:** One emitter module, language specs in .dag data
-declarations, `cargo check` passes for Rust output, `py_compile` passes for
-Python output, output is byte-identical to current per-language emitters on
-gist's dependency chain.
+**Acceptance gate:** Per-backend emitters consult `languages.dag` for
+spelling; shared structural logic lives in `05_emit.dag`; no hardcoded
+type name mappings or naming conventions in per-backend code.
 
 ### Target languages
 
 | Target | Spec | Runtime deps | Status |
 |--------|------|-------------|--------|
-| **Rust** | `dsl/std/languages.dag` `rust_language` | reqwest, tokio, clap | Current emitter works, unify in P1.5 |
-| **Python** | `dsl/std/languages.dag` `python_language` | aiohttp, argparse | Current emitter works, unify in P1.5 |
-| **Go** | `dsl/std/languages.dag` `go_language` | net/http, flag | Add spec after unification — no new emitter code |
+| **Rust** | `dsl/std/languages.dag` `rust_language` | reqwest, tokio, clap | Current emitter works, refactor in P1.5 |
+| **Python** | `dsl/std/languages.dag` `python_language` | aiohttp, argparse | Current emitter works, refactor in P1.5 |
+| **Go** | `dsl/std/languages.dag` `go_language` | net/http, flag | Add thin lowerer + language spec in P1.5 |
 
 ### Acceptance criteria (ship gate)
 
@@ -191,8 +194,8 @@ All of the following must pass in CI:
 - [ ] `v2_gist_real_go` -- compiled Go gist creates a real GitHub gist (manual gate)
 - [ ] v2 self-compile full pipeline completes without OOM (P0 prerequisite)
 - [ ] No stack overflow on any .dag file up to 4000 lines (P1 prerequisite)
-- [ ] Single unified emitter -- `05_emit_rust.dag` and `05_emit_python.dag` deleted (P1.5)
-- [ ] Go target added by data declaration only, no new emitter module (P1.5)
+- [ ] Per-backend emitters consult `languages.dag` for spelling — no hardcoded type/naming maps (P1.5)
+- [ ] Go target via thin lowerer + language spec, not a 1000-line monolith (P1.5)
 
 ---
 

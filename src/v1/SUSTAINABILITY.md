@@ -28,6 +28,25 @@ not strings. No TypeRegistry. No deferred resolution.
 
 ---
 
+## Rubric for new findings
+
+Every heuristic is downstream evidence that an upstream stage dropped structure.
+The standard template for documenting a finding:
+
+1. **Current failure mode** — what goes wrong observably
+2. **Missing fact** — what information the code is trying to guess
+3. **Boundary that should carry it** — where the fact should become structural
+4. **Smallest safe bridge** — the minimum fix that unblocks without violating invariants
+5. **Terminal fix** — the design that eliminates the class of bug
+
+Decision rules:
+- If a fact is derivable from authoritative structure, compute it once and carry it forward.
+- If a fact is not derivable, require it explicitly in syntax or the boundary type.
+- Don't turn a derivable fact into a required annotation.
+- Don't fix a missing fact by inventing a permissive fallback type, name, or placeholder.
+
+---
+
 ## Open findings
 
 ### Branch 1: TypeId is deferred computation (eliminated by v2)
@@ -155,8 +174,12 @@ as variables) adds another per-kind special case to the growing pile.
 5. New match arms in each emitter (`emit_typed_item`, `emit_py_typed_item`)
 6. New registration logic in `build_type_env` / `build_func_env`
 
-This is open-set enumeration (violates "no case enumeration for open sets")
-on what should be a structural concept.
+This is a high cost-of-change pattern. `Item` is a closed enum, and
+closed-enum matching is fine per our invariants — adding a variant is a
+compiler error. The deeper problem is that there is no normalized
+structural representation shared across later phases. Each phase
+re-interprets the same variant set independently rather than consuming
+a single structural form lowered once from the AST.
 
 **Historical note:** The codebase has gone through several iterations of
 this pattern — `resource`, `tool`, `service`, `pattern`, `extern func` —
@@ -164,31 +187,48 @@ each time adding a new variant and threading it through every phase. The
 intent was always to collapse these to DAG nodes, but the per-kind pattern
 keeps getting reintroduced because the compiler's `Item` type invites it.
 
-**Missing fact:** the unified identity of a DAG node. A service IS a node
-with I/O ports and a transport property. A function IS a node with I/O
-ports and a computation body. A resource IS a node with capability
-properties. These are properties on a node, not reasons for separate
-compiler paths.
+**Missing fact:** a normalized structural representation shared across
+later phases. After parsing, each phase independently re-interprets the
+8-variant Item enum — building separate registration logic, separate type
+environments, separate emission paths for each kind. The structural
+properties that matter to downstream phases (what names does this item
+introduce? what body does it have? what namespace does it participate in?)
+are not extracted once and carried forward.
 
-**Terminal direction:** Replace the 8-variant `Item` enum with a single
-structural node type that carries:
+**Terminal direction:** Keep parse-time `Item` variants — they make
+illegal AST states unrepresentable (a `FuncDef` requires a body
+expression, a `ServiceDef` requires operations, a `TypeDef` requires a
+type body). Then lower once, after parsing, to a structural node IR
+that resolve/typecheck/emit consume:
+
+```
+Item (parse) ──lower_item──> Node (structural IR)
+```
+
+The structural `Node` carries:
 - **Name** and **span** (identity)
-- **Ports** — inputs and outputs (the I/O contract)
-- **Properties** — transport binding, body expression, capability mode,
-  etc. (what makes a service different from a function)
-- **Kind tag** — optional, for syntax/diagnostic purposes, but NOT used
-  for dispatch in compiler phases
+- **Namespace entries** — what names this item introduces (types,
+  constructors, functions, variables) and their signatures
+- **Body** — optional computation (function body, service operations)
+- **Properties** — transport binding, capability mode, etc.
+- **Kind tag** — for diagnostics and source correlation, NOT for dispatch
 
-Compiler phases would walk the node structurally: "does this node have a
-body? emit it. Does this node have a transport? wire it." Rather than:
-"is this a FuncDef? do the FuncDef thing. Is this a ServiceDef? do the
-ServiceDef thing."
+The key difference from replacing `Item` outright: the parse-stage
+variants remain precise (each variant's required fields are required,
+not optional), while the post-lower structural form is what compiler
+phases walk. Replacing the AST with a single mega-node type would
+create a permissive record full of optional fields — violating "illegal
+states unrepresentable."
 
-This is the same collapse that made `TypeExpr` work — v2 types are
-structural values, not string-keyed registry entries. The same principle
-applied to items would make `ServiceDef` naturally visible in the
-expression namespace, `ResourceDef` naturally usable in type position,
-and new item kinds zero-cost to add.
+Compiler phases would walk the structural form: "does this node have
+namespace entries? register them. Does this node have a body?
+typecheck/emit it." Rather than: "is this a FuncDef? do the FuncDef
+thing. Is this a ServiceDef? do the ServiceDef thing."
+
+This would make `ServiceDef` naturally visible in the expression
+namespace (its namespace entries are registered like any other item's),
+`ResourceDef` naturally usable in type position, and new item kinds
+cheap to add (define the parse variant, implement `lower_item`).
 
 **Smallest safe bridge (current):** Register `ServiceDef` names as
 variables in the expression scope during typecheck, with the service's
@@ -336,16 +376,20 @@ re-derived (or not) at every boundary.
 
 **S85: Recursive types accepted without structural support.**
 
-**Missing fact:** whether a type definition is intentionally recursive. The
-`.dag` language allows it syntactically but provides no signal to the
-compiler. The compiler's only mechanism (the `resolving` list) is opt-in,
-manually threaded, and silently droppable.
+**Missing fact:** whether a type definition participates in a cycle. This
+is derivable from the type dependency graph (SCC analysis) but is never
+computed or stored. The `.dag` language allows recursive types syntactically
+but provides no structural signal to the compiler. The compiler's only
+mechanism (the `resolving` list) is opt-in, manually threaded, and silently
+droppable.
 
-**Philosophical position:** Recursive types are a virtual layer on top of
-the DAG — a modeling convenience for patterns that unwind through time. The
-DAG is the ground truth; recursion is a lens. The language should explicitly
-support this lens rather than accidentally permitting it. A recursive type
-should be declared, not discovered.
+**Structural position:** Recursion is a property the compiler can derive
+from the type graph — SCC analysis on the type dependency graph identifies
+which types participate in cycles and which fields are back-edges. This is
+a derivable fact, not one that should require a source-level annotation.
+Requiring a `recursive` keyword would introduce a second authored fact that
+can drift from the actual graph structure, violating the rubric ("don't
+turn a derivable fact into a required annotation").
 
 **Affected call sites (audit, 2026-03-16):**
 
@@ -375,21 +419,28 @@ resolver fails to convert recursive types into structurally finite form
 3. This ensures cycle breakers are inserted, making the downstream walks
    terminate. Does not address `Box<T>` rendering or the opt-in fragility.
 
-**Terminal direction (language feature):**
-Recursive types should be an explicit language concept — something like
-`recursive type CredentialFlow = ...` — so the compiler can:
-- **Reject unmarked cycles** at parse/resolve time (accidental self-reference
-  is a compile error, not a silent OOM)
-- **Carry the fact structurally** on `TypeBinding` or `TypeExpr` through all
-  phases (no `resolving` list, no opt-in threading, no escape hatch)
-- **Render correctly per-backend** (`Box<T>` for Rust, reference types for
+**Terminal direction (first-class in resolved type IR):**
+Recursive types become first-class in the resolved type IR. The compiler:
+- **Detects cycles automatically** via SCC analysis on the type dependency
+  graph during resolve, producing cycle metadata (which types participate
+  in cycles, which fields are the back-edges)
+- **Carries the fact structurally** on `TypeBinding` (e.g.,
+  `is_recursive: Bool` + `back_edges: List<FieldPath>`) or via a dedicated
+  recursive form in `TypeExpr` (e.g., `Recursive { name, unfolding }`)
+  through all phases — no `resolving` list, no opt-in threading
+- **Renders correctly per-backend** (`Box<T>` for Rust, reference types for
   other targets) based on the structural marker, not heuristic detection
 
-The exact syntax and semantics are open — this is a language design question,
-not just a compiler fix. The `resolving` list and the `resolve_type_expr` /
+Source-level syntax (e.g., `recursive type`) is only warranted if user
+intent beyond mere detection is required — for example, choosing between
+heap indirection strategies or explicitly opting out of recursion as a
+lint. Detection alone is derivable and should not be authored.
+
+The `resolving` list and the `resolve_type_expr` /
 `resolve_type_expr_with_resolving` split should both disappear in the
-terminal state. See discussion in the heuristic roadmap (Phase A, `Box::new()`
-wrapping row).
+terminal state — replaced by upfront SCC computation during resolve that
+annotates the type graph once. See discussion in the heuristic roadmap
+(Phase A, `Box::new()` wrapping row).
 
 **Invariant this violates:** Invariant 9 ("Correctness by construction, not
 by validation"). The current API makes it easy to construct the wrong call.
@@ -543,7 +594,7 @@ it unnecessary. Ordered by dependency.
 |-----------|------------------------------|
 | `clone_if_needed` (S76) | Tracks variable liveness. Last use = move, earlier = borrow. |
 | `infer_struct_name` (S77) | Typechecker resolves anonymous records to structural type. |
-| `Box::new()` wrapping | Checks `TypeExpr` for recursion. Per-backend rendering. (See S85.) |
+| `Box::new()` wrapping | SCC-derived cycle metadata on `TypeBinding`. Per-backend rendering. (See S85.) |
 | `Some()`/`None` injection | `TypeExpr::Optional` in typed IR. Per-backend rendering. |
 | `.as_str()` insertion | Rust emitter knows String match context. |
 | `..Default::default()` | Emitter has all field types. Complete struct literals. |
@@ -599,5 +650,5 @@ All ratchets are one-way (lists can only shrink).
 | Foundation | R1–R6 | Deleted duplicates, structural walks, removed fabrication |
 | Test quality | BUG-6, E3.2 | Promoted aliases, non-tautological assertions |
 | v2 integration | S82 (namespace collision), G8/G12–G14 (fabrication) | Renamed, honest return types, sum types for sentinels |
-| v2 type system | S85 (recursive types unmodeled) | Language feature: explicit recursive type declarations |
-| v2 item model | S86 (items are separate species) | Unified DAG node with structural properties, not 8-variant enum |
+| v2 type system | S85 (recursive types unmodeled) | First-class in resolved type IR: SCC-derived cycle metadata on TypeBinding |
+| v2 item model | S86 (items are separate species) | Keep parse-time Item variants, lower once to structural node IR for later phases |
