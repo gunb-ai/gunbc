@@ -49,6 +49,7 @@ use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
     RetryConfig, TransportMiddlewareConfig,
 };
+use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{
     Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, Node, NodeId, NodeKind,
     NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,
@@ -3315,7 +3316,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -3340,7 +3341,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -3375,7 +3376,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -3405,7 +3406,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),

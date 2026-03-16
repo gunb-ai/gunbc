@@ -982,22 +982,11 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
 
 /// Whether a type_id identifies a resource type.
 ///
-/// Resource types are handles and locks that require connectivity and
-/// contention handling obligations.
-fn is_resource_type(type_id: &TypeId) -> bool {
-    matches!(
-        type_id.0.as_str(),
-        "ToolHandle" | "Lock" | "Lease" | "SharedLock"
-    )
-}
-
-/// Whether a port is a resource port (by name prefix or type).
+/// Whether a port is a resource port.
+///
+/// Uses the structural `resource_access` field stamped by the lowerer.
 fn is_resource_port(port: &gunbc_ir::dag::Port) -> bool {
     port.resource_access.is_some()
-        || port.name.is_resource()
-        || port.name.0.starts_with("resource:")
-        || port.name.is_tool()
-        || is_resource_type(&port.type_id)
 }
 
 /// Bucket D: Resource hygiene obligations.
@@ -1192,7 +1181,7 @@ fn collect_resource_obligations<T>(
     // verify the consumer can handle contention (acquisition failure).
     for node in &dag.nodes {
         for port in &node.inputs {
-            if is_resource_type(&port.type_id) {
+            if is_resource_port(port) {
                 obligations.push(ProofObligation::runtime(
                     Obligation::ResourceContentionHandling {
                         resource_port: format!("{}.{}", node.id.0, port.name.0),
@@ -1364,6 +1353,7 @@ fn check_predicate_entailment(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::resource::AccessMode;
     use gunbc_ir::{build::*, Dag, Node, NodeKind, Port};
 
     #[test]
@@ -1513,7 +1503,7 @@ mod tests {
             Node::opaque(
                 "env",
                 vec![],
-                vec![Port::scalar("tool:clippy", "ToolHandle")],
+                vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
                 (),
             )
             .with_kind(NodeKind::ToolEnvironment),
@@ -1521,7 +1511,7 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "lint",
-                vec![Port::scalar("tool:clippy", "ToolHandle")],
+                vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
                 vec![Port::scalar("result", "String")],
                 (),
             )
@@ -1555,7 +1545,7 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "lint",
-                vec![Port::scalar("tool:clippy", "ToolHandle")],
+                vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
                 vec![Port::scalar("result", "String")],
                 (),
             )

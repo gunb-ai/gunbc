@@ -703,6 +703,16 @@ impl Port {
         Self::with_cardinality(name, type_id, cardinality)
     }
 
+    /// Stamp a resource access mode on this port.
+    ///
+    /// Use for ports that carry resource semantics (e.g. `tool:*` ports)
+    /// but don't use the `Port::resource()` constructor (which adds the
+    /// `res:` prefix and normalises the name).
+    pub fn with_resource_access(mut self, mode: AccessMode) -> Self {
+        self.resource_access = Some(mode);
+        self
+    }
+
     /// Set an execution log detail override for this port.
     pub fn with_log_detail(mut self, log_detail: LogDetailLevel) -> Self {
         self.log_detail = Some(log_detail);
