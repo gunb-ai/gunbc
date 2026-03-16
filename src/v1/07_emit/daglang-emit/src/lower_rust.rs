@@ -391,7 +391,7 @@ fn collect_imports(source: &SourceFile, config: &RustConfig) -> Vec<Import> {
     // Check for serde_json usage.
     let has_json = source.items.iter().any(|item| {
         if let Item::Fn(f) = item {
-            body_uses_json(&f.body)
+            crate::transport_analysis::body_uses_json(&f.body)
         } else {
             false
         }
@@ -404,38 +404,6 @@ fn collect_imports(source: &SourceFile, config: &RustConfig) -> Vec<Import> {
     }
 
     imports
-}
-
-fn body_uses_json(stmts: &[Stmt]) -> bool {
-    stmts.iter().any(|stmt| match stmt {
-        Stmt::Let { expr, .. } => expr_uses_json(expr),
-        Stmt::Expr(expr) | Stmt::Return(expr) | Stmt::TailExpr(expr) => expr_uses_json(expr),
-        Stmt::For { body, .. } => body_uses_json(body),
-        _ => false,
-    })
-}
-
-fn expr_uses_json(expr: &Expr) -> bool {
-    match expr {
-        Expr::Value(gunbc_ir::ValueExpr::Json(_)) => true,
-        Expr::Call { func, args, .. } => expr_uses_json(func) || args.iter().any(expr_uses_json),
-        Expr::MethodCall { receiver, args, .. } => {
-            expr_uses_json(receiver) || args.iter().any(expr_uses_json)
-        }
-        Expr::BinOp { left, right, .. } => expr_uses_json(left) || expr_uses_json(right),
-        Expr::If {
-            cond,
-            then_body,
-            else_body,
-        } => {
-            expr_uses_json(cond)
-                || body_uses_json(then_body)
-                || else_body.as_ref().is_some_and(|b| body_uses_json(b))
-        }
-        Expr::Block(stmts) => body_uses_json(stmts),
-        Expr::Array(elems) | Expr::Tuple(elems) => elems.iter().any(expr_uses_json),
-        _ => false,
-    }
 }
 
 // ===========================================================================

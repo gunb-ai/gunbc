@@ -449,7 +449,7 @@ fn collect_go_imports(source: &SourceFile, config: &GoConfig) -> Vec<String> {
 
     let has_json = source.items.iter().any(|item| {
         if let Item::Fn(f) = item {
-            body_uses_json(&f.body)
+            crate::transport_analysis::body_uses_json(&f.body)
         } else {
             false
         }
@@ -498,37 +498,6 @@ fn expr_has_format(expr: &Expr) -> bool {
                 || else_body.as_ref().is_some_and(|b| body_has_format(b))
         }
         Expr::Block(stmts) => body_has_format(stmts),
-        _ => false,
-    }
-}
-
-fn body_uses_json(stmts: &[Stmt]) -> bool {
-    stmts.iter().any(|stmt| match stmt {
-        Stmt::Let { expr, .. } => expr_uses_json(expr),
-        Stmt::Bind { expr, .. } => expr_uses_json(expr),
-        Stmt::Expr(expr) | Stmt::Return(expr) | Stmt::TailExpr(expr) => expr_uses_json(expr),
-        Stmt::For { body, .. } => body_uses_json(body),
-        _ => false,
-    })
-}
-
-fn expr_uses_json(expr: &Expr) -> bool {
-    match expr {
-        Expr::Value(gunbc_ir::ValueExpr::Json(_)) => true,
-        Expr::Call { func, args, .. } => expr_uses_json(func) || args.iter().any(expr_uses_json),
-        Expr::MethodCall { receiver, args, .. } => {
-            expr_uses_json(receiver) || args.iter().any(expr_uses_json)
-        }
-        Expr::If {
-            cond,
-            then_body,
-            else_body,
-        } => {
-            expr_uses_json(cond)
-                || body_uses_json(then_body)
-                || else_body.as_ref().is_some_and(|b| body_uses_json(b))
-        }
-        Expr::Block(stmts) => body_uses_json(stmts),
         _ => false,
     }
 }
