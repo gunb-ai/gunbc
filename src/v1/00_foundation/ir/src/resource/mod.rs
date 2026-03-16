@@ -696,9 +696,9 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
     }
 }
 
-/// Check whether a node declares at least one `res:*` input port.
+/// Check whether a node declares at least one resource input port.
 fn has_resource_port<T>(node: &Node<T>) -> bool {
-    node.inputs.iter().any(|p| p.name.is_resource())
+    node.inputs.iter().any(|p| p.resource_access.is_some())
 }
 
 /// Validate that all effectful nodes declare resource ports.
