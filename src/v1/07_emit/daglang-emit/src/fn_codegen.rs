@@ -69,7 +69,7 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
             "String" => IrType::Str,
             _ => IrType::Named(n.clone()),
         },
-        ast::TypeExpr::AssociatedOutput(base) => IrType::Named(format!("{base}.Output")),
+        ast::TypeExpr::AssociatedOutput(base) => IrType::Named(format!("{base}::Output")),
         ast::TypeExpr::Generic(n, args) => {
             IrType::Generic(n.clone(), args.iter().map(type_expr_to_ir_type).collect())
         }

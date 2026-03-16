@@ -153,11 +153,14 @@ pub fn type_expr_to_rust_with_registry(
             registry,
             crate::type_mapping::Backend::Rust,
         ),
-        TypeExpr::AssociatedOutput(base) => crate::type_mapping::resolve_and_emit(
-            &format!("{base}.Output"),
-            registry,
-            crate::type_mapping::Backend::Rust,
-        ),
+        TypeExpr::AssociatedOutput(base) => {
+            let resolved_base = crate::type_mapping::resolve_and_emit(
+                base,
+                registry,
+                crate::type_mapping::Backend::Rust,
+            );
+            format!("{resolved_base}::Output")
+        }
         TypeExpr::Generic(name, args) => {
             use crate::language_model::{self, ContainerKind};
             let model = language_model::model_for_backend(crate::type_mapping::Backend::Rust);
@@ -497,7 +500,7 @@ fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(
 fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => name.clone(),
-        TypeExpr::AssociatedOutput(base) => format!("{base}.Output"),
+        TypeExpr::AssociatedOutput(base) => format!("{base}::Output"),
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
         TypeExpr::Function(_, _) => "Function".to_string(),
@@ -2703,10 +2706,11 @@ fn guarded<Check>(predicate: fn(Check.Output) -> Bool) -> String {
             "emitted Rust should contain Config struct: {rust_source}"
         );
 
-        // The fn(Check.Output) -> Bool parameter should render structurally.
+        // The fn(Check.Output) -> Bool parameter should render with valid Rust
+        // associated-type syntax (:: not .).
         assert!(
-            rust_source.contains("fn(Check.Output) -> bool"),
-            "emitted Rust should render fn(Check.Output) -> bool: {rust_source}"
+            rust_source.contains("fn(Check::Output) -> bool"),
+            "emitted Rust should render fn(Check::Output) -> bool: {rust_source}"
         );
 
         // The let-bound anonymous record should resolve to Config via

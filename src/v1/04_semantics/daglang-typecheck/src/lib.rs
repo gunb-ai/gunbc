@@ -1831,6 +1831,7 @@ fn collect_signatures(
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
+                    &def.type_params,
                 ));
                 // Handle anonymous record return types: `fn foo() -> { field: Type }`
                 let (return_contract, outputs) = match &def.return_type {
@@ -1840,6 +1841,7 @@ fn collect_signatures(
                                 &field.ty,
                                 &item_known_types,
                                 context.generic_arity_registry,
+                                &def.type_params,
                                 &format!("{}.{}", def.name, field.name),
                             ));
                         }
@@ -1859,6 +1861,7 @@ fn collect_signatures(
                             &def.return_type,
                             &item_known_types,
                             context.generic_arity_registry,
+                            &def.type_params,
                             &format!("{}.return", def.name),
                         ));
                         (
@@ -1911,12 +1914,14 @@ fn collect_signatures(
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
+                    &def.type_params,
                 ));
                 item_errors.extend(validate_outputs(
                     &def.name,
                     &def.outputs,
                     &item_known_types,
                     context.generic_arity_registry,
+                    &def.type_params,
                 ));
                 item_errors.extend(validate_uses_clauses(
                     &def.name,
@@ -1981,12 +1986,14 @@ fn collect_signatures(
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
+                    &def.type_params,
                 ));
                 item_errors.extend(validate_outputs(
                     &def.name,
                     &def.outputs,
                     &item_known_types,
                     context.generic_arity_registry,
+                    &def.type_params,
                 ));
                 item_errors.extend(validate_uses_clauses(
                     &def.name,
@@ -2110,6 +2117,7 @@ fn collect_signatures(
                     &decl.ty,
                     &module_known_types,
                     context.generic_arity_registry,
+                    &[],
                     &format!("param {}", decl.name),
                 ));
             }
@@ -2118,6 +2126,7 @@ fn collect_signatures(
                     &def.ty,
                     &module_known_types,
                     context.generic_arity_registry,
+                    &[],
                     &format!("data {}", def.name),
                 ));
             }
@@ -2131,6 +2140,7 @@ fn collect_signatures(
                     &def.ty,
                     &module_known_types,
                     context.generic_arity_registry,
+                    &[],
                     &def.name,
                 ));
             }
@@ -3094,6 +3104,7 @@ fn validate_params(
     params: &[Param],
     known_types: &HashSet<String>,
     generic_arity_registry: &GenericArityRegistry,
+    type_params: &[String],
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
@@ -3108,6 +3119,7 @@ fn validate_params(
             &param.ty,
             known_types,
             generic_arity_registry,
+            type_params,
             &format!("{}.{}", item_name, param.name),
         ));
     }
@@ -3119,6 +3131,7 @@ fn validate_outputs(
     outputs: &[Field],
     known_types: &HashSet<String>,
     generic_arity_registry: &GenericArityRegistry,
+    type_params: &[String],
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
@@ -3133,6 +3146,7 @@ fn validate_outputs(
             &output.ty,
             known_types,
             generic_arity_registry,
+            type_params,
             &format!("{}.{}", item_name, output.name),
         ));
     }
@@ -6315,6 +6329,7 @@ fn validate_type_expr(
     ty: &TypeExpr,
     known_types: &HashSet<String>,
     generic_arity_registry: &GenericArityRegistry,
+    type_params: &[String],
     context: &str,
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
@@ -6328,10 +6343,9 @@ fn validate_type_expr(
             }
         }
         TypeExpr::AssociatedOutput(base) => {
-            if !known_types.contains(base) {
+            if !type_params.contains(base) {
                 errors.push(TypeError::UndefinedType(format!(
-                    "{}.Output (in {context})",
-                    base
+                    "{base}.Output: `{base}` is not a type parameter (in {context})"
                 )));
             }
         }
@@ -6366,6 +6380,7 @@ fn validate_type_expr(
                     arg,
                     known_types,
                     generic_arity_registry,
+                    type_params,
                     context,
                 ));
             }
@@ -6376,6 +6391,7 @@ fn validate_type_expr(
                     param,
                     known_types,
                     generic_arity_registry,
+                    type_params,
                     &format!("{context}.param{}", index + 1),
                 ));
             }
@@ -6383,6 +6399,7 @@ fn validate_type_expr(
                 output,
                 known_types,
                 generic_arity_registry,
+                type_params,
                 &format!("{context}.return"),
             ));
         }
@@ -6391,6 +6408,7 @@ fn validate_type_expr(
                 inner,
                 known_types,
                 generic_arity_registry,
+                type_params,
                 context,
             ));
         }
@@ -6399,6 +6417,7 @@ fn validate_type_expr(
                 inner,
                 known_types,
                 generic_arity_registry,
+                type_params,
                 context,
             ));
             for refinement in refinements {
@@ -6482,6 +6501,7 @@ fn validate_type_expr(
                     &field.ty,
                     known_types,
                     generic_arity_registry,
+                    type_params,
                     &format!("{context}.{}", field.name),
                 ));
             }
