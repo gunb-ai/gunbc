@@ -9,6 +9,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use gunbc_test::unique_temp_dir;
+
 fn has_tool(name: &str) -> bool {
     Command::new("which")
         .arg(name)
@@ -94,7 +96,7 @@ fn go_emitted_code_compiles() {
         return;
     }
 
-    let dir = std::env::temp_dir().join("gunbc_go_smoke");
+    let dir = unique_temp_dir("go_smoke");
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     write_files(&files, &dir);
@@ -131,7 +133,7 @@ fn c_emitted_code_compiles() {
         return;
     }
 
-    let dir = std::env::temp_dir().join("gunbc_c_smoke");
+    let dir = unique_temp_dir("c_smoke");
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     write_files(&files, &dir);

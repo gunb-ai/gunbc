@@ -746,8 +746,8 @@ fn c_type_from_emitted(s: &str) -> CType {
             if let Some(inner) = other.strip_suffix('*') {
                 return CType::Ptr(Box::new(c_type_from_emitted(inner.trim())));
             }
-            // Unknown — void pointer
-            CType::Ptr(Box::new(CType::Void))
+            // Preserve unresolved named types instead of fabricating `void*`.
+            CType::Named(other.to_string())
         }
     }
 }
@@ -907,6 +907,18 @@ mod tests {
         assert!(matches!(
             map_to_c_type("List<String>"),
             CType::Ptr(inner) if matches!(inner.as_ref(), CType::Ptr(_))
+        ));
+    }
+
+    #[test]
+    fn unknown_named_types_are_preserved_instead_of_fabricated_as_void_ptr() {
+        assert!(matches!(
+            map_to_c_type("Config"),
+            CType::Named(name) if name == "Config"
+        ));
+        assert!(matches!(
+            map_to_c_type("List<Config>"),
+            CType::Ptr(inner) if matches!(inner.as_ref(), CType::Named(name) if name == "Config")
         ));
     }
 

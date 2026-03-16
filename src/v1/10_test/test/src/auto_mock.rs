@@ -28,9 +28,7 @@ fn default_fs_handle() -> Value {
 }
 
 fn default_resource_handle() -> Value {
-    gunbc_ir::resource::mock_resource_handle_value(gunbc_ir::ResourceId::new(
-        "test:auto_mock",
-    ))
+    gunbc_ir::resource::mock_resource_handle_value(gunbc_ir::ResourceId::new("test:auto_mock"))
 }
 
 fn merged_registry(dsl_registry: Option<&TypeRegistry>) -> TypeRegistry {
@@ -1053,7 +1051,11 @@ mod tests {
 
         let registry = TypeRegistry::with_core_types();
         let value = default_value_for_type("ResourceHandle", &registry);
-        let parsed: Result<gunbc_ir::resource::ResourceHandle<TestResource>, _> = (&value).try_into();
-        assert!(parsed.is_ok(), "resource handle default should round-trip through runtime parser");
+        let parsed: Result<gunbc_ir::resource::ResourceHandle<TestResource>, _> =
+            (&value).try_into();
+        assert!(
+            parsed.is_ok(),
+            "resource handle default should round-trip through runtime parser"
+        );
     }
 }

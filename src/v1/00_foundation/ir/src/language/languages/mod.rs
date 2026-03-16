@@ -15,8 +15,10 @@ mod gitignore;
 mod html;
 mod makefile;
 mod markdown;
+mod python;
 mod rust;
 mod toml;
+mod typescript;
 mod yaml;
 
 pub use css::{build_css_subdag, css_comment, CssConfig, CSS};
@@ -30,6 +32,10 @@ pub use makefile::{
 pub use markdown::{
     build_markdown_subdag, markdown_comment, render_code_block, MarkdownConfig, MARKDOWN,
 };
-pub use rust::{build_rust_subdag, rust_type, RustConfig, RUST};
+pub use python::{build_python_subdag, PythonConfig, PYTHON, PYTHON_NAMING, PYTHON_TYPES};
+pub use rust::{build_rust_subdag, rust_type, RustConfig, RUST, RUST_NAMING, RUST_TYPES};
 pub use toml::{build_toml_subdag, toml_comment, TomlConfig, TOML};
+pub use typescript::{
+    build_typescript_subdag, TypeScriptConfig, TYPESCRIPT, TYPESCRIPT_NAMING, TYPESCRIPT_TYPES,
+};
 pub use yaml::{build_yaml_subdag, yaml_comment, YamlConfig, YAML};

@@ -1900,7 +1900,10 @@ mod tests {
             type_lib::refined_with_base(
                 "Int",
                 type_lib::int(),
-                vec![Predicate::InRange { min: 0, max: 10_000 }],
+                vec![Predicate::InRange {
+                    min: 0,
+                    max: 10_000,
+                }],
             ),
         );
 
@@ -1917,12 +1920,15 @@ mod tests {
             type_lib::refined_with_base(
                 "Int",
                 type_lib::int(),
-                vec![Predicate::InRange { min: 0, max: 10_000 }],
+                vec![Predicate::InRange {
+                    min: 0,
+                    max: 10_000,
+                }],
             ),
         );
 
-        let witnesses = witnesses_checked(&branded_int)
-            .expect("branded refined ints should produce witnesses");
+        let witnesses =
+            witnesses_checked(&branded_int).expect("branded refined ints should produce witnesses");
         assert!(
             witnesses.iter().any(|w| matches!(w.value, Value::Int(_))),
             "expected at least one Int witness, got {witnesses:?}"

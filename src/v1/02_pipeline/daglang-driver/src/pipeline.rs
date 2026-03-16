@@ -22,15 +22,12 @@ pub fn run_compile_pipeline(
         exec_runtime_emit_config,
     } = prepared;
 
-    let typed = typecheck_module_graph_located(
+    let typed = super::typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
-    )
-    .map_err(|errors| {
-        CompileError::Diagnostics(typecheck_diagnostics_located(errors, &module_graph))
-    })?;
+    )?;
     let extern_assets = collect_extern_assets(&typed);
     let dsl_registry = typed.dsl_type_registry();
     let process_env_resolver = |name: &str| -> Option<String> { std::env::var(name).ok() };
@@ -50,7 +47,12 @@ pub fn run_compile_pipeline(
     let structural_primitive_wiring_errors =
         validate_structural_primitive_input_wiring(&lower_output.dag);
     if !structural_primitive_wiring_errors.is_empty() {
-        return Err(CompileError::from(structural_primitive_wiring_errors));
+        return Err(CompileError::Diagnostics(
+            super::verification_diagnostics_with_sources(
+                structural_primitive_wiring_errors,
+                &module_graph,
+            ),
+        ));
     }
     let daglang_lower::LowerOutput {
         dag: lowered_dag,

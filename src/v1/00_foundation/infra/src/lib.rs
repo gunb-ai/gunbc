@@ -23,7 +23,12 @@ impl ResourceId {
 
     /// Create a file resource ID.
     pub fn file(path: impl Into<String>) -> Self {
-        Self(format!("file:{}", path.into()))
+        let path = path.into();
+        if path.is_empty() {
+            Self("file".to_string())
+        } else {
+            Self(format!("file:{path}"))
+        }
     }
 
     /// Create a lock resource ID.
@@ -69,3 +74,13 @@ pub mod freshness;
 pub mod hash;
 pub mod manifest;
 pub mod workspace_model;
+
+#[cfg(test)]
+mod tests {
+    use super::ResourceId;
+
+    #[test]
+    fn file_resource_id_canonicalizes_empty_path_to_coarse_file_resource() {
+        assert_eq!(ResourceId::file(""), ResourceId::new("file"));
+    }
+}

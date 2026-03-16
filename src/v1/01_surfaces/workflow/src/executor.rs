@@ -413,4 +413,58 @@ mod tests {
         assert!(!summary.success());
         let _ = std::fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn first_failure_skips_downstream_units() {
+        let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let plan = WorkflowPlan {
+            nodes: vec![
+                make_node_plan(
+                    "build",
+                    PlanAction::Execute {
+                        miss_reason: MissReason::NoPriorRun,
+                    },
+                ),
+                make_node_plan(
+                    "publish",
+                    PlanAction::Execute {
+                        miss_reason: MissReason::NoPriorRun,
+                    },
+                ),
+            ],
+            coordination: CoordinationStatus {
+                ready: vec![],
+                blocked: BTreeMap::new(),
+            },
+        };
+        let mut commands = BTreeMap::new();
+        commands.insert(
+            NodeId::from("build"),
+            UnitCommand::new("build", "bash", vec!["-lc".into(), "exit 1".into()]),
+        );
+        commands.insert(
+            NodeId::from("publish"),
+            UnitCommand::new("publish", "bash", vec!["-lc".into(), "exit 0".into()]),
+        );
+
+        let summary = execute_workflow_plan(
+            &spec,
+            &plan,
+            &commands,
+            Path::new("/tmp/nonexistent"),
+            false,
+        );
+
+        assert_eq!(summary.executed, 1);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.skipped, 1);
+        assert!(!summary.success());
+        assert_eq!(summary.results.len(), 2);
+        assert_eq!(summary.results[0].node_id, NodeId::from("build"));
+        assert!(!summary.results[0].success);
+        assert_eq!(summary.results[1].node_id, NodeId::from("publish"));
+        assert!(!summary.results[1].success);
+        assert_eq!(summary.results[1].duration_ms, 0);
+        assert!(!summary.results[1].pending_approval);
+    }
 }

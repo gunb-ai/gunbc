@@ -24,6 +24,65 @@ use crate::fn_codegen;
 /// Default derives applied to every generated type.
 const DEFAULT_DERIVES: &[&str] = &["Debug", "Clone", "PartialEq", "Eq"];
 
+type CallableReturnTypes = std::collections::HashMap<String, String>;
+type CallableParamTypes = std::collections::HashMap<String, Vec<(String, String)>>;
+
+fn register_unique_callable_type<T>(
+    map: &mut std::collections::HashMap<String, Option<T>>,
+    name: &str,
+    value: T,
+) {
+    map.entry(name.to_string())
+        .and_modify(|existing| *existing = None)
+        .or_insert(Some(value));
+}
+
+fn collect_callable_type_maps_from_signatures<'a>(
+    signatures: impl IntoIterator<Item = &'a daglang_typecheck::TypedItemSignature>,
+) -> (CallableReturnTypes, CallableParamTypes) {
+    let mut return_types = std::collections::HashMap::<String, Option<String>>::new();
+    let mut param_types =
+        std::collections::HashMap::<String, Option<Vec<(String, String)>>>::new();
+
+    for signature in signatures {
+        let callable = match signature {
+            daglang_typecheck::TypedItemSignature::Fn(callable)
+            | daglang_typecheck::TypedItemSignature::Func(callable)
+            | daglang_typecheck::TypedItemSignature::Pattern(callable) => callable,
+            _ => continue,
+        };
+        register_unique_callable_type(
+            &mut param_types,
+            &callable.name,
+            callable
+                .params
+                .iter()
+                .map(|binding| (binding.name.clone(), binding.ty.0.clone()))
+                .collect(),
+        );
+        if let [binding] = callable.outputs.as_slice() {
+            if binding.name == "return" {
+                register_unique_callable_type(
+                    &mut return_types,
+                    &callable.name,
+                    binding.ty.0.clone(),
+                );
+            }
+        }
+    }
+
+    (
+        return_types
+            .into_iter()
+            .filter_map(|(name, ty)| ty.map(|ty| (name, ty)))
+            .collect(),
+        param_types
+            .into_iter()
+            .filter_map(|(name, params)| params.map(|params| (name, params)))
+            .collect(),
+    )
+}
+
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
@@ -741,6 +800,49 @@ fn collect_optional_fields(
     }
 }
 
+fn collect_struct_field_ir_types(
+    td: &TypeDef,
+    map: &mut std::collections::HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
+) {
+    match &td.body {
+        TypeBody::Record(fields) => {
+            map.insert(
+                td.name.clone(),
+                fields
+                    .iter()
+                    .map(|field| {
+                        (
+                            field.name.clone(),
+                            fn_codegen::type_expr_to_ir_type(&field.ty),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+        TypeBody::Sum(variants) => {
+            for variant in variants {
+                if variant.fields.is_empty() {
+                    continue;
+                }
+                map.insert(
+                    variant.name.clone(),
+                    variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            (
+                                field.name.clone(),
+                                fn_codegen::type_expr_to_ir_type(&field.ty),
+                            )
+                        })
+                        .collect(),
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Build a map of variant_name → enum_name for qualifying bare identifiers.
 /// Ambiguous variants (same name in multiple enums) are excluded.
 fn collect_variant_to_enum(
@@ -896,6 +998,7 @@ pub fn typedefs_to_source_file(
     let mut variant_to_enum = std::collections::HashMap::new();
     let mut ambiguous = std::collections::HashSet::new();
     let mut struct_field_types = std::collections::HashMap::new();
+    let mut struct_field_ir_types = std::collections::HashMap::new();
     let mut enum_variants = std::collections::HashMap::new();
     for item in items {
         match &item.node {
@@ -906,6 +1009,7 @@ pub fn typedefs_to_source_file(
                 collect_optional_fields(td, &mut optional_fields);
                 collect_variant_to_enum(td, &mut variant_to_enum, &mut ambiguous);
                 collect_struct_field_types(td, &mut struct_field_types);
+                collect_struct_field_ir_types(td, &mut struct_field_ir_types);
                 collect_enum_variants(td, &mut enum_variants);
             }
             _ => {}
@@ -926,7 +1030,7 @@ pub fn typedefs_to_source_file(
         current_return_type: None,
         current_return_ir_type: None,
         ir_scope: std::collections::HashMap::new(),
-        struct_field_ir_types: std::collections::HashMap::new(),
+        struct_field_ir_types,
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
     };
@@ -962,6 +1066,11 @@ pub fn generate_types_for_modules(
     module_filter: &[&str],
 ) -> String {
     use crate::render_rust::render_rust_source;
+
+    let (global_fn_return_types, global_fn_param_types) =
+        collect_callable_type_maps_from_signatures(
+            typed.modules().flat_map(|module| module.signatures.iter()),
+        );
 
     // Pass 1: collect cloned AST items from matching modules.
     // TypedModuleRef temporaries from modules() don't live long enough
@@ -1028,11 +1137,13 @@ pub fn generate_types_for_modules(
         let mut v2e = std::collections::HashMap::new();
         let mut ambig = std::collections::HashSet::new();
         let mut sft = std::collections::HashMap::new();
+        let mut sfit = std::collections::HashMap::new();
         let mut ev = std::collections::HashMap::new();
         for td in &type_defs {
             collect_optional_fields(td, &mut opt_fields);
             collect_variant_to_enum(td, &mut v2e, &mut ambig);
             collect_struct_field_types(td, &mut sft);
+            collect_struct_field_ir_types(td, &mut sfit);
             collect_enum_variants(td, &mut ev);
         }
         let fn_ctx = fn_codegen::CompileContext {
@@ -1043,14 +1154,14 @@ pub fn generate_types_for_modules(
             struct_field_types: sft,
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
-            fn_return_types: std::collections::HashMap::new(),
-            fn_param_types: std::collections::HashMap::new(),
+            fn_return_types: global_fn_return_types.clone(),
+            fn_param_types: global_fn_param_types.clone(),
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
             current_return_ir_type: None,
             ir_scope: std::collections::HashMap::new(),
-            struct_field_ir_types: std::collections::HashMap::new(),
+            struct_field_ir_types: sfit,
             use_counts: std::collections::HashMap::new(),
             fold_accum_name: None,
         };
@@ -1462,9 +1573,10 @@ fn format_variant_boxed(
 mod tests {
     use super::*;
     use daglang_syntax::ast::{
-        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, Refinement, TypeBody, TypeDef,
-        TypeExpr, Variant,
+        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, Refinement, Stmt, TypeBody,
+        TypeDef, TypeExpr, Variant,
     };
+    use daglang_typecheck::{TypedBinding, TypedCallableSignature, TypedItemSignature};
 
     #[test]
     fn simple_enum_generates_copy_hash() {
@@ -1765,6 +1877,147 @@ mod tests {
                     code_ir::Stmt::TailExpr(code_ir::Expr::BinOp { .. })
                 ));
             }
+            other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn typed_callable_signatures_drive_anonymous_record_call_args() {
+        let signatures = [TypedItemSignature::Fn(TypedCallableSignature {
+            name: "consume".to_string(),
+            params: vec![TypedBinding {
+                name: "cfg".to_string(),
+                ty: gunbc_ir::types::TypeId::from("ConfigB"),
+            }],
+            outputs: vec![TypedBinding {
+                name: "return".to_string(),
+                ty: gunbc_ir::types::TypeId::from("String"),
+            }],
+        })];
+        let (fn_return_types, fn_param_types) =
+            collect_callable_type_maps_from_signatures(signatures.iter());
+        let fd = FnDef {
+            name: "make".to_string(),
+            type_params: vec![],
+            params: vec![],
+            return_type: TypeExpr::Named("String".to_string()),
+            body: FnBody {
+                stmts: vec![Stmt::Expr(Expr::Call(
+                    "consume".to_string(),
+                    vec![(
+                        None,
+                        Expr::Record(
+                            None,
+                            vec![(
+                                "value".to_string(),
+                                Expr::Literal(Literal::String("ok".to_string())),
+                            )],
+                        ),
+                    )],
+                ))],
+            },
+        };
+        let mut ctx = fn_codegen::CompileContext::new();
+        ctx.struct_field_types.insert(
+            "ConfigA".to_string(),
+            [("value".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ConfigB".to_string(),
+            [("value".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.fn_return_types = fn_return_types;
+        ctx.fn_param_types = fn_param_types;
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        match &items[0] {
+            code_ir::Item::Fn(f) => match &f.body[0] {
+                code_ir::Stmt::TailExpr(code_ir::Expr::Call { args, .. }) => match &args[0] {
+                    code_ir::Expr::Struct { name, .. } => assert_eq!(name, "ConfigB"),
+                    other => panic!("expected ConfigB struct arg, got: {other:?}"),
+                },
+                other => panic!("expected tail call body, got: {other:?}"),
+            },
+            other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn typed_callable_signatures_drive_with_base_record_updates() {
+        let signatures = [TypedItemSignature::Fn(TypedCallableSignature {
+            name: "make_state".to_string(),
+            params: vec![],
+            outputs: vec![TypedBinding {
+                name: "return".to_string(),
+                ty: gunbc_ir::types::TypeId::from("State"),
+            }],
+        })];
+        let (fn_return_types, fn_param_types) =
+            collect_callable_type_maps_from_signatures(signatures.iter());
+        let fd = FnDef {
+            name: "bump".to_string(),
+            type_params: vec![],
+            params: vec![],
+            return_type: TypeExpr::Named("State".to_string()),
+            body: FnBody {
+                stmts: vec![Stmt::Expr(Expr::Call(
+                    "with".to_string(),
+                    vec![
+                        (None, Expr::Call("make_state".to_string(), vec![])),
+                        (
+                            None,
+                            Expr::Record(
+                                None,
+                                vec![("pos".to_string(), Expr::Literal(Literal::Int(1)))],
+                            ),
+                        ),
+                    ],
+                ))],
+            },
+        };
+        let mut ctx = fn_codegen::CompileContext::new();
+        ctx.struct_field_types.insert(
+            "State".to_string(),
+            [
+                ("pos".to_string(), "Int".to_string()),
+                ("kind".to_string(), "String".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "Position".to_string(),
+            [("pos".to_string(), "Int".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "State".to_string(),
+            vec![
+                ("pos".to_string(), gunbc_ir::code_ir::IrType::Int),
+                ("kind".to_string(), gunbc_ir::code_ir::IrType::Str),
+            ],
+        );
+        ctx.struct_field_ir_types.insert(
+            "Position".to_string(),
+            vec![("pos".to_string(), gunbc_ir::code_ir::IrType::Int)],
+        );
+        ctx.fn_return_types = fn_return_types;
+        ctx.fn_param_types = fn_param_types;
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        match &items[0] {
+            code_ir::Item::Fn(f) => match &f.body[0] {
+                code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, rest, .. }) => {
+                    assert_eq!(name, "State");
+                    assert!(rest.is_some(), "expected struct update rest");
+                }
+                other => panic!("expected struct update tail expr, got: {other:?}"),
+            },
             other => panic!("expected Fn, got: {other:?}"),
         }
     }

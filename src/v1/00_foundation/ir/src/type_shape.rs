@@ -119,6 +119,8 @@ pub struct StructuralProperties {
 /// The extractor does NOT resolve type references through the registry.
 /// Each variant's inner type is classified as `Opaque(type_id)` unless
 /// the type DAG itself carries structural information (e.g., a SubDag).
+/// Malformed structural DAGs with missing required child SubDags return `Err`
+/// rather than fabricating placeholder shapes.
 pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     // Priority 1: Look for Coproduct node. Products and coproducts take
     // priority over platform detection because their field SubDags may
@@ -131,10 +133,11 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
             let mut shaped_variants = Vec::new();
             for name in variants {
                 let child_id = format!("variant_{name}");
-                let inner = match named_subdag(dag, &child_id) {
-                    Some(d) => type_shape(d)?,
-                    None => TypeShape::Opaque(name.clone()),
-                };
+                let inner = type_shape(required_named_subdag(
+                    dag,
+                    &child_id,
+                    &format!("coproduct variant `{name}`"),
+                )?)?;
                 shaped_variants.push((name.clone(), inner));
             }
             return Ok(TypeShape::Coproduct(type_name, shaped_variants));
@@ -149,10 +152,11 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
             let mut shaped_fields = Vec::new();
             for name in fields {
                 let child_id = format!("field_{name}");
-                let inner = match named_subdag(dag, &child_id) {
-                    Some(d) => type_shape(d)?,
-                    None => TypeShape::Opaque(name.clone()),
-                };
+                let inner = type_shape(required_named_subdag(
+                    dag,
+                    &child_id,
+                    &format!("product field `{name}`"),
+                )?)?;
                 shaped_fields.push((name.clone(), inner));
             }
             return Ok(TypeShape::Product(type_name, shaped_fields));
@@ -162,10 +166,11 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     // Priority 3: Look for Brand node.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Brand(name)) = &node.body {
-            let inner_shape = match inner_subdag(dag) {
-                Some(d) => type_shape(d)?,
-                None => TypeShape::Opaque(name.clone()),
-            };
+            let inner_shape = type_shape(required_named_subdag(
+                dag,
+                "inner_type",
+                &format!("brand `{name}`"),
+            )?)?;
             return Ok(TypeShape::Brand(name.clone(), Box::new(inner_shape)));
         }
     }
@@ -176,29 +181,27 @@ pub fn type_shape(dag: &Dag<TypeOp>) -> Result<TypeShape, String> {
     // classify the container itself as a platform primitive.
     for node in &dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
-            let inner_shape = match inner_subdag(dag) {
-                Some(d) => type_shape(d)?,
-                None => TypeShape::Opaque("Any".to_string()),
-            };
             return Ok(match kind {
                 WrapperKind::Optional => {
-                    TypeShape::Container(ContainerShape::Optional(Box::new(inner_shape)))
+                    TypeShape::Container(ContainerShape::Optional(Box::new(type_shape(
+                        required_named_subdag(dag, "inner_type", "optional wrapper")?,
+                    )?)))
                 }
                 WrapperKind::List | WrapperKind::NonEmptyList => {
-                    TypeShape::Container(ContainerShape::List(Box::new(inner_shape)))
+                    TypeShape::Container(ContainerShape::List(Box::new(type_shape(
+                        required_named_subdag(dag, "element_type", "list wrapper")?,
+                    )?)))
                 }
                 WrapperKind::Set | WrapperKind::NonEmptySet => {
-                    TypeShape::Container(ContainerShape::Set(Box::new(inner_shape)))
+                    TypeShape::Container(ContainerShape::Set(Box::new(type_shape(
+                        required_named_subdag(dag, "element_type", "set wrapper")?,
+                    )?)))
                 }
                 WrapperKind::Map => {
-                    let key_shape = match named_subdag(dag, "key_type") {
-                        Some(d) => type_shape(d)?,
-                        None => TypeShape::Opaque("String".to_string()),
-                    };
-                    let value_shape = match named_subdag(dag, "value_type") {
-                        Some(d) => type_shape(d)?,
-                        None => inner_shape,
-                    };
+                    let key_shape =
+                        type_shape(required_named_subdag(dag, "key_type", "map wrapper")?)?;
+                    let value_shape =
+                        type_shape(required_named_subdag(dag, "value_type", "map wrapper")?)?;
                     TypeShape::Container(ContainerShape::Map(
                         Box::new(key_shape),
                         Box::new(value_shape),
@@ -419,6 +422,14 @@ fn named_subdag<'a>(dag: &'a Dag<TypeOp>, name: &str) -> Option<&'a Dag<TypeOp>>
     })
 }
 
+fn required_named_subdag<'a>(
+    dag: &'a Dag<TypeOp>,
+    name: &str,
+    context: &str,
+) -> Result<&'a Dag<TypeOp>, String> {
+    named_subdag(dag, name).ok_or_else(|| format!("{context} is missing required subdag `{name}`"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -569,28 +580,25 @@ mod tests {
 
     #[test]
     fn shape_of_refined_with_base_string_alias_reuses_base_shape() {
-        let refined = type_lib::refined_with_base(
-            "FilePath",
-            type_lib::string(),
-            vec![Predicate::NonEmpty],
-        );
+        let refined =
+            type_lib::refined_with_base("FilePath", type_lib::string(), vec![Predicate::NonEmpty]);
         let shape = type_shape(&refined).unwrap();
         assert_eq!(shape, TypeShape::Opaque("String".to_string()));
     }
 
     #[test]
     fn shape_of_product_with_refined_with_base_fields_stays_product() {
-        let file_path = type_lib::refined_with_base(
-            "FilePath",
-            type_lib::string(),
-            vec![Predicate::NonEmpty],
-        );
+        let file_path =
+            type_lib::refined_with_base("FilePath", type_lib::string(), vec![Predicate::NonEmpty]);
         let record = type_lib::product_resolved("FileEntry", vec![("path", file_path)]);
         let shape = type_shape(&record).unwrap();
         match shape {
             TypeShape::Product(Some(name), fields) => {
                 assert_eq!(name, "FileEntry");
-                assert_eq!(fields, vec![("path".to_string(), TypeShape::Opaque("String".to_string()))]);
+                assert_eq!(
+                    fields,
+                    vec![("path".to_string(), TypeShape::Opaque("String".to_string()))]
+                );
             }
             other => panic!("expected Product, got {:?}", other),
         }
@@ -722,6 +730,52 @@ mod tests {
     fn shape_of_empty_dag_is_error() {
         let dag: Dag<TypeOp> = Dag::new();
         assert!(type_shape(&dag).is_err());
+    }
+
+    #[test]
+    fn malformed_product_missing_field_subdag_is_error() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "product",
+            vec![Port::scalar("in", "BrokenRecord")],
+            vec![Port::scalar("out", "BrokenRecord")],
+            TypeOp::Product(vec!["path".to_string()]),
+        ));
+
+        let err = type_shape(&dag).unwrap_err();
+        assert!(err.contains("product field `path`"));
+        assert!(err.contains("field_path"));
+    }
+
+    #[test]
+    fn malformed_brand_missing_inner_type_is_error() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "brand",
+            vec![Port::scalar("in", "PathSegment")],
+            vec![Port::scalar("out", "PathSegment")],
+            TypeOp::Brand("PathSegment".to_string()),
+        ));
+
+        let err = type_shape(&dag).unwrap_err();
+        assert!(err.contains("brand `PathSegment`"));
+        assert!(err.contains("inner_type"));
+    }
+
+    #[test]
+    fn malformed_map_missing_value_type_is_error() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "input",
+            vec![Port::scalar("in", "Map")],
+            vec![Port::scalar("out", "Map")],
+            TypeOp::Wrap(WrapperKind::Map),
+        ));
+        dag.add_node(Node::subdag("key_type", type_lib::string()));
+
+        let err = type_shape(&dag).unwrap_err();
+        assert!(err.contains("map wrapper"));
+        assert!(err.contains("value_type"));
     }
 
     // =========================================================================

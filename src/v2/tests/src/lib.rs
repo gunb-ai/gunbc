@@ -2722,15 +2722,7 @@ fn example(items: List<String>) -> Int {
         );
         match lookup_result {
             gunbc_ir::Value::Map(map) => {
-                let value = if map.get("_variant")
-                    == Some(&gunbc_ir::Value::Str("Some".to_string()))
-                {
-                    map.get("value")
-                } else if map.get("value").is_some() {
-                    map.get("value")
-                } else {
-                    None
-                };
+                let value = map.get("value");
                 assert_eq!(
                     value,
                     Some(&config_type),

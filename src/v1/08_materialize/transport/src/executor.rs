@@ -1,5 +1,6 @@
 //! Transport request executors.
 
+use gunbc_exec::{ExecError, TransportFailureKind};
 use gunbc_ir::transport::{
     FileOp, FileRequest, FileResponse, HttpRequest, HttpResponse, LocalRequest, LocalResponse,
     RestRequest, RestResponse, ShellRequest, ShellResponse, TcpRequest, TcpResponse,
@@ -13,16 +14,38 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 /// Transport execution error.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransportError {
+    pub kind: TransportFailureKind,
     pub message: String,
 }
 
 impl TransportError {
     pub fn new(msg: impl Into<String>) -> Self {
+        Self::unknown(msg)
+    }
+
+    pub fn with_kind(kind: TransportFailureKind, msg: impl Into<String>) -> Self {
         Self {
+            kind,
             message: msg.into(),
         }
+    }
+
+    pub fn client(msg: impl Into<String>) -> Self {
+        Self::with_kind(TransportFailureKind::Client, msg)
+    }
+
+    pub fn network(msg: impl Into<String>) -> Self {
+        Self::with_kind(TransportFailureKind::Network, msg)
+    }
+
+    pub fn unknown(msg: impl Into<String>) -> Self {
+        Self::with_kind(TransportFailureKind::Unknown, msg)
+    }
+
+    pub fn into_exec_error(self, ctx: impl std::fmt::Display) -> ExecError {
+        ExecError::new(format!("{}: {}", ctx, self.message)).with_transport_failure_kind(self.kind)
     }
 }
 
@@ -70,7 +93,7 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
     if let Some(ref body) = request.body {
         http_req.body = Some(
             serde_json::to_string(body)
-                .map_err(|e| TransportError::new(format!("failed to serialize body: {}", e)))?,
+                .map_err(|e| TransportError::client(format!("failed to serialize body: {}", e)))?,
         );
         http_req
             .headers
@@ -110,12 +133,22 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
         Some(body) => match req.send_string(body) {
             Ok(resp) => resp,
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => return Err(TransportError::new(format!("http request failed: {}", e))),
+            Err(e) => {
+                return Err(TransportError::network(format!(
+                    "http request failed: {}",
+                    e
+                )))
+            }
         },
         None => match req.call() {
             Ok(resp) => resp,
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => return Err(TransportError::new(format!("http request failed: {}", e))),
+            Err(e) => {
+                return Err(TransportError::network(format!(
+                    "http request failed: {}",
+                    e
+                )))
+            }
         },
     };
 
@@ -351,7 +384,7 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let addr = format!("{}:{}", request.host, request.port);
 
     let mut stream = TcpStream::connect(&addr)
-        .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
+        .map_err(|e| TransportError::network(format!("connection failed: {}", e)))?;
 
     if let Some(timeout) = request.read_timeout_ms {
         stream
@@ -368,7 +401,7 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     if let Some(ref data) = request.data {
         stream
             .write_all(data.as_bytes())
-            .map_err(|e| TransportError::new(format!("write failed: {}", e)))?;
+            .map_err(|e| TransportError::network(format!("write failed: {}", e)))?;
         bytes_sent = data.len();
     }
 

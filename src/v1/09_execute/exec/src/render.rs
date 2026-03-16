@@ -59,6 +59,7 @@ pub enum AnimationMode {
 impl Animation {
     /// Create a new cycling animation (e.g., spinner).
     pub fn cycle(frames: Vec<String>, interval: Duration) -> Self {
+        assert!(!interval.is_zero(), "animation interval must be non-zero");
         Self {
             frames,
             current: 0,
@@ -70,6 +71,7 @@ impl Animation {
 
     /// Create a one-shot animation (e.g., node morph).
     pub fn once(frames: Vec<String>, interval: Duration) -> Self {
+        assert!(!interval.is_zero(), "animation interval must be non-zero");
         Self {
             frames,
             current: 0,
@@ -88,27 +90,50 @@ impl Animation {
         if self.frames.is_empty() {
             return false;
         }
+        assert!(
+            !self.interval.is_zero(),
+            "animation interval must be non-zero"
+        );
         self.elapsed += dt;
         let old = self.current;
-        while self.elapsed >= self.interval {
-            self.elapsed -= self.interval;
-            match &mut self.mode {
-                AnimationMode::Cycle => {
-                    self.current = (self.current + 1) % self.frames.len();
-                }
-                AnimationMode::Once => {
-                    if self.current < self.frames.len() - 1 {
-                        self.current += 1;
-                    }
-                }
-                AnimationMode::Propagate { path_len, position } => {
-                    if *position < *path_len {
-                        *position += 1;
-                    }
-                    self.current = (self.current + 1) % self.frames.len();
+        let interval_nanos = self.interval.as_nanos();
+        let elapsed_nanos = self.elapsed.as_nanos();
+        let steps = elapsed_nanos / interval_nanos;
+        if steps == 0 {
+            return false;
+        }
+        let remaining_nanos = elapsed_nanos % interval_nanos;
+        self.elapsed = duration_from_nanos(remaining_nanos);
+
+        match &mut self.mode {
+            AnimationMode::Cycle => {
+                let frame_count = self.frames.len() as u128;
+                self.current =
+                    ((self.current as u128 + (steps % frame_count)) % frame_count) as usize;
+            }
+            AnimationMode::Once => {
+                let last = self.frames.len() - 1;
+                let remaining = last.saturating_sub(self.current) as u128;
+                if steps >= remaining {
+                    self.current = last;
+                } else {
+                    self.current += steps as usize;
                 }
             }
+            AnimationMode::Propagate { path_len, position } => {
+                let remaining = path_len.saturating_sub(*position) as u128;
+                if steps >= remaining {
+                    *position = *path_len;
+                } else {
+                    *position += steps as usize;
+                }
+
+                let frame_count = self.frames.len() as u128;
+                self.current =
+                    ((self.current as u128 + (steps % frame_count)) % frame_count) as usize;
+            }
         }
+
         self.current != old
     }
 
@@ -128,6 +153,14 @@ impl Animation {
             AnimationMode::Propagate { path_len, position } => *position >= *path_len,
         }
     }
+}
+
+fn duration_from_nanos(nanos: u128) -> Duration {
+    const NANOS_PER_SEC: u128 = 1_000_000_000;
+    Duration::new(
+        (nanos / NANOS_PER_SEC) as u64,
+        (nanos % NANOS_PER_SEC) as u32,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +459,20 @@ mod tests {
         let changed = anim.tick(Duration::from_millis(350));
         assert!(changed);
         assert_eq!(anim.frame(), "d");
+    }
+
+    #[test]
+    #[should_panic(expected = "animation interval must be non-zero")]
+    fn test_animation_tick_rejects_zero_interval() {
+        let mut anim = Animation {
+            frames: vec!["a".into()],
+            current: 0,
+            interval: Duration::ZERO,
+            elapsed: Duration::ZERO,
+            mode: AnimationMode::Cycle,
+        };
+
+        anim.tick(Duration::from_millis(1));
     }
 
     // -------------------------------------------------------------------

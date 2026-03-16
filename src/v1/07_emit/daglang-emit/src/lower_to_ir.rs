@@ -46,7 +46,7 @@ pub fn lower_plan_to_abstract_ir(plan: &EmitPlan) -> SourceFile {
         .map(|entrypoint| {
             (
                 sanitize_identifier(&entrypoint.name),
-                map_abstract_type(&entrypoint.abstract_type),
+                entrypoint.abstract_type.clone(),
             )
         })
         .collect::<Vec<_>>();
@@ -100,8 +100,15 @@ fn lower_step(
             let expr = lower_input_binding(binding, output_vars);
             let name = input_names
                 .get(input_index)
-                .cloned()
-                .unwrap_or_else(|| format!("input_{input_index}"));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "lower_to_ir: step {:?} has more input_sources ({}) than declared inputs ({})",
+                        step.node_id,
+                        step.input_sources.len(),
+                        input_names.len(),
+                    )
+                })
+                .clone();
             input_name_to_expr.insert(name, expr.clone());
             expr
         })
@@ -418,11 +425,15 @@ fn lower_input_binding(
 ) -> Expr {
     match binding {
         InputBinding::FromStep { step_index, port } => {
-            let fallback = format!("step_{step_index}_{}", sanitize_identifier(port));
             let name = output_vars
                 .get(&(*step_index, port.clone()))
-                .cloned()
-                .unwrap_or(fallback);
+                .unwrap_or_else(|| {
+                    panic!(
+                        "lower_to_ir: InputBinding::FromStep references step {step_index} \
+                         port {port:?} which has no declared output binding"
+                    )
+                })
+                .clone();
             Expr::var(name)
         }
         InputBinding::FromEntrypoint { port } => Expr::var(sanitize_identifier(port)),
@@ -443,8 +454,13 @@ fn expected_input_names(step: &EmitStep, fallback_len: usize) -> Vec<String> {
 fn resolve_input(name: &str, input_name_to_expr: &HashMap<String, Expr>) -> Expr {
     input_name_to_expr
         .get(name)
-        .cloned()
-        .unwrap_or_else(|| Expr::var(sanitize_identifier(name)))
+        .unwrap_or_else(|| {
+            panic!(
+                "lower_to_ir: PureBody references input {name:?} \
+                 which is not in the step's declared inputs"
+            )
+        })
+        .clone()
 }
 
 fn output_var_name(
@@ -454,8 +470,13 @@ fn output_var_name(
 ) -> String {
     output_vars
         .get(&(step_index, port.to_string()))
-        .cloned()
-        .unwrap_or_else(|| format!("step_{step_index}_{}", sanitize_identifier(port)))
+        .unwrap_or_else(|| {
+            panic!(
+                "lower_to_ir: step {step_index} port {port:?} \
+                 has no declared output binding"
+            )
+        })
+        .clone()
 }
 
 fn json_value_to_expr(value: &serde_json::Value) -> Expr {
@@ -519,10 +540,6 @@ fn transport_kind_name(kind: TransportKind) -> &'static str {
         TransportKind::HttpRequest => "http_request",
         TransportKind::DirectoryList => "directory_list",
     }
-}
-
-fn map_abstract_type(abstract_type: &str) -> String {
-    crate::type_mapping::resolve_and_emit(abstract_type, None, crate::type_mapping::Backend::Rust)
 }
 
 fn sanitize_identifier(value: &str) -> String {
