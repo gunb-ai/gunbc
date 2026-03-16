@@ -279,6 +279,7 @@ fn lower_with_log_detail<T: Clone>(
                             response_provider: sub_node.response_provider,
                             static_fingerprint: None,
                             origin: sub_node.origin.clone(),
+                            input_alias: sub_node.input_alias.clone(),
                         };
                         result.add_node(prefixed_node);
                     }
@@ -432,6 +433,7 @@ fn apply_log_detail_context<T: Clone>(
             response_provider: node.response_provider,
             static_fingerprint: None,
             origin: node.origin.clone(),
+            input_alias: node.input_alias.clone(),
         });
     }
     for edge in &dag.edges {
@@ -471,6 +473,7 @@ fn lower_loop_subdag<T: Clone>(
         response_provider: unpack.response_provider,
         static_fingerprint: None,
         origin: unpack.origin.clone(),
+        input_alias: unpack.input_alias.clone(),
     };
     let prefixed_pack = Node {
         id: pack_id.clone(),
@@ -485,6 +488,7 @@ fn lower_loop_subdag<T: Clone>(
         response_provider: pack.response_provider,
         static_fingerprint: None,
         origin: pack.origin.clone(),
+        input_alias: pack.input_alias.clone(),
     };
 
     let mut flat_dag = Dag::new();

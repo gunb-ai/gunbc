@@ -175,6 +175,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 response_provider: node.response_provider,
                 static_fingerprint: None,
                 origin: node.origin.clone(),
+                input_alias: node.input_alias.clone(),
             });
         }
 

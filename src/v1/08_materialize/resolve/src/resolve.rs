@@ -749,6 +749,7 @@ fn resolve_lowered_dag_impl(
             response_provider: node.response_provider,
             static_fingerprint: None,
             origin: node.origin.clone(),
+            input_alias: node.input_alias.clone(),
         };
         normalize_release_resource_inputs(node, &mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {

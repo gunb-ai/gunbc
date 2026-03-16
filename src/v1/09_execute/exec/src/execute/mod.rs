@@ -499,24 +499,19 @@ fn remap_input_mocks(
 
 /// Resolve an input mock value for `(node_id, port_name)`.
 ///
-/// Param source nodes are auto-fed by matching any explicitly provided
-/// non-param-source input with the same port name.
+/// For param-source nodes with an `input_alias`, looks up the alias target
+/// directly instead of scanning all mocks by port-name convention.
 fn resolve_mock_input(
     mocks: &BoundaryMocks,
     node_id: &NodeId,
-    node_kind: gunbc_ir::node::NodeKind,
     port_name: &PortName,
+    input_alias: Option<&(NodeId, PortName)>,
 ) -> Option<Value> {
     if let Some(value) = mocks.get_input(&node_id.0, &port_name.0) {
         return Some(value.clone());
     }
-    if node_kind != gunbc_ir::node::NodeKind::ParamSource {
-        return None;
-    }
-    for ((mock_node, mock_port), value) in mocks.iter_inputs() {
-        if mock_port == &port_name.0 && !mock_node.starts_with("param_source_") {
-            return Some(value.clone());
-        }
+    if let Some((alias_node, alias_port)) = input_alias {
+        return mocks.get_input(&alias_node.0, &alias_port.0).cloned();
     }
     None
 }
@@ -713,7 +708,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             for port in &node.inputs {
                 if !inputs.contains_key(&port.name.0) {
                     if let Some(mock_value) =
-                        resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                        resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
                     {
                         inputs.insert(port.name.0.clone(), mock_value);
                     }
@@ -730,7 +725,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             for port in &node.inputs {
                 if !inputs.contains_key(&port.name.0) {
                     if let Some(mock_value) =
-                        resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                        resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
                     {
                         inputs.insert(port.name.0.clone(), mock_value);
                     }
@@ -1318,7 +1313,7 @@ fn build_node_inputs<T>(
     if let Some(mocks) = input_mocks {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
                 {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
@@ -1334,7 +1329,7 @@ fn build_node_inputs<T>(
     {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, node.kind, &port.name)
+                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
                 {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
