@@ -17,6 +17,10 @@ use crate::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER};
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlanAction {
     Execute { miss_reason: MissReason },
+    /// Node is structural (e.g. Aggregate, Report) — no command to run.
+    /// The planner communicates no-op intent explicitly rather than relying
+    /// on the executor to infer it from a missing command map entry.
+    Structural,
 }
 
 /// Node-level plan entry.
@@ -214,8 +218,11 @@ pub fn plan_workflow_with_mode(
         )
         .map_err(WorkflowPlannerError::Key)?;
 
-        let action = PlanAction::Execute {
-            miss_reason: MissReason::NoPriorRun,
+        let action = match op {
+            WorkflowOp::Aggregate(_) | WorkflowOp::Report(_) => PlanAction::Structural,
+            WorkflowOp::InvokeProcessUnit(_) => PlanAction::Execute {
+                miss_reason: MissReason::NoPriorRun,
+            },
         };
 
         keys_by_node.insert(node_id.clone(), key.clone());
@@ -345,8 +352,11 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
     let mut capability_status = BTreeMap::new();
 
     for node in &plan.nodes {
+        let miss_reason = match &node.action {
+            PlanAction::Structural => continue,
+            PlanAction::Execute { miss_reason } => miss_reason,
+        };
         let canonical_name = node.work_id.unit_id.0.clone();
-        let PlanAction::Execute { miss_reason } = &node.action;
         execute_set.push(node.node_id.clone());
         miss_reasons.insert(node.node_id.clone(), miss_reason.clone());
         let entry = capability_status
@@ -438,7 +448,8 @@ mod tests {
     use super::*;
     use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
     use crate::schema::{
-        required_input_contract, required_output_contract, WorkflowId, WorkflowSpec, WorkflowUnit,
+        required_input_contract, required_output_contract, AggregateSpec, ReportSpec, WorkflowId,
+        WorkflowSpec, WorkflowUnit,
     };
 
     fn temp_root() -> std::path::PathBuf {
@@ -568,5 +579,62 @@ mod tests {
         );
         plan_workflow_with_mode(&spec, &registry, &planner_inputs, &root, DryRunMode::Strict)
             .expect("strict mode should pass when required input is provided");
+    }
+
+    #[test]
+    fn aggregate_and_report_nodes_get_structural_action() {
+        let root = temp_root();
+        let mut dag = gunbc_ir::Dag::new();
+        dag.add_node(Node::opaque(
+            "wf.build",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "wf.build",
+            ))),
+        ));
+        dag.add_node(Node::opaque(
+            "wf.agg",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::Aggregate(AggregateSpec::new("agg"))),
+        ));
+        dag.add_node(Node::opaque(
+            "wf.report",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::Report(ReportSpec::new("report"))),
+        ));
+        dag.add_edge(Edge::new("wf.build", "result", "wf.agg", "after"));
+        dag.add_edge(Edge::new("wf.agg", "result", "wf.report", "after"));
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let mut registry = ProcessUnitRegistry::new();
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("wf", "wf.build"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ));
+
+        let plan =
+            plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
+
+        let build = plan.nodes.iter().find(|n| n.node_id.0 == "wf.build").unwrap();
+        let agg = plan.nodes.iter().find(|n| n.node_id.0 == "wf.agg").unwrap();
+        let report = plan.nodes.iter().find(|n| n.node_id.0 == "wf.report").unwrap();
+
+        assert!(
+            matches!(build.action, PlanAction::Execute { .. }),
+            "InvokeProcessUnit should be Execute"
+        );
+        assert_eq!(
+            agg.action,
+            PlanAction::Structural,
+            "Aggregate should be Structural"
+        );
+        assert_eq!(
+            report.action,
+            PlanAction::Structural,
+            "Report should be Structural"
+        );
     }
 }
