@@ -20,11 +20,29 @@ pub enum AuthenticatePhase {
 /// A concrete node binding for a canonical authenticate phase.
 ///
 /// `node_id` is enforced non-empty at construction — callers cannot create
-/// a binding with a blank node reference.
+/// a binding with a blank node reference. The invariant is also enforced
+/// on the deserialization boundary via `try_from`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "AuthenticatePhaseBindingRaw")]
 pub struct AuthenticatePhaseBinding {
     pub phase: AuthenticatePhase,
     node_id: String,
+}
+
+/// Raw deserialization target — allows serde to populate fields before
+/// the non-empty `node_id` invariant is checked via `TryFrom`.
+#[derive(Deserialize)]
+struct AuthenticatePhaseBindingRaw {
+    phase: AuthenticatePhase,
+    node_id: String,
+}
+
+impl TryFrom<AuthenticatePhaseBindingRaw> for AuthenticatePhaseBinding {
+    type Error = String;
+
+    fn try_from(raw: AuthenticatePhaseBindingRaw) -> Result<Self, Self::Error> {
+        Self::new(raw.phase, raw.node_id)
+    }
 }
 
 impl AuthenticatePhaseBinding {
@@ -173,5 +191,27 @@ mod tests {
         assert!(
             AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "  ").is_err()
         );
+    }
+
+    #[test]
+    fn deserialize_rejects_empty_node_id() {
+        let json = r#"{"phase":"FinalizeCredential","node_id":""}"#;
+        let result: Result<AuthenticatePhaseBinding, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_rejects_whitespace_only_node_id() {
+        let json = r#"{"phase":"FinalizeCredential","node_id":"  "}"#;
+        let result: Result<AuthenticatePhaseBinding, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_accepts_valid_binding() {
+        let json = r#"{"phase":"FinalizeCredential","node_id":"scope_preflight"}"#;
+        let binding: AuthenticatePhaseBinding = serde_json::from_str(json).unwrap();
+        assert_eq!(binding.node_id(), "scope_preflight");
+        assert_eq!(binding.phase, AuthenticatePhase::FinalizeCredential);
     }
 }
