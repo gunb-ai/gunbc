@@ -1279,7 +1279,7 @@ fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry) {
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
             register_inline_records(inner, registry);
         }
-        TypeExpr::Named(_) => {}
+        TypeExpr::Named(_) | TypeExpr::AssociatedOutput(_) => {}
     }
 }
 
@@ -1300,6 +1300,7 @@ fn collect_type_deps_from_expr<'a>(
                 deps.push(dep);
             }
         }
+        TypeExpr::AssociatedOutput(_) => {}
         TypeExpr::Generic(_, args) => {
             for arg in args {
                 collect_type_deps_from_expr(arg, type_names, deps);
@@ -5170,6 +5171,7 @@ fn field_value_type_map(fields: &[Field]) -> HashMap<String, ValueType> {
 fn value_type_from_type_expr(expr: &TypeExpr) -> ValueType {
     match expr {
         TypeExpr::Named(name) => ValueType::Named(name.clone()),
+        TypeExpr::AssociatedOutput(base) => ValueType::Named(format!("{base}.Output")),
         TypeExpr::Generic(name, args) => ValueType::Generic(
             name.clone(),
             args.iter().map(value_type_from_type_expr).collect(),
@@ -5541,14 +5543,19 @@ fn validate_type_expr(
     let mut errors = Vec::new();
     match ty {
         TypeExpr::Named(name) => {
-            if is_associated_output_type(name, known_types) {
-                return errors;
-            }
             if should_validate_named_type(name) && !known_types.contains(name) {
                 let tail = name.rsplit('.').next().unwrap_or(name);
                 if !known_types.contains(tail) {
                     errors.push(TypeError::UndefinedType(format!("{name} (in {context})")));
                 }
+            }
+        }
+        TypeExpr::AssociatedOutput(base) => {
+            if !known_types.contains(base) {
+                errors.push(TypeError::UndefinedType(format!(
+                    "{}.Output (in {context})",
+                    base
+                )));
             }
         }
         TypeExpr::Generic(name, args) => {
@@ -5836,13 +5843,6 @@ fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op:
 fn should_validate_named_type(name: &str) -> bool {
     name.chars()
         .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '.'))
-}
-
-fn is_associated_output_type(name: &str, known_types: &HashSet<String>) -> bool {
-    matches!(
-        name.rsplit_once('.'),
-        Some((base, "Output")) if known_types.contains(base)
-    )
 }
 
 #[cfg(test)]

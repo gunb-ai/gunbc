@@ -195,6 +195,8 @@ pub mod ast {
     pub enum TypeExpr {
         Named(String),
         Generic(String, Vec<TypeExpr>),
+        /// Associated output type: `Check.Output`
+        AssociatedOutput(String),
         /// Function type: `fn(A, B) -> C`
         Function(Vec<TypeExpr>, Box<TypeExpr>),
         Optional(Box<TypeExpr>),

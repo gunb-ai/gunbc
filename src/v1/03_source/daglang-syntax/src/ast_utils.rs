@@ -75,6 +75,7 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        TypeExpr::AssociatedOutput(base) => format!("{base}.Output"),
         TypeExpr::Function(params, output) => format!(
             "fn({}) -> {}",
             params
@@ -114,6 +115,7 @@ pub fn canonical_resource_type_name(name: &str) -> String {
 pub fn resource_type_name(resource_type: &TypeExpr) -> String {
     match resource_type {
         TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_resource_type_name(name),
+        TypeExpr::AssociatedOutput(base) => format!("{base}.Output"),
         TypeExpr::Function(_, _) => "fn".to_string(),
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => resource_type_name(inner),
         TypeExpr::Record(_) => "Record".to_string(),

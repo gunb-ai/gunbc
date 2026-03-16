@@ -136,6 +136,11 @@ pub fn type_expr_to_rust_with_registry(
             registry,
             crate::type_mapping::Backend::Rust,
         ),
+        TypeExpr::AssociatedOutput(base) => crate::type_mapping::resolve_and_emit(
+            &format!("{base}.Output"),
+            registry,
+            crate::type_mapping::Backend::Rust,
+        ),
         TypeExpr::Generic(name, args) => {
             use crate::language_model::{self, ContainerKind};
             let model = language_model::model_for_backend(crate::type_mapping::Backend::Rust);
@@ -475,6 +480,7 @@ fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(
 fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => name.clone(),
+        TypeExpr::AssociatedOutput(base) => format!("{base}.Output"),
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
         TypeExpr::Function(_, _) => "Function".to_string(),
@@ -1372,6 +1378,7 @@ fn collect_direct_type_refs(
                 edges.push((field_name.to_string(), name.clone()));
             }
         }
+        TypeExpr::AssociatedOutput(_) => {}
         TypeExpr::Function(_, _) => {}
         TypeExpr::Optional(inner) => {
             collect_direct_type_refs(inner, field_name, known_types, edges);

@@ -1632,6 +1632,8 @@ impl Parser {
         {
             let suffix = self.consume_type_suffix();
             TypeExpr::Named(format!("{name}{suffix}"))
+        } else if let Some(base) = name.strip_suffix(".Output") {
+            TypeExpr::AssociatedOutput(base.to_string())
         } else {
             TypeExpr::Named(name)
         };
@@ -4389,25 +4391,38 @@ fn classify_transports(transports: List<TransportClass>) -> DerivedClassificatio
 
     #[test]
     fn parse_function_type_alias_structurally() {
-        let sf = parse_or_panic(
-            "module test\ntype Callback = fn(Int, List<String>) -> { ok: Bool }",
-        );
+        let sf =
+            parse_or_panic("module test\ntype Callback = fn(Int, List<String>) -> { ok: Bool }");
         match &sf.items[0].node {
             Item::TypeDef(td) => match &td.body {
                 TypeBody::Alias(TypeExpr::Function(params, output)) => {
                     assert_eq!(params.len(), 2);
                     assert!(matches!(&params[0], TypeExpr::Named(name) if name == "Int"));
-                    assert!(
-                        matches!(&params[1], TypeExpr::Generic(name, args)
+                    assert!(matches!(&params[1], TypeExpr::Generic(name, args)
                             if name == "List"
-                                && matches!(args.as_slice(), [TypeExpr::Named(inner)] if inner == "String"))
-                    );
-                    assert!(
-                        matches!(output.as_ref(), TypeExpr::Record(fields)
+                                && matches!(args.as_slice(), [TypeExpr::Named(inner)] if inner == "String")));
+                    assert!(matches!(output.as_ref(), TypeExpr::Record(fields)
                             if matches!(fields.as_slice(), [field]
                                 if field.name == "ok"
-                                    && matches!(field.ty, TypeExpr::Named(ref name) if name == "Bool")))
-                    );
+                                    && matches!(field.ty, TypeExpr::Named(ref name) if name == "Bool"))));
+                }
+                other => panic!("expected function alias, got {other:?}"),
+            },
+            other => panic!("expected TypeDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_associated_output_type_structurally() {
+        let sf = parse_or_panic("module test\ntype Predicate = fn(Check.Output) -> Bool");
+        match &sf.items[0].node {
+            Item::TypeDef(td) => match &td.body {
+                TypeBody::Alias(TypeExpr::Function(params, output)) => {
+                    assert!(matches!(
+                        params.as_slice(),
+                        [TypeExpr::AssociatedOutput(base)] if base == "Check"
+                    ));
+                    assert!(matches!(output.as_ref(), TypeExpr::Named(name) if name == "Bool"));
                 }
                 other => panic!("expected function alias, got {other:?}"),
             },
