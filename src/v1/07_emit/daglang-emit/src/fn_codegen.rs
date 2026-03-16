@@ -44,6 +44,7 @@
 //! - `module_prelude()`: Hardcoded cross-module `use` statements.
 
 use daglang_syntax::ast;
+use daglang_syntax::ast_utils::{walk_stmts_with_expr_identities, ExprIdentity};
 use gunbc_ir::code_ir;
 use gunbc_ir::code_ir::IrType;
 use std::collections::HashMap;
@@ -131,10 +132,18 @@ pub struct CompileContext {
     /// Variable name → number of `Ident` references in the current function body.
     /// Used to elide `.clone()` when a variable is referenced only once (move suffices).
     pub use_counts: HashMap<String, usize>,
-    /// Typecheck-produced anonymous-record constructor targets keyed by AST expression identity.
-    pub anonymous_record_targets: HashMap<usize, String>,
-    /// Typecheck-produced anonymous-record field types keyed by AST expression identity.
-    pub typecheck_anonymous_record_field_types: HashMap<usize, Vec<(String, IrType)>>,
+    /// Typecheck-produced anonymous-record constructor targets keyed by stable AST identity.
+    pub anonymous_record_targets: HashMap<ExprIdentity, String>,
+    /// Typecheck-produced synthesized anonymous-record types for this callable.
+    pub synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
+    /// Local mapping from this function body's AST nodes back to stable identities.
+    pub(crate) expr_identities: HashMap<usize, ExprIdentity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SynthesizedAnonymousRecordType {
+    pub name: String,
+    pub fields: Vec<(String, IrType)>,
 }
 
 impl Default for CompileContext {
@@ -164,14 +173,26 @@ impl CompileContext {
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
             anonymous_record_targets: HashMap::new(),
-            typecheck_anonymous_record_field_types: HashMap::new(),
+            synthesized_anonymous_record_types: Vec::new(),
+            expr_identities: HashMap::new(),
         }
     }
 
     fn anonymous_record_target(&self, expr: &ast::Expr) -> Option<&str> {
+        let expr_identity = self
+            .expr_identities
+            .get(&(expr as *const ast::Expr as usize))?;
         self.anonymous_record_targets
-            .get(&(expr as *const ast::Expr as usize))
+            .get(expr_identity)
             .map(String::as_str)
+    }
+
+    fn populate_expr_identities(&mut self, body: &ast::FnBody) {
+        self.expr_identities.clear();
+        walk_stmts_with_expr_identities(&body.stmts, &mut |expr_identity, expr| {
+            self.expr_identities
+                .insert(expr as *const ast::Expr as usize, expr_identity);
+        });
     }
 }
 
@@ -373,6 +394,7 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
 /// Compile a DSL `FnBody` into a list of abstract IR statements.
 pub fn compile_fn_body(body: &ast::FnBody, ctx: &CompileContext) -> Vec<code_ir::Stmt> {
     let mut ctx = ctx.clone();
+    ctx.populate_expr_identities(body);
     ctx.use_counts = count_ident_uses(&body.stmts);
     let mut counter: usize = 0;
     compile_stmt_sequence(&body.stmts, &ctx, &mut counter)
@@ -1827,14 +1849,7 @@ fn compile_fold_intrinsic(
         None => code_ir::Expr::Var(acc.clone()),
     };
     let acc_ir_type = init.and_then(|init_expr| {
-        let mut fold_args = vec![
-            (None, collection_ast.clone()),
-            (Some("init".to_string()), init_expr.clone()),
-        ];
-        if let Some(func_expr) = func.cloned() {
-            fold_args.push((Some("f".to_string()), func_expr));
-        }
-        infer_ast_expr_type(&ast::Expr::Call("fold".to_string(), fold_args), ctx)
+        infer_fold_accumulator_ir_type_in_scope(collection_ast, init_expr, func, &ctx.ir_scope, ctx)
     });
     code_ir::Expr::Block(vec![
         code_ir::Stmt::Let {
@@ -2980,6 +2995,122 @@ fn named_type_from_ir(ty: &IrType) -> Option<String> {
     }
 }
 
+fn expand_named_record_ir_type(ty: IrType, ctx: &CompileContext) -> IrType {
+    match ty {
+        IrType::Named(name) => ctx
+            .struct_field_ir_types
+            .get(name.as_str())
+            .cloned()
+            .map(IrType::Record)
+            .unwrap_or(IrType::Named(name)),
+        other => other,
+    }
+}
+
+fn merge_ir_types(left: IrType, right: IrType, ctx: &CompileContext) -> IrType {
+    let left = expand_named_record_ir_type(left, ctx);
+    let right = expand_named_record_ir_type(right, ctx);
+
+    match (left, right) {
+        (IrType::Unknown, other) | (other, IrType::Unknown) => other,
+        (IrType::Record(left_fields), IrType::Record(right_fields))
+            if left_fields.len() == right_fields.len()
+                && left_fields
+                    .iter()
+                    .map(|(name, _)| name)
+                    .eq(right_fields.iter().map(|(name, _)| name)) =>
+        {
+            IrType::Record(
+                left_fields
+                    .into_iter()
+                    .zip(right_fields)
+                    .map(|((name, left_ty), (_, right_ty))| {
+                        (name, merge_ir_types(left_ty, right_ty, ctx))
+                    })
+                    .collect(),
+            )
+        }
+        (IrType::Generic(left_name, left_args), IrType::Generic(right_name, right_args))
+            if left_name == right_name && left_args.len() == right_args.len() =>
+        {
+            IrType::Generic(
+                left_name,
+                left_args
+                    .into_iter()
+                    .zip(right_args)
+                    .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty, ctx))
+                    .collect(),
+            )
+        }
+        (IrType::Optional(left_inner), IrType::Optional(right_inner)) => {
+            IrType::Optional(Box::new(merge_ir_types(*left_inner, *right_inner, ctx)))
+        }
+        (IrType::Tuple(left_items), IrType::Tuple(right_items))
+            if left_items.len() == right_items.len() =>
+        {
+            IrType::Tuple(
+                left_items
+                    .into_iter()
+                    .zip(right_items)
+                    .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty, ctx))
+                    .collect(),
+            )
+        }
+        (left_ty, right_ty) if left_ty == right_ty => left_ty,
+        (left_ty, _) => left_ty,
+    }
+}
+
+fn merge_inferred_ir_types(
+    left: Option<IrType>,
+    right: Option<IrType>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    match (left, right) {
+        (Some(left_ty), Some(right_ty)) => Some(merge_ir_types(left_ty, right_ty, ctx)),
+        (Some(ty), None) | (None, Some(ty)) => Some(ty),
+        (None, None) => None,
+    }
+}
+
+fn collection_element_ir_type(ty: &IrType) -> Option<IrType> {
+    match ty {
+        IrType::Generic(_, args) if !args.is_empty() => Some(args[0].clone()),
+        _ => None,
+    }
+}
+
+fn infer_fold_accumulator_ir_type_in_scope(
+    collection_ast: &ast::Expr,
+    init_expr: &ast::Expr,
+    func: Option<&ast::Expr>,
+    scope: &HashMap<String, IrType>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    let init_ir_type = infer_ast_expr_type_in_scope(init_expr, scope, ctx);
+    let body_ir_type = match func {
+        Some(ast::Expr::Lambda(params, body)) => {
+            let collection_type = infer_ast_expr_type_in_scope(collection_ast, scope, ctx);
+            let mut lambda_scope = scope.clone();
+            if let (Some(param), Some(ir_type)) = (params.first(), init_ir_type.clone()) {
+                lambda_scope.insert(param.clone(), ir_type);
+            }
+            if let (Some(param), Some(elem_type)) = (
+                params.get(1),
+                collection_type
+                    .as_ref()
+                    .and_then(collection_element_ir_type),
+            ) {
+                lambda_scope.insert(param.clone(), elem_type);
+            }
+            infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+        }
+        Some(other) => infer_ast_expr_type_in_scope(other, scope, ctx),
+        None => None,
+    };
+    merge_inferred_ir_types(init_ir_type, body_ir_type, ctx)
+}
+
 fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
     infer_ast_expr_type_in_scope(expr, &ctx.ir_scope, ctx)
 }
@@ -2989,91 +3120,6 @@ fn infer_ast_expr_type_in_scope(
     scope: &HashMap<String, IrType>,
     ctx: &CompileContext,
 ) -> Option<IrType> {
-    fn merge_ir_types(left: IrType, right: IrType, ctx: &CompileContext) -> IrType {
-        fn expand_named_record_ir_type(ty: IrType, ctx: &CompileContext) -> IrType {
-            match ty {
-                IrType::Named(name) => ctx
-                    .struct_field_ir_types
-                    .get(name.as_str())
-                    .cloned()
-                    .map(IrType::Record)
-                    .unwrap_or(IrType::Named(name)),
-                other => other,
-            }
-        }
-
-        let left = expand_named_record_ir_type(left, ctx);
-        let right = expand_named_record_ir_type(right, ctx);
-
-        match (left, right) {
-            (IrType::Unknown, other) | (other, IrType::Unknown) => other,
-            (IrType::Record(left_fields), IrType::Record(right_fields))
-                if left_fields.len() == right_fields.len()
-                    && left_fields
-                        .iter()
-                        .map(|(name, _)| name)
-                        .eq(right_fields.iter().map(|(name, _)| name)) =>
-            {
-                IrType::Record(
-                    left_fields
-                        .into_iter()
-                        .zip(right_fields)
-                        .map(|((name, left_ty), (_, right_ty))| {
-                            (name, merge_ir_types(left_ty, right_ty, ctx))
-                        })
-                        .collect(),
-                )
-            }
-            (IrType::Generic(left_name, left_args), IrType::Generic(right_name, right_args))
-                if left_name == right_name && left_args.len() == right_args.len() =>
-            {
-                IrType::Generic(
-                    left_name,
-                    left_args
-                        .into_iter()
-                        .zip(right_args)
-                        .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty, ctx))
-                        .collect(),
-                )
-            }
-            (IrType::Optional(left_inner), IrType::Optional(right_inner)) => {
-                IrType::Optional(Box::new(merge_ir_types(*left_inner, *right_inner, ctx)))
-            }
-            (IrType::Tuple(left_items), IrType::Tuple(right_items))
-                if left_items.len() == right_items.len() =>
-            {
-                IrType::Tuple(
-                    left_items
-                        .into_iter()
-                        .zip(right_items)
-                        .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty, ctx))
-                        .collect(),
-                )
-            }
-            (left_ty, right_ty) if left_ty == right_ty => left_ty,
-            (left_ty, _) => left_ty,
-        }
-    }
-
-    fn merge_inferred_ir_types(
-        left: Option<IrType>,
-        right: Option<IrType>,
-        ctx: &CompileContext,
-    ) -> Option<IrType> {
-        match (left, right) {
-            (Some(left_ty), Some(right_ty)) => Some(merge_ir_types(left_ty, right_ty, ctx)),
-            (Some(ty), None) | (None, Some(ty)) => Some(ty),
-            (None, None) => None,
-        }
-    }
-
-    fn collection_element_ir_type(ty: &IrType) -> Option<IrType> {
-        match ty {
-            IrType::Generic(_, args) if !args.is_empty() => Some(args[0].clone()),
-            _ => None,
-        }
-    }
-
     fn infer_block_expr_type_in_scope(
         stmts: &[ast::Stmt],
         scope: &HashMap<String, IrType>,
@@ -3121,37 +3167,6 @@ fn infer_ast_expr_type_in_scope(
             }
         }
         trailing
-    }
-
-    fn infer_fold_accumulator_type_in_scope(
-        collection_ast: &ast::Expr,
-        init_expr: &ast::Expr,
-        func: Option<&ast::Expr>,
-        scope: &HashMap<String, IrType>,
-        ctx: &CompileContext,
-    ) -> Option<IrType> {
-        let init_ir_type = infer_ast_expr_type_in_scope(init_expr, scope, ctx);
-        let body_ir_type = match func {
-            Some(ast::Expr::Lambda(params, body)) => {
-                let collection_type = infer_ast_expr_type_in_scope(collection_ast, scope, ctx);
-                let mut lambda_scope = scope.clone();
-                if let (Some(param), Some(ir_type)) = (params.first(), init_ir_type.clone()) {
-                    lambda_scope.insert(param.clone(), ir_type);
-                }
-                if let (Some(param), Some(elem_type)) = (
-                    params.get(1),
-                    collection_type
-                        .as_ref()
-                        .and_then(collection_element_ir_type),
-                ) {
-                    lambda_scope.insert(param.clone(), elem_type);
-                }
-                infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
-            }
-            Some(other) => infer_ast_expr_type_in_scope(other, scope, ctx),
-            None => None,
-        };
-        merge_inferred_ir_types(init_ir_type, body_ir_type, ctx)
     }
 
     match expr {
@@ -3211,23 +3226,9 @@ fn infer_ast_expr_type_in_scope(
                 _ => None,
             }
         }
-        ast::Expr::Record(None, fields) => ctx
+        ast::Expr::Record(None, _) => ctx
             .anonymous_record_target(expr)
-            .map(|name| IrType::Named(name.to_string()))
-            .or_else(|| {
-                Some(IrType::Record(
-                    fields
-                        .iter()
-                        .map(|(field_name, field_expr)| {
-                            (
-                                field_name.clone(),
-                                infer_ast_expr_type_in_scope(field_expr, scope, ctx)
-                                    .unwrap_or(IrType::Unknown),
-                            )
-                        })
-                        .collect(),
-                ))
-            }),
+            .map(|name| IrType::Named(name.to_string())),
         ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
         ast::Expr::Record(Some(name), _) => Some(IrType::Named(name.clone())),
         ast::Expr::Call(name, _) if name == "Some" => None,
@@ -3284,7 +3285,7 @@ fn infer_ast_expr_type_in_scope(
                 .or_else(|| args.get(2))
                 .map(|(_, expr)| expr);
             init.and_then(|init_expr| {
-                infer_fold_accumulator_type_in_scope(&args[0].1, init_expr, func, scope, ctx)
+                infer_fold_accumulator_ir_type_in_scope(&args[0].1, init_expr, func, scope, ctx)
             })
         }
         ast::Expr::Call(name, _) if name == "any" || name == "contains" => Some(IrType::Bool),
@@ -3385,124 +3386,8 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
 // which is distinct from concat() and not affected by the + operator change.
 
 // ---------------------------------------------------------------------------
-// Anonymous record synthesis
+// Anonymous record materialization
 // ---------------------------------------------------------------------------
-
-fn collect_unresolved_anonymous_record_expr_ids(
-    body: &ast::FnBody,
-    resolved: &HashMap<usize, String>,
-) -> Vec<usize> {
-    fn collect_from_stmts(
-        stmts: &[ast::Stmt],
-        resolved: &HashMap<usize, String>,
-        out: &mut Vec<usize>,
-    ) {
-        for stmt in stmts {
-            match stmt {
-                ast::Stmt::Let(_, expr) | ast::Stmt::Assign(_, expr) | ast::Stmt::Expr(expr) => {
-                    collect_from_expr(expr, resolved, out);
-                }
-                ast::Stmt::Return(fields) => {
-                    for (_, expr) in fields {
-                        collect_from_expr(expr, resolved, out);
-                    }
-                }
-                ast::Stmt::Node(node_stmt) => {
-                    collect_from_expr(&node_stmt.expr, resolved, out);
-                }
-            }
-        }
-    }
-
-    fn collect_from_expr(
-        expr: &ast::Expr,
-        resolved: &HashMap<usize, String>,
-        out: &mut Vec<usize>,
-    ) {
-        match expr {
-            ast::Expr::Record(None, fields) => {
-                let expr_id = expr as *const ast::Expr as usize;
-                if !resolved.contains_key(&expr_id) {
-                    out.push(expr_id);
-                }
-                for (_, field_expr) in fields {
-                    collect_from_expr(field_expr, resolved, out);
-                }
-            }
-            ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
-                for (_, field_expr) in fields {
-                    collect_from_expr(field_expr, resolved, out);
-                }
-            }
-            ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
-                for (_, expr) in args {
-                    collect_from_expr(expr, resolved, out);
-                }
-            }
-            ast::Expr::Lambda(_, body) => collect_from_expr(body, resolved, out),
-            ast::Expr::If(cond, then_expr, else_expr) => {
-                collect_from_expr(cond, resolved, out);
-                collect_from_expr(then_expr, resolved, out);
-                if let Some(otherwise) = else_expr {
-                    collect_from_expr(otherwise, resolved, out);
-                }
-            }
-            ast::Expr::BinOp(lhs, _, rhs) => {
-                collect_from_expr(lhs, resolved, out);
-                collect_from_expr(rhs, resolved, out);
-            }
-            ast::Expr::UnaryOp(_, inner)
-            | ast::Expr::FieldAccess(inner, _)
-            | ast::Expr::After(inner, _) => {
-                collect_from_expr(inner, resolved, out);
-            }
-            ast::Expr::Match(scrutinee, arms) => {
-                collect_from_expr(scrutinee, resolved, out);
-                for arm in arms {
-                    if let Some(guard) = &arm.guard {
-                        collect_from_expr(guard, resolved, out);
-                    }
-                    collect_from_expr(&arm.body, resolved, out);
-                }
-            }
-            ast::Expr::List(items) => {
-                for item in items {
-                    collect_from_expr(item, resolved, out);
-                }
-            }
-            ast::Expr::Block(stmts) => collect_from_stmts(stmts, resolved, out),
-            ast::Expr::For(_, iter_expr, _, body) => {
-                collect_from_expr(iter_expr, resolved, out);
-                match body {
-                    ast::ForBody::Expr(expr) => collect_from_expr(expr, resolved, out),
-                    ast::ForBody::Block(stmts) => collect_from_stmts(stmts, resolved, out),
-                }
-            }
-            ast::Expr::Map(entries) => {
-                for (key, value) in entries {
-                    collect_from_expr(key, resolved, out);
-                    collect_from_expr(value, resolved, out);
-                }
-            }
-            ast::Expr::Guarded(inner, guard) => {
-                collect_from_expr(inner, resolved, out);
-                collect_from_expr(guard, resolved, out);
-            }
-            ast::Expr::StringInterp(parts) => {
-                for part in parts {
-                    if let ast::StringPart::Expr(expr) = part {
-                        collect_from_expr(expr, resolved, out);
-                    }
-                }
-            }
-            ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
-        }
-    }
-
-    let mut expr_ids = Vec::new();
-    collect_from_stmts(&body.stmts, resolved, &mut expr_ids);
-    expr_ids
-}
 
 fn ir_type_to_type_id(ty: &IrType) -> Option<String> {
     match ty {
@@ -3578,76 +3463,50 @@ fn ir_type_to_rust_type(ty: &IrType) -> Option<String> {
     }
 }
 
-/// Synthesize struct names and definitions for anonymous record shapes that
-/// still lack an explicit target after typecheck.
-///
-/// Returns: (struct items to emit, mapping from AST expression identity →
-///           synthesized struct name, entries to add to struct_field_types)
+/// Materialize typecheck-produced synthesized anonymous-record types into code IR.
 #[allow(clippy::type_complexity)]
-pub fn synthesize_anonymous_structs(
-    fn_name: &str,
-    body: &ast::FnBody,
-    resolved_targets: &HashMap<usize, String>,
-    field_types_by_expr: &HashMap<usize, Vec<(String, IrType)>>,
+pub fn materialize_synthesized_anonymous_record_types(
+    synthesized_types: &[SynthesizedAnonymousRecordType],
 ) -> (
     Vec<code_ir::Item>,
-    HashMap<usize, String>,
     HashMap<String, HashMap<String, String>>,
+    HashMap<String, Vec<(String, IrType)>>,
 ) {
-    let expr_ids = collect_unresolved_anonymous_record_expr_ids(body, resolved_targets);
     let mut items = Vec::new();
-    let mut expr_targets = HashMap::new();
-    let mut typed_shape_names: HashMap<Vec<(String, String)>, String> = HashMap::new();
     let mut new_field_types: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut new_field_ir_types: HashMap<String, Vec<(String, IrType)>> = HashMap::new();
 
-    for expr_id in expr_ids {
-        let Some(field_types) = field_types_by_expr.get(&expr_id) else {
-            continue;
-        };
-        let Some(typed_shape) = field_types
+    for synthesized_type in synthesized_types {
+        let typed_shape = synthesized_type
+            .fields
             .iter()
             .map(|(name, ty)| Some((name.clone(), ir_type_to_type_id(ty)?)))
-            .collect::<Option<Vec<_>>>()
-        else {
+            .collect::<Option<Vec<_>>>();
+        let Some(typed_shape) = typed_shape else {
             continue;
         };
-        let mut typed_shape = typed_shape;
-        typed_shape.sort_by(|left, right| left.0.cmp(&right.0));
-
-        if let Some(existing) = typed_shape_names.get(&typed_shape) {
-            expr_targets.insert(expr_id, existing.clone());
-            continue;
-        }
-
-        let pascal_fn = capitalize_first_char(&fn_name.replace('_', " ")).replace(' ', "");
-        let struct_name = if typed_shape_names.is_empty() {
-            format!("__{pascal_fn}State")
-        } else {
-            format!("__{pascal_fn}State{}", typed_shape_names.len())
-        };
-        let fields: Vec<(String, String, bool)> = typed_shape
+        let fields: Vec<(String, String, bool)> = synthesized_type
+            .fields
             .iter()
-            .filter_map(|(field_name, _)| {
-                field_types
-                    .iter()
-                    .find(|(name, _)| name == field_name)
-                    .and_then(|(_, ty)| {
-                        ir_type_to_rust_type(ty).map(|rust_ty| (field_name.clone(), rust_ty, true))
-                    })
+            .filter_map(|(field_name, ty)| {
+                ir_type_to_rust_type(ty).map(|rust_ty| (field_name.clone(), rust_ty, true))
             })
             .collect();
-        if fields.len() != typed_shape.len() {
+        if fields.len() != synthesized_type.fields.len() {
             continue;
         }
 
-        let mut ft_map = HashMap::new();
-        for (field_name, field_ty) in &typed_shape {
-            ft_map.insert(field_name.clone(), field_ty.clone());
-        }
-        new_field_types.insert(struct_name.clone(), ft_map);
+        new_field_types.insert(
+            synthesized_type.name.clone(),
+            typed_shape.into_iter().collect(),
+        );
+        new_field_ir_types.insert(
+            synthesized_type.name.clone(),
+            synthesized_type.fields.clone(),
+        );
 
         items.push(code_ir::Item::Struct(code_ir::StructDef {
-            name: struct_name.clone(),
+            name: synthesized_type.name.clone(),
             is_pub: false,
             derives: vec![
                 "Debug".to_string(),
@@ -3655,20 +3514,10 @@ pub fn synthesize_anonymous_structs(
                 "PartialEq".to_string(),
             ],
             fields,
-            doc: vec![format!("Synthesized fold accumulator for `{fn_name}`.")],
+            doc: vec!["Synthesized anonymous record type.".to_string()],
         }));
-        typed_shape_names.insert(typed_shape, struct_name.clone());
-        expr_targets.insert(expr_id, struct_name);
     }
-    (items, expr_targets, new_field_types)
-}
-
-fn capitalize_first_char(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-    }
+    (items, new_field_types, new_field_ir_types)
 }
 
 // ---------------------------------------------------------------------------

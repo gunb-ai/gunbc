@@ -1,5 +1,8 @@
 use crate::ast::{Expr, ForBody, Stmt, TypeExpr};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ExprIdentity(pub usize);
+
 /// Returns true if the type expression is optional (`T?`), looking through refinement wrappers.
 pub fn is_type_expr_optional(expr: &TypeExpr) -> bool {
     match expr {
@@ -225,5 +228,136 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
         }
         Expr::Block(stmts) => walk_stmts(stmts, visitor),
         Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+pub fn walk_stmts_with_expr_identities(
+    stmts: &[Stmt],
+    visitor: &mut impl FnMut(ExprIdentity, &Expr),
+) {
+    let mut next_identity = 0usize;
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                walk_expr_with_identity(expr, &mut next_identity, visitor);
+            }
+            Stmt::Node(ns) => {
+                walk_expr_with_identity(&ns.expr, &mut next_identity, visitor);
+                if let Some(guard) = &ns.when_guard {
+                    walk_expr_with_identity(guard, &mut next_identity, visitor);
+                }
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    walk_expr_with_identity(expr, &mut next_identity, visitor);
+                }
+            }
+        }
+    }
+}
+
+fn walk_expr_with_identity(
+    expr: &Expr,
+    next_identity: &mut usize,
+    visitor: &mut impl FnMut(ExprIdentity, &Expr),
+) {
+    let expr_identity = ExprIdentity(*next_identity);
+    *next_identity += 1;
+    visitor(expr_identity, expr);
+    match expr {
+        Expr::Call(_, args) | Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                walk_expr_with_identity(arg, next_identity, visitor);
+            }
+        }
+        Expr::FieldAccess(base, _) => walk_expr_with_identity(base, next_identity, visitor),
+        Expr::BinOp(lhs, _, rhs) => {
+            walk_expr_with_identity(lhs, next_identity, visitor);
+            walk_expr_with_identity(rhs, next_identity, visitor);
+        }
+        Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
+            walk_expr_with_identity(inner, next_identity, visitor)
+        }
+        Expr::For(_, iterable, _, body) => {
+            walk_expr_with_identity(iterable, next_identity, visitor);
+            match body {
+                ForBody::Expr(expr) => walk_expr_with_identity(expr, next_identity, visitor),
+                ForBody::Block(stmts) => {
+                    walk_stmts_with_expr_identities_in_place(stmts, next_identity, visitor)
+                }
+            }
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let crate::ast::StringPart::Expr(inner) = part {
+                    walk_expr_with_identity(inner, next_identity, visitor);
+                }
+            }
+        }
+        Expr::Record(_, fields) | Expr::Return(fields) => {
+            for (_, value) in fields {
+                walk_expr_with_identity(value, next_identity, visitor);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            walk_expr_with_identity(scrutinee, next_identity, visitor);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    walk_expr_with_identity(guard, next_identity, visitor);
+                }
+                walk_expr_with_identity(&arm.body, next_identity, visitor);
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            walk_expr_with_identity(cond, next_identity, visitor);
+            walk_expr_with_identity(then_expr, next_identity, visitor);
+            if let Some(otherwise) = else_expr {
+                walk_expr_with_identity(otherwise, next_identity, visitor);
+            }
+        }
+        Expr::List(items) => {
+            for item in items {
+                walk_expr_with_identity(item, next_identity, visitor);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                walk_expr_with_identity(key, next_identity, visitor);
+                walk_expr_with_identity(value, next_identity, visitor);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            walk_expr_with_identity(inner, next_identity, visitor);
+            walk_expr_with_identity(guard, next_identity, visitor);
+        }
+        Expr::Block(stmts) => {
+            walk_stmts_with_expr_identities_in_place(stmts, next_identity, visitor);
+        }
+        Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+fn walk_stmts_with_expr_identities_in_place(
+    stmts: &[Stmt],
+    next_identity: &mut usize,
+    visitor: &mut impl FnMut(ExprIdentity, &Expr),
+) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                walk_expr_with_identity(expr, next_identity, visitor);
+            }
+            Stmt::Node(ns) => {
+                walk_expr_with_identity(&ns.expr, next_identity, visitor);
+                if let Some(guard) = &ns.when_guard {
+                    walk_expr_with_identity(guard, next_identity, visitor);
+                }
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    walk_expr_with_identity(expr, next_identity, visitor);
+                }
+            }
+        }
     }
 }

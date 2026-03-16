@@ -166,10 +166,7 @@ pub fn plan_workflow_with_mode(
     let ordered_edges = canonical_edge_order(&spec.dag.edges);
     let mut edges_by_target: BTreeMap<&NodeId, Vec<&gunbc_ir::Edge>> = BTreeMap::new();
     for &edge in &ordered_edges {
-        edges_by_target
-            .entry(&edge.to_node)
-            .or_default()
-            .push(edge);
+        edges_by_target.entry(&edge.to_node).or_default().push(edge);
     }
     for node_id in order {
         let node = spec
@@ -286,8 +283,7 @@ fn validate_strict_dry_run_inputs(
                 continue;
             }
 
-            let has_incoming =
-                node_data_ports.is_some_and(|ports| ports.contains(&input.name));
+            let has_incoming = node_data_ports.is_some_and(|ports| ports.contains(&input.name));
             let has_provided = provided.is_some_and(|ports| ports.contains_key(&input.name));
 
             if !has_incoming && !has_provided {

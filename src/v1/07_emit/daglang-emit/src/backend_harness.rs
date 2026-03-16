@@ -4,9 +4,7 @@ use crate::lower_mips::{lower_to_mips, MipsConfig};
 use crate::render_c::render_c_source;
 use crate::render_go::render_go_source;
 use crate::render_mips::render_mips_source;
-use gunbc_ir::code_ir::{
-    CallObligation, Expr, FnDef, Item, SourceFile, Stmt,
-};
+use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
 
 fn adversarial_transport_source() -> SourceFile {
     SourceFile {

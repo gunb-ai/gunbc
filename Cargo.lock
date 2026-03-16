@@ -204,6 +204,7 @@ version = "0.1.0"
 dependencies = [
  "daglang-derive",
  "daglang-lower",
+ "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
  "gunbc-ir",

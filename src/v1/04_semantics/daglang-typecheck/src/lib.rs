@@ -34,6 +34,7 @@ use daglang_syntax::ast::{
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
+    walk_stmts_with_expr_identities, ExprIdentity,
 };
 use gunbc_ir::{TypeRegistry, BUILTIN_TYPES};
 
@@ -185,83 +186,136 @@ pub struct TypedCallableSignature {
     pub outputs: Vec<TypedBinding>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SynthesizedAnonymousRecordType {
+    pub name: gunbc_ir::types::TypeId,
+    pub fields: Vec<(String, gunbc_ir::code_ir::IrType)>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TypedCallableBodyMetadata {
-    anonymous_record_targets: HashMap<usize, gunbc_ir::types::TypeId>,
-    anonymous_record_field_types: HashMap<usize, Vec<(String, gunbc_ir::code_ir::IrType)>>,
-    conflicted_anonymous_records: HashSet<usize>,
+    anonymous_record_targets: HashMap<ExprIdentity, gunbc_ir::types::TypeId>,
+    anonymous_record_field_types: HashMap<ExprIdentity, Vec<(String, gunbc_ir::code_ir::IrType)>>,
+    conflicted_anonymous_records: HashSet<ExprIdentity>,
+    synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
 }
 
 impl TypedCallableBodyMetadata {
-    pub fn anonymous_record_target(&self, expr: &Expr) -> Option<&gunbc_ir::types::TypeId> {
-        if self
-            .conflicted_anonymous_records
-            .contains(&expr_identity(expr))
-        {
+    pub fn anonymous_record_target(
+        &self,
+        expr_identity: ExprIdentity,
+    ) -> Option<&gunbc_ir::types::TypeId> {
+        if self.conflicted_anonymous_records.contains(&expr_identity) {
             return None;
         }
-        self.anonymous_record_targets.get(&expr_identity(expr))
+        self.anonymous_record_targets.get(&expr_identity)
     }
 
     pub fn anonymous_record_targets(
         &self,
-    ) -> impl Iterator<Item = (usize, &gunbc_ir::types::TypeId)> + '_ {
+    ) -> impl Iterator<Item = (ExprIdentity, &gunbc_ir::types::TypeId)> + '_ {
         self.anonymous_record_targets
             .iter()
-            .filter(|(expr_id, _)| !self.conflicted_anonymous_records.contains(expr_id))
-            .map(|(expr_id, target)| (*expr_id, target))
+            .filter(|(expr_identity, _)| !self.conflicted_anonymous_records.contains(expr_identity))
+            .map(|(expr_identity, target)| (*expr_identity, target))
     }
 
-    pub fn anonymous_record_field_types_for_expr(
-        &self,
-        expr: &Expr,
-    ) -> Option<&[(String, gunbc_ir::code_ir::IrType)]> {
-        self.anonymous_record_field_types
-            .get(&expr_identity(expr))
-            .map(Vec::as_slice)
+    pub fn synthesized_anonymous_record_types(&self) -> &[SynthesizedAnonymousRecordType] {
+        &self.synthesized_anonymous_record_types
     }
 
-    pub fn anonymous_record_field_types(
-        &self,
-    ) -> impl Iterator<Item = (usize, &[(String, gunbc_ir::code_ir::IrType)])> + '_ {
-        self.anonymous_record_field_types
-            .iter()
-            .map(|(expr_id, fields)| (*expr_id, fields.as_slice()))
+    fn is_empty(&self) -> bool {
+        self.anonymous_record_targets.is_empty()
+            && self.conflicted_anonymous_records.is_empty()
+            && self.synthesized_anonymous_record_types.is_empty()
     }
 
-    fn annotate_anonymous_record_target(&mut self, expr: &Expr, target: &str) {
-        let expr_id = expr_identity(expr);
+    fn annotate_anonymous_record_target(&mut self, expr_identity: ExprIdentity, target: &str) {
         let target = gunbc_ir::types::TypeId::from(target);
-        if self.conflicted_anonymous_records.contains(&expr_id) {
+        if self.conflicted_anonymous_records.contains(&expr_identity) {
             return;
         }
-        match self.anonymous_record_targets.get(&expr_id) {
+        match self.anonymous_record_targets.get(&expr_identity) {
             Some(existing) if existing != &target => {
-                self.anonymous_record_targets.remove(&expr_id);
-                self.conflicted_anonymous_records.insert(expr_id);
+                self.anonymous_record_targets.remove(&expr_identity);
+                self.conflicted_anonymous_records.insert(expr_identity);
             }
             Some(_) => {}
             None => {
-                self.anonymous_record_targets.insert(expr_id, target);
+                self.anonymous_record_targets.insert(expr_identity, target);
             }
         }
     }
 
     fn annotate_anonymous_record_field_types(
         &mut self,
-        expr: &Expr,
+        expr_identity: ExprIdentity,
         fields: &HashMap<String, ValueType>,
     ) {
-        let expr_id = expr_identity(expr);
         let mut next_fields = fields
             .iter()
             .map(|(name, ty)| (name.clone(), value_type_to_ir_type(ty)))
             .collect::<Vec<_>>();
         next_fields.sort_by(|left, right| left.0.cmp(&right.0));
         self.anonymous_record_field_types
-            .entry(expr_id)
+            .entry(expr_identity)
             .and_modify(|existing| merge_record_ir_fields(existing, &next_fields))
             .or_insert(next_fields);
+    }
+
+    fn finalize_anonymous_record_types(&mut self, callable_name: &str) {
+        let mut unresolved_expr_ids = self
+            .anonymous_record_field_types
+            .keys()
+            .copied()
+            .filter(|expr_identity| {
+                !self.conflicted_anonymous_records.contains(expr_identity)
+                    && !self.anonymous_record_targets.contains_key(expr_identity)
+            })
+            .collect::<Vec<_>>();
+        unresolved_expr_ids.sort();
+
+        let mut typed_shape_names: HashMap<Vec<(String, String)>, String> = HashMap::new();
+        let mut synthesized_types = Vec::new();
+        let pascal_callable =
+            capitalize_first_char(&callable_name.replace('_', " ")).replace(' ', "");
+
+        for expr_identity in unresolved_expr_ids {
+            let Some(field_types) = self.anonymous_record_field_types.get(&expr_identity) else {
+                continue;
+            };
+            let Some(typed_shape) = field_types
+                .iter()
+                .map(|(field_name, ir_type)| {
+                    Some((field_name.clone(), ir_type_to_type_id(ir_type)?))
+                })
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            let mut typed_shape = typed_shape;
+            typed_shape.sort_by(|left, right| left.0.cmp(&right.0));
+
+            let type_name = if let Some(existing) = typed_shape_names.get(&typed_shape) {
+                existing.clone()
+            } else {
+                let next_name = if typed_shape_names.is_empty() {
+                    format!("__{pascal_callable}State")
+                } else {
+                    format!("__{pascal_callable}State{}", typed_shape_names.len())
+                };
+                typed_shape_names.insert(typed_shape, next_name.clone());
+                synthesized_types.push(SynthesizedAnonymousRecordType {
+                    name: gunbc_ir::types::TypeId::from(next_name.clone()),
+                    fields: field_types.clone(),
+                });
+                next_name
+            };
+            self.anonymous_record_targets
+                .insert(expr_identity, gunbc_ir::types::TypeId::from(type_name));
+        }
+
+        self.synthesized_anonymous_record_types = synthesized_types;
     }
 }
 
@@ -1809,12 +1863,7 @@ fn collect_signatures(
                     &body_context,
                 );
                 item_errors.extend(body_analysis.errors);
-                if !body_analysis.metadata.anonymous_record_targets.is_empty()
-                    || !body_analysis
-                        .metadata
-                        .conflicted_anonymous_records
-                        .is_empty()
-                {
+                if !body_analysis.metadata.is_empty() {
                     callable_body_metadata.insert(def.name.clone(), body_analysis.metadata);
                 }
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
@@ -1877,12 +1926,7 @@ fn collect_signatures(
                     &body_context,
                 );
                 item_errors.extend(body_analysis.errors);
-                if !body_analysis.metadata.anonymous_record_targets.is_empty()
-                    || !body_analysis
-                        .metadata
-                        .conflicted_anonymous_records
-                        .is_empty()
-                {
+                if !body_analysis.metadata.is_empty() {
                     callable_body_metadata.insert(def.name.clone(), body_analysis.metadata);
                 }
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
@@ -1941,12 +1985,7 @@ fn collect_signatures(
                     &body_context,
                 );
                 item_errors.extend(body_analysis.errors);
-                if !body_analysis.metadata.anonymous_record_targets.is_empty()
-                    || !body_analysis
-                        .metadata
-                        .conflicted_anonymous_records
-                        .is_empty()
-                {
+                if !body_analysis.metadata.is_empty() {
                     callable_body_metadata.insert(def.name.clone(), body_analysis.metadata);
                 }
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
@@ -2800,6 +2839,8 @@ struct CallableBodyAnalysis {
     metadata: TypedCallableBodyMetadata,
 }
 
+type StableExprIdentities = HashMap<usize, ExprIdentity>;
+
 impl ReturnContract {
     fn single(ty: String) -> Self {
         Self::Single { ty }
@@ -2810,8 +2851,18 @@ impl ReturnContract {
     }
 }
 
-fn expr_identity(expr: &Expr) -> usize {
-    expr as *const Expr as usize
+fn stable_expr_identities(stmts: &[Stmt]) -> StableExprIdentities {
+    let mut expr_identities = HashMap::new();
+    walk_stmts_with_expr_identities(stmts, &mut |expr_identity, expr| {
+        expr_identities.insert(expr as *const Expr as usize, expr_identity);
+    });
+    expr_identities
+}
+
+fn stable_expr_identity(expr: &Expr, expr_identities: &StableExprIdentities) -> ExprIdentity {
+    *expr_identities
+        .get(&(expr as *const Expr as usize))
+        .expect("expression identity should exist for walked callable body")
 }
 
 fn strip_optional_type(ty: &str) -> &str {
@@ -3201,6 +3252,7 @@ fn collect_constructor_targets_from_stmts<'a>(
     local_bindings: &HashMap<String, ValueType>,
     binding_exprs: &HashMap<String, &'a Expr>,
     infer_context: &ExprInferenceContext<'_>,
+    expr_identities: &StableExprIdentities,
     metadata: &mut TypedCallableBodyMetadata,
 ) {
     let mut scope_types = local_bindings.clone();
@@ -3213,6 +3265,7 @@ fn collect_constructor_targets_from_stmts<'a>(
                     &scope_types,
                     &scope_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
                 let (inferred, _) = infer_expr_type(expr, &scope_types, infer_context);
@@ -3225,6 +3278,7 @@ fn collect_constructor_targets_from_stmts<'a>(
                     &scope_types,
                     &scope_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
                 let (inferred, _) = infer_expr_type(&node_stmt.expr, &scope_types, infer_context);
@@ -3236,6 +3290,7 @@ fn collect_constructor_targets_from_stmts<'a>(
                 &scope_types,
                 &scope_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             ),
             Stmt::Return(fields) => {
@@ -3245,6 +3300,7 @@ fn collect_constructor_targets_from_stmts<'a>(
                         &scope_types,
                         &scope_exprs,
                         infer_context,
+                        expr_identities,
                         metadata,
                     );
                 }
@@ -3253,27 +3309,29 @@ fn collect_constructor_targets_from_stmts<'a>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn annotate_expr_with_expected_record<'a>(
     expr: &'a Expr,
     expected_type: &str,
     local_bindings: &HashMap<String, ValueType>,
     binding_exprs: &HashMap<String, &'a Expr>,
     infer_context: &ExprInferenceContext<'_>,
+    expr_identities: &StableExprIdentities,
     metadata: &mut TypedCallableBodyMetadata,
-    visiting: &mut HashSet<usize>,
+    visiting: &mut HashSet<ExprIdentity>,
 ) {
     let Some(expected_type) = record_target_type(expected_type, infer_context.record_type_registry)
     else {
         return;
     };
-    let expr_id = expr_identity(expr);
-    if !visiting.insert(expr_id) {
+    let expr_identity = stable_expr_identity(expr, expr_identities);
+    if !visiting.insert(expr_identity) {
         return;
     }
 
     match expr {
         Expr::Record(None, fields) => {
-            metadata.annotate_anonymous_record_target(expr, expected_type);
+            metadata.annotate_anonymous_record_target(expr_identity, expected_type);
             if let Some(expected_fields) =
                 resolve_record_fields(expected_type, infer_context.record_type_registry)
             {
@@ -3286,6 +3344,7 @@ fn annotate_expr_with_expected_record<'a>(
                             local_bindings,
                             binding_exprs,
                             infer_context,
+                            expr_identities,
                             metadata,
                             visiting,
                         );
@@ -3306,6 +3365,7 @@ fn annotate_expr_with_expected_record<'a>(
                             local_bindings,
                             binding_exprs,
                             infer_context,
+                            expr_identities,
                             metadata,
                             visiting,
                         );
@@ -3321,6 +3381,7 @@ fn annotate_expr_with_expected_record<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                     visiting,
                 );
@@ -3332,6 +3393,7 @@ fn annotate_expr_with_expected_record<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             annotate_expr_with_expected_record(
@@ -3340,6 +3402,7 @@ fn annotate_expr_with_expected_record<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
                 visiting,
             );
@@ -3350,6 +3413,7 @@ fn annotate_expr_with_expected_record<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                     visiting,
                 );
@@ -3361,6 +3425,7 @@ fn annotate_expr_with_expected_record<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             for arm in arms {
@@ -3370,6 +3435,7 @@ fn annotate_expr_with_expected_record<'a>(
                         local_bindings,
                         binding_exprs,
                         infer_context,
+                        expr_identities,
                         metadata,
                     );
                 }
@@ -3379,6 +3445,7 @@ fn annotate_expr_with_expected_record<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                     visiting,
                 );
@@ -3396,6 +3463,7 @@ fn annotate_expr_with_expected_record<'a>(
                             &scope_types,
                             &scope_exprs,
                             infer_context,
+                            expr_identities,
                             metadata,
                         );
                         let (inferred, _) = infer_expr_type(expr, &scope_types, infer_context);
@@ -3409,6 +3477,7 @@ fn annotate_expr_with_expected_record<'a>(
                             &scope_types,
                             &scope_exprs,
                             infer_context,
+                            expr_identities,
                             metadata,
                         );
                         let (inferred, _) =
@@ -3423,6 +3492,7 @@ fn annotate_expr_with_expected_record<'a>(
                             &scope_types,
                             &scope_exprs,
                             infer_context,
+                            expr_identities,
                             metadata,
                         );
                         trailing_expr = Some(inner);
@@ -3435,6 +3505,7 @@ fn annotate_expr_with_expected_record<'a>(
                                 &scope_types,
                                 &scope_exprs,
                                 infer_context,
+                                expr_identities,
                                 metadata,
                                 visiting,
                             );
@@ -3443,6 +3514,7 @@ fn annotate_expr_with_expected_record<'a>(
                                 &scope_types,
                                 &scope_exprs,
                                 infer_context,
+                                expr_identities,
                                 metadata,
                             );
                         }
@@ -3457,6 +3529,7 @@ fn annotate_expr_with_expected_record<'a>(
                     &scope_types,
                     &scope_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                     visiting,
                 );
@@ -3468,6 +3541,7 @@ fn annotate_expr_with_expected_record<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             annotate_expr_with_expected_record(
@@ -3476,6 +3550,7 @@ fn annotate_expr_with_expected_record<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
                 visiting,
             );
@@ -3487,6 +3562,7 @@ fn annotate_expr_with_expected_record<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
                 visiting,
             );
@@ -3494,7 +3570,7 @@ fn annotate_expr_with_expected_record<'a>(
         _ => {}
     }
 
-    visiting.remove(&expr_id);
+    visiting.remove(&expr_identity);
 }
 
 fn collect_constructor_targets_from_expr<'a>(
@@ -3502,6 +3578,7 @@ fn collect_constructor_targets_from_expr<'a>(
     local_bindings: &HashMap<String, ValueType>,
     binding_exprs: &HashMap<String, &'a Expr>,
     infer_context: &ExprInferenceContext<'_>,
+    expr_identities: &StableExprIdentities,
     metadata: &mut TypedCallableBodyMetadata,
 ) {
     match expr {
@@ -3512,6 +3589,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
         }
@@ -3541,7 +3619,10 @@ fn collect_constructor_targets_from_expr<'a>(
                 // List<Span> after merging with the fold body).
                 if let (Expr::Record(None, _), ValueType::Record(ref fields)) = (init_expr, &acc_ty)
                 {
-                    metadata.annotate_anonymous_record_field_types(init_expr, fields);
+                    metadata.annotate_anonymous_record_field_types(
+                        stable_expr_identity(init_expr, expr_identities),
+                        fields,
+                    );
                 }
 
                 // Recurse into fold lambda body with typed accumulator and element params
@@ -3566,6 +3647,7 @@ fn collect_constructor_targets_from_expr<'a>(
                         &fold_scope_types,
                         &fold_scope_exprs,
                         infer_context,
+                        expr_identities,
                         metadata,
                     );
                 }
@@ -3581,6 +3663,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3595,6 +3678,7 @@ fn collect_constructor_targets_from_expr<'a>(
                         local_bindings,
                         binding_exprs,
                         infer_context,
+                        expr_identities,
                         metadata,
                         &mut HashSet::new(),
                     );
@@ -3623,6 +3707,7 @@ fn collect_constructor_targets_from_expr<'a>(
                                 local_bindings,
                                 binding_exprs,
                                 infer_context,
+                                expr_identities,
                                 metadata,
                                 &mut HashSet::new(),
                             );
@@ -3636,6 +3721,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3647,6 +3733,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3657,6 +3744,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             collect_constructor_targets_from_expr(
@@ -3664,6 +3752,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
         }
@@ -3675,6 +3764,7 @@ fn collect_constructor_targets_from_expr<'a>(
                         local_bindings,
                         binding_exprs,
                         infer_context,
+                        expr_identities,
                         metadata,
                     );
                 }
@@ -3691,7 +3781,10 @@ fn collect_constructor_targets_from_expr<'a>(
                         (name.clone(), ty)
                     })
                     .collect();
-                metadata.annotate_anonymous_record_field_types(expr, &inferred_fields);
+                metadata.annotate_anonymous_record_field_types(
+                    stable_expr_identity(expr, expr_identities),
+                    &inferred_fields,
+                );
             }
             let record_fields = type_name
                 .as_deref()
@@ -3706,6 +3799,7 @@ fn collect_constructor_targets_from_expr<'a>(
                             local_bindings,
                             binding_exprs,
                             infer_context,
+                            expr_identities,
                             metadata,
                             &mut HashSet::new(),
                         );
@@ -3716,6 +3810,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3726,6 +3821,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             for arm in arms {
@@ -3735,6 +3831,7 @@ fn collect_constructor_targets_from_expr<'a>(
                         local_bindings,
                         binding_exprs,
                         infer_context,
+                        expr_identities,
                         metadata,
                     );
                 }
@@ -3743,6 +3840,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3753,6 +3851,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             collect_constructor_targets_from_expr(
@@ -3760,6 +3859,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             if let Some(otherwise) = else_expr {
@@ -3768,6 +3868,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3778,6 +3879,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             let mut loop_scope_types = local_bindings.clone();
@@ -3797,6 +3899,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     &loop_scope_types,
                     &loop_scope_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 ),
                 ForBody::Block(stmts) => collect_constructor_targets_from_stmts(
@@ -3804,6 +3907,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     &loop_scope_types,
                     &loop_scope_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 ),
             }
@@ -3820,6 +3924,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 &lambda_scope_types,
                 &lambda_scope_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
         }
@@ -3830,6 +3935,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3841,6 +3947,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
                 collect_constructor_targets_from_expr(
@@ -3848,6 +3955,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3858,6 +3966,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
             collect_constructor_targets_from_expr(
@@ -3865,6 +3974,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
             );
         }
@@ -3873,6 +3983,7 @@ fn collect_constructor_targets_from_expr<'a>(
             local_bindings,
             binding_exprs,
             infer_context,
+            expr_identities,
             metadata,
         ),
         Expr::Return(fields) => {
@@ -3882,6 +3993,7 @@ fn collect_constructor_targets_from_expr<'a>(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                 );
             }
@@ -3891,6 +4003,7 @@ fn collect_constructor_targets_from_expr<'a>(
             local_bindings,
             binding_exprs,
             infer_context,
+            expr_identities,
             metadata,
         ),
     }
@@ -3905,6 +4018,7 @@ fn analyze_callable_body(
     body_context: &BodyInferenceContext<'_>,
 ) -> CallableBodyAnalysis {
     let mut analysis = CallableBodyAnalysis::default();
+    let expr_identities = stable_expr_identities(body.stmts);
     let bound_service_registry = build_bound_service_call_registry(uses, body_context);
     let param_callable_contracts = collect_param_callable_contracts(params);
     let infer_context = ExprInferenceContext {
@@ -4067,6 +4181,7 @@ fn analyze_callable_body(
                     &local_bindings,
                     &binding_exprs,
                     &infer_context,
+                    &expr_identities,
                     &mut analysis.metadata,
                 );
                 let (inferred, infer_errors) =
@@ -4083,6 +4198,7 @@ fn analyze_callable_body(
                     &local_bindings,
                     &binding_exprs,
                     &infer_context,
+                    &expr_identities,
                     &mut analysis.metadata,
                 );
                 let (inferred, infer_errors) =
@@ -4099,6 +4215,7 @@ fn analyze_callable_body(
                     &local_bindings,
                     &binding_exprs,
                     &infer_context,
+                    &expr_identities,
                     &mut analysis.metadata,
                 );
                 trailing_expr = Some(expr);
@@ -4118,6 +4235,7 @@ fn analyze_callable_body(
                     &local_bindings,
                     &binding_exprs,
                     &infer_context,
+                    &expr_identities,
                     &mut analysis.metadata,
                 ));
             }
@@ -4132,6 +4250,7 @@ fn analyze_callable_body(
                     &local_bindings,
                     &binding_exprs,
                     &infer_context,
+                    &expr_identities,
                     &mut analysis.metadata,
                     &mut HashSet::new(),
                 );
@@ -4158,9 +4277,11 @@ fn analyze_callable_body(
             analysis.errors.extend(mismatches);
         }
     }
+    analysis.metadata.finalize_anonymous_record_types(caller);
     analysis
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_return_stmt(
     caller: &str,
     return_contract: &ReturnContract,
@@ -4168,6 +4289,7 @@ fn validate_return_stmt(
     local_bindings: &HashMap<String, ValueType>,
     binding_exprs: &HashMap<String, &Expr>,
     infer_context: &ExprInferenceContext<'_>,
+    expr_identities: &StableExprIdentities,
     metadata: &mut TypedCallableBodyMetadata,
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
@@ -4186,6 +4308,7 @@ fn validate_return_stmt(
                 local_bindings,
                 binding_exprs,
                 infer_context,
+                expr_identities,
                 metadata,
                 &mut HashSet::new(),
             );
@@ -4219,6 +4342,7 @@ fn validate_return_stmt(
                     local_bindings,
                     binding_exprs,
                     infer_context,
+                    expr_identities,
                     metadata,
                     &mut HashSet::new(),
                 );
@@ -5332,6 +5456,42 @@ fn merge_record_ir_fields(
 
     for ((_, existing_ty), (_, next_ty)) in existing.iter_mut().zip(next.iter()) {
         *existing_ty = merge_ir_types(existing_ty.clone(), next_ty.clone());
+    }
+}
+
+fn ir_type_to_type_id(ir_type: &gunbc_ir::code_ir::IrType) -> Option<String> {
+    match ir_type {
+        gunbc_ir::code_ir::IrType::Named(name) => Some(name.clone()),
+        gunbc_ir::code_ir::IrType::Generic(name, args) => {
+            let rendered_args = args
+                .iter()
+                .map(ir_type_to_type_id)
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("{name}<{}>", rendered_args.join(", ")))
+        }
+        gunbc_ir::code_ir::IrType::Optional(inner) => {
+            Some(format!("Optional<{}>", ir_type_to_type_id(inner)?))
+        }
+        gunbc_ir::code_ir::IrType::Bool => Some("Bool".to_string()),
+        gunbc_ir::code_ir::IrType::Int => Some("Int".to_string()),
+        gunbc_ir::code_ir::IrType::Str => Some("String".to_string()),
+        gunbc_ir::code_ir::IrType::Tuple(items) => {
+            let rendered_items = items
+                .iter()
+                .map(ir_type_to_type_id)
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("({})", rendered_items.join(", ")))
+        }
+        gunbc_ir::code_ir::IrType::Unit => Some("Unit".to_string()),
+        gunbc_ir::code_ir::IrType::Record(_) | gunbc_ir::code_ir::IrType::Unknown => None,
+    }
+}
+
+fn capitalize_first_char(value: &str) -> String {
+    let mut chars = value.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
 

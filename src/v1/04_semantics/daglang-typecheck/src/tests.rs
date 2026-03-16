@@ -3,6 +3,22 @@ use daglang_contract::FileId;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+fn expr_identity(
+    stmts: &[daglang_syntax::ast::Stmt],
+    target: &daglang_syntax::ast::Expr,
+) -> daglang_syntax::ast_utils::ExprIdentity {
+    let mut found = None;
+    daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+        stmts,
+        &mut |expr_identity, expr| {
+            if std::ptr::eq(expr, target) {
+                found = Some(expr_identity);
+            }
+        },
+    );
+    found.expect("expected walked expression identity")
+}
+
 fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
     let modules = sources
         .iter()
@@ -730,7 +746,7 @@ fn make() -> String {
         .expect("make should carry callable body metadata");
     assert_eq!(
         metadata
-            .anonymous_record_target(record_expr)
+            .anonymous_record_target(expr_identity(&make.body.stmts, record_expr))
             .map(|target| target.0.as_str()),
         Some("ConfigB")
     );
