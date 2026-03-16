@@ -47,3 +47,43 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --exclude gunbc-codegen
+
+  # Structural scope guard for openclaw automation branches.
+  # Fails if any single commit touches more than 5 src/v1 phase directories,
+  # and prints a per-commit scope summary for reviewer visibility.
+  queue-scope:
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'openclaw/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Audit per-commit phase scope
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          BASE=$(git merge-base origin/main HEAD)
+          FAIL=0
+          for COMMIT in $(git rev-list --no-merges --reverse "$BASE"..HEAD); do
+            SUBJ=$(git log -1 --format='%s' "$COMMIT")
+            PHASES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT" -- 'src/v1/' \
+              | sed -n 's|^src/v1/\([0-9][0-9]_[^/]*\)/.*|\1|p' | sort -u)
+            if [ -z "$PHASES" ]; then
+              N=0
+            else
+              N=$(echo "$PHASES" | wc -l | tr -d ' ')
+            fi
+            echo "commit ${COMMIT:0:12}  phases=$N  $SUBJ"
+            if [ "$N" -gt 0 ]; then
+              echo "$PHASES" | sed 's/^/  /'
+            fi
+            if [ "$N" -gt 5 ]; then
+              echo "::error::commit ${COMMIT:0:12} touches $N phase directories (limit: 5)"
+              FAIL=1
+            fi
+          done
+          exit "$FAIL"
