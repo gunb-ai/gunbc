@@ -480,6 +480,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &global_fn_return_types,
             &global_fn_param_types,
             &enum_accessor_fields,
+            &global_optional_return_fns,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -648,6 +649,7 @@ fn emit_module(
     global_fn_return_types: &HashMap<String, String>,
     global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
     enum_accessor_fields: &HashMap<String, HashSet<String>>,
+    optional_return_fns: &HashSet<String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -697,6 +699,7 @@ fn emit_module(
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
         enum_accessor_fields: enum_accessor_fields.clone(),
+        optional_return_fns: optional_return_fns.clone(),
     };
 
     for item in items {

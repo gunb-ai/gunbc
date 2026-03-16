@@ -742,16 +742,18 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 }
             } else {
                 // Fallback: when the receiver type can't be inferred, check if
-                // the field name uniquely identifies an enum accessor across all
-                // known enums. This handles cases like `x.typed.resolved_type`
-                // where `x` is bound in a match arm and its type isn't tracked
-                // in ir_scope.
-                let matching_enums: Vec<_> = ctx
+                // the field name is an enum accessor and NOT a struct field.
+                // This handles cases like `x.typed.resolved_type` where `x` is
+                // bound in a match arm and its type isn't tracked in ir_scope.
+                let is_enum_accessor = ctx
                     .enum_accessor_fields
-                    .iter()
-                    .filter(|(_, fields)| fields.contains(field.as_str()))
-                    .collect();
-                if matching_enums.len() == 1 {
+                    .values()
+                    .any(|fields| fields.contains(field.as_str()));
+                let is_struct_field = ctx
+                    .struct_field_types
+                    .values()
+                    .any(|fields| fields.contains_key(field.as_str()));
+                if is_enum_accessor && !is_struct_field {
                     return code_ir::Expr::MethodCall {
                         receiver: Box::new(compile_expr(receiver, ctx, counter)),
                         method: field.clone(),
@@ -2669,6 +2671,9 @@ fn compile_match_typed(
     // correct parent enum (e.g., LitStr -> LiteralValue::LitStr, not TokenKind::LitStr).
     let scrutinee_type =
         infer_scrutinee_type(scrutinee, ctx).or_else(|| infer_type_from_arms(arms, ctx));
+    // Also infer the scrutinee's IrType so we can propagate inner types through
+    // Option patterns (Some { value: binding } → binding gets the unwrapped type).
+    let scrutinee_ir_type = infer_ast_expr_type(scrutinee, ctx);
     let result_expected_type = result_expected_type
         .map(str::to_string)
         .or_else(|| infer_match_result_type(arms, ctx));
@@ -2682,6 +2687,7 @@ fn compile_match_typed(
                     has_none_arm,
                     scrutinee_type.as_deref(),
                     result_expected_type.as_deref(),
+                    scrutinee_ir_type.as_ref(),
                     ctx,
                     counter,
                 )
@@ -2827,6 +2833,7 @@ fn compile_match_arm(
     option_context: bool,
     expected_type: Option<&str>,
     result_expected_type: Option<&str>,
+    scrutinee_ir_type: Option<&IrType>,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::MatchArm {
@@ -2849,21 +2856,9 @@ fn compile_match_arm(
     // Collect deref let-bindings for boxed fields in variant patterns.
     // If the pattern destructures a variant with boxed fields, we need
     // `let field = *field;` to deref Box<T> → T for the body.
+    // Recurses into nested variant patterns (e.g., Some { value: Optional { inner: x } }).
     let mut deref_stmts = Vec::new();
-    if let ast::Pattern::Variant(variant_name, fields) = &arm.pattern {
-        for (field_name, field_pat) in fields {
-            if let ast::Pattern::Ident(bind_name) = field_pat {
-                if needs_box_wrapping(variant_name, field_name, ctx) {
-                    deref_stmts.push(code_ir::Stmt::Let {
-                        name: bind_name.clone(),
-                        expr: code_ir::Expr::Deref(Box::new(code_ir::Expr::Var(bind_name.clone()))),
-                        mutable: false,
-                        ir_type: None,
-                    });
-                }
-            }
-        }
-    }
+    collect_boxed_deref_stmts(&arm.pattern, ctx, &mut deref_stmts);
     // Track match bindings from optional fields so the body compilation
     // knows they're already Option<T> and doesn't double-wrap in Some().
     let body_ctx = if let ast::Pattern::Variant(variant_name, fields) = &arm.pattern {
@@ -2891,6 +2886,19 @@ fn compile_match_arm(
                 }
             }
         }
+        // Special case: Some { value: binding } → propagate the inner type
+        // from the scrutinee's Optional type to the binding.
+        if variant_name == "Some"
+            && fields.len() == 1
+            && fields[0].0 == "value"
+        {
+            if let ast::Pattern::Ident(bind_name) = &fields[0].1 {
+                if let Some(IrType::Optional(inner)) = scrutinee_ir_type {
+                    ir_type_bindings.push((bind_name.clone(), inner.as_ref().clone()));
+                }
+            }
+        }
+
         if opt_bindings.is_empty() && type_bindings.is_empty() && ir_type_bindings.is_empty() {
             std::borrow::Cow::Borrowed(ctx)
         } else {
@@ -3356,6 +3364,41 @@ fn needs_box_wrapping(struct_name: &str, field_name: &str, ctx: &CompileContext)
     false
 }
 
+/// Recursively collect deref let-bindings for boxed fields in a pattern tree.
+///
+/// Handles nested variant patterns such as `Some { value: Optional { inner: x } }`
+/// where `inner` is a boxed field on `Optional` — the binding `x` needs `let x = *x;`
+/// in the match body.
+fn collect_boxed_deref_stmts(
+    pat: &ast::Pattern,
+    ctx: &CompileContext,
+    out: &mut Vec<code_ir::Stmt>,
+) {
+    if let ast::Pattern::Variant(variant_name, fields) = pat {
+        for (field_name, field_pat) in fields {
+            match field_pat {
+                ast::Pattern::Ident(bind_name) => {
+                    if needs_box_wrapping(variant_name, field_name, ctx) {
+                        out.push(code_ir::Stmt::Let {
+                            name: bind_name.clone(),
+                            expr: code_ir::Expr::Deref(Box::new(code_ir::Expr::Var(
+                                bind_name.clone(),
+                            ))),
+                            mutable: false,
+                            ir_type: None,
+                        });
+                    }
+                }
+                // Recurse into nested variant patterns
+                ast::Pattern::Variant(_, _) => {
+                    collect_boxed_deref_stmts(field_pat, ctx, out);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Check if an AST expression will produce an already-optional value.
 ///
 /// Returns true when the expression accesses a field that is itself `T?` in
@@ -3384,10 +3427,16 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext, target_struc
             }
             false
         }
-        // Ident: check if the variable is a known optional parameter.
+        // Ident: check if the variable is a known optional parameter or has
+        // an Optional type in ir_scope.
         ast::Expr::Ident(name) => {
             if ctx.optional_params.contains(name.as_str()) {
                 return true;
+            }
+            // Check ir_scope: if the variable's inferred type is Optional, it's
+            // already wrapped — don't double-wrap.
+            if let Some(ir_type) = ctx.ir_scope.get(name.as_str()) {
+                return matches!(ir_type, IrType::Optional(_));
             }
             // If this name is a known parameter with a concrete type, trust param_types
             // over the heuristic — a non-optional parameter is never already optional.
@@ -3516,6 +3565,24 @@ fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType>
             };
             Some(IrType::Generic("List".to_string(), vec![elem_type]))
         }
+        // first(list) / last(list) → Option<element_type>
+        ast::Expr::Call(name, args)
+            if (name == "first" || name == "last") && args.len() == 1 =>
+        {
+            let list_type = infer_ast_expr_type(&args[0].1, ctx);
+            match list_type {
+                Some(IrType::Generic(ref n, ref inner)) if n == "List" && !inner.is_empty() => {
+                    Some(IrType::Optional(Box::new(inner[0].clone())))
+                }
+                _ => None,
+            }
+        }
+        // skip(list, n) / take(list, n) / filter(list, pred) → same list type
+        ast::Expr::Call(name, args)
+            if (name == "skip" || name == "take" || name == "filter") && !args.is_empty() =>
+        {
+            infer_ast_expr_type(&args[0].1, ctx)
+        }
         ast::Expr::Call(name, _) => {
             // Look up return type from fn_return_types → resolve to Named IrType
             // when the return type corresponds to a known struct or enum.
@@ -3532,7 +3599,12 @@ fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType>
                     }
                 })
         }
-        ast::Expr::Match(_, arms) => infer_match_result_type(arms, ctx).map(IrType::Named),
+        ast::Expr::Match(_, arms) => infer_match_result_type(arms, ctx)
+            .map(IrType::Named)
+            .or_else(|| {
+                // Fallback: try inferring from arm body expressions directly
+                arms.iter().find_map(|arm| infer_ast_expr_type(&arm.body, ctx))
+            }),
         // If/else: try then branch, fall back to else branch
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
             infer_ast_expr_type(then_expr, ctx).or_else(|| infer_ast_expr_type(else_expr, ctx))
