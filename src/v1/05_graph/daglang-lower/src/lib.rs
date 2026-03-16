@@ -374,11 +374,6 @@ pub struct ServiceCallMetadata {
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
-    /// Response provider classification (S45). Stamped only from explicit DSL
-    /// `config { response_provider: X }`. Propagated to
-    /// `Node.response_provider`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_provider: Option<ResponseProvider>,
 }
 
 impl LoweredOp {
@@ -513,14 +508,21 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
     for node in &mut dag.nodes {
         node.kind = obligation_to_node_kind(node);
-        // Stamp transport class and response provider from ServiceCallMetadata
-        // so consumers can read them directly from the Node without
-        // Any-downcasting LoweredOp (S45/S46).
+        // Stamp transport class from ServiceCallMetadata so consumers can
+        // read it directly from the Node without Any-downcasting LoweredOp.
+        // S45: response_provider is derived from the spec's single-authority
+        // ResponseClassification, not a separate metadata field.
         if let gunbc_ir::NodeBody::Opaque(ref op) = node.body {
             if let Some(meta) = op.service_call_metadata() {
                 node.transport_class = Some(meta.transport);
-                if let Some(rp) = meta.response_provider {
-                    node.response_provider = Some(rp);
+                if let Some(ServiceOperationSpec::Rest(ref rest)) = meta.spec {
+                    if let Some(rc) = rest
+                        .middleware
+                        .as_ref()
+                        .and_then(|m| m.response_classification.as_ref())
+                    {
+                        node.response_provider = Some(rc.provider);
+                    }
                 }
             }
         }
@@ -1428,7 +1430,6 @@ fn derive_interface_stub_transport_triplets(
                         interface: interface.name.clone(),
                         capability: capability.name.clone(),
                     }),
-                    response_provider: None,
                 };
 
                 let suffix = sanitize_identifier(&format!(
@@ -6186,9 +6187,6 @@ fn derive_service_call_metadata(
     };
 
     let response_classification = derive_response_classification(service, operation)?;
-    let response_provider = response_classification
-        .as_ref()
-        .map(|classification| classification.provider);
     let spec = derive_operation_spec(
         service,
         operation,
@@ -6212,7 +6210,6 @@ fn derive_service_call_metadata(
         idempotent: operation.idempotent,
         readonly,
         spec,
-        response_provider,
     })
 }
 
@@ -6589,6 +6586,7 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
 fn derive_rest_spec(
     service: &ServiceDef,
     operation: &OperationDef,
+    response_classification: Option<ResponseClassification>,
 ) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
@@ -6621,7 +6619,7 @@ fn derive_rest_spec(
     });
 
     // Derive middleware config from rate_limit/retry blocks (TL-12).
-    let middleware = derive_middleware_config(service, operation)?;
+    let middleware = derive_middleware_config(service, response_classification)?;
 
     // Derive response mapping from response {} blocks (SL-9).
     let response_mapping = derive_response_mapping(&operation.response);

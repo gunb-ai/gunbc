@@ -1131,7 +1131,7 @@ mod tests {
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,
@@ -1156,7 +1156,7 @@ mod tests {
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,
@@ -1181,7 +1181,7 @@ mod tests {
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,
@@ -1308,7 +1308,7 @@ mod tests {
                     idempotent: true,
                     readonly: true,
                     spec: None,
-                    response_provider: None,
+
                 }),
             }
         );
@@ -1360,7 +1360,7 @@ mod tests {
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,
@@ -1385,7 +1385,7 @@ mod tests {
                         idempotent: false,
                         readonly: false,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,
@@ -1448,7 +1448,7 @@ mod tests {
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,
@@ -1501,7 +1501,7 @@ mod tests {
                         idempotent: true,
                         readonly: true,
                         spec: None,
-                        response_provider: None,
+
                     }),
                     is_interactive: false,
                     resource_target: None,

@@ -1519,7 +1519,7 @@ mod tests {
                 env: vec![],
                 exit_mapping: vec![],
             })),
-            response_provider: None,
+
         }
     }
 
@@ -1573,7 +1573,7 @@ mod tests {
                 env: vec![],
                 exit_mapping: vec![],
             })),
-            response_provider: None,
+
         }
     }
 
@@ -1810,7 +1810,7 @@ mod tests {
                 output_shape: None,
                 mock_responses: vec![],
             }))),
-            response_provider: None,
+
         }
     }
 
@@ -1877,7 +1877,7 @@ mod tests {
                 output_shape: None,
                 mock_responses: vec![],
             }))),
-            response_provider: None,
+
         }
     }
 
@@ -2033,7 +2033,7 @@ mod tests {
                 idempotent: false,
                 readonly: false,
                 spec: None,
-                response_provider: None,
+    
             },
         );
         let err = resolve_node(&node).unwrap_err();

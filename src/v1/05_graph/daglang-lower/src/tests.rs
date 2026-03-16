@@ -2596,7 +2596,7 @@ fn classify_obligation_uses_structural_lowered_metadata() {
             idempotent: true,
             readonly: true,
             spec: None,
-            response_provider: None,
+
         }),
         is_interactive: false,
         resource_target: None,
@@ -2696,7 +2696,7 @@ fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
                 idempotent: true,
                 readonly: true,
                 spec: None,
-                response_provider: None,
+    
             }),
             is_interactive: false,
             resource_target: None,
@@ -3574,7 +3574,7 @@ fn make_branch_body_dag_with_transports_has_triplets() {
             idempotent: true,
             readonly: true,
             spec: None,
-            response_provider: None,
+
         },
         prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
         parse_output: "result".to_string(),
@@ -3629,7 +3629,7 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             idempotent: true,
             readonly: true,
             spec: None,
-            response_provider: None,
+
         },
         prepare_inputs: vec!["bucket".to_string()],
         parse_output: "result".to_string(),
@@ -4130,8 +4130,10 @@ func run() -> { ok: Bool } {
 }
 
 #[test]
-fn explicit_error_shape_without_authoritative_response_provider_fails_closed() {
-    let typed = typed_project_from_sources(&[(
+fn explicit_error_shape_without_authoritative_response_provider_fails_at_typecheck() {
+    // S45: error_shape without response_provider is rejected at typecheck (TC043),
+    // not at lowering. This verifies the boundary contract is enforced upstream.
+    let graph = module_graph_from_sources(&[(
         "dsl/services/error_shape_requires_provider.dag",
         r#"module sample.services
 service custom.Api {
@@ -4151,16 +4153,14 @@ func run() -> { ok: Bool } {
 }"#,
     )]);
 
-    let error = lower_typed_project(&typed).expect_err("lowering should fail");
-    assert!(matches!(
-        error,
-        LowerError::InvalidTransportSpec {
-            service,
-            operation,
-            detail,
-        } if service == "custom.Api"
-            && operation == "Fetch"
-            && detail.contains("error_shape")
-            && detail.contains("response_provider")
-    ));
+    let errors = daglang_typecheck::typecheck_module_graph(&graph)
+        .expect_err("typecheck should reject error_shape without response_provider");
+    assert!(
+        errors.iter().any(|e| matches!(
+            e,
+            daglang_typecheck::TypeError::ErrorShapeRequiresResponseProvider { service }
+                if service == "custom.Api"
+        )),
+        "expected TC043 ErrorShapeRequiresResponseProvider, got: {errors:?}"
+    );
 }
