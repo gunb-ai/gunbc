@@ -26,6 +26,22 @@ pub struct CommentSyntax {
     pub doc_prefix: Option<&'static str>,
 }
 
+/// Build the AddComment opaque node.
+///
+/// Single constructor for the `LanguageOp::AddComment` node spec so that
+/// port signature changes require editing one site.
+pub fn build_add_comment_node() -> Node<LanguageOp> {
+    Node::opaque(
+        "add_comment",
+        vec![
+            Port::scalar("content", "String"),
+            Port::scalar("prefix", "String"),
+        ],
+        vec![Port::scalar("commented", "String")],
+        LanguageOp::AddComment,
+    )
+}
+
 /// Build the CommentPrefix SubDag node.
 ///
 /// This SubDag adds comment syntax to content.
@@ -41,15 +57,7 @@ pub fn build_comment_prefix_subdag() -> Node<LanguageOp> {
     let mut inner = Dag::new();
 
     // Add comment node
-    inner.add_node(Node::opaque(
-        "add_comment",
-        vec![
-            Port::scalar("content", "String"),
-            Port::scalar("prefix", "String"),
-        ],
-        vec![Port::scalar("commented", "String")],
-        LanguageOp::AddComment,
-    ));
+    inner.add_node(build_add_comment_node());
 
     // Create the SubDag node with interface
     Node::subdag("comment_prefix", inner)

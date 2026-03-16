@@ -10,7 +10,7 @@
 //! - CommentPrefix SubDag
 
 use crate::dag::{Dag, Port};
-use crate::language::LanguageOp;
+use crate::language::{build_add_comment_node, LanguageOp};
 use crate::node::Node;
 
 /// Build the ConfigFormat category SubDag node.
@@ -38,16 +38,8 @@ pub fn build_config_format_subdag() -> Node<LanguageOp> {
         LanguageOp::ConfigFormatConfig,
     ));
 
-    // Comment prefix node (would compose CommentPrefix in full impl)
-    inner.add_node(Node::opaque(
-        "add_comment",
-        vec![
-            Port::scalar("content", "String"),
-            Port::scalar("prefix", "String"),
-        ],
-        vec![Port::scalar("commented", "String")],
-        LanguageOp::AddComment,
-    ));
+    // Comment prefix node (composes CommentPrefix trait)
+    inner.add_node(build_add_comment_node());
 
     // Create the SubDag node with interface
     Node::subdag("config_format", inner)

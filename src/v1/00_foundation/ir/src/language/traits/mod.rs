@@ -9,7 +9,7 @@ pub mod comment;
 pub mod naming;
 pub mod type_system;
 
-pub use comment::build_comment_prefix_subdag;
+pub use comment::{build_add_comment_node, build_comment_prefix_subdag};
 pub use naming::{
     build_naming_conventions_subdag, convert_for_language, naming_for_language, LanguageNaming,
 };
