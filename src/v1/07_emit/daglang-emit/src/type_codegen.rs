@@ -15,6 +15,8 @@
 //! ## Fn mapping
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
+use std::collections::{HashMap, HashSet};
+
 use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
 use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
@@ -244,13 +246,20 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
 
             let variant_strs: Vec<String> = variants.iter().map(format_variant).collect();
 
-            vec![code_ir::Item::Enum(EnumDef {
+            let mut items = vec![code_ir::Item::Enum(EnumDef {
                 name: td.name.clone(),
                 is_pub: true,
                 derives,
                 variants: variant_strs,
                 doc: vec![],
-            })]
+            })];
+
+            // Generate accessor methods for fields common to all variants
+            if let Some(impl_block) = enum_accessor_impl(&td.name, variants) {
+                items.push(code_ir::Item::Raw(impl_block));
+            }
+
+            items
         }
         TypeBody::Alias(type_expr) => {
             let rust_type = type_expr_to_rust(type_expr);
@@ -260,6 +269,81 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
             ))]
         }
     }
+}
+
+/// Compute fields that appear in every variant of a sum type.
+/// Returns (field_name, rust_type_str) pairs for fields present in all variants with the same type.
+pub fn common_enum_fields(variants: &[Variant]) -> Vec<(String, String)> {
+    if variants.is_empty() {
+        return vec![];
+    }
+    // Only consider variants that have fields (skip unit variants)
+    let struct_variants: Vec<&Variant> = variants.iter().filter(|v| !v.fields.is_empty()).collect();
+    if struct_variants.len() != variants.len() {
+        return vec![]; // Not all variants have fields
+    }
+    // Start with fields from first variant
+    let first_fields: HashMap<&str, &TypeExpr> = struct_variants[0]
+        .fields
+        .iter()
+        .map(|f| (f.name.as_str(), &f.ty))
+        .collect();
+    // Keep only fields present in ALL variants with matching types
+    first_fields
+        .into_iter()
+        .filter(|(name, ty)| {
+            let ty_str = type_expr_to_rust(ty);
+            struct_variants[1..].iter().all(|v| {
+                v.fields
+                    .iter()
+                    .any(|f| f.name == *name && type_expr_to_rust(&f.ty) == ty_str)
+            })
+        })
+        .map(|(name, ty)| (name.to_string(), type_expr_to_rust(ty)))
+        .collect()
+}
+
+/// Build map from enum name → set of common field names across all type definitions.
+pub fn build_enum_accessor_fields(type_defs: &[&TypeDef]) -> HashMap<String, HashSet<String>> {
+    let mut map = HashMap::new();
+    for td in type_defs {
+        if let TypeBody::Sum(variants) = &td.body {
+            let common = common_enum_fields(variants);
+            if !common.is_empty() {
+                map.insert(
+                    td.name.clone(),
+                    common.iter().map(|(name, _)| name.clone()).collect(),
+                );
+            }
+        }
+    }
+    map
+}
+
+/// Generate accessor method `impl` block for an enum with common fields.
+/// Returns cloned values (not references) to match the ownership semantics
+/// of the DSL's field access, where `x.field` produces an owned value.
+fn enum_accessor_impl(enum_name: &str, variants: &[Variant]) -> Option<String> {
+    let common = common_enum_fields(variants);
+    if common.is_empty() {
+        return None;
+    }
+    let mut methods = Vec::new();
+    for (field_name, rust_type) in &common {
+        let arms: Vec<String> = variants
+            .iter()
+            .map(|v| format!("{}::{} {{ {}, .. }} => {}.clone()", enum_name, v.name, field_name, field_name))
+            .collect();
+        methods.push(format!(
+            "    pub fn {field_name}(&self) -> {rust_type} {{\n        match self {{\n            {arms}\n        }}\n    }}",
+            arms = arms.join(",\n            ")
+        ));
+    }
+    Some(format!(
+        "impl {} {{\n{}\n}}",
+        enum_name,
+        methods.join("\n\n")
+    ))
 }
 
 /// Like `typedef_to_code_ir` but maps `String` → `&'static str` for static data compatibility.
@@ -1033,6 +1117,7 @@ pub fn typedefs_to_source_file(
         struct_field_ir_types,
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
+        enum_accessor_fields: HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1164,6 +1249,7 @@ pub fn generate_types_for_modules(
             struct_field_ir_types: sfit,
             use_counts: std::collections::HashMap::new(),
             fold_accum_name: None,
+            enum_accessor_fields: HashMap::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1304,8 +1390,6 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
 // ---------------------------------------------------------------------------
 // Recursive type detection → Box<> insertion (Phase 4)
 // ---------------------------------------------------------------------------
-
-use std::collections::{HashMap, HashSet};
 
 /// Compute the set of (TypeName, FieldName) pairs where the field type
 /// creates a recursive cycle and needs to be wrapped in `Box<>`.
@@ -1527,6 +1611,11 @@ pub fn typedef_to_code_ir_boxed(
                     first.name,
                     default_fields.join(", ")
                 )));
+            }
+
+            // Generate accessor methods for fields common to all variants
+            if let Some(impl_block) = enum_accessor_impl(&td.name, variants) {
+                items.push(code_ir::Item::Raw(impl_block));
             }
 
             items

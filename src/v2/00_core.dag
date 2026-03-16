@@ -139,6 +139,11 @@ type TypeExpr
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
+// Connective — the logical primitive for type structure.
+// Conj = conjunction: all children hold simultaneously (record fields).
+// Disj = disjunction: exactly one child holds (sum variants).
+type Connective = Conj | Disj
+
 type TypeBody
   = Record { fields: List<Field> }
   | Sum { variants: List<Variant> }
@@ -262,16 +267,10 @@ type ServiceConfig {
   retry: Expr?
 }
 
-type ResponseMapping {
-  status: Expr
-  type_expr: TypeExpr
-}
-
-type MockResponseDef {
-  status: Expr
-  body: Expr
-  description: String?
-}
+// ResponseMapping, MockResponseDef, ExitMapping: dissolved (Unit 5).
+// Response mappings -> properties: { name: "response_<status>", value: type_name }
+// Mock responses -> properties: { name: "mock_<status>", value: body_expr }
+// Exit mappings -> properties: { name: "exit_<code>", value: type_name }
 
 type AuthConfig {
   scheme: String
@@ -282,24 +281,22 @@ type AuthConfig {
 type HeaderDef { name: String, value: Expr }
 type EnvDef { name: String, value: Expr }
 
+// OperationDef: parse-intermediate type. The parser reads operations using this
+// shape, then dissolves fields into Node properties and return_type.
 type OperationDef {
   name: String
   inputs: List<Field>
   outputs: List<Field>
-  response: List<ResponseMapping>
-  mock_response: List<MockResponseDef>
-  exit_mappings: List<ExitMapping>
-  modifiers: List<OperationModifier>
+  response_props: List<FieldInit>
+  mock_props: List<FieldInit>
+  exit_props: List<FieldInit>
+  modifier_props: List<FieldInit>
   transport: TransportBinding?
   span: SourceSpan
 }
 
-type ExitMapping {
-  code: Expr
-  type_expr: TypeExpr
-  description: String?
-}
-
+// OperationModifier: dissolved (Unit 5 Phase B).
+// Modifiers become properties: { name: "idempotent"|"readonly"|"hermetic", value: true }
 type OperationModifier = Idempotent | Readonly | Hermetic
 
 type CapabilityDef {
@@ -309,26 +306,16 @@ type CapabilityDef {
   span: SourceSpan
 }
 
-// PortContract: operation/capability-specific metadata carried on child Nodes.
-// When operations/capabilities dissolve into Node children, this sum type
-// groups their domain-specific fields so Node doesn't grow 6 rarely-used fields.
-type PortContract
-  = OperationContract {
-      outputs: List<Field>
-      response: List<ResponseMapping>
-      mock_response: List<MockResponseDef>
-      exit_mappings: List<ExitMapping>
-      modifiers: List<OperationModifier>
-    }
-  | CapabilityContract {
-      outputs: List<Field>
-    }
+// PortContract: dissolved (Unit 5 Phase D).
+// All operation/capability metadata now lives in Node properties + return_type.
+// Service detection: transport != none
+// Resource detection: transport == none && children |> count > 0
 
 // =========================================================================
 // Render target — which language the emitter produces.
 // =========================================================================
 
-type RenderTarget = Rust | Python
+type RenderTarget = Rust | Python | Go
 
 // =========================================================================
 // Compiler output
@@ -403,7 +390,7 @@ fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
     TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: s } => BinOp { op: o, left: typed_expr_to_expr(texpr: l), right: typed_expr_to_expr(texpr: r), span: s }
     TypedUnaryOp { op: o, operand: e, resolved_type: _, span: s } => UnaryOp { op: o, operand: typed_expr_to_expr(texpr: e), span: s }
     TypedLambda { params: ps, body: bd, resolved_type: _, span: s } => Lambda { params: ps, body: typed_expr_to_expr(texpr: bd), span: s }
-    TypedStringInterp { parts: ps, resolved_type: _, span: s } => StringInterp { parts: ps |> map(p => match p { TypedText { value: v } => Text { value: v } | TypedInterpolation { expr: e } => Interpolation { expr: typed_expr_to_expr(texpr: e) } }), span: s }
+    TypedStringInterp { parts: ps, resolved_type: _, span: s } => StringInterp { parts: ps |> map(p => match p { TypedText { value: v } => Text { value: v }, TypedInterpolation { expr: e } => Interpolation { expr: typed_expr_to_expr(texpr: e) } }), span: s }
     TypedBlock { stmts: ss, resolved_type: _, span: s } => Block { stmts: ss |> map(st => typed_expr_to_expr(texpr: st)), span: s }
     TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: t, span: s }
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: s } => ForEach { variable: v, collection: typed_expr_to_expr(texpr: c), body: typed_expr_to_expr(texpr: bd), span: s }
@@ -441,37 +428,91 @@ type Node {
   span: SourceSpan
   // Fractal composition — operations, capabilities, items are all children
   children: List<Node>
+  // Logical connective — And (record/all-hold), Or (sum/one-holds), none (leaf)
+  connective: Connective?
   // Ports — what flows in and out
   params: List<Param>
   return_type: TypeExpr?
   uses: List<ResourceUse>
   // Computation — how it executes (none = externally provided)
   body: Expr?
-  // Shape — type structure (none = not a type definition)
-  shape: TypeBody?
   // Binding — external execution strategy
   transport: TransportBinding?
   // Metadata
   properties: List<FieldInit>
   type_annotation: TypeExpr?
   config: ServiceConfig?
-  // Operation/capability contract metadata for child nodes
-  port_contract: PortContract?
 }
 
 type TypedNode {
   name: String
   span: SourceSpan
   children: List<TypedNode>
+  connective: Connective?
   params: List<Param>
   return_type: TypeExpr
   uses: List<ResourceUse>
   body: TypedExpr?
-  shape: TypeBody?
   transport: TransportBinding?
   properties: List<FieldInit>
   type_annotation: TypeExpr?
   config: ServiceConfig?
-  port_contract: PortContract?
+}
+
+// =========================================================================
+// Bridge helpers — derive TypeBody from Node's connective + children.
+// These allow downstream code (typecheck, resolve, emit) to access the
+// structural type body without storing it redundantly on Node.
+// =========================================================================
+
+fn child_node_to_field(node: Node) -> Field {
+  let type_expr = match node.return_type {
+    Some { value: Optional { inner: inner, span: _ } } => inner,
+    Some { value: te } => te,
+    None => Primitive { name: "Unknown", span: node.span }
+  }
+  let optional = match node.return_type {
+    Some { value: Optional { inner: _, span: _ } } => true,
+    _ => false
+  }
+  Field { name: node.name, type_expr: type_expr, optional: optional, default_value: node.body, from_key: none, span: node.span }
+}
+
+fn child_node_to_variant(node: Node) -> Variant {
+  let fields = node.children |> map(c => child_node_to_field(node: c))
+  Variant { name: node.name, fields: fields, span: node.span }
+}
+
+fn node_shape(node: Node) -> TypeBody? {
+  match node.connective {
+    Some { value: Conj } => Some { value: Record { fields: node.children |> map(c => child_node_to_field(node: c)) } },
+    Some { value: Disj } => Some { value: Sum { variants: node.children |> map(c => child_node_to_variant(node: c)) } },
+    None => if node.return_type != none { Some { value: Alias { base: node.return_type.value } } } else { none }
+  }
+}
+
+fn typed_child_to_field(node: TypedNode) -> Field {
+  let type_expr = match node.return_type {
+    Optional { inner: inner, span: _ } => inner,
+    te => te
+  }
+  let optional = match node.return_type {
+    Optional { inner: _, span: _ } => true,
+    _ => false
+  }
+  Field { name: node.name, type_expr: type_expr, optional: optional, default_value: none, from_key: none, span: node.span }
+}
+
+fn typed_child_to_variant(node: TypedNode) -> Variant {
+  let fields = node.children |> map(c => typed_child_to_field(node: c))
+  Variant { name: node.name, fields: fields, span: node.span }
+}
+
+fn typed_node_shape(node: TypedNode) -> TypeBody? {
+  match node.connective {
+    Some { value: Conj } => Some { value: Record { fields: node.children |> map(c => typed_child_to_field(node: c)) } },
+    Some { value: Disj } => Some { value: Sum { variants: node.children |> map(c => typed_child_to_variant(node: c)) } },
+    None => none
+  }
 }
 

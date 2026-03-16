@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Node, Diagnostic, Severity }
+import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Node, Connective, Conj, Disj, Diagnostic, Severity }
 
 // =========================================================================
 // Output types
@@ -259,16 +259,12 @@ fn get_item_name(item: Node) -> String {
 }
 
 // Extract variant constructor names from a type definition.
-// For sum types, each variant name is importable. For other items,
-// returns an empty list.
+// For sum types (disjunction), each child node is a variant whose name
+// is importable. For other items, returns an empty list.
 fn get_variant_names(item: Node) -> List<String> {
-  if item.shape == none {
-    []
-  } else {
-    match item.shape.value {
-      Sum { variants: vs } => vs |> map(v => v.name)
-      _ => []
-    }
+  match item.connective {
+    Some { value: Disj } => item.children |> map(c => c.name)
+    _ => []
   }
 }
 

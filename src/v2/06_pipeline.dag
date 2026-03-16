@@ -14,7 +14,7 @@
 module v2.compiler.pipeline
 
 import v2.std.core {
-  Diagnostic, CompileResult, RenderTarget
+  Diagnostic, CompileResult, RenderTarget, SourceSpan, Error
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -125,6 +125,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     let emit_result = match target {
       Rust => emit_rust(typed: typed)
       Python => emit_python(typed: typed)
+      Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: SourceSpan { start: 0, end: 0 }, module_name: "" }] }
     }
 
     CompileResult {

@@ -20,13 +20,12 @@ module v2.compiler.typecheck
 import std.types { SourceSpan }
 import v2.std.core {
   Module, Node, TypedNode, ImportNames, ImportAll, ImportSpecific,
-  TypeExpr, TypeBody, Field, Variant, Param,
+  TypeExpr, Field, Variant, Param,
+  Connective, Conj, Disj,
   Expr, Diagnostic,
   Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive,
-  Record, Sum, Alias,
-  PortContract, OperationContract, CapabilityContract, ResourceUse,
-  ResponseMapping, ExitMapping,
-  TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef, MockResponseDef,
+  ResourceUse,
+  TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   Error,
   TypedExpr,
   TypedLiteral, TypedVar, TypedFieldAccess, TypedCall, TypedMethodCall,
@@ -101,6 +100,36 @@ type ResolveResult {
 type OpEntry {
   name: String
   outputs: List<Field>
+}
+
+// Derive outputs from a Node's return_type (Optional<TypeExpr>).
+// After PortContract dissolution, outputs live in return_type:
+//   - Single output: return_type is the TypeExpr directly
+//   - Multiple outputs: return_type is Product { fields: outputs }
+//   - No outputs: return_type is none
+fn return_type_to_outputs(return_type: TypeExpr?, span: SourceSpan) -> List<Field> {
+  match return_type {
+    None => []
+    Some { value: Product { name: pn, fields: fs, span: _ } } =>
+      match pn {
+        None => fs
+        Some { value: _ } => [Field { name: "value", type_expr: return_type.value, optional: false, default_value: none, from_key: none, span: span }]
+      }
+    Some { value: te } => [Field { name: "value", type_expr: te, optional: false, default_value: none, from_key: none, span: span }]
+  }
+}
+
+// Same as return_type_to_outputs but for TypedNode (non-optional return_type).
+fn typed_return_type_to_outputs(return_type: TypeExpr, span: SourceSpan) -> List<Field> {
+  match return_type {
+    Product { name: pn, fields: fs, span: _ } =>
+      match pn {
+        None => fs
+        Some { value: _ } => [Field { name: "value", type_expr: return_type, optional: false, default_value: none, from_key: none, span: span }]
+      }
+    Primitive { name: "Unit", span: _ } => []
+    te => [Field { name: "value", type_expr: te, optional: false, default_value: none, from_key: none, span: span }]
+  }
 }
 
 type InferScope {
@@ -216,20 +245,8 @@ type EnvDefResolveResult {
   diagnostics: List<Diagnostic>
 }
 
-type MockResponseResolveResult {
-  mock_response: MockResponseDef
-  diagnostics: List<Diagnostic>
-}
-
-type ResponseMappingResolveResult {
-  response: ResponseMapping
-  diagnostics: List<Diagnostic>
-}
-
-type ExitMappingResolveResult {
-  exit_mapping: ExitMapping
-  diagnostics: List<Diagnostic>
-}
+// MockResponseResolveResult, ResponseMappingResolveResult, ExitMappingResolveResult:
+// dissolved (Unit 5) — response/exit/mock data is now in Node properties.
 
 // Internal result type for variant-level resolution.
 type VariantResult {
@@ -1333,15 +1350,15 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
 // -------------------------------------------------------------------------
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
-  // Type definition: has shape
-  if item.shape != none {
+  // Type definition: has connective (record/sum) and is not a transport binding
+  if item.connective != none && item.transport == none {
     TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: unit_type(), uses: item.uses, body: none,
-        shape: item.shape, transport: item.transport,
+        connective: item.connective, transport: item.transport,
         properties: item.properties, type_annotation: item.type_annotation,
-        config: item.config, port_contract: item.port_contract
+        config: item.config
       },
       diagnostics: [], type_entries: []
     }
@@ -1359,9 +1376,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: resolved_ret, uses: item.uses, body: Some { value: body_result.typed },
-        shape: none, transport: item.transport,
+        connective: none, transport: item.transport,
         properties: item.properties, type_annotation: item.type_annotation,
-        config: item.config, port_contract: item.port_contract
+        config: item.config
       },
       diagnostics: body_result.diagnostics, type_entries: body_result.type_entries
     }
@@ -1374,9 +1391,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: [], params: [],
         return_type: resolved_ret, uses: [], body: Some { value: val_result.typed },
-        shape: none, transport: item.transport,
+        connective: none, transport: item.transport,
         properties: item.properties, type_annotation: item.type_annotation,
-        config: item.config, port_contract: item.port_contract
+        config: item.config
       },
       diagnostics: val_result.diagnostics, type_entries: val_result.type_entries
     }
@@ -1388,9 +1405,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: resolved_ret, uses: item.uses, body: none,
-        shape: none, transport: item.transport,
+        connective: none, transport: item.transport,
         properties: item.properties, type_annotation: item.type_annotation,
-        config: item.config, port_contract: item.port_contract
+        config: item.config
       },
       diagnostics: [], type_entries: []
     }
@@ -1402,9 +1419,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: resolved_ret, uses: item.uses, body: none,
-        shape: item.shape, transport: item.transport,
+        connective: item.connective, transport: item.transport,
         properties: item.properties, type_annotation: item.type_annotation,
-        config: item.config, port_contract: item.port_contract
+        config: item.config
       },
       diagnostics: [], type_entries: []
     }
@@ -1532,7 +1549,15 @@ fn filter_recursive_bindings(binding_list: List<TypeBinding>, bindings: Map<Stri
 // =========================================================================
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>) -> BuildTypeEnvResult {
-  let kernel = TypeEnv { bindings: empty_map(), recursive_types: [] }
+  // Seed the kernel with primitive types so they resolve even when
+  // std.types is not in the compilation set (e.g., in isolated tests).
+  let zero_span = SourceSpan { start: 0, end: 0 }
+  let kernel_bindings = fold(
+    ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"],
+    init: empty_map(),
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Primitive { name: name, span: zero_span } })
+  )
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [] }
 
   // Collect imported type bindings from parent modules.
   // For type resolution to work on imported types (e.g., FileClassification
@@ -1567,9 +1592,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
-    if item.shape != none {
-      let body = item.shape.value
-      let resolved = type_body_to_expr(name: item.name, body: body, span: item.span)
+    if item.connective != none {
+      let resolved = node_to_type_expr(name: item.name, item: item, span: item.span)
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved })
+    } else if item.return_type != none && item.params |> count == 0 && item.body == none {
+      // Type alias: connective is none, but return_type references the aliased type
+      let resolved = match item.return_type.value {
+        Primitive { name: _, span: _ } => item.return_type.value
+        _ => Named { name: item.name, span: item.span }
+      }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved })
     } else if item.transport == none && item.children |> count > 0 {
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: Named { name: item.name, span: item.span } })
@@ -1591,27 +1622,70 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 }
 
 // =========================================================================
-// Convert a TypeBody (Record/Sum/Alias) to a TypeExpr.
+// Convert a Node (with connective) to a TypeExpr.
 //
 // This creates the initial (unresolved) structural form of a type
 // definition. Named references within fields/variants remain as Named
 // until resolve_type_expr processes them.
+//
+// Conj → Product (record: all children hold simultaneously)
+// Disj → Coproduct (sum: exactly one child holds)
+// none with return_type → alias (Primitive passthrough or Named)
 // =========================================================================
 
-fn type_body_to_expr(name: String, body: TypeBody, span: SourceSpan) -> TypeExpr {
-  match body {
-    Record { fields: fields } =>
-      Product { name: name, fields: fields, span: span }
-    Sum { variants: variants } =>
-      Coproduct { name: name, variants: variants, span: span }
-    Alias { base: base } =>
-      // Bare primitive declarations (type String, type Int, etc.) have
-      // base = Primitive. Bind directly to the Primitive so downstream
-      // code (emit_primitive_type) sees Primitive, not Named.
-      match base {
-        Primitive { name: _, span: _ } => base
-        _ => Named { name: name, span: span }
-      }
+fn node_to_type_expr(name: String, item: Node, span: SourceSpan) -> TypeExpr {
+  match item.connective.value {
+    Conj =>
+      Product { name: name, fields: map(item.children, child => child_to_field(child: child)), span: span }
+    Disj =>
+      Coproduct { name: name, variants: map(item.children, child => child_to_variant(child: child)), span: span }
+  }
+}
+
+// Convert a child Node (field of a record type) to a Field.
+// The child's return_type becomes the field's type_expr.
+// If return_type is Optional, unwrap to inner type and set optional: true.
+fn child_to_field(child: Node) -> Field {
+  if child.return_type == none {
+    Field {
+      name: child.name,
+      type_expr: Named { name: child.name, span: child.span },
+      optional: false,
+      default_value: child.body,
+      from_key: none,
+      span: child.span
+    }
+  } else {
+    match child.return_type.value {
+      Optional { inner: inner, span: _ } =>
+        Field {
+          name: child.name,
+          type_expr: inner,
+          optional: true,
+          default_value: child.body,
+          from_key: none,
+          span: child.span
+        }
+      _ =>
+        Field {
+          name: child.name,
+          type_expr: child.return_type.value,
+          optional: false,
+          default_value: child.body,
+          from_key: none,
+          span: child.span
+        }
+    }
+  }
+}
+
+// Convert a child Node (variant of a sum type) to a Variant.
+// The variant's children are its fields.
+fn child_to_variant(child: Node) -> Variant {
+  Variant {
+    name: child.name,
+    fields: map(child.children, c => child_to_field(child: c)),
+    span: child.span
   }
 }
 
@@ -1959,43 +2033,8 @@ fn resolve_transport_binding(transport: TransportBinding, env: TypeEnv, module_n
   }
 }
 
-fn resolve_mock_response(mock_response: MockResponseDef, env: TypeEnv, module_name: String) -> MockResponseResolveResult {
-  let status_result = resolve_expr_types(expr: mock_response.status, env: env, module_name: module_name)
-  let body_result = resolve_expr_types(expr: mock_response.body, env: env, module_name: module_name)
-  MockResponseResolveResult {
-    mock_response: MockResponseDef {
-      status: status_result.expr,
-      body: body_result.expr,
-      description: mock_response.description
-    },
-    diagnostics: concat(status_result.diagnostics, body_result.diagnostics)
-  }
-}
-
-fn resolve_response_mapping(mapping: ResponseMapping, env: TypeEnv, module_name: String) -> ResponseMappingResolveResult {
-  let status_result = resolve_expr_types(expr: mapping.status, env: env, module_name: module_name)
-  let type_result = resolve_type_expr(expr: mapping.type_expr, env: env, module_name: module_name)
-  ResponseMappingResolveResult {
-    response: ResponseMapping {
-      status: status_result.expr,
-      type_expr: type_result.resolved
-    },
-    diagnostics: concat(status_result.diagnostics, type_result.diagnostics)
-  }
-}
-
-fn resolve_exit_mapping(mapping: ExitMapping, env: TypeEnv, module_name: String) -> ExitMappingResolveResult {
-  let code_result = resolve_expr_types(expr: mapping.code, env: env, module_name: module_name)
-  let type_result = resolve_type_expr(expr: mapping.type_expr, env: env, module_name: module_name)
-  ExitMappingResolveResult {
-    exit_mapping: ExitMapping {
-      code: code_result.expr,
-      type_expr: type_result.resolved,
-      description: mapping.description
-    },
-    diagnostics: concat(code_result.diagnostics, type_result.diagnostics)
-  }
-}
+// resolve_mock_response, resolve_response_mapping, resolve_exit_mapping:
+// dissolved (Unit 5) — data now lives in Node properties, resolved by resolve_field_init.
 
 fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match expr {
@@ -2186,15 +2225,6 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
 // =========================================================================
 
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
-  // Resolve shape if present
-  let shape_resolved = if item.shape == none {
-    TypeBodyResult { body: Record { fields: [] }, diagnostics: [] }
-  } else {
-    resolve_type_body(body: item.shape.value, env: env, module_name: module_name)
-  }
-  let resolved_shape = if item.shape == none { none } else { Some { value: shape_resolved.body } }
-  let shape_diags = shape_resolved.diagnostics
-
   // Resolve params
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
@@ -2263,49 +2293,11 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       name: item.name, span: item.span, children: resolved_children,
       params: resolved_params, return_type: resolved_ret,
       uses: resolved_uses, body: resolved_body,
-      shape: resolved_shape, transport: resolved_transport,
+      connective: item.connective, transport: resolved_transport,
       properties: resolved_props, type_annotation: resolved_anno,
-      config: resolved_config, port_contract: item.port_contract
+      config: resolved_config
     },
-    diagnostics: concat(shape_diags, param_diags, ret_result.diagnostics, use_diags, body_diags, anno_diags, transport_diags, config_diags, prop_diags, child_diags)
-  }
-}
-
-// =========================================================================
-// Resolve a TypeBody (Record/Sum/Alias)
-// =========================================================================
-
-type TypeBodyResult {
-  body: TypeBody
-  diagnostics: List<Diagnostic>
-}
-
-fn resolve_type_body(body: TypeBody, env: TypeEnv, module_name: String) -> TypeBodyResult {
-  match body {
-    Record { fields: fields } =>
-      let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
-      let resolved_fields = map(field_results, fr => fr.field)
-      let all_diags = flat_map(field_results, fr => fr.diagnostics)
-      TypeBodyResult {
-        body: Record { fields: resolved_fields },
-        diagnostics: all_diags
-      }
-
-    Sum { variants: variants } =>
-      let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
-      let resolved_variants = map(variant_results, vr => vr.variant)
-      let all_diags = flat_map(variant_results, vr => vr.diagnostics)
-      TypeBodyResult {
-        body: Sum { variants: resolved_variants },
-        diagnostics: all_diags
-      }
-
-    Alias { base: base } =>
-      let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
-      TypeBodyResult {
-        body: Alias { base: base_result.resolved },
-        diagnostics: base_result.diagnostics
-      }
+    diagnostics: concat(param_diags, ret_result.diagnostics, use_diags, body_diags, anno_diags, transport_diags, config_diags, prop_diags, child_diags)
   }
 }
 
@@ -2347,15 +2339,11 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let func_env = build_func_env(items: resolved_items)
 
   // Build service registry: map service paths to OpEntry lists from children.
+  // After PortContract dissolution, outputs are derived from child return_type.
   let local_svc_registry = fold(resolved_items, init: empty_map(), f: (acc, item) =>
     if item.transport != none && item.children |> count > 0 {
-      let entries = item.children |> filter(c => c.port_contract != none) |> map(c =>
-        match c.port_contract.value {
-          OperationContract { outputs: outs, response: _, mock_response: _, exit_mappings: _, modifiers: _ } =>
-            OpEntry { name: c.name, outputs: outs }
-          CapabilityContract { outputs: outs } =>
-            OpEntry { name: c.name, outputs: outs }
-        }
+      let entries = item.children |> map(c =>
+        OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span) }
       )
       map_insert(acc, item.name, entries)
     } else {
@@ -2365,13 +2353,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let service_registry = fold(map_values(parent_index), init: local_svc_registry, f: (acc, typed_parent) =>
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
       if titem.transport != none && titem.children |> count > 0 {
-        let entries = titem.children |> filter(c => c.port_contract != none) |> map(c =>
-          match c.port_contract.value {
-            OperationContract { outputs: outs, response: _, mock_response: _, exit_mappings: _, modifiers: _ } =>
-              OpEntry { name: c.name, outputs: outs }
-            CapabilityContract { outputs: outs } =>
-              OpEntry { name: c.name, outputs: outs }
-          }
+        let entries = titem.children |> map(c =>
+          OpEntry { name: c.name, outputs: typed_return_type_to_outputs(return_type: c.return_type, span: c.span) }
         )
         map_insert(inner_acc, titem.name, entries)
       } else {
@@ -2557,8 +2540,6 @@ fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
 }
 
 fn collect_unresolved_in_item(item: Node, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  let shape_diags = if item.shape == none { [] }
-    else { collect_unresolved_in_type_body(body: item.shape.value, module_name: module_name, defined_names: defined_names) }
   let param_diags = fold(item.params, init: [], f: (acc, p) =>
     concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
   )
@@ -2582,48 +2563,9 @@ fn collect_unresolved_in_item(item: Node, module_name: String, defined_names: Ma
   let prop_diags = fold(item.properties, init: [], f: (acc, property) =>
     concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
   )
-  // Walk port_contract for unresolved types
-  let pc_diags = if item.port_contract == none { [] }
-    else {
-      match item.port_contract.value {
-        OperationContract { outputs: outs, response: resp, mock_response: mocks, exit_mappings: exits, modifiers: _ } =>
-          let out_diags = fold(outs, init: [], f: (inner_acc, f) =>
-            concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-          )
-          let resp_diags = fold(resp, init: [], f: (inner_acc, r) =>
-            concat(inner_acc, collect_unresolved_in_response_mapping(mapping: r, module_name: module_name, defined_names: defined_names))
-          )
-          let mock_diags = fold(mocks, init: [], f: (inner_acc, m) =>
-            concat(inner_acc, collect_unresolved_in_mock_response(mock_response: m, module_name: module_name, defined_names: defined_names))
-          )
-          let exit_diags = fold(exits, init: [], f: (inner_acc, e) =>
-            concat(inner_acc, collect_unresolved_in_exit_mapping(mapping: e, module_name: module_name, defined_names: defined_names))
-          )
-          concat(out_diags, resp_diags, mock_diags, exit_diags)
-        CapabilityContract { outputs: outs } =>
-          fold(outs, init: [], f: (inner_acc, f) =>
-            concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-          )
-      }
-    }
-  concat(shape_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags, pc_diags)
-}
-
-fn collect_unresolved_in_type_body(body: TypeBody, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match body {
-    Record { fields: fields } =>
-      fold(fields, init: [], f: (acc, f) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-    Sum { variants: variants } =>
-      fold(variants, init: [], f: (acc, v) =>
-        fold(v.fields, init: acc, f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-      )
-    Alias { base: base } =>
-      collect_unresolved_in_type_expr(expr: base, module_name: module_name, defined_names: defined_names)
-  }
+  // PortContract dissolved: unresolved types are now found via child_diags (children walk)
+  // and prop_diags (properties walk), which cover the dissolved response/exit/mock properties.
+  concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
 }
 
 fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
@@ -2737,26 +2679,9 @@ fn collect_unresolved_in_transport_binding(transport: TransportBinding, module_n
   }
 }
 
-fn collect_unresolved_in_response_mapping(mapping: ResponseMapping, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  concat(
-    collect_unresolved_in_expr(expr: mapping.status, module_name: module_name, defined_names: defined_names),
-    collect_unresolved_in_type_expr(expr: mapping.type_expr, module_name: module_name, defined_names: defined_names)
-  )
-}
-
-fn collect_unresolved_in_mock_response(mock_response: MockResponseDef, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  concat(
-    collect_unresolved_in_expr(expr: mock_response.status, module_name: module_name, defined_names: defined_names),
-    collect_unresolved_in_expr(expr: mock_response.body, module_name: module_name, defined_names: defined_names)
-  )
-}
-
-fn collect_unresolved_in_exit_mapping(mapping: ExitMapping, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  concat(
-    collect_unresolved_in_expr(expr: mapping.code, module_name: module_name, defined_names: defined_names),
-    collect_unresolved_in_type_expr(expr: mapping.type_expr, module_name: module_name, defined_names: defined_names)
-  )
-}
+// collect_unresolved_in_response_mapping, collect_unresolved_in_mock_response,
+// collect_unresolved_in_exit_mapping: dissolved (Unit 5) — now covered by
+// collect_unresolved_in_field_init via the properties walk.
 
 fn collect_unresolved_in_expr(expr: Expr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
   match expr {
@@ -2860,8 +2785,6 @@ fn collect_unresolved_in_expr(expr: Expr, module_name: String, defined_names: Ma
 // =========================================================================
 
 fn collect_unresolved_in_typed_item(item: TypedNode, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  let shape_diags = if item.shape == none { [] }
-    else { collect_unresolved_in_type_body(body: item.shape.value, module_name: module_name, defined_names: defined_names) }
   let param_diags = fold(item.params, init: [], f: (acc, p) =>
     concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
   )
@@ -2884,31 +2807,8 @@ fn collect_unresolved_in_typed_item(item: TypedNode, module_name: String, define
   let prop_diags = fold(item.properties, init: [], f: (acc, property) =>
     concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
   )
-  // Walk port_contract for unresolved types
-  let pc_diags = if item.port_contract == none { [] }
-    else {
-      match item.port_contract.value {
-        OperationContract { outputs: outs, response: resp, mock_response: mocks, exit_mappings: exits, modifiers: _ } =>
-          let out_diags = fold(outs, init: [], f: (inner_acc, f) =>
-            concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-          )
-          let resp_diags = fold(resp, init: [], f: (inner_acc, r) =>
-            concat(inner_acc, collect_unresolved_in_response_mapping(mapping: r, module_name: module_name, defined_names: defined_names))
-          )
-          let mock_diags = fold(mocks, init: [], f: (inner_acc, m) =>
-            concat(inner_acc, collect_unresolved_in_mock_response(mock_response: m, module_name: module_name, defined_names: defined_names))
-          )
-          let exit_diags = fold(exits, init: [], f: (inner_acc, e) =>
-            concat(inner_acc, collect_unresolved_in_exit_mapping(mapping: e, module_name: module_name, defined_names: defined_names))
-          )
-          concat(out_diags, resp_diags, mock_diags, exit_diags)
-        CapabilityContract { outputs: outs } =>
-          fold(outs, init: [], f: (inner_acc, f) =>
-            concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-          )
-      }
-    }
-  concat(shape_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags, pc_diags)
+  // PortContract dissolved: unresolved types are found via child_diags and prop_diags.
+  concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
 }
 
 fn collect_unresolved_in_typed_expr(texpr: TypedExpr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {

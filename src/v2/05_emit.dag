@@ -20,6 +20,7 @@ module v2.compiler.emit
 import v2.std.core {
   Import,
   Node, TypedNode,
+  Connective, Conj, Disj,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
@@ -27,7 +28,6 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
   FuncSig,
   TypedExpr, TypedLet,
@@ -87,6 +87,10 @@ fn empty_emit_scope() -> InferScope {
     type_cache: empty_map(),
     service_registry: empty_map()
   }
+}
+
+fn span_key(start: Int, end: Int) -> String {
+  concat(to_string(value: start), ":", to_string(value: end))
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {

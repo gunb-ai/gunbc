@@ -611,6 +611,262 @@ the connective and transport together determine the logical role.
   path replaces scaffolding as the logical foundation matures, not
   before.
 
+### Acceptance criteria: before/after sign-off
+
+#### BEFORE state (current, after W10-W13)
+
+Node type (13 fields):
+
+```dag
+type Node {
+  name: String
+  span: SourceSpan
+  children: List<Node>          // ← carries operations/capabilities (W10-W13)
+  params: List<Param>
+  return_type: TypeExpr?
+  uses: List<ResourceUse>
+  body: Expr?
+  shape: TypeBody?              // ← type structure (Record/Sum/Alias)
+  transport: TransportBinding?
+  properties: List<FieldInit>
+  type_annotation: TypeExpr?
+  config: ServiceConfig?
+  port_contract: PortContract?  // ← operation/capability metadata
+}
+```
+
+Supporting types still alive:
+
+```
+TypeBody = Record { fields: List<Field> }
+         | Sum { variants: List<Variant> }
+         | Alias { base: TypeExpr }
+
+Field { name, type_expr, optional, default_value, from_key, span }
+Variant { name, fields: List<Field>, span }
+
+PortContract
+  = OperationContract { outputs, response, mock_response, exit_mappings, modifiers }
+  | CapabilityContract { outputs }
+
+ResponseMapping { status: Expr, type_expr: TypeExpr }
+MockResponseDef { status: Expr, body: Expr, description: String? }
+ExitMapping { code: Expr, type_expr: TypeExpr, description: String? }
+OperationModifier = Idempotent | Readonly | Hermetic
+
+OperationDef { name, inputs, outputs, response, mock_response, exit_mappings,
+               modifiers, transport, span }
+CapabilityDef { name, inputs, outputs, span }
+```
+
+Emit dispatch (6-arm heuristic):
+
+```
+if shape != none                                    → type
+else if body != none && type_annotation == none      → fn/func
+else if body != none && type_annotation != none      → data
+else if transport != none && children > 0            → service
+else if transport == none && children > 0            → resource
+else if params > 0 && body == none                   → extern
+```
+
+Test baseline: 129 tests (98 daglang-syntax + 31 v2-compiler-tests).
+
+#### AFTER state (W14-W17 complete: shape dissolved)
+
+Node type (13 fields — same count, different fields):
+
+```dag
+type Connective = And | Or
+
+type Node {
+  name: String
+  span: SourceSpan
+  children: List<Node>
+  connective: Connective?       // ← NEW: AND/OR logical primitive
+  params: List<Param>
+  return_type: TypeExpr?
+  uses: List<ResourceUse>
+  body: Expr?
+  // shape: GONE
+  transport: TransportBinding?
+  properties: List<FieldInit>
+  type_annotation: TypeExpr?
+  config: ServiceConfig?
+  port_contract: PortContract?
+}
+```
+
+Types deleted:
+
+```
+DELETED: TypeBody (Record | Sum | Alias)
+DELETED: Variant
+DELETED: Field as type structure
+         (Field still exists in PortContract.outputs — dissolved in Phase A-D)
+```
+
+How current constructs map:
+
+```
+type Person { name: String, age: Int }
+  BEFORE: shape: Record { fields: [Field("name", String), Field("age", Int)] }
+  AFTER:  connective: And, children: [Node("name", ret: String), Node("age", ret: Int)]
+
+type Result = Ok { v: Int } | Err { e: String }
+  BEFORE: shape: Sum { variants: [Variant("Ok", [Field("v", Int)]), ...] }
+  AFTER:  connective: Or, children: [
+            Node("Ok", connective: And, children: [Node("v", ret: Int)]),
+            Node("Err", connective: And, children: [Node("e", ret: String)])]
+
+type Name = String
+  BEFORE: shape: Alias { base: Named("String") }
+  AFTER:  connective: none, return_type: Named("String")
+
+{ name: String, debug: Bool? }
+  BEFORE: Field { name: "debug", optional: true, type_expr: Bool }
+  AFTER:  Node { name: "debug", return_type: Optional { inner: Bool } }
+
+{ retries: Int = 3 }
+  BEFORE: Field { name: "retries", default_value: LitInt(3) }
+  AFTER:  Node { name: "retries", return_type: Int, body: LitInt(3) }
+```
+
+Emit dispatch (uses connective for type arm):
+
+```
+if connective != none && transport == none           → type (And=struct, Or=enum)
+else if body != none && type_annotation == none      → fn/func
+else if body != none && type_annotation != none      → data
+else if transport != none                            → service
+else if connective == none && children > 0           → resource
+else if params > 0 && body == none                   → extern
+```
+
+#### AFTER state (Phases A-D complete: PortContract dissolved)
+
+Node type (11 fields):
+
+```dag
+type Node {
+  name: String
+  span: SourceSpan
+  children: List<Node>
+  connective: Connective?
+  params: List<Param>
+  return_type: TypeExpr?        // ← operation outputs live here now
+  uses: List<ResourceUse>
+  body: Expr?
+  transport: TransportBinding?
+  properties: List<FieldInit>   // ← modifiers live here as assertions
+  config: ServiceConfig?
+  // type_annotation: MERGED into return_type or properties
+}
+```
+
+Types deleted (cumulative):
+
+```
+DELETED: TypeBody, Variant, Field-as-structure (W14-W17)
+DELETED: PortContract, OperationContract, CapabilityContract (Phase D)
+DELETED: ResponseMapping, ExitMapping (Phase A — became return_type coproduct)
+DELETED: MockResponseDef (Phase C — became test companion)
+DELETED: OperationModifier (Phase B — became node assertions/predicates)
+```
+
+How an operation looks:
+
+```
+// BEFORE (current):
+Node {
+  name: "CurrentBranch"
+  port_contract: Some { value: OperationContract {
+    outputs: [Field { name: "branch", type_expr: String }]
+    response: []
+    exit_mappings: [ExitMapping { code: 0, type_expr: Unit }, ...]
+    modifiers: [Readonly]
+    mock_response: [MockResponseDef { status: 0, body: ... }]
+  } }
+}
+
+// AFTER:
+Node {
+  name: "CurrentBranch"
+  return_type: Ok { branch: String } | GitError { message: String }
+  properties: [{ name: "readonly", value: true }]
+  // mock data in test companion, not on the node
+  // no port_contract field at all
+}
+```
+
+Emit dispatch (final — 5 structural patterns):
+
+```
+if connective != none && transport == none           → type
+else if body != none                                 → fn/func/data
+else if transport != none                            → service
+else if children > 0                                 → resource
+else if params > 0                                   → extern
+```
+
+#### Structural checks (pass/fail gates)
+
+W14-W17 (shape dissolution):
+
+- [ ] `Connective = And | Or` type exists in 00_core.dag
+- [ ] `connective: Connective?` field on Node and TypedNode
+- [ ] `shape: TypeBody?` field REMOVED from Node and TypedNode
+- [ ] `TypeBody` type DELETED from 00_core.dag
+- [ ] `Variant` type DELETED from 00_core.dag
+- [ ] No `shape` references in 04_typecheck.dag
+- [ ] No `shape` references in 05_emit_rust.dag or 05_emit_python.dag
+- [ ] Record type `{ name: String }` → Node with `connective: And`, child Node with `return_type: String`
+- [ ] Sum type `A | B` → Node with `connective: Or`, children for each variant
+- [ ] Alias type `Name = String` → Node with `connective: none`, `return_type: Named("String")`
+- [ ] Optional field `x: T?` → child Node with `return_type: Optional { inner: T }`
+- [ ] Default value `x: T = v` → child Node with `body: v`
+- [ ] 129+ tests pass (no regression)
+- [ ] Emitted Rust character-identical for all existing test cases
+- [ ] Emitted Python character-identical for all existing test cases
+
+Phases A-D (PortContract dissolution):
+
+- [ ] `PortContract` type DELETED from 00_core.dag
+- [ ] `port_contract` field REMOVED from Node and TypedNode
+- [ ] `ResponseMapping` type DELETED (absorbed into return_type coproduct)
+- [ ] `ExitMapping` type DELETED (absorbed into return_type coproduct)
+- [ ] `MockResponseDef` type DELETED from Node (moved to test layer)
+- [ ] `OperationModifier` usage moved to properties or assertions
+- [ ] Operation return types are conditional coproducts (Ok | ErrorA | ErrorB)
+- [ ] Service detection: `transport != none` (no field-combination guessing)
+- [ ] Resource detection: `children > 0 && transport == none`
+- [ ] 129+ tests pass (no regression)
+
+#### Net type count
+
+```
+                    BEFORE    After W14-17   After A-D   Net change
+                    ──────    ───────────    ─────────   ──────────
+Node fields         13        13             11          -2
+Supporting types    10+       7              2           -8+
+  TypeBody          1         DELETED        -
+  Field (struct)    1         DELETED        -
+  Variant           1         DELETED        -
+  PortContract      1         1              DELETED
+  OperationContract 1         1              DELETED
+  CapabilityContract 1        1              DELETED
+  ResponseMapping   1         1              DELETED
+  ExitMapping       1         1              DELETED
+  MockResponseDef   1         1              DELETED
+  OperationModifier 1         1              absorbed
+New types added     0         1 (Connective) 0           +1
+```
+
+The system gets simpler: 2 fewer Node fields, 8+ fewer supporting
+types, 1 new type (Connective — two values). The information isn't
+lost — it moves into children, return_type, and properties, which
+already exist.
+
 ---
 
 ## Stream 2: Sustainability cleanup

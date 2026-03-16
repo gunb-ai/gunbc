@@ -22,7 +22,7 @@ import v2.std.core {
   TypeExpr, Named, Product, Coproduct, Container, Refined, Optional,
   MapType, Primitive,
   ContainerKind, List, Set, NonEmptyList, NonEmptySet,
-  TypeBody, Record, Sum, Alias,
+  Connective, Conj, Disj,
   Field, Variant, Param, ResourceUse,
   Predicate, NonEmpty, Pattern, Range, Brand, ContentEncoding, Format,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
@@ -36,9 +36,9 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   TransportBinding, RestBinding, ShellBinding, FileBinding, LocalBinding,
-  ServiceConfig, OperationDef, ResponseMapping, MockResponseDef, ExitMapping,
+  ServiceConfig, OperationDef,
   AuthConfig, HeaderDef, EnvDef, OperationModifier, Idempotent, Readonly, Hermetic,
-  CapabilityDef, PortContract, OperationContract, CapabilityContract,
+  CapabilityDef,
   Token, TokenKind,
   KwModule, KwImport, KwType, KwFn, KwFunc, KwService, KwResource,
   KwData, KwExtern, KwInterface, KwPipeline, KwProfile, KwPattern,
@@ -132,16 +132,16 @@ type NamedIntResult { arg_name: String, arg_value: Int, state: ParserState, err:
 type ServiceBodyResult { config: ServiceConfig?, transport: TransportBinding, operations: List<OperationDef>, state: ParserState, err: Diagnostic? }
 type IOResult { inputs: List<Field>, outputs: List<Field>, state: ParserState, err: Diagnostic? }
 type ResPropResult { properties: List<FieldInit>, capabilities: List<CapabilityDef>, state: ParserState, err: Diagnostic? }
-type ResponsesResult { responses: List<ResponseMapping>, state: ParserState, err: Diagnostic? }
-type MocksResult { mocks: List<MockResponseDef>, state: ParserState, err: Diagnostic? }
-type ExitEntriesResult { entries: List<ExitMapping>, state: ParserState, err: Diagnostic? }
-type RespEntriesResult { entries: List<ResponseMapping>, state: ParserState, err: Diagnostic? }
-type MockEntriesResult { entries: List<MockResponseDef>, state: ParserState, err: Diagnostic? }
+type ResponsesResult { responses: List<FieldInit>, state: ParserState, err: Diagnostic? }
+type MocksResult { mocks: List<FieldInit>, state: ParserState, err: Diagnostic? }
+type ExitEntriesResult { entries: List<FieldInit>, state: ParserState, err: Diagnostic? }
+type RespEntriesResult { entries: List<FieldInit>, state: ParserState, err: Diagnostic? }
+type MockEntriesResult { entries: List<FieldInit>, state: ParserState, err: Diagnostic? }
 type OpBodyResult {
   inputs: List<Field>, outputs: List<Field>,
-  modifiers: List<OperationModifier>, transport: TransportBinding?,
-  exits: List<ExitMapping>, response: List<ResponseMapping>,
-  mock_response: List<MockResponseDef>,
+  modifier_props: List<FieldInit>, transport: TransportBinding?,
+  exit_props: List<FieldInit>, response_props: List<FieldInit>,
+  mock_props: List<FieldInit>,
   state: ParserState, err: Diagnostic?
 }
 type UnitResult { state: ParserState, err: Diagnostic? }
@@ -628,7 +628,62 @@ fn parse_item(state: ParserState) -> ItemResult {
     Some { value: KwExtern }   => parse_extern_decl(state: s)
     Some { value: KwPattern }  => parse_func_def(state: s)
     Some { value: KwInterface } => parse_func_def(state: s)
-    _ => ItemResult { item: Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(state: s)) } }
+    _ => ItemResult { item: Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(state: s)) } }
+  }
+}
+
+// =========================================================================
+// Type structure → child Node conversion
+//
+// Record fields become child Nodes with return_type.
+// Sum variants become child Nodes with their own children.
+// Optional fields: Field.optional → return_type: Optional { inner: T }
+// Default values: Field.default_value → body on the child Node
+// =========================================================================
+
+fn field_to_child_node(field: Field) -> Node {
+  let ret_type = if field.optional {
+    Optional { inner: field.type_expr, span: field.span }
+  } else {
+    field.type_expr
+  }
+  let props = match field.from_key {
+    Some { value: key } => [FieldInit { name: "from_key", value: Literal { value: LitStr { value: key }, span: field.span } }]
+    None => []
+  }
+  Node {
+    name: field.name, span: field.span,
+    children: [], connective: none,
+    params: [], return_type: Some { value: ret_type },
+    uses: [], body: field.default_value,
+    transport: none, properties: props,
+    type_annotation: none, config: none  }
+}
+
+fn variant_to_child_node(variant: Variant) -> Node {
+  let children = variant.fields |> map(f => field_to_child_node(field: f))
+  Node {
+    name: variant.name, span: variant.span,
+    children: children,
+    connective: if variant.fields |> count > 0 { Some { value: Conj } } else { none },
+    params: [], return_type: none,
+    uses: [], body: none,
+    transport: none, properties: [],
+    type_annotation: none, config: none  }
+}
+
+// Derive return_type from an output field list.
+// Single output → its type. Multiple → anonymous Product. None → none.
+fn outputs_to_return_type(outputs: List<Field>, span: SourceSpan) -> TypeExpr? {
+  if outputs |> count == 1 {
+    match outputs |> first {
+      Some { value: f } => Some { value: f.type_expr }
+      None => none
+    }
+  } else if outputs |> count > 1 {
+    Some { value: Product { name: none, fields: outputs, span: span } }
+  } else {
+    none
   }
 }
 
@@ -638,7 +693,7 @@ fn parse_item(state: ParserState) -> ItemResult {
 
 fn parse_type_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   let r = expect(state: state, tag: "KwType")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -655,8 +710,8 @@ fn parse_type_def(state: ParserState) -> ItemResult {
     let s = skip_newlines(state: r.state)
     let r2 = expect(state: s, tag: "RBrace")
     if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
-    let body = Record { fields: r.fields }
-    let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+    let type_children = r.fields |> map(f => field_to_child_node(field: f))
+    let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
     ItemResult { item: item, state: skip_newlines(state: r2.state), err: none }
   } else {
     // Sum type or alias: type Name = ...
@@ -667,7 +722,7 @@ fn parse_type_def(state: ParserState) -> ItemResult {
       parse_type_body_after_eq(state: s, name: name, start_span: start_span)
     } else {
       // Bare type declaration — primitive type with no structural expansion
-      let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: Alias { base: Primitive { name: name, span: start_span } } }, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: Primitive { name: name, span: start_span } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       ItemResult { item: item, state: s, err: none }
     }
   }
@@ -675,7 +730,7 @@ fn parse_type_def(state: ParserState) -> ItemResult {
 
 // After `type Name =`, determine if this is a sum type or alias.
 fn parse_type_body_after_eq(state: ParserState, name: String, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   // Check if the first token is an identifier (potential variant name)
   // followed by LBrace or Pipe (sum type indicators).
   // If it's an identifier, try to parse as a sum type.
@@ -693,8 +748,8 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
       let rest = parse_more_variants_acc(state: r.state, acc: [first_variant])
       if has_err(err: rest.err) { return ItemResult { item: dummy, state: rest.state, err: rest.err } }
       let variants = rest.variants
-      let body = Sum { variants: variants }
-      let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+      let type_children = variants |> map(v => variant_to_child_node(variant: v))
+      let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       ItemResult { item: item, state: skip_newlines(state: rest.state), err: none }
     } else {
       // It's an alias: type Name = SomeType
@@ -703,8 +758,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
       // Check for where clause: type Name = BaseType where predicate(...)
       let wr = try_where_clause(state: r.state, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
-      let body = Alias { base: wr.type_expr }
-      let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: wr.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       ItemResult { item: item, state: skip_newlines(state: wr.state), err: none }
     }
   } else {
@@ -714,8 +768,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
     // Check for where clause
     let wr = try_where_clause(state: r.state, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
-    let body = Alias { base: wr.type_expr }
-    let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+    let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: wr.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
     ItemResult { item: item, state: skip_newlines(state: wr.state), err: none }
   }
 }
@@ -1108,7 +1161,7 @@ fn parse_optional_from_key(state: ParserState) -> FromKeyResult {
 
 fn parse_fn_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   let r = expect(state: state, tag: "KwFn")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1135,10 +1188,9 @@ fn parse_fn_def(state: ParserState) -> ItemResult {
   let item = Node {
     name: name, span: start_span, children: [], params: params,
     return_type: return_type, uses: [],
-    body: Some { value: body }, shape: none, transport: none,
+    body: Some { value: body }, connective: none, transport: none,
     properties: [], type_annotation: none,
-    config: none, port_contract: none
-  }
+    config: none  }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }
 
@@ -1148,7 +1200,7 @@ fn parse_fn_def(state: ParserState) -> ItemResult {
 
 fn parse_func_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   // Accept func, pattern, or interface as the leading keyword
   let k = peek_kind(state: state)
   let r = match k {
@@ -1186,10 +1238,9 @@ fn parse_func_def(state: ParserState) -> ItemResult {
   let item = Node {
     name: name, span: start_span, children: [], params: params,
     return_type: return_type, uses: uses,
-    body: Some { value: body }, shape: none, transport: none,
+    body: Some { value: body }, connective: none, transport: none,
     properties: [], type_annotation: none,
-    config: none, port_contract: none
-  }
+    config: none  }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }
 
@@ -1259,7 +1310,7 @@ fn parse_optional_return_type(state: ParserState) -> OptRetResult {
 
 fn parse_service_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   let r = expect(state: state, tag: "KwService")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1279,8 +1330,9 @@ fn parse_service_def(state: ParserState) -> ItemResult {
   let r2 = expect(state: s, tag: "RBrace")
   if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
 
-  // Dual-write: build child Nodes from operations (W11)
+  // Build child Nodes from operations — dissolve PortContract into properties + return_type
   let op_children = r.operations |> map(op =>
+    let all_props = concat(op.modifier_props, op.response_props, op.exit_props, op.mock_props)
     Node {
       name: op.name, span: op.span,
       children: [],
@@ -1288,33 +1340,19 @@ fn parse_service_def(state: ParserState) -> ItemResult {
         name: f.name, type_expr: f.type_expr,
         default_value: f.default_value, span: f.span
       }),
-      return_type: if op.outputs |> count == 1 {
-        match op.outputs |> first {
-          Some { value: f } => Some { value: f.type_expr }
-          None => none
-        }
-      } else { none },
-      uses: [], body: none, shape: none,
+      return_type: outputs_to_return_type(outputs: op.outputs, span: op.span),
+      uses: [], body: none, connective: none,
       transport: op.transport,
-      properties: [], type_annotation: none,
-      operations: [], capabilities: [], config: none,
-      port_contract: Some { value: OperationContract {
-        outputs: op.outputs,
-        response: op.response,
-        mock_response: op.mock_response,
-        exit_mappings: op.exit_mappings,
-        modifiers: op.modifiers
-      } }
-    }
+      properties: all_props, type_annotation: none,
+      config: none    }
   )
   let item = Node {
     name: name, span: start_span,
     children: op_children,
-    params: [], return_type: none, uses: [], body: none, shape: none,
+    params: [], return_type: none, uses: [], body: none, connective: none,
     transport: Some { value: r.transport }, properties: [],
     type_annotation: none,
-    config: r.config, port_contract: none
-  }
+    config: r.config  }
   ItemResult { item: item, state: skip_newlines(state: r2.state), err: none }
 }
 
@@ -1548,7 +1586,7 @@ fn parse_file_fields(state: ParserState, base_path: Expr?) -> TransportResult {
 
 fn parse_operation_def(state: ParserState) -> OpResult {
   let start_span = current_span(state: state)
-  let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response: [], mock_response: [], exit_mappings: [], modifiers: [], transport: none, span: start_span }
+  let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span }
   let r = expect(state: state, tag: "KwOperation")
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
 
@@ -1567,9 +1605,10 @@ fn parse_operation_def(state: ParserState) -> OpResult {
 
 // v2 inline: operation Name modifiers? (params) -> RetType response? mock_response?
 fn parse_operation_v2_inline(state: ParserState, name: String, start_span: SourceSpan) -> OpResult {
-  let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response: [], mock_response: [], exit_mappings: [], modifiers: [], transport: none, span: start_span }
+  let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span }
   let mods_r = parse_operation_modifiers(state: state)
   let modifiers = mods_r.modifiers
+  let mod_props = modifiers_to_props(modifiers: modifiers, span: start_span)
   let s = mods_r.state
 
   let r = expect(state: s, tag: "LParen")
@@ -1600,22 +1639,22 @@ fn parse_operation_v2_inline(state: ParserState, name: String, start_span: Sourc
 
   let op = OperationDef {
     name: name, inputs: inputs, outputs: outputs,
-    response: resp_r.responses, mock_response: mock_r.mocks,
-    exit_mappings: [], modifiers: modifiers, transport: none, span: start_span
+    response_props: resp_r.responses, mock_props: mock_r.mocks,
+    exit_props: [], modifier_props: mod_props, transport: none, span: start_span
   }
   OpResult { operation: op, state: s, err: none }
 }
 
 // v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
 fn parse_operation_v1_body(state: ParserState, name: String, start_span: SourceSpan) -> OpResult {
-  let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response: [], mock_response: [], exit_mappings: [], modifiers: [], transport: none, span: start_span }
+  let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span }
   let r = expect(state: state, tag: "LBrace")
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let s = skip_newlines(state: r.state)
 
   let r2 = parse_op_body_entries(
-    state: s, inputs: [], outputs: [], modifiers: [],
-    transport: none, exits: [], response: [], mock_response: []
+    state: s, inputs: [], outputs: [], modifier_props: [],
+    transport: none, exit_props: [], response_props: [], mock_props: []
   )
   if has_err(err: r2.err) { return OpResult { operation: dummy_op, state: r2.state, err: r2.err } }
 
@@ -1624,108 +1663,184 @@ fn parse_operation_v1_body(state: ParserState, name: String, start_span: SourceS
 
   let op = OperationDef {
     name: name, inputs: r2.inputs, outputs: r2.outputs,
-    response: r2.response, mock_response: r2.mock_response,
-    exit_mappings: r2.exits, modifiers: r2.modifiers,
+    response_props: r2.response_props, mock_props: r2.mock_props,
+    exit_props: r2.exit_props, modifier_props: r2.modifier_props,
     transport: r2.transport, span: start_span
   }
   OpResult { operation: op, state: skip_newlines(state: r3.state), err: none }
 }
 
 // Parse entries inside a v1 operation body block.
+// Modifiers, responses, exits, mocks are collected as FieldInit properties.
 fn parse_op_body_entries(
   state: ParserState,
   inputs: List<Field>, outputs: List<Field>,
-  modifiers: List<OperationModifier>, transport: TransportBinding?,
-  exits: List<ExitMapping>, response: List<ResponseMapping>, mock_response: List<MockResponseDef>
+  modifier_props: List<FieldInit>, transport: TransportBinding?,
+  exit_props: List<FieldInit>, response_props: List<FieldInit>, mock_props: List<FieldInit>
 ) -> OpBodyResult {
   let s = skip_newlines(state: state)
-  let mk_err = OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: s, err: none }
+  let mk_result = OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: none }
   if check(state: s, tag: "RBrace") || at_end(state: s) {
-    OpBodyResult { inputs: inputs, outputs: outputs, modifiers: reverse(modifiers), transport: transport, exits: exits, response: response, mock_response: mock_response, state: s, err: none }
+    mk_result
   } else {
     let k = peek_kind(state: s)
+    let err_result = OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: none }
     match k {
       Some { value: KwInput } => {
         let adv = advance(state: s)
         let r = expect(state: adv.state, tag: "LBrace")
-        if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
+        if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
         let r2 = parse_field_list(state: skip_newlines(state: r.state))
-        if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r2.state, err: r2.err } }
+        if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
         let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
-        if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r3.state, err: r3.err } }
-        parse_op_body_entries(state: r3.state, inputs: r2.fields, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response)
+        if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
+        parse_op_body_entries(state: r3.state, inputs: r2.fields, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwOutput } => {
         let adv = advance(state: s)
         let r = expect(state: adv.state, tag: "LBrace")
-        if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
+        if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
         let r2 = parse_field_list(state: skip_newlines(state: r.state))
-        if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r2.state, err: r2.err } }
+        if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
         let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
-        if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r3.state, err: r3.err } }
-        parse_op_body_entries(state: r3.state, inputs: inputs, outputs: r2.fields, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response)
+        if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
+        parse_op_body_entries(state: r3.state, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwIdempotent } => {
         let adv = advance(state: s)
-        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: concat([Idempotent], modifiers), transport: transport, exits: exits, response: response, mock_response: mock_response)
+        let prop = modifier_to_prop(name: "idempotent", span: current_span(state: s))
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifier_props: concat([prop], modifier_props), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwReadonly } => {
         let adv = advance(state: s)
-        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: concat([Readonly], modifiers), transport: transport, exits: exits, response: response, mock_response: mock_response)
+        let prop = modifier_to_prop(name: "readonly", span: current_span(state: s))
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifier_props: concat([prop], modifier_props), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwHermetic } => {
         let adv = advance(state: s)
-        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifiers: concat([Hermetic], modifiers), transport: transport, exits: exits, response: response, mock_response: mock_response)
+        let prop = modifier_to_prop(name: "hermetic", span: current_span(state: s))
+        parse_op_body_entries(state: adv.state, inputs: inputs, outputs: outputs, modifier_props: concat([prop], modifier_props), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: Ident { name: id } } => {
         if id == "transport" {
           let adv = advance(state: s)
           let r = parse_transport_binding(state: adv.state)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
-          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: Some { value: r.transport }, exits: exits, response: response, mock_response: mock_response)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
+          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: Some { value: r.transport }, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if id == "exit" {
           let adv = advance(state: s)
           let r = expect(state: adv.state, tag: "LBrace")
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
           let r2 = parse_exit_entries(state: skip_newlines(state: r.state))
-          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r2.state, err: r2.err } }
+          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
           let r3 = expect(state: skip_newlines(state: r2.state), tag: "RBrace")
-          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r3.state, err: r3.err } }
-          parse_op_body_entries(state: r3.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: r2.entries, response: response, mock_response: mock_response)
+          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
+          parse_op_body_entries(state: r3.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: r2.entries, response_props: response_props, mock_props: mock_props)
         } else if id == "response" {
           let r = parse_optional_response_block(state: s)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
-          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: r.responses, mock_response: mock_response)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
+          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: r.responses, mock_props: mock_props)
         } else if id == "mock_response" {
           let r = parse_optional_mock_response_block(state: s)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
-          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: r.mocks)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
+          parse_op_body_entries(state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: r.mocks)
         } else {
           // Unknown identifier entry — skip it (name: value)
           if peek_is_colon_after_ident(state: s) {
             let r = expect_ident(state: s)
-            if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r.state, err: r.err } }
+            if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
             let r2 = expect(state: r.state, tag: "Colon")
-            if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r2.state, err: r2.err } }
+            if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
             let r3 = parse_expr(state: r2.state)
-            if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: r3.state, err: r3.err } }
-            parse_op_body_entries(state: skip_newlines(state: r3.state), inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response)
+            if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
+            parse_op_body_entries(state: skip_newlines(state: r3.state), inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
           } else {
-            OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: s, err: Some { value: parse_error(msg: "unexpected '{id}' in operation body", span: current_span(state: s)) } }
+            OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: Some { value: parse_error(msg: "unexpected '{id}' in operation body", span: current_span(state: s)) } }
           }
         }
       }
-      _ => OpBodyResult { inputs: inputs, outputs: outputs, modifiers: modifiers, transport: transport, exits: exits, response: response, mock_response: mock_response, state: s, err: Some { value: parse_error(msg: "unexpected token in operation body", span: current_span(state: s)) } }
+      _ => OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: Some { value: parse_error(msg: "unexpected token in operation body", span: current_span(state: s)) } }
     }
   }
 }
 
+// =========================================================================
+// PortContract dissolution helpers
+//
+// Convert parsed operation/capability metadata into Node properties.
+// =========================================================================
+
+// Convert a modifier keyword to a FieldInit property.
+fn modifier_to_prop(name: String, span: SourceSpan) -> FieldInit {
+  FieldInit { name: name, value: Literal { value: LitBool { value: true }, span: span } }
+}
+
+// Convert a list of OperationModifier values to FieldInit properties.
+fn modifiers_to_props(modifiers: List<OperationModifier>, span: SourceSpan) -> List<FieldInit> {
+  modifiers |> map(m => match m {
+    Idempotent => modifier_to_prop(name: "idempotent", span: span)
+    Readonly => modifier_to_prop(name: "readonly", span: span)
+    Hermetic => modifier_to_prop(name: "hermetic", span: span)
+  })
+}
+
+// Extract a string key from a status/exit code expression.
+fn status_expr_to_str(expr: Expr) -> String {
+  match expr {
+    Literal { value: LitInt { value: n }, span: _ } => int_to_string(value: n)
+    Literal { value: LitStr { value: s }, span: _ } => s
+    Var { name: n, span: _ } => n
+    _ => "_"
+  }
+}
+
+// Simple int-to-string for status codes (non-negative only, sufficient for HTTP status codes).
+fn int_to_string(value: Int) -> String {
+  if value == 0 { "0" }
+  else { int_to_string_acc(value: value, acc: "") }
+}
+
+fn int_to_string_acc(value: Int, acc: String) -> String {
+  if value == 0 { acc }
+  else {
+    let digit = value % 10
+    let rest = (value - digit) / 10
+    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    let ch = match digit_chars |> enumerate |> filter(p => p.first == digit) |> first {
+      Some { value: p } => p.second
+      None => "?"
+    }
+    int_to_string_acc(value: rest, acc: concat(ch, acc))
+  }
+}
+
+// Extract a string name from a TypeExpr for use in property values.
+fn type_expr_to_name_str(type_expr: TypeExpr) -> String {
+  match type_expr {
+    Named { name: n, span: _ } => n
+    Primitive { name: n, span: _ } => n
+    Product { name: pn, fields: _, span: _ } => match pn {
+      Some { value: n } => n
+      None => "Record"
+    }
+    Coproduct { name: cn, variants: _, span: _ } => match cn {
+      Some { value: n } => n
+      None => "Union"
+    }
+    Container { kind: _, element: el, span: _ } => concat("List_", type_expr_to_name_str(type_expr: el))
+    Optional { inner: inn, span: _ } => concat("Optional_", type_expr_to_name_str(type_expr: inn))
+    MapType { key: _, value: v, span: _ } => concat("Map_", type_expr_to_name_str(type_expr: v))
+    Refined { base: b, predicates: _, span: _ } => type_expr_to_name_str(type_expr: b)
+  }
+}
+
 // Parse exit block entries: code => Type optional_description
+// Produces FieldInit properties: { name: "exit_<code>", value: type_name_as_var }
 fn parse_exit_entries(state: ParserState) -> ExitEntriesResult {
   parse_exit_entries_acc(state: state, acc: [])
 }
 
-fn parse_exit_entries_acc(state: ParserState, acc: List<ExitMapping>) -> ExitEntriesResult {
+fn parse_exit_entries_acc(state: ParserState, acc: List<FieldInit>) -> ExitEntriesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
     ExitEntriesResult { entries: reverse(acc), state: s, err: none }
@@ -1746,7 +1861,11 @@ fn parse_exit_entries_acc(state: ParserState, acc: List<ExitMapping>) -> ExitEnt
       }
       _ => DescResult { desc: none, state: r3.state }
     }
-    let entry = ExitMapping { code: code, type_expr: r3.type_expr, description: desc_r.desc }
+    // Convert to property: exit_<code> = type_name
+    let code_str = status_expr_to_str(expr: code)
+    let type_name = type_expr_to_name_str(type_expr: r3.type_expr)
+    let prop_name = concat("exit_", code_str)
+    let entry = FieldInit { name: prop_name, value: Var { name: type_name, span: r3.type_expr.span } }
     let e = eat(state: desc_r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
     parse_exit_entries_acc(state: s2, acc: concat([entry], acc))
@@ -1852,7 +1971,7 @@ fn parse_response_entries(state: ParserState) -> RespEntriesResult {
   parse_response_entries_acc(state: state, acc: [])
 }
 
-fn parse_response_entries_acc(state: ParserState, acc: List<ResponseMapping>) -> RespEntriesResult {
+fn parse_response_entries_acc(state: ParserState, acc: List<FieldInit>) -> RespEntriesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
     RespEntriesResult { entries: reverse(acc), state: s, err: none }
@@ -1864,7 +1983,11 @@ fn parse_response_entries_acc(state: ParserState, acc: List<ResponseMapping>) ->
     if has_err(err: r2.err) { return RespEntriesResult { entries: [], state: r2.state, err: r2.err } }
     let r3 = parse_type_expr(state: r2.state)
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], state: r3.state, err: r3.err } }
-    let entry = ResponseMapping { status: status, type_expr: r3.type_expr }
+    // Convert to property: response_<status> = type_name
+    let status_str = status_expr_to_str(expr: status)
+    let type_name = type_expr_to_name_str(type_expr: r3.type_expr)
+    let prop_name = concat("response_", status_str)
+    let entry = FieldInit { name: prop_name, value: Var { name: type_name, span: r3.type_expr.span } }
     let e = eat(state: r3.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { r3.state })
     parse_response_entries_acc(state: s2, acc: concat([entry], acc))
@@ -1893,7 +2016,7 @@ fn parse_mock_response_entries(state: ParserState) -> MockEntriesResult {
   parse_mock_response_entries_acc(state: state, acc: [])
 }
 
-fn parse_mock_response_entries_acc(state: ParserState, acc: List<MockResponseDef>) -> MockEntriesResult {
+fn parse_mock_response_entries_acc(state: ParserState, acc: List<FieldInit>) -> MockEntriesResult {
   let s = skip_newlines(state: state)
   if check(state: s, tag: "RBrace") || at_end(state: s) {
     MockEntriesResult { entries: reverse(acc), state: s, err: none }
@@ -1915,7 +2038,10 @@ fn parse_mock_response_entries_acc(state: ParserState, acc: List<MockResponseDef
       }
       _ => DescResult { desc: none, state: r3.state }
     }
-    let entry = MockResponseDef { status: status, body: body, description: desc_r.desc }
+    // Convert to property: mock_<status> = body_expr
+    let status_str = status_expr_to_str(expr: status)
+    let prop_name = concat("mock_", status_str)
+    let entry = FieldInit { name: prop_name, value: body }
     let e = eat(state: desc_r.state, tag: "Comma")
     let s2 = skip_newlines(state: if e.consumed { e.state } else { desc_r.state })
     parse_mock_response_entries_acc(state: s2, acc: concat([entry], acc))
@@ -1928,7 +2054,7 @@ fn parse_mock_response_entries_acc(state: ParserState, acc: List<MockResponseDef
 
 fn parse_resource_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   let r = expect(state: state, tag: "KwResource")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1945,7 +2071,7 @@ fn parse_resource_def(state: ParserState) -> ItemResult {
   let r2 = expect(state: skip_newlines(state: r.state), tag: "RBrace")
   if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
 
-  // Dual-write: build child Nodes from capabilities (W11)
+  // Build child Nodes from capabilities — dissolve CapabilityContract into return_type
   let cap_children = r.capabilities |> map(cap =>
     Node {
       name: cap.name, span: cap.span,
@@ -1954,29 +2080,19 @@ fn parse_resource_def(state: ParserState) -> ItemResult {
         name: f.name, type_expr: f.type_expr,
         default_value: f.default_value, span: f.span
       }),
-      return_type: if cap.outputs |> count == 1 {
-        match cap.outputs |> first {
-          Some { value: f } => Some { value: f.type_expr }
-          None => none
-        }
-      } else { none },
-      uses: [], body: none, shape: none,
+      return_type: outputs_to_return_type(outputs: cap.outputs, span: cap.span),
+      uses: [], body: none, connective: none,
       transport: none,
       properties: [], type_annotation: none,
-      operations: [], capabilities: [], config: none,
-      port_contract: Some { value: CapabilityContract {
-        outputs: cap.outputs
-      } }
-    }
+      config: none    }
   )
   let item = Node {
     name: name, span: start_span,
     children: cap_children,
-    params: [], return_type: none, uses: [], body: none, shape: none,
+    params: [], return_type: none, uses: [], body: none, connective: none,
     transport: none, properties: r.properties,
     type_annotation: none,
-    config: none, port_contract: none
-  }
+    config: none  }
   ItemResult { item: item, state: skip_newlines(state: r2.state), err: none }
 }
 
@@ -2145,7 +2261,7 @@ fn parse_io_blocks_acc(state: ParserState, inputs: List<Field>, outputs: List<Fi
 
 fn parse_data_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   let r = expect(state: state, tag: "KwData")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -2169,10 +2285,9 @@ fn parse_data_def(state: ParserState) -> ItemResult {
   let item = Node {
     name: name, span: start_span, children: [], params: [],
     return_type: none, uses: [],
-    body: Some { value: r.expr }, shape: none, transport: none,
+    body: Some { value: r.expr }, connective: none, transport: none,
     properties: [], type_annotation: Some { value: te },
-    config: none, port_contract: none
-  }
+    config: none  }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }
 
@@ -2182,7 +2297,7 @@ fn parse_data_def(state: ParserState) -> ItemResult {
 
 fn parse_extern_decl(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, config: none, port_contract: none }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   let r = expect(state: state, tag: "KwExtern")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -2198,17 +2313,13 @@ fn parse_extern_decl(state: ParserState) -> ItemResult {
       if has_err(err: r3.err) { return ItemResult { item: dummy, state: r3.state, err: r3.err } }
       let ret = parse_optional_return_type(state: r3.state)
       if has_err(err: ret.err) { return ItemResult { item: dummy, state: ret.state, err: ret.err } }
-      let return_type = match ret.return_type {
-        Some { value: t } => t
-        None => Named { name: "Unit", span: start_span }
-      }
+      let resolved_ret = if ret.return_type != none { ret.return_type } else { Some { value: Named { name: "Unit", span: start_span } } }
       let item = Node {
         name: name, span: start_span, children: [], params: r3.params,
-        return_type: Some { value: return_type }, uses: [],
-        body: none, shape: none, transport: none,
+        return_type: resolved_ret, uses: [],
+        body: none, connective: none, transport: none,
         properties: [], type_annotation: none,
-        config: none, port_contract: none
-      }
+        config: none      }
       ItemResult { item: item, state: skip_newlines(state: ret.state), err: none }
     }
     Some { value: KwFunc } => {
@@ -2220,17 +2331,13 @@ fn parse_extern_decl(state: ParserState) -> ItemResult {
       if has_err(err: r3.err) { return ItemResult { item: dummy, state: r3.state, err: r3.err } }
       let ret = parse_optional_return_type(state: r3.state)
       if has_err(err: ret.err) { return ItemResult { item: dummy, state: ret.state, err: ret.err } }
-      let return_type = match ret.return_type {
-        Some { value: t } => t
-        None => Named { name: "Unit", span: start_span }
-      }
+      let resolved_ret = if ret.return_type != none { ret.return_type } else { Some { value: Named { name: "Unit", span: start_span } } }
       let item = Node {
         name: name, span: start_span, children: [], params: r3.params,
-        return_type: Some { value: return_type }, uses: [],
-        body: none, shape: none, transport: none,
+        return_type: resolved_ret, uses: [],
+        body: none, connective: none, transport: none,
         properties: [], type_annotation: none,
-        config: none, port_contract: none
-      }
+        config: none      }
       ItemResult { item: item, state: skip_newlines(state: ret.state), err: none }
     }
     _ => ItemResult { item: dummy, state: r.state, err: Some { value: parse_error(msg: "expected fn or func after extern", span: current_span(state: r.state)) } }
@@ -2481,8 +2588,8 @@ fn infix_bp(state: ParserState) -> BindingPower? {
   match k {
     Some { value: PipeArrow }    => Some { value: BindingPower { left: 0, right: 1 } }
     Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 2 } }
-    Some { value: Or }       => Some { value: BindingPower { left: 2, right: 3 } }
-    Some { value: And }      => Some { value: BindingPower { left: 4, right: 5 } }
+    Some { value: Or }         => Some { value: BindingPower { left: 2, right: 3 } }
+    Some { value: And }        => Some { value: BindingPower { left: 4, right: 5 } }
     Some { value: EqEq }     => Some { value: BindingPower { left: 6, right: 7 } }
     Some { value: Ne }       => Some { value: BindingPower { left: 6, right: 7 } }
     Some { value: Lt }       => Some { value: BindingPower { left: 6, right: 7 } }
