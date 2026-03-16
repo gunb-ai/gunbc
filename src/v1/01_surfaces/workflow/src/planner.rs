@@ -16,7 +16,9 @@ use crate::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER};
 /// Per-node planner action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlanAction {
-    Execute { miss_reason: MissReason },
+    Execute {
+        miss_reason: MissReason,
+    },
     /// Node is structural (e.g. Aggregate, Report) — no command to run.
     /// The planner communicates no-op intent explicitly rather than relying
     /// on the executor to infer it from a missing command map entry.
@@ -615,12 +617,19 @@ mod tests {
             vec![UnitClaim::read("file:workspace")],
         ));
 
-        let plan =
-            plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
+        let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
 
-        let build = plan.nodes.iter().find(|n| n.node_id.0 == "wf.build").unwrap();
+        let build = plan
+            .nodes
+            .iter()
+            .find(|n| n.node_id.0 == "wf.build")
+            .unwrap();
         let agg = plan.nodes.iter().find(|n| n.node_id.0 == "wf.agg").unwrap();
-        let report = plan.nodes.iter().find(|n| n.node_id.0 == "wf.report").unwrap();
+        let report = plan
+            .nodes
+            .iter()
+            .find(|n| n.node_id.0 == "wf.report")
+            .unwrap();
 
         assert!(
             matches!(build.action, PlanAction::Execute { .. }),

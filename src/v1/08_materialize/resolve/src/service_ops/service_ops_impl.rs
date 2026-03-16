@@ -53,27 +53,20 @@ impl Executable for GenericPrepareOp {
 /// Generic parse op: extracts output fields from a `TransportResponse`.
 ///
 /// Dispatches to per-transport parsing logic based on the spec variant.
-/// Carries `service_name`, `operation_name`, and `auth_scheme` for REST
-/// error decoration.
+/// Carries `service_name` and `operation_name` for error decoration.
 #[derive(Debug, Clone)]
 pub struct GenericParseOp {
     pub spec: ServiceOperationSpec,
     pub service_name: String,
     pub operation_name: String,
-    /// REST-only: auth scheme for error decoration. Empty for non-REST.
-    pub auth_scheme: String,
 }
 
 impl Executable for GenericParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match &self.spec {
-            ServiceOperationSpec::Rest(rest_spec) => parse_rest_response(
-                rest_spec,
-                &self.service_name,
-                &self.operation_name,
-                &self.auth_scheme,
-                inputs,
-            ),
+            ServiceOperationSpec::Rest(rest_spec) => {
+                parse_rest_response(rest_spec, &self.service_name, &self.operation_name, inputs)
+            }
             ServiceOperationSpec::Shell(shell_spec) => {
                 parse_shell_response(shell_spec, &self.service_name, &self.operation_name, inputs)
             }
@@ -264,7 +257,6 @@ fn parse_rest_response(
     spec: &RestOperationSpec,
     service_name: &str,
     operation_name: &str,
-    auth_scheme: &str,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match inputs.get("response") {
@@ -298,25 +290,13 @@ fn parse_rest_response(
                         spec.method, spec.path_template, rest.status, body_excerpt
                     )
                 };
-                // Determine auth scheme + credential ref.
-                // Prefer explicit @auth scheme; fall back to inferring from
-                // @headers Authorization pattern.
-                let (scheme, cred_ref) = if !auth_scheme.is_empty() {
-                    (auth_scheme.to_string(), None)
-                } else {
-                    infer_auth_from_headers(&spec.headers)
-                };
-                // Attach auth context when we have auth metadata OR when
-                // the HTTP status implies auth failure.
+                // Attach auth context when the DSL declared auth metadata or
+                // when the HTTP status implies auth failure.
                 let is_auth_status = rest.status == 401 || rest.status == 403;
-                let auth = if !scheme.is_empty() || is_auth_status {
+                let auth = if spec.auth_scheme.is_some() || is_auth_status {
                     Some(AuthContext {
-                        scheme: if scheme.is_empty() {
-                            None
-                        } else {
-                            Some(scheme)
-                        },
-                        credential_ref: cred_ref,
+                        scheme: spec.auth_scheme.clone(),
+                        credential_ref: spec.auth_input.clone(),
                         lock_target: rest_lock_target(
                             &spec.method,
                             &spec.endpoint,
@@ -1231,33 +1211,6 @@ fn rest_lock_target(method: &str, endpoint: &str, path_template: &str) -> String
     }
 }
 
-/// Infer auth scheme and credential reference from `@headers` annotation.
-///
-/// Looks for an `Authorization` header and extracts the scheme (Bearer, Basic)
-/// and the credential input name from template interpolation (`{auth_token}`).
-/// Returns `(scheme, Option<credential_ref>)`.
-fn infer_auth_from_headers(headers: &[(String, String)]) -> (String, Option<String>) {
-    for (key, value) in headers {
-        if key.eq_ignore_ascii_case("authorization") {
-            let scheme = if value.starts_with("Bearer ") {
-                "BearerToken"
-            } else if value.starts_with("Basic ") {
-                "BasicAuth"
-            } else {
-                "Header"
-            };
-            // Extract input name from template: "Bearer {auth_token}" → "auth_token"
-            let cred_ref = value.find('{').and_then(|start| {
-                value[start + 1..]
-                    .find('}')
-                    .map(|end| value[start + 1..start + 1 + end].to_string())
-            });
-            return (scheme.to_string(), cred_ref);
-        }
-    }
-    (String::new(), None)
-}
-
 /// Extract an input value as a string, handling Secret and defaults.
 ///
 /// Returns `Err` when the input is missing and no default is provided — this
@@ -1709,7 +1662,6 @@ mod tests {
             spec: ServiceOperationSpec::Rest(Box::new(spec)),
             service_name: String::new(),
             operation_name: String::new(),
-            auth_scheme: String::new(),
         }
     }
 
@@ -1726,7 +1678,6 @@ mod tests {
             spec: ServiceOperationSpec::Shell(spec),
             service_name: String::new(),
             operation_name: String::new(),
-            auth_scheme: String::new(),
         }
     }
 
@@ -1894,6 +1845,86 @@ mod tests {
             }
             other => panic!("expected List of bytes, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rest_parse_uses_structured_auth_metadata_for_error_context() {
+        let mut spec = rest_spec_simple();
+        spec.auth_scheme = Some("BearerToken".to_string());
+        spec.auth_input = Some("auth_token".to_string());
+        spec.response_mapping = vec![ResponseMappingEntry {
+            status: ResponseStatusPattern::ClientError4xx,
+            response_type: "Error".to_string(),
+            description: None,
+        }];
+        let op = rest_parse_op(spec);
+        let response = RestResponse::new(401, serde_json::json!({ "message": "bad token" }));
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(response)),
+        );
+
+        let err = op
+            .execute(inputs)
+            .expect_err("401 response should be decorated as a service failure");
+        let acquisition = err
+            .layers()
+            .iter()
+            .find_map(|layer| match layer {
+                gunbc_exec::ErrorLayer::Acquisition(layer) => Some(layer),
+                _ => None,
+            })
+            .expect("REST auth failures should include an acquisition layer");
+        let key = acquisition
+            .diagnostic
+            .key
+            .as_ref()
+            .expect("declared auth metadata should produce a structured key");
+        assert_eq!(key.scheme, "BearerToken");
+        assert_eq!(key.hint, "\"***\"");
+        assert_eq!(key.source, "env:auth_token");
+        assert_eq!(
+            acquisition.diagnostic.lock.target,
+            "POST https://api.example.com/v1/things"
+        );
+    }
+
+    #[test]
+    fn rest_parse_does_not_infer_auth_metadata_from_headers() {
+        let mut spec = rest_spec_simple();
+        spec.headers = vec![(
+            "Authorization".to_string(),
+            "Bearer {auth_token}".to_string(),
+        )];
+        spec.response_mapping = vec![ResponseMappingEntry {
+            status: ResponseStatusPattern::ClientError4xx,
+            response_type: "Error".to_string(),
+            description: None,
+        }];
+        let op = rest_parse_op(spec);
+        let response = RestResponse::new(401, serde_json::json!({ "message": "bad token" }));
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(response)),
+        );
+
+        let err = op
+            .execute(inputs)
+            .expect_err("401 response should be decorated as a service failure");
+        let acquisition = err
+            .layers()
+            .iter()
+            .find_map(|layer| match layer {
+                gunbc_exec::ErrorLayer::Acquisition(layer) => Some(layer),
+                _ => None,
+            })
+            .expect("401 responses should still be classified as auth failures");
+        assert!(
+            acquisition.diagnostic.key.is_none(),
+            "auth metadata should come from RestOperationSpec, not Authorization header parsing"
+        );
     }
 
     #[test]
@@ -2205,7 +2236,6 @@ mod tests {
             spec: ServiceOperationSpec::File(spec),
             service_name: String::new(),
             operation_name: String::new(),
-            auth_scheme: String::new(),
         }
     }
 
@@ -2332,7 +2362,6 @@ mod tests {
             },
             service_name: String::new(),
             operation_name: String::new(),
-            auth_scheme: String::new(),
         };
         let mut inputs = HashMap::new();
         inputs.insert("issues".to_string(), Value::Str("issue-1".to_string()));

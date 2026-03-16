@@ -1198,18 +1198,10 @@ fn resolve_service_transport(
                     return Ok(DynOp::new(GenericPrepareOp { spec: spec.clone() }));
                 }
                 Some(TransportRole::Parse) => {
-                    let auth_scheme = match spec {
-                        ServiceOperationSpec::Rest(rest_spec) => rest_spec
-                            .auth_scheme
-                            .clone()
-                            .unwrap_or_else(|| "none".to_string()),
-                        _ => String::new(),
-                    };
                     return Ok(DynOp::new(GenericParseOp {
                         spec: spec.clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
-                        auth_scheme,
                     }));
                 }
                 // Execute role is handled by the early return above.

@@ -192,7 +192,11 @@ pub fn execute_workflow_plan(
 
         let (success, pending_approval) = match execution_outcome {
             CommandExecutionOutcome::Success => {
-                emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Executed { success: true });
+                emit_unit_status(
+                    &node_plan.node_id,
+                    is_ci,
+                    UnitStatus::Executed { success: true },
+                );
                 (true, false)
             }
             CommandExecutionOutcome::PendingApproval => {
@@ -204,7 +208,11 @@ pub fn execute_workflow_plan(
             CommandExecutionOutcome::Failure => {
                 failed += 1;
                 has_failure = true;
-                emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Executed { success: false });
+                emit_unit_status(
+                    &node_plan.node_id,
+                    is_ci,
+                    UnitStatus::Executed { success: false },
+                );
                 (false, false)
             }
         };

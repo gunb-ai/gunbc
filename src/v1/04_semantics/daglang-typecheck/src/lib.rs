@@ -2084,10 +2084,7 @@ fn collect_pipeline_param_bindings(module: &ResolvedModule) -> HashMap<String, V
     let mut bindings = HashMap::new();
     for item in &module.ast.items {
         if let Item::ParamDecl(decl) = &item.node {
-            bindings.insert(
-                decl.name.clone(),
-                value_type_from_type_expr(&decl.ty),
-            );
+            bindings.insert(decl.name.clone(), value_type_from_type_expr(&decl.ty));
         }
     }
     bindings
@@ -2463,7 +2460,10 @@ fn collect_unique_callables(
                                         .fields
                                         .iter()
                                         .map(|field| {
-                                            (field.name.clone(), value_type_from_type_expr(&field.ty))
+                                            (
+                                                field.name.clone(),
+                                                value_type_from_type_expr(&field.ty),
+                                            )
                                         })
                                         .collect(),
                                     output: ValueType::Named(def.name.clone()),
@@ -3320,8 +3320,7 @@ fn annotate_expr_with_expected_record<'a>(
                 resolve_record_fields(expected_type, infer_context.record_type_registry)
             {
                 for (field_name, field_expr) in fields {
-                    if let Some(ValueType::Named(field_type_name)) =
-                        expected_fields.get(field_name)
+                    if let Some(ValueType::Named(field_type_name)) = expected_fields.get(field_name)
                     {
                         annotate_expr_with_expected_record(
                             field_expr,
@@ -3341,8 +3340,7 @@ fn annotate_expr_with_expected_record<'a>(
                 resolve_record_fields(record_name, infer_context.record_type_registry)
             {
                 for (field_name, field_expr) in fields {
-                    if let Some(ValueType::Named(field_type_name)) =
-                        expected_fields.get(field_name)
+                    if let Some(ValueType::Named(field_type_name)) = expected_fields.get(field_name)
                     {
                         annotate_expr_with_expected_record(
                             field_expr,
@@ -3583,8 +3581,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 // Annotate init anonymous record with the merged accumulator field types.
                 // The merged type refines incomplete init fields (e.g. empty list [] becomes
                 // List<Span> after merging with the fold body).
-                if let (Expr::Record(None, _), ValueType::Record(ref fields)) =
-                    (init_expr, &acc_ty)
+                if let (Expr::Record(None, _), ValueType::Record(ref fields)) = (init_expr, &acc_ty)
                 {
                     metadata.annotate_anonymous_record_field_types(init_expr, fields);
                 }
@@ -3600,10 +3597,9 @@ fn collect_constructor_targets_from_expr<'a>(
                         fold_scope_types.insert(param.clone(), acc_ty);
                         fold_scope_exprs.remove(param);
                     }
-                    if let (Some(param), Some(elem_ty)) = (
-                        params.get(1),
-                        collection_element_value_type(&collection_ty),
-                    ) {
+                    if let (Some(param), Some(elem_ty)) =
+                        (params.get(1), collection_element_value_type(&collection_ty))
+                    {
                         fold_scope_types.insert(param.clone(), elem_ty);
                         fold_scope_exprs.remove(param);
                     }
@@ -3744,8 +3740,7 @@ fn collect_constructor_targets_from_expr<'a>(
                 .and_then(|name| resolve_record_fields(name, infer_context.record_type_registry));
             for (field_name, field_expr) in fields {
                 if let Some(expected_fields) = &record_fields {
-                    if let Some(ValueType::Named(field_type_name)) =
-                        expected_fields.get(field_name)
+                    if let Some(ValueType::Named(field_type_name)) = expected_fields.get(field_name)
                     {
                         annotate_expr_with_expected_record(
                             field_expr,
@@ -4100,12 +4095,7 @@ fn analyze_callable_body(
 
     let mut local_bindings = params
         .iter()
-        .map(|param| {
-            (
-                param.name.clone(),
-                value_type_from_type_expr(&param.ty),
-            )
-        })
+        .map(|param| (param.name.clone(), value_type_from_type_expr(&param.ty)))
         .collect::<HashMap<_, _>>();
     let mut binding_exprs = HashMap::new();
     let mut saw_explicit_return = false;
@@ -4403,10 +4393,9 @@ fn infer_fold_accumulator_type(
             if let Some(param) = params.first() {
                 lambda_scope.insert(param.clone(), init_ty.clone());
             }
-            if let (Some(param), Some(elem_ty)) = (
-                params.get(1),
-                collection_element_value_type(&collection_ty),
-            ) {
+            if let (Some(param), Some(elem_ty)) =
+                (params.get(1), collection_element_value_type(&collection_ty))
+            {
                 lambda_scope.insert(param.clone(), elem_ty);
             }
             let (body_ty, body_errors) = infer_expr_type(body, &lambda_scope, infer_context);
@@ -4510,7 +4499,8 @@ fn infer_expr_type(
                     {
                         lambda_scope.insert(params[0].clone(), collection_elem_ty);
                     }
-                    let (body_ty, body_errors) = infer_expr_type(body, &lambda_scope, infer_context);
+                    let (body_ty, body_errors) =
+                        infer_expr_type(body, &lambda_scope, infer_context);
                     errors.extend(body_errors);
                     body_ty
                 }
@@ -4541,8 +4531,7 @@ fn infer_expr_type(
             collection_ty
         }
         Expr::Call(name, args) if name == "with" && !args.is_empty() => {
-            let (base_ty, base_errors) =
-                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            let (base_ty, base_errors) = infer_expr_type(&args[0].1, local_bindings, infer_context);
             errors.extend(base_errors);
             if let Some((_, update_expr)) = args.get(1) {
                 let (_, update_errors) =
@@ -4713,12 +4702,11 @@ fn infer_expr_type(
             if arm_types.len() >= 2 {
                 let first = arm_types[0].display_name();
                 for other in &arm_types[1..] {
-                    let (compat, confident) =
-                        are_branch_types_compatible(
-                            &first,
-                            &other.display_name(),
-                            infer_context.variant_parents,
-                        );
+                    let (compat, confident) = are_branch_types_compatible(
+                        &first,
+                        &other.display_name(),
+                        infer_context.variant_parents,
+                    );
                     if !compat && confident {
                         errors.push(TypeError::MatchArmTypeMismatch {
                             first_type: first.clone(),
@@ -5259,7 +5247,9 @@ fn merge_value_types(left: ValueType, right: ValueType) -> ValueType {
         }
         (ValueType::Record(left_fields), ValueType::Record(right_fields))
             if left_fields.len() == right_fields.len()
-                && left_fields.keys().all(|name| right_fields.contains_key(name)) =>
+                && left_fields
+                    .keys()
+                    .all(|name| right_fields.contains_key(name)) =>
         {
             ValueType::Record(
                 left_fields
@@ -5283,11 +5273,11 @@ fn value_type_to_ir_type(ty: &ValueType) -> gunbc_ir::code_ir::IrType {
     use gunbc_ir::code_ir::IrType;
 
     match ty {
-        ValueType::Named(name) if name.ends_with('?') => IrType::Optional(Box::new(
-            value_type_to_ir_type(&ValueType::Named(
+        ValueType::Named(name) if name.ends_with('?') => {
+            IrType::Optional(Box::new(value_type_to_ir_type(&ValueType::Named(
                 name.trim_end_matches('?').trim().to_string(),
-            )),
-        )),
+            ))))
+        }
         ValueType::Named(name) => match name.as_str() {
             "Bool" => IrType::Bool,
             "Int" => IrType::Int,

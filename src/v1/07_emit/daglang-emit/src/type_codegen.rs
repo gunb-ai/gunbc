@@ -734,8 +734,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     analysis_ctx.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
     analysis_ctx.ir_scope = ir_scope.clone();
 
-    let anonymous_record_field_types =
-        analysis_ctx.typecheck_anonymous_record_field_types.clone();
+    let anonymous_record_field_types = analysis_ctx.typecheck_anonymous_record_field_types.clone();
     let (synth_items, synthesized_targets, new_field_types) =
         fn_codegen::synthesize_anonymous_structs(
             &fd.name,
@@ -1145,10 +1144,9 @@ pub fn generate_types_for_modules(
             anonymous_record_targets: collect_anonymous_record_targets(
                 module.callable_body_metadata(fd.name.as_str()),
             ),
-            typecheck_anonymous_record_field_types:
-                collect_typecheck_anonymous_record_field_types(
-                    module.callable_body_metadata(fd.name.as_str()),
-                ),
+            typecheck_anonymous_record_field_types: collect_typecheck_anonymous_record_field_types(
+                module.callable_body_metadata(fd.name.as_str()),
+            ),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }

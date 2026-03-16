@@ -332,7 +332,6 @@ fn infer_success_port(fields: &[daglang_syntax::ast::Field]) -> Option<String> {
         .map(str::to_string)
 }
 
-
 /// Convert DslParam map to cached format for serialization.
 fn dsl_params_to_cached(
     params: &BTreeMap<String, Vec<DslParam>>,

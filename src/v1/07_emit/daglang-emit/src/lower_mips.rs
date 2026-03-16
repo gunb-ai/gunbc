@@ -1570,10 +1570,7 @@ mod tests {
                 matches!(
                     i,
                     Instruction::Move {
-                        rd: Register::A0
-                            | Register::A1
-                            | Register::A2
-                            | Register::A3,
+                        rd: Register::A0 | Register::A1 | Register::A2 | Register::A3,
                         ..
                     }
                 )
