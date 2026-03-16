@@ -1161,6 +1161,7 @@ pub fn generate_types_for_modules(
                 module.callable_body_metadata(fd.name.as_str()),
             ),
             expr_identities: std::collections::HashMap::new(),
+            expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1697,6 +1698,7 @@ mod tests {
                     module.callable_body_metadata(fn_name),
                 ),
                 expr_identities: HashMap::new(),
+                expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
             },
         )
     }

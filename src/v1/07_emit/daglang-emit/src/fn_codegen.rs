@@ -44,9 +44,10 @@
 //! - `module_prelude()`: Hardcoded cross-module `use` statements.
 
 use daglang_syntax::ast;
-use daglang_syntax::ast_utils::{walk_stmts_with_expr_identities, ExprIdentity};
+use daglang_syntax::ast_utils::ExprIdentity;
 use gunbc_ir::code_ir;
 use gunbc_ir::code_ir::IrType;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -136,8 +137,349 @@ pub struct CompileContext {
     pub anonymous_record_targets: HashMap<ExprIdentity, String>,
     /// Typecheck-produced synthesized anonymous-record types for this callable.
     pub synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
-    /// Local mapping from this function body's AST nodes back to stable identities.
-    pub(crate) expr_identities: HashMap<usize, ExprIdentity>,
+    /// Local mapping from this function body's structural expression paths back to
+    /// stable identities produced by typecheck.
+    pub(crate) expr_identities: HashMap<ExprPath, ExprIdentity>,
+    pub(crate) expr_path: RefCell<ExprPath>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub(crate) struct ExprPath(Vec<ExprPathStep>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum StmtExprSlot {
+    LetValue,
+    AssignValue,
+    NodeExpr,
+    NodeGuard,
+    ExprStmt,
+    ReturnField(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ExprPathStep {
+    BodyStmt { index: usize, slot: StmtExprSlot },
+    BlockStmt { index: usize, slot: StmtExprSlot },
+    ForBodyStmt { index: usize, slot: StmtExprSlot },
+    FieldAccessBase,
+    CallArg(usize),
+    ServiceArg(usize),
+    BinOpLeft,
+    BinOpRight,
+    UnaryInner,
+    LambdaBody,
+    ForIterable,
+    ForBodyExpr,
+    StringPart(usize),
+    RecordField(usize),
+    MatchScrutinee,
+    MatchArmGuard(usize),
+    MatchArmBody(usize),
+    IfCond,
+    IfThen,
+    IfElse,
+    ListItem(usize),
+    MapKey(usize),
+    MapValue(usize),
+    GuardedInner,
+    GuardedGuard,
+    AfterInner,
+}
+
+#[derive(Debug, Clone)]
+enum StmtPathOwner {
+    Body,
+    Block(ExprPath),
+    ForBody(ExprPath),
+}
+
+impl ExprPath {
+    fn child(&self, step: ExprPathStep) -> Self {
+        let mut steps = self.0.clone();
+        steps.push(step);
+        Self(steps)
+    }
+}
+
+fn stmt_expr_path(owner: &StmtPathOwner, index: usize, slot: StmtExprSlot) -> ExprPath {
+    match owner {
+        StmtPathOwner::Body => ExprPath(vec![ExprPathStep::BodyStmt { index, slot }]),
+        StmtPathOwner::Block(path) => path.child(ExprPathStep::BlockStmt { index, slot }),
+        StmtPathOwner::ForBody(path) => path.child(ExprPathStep::ForBodyStmt { index, slot }),
+    }
+}
+
+fn record_field_path(path: &ExprPath, index: usize) -> ExprPath {
+    path.child(ExprPathStep::RecordField(index))
+}
+
+fn build_expr_identities(body: &ast::FnBody) -> HashMap<ExprPath, ExprIdentity> {
+    fn walk_stmt_sequence(
+        stmts: &[ast::Stmt],
+        owner: &StmtPathOwner,
+        next_identity: &mut usize,
+        expr_identities: &mut HashMap<ExprPath, ExprIdentity>,
+    ) {
+        for (index, stmt) in stmts.iter().enumerate() {
+            match stmt {
+                ast::Stmt::Let(_, expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::LetValue),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Assign(_, expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::AssignValue),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Expr(expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::ExprStmt),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Node(node) => {
+                    walk_expr(
+                        &node.expr,
+                        stmt_expr_path(owner, index, StmtExprSlot::NodeExpr),
+                        next_identity,
+                        expr_identities,
+                    );
+                    if let Some(guard) = &node.when_guard {
+                        walk_expr(
+                            guard,
+                            stmt_expr_path(owner, index, StmtExprSlot::NodeGuard),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+                ast::Stmt::Return(fields) => {
+                    for (field_index, (_, expr)) in fields.iter().enumerate() {
+                        walk_expr(
+                            expr,
+                            stmt_expr_path(owner, index, StmtExprSlot::ReturnField(field_index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn walk_expr(
+        expr: &ast::Expr,
+        path: ExprPath,
+        next_identity: &mut usize,
+        expr_identities: &mut HashMap<ExprPath, ExprIdentity>,
+    ) {
+        let expr_identity = ExprIdentity(*next_identity);
+        *next_identity += 1;
+        expr_identities.insert(path.clone(), expr_identity);
+        match expr {
+            ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
+            ast::Expr::FieldAccess(base, _) => walk_expr(
+                base,
+                path.child(ExprPathStep::FieldAccessBase),
+                next_identity,
+                expr_identities,
+            ),
+            ast::Expr::Call(_, args) => {
+                for (index, (_, arg)) in args.iter().enumerate() {
+                    walk_expr(
+                        arg,
+                        path.child(ExprPathStep::CallArg(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::ServiceCall(_, args) => {
+                for (index, (_, arg)) in args.iter().enumerate() {
+                    walk_expr(
+                        arg,
+                        path.child(ExprPathStep::ServiceArg(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::BinOp(left, _, right) => {
+                walk_expr(
+                    left,
+                    path.child(ExprPathStep::BinOpLeft),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    right,
+                    path.child(ExprPathStep::BinOpRight),
+                    next_identity,
+                    expr_identities,
+                );
+            }
+            ast::Expr::UnaryOp(_, inner)
+            | ast::Expr::Lambda(_, inner)
+            | ast::Expr::After(inner, _) => {
+                let step = match expr {
+                    ast::Expr::UnaryOp(_, _) => ExprPathStep::UnaryInner,
+                    ast::Expr::Lambda(_, _) => ExprPathStep::LambdaBody,
+                    ast::Expr::After(_, _) => ExprPathStep::AfterInner,
+                    _ => unreachable!(),
+                };
+                walk_expr(inner, path.child(step), next_identity, expr_identities);
+            }
+            ast::Expr::StringInterp(parts) => {
+                for (index, part) in parts.iter().enumerate() {
+                    if let ast::StringPart::Expr(inner) = part {
+                        walk_expr(
+                            inner,
+                            path.child(ExprPathStep::StringPart(index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+            }
+            ast::Expr::Record(_, fields) | ast::Expr::Return(fields) => {
+                for (index, (_, field_expr)) in fields.iter().enumerate() {
+                    walk_expr(
+                        field_expr,
+                        record_field_path(&path, index),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Match(scrutinee, arms) => {
+                walk_expr(
+                    scrutinee,
+                    path.child(ExprPathStep::MatchScrutinee),
+                    next_identity,
+                    expr_identities,
+                );
+                for (index, arm) in arms.iter().enumerate() {
+                    if let Some(guard) = &arm.guard {
+                        walk_expr(
+                            guard,
+                            path.child(ExprPathStep::MatchArmGuard(index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                    walk_expr(
+                        &arm.body,
+                        path.child(ExprPathStep::MatchArmBody(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::If(cond, then_expr, else_expr) => {
+                walk_expr(
+                    cond,
+                    path.child(ExprPathStep::IfCond),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    then_expr,
+                    path.child(ExprPathStep::IfThen),
+                    next_identity,
+                    expr_identities,
+                );
+                if let Some(otherwise) = else_expr {
+                    walk_expr(
+                        otherwise,
+                        path.child(ExprPathStep::IfElse),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::For(_, iterable, _, body) => {
+                walk_expr(
+                    iterable,
+                    path.child(ExprPathStep::ForIterable),
+                    next_identity,
+                    expr_identities,
+                );
+                match body {
+                    ast::ForBody::Expr(expr) => walk_expr(
+                        expr,
+                        path.child(ExprPathStep::ForBodyExpr),
+                        next_identity,
+                        expr_identities,
+                    ),
+                    ast::ForBody::Block(stmts) => walk_stmt_sequence(
+                        stmts,
+                        &StmtPathOwner::ForBody(path.clone()),
+                        next_identity,
+                        expr_identities,
+                    ),
+                }
+            }
+            ast::Expr::List(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    walk_expr(
+                        item,
+                        path.child(ExprPathStep::ListItem(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Map(entries) => {
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    walk_expr(
+                        key,
+                        path.child(ExprPathStep::MapKey(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                    walk_expr(
+                        value,
+                        path.child(ExprPathStep::MapValue(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Guarded(inner, guard) => {
+                walk_expr(
+                    inner,
+                    path.child(ExprPathStep::GuardedInner),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    guard,
+                    path.child(ExprPathStep::GuardedGuard),
+                    next_identity,
+                    expr_identities,
+                );
+            }
+            ast::Expr::Block(stmts) => walk_stmt_sequence(
+                stmts,
+                &StmtPathOwner::Block(path),
+                next_identity,
+                expr_identities,
+            ),
+        }
+    }
+
+    let mut expr_identities = HashMap::new();
+    let mut next_identity = 0usize;
+    walk_stmt_sequence(
+        &body.stmts,
+        &StmtPathOwner::Body,
+        &mut next_identity,
+        &mut expr_identities,
+    );
+    expr_identities
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,24 +517,35 @@ impl CompileContext {
             anonymous_record_targets: HashMap::new(),
             synthesized_anonymous_record_types: Vec::new(),
             expr_identities: HashMap::new(),
+            expr_path: RefCell::new(ExprPath::default()),
         }
     }
 
-    fn anonymous_record_target(&self, expr: &ast::Expr) -> Option<&str> {
-        let expr_identity = self
-            .expr_identities
-            .get(&(expr as *const ast::Expr as usize))?;
+    fn current_expr_path(&self) -> ExprPath {
+        self.expr_path.borrow().clone()
+    }
+
+    fn with_expr_path<T>(&self, path: ExprPath, f: impl FnOnce() -> T) -> T {
+        let previous = self.expr_path.replace(path);
+        let result = f();
+        self.expr_path.replace(previous);
+        result
+    }
+
+    fn with_child_expr_path<T>(&self, step: ExprPathStep, f: impl FnOnce() -> T) -> T {
+        self.with_expr_path(self.current_expr_path().child(step), f)
+    }
+
+    fn anonymous_record_target(&self) -> Option<&str> {
+        let expr_identity = self.expr_identities.get(&self.current_expr_path())?;
         self.anonymous_record_targets
             .get(expr_identity)
             .map(String::as_str)
     }
 
     fn populate_expr_identities(&mut self, body: &ast::FnBody) {
-        self.expr_identities.clear();
-        walk_stmts_with_expr_identities(&body.stmts, &mut |expr_identity, expr| {
-            self.expr_identities
-                .insert(expr as *const ast::Expr as usize, expr_identity);
-        });
+        self.expr_identities = build_expr_identities(body);
+        self.expr_path.replace(ExprPath::default());
     }
 }
 
@@ -397,7 +750,7 @@ pub fn compile_fn_body(body: &ast::FnBody, ctx: &CompileContext) -> Vec<code_ir:
     ctx.populate_expr_identities(body);
     ctx.use_counts = count_ident_uses(&body.stmts);
     let mut counter: usize = 0;
-    compile_stmt_sequence(&body.stmts, &ctx, &mut counter)
+    compile_stmt_sequence(&body.stmts, &ctx, &mut counter, &StmtPathOwner::Body)
 }
 
 /// Check if an AST expression clearly produces an Option<T> value.
@@ -459,13 +812,14 @@ fn compile_stmt_sequence(
     stmts: &[ast::Stmt],
     ctx: &CompileContext,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> Vec<code_ir::Stmt> {
     let len = stmts.len();
     let mut current_ctx = ctx.clone();
     let mut result = Vec::with_capacity(len);
     for (index, stmt) in stmts.iter().enumerate() {
         track_binding_before_compile(stmt, &mut current_ctx);
-        let compiled = compile_stmt(stmt, index + 1 == len, &current_ctx, counter);
+        let compiled = compile_stmt(stmt, index, index + 1 == len, &current_ctx, counter, owner);
         track_binding_after_compile(stmt, &compiled, &mut current_ctx);
         result.push(compiled);
     }
@@ -478,42 +832,58 @@ fn compile_stmt_sequence(
 
 fn compile_stmt(
     stmt: &ast::Stmt,
+    stmt_index: usize,
     is_last: bool,
     ctx: &CompileContext,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> code_ir::Stmt {
     match stmt {
-        ast::Stmt::Let(name, expr) => {
-            let ir_type = infer_ast_expr_type(expr, ctx);
-            code_ir::Stmt::Let {
-                name: escape_rust_keyword(name),
-                mutable: false,
-                expr: compile_expr(expr, ctx, counter),
-                ir_type,
-            }
-        }
-        ast::Stmt::Assign(name, expr) => code_ir::Stmt::Assign {
-            dest: code_ir::Expr::Var(escape_rust_keyword(name)),
-            value: compile_expr(expr, ctx, counter),
-        },
-        ast::Stmt::Node(ns) => {
-            let ir_type = infer_ast_expr_type(&ns.expr, ctx);
-            code_ir::Stmt::Let {
-                name: escape_rust_keyword(&ns.name),
-                mutable: false,
-                expr: compile_expr(&ns.expr, ctx, counter),
-                ir_type,
-            }
-        }
-        ast::Stmt::Expr(expr) => {
-            if is_last {
-                code_ir::Stmt::TailExpr(compile_expr(expr, ctx, counter))
-            } else {
-                code_ir::Stmt::Expr(compile_expr(expr, ctx, counter))
-            }
-        }
+        ast::Stmt::Let(name, expr) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::LetValue),
+            || {
+                let ir_type = infer_ast_expr_type(expr, ctx);
+                code_ir::Stmt::Let {
+                    name: escape_rust_keyword(name),
+                    mutable: false,
+                    expr: compile_expr(expr, ctx, counter),
+                    ir_type,
+                }
+            },
+        ),
+        ast::Stmt::Assign(name, expr) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::AssignValue),
+            || code_ir::Stmt::Assign {
+                dest: code_ir::Expr::Var(escape_rust_keyword(name)),
+                value: compile_expr(expr, ctx, counter),
+            },
+        ),
+        ast::Stmt::Node(ns) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::NodeExpr),
+            || {
+                let ir_type = infer_ast_expr_type(&ns.expr, ctx);
+                code_ir::Stmt::Let {
+                    name: escape_rust_keyword(&ns.name),
+                    mutable: false,
+                    expr: compile_expr(&ns.expr, ctx, counter),
+                    ir_type,
+                }
+            },
+        ),
+        ast::Stmt::Expr(expr) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::ExprStmt),
+            || {
+                if is_last {
+                    code_ir::Stmt::TailExpr(compile_expr(expr, ctx, counter))
+                } else {
+                    code_ir::Stmt::Expr(compile_expr(expr, ctx, counter))
+                }
+            },
+        ),
         ast::Stmt::Return(fields) => {
-            let ir_expr = compile_return_fields(fields, ctx, counter);
+            let ir_expr = compile_return_fields(fields, ctx, counter, |index| {
+                stmt_expr_path(owner, stmt_index, StmtExprSlot::ReturnField(index))
+            });
             if is_last {
                 code_ir::Stmt::TailExpr(ir_expr)
             } else {
@@ -527,6 +897,7 @@ fn compile_return_fields(
     fields: &[(String, ast::Expr)],
     ctx: &CompileContext,
     counter: &mut usize,
+    field_path: impl Fn(usize) -> ExprPath,
 ) -> code_ir::Expr {
     if fields.is_empty() {
         code_ir::Expr::Tuple(vec![])
@@ -534,16 +905,15 @@ fn compile_return_fields(
         // Single-field return: unwrap the record to a bare expression.
         // DSL `return { return: expr }` and `return { value: expr }` both
         // mean "return this value".
-        compile_expr(&fields[0].1, ctx, counter)
+        ctx.with_expr_path(field_path(0), || compile_expr(&fields[0].1, ctx, counter))
     } else {
         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-        let return_expr = ast::Expr::Record(None, fields.to_vec());
         let Some(struct_name) =
-            resolve_record_struct_name(&return_expr, ctx.current_return_type.as_deref(), ctx)
+            explicit_record_struct_name(ctx.current_return_type.as_deref(), ctx)
         else {
             return unresolved_anonymous_record_error(&field_names);
         };
-        compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
+        compile_resolved_record_expr(&struct_name, fields, None, field_path, ctx, counter)
     }
 }
 
@@ -602,13 +972,16 @@ fn optional_to_required_field_error(target_struct: &str, field_name: &str) -> co
 
 fn compile_struct_field_value(
     expr: &ast::Expr,
+    expr_path: ExprPath,
     target_struct: &str,
     field_name: &str,
     field_types: Option<&std::collections::HashMap<String, String>>,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
-    let compiled = compile_expr_in_field_context(expr, field_name, field_types, ctx, counter);
+    let compiled = ctx.with_expr_path(expr_path, || {
+        compile_expr_in_field_context(expr, field_name, field_types, ctx, counter)
+    });
     let is_opt = ctx
         .optional_fields
         .get(target_struct)
@@ -660,12 +1033,11 @@ fn explicit_record_struct_name(
 }
 
 fn resolve_record_struct_name(
-    expr: &ast::Expr,
     preferred_struct: Option<&str>,
     ctx: &CompileContext,
 ) -> Option<String> {
     explicit_record_struct_name(preferred_struct, ctx).or_else(|| {
-        ctx.anonymous_record_target(expr)
+        ctx.anonymous_record_target()
             .and_then(|target| explicit_record_struct_name(Some(target), ctx))
     })
 }
@@ -683,6 +1055,7 @@ fn compile_resolved_record_expr(
     struct_name: &str,
     fields: &[(String, ast::Expr)],
     rest: Option<code_ir::Expr>,
+    field_path: impl Fn(usize) -> ExprPath,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
@@ -694,10 +1067,19 @@ fn compile_resolved_record_expr(
     let field_types = ctx.struct_field_types.get(struct_name);
     let ir_fields: Vec<(String, code_ir::Expr)> = fields
         .iter()
-        .map(|(name, expr)| {
+        .enumerate()
+        .map(|(index, (name, expr))| {
             (
                 name.clone(),
-                compile_struct_field_value(expr, struct_name, name, field_types, ctx, counter),
+                compile_struct_field_value(
+                    expr,
+                    field_path(index),
+                    struct_name,
+                    name,
+                    field_types,
+                    ctx,
+                    counter,
+                ),
             )
         })
         .collect();
@@ -723,7 +1105,11 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             // .value on an Option<T> (from Some { value: x } access) → .unwrap()
             if field == "value" && is_likely_option_receiver_ctx(receiver, ctx) {
                 return code_ir::Expr::MethodCall {
-                    receiver: Box::new(compile_expr(receiver, ctx, counter)),
+                    receiver: Box::new(
+                        ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                            compile_expr(receiver, ctx, counter)
+                        }),
+                    ),
                     method: "unwrap".to_string(),
                     args: vec![],
                 };
@@ -734,7 +1120,12 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
-            code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx, counter)), rust_field)
+            code_ir::Expr::Field(
+                Box::new(ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                    compile_expr(receiver, ctx, counter)
+                })),
+                rust_field,
+            )
         }
         ast::Expr::Call(name, args) => {
             if let Some(intrinsic) = compile_intrinsic_call(name, args, ctx, counter) {
@@ -747,11 +1138,15 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             if matches!(op, ast::BinOp::NullCoalesce) {
                 // x ?? y → x.unwrap_or_else(|| y)
                 code_ir::Expr::MethodCall {
-                    receiver: Box::new(compile_expr(left, ctx, counter)),
+                    receiver: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpLeft, || {
+                        compile_expr(left, ctx, counter)
+                    })),
                     method: "unwrap_or_else".to_string(),
                     args: vec![code_ir::Expr::Closure {
                         args: vec![],
-                        body: Box::new(compile_expr(right, ctx, counter)),
+                        body: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
+                            compile_expr(right, ctx, counter)
+                        })),
                     }],
                 }
             } else {
@@ -759,20 +1154,28 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // + is now exclusively arithmetic — string/list concat uses
                 // the `concat()` intrinsic function instead.
                 code_ir::Expr::BinOp {
-                    left: Box::new(compile_expr(left, ctx, counter)),
+                    left: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpLeft, || {
+                        compile_expr(left, ctx, counter)
+                    })),
                     op: compile_binop(op),
-                    right: Box::new(compile_expr(right, ctx, counter)),
+                    right: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
+                        compile_expr(right, ctx, counter)
+                    })),
                 }
             }
         }
         ast::Expr::UnaryOp(op, expr) => code_ir::Expr::UnaryOp {
             op: compile_unaryop(op),
-            expr: Box::new(compile_expr(expr, ctx, counter)),
+            expr: Box::new(ctx.with_child_expr_path(ExprPathStep::UnaryInner, || {
+                compile_expr(expr, ctx, counter)
+            })),
         },
         ast::Expr::Record(name, fields) => {
             // Special case: Some { value: x } → Some(compiled_x) in Rust
             if name.as_deref() == Some("Some") && fields.len() == 1 && fields[0].0 == "value" {
-                let inner = compile_expr(&fields[0].1, ctx, counter);
+                let inner = ctx.with_child_expr_path(ExprPathStep::RecordField(0), || {
+                    compile_expr(&fields[0].1, ctx, counter)
+                });
                 return code_ir::Expr::Call {
                     func: Box::new(code_ir::Expr::Var("Some".to_string())),
                     args: vec![inner],
@@ -784,13 +1187,29 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 return code_ir::Expr::Var("None".to_string());
             }
             if let Some(struct_name) = name.as_deref() {
-                compile_resolved_record_expr(struct_name, fields, None, ctx, counter)
+                let current_path = ctx.current_expr_path();
+                compile_resolved_record_expr(
+                    struct_name,
+                    fields,
+                    None,
+                    |index| record_field_path(&current_path, index),
+                    ctx,
+                    counter,
+                )
             } else {
                 let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-                let Some(struct_name) = resolve_record_struct_name(expr, None, ctx) else {
+                let Some(struct_name) = resolve_record_struct_name(None, ctx) else {
                     return unresolved_anonymous_record_error(&field_names);
                 };
-                compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
+                let current_path = ctx.current_expr_path();
+                compile_resolved_record_expr(
+                    &struct_name,
+                    fields,
+                    None,
+                    |index| record_field_path(&current_path, index),
+                    ctx,
+                    counter,
+                )
             }
         }
         ast::Expr::Match(scrutinee, arms) => compile_match(scrutinee, arms, ctx, counter),
@@ -799,7 +1218,9 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
         }
         ast::Expr::Lambda(params, body) => code_ir::Expr::Closure {
             args: params.clone(),
-            body: Box::new(compile_expr(body, ctx, counter)),
+            body: Box::new(ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            })),
         },
         ast::Expr::List(elements) => {
             // DSL List<T> maps to Rust Rc<Vec<T>>, so use Rc::new(vec![...]).
@@ -807,14 +1228,21 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 name: "vec".to_string(),
                 args: elements
                     .iter()
-                    .map(|e| compile_expr(e, ctx, counter))
+                    .enumerate()
+                    .map(|(index, e)| {
+                        ctx.with_child_expr_path(ExprPathStep::ListItem(index), || {
+                            compile_expr(e, ctx, counter)
+                        })
+                    })
                     .collect(),
             })
         }
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx, counter),
         ast::Expr::For(binding, iter_expr, _passthrough, body) => {
             let result_var = fresh(counter, "for_result");
-            let iter = make_owned_iter(compile_expr(iter_expr, ctx, counter));
+            let iter = make_owned_iter(ctx.with_child_expr_path(ExprPathStep::ForIterable, || {
+                compile_expr(iter_expr, ctx, counter)
+            }));
             // Infer element type from body for Vec<T> annotation
             let body_ast_expr = match body {
                 ast::ForBody::Expr(e) => Some(e.as_ref()),
@@ -823,14 +1251,41 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                     _ => None,
                 }),
             };
-            let list_type = body_ast_expr
-                .and_then(|e| infer_ast_expr_type(e, ctx))
-                .map(|t| IrType::Generic("List".to_string(), vec![t]));
+            let list_type = match body {
+                ast::ForBody::Expr(_) => body_ast_expr.and_then(|e| {
+                    ctx.with_child_expr_path(ExprPathStep::ForBodyExpr, || {
+                        infer_ast_expr_type(e, ctx)
+                    })
+                }),
+                ast::ForBody::Block(stmts) => stmts
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(index, stmt)| match stmt {
+                        ast::Stmt::Expr(expr) => Some(ctx.with_expr_path(
+                            stmt_expr_path(
+                                &StmtPathOwner::ForBody(ctx.current_expr_path()),
+                                index,
+                                StmtExprSlot::ExprStmt,
+                            ),
+                            || infer_ast_expr_type(expr, ctx),
+                        )),
+                        _ => None,
+                    })
+                    .flatten(),
+            }
+            .map(|t| IrType::Generic("List".to_string(), vec![t]));
             let push_expr = match body {
-                ast::ForBody::Expr(expr) => compile_expr(expr, ctx, counter),
-                ast::ForBody::Block(stmts) => {
-                    code_ir::Expr::Block(compile_stmt_sequence(stmts, ctx, counter))
-                }
+                ast::ForBody::Expr(expr) => ctx
+                    .with_child_expr_path(ExprPathStep::ForBodyExpr, || {
+                        compile_expr(expr, ctx, counter)
+                    }),
+                ast::ForBody::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence(
+                    stmts,
+                    ctx,
+                    counter,
+                    &StmtPathOwner::ForBody(ctx.current_expr_path()),
+                )),
             };
             code_ir::Expr::Block(vec![
                 code_ir::Stmt::Let {
@@ -854,11 +1309,26 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result_var))),
             ])
         }
-        ast::Expr::Return(fields) => compile_return_fields(fields, ctx, counter),
-        ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => {
-            compile_expr(inner, ctx, counter)
+        ast::Expr::Return(fields) => {
+            let current_path = ctx.current_expr_path();
+            compile_return_fields(fields, ctx, counter, |index| {
+                record_field_path(&current_path, index)
+            })
         }
-        ast::Expr::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence(stmts, ctx, counter)),
+        ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => {
+            let step = match expr {
+                ast::Expr::Guarded(_, _) => ExprPathStep::GuardedInner,
+                ast::Expr::After(_, _) => ExprPathStep::AfterInner,
+                _ => unreachable!(),
+            };
+            ctx.with_child_expr_path(step, || compile_expr(inner, ctx, counter))
+        }
+        ast::Expr::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence(
+            stmts,
+            ctx,
+            counter,
+            &StmtPathOwner::Block(ctx.current_expr_path()),
+        )),
         ast::Expr::ServiceCall(path, args) => {
             // Lower Resource.method(args) → v2_rt::resource_method(args)
             let fn_name = path
@@ -868,7 +1338,12 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 .join("_");
             let compiled_args: Vec<code_ir::Expr> = args
                 .iter()
-                .map(|(_, e)| compile_expr(e, ctx, counter))
+                .enumerate()
+                .map(|(index, (_, e))| {
+                    ctx.with_child_expr_path(ExprPathStep::ServiceArg(index), || {
+                        compile_expr(e, ctx, counter)
+                    })
+                })
                 .collect();
             code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), fn_name])),
@@ -905,11 +1380,13 @@ fn compile_expr_typed(
             let variant_field_types = ctx.struct_field_types.get(record_name.as_str());
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
                 .iter()
-                .map(|(field_name, field_expr)| {
+                .enumerate()
+                .map(|(index, (field_name, field_expr))| {
                     (
                         field_name.clone(),
                         compile_struct_field_value(
                             field_expr,
+                            record_field_path(&ctx.current_expr_path(), index),
                             record_name,
                             field_name,
                             variant_field_types,
@@ -929,10 +1406,18 @@ fn compile_expr_typed(
         }
         ast::Expr::Record(None, fields) => {
             let field_names: HashSet<&str> = fields.iter().map(|(name, _)| name.as_str()).collect();
-            let Some(struct_name) = resolve_record_struct_name(expr, expected_type, ctx) else {
+            let Some(struct_name) = resolve_record_struct_name(expected_type, ctx) else {
                 return unresolved_anonymous_record_error(&field_names);
             };
-            compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
+            let current_path = ctx.current_expr_path();
+            compile_resolved_record_expr(
+                &struct_name,
+                fields,
+                None,
+                |index| record_field_path(&current_path, index),
+                ctx,
+                counter,
+            )
         }
         ast::Expr::Match(scrutinee, arms) => {
             compile_match_typed(scrutinee, arms, ctx, expected_type, counter)
@@ -945,6 +1430,7 @@ fn compile_expr_typed(
             ctx,
             expected_type,
             counter,
+            &StmtPathOwner::Block(ctx.current_expr_path()),
         )),
         _ => compile_expr(expr, ctx, counter),
     }
@@ -1038,6 +1524,39 @@ fn to_screaming_snake(name: &str) -> String {
     result
 }
 
+fn with_call_arg_path<T>(ctx: &CompileContext, index: usize, f: impl FnOnce() -> T) -> T {
+    ctx.with_child_expr_path(ExprPathStep::CallArg(index), f)
+}
+
+fn compile_call_arg(
+    args: &[(Option<String>, ast::Expr)],
+    index: usize,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    with_call_arg_path(ctx, index, || compile_expr(&args[index].1, ctx, counter))
+}
+
+fn compile_call_arg_typed(
+    args: &[(Option<String>, ast::Expr)],
+    index: usize,
+    expected_type: Option<&str>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    with_call_arg_path(ctx, index, || {
+        compile_expr_typed(&args[index].1, ctx, expected_type, counter)
+    })
+}
+
+fn infer_call_arg_type(
+    args: &[(Option<String>, ast::Expr)],
+    index: usize,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    with_call_arg_path(ctx, index, || infer_ast_expr_type(&args[index].1, ctx))
+}
+
 // ---------------------------------------------------------------------------
 // Function calls
 // ---------------------------------------------------------------------------
@@ -1060,37 +1579,49 @@ fn compile_intrinsic_call(
     if args.is_empty() {
         return None;
     }
-    let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter));
+    let collection = clone_if_needed(compile_call_arg(args, 0, ctx, counter));
 
     match name {
-        "map" if args.len() == 2 => Some(compile_map_intrinsic(
-            &collection.clone(),
-            args.get(1).map(|(_, e)| e),
-            ctx,
-            counter,
-        )),
-        "filter" if args.len() == 2 => Some(compile_filter_intrinsic(
-            &collection.clone(),
-            args.get(1).map(|(_, e)| e),
-            ctx,
-            counter,
-        )),
+        "map" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
+            compile_map_intrinsic(
+                &collection.clone(),
+                args.get(1).map(|(_, e)| e),
+                ctx,
+                counter,
+            )
+        })),
+        "filter" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
+            compile_filter_intrinsic(
+                &collection.clone(),
+                args.get(1).map(|(_, e)| e),
+                ctx,
+                counter,
+            )
+        })),
         "fold" if args.len() >= 2 => {
-            let init = args
+            let call_path = ctx.current_expr_path();
+            let init_index = args
                 .iter()
-                .find(|(n, _)| n.as_deref() == Some("init"))
-                .or_else(|| args.get(1))
-                .map(|(_, e)| e);
-            let func = args
+                .position(|(n, _)| n.as_deref() == Some("init"))
+                .or_else(|| (args.len() > 1).then_some(1));
+            let init = init_index.map(|index| &args[index].1);
+            let func_index = args
                 .iter()
-                .find(|(n, _)| n.as_deref() == Some("f"))
-                .or_else(|| args.get(2))
-                .map(|(_, e)| e);
+                .position(|(n, _)| n.as_deref() == Some("f"))
+                .or_else(|| (args.len() > 2).then_some(2));
+            let func = func_index.map(|index| &args[index].1);
             Some(compile_fold_intrinsic(
                 &collection.clone(),
-                &args[0].1,
-                init,
-                func,
+                FoldExprContext {
+                    collection_ast: &args[0].1,
+                    collection_path: call_path.child(ExprPathStep::CallArg(0)),
+                    init: init_index
+                        .zip(init)
+                        .map(|(index, expr)| (expr, call_path.child(ExprPathStep::CallArg(index)))),
+                    func: func_index
+                        .zip(func)
+                        .map(|(index, expr)| (expr, call_path.child(ExprPathStep::CallArg(index)))),
+                },
                 ctx,
                 counter,
             ))
@@ -1101,15 +1632,12 @@ fn compile_intrinsic_call(
                 .find(|(n, _)| n.as_deref() == Some("predicate"))
                 .or_else(|| args.get(1))
                 .map(|(_, e)| e);
-            Some(compile_any_intrinsic(
-                &collection.clone(),
-                pred,
-                ctx,
-                counter,
-            ))
+            Some(with_call_arg_path(ctx, 1, || {
+                compile_any_intrinsic(&collection.clone(), pred, ctx, counter)
+            }))
         }
         "contains" if args.len() == 2 => {
-            let target = compile_expr(&args[1].1, ctx, counter);
+            let target = compile_call_arg(args, 1, ctx, counter);
             let result = fresh(counter, "contains");
             let elem = fresh(counter, "elem");
             Some(code_ir::Expr::Block(vec![
@@ -1157,7 +1685,7 @@ fn compile_intrinsic_call(
             ]))
         }
         "join" if args.len() == 2 => {
-            let sep = compile_expr(&args[1].1, ctx, counter);
+            let sep = compile_call_arg(args, 1, ctx, counter);
             let result = fresh(counter, "joined");
             let elem = fresh(counter, "elem");
             let first = fresh(counter, "first");
@@ -1207,7 +1735,7 @@ fn compile_intrinsic_call(
             args: vec![],
         }),
         "split" if args.len() == 2 => {
-            let delim = compile_expr(&args[1].1, ctx, counter);
+            let delim = compile_call_arg(args, 1, ctx, counter);
             let result = fresh(counter, "split_parts");
             let elem = fresh(counter, "part");
             Some(code_ir::Expr::Block(vec![
@@ -1276,9 +1804,9 @@ fn compile_intrinsic_call(
         // v2 compiler intrinsics: immutable record update
         "with" if args.len() == 2 => {
             // with(state, { pos: state.pos + 1 }) → State { pos: state.pos + 1, ..state.clone() }
-            let base = compile_expr(&args[0].1, ctx, counter);
+            let base = compile_call_arg(args, 0, ctx, counter);
             let base_struct_name =
-                infer_ast_expr_type(&args[0].1, ctx).and_then(|ty| named_type_from_ir(&ty));
+                infer_call_arg_type(args, 0, ctx).and_then(|ty| named_type_from_ir(&ty));
             // Clone the base value since struct update syntax moves the base
             let cloned_base = code_ir::Expr::MethodCall {
                 receiver: Box::new(base),
@@ -1293,19 +1821,19 @@ fn compile_intrinsic_call(
                     } else {
                         let field_names: HashSet<&str> =
                             fields.iter().map(|(n, _)| n.as_str()).collect();
-                        let Some(struct_name) = resolve_record_struct_name(
-                            &args[1].1,
-                            base_struct_name.as_deref(),
-                            ctx,
-                        ) else {
+                        let Some(struct_name) = with_call_arg_path(ctx, 1, || {
+                            resolve_record_struct_name(base_struct_name.as_deref(), ctx)
+                        }) else {
                             return Some(unresolved_anonymous_record_error(&field_names));
                         };
                         struct_name
                     };
+                    let arg_path = ctx.current_expr_path().child(ExprPathStep::CallArg(1));
                     Some(compile_resolved_record_expr(
                         &struct_name,
                         fields,
                         Some(cloned_base),
+                        |index| record_field_path(&arg_path, index),
                         ctx,
                         counter,
                     ))
@@ -1317,7 +1845,7 @@ fn compile_intrinsic_call(
                             "v2_rt".to_string(),
                             "with".to_string(),
                         ])),
-                        args: vec![cloned_base, compile_expr(&args[1].1, ctx, counter)],
+                        args: vec![cloned_base, compile_call_arg(args, 1, ctx, counter)],
                         obligation: None,
                     })
                 }
@@ -1383,7 +1911,11 @@ fn compile_intrinsic_call(
                 if let ast::Expr::List(elements) = &args[1].1 {
                     if elements.len() == 1 {
                         let list = strip_outer_clone(collection.clone());
-                        let item = compile_expr(&elements[0], ctx, counter);
+                        let item = with_call_arg_path(ctx, 1, || {
+                            ctx.with_child_expr_path(ExprPathStep::ListItem(0), || {
+                                compile_expr(&elements[0], ctx, counter)
+                            })
+                        });
                         let v = fresh(counter, "appended");
                         let mut stmts = rc_unwrap_stmts(&v, list, counter);
                         stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -1398,14 +1930,14 @@ fn compile_intrinsic_call(
             }
             // Binary: concat(a, b) → v2_rt::concat(a, b)
             // Variadic: concat(a, b, c) → v2_rt::concat(v2_rt::concat(a, b), c)
-            let mut result = compile_expr(&args[0].1, ctx, counter);
-            for arg in &args[1..] {
+            let mut result = compile_call_arg(args, 0, ctx, counter);
+            for (index, _) in args[1..].iter().enumerate() {
                 result = code_ir::Expr::Call {
                     func: Box::new(code_ir::Expr::Path(vec![
                         "v2_rt".to_string(),
                         "concat".to_string(),
                     ])),
-                    args: vec![result, compile_expr(&arg.1, ctx, counter)],
+                    args: vec![result, compile_call_arg(args, index + 1, ctx, counter)],
                     obligation: None,
                 };
             }
@@ -1434,8 +1966,16 @@ fn compile_intrinsic_call(
         "first" if args.len() == 1 => {
             if let ast::Expr::Call(skip_name, skip_args) = &args[0].1 {
                 if skip_name == "skip" && skip_args.len() == 2 {
-                    let list = clone_if_needed(compile_expr(&skip_args[0].1, ctx, counter));
-                    let idx = compile_expr(&skip_args[1].1, ctx, counter);
+                    let list = with_call_arg_path(ctx, 0, || {
+                        ctx.with_child_expr_path(ExprPathStep::CallArg(0), || {
+                            clone_if_needed(compile_expr(&skip_args[0].1, ctx, counter))
+                        })
+                    });
+                    let idx = with_call_arg_path(ctx, 0, || {
+                        ctx.with_child_expr_path(ExprPathStep::CallArg(1), || {
+                            compile_expr(&skip_args[1].1, ctx, counter)
+                        })
+                    });
                     return Some(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::MethodCall {
                             receiver: Box::new(list),
@@ -1464,7 +2004,7 @@ fn compile_intrinsic_call(
         "append" if args.len() == 2 => {
             // Strip outer .clone() so Rc::try_unwrap succeeds for in-place push.
             let list = strip_outer_clone(collection.clone());
-            let item = compile_expr(&args[1].1, ctx, counter);
+            let item = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -1481,14 +2021,18 @@ fn compile_intrinsic_call(
             let elem = fresh(counter, "elem");
             let mapped = match &args[1].1 {
                 ast::Expr::Lambda(params, body) => {
-                    let compiled = compile_expr(body, ctx, counter);
+                    let compiled = with_call_arg_path(ctx, 1, || {
+                        ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                            compile_expr(body, ctx, counter)
+                        })
+                    });
                     params
                         .first()
                         .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                         .unwrap_or(compiled)
                 }
-                other => code_ir::Expr::Call {
-                    func: Box::new(compile_expr(other, ctx, counter)),
+                _other => code_ir::Expr::Call {
+                    func: Box::new(compile_call_arg(args, 1, ctx, counter)),
                     args: vec![code_ir::Expr::Var(elem.clone())],
                     obligation: None,
                 },
@@ -1559,7 +2103,7 @@ fn compile_intrinsic_call(
         // sort_by(list, key_fn) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.sort_by_key(key_fn); Rc::new(v) }
         "sort_by" if args.len() == 2 => {
             let list = collection.clone();
-            let key_fn = compile_expr(&args[1].1, ctx, counter);
+            let key_fn = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "sorted");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -1581,7 +2125,7 @@ fn compile_intrinsic_call(
         // replace_last(list, value) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; if let Some(last) = v.last_mut() { *last = value; } Rc::new(v) }
         "replace_last" if args.len() == 2 => {
             let list = collection.clone();
-            let value = compile_expr(&args[1].1, ctx, counter);
+            let value = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "replaced");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
@@ -1593,8 +2137,8 @@ fn compile_intrinsic_call(
         }
         // starts_with(s, prefix) → s.starts_with(prefix.as_str())
         "starts_with" if args.len() == 2 => {
-            let s = compile_expr(&args[0].1, ctx, counter);
-            let prefix = compile_expr(&args[1].1, ctx, counter);
+            let s = compile_call_arg(args, 0, ctx, counter);
+            let prefix = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(s),
                 method: "starts_with".to_string(),
@@ -1607,8 +2151,8 @@ fn compile_intrinsic_call(
         }
         // ends_with(s, suffix) → s.ends_with(suffix.as_str())
         "ends_with" if args.len() == 2 => {
-            let s = compile_expr(&args[0].1, ctx, counter);
-            let suffix = compile_expr(&args[1].1, ctx, counter);
+            let s = compile_call_arg(args, 0, ctx, counter);
+            let suffix = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(s),
                 method: "ends_with".to_string(),
@@ -1644,7 +2188,7 @@ fn compile_intrinsic_call(
         }),
         // skip(list, n) → Rc::new(list[n as usize..].to_vec())
         "skip" if args.len() == 2 => {
-            let n = compile_expr(&args[1].1, ctx, counter);
+            let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
                 "{{ let __s = {}; Rc::new(__s[({}) as usize..].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
@@ -1653,7 +2197,7 @@ fn compile_intrinsic_call(
         }
         // take(list, n) → Rc::new(list[..n as usize].to_vec())
         "take" if args.len() == 2 => {
-            let n = compile_expr(&args[1].1, ctx, counter);
+            let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
                 "{{ let __t = {}; Rc::new(__t[..({}) as usize].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
@@ -1662,7 +2206,7 @@ fn compile_intrinsic_call(
         }
         // find(list, pred) → list.iter().find(pred).cloned()
         "find" if args.len() == 2 => {
-            let pred = compile_expr(&args[1].1, ctx, counter);
+            let pred = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::MethodCall {
@@ -1679,7 +2223,7 @@ fn compile_intrinsic_call(
         }
         // get(list, idx) → list.get(idx as usize).cloned()
         "get" if args.len() == 2 => {
-            let idx = compile_expr(&args[1].1, ctx, counter);
+            let idx = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::MethodCall {
                     receiver: Box::new(collection.clone()),
@@ -1711,11 +2255,11 @@ fn resolve_named_or_positional(
     counter: &mut usize,
 ) -> code_ir::Expr {
     // Try named first
-    if let Some((_, expr)) = args.iter().find(|(n, _)| n.as_deref() == Some(name)) {
-        return compile_expr(expr, ctx, counter);
+    if let Some(index) = args.iter().position(|(n, _)| n.as_deref() == Some(name)) {
+        return compile_call_arg(args, index, ctx, counter);
     }
     // Fall back to positional
-    compile_expr(&args[pos].1, ctx, counter)
+    compile_call_arg(args, pos, ctx, counter)
 }
 
 // ---------------------------------------------------------------------------
@@ -1732,7 +2276,9 @@ fn compile_map_intrinsic(
     let elem = fresh(counter, "elem");
     let mapped_value = match mapper {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            });
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -1776,7 +2322,9 @@ fn compile_filter_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            });
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -1814,22 +2362,32 @@ fn compile_filter_intrinsic(
     ])
 }
 
+#[derive(Clone)]
+struct FoldExprContext<'a> {
+    collection_ast: &'a ast::Expr,
+    collection_path: ExprPath,
+    init: Option<(&'a ast::Expr, ExprPath)>,
+    func: Option<(&'a ast::Expr, ExprPath)>,
+}
+
 fn compile_fold_intrinsic(
     collection: &code_ir::Expr,
-    collection_ast: &ast::Expr,
-    init: Option<&ast::Expr>,
-    func: Option<&ast::Expr>,
+    fold: FoldExprContext<'_>,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
     let acc = fresh(counter, "acc");
     let elem = fresh(counter, "elem");
-    let init_expr = init
-        .map(|e| compile_expr(e, ctx, counter))
+    let init_expr = fold
+        .init
+        .as_ref()
+        .map(|(expr, path)| ctx.with_expr_path(path.clone(), || compile_expr(expr, ctx, counter)))
         .unwrap_or(code_ir::Expr::IntLit(0));
-    let body_expr = match func {
-        Some(ast::Expr::Lambda(params, body)) => {
-            let mut compiled = compile_expr(body, ctx, counter);
+    let body_expr = match fold.func.as_ref() {
+        Some((ast::Expr::Lambda(params, body), path)) => {
+            let mut compiled = ctx.with_expr_path(path.child(ExprPathStep::LambdaBody), || {
+                compile_expr(body, ctx, counter)
+            });
             if let Some(p) = params.first() {
                 compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(acc.clone()));
             }
@@ -1838,8 +2396,8 @@ fn compile_fold_intrinsic(
             }
             compiled
         }
-        Some(other) => code_ir::Expr::Call {
-            func: Box::new(compile_expr(other, ctx, counter)),
+        Some((other, path)) => code_ir::Expr::Call {
+            func: Box::new(ctx.with_expr_path(path.clone(), || compile_expr(other, ctx, counter))),
             args: vec![
                 code_ir::Expr::Var(acc.clone()),
                 code_ir::Expr::Var(elem.clone()),
@@ -1848,8 +2406,14 @@ fn compile_fold_intrinsic(
         },
         None => code_ir::Expr::Var(acc.clone()),
     };
-    let acc_ir_type = init.and_then(|init_expr| {
-        infer_fold_accumulator_ir_type_in_scope(collection_ast, init_expr, func, &ctx.ir_scope, ctx)
+    let acc_ir_type = fold.init.as_ref().and_then(|(init_expr, init_path)| {
+        infer_fold_accumulator_ir_type_in_scope(
+            &fold,
+            init_expr,
+            init_path.clone(),
+            &ctx.ir_scope,
+            ctx,
+        )
     });
     code_ir::Expr::Block(vec![
         code_ir::Stmt::Let {
@@ -1880,7 +2444,9 @@ fn compile_any_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            });
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -2101,9 +2667,15 @@ fn compile_call(
     let ir_args: Vec<code_ir::Expr> = args
         .iter()
         .enumerate()
-        .map(|(index, (arg_name, expr))| {
+        .map(|(index, (arg_name, _))| {
             let expected_type = lookup_call_arg_type(name, index, arg_name.as_deref(), ctx);
-            clone_if_needed(compile_expr_typed(expr, ctx, expected_type, counter))
+            clone_if_needed(compile_call_arg_typed(
+                args,
+                index,
+                expected_type,
+                ctx,
+                counter,
+            ))
         })
         .collect();
     let rust_name = to_snake_case(name);
@@ -2199,7 +2771,9 @@ fn compile_match_typed(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
-    let mut compiled_scrutinee = compile_expr(scrutinee, ctx, counter);
+    let mut compiled_scrutinee = ctx.with_child_expr_path(ExprPathStep::MatchScrutinee, || {
+        compile_expr(scrutinee, ctx, counter)
+    });
     // If all non-wildcard/non-null arms use string literal patterns and the
     // scrutinee is not a literal, add a conversion so Rust can match &str patterns
     // against a String value:
@@ -2229,9 +2803,11 @@ fn compile_match_typed(
         expr: Box::new(compiled_scrutinee),
         arms: arms
             .iter()
-            .map(|a| {
+            .enumerate()
+            .map(|(index, a)| {
                 compile_match_arm(
                     a,
+                    index,
                     has_none_arm,
                     scrutinee_type.as_deref(),
                     result_expected_type.as_deref(),
@@ -2377,6 +2953,7 @@ fn infer_match_result_type(arms: &[ast::MatchArm], ctx: &CompileContext) -> Opti
 
 fn compile_match_arm(
     arm: &ast::MatchArm,
+    arm_index: usize,
     option_context: bool,
     expected_type: Option<&str>,
     result_expected_type: Option<&str>,
@@ -2464,11 +3041,9 @@ fn compile_match_arm(
     };
 
     let mut body = deref_stmts;
-    body.push(code_ir::Stmt::TailExpr(compile_expr_typed(
-        &arm.body,
-        &body_ctx,
-        result_expected_type,
-        counter,
+    body.push(code_ir::Stmt::TailExpr(body_ctx.with_child_expr_path(
+        ExprPathStep::MatchArmBody(arm_index),
+        || compile_expr_typed(&arm.body, &body_ctx, result_expected_type, counter),
     )));
     code_ir::MatchArm { pattern, body }
 }
@@ -2621,10 +3196,14 @@ fn compile_if_typed(
     expected_type: Option<&str>,
     counter: &mut usize,
 ) -> code_ir::Expr {
-    let then_stmts = expr_to_stmts_typed(then_expr, ctx, expected_type, counter);
-    let else_stmts = else_expr
-        .as_ref()
-        .map(|expr| expr_to_stmts_typed(expr, ctx, expected_type, counter));
+    let then_stmts = ctx.with_child_expr_path(ExprPathStep::IfThen, || {
+        expr_to_stmts_typed(then_expr, ctx, expected_type, counter)
+    });
+    let else_stmts = else_expr.as_ref().map(|expr| {
+        ctx.with_child_expr_path(ExprPathStep::IfElse, || {
+            expr_to_stmts_typed(expr, ctx, expected_type, counter)
+        })
+    });
 
     // If there's no else branch, any trailing TailExpr in the then-body
     // must be converted to Return — otherwise Rust requires an else clause
@@ -2636,7 +3215,9 @@ fn compile_if_typed(
     };
 
     code_ir::Expr::If {
-        cond: Box::new(compile_expr(cond, ctx, counter)),
+        cond: Box::new(
+            ctx.with_child_expr_path(ExprPathStep::IfCond, || compile_expr(cond, ctx, counter)),
+        ),
         then_body,
         else_body: else_stmts,
     }
@@ -2675,11 +3256,21 @@ fn expr_to_stmts_typed(
 ) -> Vec<code_ir::Stmt> {
     match expr {
         ast::Expr::Return(fields) => {
+            let current_path = ctx.current_expr_path();
             vec![code_ir::Stmt::Return(compile_return_fields(
-                fields, ctx, counter,
+                fields,
+                ctx,
+                counter,
+                |index| record_field_path(&current_path, index),
             ))]
         }
-        ast::Expr::Block(stmts) => compile_stmt_sequence_typed(stmts, ctx, expected_type, counter),
+        ast::Expr::Block(stmts) => compile_stmt_sequence_typed(
+            stmts,
+            ctx,
+            expected_type,
+            counter,
+            &StmtPathOwner::Block(ctx.current_expr_path()),
+        ),
         _ => {
             vec![code_ir::Stmt::TailExpr(compile_expr_typed(
                 expr,
@@ -2696,14 +3287,22 @@ fn compile_stmt_sequence_typed(
     ctx: &CompileContext,
     expected_type: Option<&str>,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> Vec<code_ir::Stmt> {
     let len = stmts.len();
     let mut current_ctx = ctx.clone();
     let mut result = Vec::with_capacity(len);
     for (index, stmt) in stmts.iter().enumerate() {
         track_binding_before_compile(stmt, &mut current_ctx);
-        let compiled =
-            compile_stmt_typed(stmt, index + 1 == len, &current_ctx, expected_type, counter);
+        let compiled = compile_stmt_typed(
+            stmt,
+            index,
+            index + 1 == len,
+            &current_ctx,
+            expected_type,
+            counter,
+            owner,
+        );
         track_binding_after_compile(stmt, &compiled, &mut current_ctx);
         result.push(compiled);
     }
@@ -2712,17 +3311,22 @@ fn compile_stmt_sequence_typed(
 
 fn compile_stmt_typed(
     stmt: &ast::Stmt,
+    stmt_index: usize,
     is_last: bool,
     ctx: &CompileContext,
     expected_type: Option<&str>,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> code_ir::Stmt {
     if is_last {
         if let ast::Stmt::Expr(expr) = stmt {
-            return code_ir::Stmt::TailExpr(compile_expr_typed(expr, ctx, expected_type, counter));
+            return ctx.with_expr_path(
+                stmt_expr_path(owner, stmt_index, StmtExprSlot::ExprStmt),
+                || code_ir::Stmt::TailExpr(compile_expr_typed(expr, ctx, expected_type, counter)),
+            );
         }
     }
-    compile_stmt(stmt, is_last, ctx, counter)
+    compile_stmt(stmt, stmt_index, is_last, ctx, counter, owner)
 }
 
 // ---------------------------------------------------------------------------
@@ -2736,7 +3340,7 @@ fn compile_string_interp(
 ) -> code_ir::Expr {
     let mut template = String::new();
     let mut args = Vec::new();
-    for part in parts {
+    for (index, part) in parts.iter().enumerate() {
         match part {
             ast::StringPart::Literal(s) => {
                 // Escape literal { and } for Rust format! strings
@@ -2744,7 +3348,11 @@ fn compile_string_interp(
             }
             ast::StringPart::Expr(e) => {
                 template.push_str("{}");
-                args.push(compile_expr(e, ctx, counter));
+                args.push(
+                    ctx.with_child_expr_path(ExprPathStep::StringPart(index), || {
+                        compile_expr(e, ctx, counter)
+                    }),
+                );
             }
         }
     }
@@ -3081,16 +3689,20 @@ fn collection_element_ir_type(ty: &IrType) -> Option<IrType> {
 }
 
 fn infer_fold_accumulator_ir_type_in_scope(
-    collection_ast: &ast::Expr,
+    fold: &FoldExprContext<'_>,
     init_expr: &ast::Expr,
-    func: Option<&ast::Expr>,
+    init_path: ExprPath,
     scope: &HashMap<String, IrType>,
     ctx: &CompileContext,
 ) -> Option<IrType> {
-    let init_ir_type = infer_ast_expr_type_in_scope(init_expr, scope, ctx);
-    let body_ir_type = match func {
+    let init_ir_type = ctx.with_expr_path(init_path, || {
+        infer_ast_expr_type_in_scope(init_expr, scope, ctx)
+    });
+    let body_ir_type = match fold.func.as_ref().map(|(func, _)| *func) {
         Some(ast::Expr::Lambda(params, body)) => {
-            let collection_type = infer_ast_expr_type_in_scope(collection_ast, scope, ctx);
+            let collection_type = ctx.with_expr_path(fold.collection_path.clone(), || {
+                infer_ast_expr_type_in_scope(fold.collection_ast, scope, ctx)
+            });
             let mut lambda_scope = scope.clone();
             if let (Some(param), Some(ir_type)) = (params.first(), init_ir_type.clone()) {
                 lambda_scope.insert(param.clone(), ir_type);
@@ -3103,9 +3715,23 @@ fn infer_fold_accumulator_ir_type_in_scope(
             ) {
                 lambda_scope.insert(param.clone(), elem_type);
             }
-            infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+            if let Some((_, path)) = &fold.func {
+                ctx.with_expr_path(path.child(ExprPathStep::LambdaBody), || {
+                    infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+                })
+            } else {
+                infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+            }
         }
-        Some(other) => infer_ast_expr_type_in_scope(other, scope, ctx),
+        Some(other) => {
+            if let Some((_, path)) = &fold.func {
+                ctx.with_expr_path(path.clone(), || {
+                    infer_ast_expr_type_in_scope(other, scope, ctx)
+                })
+            } else {
+                infer_ast_expr_type_in_scope(other, scope, ctx)
+            }
+        }
         None => None,
     };
     merge_inferred_ir_types(init_ir_type, body_ir_type, ctx)
@@ -3125,39 +3751,71 @@ fn infer_ast_expr_type_in_scope(
         scope: &HashMap<String, IrType>,
         ctx: &CompileContext,
     ) -> Option<IrType> {
+        let block_owner = StmtPathOwner::Block(ctx.current_expr_path());
         let mut block_scope = scope.clone();
         let mut trailing = None;
-        for stmt in stmts {
+        for (index, stmt) in stmts.iter().enumerate() {
             match stmt {
                 ast::Stmt::Let(name, expr) | ast::Stmt::Assign(name, expr) => {
-                    let inferred = infer_ast_expr_type_in_scope(expr, &block_scope, ctx);
+                    let slot = if matches!(stmt, ast::Stmt::Let(..)) {
+                        StmtExprSlot::LetValue
+                    } else {
+                        StmtExprSlot::AssignValue
+                    };
+                    let inferred = ctx
+                        .with_expr_path(stmt_expr_path(&block_owner, index, slot), || {
+                            infer_ast_expr_type_in_scope(expr, &block_scope, ctx)
+                        });
                     if let Some(ir_type) = inferred.clone() {
                         block_scope.insert(name.clone(), ir_type);
                     }
                     trailing = None;
                 }
                 ast::Stmt::Node(node_stmt) => {
-                    let inferred = infer_ast_expr_type_in_scope(&node_stmt.expr, &block_scope, ctx);
+                    let inferred = ctx.with_expr_path(
+                        stmt_expr_path(&block_owner, index, StmtExprSlot::NodeExpr),
+                        || infer_ast_expr_type_in_scope(&node_stmt.expr, &block_scope, ctx),
+                    );
                     if let Some(ir_type) = inferred.clone() {
                         block_scope.insert(node_stmt.name.clone(), ir_type);
                     }
                     trailing = None;
                 }
                 ast::Stmt::Expr(expr) => {
-                    trailing = infer_ast_expr_type_in_scope(expr, &block_scope, ctx);
+                    trailing = ctx.with_expr_path(
+                        stmt_expr_path(&block_owner, index, StmtExprSlot::ExprStmt),
+                        || infer_ast_expr_type_in_scope(expr, &block_scope, ctx),
+                    );
                 }
                 ast::Stmt::Return(fields) => {
                     if let [(_, value_expr)] = fields.as_slice() {
-                        trailing = infer_ast_expr_type_in_scope(value_expr, &block_scope, ctx);
+                        trailing = ctx.with_expr_path(
+                            stmt_expr_path(&block_owner, index, StmtExprSlot::ReturnField(0)),
+                            || infer_ast_expr_type_in_scope(value_expr, &block_scope, ctx),
+                        );
                     } else {
                         trailing = Some(IrType::Record(
                             fields
                                 .iter()
-                                .map(|(name, value_expr)| {
+                                .enumerate()
+                                .map(|(field_index, (name, value_expr))| {
                                     (
                                         name.clone(),
-                                        infer_ast_expr_type_in_scope(value_expr, &block_scope, ctx)
-                                            .unwrap_or(IrType::Unknown),
+                                        ctx.with_expr_path(
+                                            stmt_expr_path(
+                                                &block_owner,
+                                                index,
+                                                StmtExprSlot::ReturnField(field_index),
+                                            ),
+                                            || {
+                                                infer_ast_expr_type_in_scope(
+                                                    value_expr,
+                                                    &block_scope,
+                                                    ctx,
+                                                )
+                                            },
+                                        )
+                                        .unwrap_or(IrType::Unknown),
                                     )
                                 })
                                 .collect(),
@@ -3177,7 +3835,12 @@ fn infer_ast_expr_type_in_scope(
         ast::Expr::List(elements) => {
             let elem_type = elements
                 .iter()
-                .filter_map(|item| infer_ast_expr_type_in_scope(item, scope, ctx))
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    ctx.with_child_expr_path(ExprPathStep::ListItem(index), || {
+                        infer_ast_expr_type_in_scope(item, scope, ctx)
+                    })
+                })
                 .reduce(|left_ty, right_ty| merge_ir_types(left_ty, right_ty, ctx))
                 .unwrap_or(IrType::Unknown);
             Some(IrType::Generic("List".to_string(), vec![elem_type]))
@@ -3190,7 +3853,9 @@ fn infer_ast_expr_type_in_scope(
             ast::Literal::None => None,
         },
         ast::Expr::FieldAccess(receiver, field_name) => {
-            let receiver_type = infer_ast_expr_type_in_scope(receiver, scope, ctx)?;
+            let receiver_type = ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                infer_ast_expr_type_in_scope(receiver, scope, ctx)
+            })?;
             match receiver_type {
                 IrType::Record(fields) => fields
                     .into_iter()
@@ -3227,7 +3892,7 @@ fn infer_ast_expr_type_in_scope(
             }
         }
         ast::Expr::Record(None, _) => ctx
-            .anonymous_record_target(expr)
+            .anonymous_record_target()
             .map(|name| IrType::Named(name.to_string())),
         ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
         ast::Expr::Record(Some(name), _) => Some(IrType::Named(name.clone())),
@@ -3237,10 +3902,17 @@ fn infer_ast_expr_type_in_scope(
         }
         ast::Expr::Call(name, args) if name == "concat" && args.len() >= 2 => args
             .iter()
-            .filter_map(|(_, expr)| infer_ast_expr_type_in_scope(expr, scope, ctx))
+            .enumerate()
+            .filter_map(|(index, (_, expr))| {
+                with_call_arg_path(ctx, index, || {
+                    infer_ast_expr_type_in_scope(expr, scope, ctx)
+                })
+            })
             .reduce(|left_ty, right_ty| merge_ir_types(left_ty, right_ty, ctx)),
         ast::Expr::Call(name, args) if name == "map" && args.len() >= 2 => {
-            let collection_type = infer_ast_expr_type_in_scope(&args[0].1, scope, ctx);
+            let collection_type = with_call_arg_path(ctx, 0, || {
+                infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
+            });
             let elem_type = match &args[1].1 {
                 ast::Expr::Lambda(params, body)
                     if params.len() == 1
@@ -3257,35 +3929,65 @@ fn infer_ast_expr_type_in_scope(
                             .and_then(collection_element_ir_type)
                             .unwrap_or(IrType::Unknown),
                     );
-                    infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
-                        .unwrap_or(IrType::Unknown)
+                    with_call_arg_path(ctx, 1, || {
+                        ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                            infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+                        })
+                    })
+                    .unwrap_or(IrType::Unknown)
                 }
-                ast::Expr::Lambda(_, body) => {
-                    infer_ast_expr_type_in_scope(body, scope, ctx).unwrap_or(IrType::Unknown)
-                }
+                ast::Expr::Lambda(_, body) => with_call_arg_path(ctx, 1, || {
+                    ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                        infer_ast_expr_type_in_scope(body, scope, ctx)
+                    })
+                })
+                .unwrap_or(IrType::Unknown),
                 _ => IrType::Unknown,
             };
             Some(IrType::Generic("List".to_string(), vec![elem_type]))
         }
         ast::Expr::Call(name, args) if name == "filter" && !args.is_empty() => {
-            infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
+            with_call_arg_path(ctx, 0, || {
+                infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
+            })
         }
         ast::Expr::Call(name, args) if name == "with" && !args.is_empty() => {
-            infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
+            with_call_arg_path(ctx, 0, || {
+                infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
+            })
         }
         ast::Expr::Call(name, args) if name == "fold" && args.len() >= 2 => {
+            let call_path = ctx.current_expr_path();
             let init = args
                 .iter()
-                .find(|(arg_name, _)| arg_name.as_deref() == Some("init"))
-                .or_else(|| args.get(1))
-                .map(|(_, expr)| expr);
+                .enumerate()
+                .find(|(_, (arg_name, _))| arg_name.as_deref() == Some("init"))
+                .or_else(|| args.get(1).map(|expr| (1, expr)))
+                .map(|(index, (_, expr))| (index, expr));
             let func = args
                 .iter()
-                .find(|(arg_name, _)| arg_name.as_deref() == Some("f"))
-                .or_else(|| args.get(2))
-                .map(|(_, expr)| expr);
-            init.and_then(|init_expr| {
-                infer_fold_accumulator_ir_type_in_scope(&args[0].1, init_expr, func, scope, ctx)
+                .enumerate()
+                .find(|(_, (arg_name, _))| arg_name.as_deref() == Some("f"))
+                .or_else(|| args.get(2).map(|expr| (2, expr)))
+                .map(|(index, (_, expr))| (index, expr));
+            init.and_then(|(init_index, init_expr)| {
+                let fold = FoldExprContext {
+                    collection_ast: &args[0].1,
+                    collection_path: call_path.child(ExprPathStep::CallArg(0)),
+                    init: Some((
+                        init_expr,
+                        call_path.child(ExprPathStep::CallArg(init_index)),
+                    )),
+                    func: func
+                        .map(|(index, expr)| (expr, call_path.child(ExprPathStep::CallArg(index)))),
+                };
+                infer_fold_accumulator_ir_type_in_scope(
+                    &fold,
+                    init_expr,
+                    call_path.child(ExprPathStep::CallArg(init_index)),
+                    scope,
+                    ctx,
+                )
             })
         }
         ast::Expr::Call(name, _) if name == "any" || name == "contains" => Some(IrType::Bool),
@@ -3303,18 +4005,28 @@ fn infer_ast_expr_type_in_scope(
                 }
             }),
         ast::Expr::Match(scrutinee, arms) => {
-            let _ = infer_ast_expr_type_in_scope(scrutinee, scope, ctx);
-            arms.iter().fold(None, |acc, arm| {
-                let arm_type = infer_ast_expr_type_in_scope(&arm.body, scope, ctx);
+            let _ = ctx.with_child_expr_path(ExprPathStep::MatchScrutinee, || {
+                infer_ast_expr_type_in_scope(scrutinee, scope, ctx)
+            });
+            arms.iter().enumerate().fold(None, |acc, (index, arm)| {
+                let arm_type = ctx.with_child_expr_path(ExprPathStep::MatchArmBody(index), || {
+                    infer_ast_expr_type_in_scope(&arm.body, scope, ctx)
+                });
                 merge_inferred_ir_types(acc, arm_type, ctx)
             })
         }
         ast::Expr::If(_, then_expr, Some(else_expr)) => merge_inferred_ir_types(
-            infer_ast_expr_type_in_scope(then_expr, scope, ctx),
-            infer_ast_expr_type_in_scope(else_expr, scope, ctx),
+            ctx.with_child_expr_path(ExprPathStep::IfThen, || {
+                infer_ast_expr_type_in_scope(then_expr, scope, ctx)
+            }),
+            ctx.with_child_expr_path(ExprPathStep::IfElse, || {
+                infer_ast_expr_type_in_scope(else_expr, scope, ctx)
+            }),
             ctx,
         ),
-        ast::Expr::If(_, then_expr, None) => infer_ast_expr_type_in_scope(then_expr, scope, ctx),
+        ast::Expr::If(_, then_expr, None) => ctx.with_child_expr_path(ExprPathStep::IfThen, || {
+            infer_ast_expr_type_in_scope(then_expr, scope, ctx)
+        }),
         ast::Expr::Block(stmts) => infer_block_expr_type_in_scope(stmts, scope, ctx),
         ast::Expr::StringInterp(_) => Some(IrType::Str),
         _ => None,

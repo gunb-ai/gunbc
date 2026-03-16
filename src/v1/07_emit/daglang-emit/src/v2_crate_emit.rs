@@ -481,6 +481,7 @@ fn emit_module(
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_identities: std::collections::HashMap::new(),
+        expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
     };
 
     for item in items {
