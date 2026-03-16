@@ -1289,7 +1289,16 @@ impl Parser {
                 break;
             }
             match self.parse_item() {
-                Ok(item) => items.push(item),
+                Ok(item) => {
+                    // Skip bare type declarations (type String, type Int, etc.)
+                    // — kernel primitives already provided by the v1 compiler.
+                    if let Item::TypeDef(ref td) = item.node {
+                        if td.is_bare_primitive() {
+                            continue;
+                        }
+                    }
+                    items.push(item)
+                }
                 Err(e) => {
                     self.record_err(e);
                     self.sync_to_item();
@@ -1337,7 +1346,14 @@ impl Parser {
         let mut items = Vec::new();
         while !self.at_eof() {
             match self.parse_item() {
-                Ok(item) => items.push(item),
+                Ok(item) => {
+                    if let Item::TypeDef(ref td) = item.node {
+                        if td.is_bare_primitive() {
+                            continue;
+                        }
+                    }
+                    items.push(item)
+                }
                 Err(e) => {
                     self.record_err(e);
                     self.sync_to_item();
@@ -1532,7 +1548,12 @@ impl Parser {
             });
         }
 
-        Err(self.err("expected { or = after type name".into()))
+        // Bare type declaration: type Name (no body — primitive)
+        Ok(TypeDef {
+            name: name.clone(),
+            params,
+            body: TypeBody::Alias(TypeExpr::Named(name)),
+        })
     }
 
     fn parse_variant_fields(&mut self, name: String) -> Result<Variant, ParseError> {

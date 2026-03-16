@@ -18,29 +18,32 @@ import v2.std.core {
   Import, ImportAll, ImportSpecific,
   Node, TypedNode,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
-  MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
+  MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
-  CapabilityDef,
+  PortContract, OperationContract, CapabilityContract,
   ContainerKind, ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
-  FuncSig
+  FuncSig,
+  TypedExpr, TypedLet, TypedBlock,
+  typed_expr_to_expr
 }
 
 import v2.compiler.typecheck {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  normalize_access_type, for_each_element_type
+  normalize_access_type, for_each_element_type,
+  expr_span
 }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, ItemInfo, InterpPart,
   empty_emit_scope, module_emit_scope,
-  infer_expr_type, scope_after_expr,
+  scope_after_expr,
   build_item_registry, lookup_item, named_arg_matches, order_call_args,
   is_service_call_receiver, extract_service_name,
   collect_service_calls, collect_service_calls_from_args, unique_strings,
@@ -50,6 +53,49 @@ import v2.compiler.emit {
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call
+}
+
+// =========================================================================
+// Bridge helpers — span-based type lookup for emit_expr_in_scope sub-tree
+//
+// These replicate the old infer_expr_type / scope_after_expr behaviour for
+// functions that still receive plain Expr (everything called from
+// emit_expr_in_scope).  Once emit_expr_in_scope itself is migrated to
+// TypedExpr these helpers can be deleted.
+// =========================================================================
+
+fn span_key(start: Int, end: Int) -> String {
+  concat(to_string(value: start), ":", to_string(value: end))
+}
+
+fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
+  map_get(cache, span_key(start: start, end: end))
+}
+
+fn missing_emit_type(span: SourceSpan) -> TypeExpr {
+  Named { name: "__EmitTypeCacheMiss", span: span }
+}
+
+fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
+  let s = expr_span(expr: expr)
+  match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
+    Some { value: t } => t
+    None => missing_emit_type(span: s)
+  }
+}
+
+// scope_after_expr for plain Expr — used in emit_block and other
+// emit_expr_in_scope helpers that still receive Expr.
+fn scope_after_plain_expr(expr: Expr, scope: InferScope) -> InferScope {
+  match expr {
+    Let { name: name, value: value, body: body, span: _ } =>
+      if body == none {
+        extend_scope(scope: scope, name: name, resolved: infer_expr_type(expr: value, scope: scope))
+      } else {
+        scope
+      }
+    _ => scope
+  }
 }
 
 // =========================================================================
@@ -234,24 +280,23 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
   else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
       // async func/pattern
-      emit_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value.expr, registry: registry, scope: scope)
+      emit_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       // pure fn (including zero-param functions)
-      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value.expr, registry: registry, scope: scope)
+      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
     }
   }
   // Data: has body and type_annotation (data constant)
   else if item.body != none && item.type_annotation != none {
-    emit_data_def(name: item.name, type_expr: item.type_annotation.value, value: item.body.value.expr, registry: registry, scope: scope)
+    emit_data_def(name: item.name, type_expr: item.type_annotation.value, value: typed_expr_to_expr(texpr: item.body.value), registry: registry, scope: scope)
   }
-  // Service: has operations
-  else if item.operations |> count > 0 {
-    let svc_transport = if item.transport == none { LocalBinding } else { item.transport.value }
-    emit_service_def(name: item.name, transport: svc_transport, config: item.config, operations: item.operations, registry: registry)
+  // Service: has transport and children (operations as child Nodes)
+  else if item.transport != none && item.children |> count > 0 {
+    emit_service_def(item: item, registry: registry)
   }
-  // Resource: has capabilities
-  else if item.capabilities |> count > 0 {
-    emit_resource_def(name: item.name, capabilities: item.capabilities)
+  // Resource: has children with port_contract but no transport
+  else if item.transport == none && item.children |> count > 0 {
+    emit_resource_def(item: item)
   }
   // Extern func: has params but no body
   else if item.params |> count > 0 {
@@ -421,23 +466,24 @@ fn emit_coproduct_type_expr(name: String?, variants: List<Variant>) -> String {
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let params_str = emit_params(params: params)
   let ret_str = emit_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let body_expr = typed_expr_to_expr(texpr: body)
   // Tail-call optimization: use cached analysis from item registry.
   let use_tco = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
-    None => expr_has_self_call(expr: body, fn_name: name)
-      && has_non_tail_self_call(expr: body, fn_name: name, in_tail: true) == false
+    None => expr_has_self_call(expr: body_expr, fn_name: name)
+      && has_non_tail_self_call(expr: body_expr, fn_name: name, in_tail: true) == false
   }
   if use_tco {
     let tco_params_str = emit_tco_params(params: params)
-    let body_str = emit_tco_body(expr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
+    let body_str = emit_tco_body(expr: body_expr, fn_name: name, params: params, registry: registry, scope: body_scope)
     concat("pub fn ", rust_ident(name: name), "(", tco_params_str, ")", ret_str, " {\n",
       indent(text: body_str, level: 1), "\n}")
   } else {
-    let body_str = emit_expr_in_scope(expr: body, registry: registry, scope: body_scope)
+    let body_str = emit_expr_in_scope(expr: body_expr, registry: registry, scope: body_scope)
     concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
       indent(text: body_str, level: 1), "\n}")
   }
@@ -452,13 +498,14 @@ fn emit_func_def(
   params: List<Param>,
   return_type: TypeExpr,
   uses: List<ResourceUse>,
-  body: Expr,
+  body: TypedExpr,
   registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
+  let body_expr = typed_expr_to_expr(texpr: body)
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => unique_strings(items: collect_service_calls(expr: body))
+    None => unique_strings(items: collect_service_calls(expr: body_expr))
   }
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_func_return_type(return_type: return_type)
@@ -472,39 +519,39 @@ fn emit_func_def(
 // Emit a func body, wrapping the tail expression in Ok(...).
 // For let-chains the leading bindings are emitted as statements,
 // and only the final expression is wrapped.
-fn emit_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match body {
-    Let { name: n, value: v, body: inner, span: _ } => {
-      let val_str = emit_expr_in_scope(expr: v, registry: registry, scope: scope)
+    TypedLet { name: n, value: v, body: inner, resolved_type: _, span: _ } => {
+      let val_str = emit_expr_in_scope(expr: typed_expr_to_expr(texpr: v), registry: registry, scope: scope)
       let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
-      let next_scope = extend_scope(scope: scope, name: n, resolved: infer_expr_type(expr: v, scope: scope))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope))
         None => let_line
       }
     }
-    Block { stmts: ss, span: _ } => {
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } => {
       if ss |> count == 0 {
         "Ok(())"
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
           |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
-            let line = emit_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
-            let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
+            let line = emit_expr_in_scope(expr: typed_expr_to_expr(texpr: pair.second), registry: registry, scope: acc.scope)
+            let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
             let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
         let last_str = match last_stmt {
-          Some { value: s } => concat("Ok(", emit_expr_in_scope(expr: s, registry: registry, scope: init_state.scope), ")")
+          Some { value: s } => concat("Ok(", emit_expr_in_scope(expr: typed_expr_to_expr(texpr: s), registry: registry, scope: init_state.scope), ")")
           None => "Ok(())"
         }
         if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
       }
     }
-    _ => concat("Ok(", emit_expr_in_scope(expr: body, registry: registry, scope: scope), ")")
+    _ => concat("Ok(", emit_expr_in_scope(expr: typed_expr_to_expr(texpr: body), registry: registry, scope: scope), ")")
   }
 }
 
@@ -599,7 +646,7 @@ fn emit_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: Map
           |> filter(p => p.first < (ss |> count) - 1)
           |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
             let line = emit_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
-            let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
+            let next_scope = scope_after_plain_expr(expr: pair.second, scope: acc.scope)
             let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
             BlockEmitState { text: new_text, scope: next_scope }
           })
@@ -1128,7 +1175,7 @@ fn interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: 
 fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let state = stmts |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, stmt) {
     let line = emit_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
-    let next_scope = scope_after_expr(expr: stmt, scope: acc.scope)
+    let next_scope = scope_after_plain_expr(expr: stmt, scope: acc.scope)
     let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
     BlockEmitState { text: new_text, scope: next_scope }
   })
@@ -1173,15 +1220,14 @@ fn is_primitive_numeric(type_expr: TypeExpr) -> Bool {
 // =========================================================================
 
 fn emit_service_def(
-  name: String,
-  transport: TransportBinding,
-  config: ServiceConfig?,
-  operations: List<OperationDef>,
+  item: TypedNode,
   registry: Map<String, ItemInfo>
 ) -> String {
-  let safe_name = sanitize_service_name(name: name)
-  let struct_def = emit_service_struct(name: safe_name, transport: transport, config: config)
-  let impl_block = emit_service_impl(name: safe_name, transport: transport, operations: operations, registry: registry)
+  let safe_name = sanitize_service_name(name: item.name)
+  let transport = if item.transport == none { LocalBinding } else { item.transport.value }
+  let struct_def = emit_service_struct(name: safe_name, transport: transport, config: item.config)
+  let op_children = item.children |> filter(c => c.port_contract != none)
+  let impl_block = emit_service_impl(name: safe_name, transport: transport, op_children: op_children, registry: registry)
   concat(struct_def, "\n\n", impl_block)
 }
 
@@ -1210,9 +1256,9 @@ fn emit_service_config_fields(transport: TransportBinding, config: ServiceConfig
   }
 }
 
-fn emit_service_impl(name: String, transport: TransportBinding, operations: List<OperationDef>, registry: Map<String, ItemInfo>) -> String {
-  let method_strs = operations |> map(op =>
-    emit_operation_method(service_name: name, transport: transport, operation: op, registry: registry)
+fn emit_service_impl(name: String, transport: TransportBinding, op_children: List<TypedNode>, registry: Map<String, ItemInfo>) -> String {
+  let method_strs = op_children |> map(op_node =>
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry)
   )
   let methods_str = method_strs |> join(separator: "\n\n")
   concat("impl ", name, " {\n", indent(text: methods_str, level: 1), "\n}")
@@ -1235,9 +1281,9 @@ fn emit_modifier_doc(modifiers: List<OperationModifier>) -> String {
   }
 }
 
-fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
-  let input_params = operation.inputs |> map(f =>
-    concat(rust_ident(name: f.name), ": ", emit_field_type(field: f))
+fn emit_operation_method(service_name: String, transport: TransportBinding, op_node: TypedNode, registry: Map<String, ItemInfo>) -> String {
+  let input_params = op_node.params |> map(p =>
+    concat(rust_ident(name: p.name), ": ", emit_type_expr(type_expr: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1245,17 +1291,23 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, oper
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_operation_return_type(outputs: operation.outputs)
-  // Use per-operation transport override if present, otherwise service-level transport.
-  let effective_transport = match operation.transport {
-    Some { value: op_transport } => op_transport
-    None => transport
+  // Extract operation contract from port_contract
+  match op_node.port_contract.value {
+    OperationContract { outputs: outs, response: _, mock_response: _, exit_mappings: _, modifiers: mods } => {
+      let ret_type = emit_operation_return_type(outputs: outs)
+      // Use per-operation transport override if present, otherwise service-level transport.
+      let effective_transport = match op_node.transport {
+        Some { value: op_transport } => op_transport
+        None => transport
+      }
+      let body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry)
+      let modifier_doc = emit_modifier_doc(modifiers: mods)
+      concat(modifier_doc, "pub async fn ", rust_ident(name: op_node.name),
+        "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
+        indent(text: body, level: 1), "\n}")
+    }
+    CapabilityContract { outputs: _ } => ""
   }
-  let body = emit_transport_call(transport: effective_transport, operation: operation, registry: registry)
-  let modifier_doc = emit_modifier_doc(modifiers: operation.modifiers)
-  concat(modifier_doc, "pub async fn ", rust_ident(name: operation.name),
-    "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
-    indent(text: body, level: 1), "\n}")
 }
 
 fn emit_operation_return_type(outputs: List<Field>) -> String {
@@ -1274,23 +1326,23 @@ fn emit_operation_return_type(outputs: List<Field>) -> String {
   }
 }
 
-fn emit_transport_call(transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
+fn emit_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>) -> String {
   match transport {
     RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_rest_call(operation: operation, auth: a, headers: hs, registry: registry)
+      emit_rest_call(op_name: op_name, auth: a, headers: hs, registry: registry)
     ShellBinding { argv: _, env: envs } =>
-      emit_shell_call(operation: operation, env: envs, registry: registry)
+      emit_shell_call(op_name: op_name, env: envs, registry: registry)
     FileBinding { base_path: _ } =>
-      emit_file_call(operation: operation)
+      emit_file_call(op_name: op_name)
     LocalBinding =>
-      emit_local_call(operation: operation)
+      emit_local_call(op_name: op_name)
   }
 }
 
-fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<HeaderDef>, registry: Map<String, ItemInfo>) -> String {
+fn emit_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, registry: Map<String, ItemInfo>) -> String {
   let client_init = "let client = reqwest::Client::new();"
   let url_line = concat("let url = format!(\"{}/{}\", self.base_url, \"",
-    rust_ident(name: operation.name), "\");")
+    rust_ident(name: op_name), "\");")
   let auth_line = match auth {
     Some { value: ac } =>
       concat("let request = client.post(&url)\n    .header(\"",
@@ -1310,9 +1362,9 @@ fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<Head
   all_lines |> join(separator: "\n")
 }
 
-fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: Map<String, ItemInfo>) -> String {
+fn emit_shell_call(op_name: String, env: List<EnvDef>, registry: Map<String, ItemInfo>) -> String {
   let cmd_line = concat("let output = std::process::Command::new(\"",
-    rust_ident(name: operation.name), "\")")
+    rust_ident(name: op_name), "\")")
   let env_lines = env |> map(e =>
     concat("    .env(\"", e.name, "\", ", emit_expr(expr: e.value, registry: registry), ")")
   )
@@ -1324,16 +1376,16 @@ fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: Map<Str
   all_lines |> join(separator: "\n")
 }
 
-fn emit_file_call(operation: OperationDef) -> String {
+fn emit_file_call(op_name: String) -> String {
   concat("let path = format!(\"{}/{}\", self.base_path, \"",
-    rust_ident(name: operation.name), "\");\n",
+    rust_ident(name: op_name), "\");\n",
     "let content = std::fs::read_to_string(&path)?;\n",
     "Ok(content)")
 }
 
-fn emit_local_call(operation: OperationDef) -> String {
+fn emit_local_call(op_name: String) -> String {
   concat("// Local binding — direct function call\n",
-    "Ok(", rust_ident(name: operation.name), "())")
+    "Ok(", rust_ident(name: op_name), "())")
 }
 
 // =========================================================================
@@ -1342,16 +1394,17 @@ fn emit_local_call(operation: OperationDef) -> String {
 // Resources become a trait with capability methods.
 // =========================================================================
 
-fn emit_resource_def(name: String, capabilities: List<CapabilityDef>) -> String {
-  let cap_methods = capabilities |> map(c => emit_capability_method(cap: c))
+fn emit_resource_def(item: TypedNode) -> String {
+  let cap_children = item.children |> filter(c => c.port_contract != none)
+  let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c))
   let methods_str = cap_methods |> join(separator: "\n\n")
-  concat("#[async_trait::async_trait]\npub trait ", name, " {\n",
+  concat("#[async_trait::async_trait]\npub trait ", item.name, " {\n",
     indent(text: methods_str, level: 1), "\n}")
 }
 
-fn emit_capability_method(cap: CapabilityDef) -> String {
-  let input_params = cap.inputs |> map(f =>
-    concat(rust_ident(name: f.name), ": ", emit_field_type(field: f))
+fn emit_capability_method(cap_node: TypedNode) -> String {
+  let input_params = cap_node.params |> map(p =>
+    concat(rust_ident(name: p.name), ": ", emit_type_expr(type_expr: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1359,8 +1412,12 @@ fn emit_capability_method(cap: CapabilityDef) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_capability_return_type(outputs: cap.outputs)
-  concat("async fn ", rust_ident(name: cap.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
+  let outputs = match cap_node.port_contract.value {
+    CapabilityContract { outputs: outs } => outs
+    OperationContract { outputs: outs, response: _, mock_response: _, exit_mappings: _, modifiers: _ } => outs
+  }
+  let ret = emit_capability_return_type(outputs: outputs)
+  concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
 fn emit_capability_return_type(outputs: List<Field>) -> String {
@@ -1449,23 +1506,31 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
 }
 
 fn is_typed_service_item(item: TypedNode) -> Bool {
-  item.operations |> count > 0
+  item.transport != none && item.children |> count > 0
 }
 
 fn emit_typed_service_tests(item: TypedNode, registry: Map<String, ItemInfo>) -> List<String> {
-  if item.operations |> count > 0 {
+  if item.children |> count > 0 {
     let safe_name = sanitize_service_name(name: item.name)
-    item.operations
-      |> filter(op => op.mock_response |> count > 0)
-      |> map(op => emit_operation_test(service_name: safe_name, operation: op, registry: registry))
+    item.children
+      |> filter(c => c.port_contract != none)
+      |> filter(c => match c.port_contract.value {
+        OperationContract { outputs: _, response: _, mock_response: mr, exit_mappings: _, modifiers: _ } => mr |> count > 0
+        CapabilityContract { outputs: _ } => false
+      })
+      |> map(c => emit_operation_test(service_name: safe_name, op_node: c, registry: registry))
   } else {
     []
   }
 }
 
-fn emit_operation_test(service_name: String, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
-  let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: operation.name))
-  let mock_setup = operation.mock_response |> map(mr =>
+fn emit_operation_test(service_name: String, op_node: TypedNode, registry: Map<String, ItemInfo>) -> String {
+  let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: op_node.name))
+  let mock_responses = match op_node.port_contract.value {
+    OperationContract { outputs: _, response: _, mock_response: mr, exit_mappings: _, modifiers: _ } => mr
+    CapabilityContract { outputs: _ } => []
+  }
+  let mock_setup = mock_responses |> map(mr =>
     emit_mock_response_setup(mock: mr, registry: registry)
   )
   let mock_str = mock_setup |> join(separator: "\n")

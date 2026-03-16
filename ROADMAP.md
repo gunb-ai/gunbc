@@ -199,6 +199,131 @@ All of the following must pass in CI:
 
 ---
 
+## Stream 3: Fractal Node — squeezing heuristics to the edges
+
+**Goal:** The compiler core operates on structural graph properties (edges,
+ports, children, contracts) — never on keyword identity or field-combination
+fingerprints. Heuristics live at two edges: the **frontend** (parse sugar that
+captures user intent) and the **backend** (language-specific rendering
+decisions). The core is the structural middle.
+
+### Current state (2026-03-16)
+
+W10-W13 completed the first fractal step: operations and capabilities dissolved
+into child Nodes carrying `PortContract` metadata. The Node type lost 2 fields
+(`operations`, `capabilities`); composition now flows through `children`.
+
+```
+Frontend (parse sugar)     Core (structural)         Backend (rendering)
+─────────────────────      ──────────────────        ───────────────────
+keyword "service"    →     Node with transport       →  Rust struct+impl
+keyword "operation"  →       child Node with         →  async method
+                            OperationContract
+keyword "resource"   →     Node without transport    →  Rust trait
+keyword "capability" →       child Node with         →  abstract method
+                            CapabilityContract
+```
+
+### Where heuristics still live in the core
+
+The emit dispatch (`emit_typed_item`) is a 6-deep if/else chain that infers
+node kind from field combinations:
+
+| Condition | Inferred kind |
+|-----------|---------------|
+| `shape != none` | type definition |
+| `body != none && type_annotation == none` | fn/func |
+| `body != none && type_annotation != none` | data constant |
+| `transport != none && children > 0` | service |
+| `transport == none && children > 0` | resource |
+| `params > 0 && body == none` | extern func |
+
+This works today but is fragile: every new construct needs a unique
+field fingerprint, and overlapping patterns cause misclassification.
+The check is reconstructing the keyword from the fields — exactly the
+heuristic that should live at the frontend edge, not in the core.
+
+Similarly, the typecheck builds the service registry by testing
+`item.transport != none && item.children |> count > 0`. This is a
+structural check (good) but it's inline in the typecheck rather than
+being a property the parser asserted and the checker validated.
+
+### Design direction: assert at the front, validate in the middle, render at the back
+
+The compiler's job is to faithfully transform a graph of structural facts
+into target-language text. The question is where "what kind of thing is this"
+gets decided:
+
+**Frontend (parser):** The user writes `service`, `fn`, `type` — these are
+intent signals. The parser should capture that intent as a lightweight
+structural marker (not a keyword string, but a property that constrains
+what fields are valid). This is where user intent enters the system.
+
+**Core (checker/resolver):** Validates that the structural properties are
+consistent — a node with transport must have children with port_contracts,
+a node with shape must not have a body, etc. The checker never asks "what
+keyword?" — it checks edge constraints on the graph. If a node violates
+constraints, the error message can reference the parse origin for diagnostics,
+but the constraint itself is structural.
+
+**Backend (emitters):** Renders structural facts into target syntax. The
+emitter dispatch should follow from structural properties that the checker
+has already validated, not from field-combination guessing. If the checker
+guarantees that "nodes with transport always have children with
+OperationContract", the emitter can rely on that without re-deriving it.
+
+### Open questions
+
+1. **What form does the frontend marker take?** Options range from an
+   explicit `NodeKind` enum (pragmatic, easy to dispatch on, but reintroduces
+   a closed set) to structural "shape constraints" that the parser attaches
+   and the checker validates (more flexible, harder to get right). The marker
+   should encode the *reason* for the constraint (what would break if violated),
+   not the keyword label (which is surface syntax that can drift).
+
+2. **How do edge constraints get specified?** Today they're implicit in
+   the if/else chains. The S86 direction (checker validates edge constraints)
+   points toward making these explicit — possibly as data in .dag files
+   rather than code in the checker. This connects to the broader vision
+   of domain-in-DSL-not-Rust.
+
+3. **When does this pay off?** The current 6-arm dispatch works. The
+   investment in formalizing constraints pays off when: (a) new node kinds
+   are added (interface, pipeline, profile), (b) the emit dispatch needs to
+   be target-agnostic, or (c) the checker needs to give precise diagnostics
+   about *why* a node is malformed.
+
+### Non-goals
+
+- Deleting keywords from the surface syntax. Keywords are good parse sugar
+  and good for readability. The point is that keywords inform the parser
+  what to expect, not that they flow through the compiler as identity.
+
+- A single universal "is this a service?" function. Different phases need
+  different things — the resolver needs to know if something has children
+  to resolve, the emitter needs to know how to render. These are different
+  questions with different structural answers.
+
+### Incremental path
+
+This is not a rewrite. Each step tightens the boundary between frontend
+intent and core structure:
+
+1. **Done (W10-W13):** Operations/capabilities are children with PortContract.
+   Emit and typecheck read from children, not from keyword-specific lists.
+
+2. **Next:** Identify which emit dispatch conditions are structural invariants
+   vs. accidental field patterns. For each one, either (a) the parser should
+   assert it via a structural property, or (b) the checker should derive it
+   from validated constraints.
+
+3. **Later:** Edge constraints as data. The checker consults constraint
+   definitions (possibly in .dag) rather than hardcoding if/else chains.
+   Adding a new node kind means adding constraint data, not editing
+   checker code.
+
+---
+
 ## Stream 2: Sustainability cleanup
 
 **Goal:** Close out the sustainability ledger. Delete stale documentation that

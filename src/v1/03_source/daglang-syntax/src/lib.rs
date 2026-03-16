@@ -177,6 +177,16 @@ pub mod ast {
         Alias(TypeExpr),
     }
 
+    impl TypeDef {
+        /// A bare type declaration (`type String`, `type Int`, etc.) has no body
+        /// and produces Alias(Named(name)) where the base name equals the def name.
+        /// These are kernel primitives — the v1 compiler already provides them,
+        /// so the AST item should be skipped by downstream processing.
+        pub fn is_bare_primitive(&self) -> bool {
+            matches!(&self.body, TypeBody::Alias(TypeExpr::Named(ref n)) if n == &self.name)
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub struct Field {
         pub name: String,
