@@ -74,6 +74,7 @@ type TypedModule {
 
 type TypeEnv {
   bindings: Map<String, TypeBinding>
+  recursive_types: List<String>
 }
 
 type TypeBinding {
@@ -263,7 +264,7 @@ fn unwrap_return_type(rt: TypeExpr?) -> TypeExpr {
   // .value accessor pattern. Both paths produce the same result.
   let result = resolve_optional_type_expr(
     expr: rt,
-    env: TypeEnv { bindings: empty_map() },
+    env: TypeEnv { bindings: empty_map(), recursive_types: [] },
     module_name: ""
   )
   result.resolved
@@ -1419,7 +1420,7 @@ fn kernel_type_env() -> TypeEnv {
   ]
   TypeEnv { bindings: kernel_bindings |> fold(init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
-  ) }
+  ), recursive_types: [] }
 }
 
 // =========================================================================
@@ -1447,9 +1448,69 @@ fn lookup_type(env: TypeEnv, name: String) -> TypeExpr? {
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   // Merge maps in order: later entries overwrite earlier ones (last-writer-wins),
   // matching the import resolution order: kernel < imports < local.
-  fold(envs, init: TypeEnv { bindings: empty_map() }, f: (acc, env) =>
-    TypeEnv { bindings: map_merge(acc.bindings, env.bindings) }
+  fold(envs, init: TypeEnv { bindings: empty_map(), recursive_types: [] }, f: (acc, env) =>
+    TypeEnv { bindings: map_merge(acc.bindings, env.bindings), recursive_types: [] }
   )
+}
+
+// =========================================================================
+// Cycle detection: precompute which types participate in dependency cycles.
+//
+// Instead of threading a growing resolving list through resolution (O(d²)
+// memory from repeated concat), we compute cycle membership once at env
+// construction time. resolve_type_expr then uses the precomputed set:
+// Named references to cycle members are kept as Named; all others expand.
+// =========================================================================
+
+// Extract Named type references from a TypeExpr (direct dependencies).
+fn type_expr_deps(expr: TypeExpr) -> List<String> {
+  match expr {
+    Named { name: name, span: _ } => [name]
+    Primitive { name: _, span: _ } => []
+    Product { name: _, fields: fields, span: _ } =>
+      flat_map(fields, f => type_expr_deps(expr: f.type_expr))
+    Coproduct { name: _, variants: variants, span: _ } =>
+      flat_map(variants, v => flat_map(v.fields, f => type_expr_deps(expr: f.type_expr)))
+    Container { kind: _, element: element, span: _ } => type_expr_deps(expr: element)
+    Optional { inner: inner, span: _ } => type_expr_deps(expr: inner)
+    Refined { base: base, predicates: _, span: _ } => type_expr_deps(expr: base)
+    MapType { key: key, value: value, span: _ } =>
+      concat(type_expr_deps(expr: key), type_expr_deps(expr: value))
+  }
+}
+
+// Check if a type name can reach itself through the dependency graph.
+fn reaches_self(root: String, current: String, bindings: Map<String, TypeBinding>, visited: List<String>) -> Bool {
+  if any(visited, v => v == current) {
+    false
+  } else {
+    match map_get(bindings, current) {
+      Some { value: binding } =>
+        let deps = type_expr_deps(expr: binding.resolved)
+        // Pre-compute outside the any() loop so visited is consumed once,
+        // then next_visited is cloned per iteration (not visited).
+        let next_visited = concat(visited, [current])
+        any(deps, d =>
+          if d == root { true }
+          else { reaches_self(root: root, current: d, bindings: bindings, visited: next_visited) }
+        )
+      None => false
+    }
+  }
+}
+
+// Detect all type names that participate in dependency cycles.
+// Split into two functions: detect_type_cycles consumes `bindings` for
+// map_values AND passes it as an argument (use_count=2, emitter clones);
+// filter_recursive_bindings receives its own copy for the lambda capture.
+fn detect_type_cycles(bindings: Map<String, TypeBinding>) -> List<String> {
+  let lookup = bindings
+  filter_recursive_bindings(binding_list: map_values(bindings), bindings: lookup)
+}
+
+fn filter_recursive_bindings(binding_list: List<TypeBinding>, bindings: Map<String, TypeBinding>) -> List<String> {
+  let recursive = filter(binding_list, b => reaches_self(root: b.name, current: b.name, bindings: bindings, visited: []))
+  map(recursive, b => b.name)
 }
 
 // =========================================================================
@@ -1470,13 +1531,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // not just explicitly named ones. The import list controls what the
   // module author uses directly; resolution needs the transitive picture.
   let import_result = fold(module.resolved_imports, init: BuildTypeEnvResult {
-    env: TypeEnv { bindings: empty_map() },
+    env: TypeEnv { bindings: empty_map(), recursive_types: [] },
     diagnostics: []
   }, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
         BuildTypeEnvResult {
-          env: TypeEnv { bindings: map_merge(acc.env.bindings, typed_parent.type_env.bindings) },
+          env: TypeEnv { bindings: map_merge(acc.env.bindings, typed_parent.type_env.bindings), recursive_types: [] },
           diagnostics: acc.diagnostics
         }
       None =>
@@ -1506,11 +1567,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       _ => acc
     }
   )
-  let local_env = TypeEnv { bindings: local_bindings }
+  let local_env = TypeEnv { bindings: local_bindings, recursive_types: [] }
 
   // Merge in shadowing order: kernel < imports < local.
+  let merged = merge_envs(envs: [kernel, import_env, local_env])
+  // Precompute which types participate in cycles. Used by resolve_type_expr
+  // to break recursive expansion without threading a growing resolving list.
+  let cycle_set = detect_type_cycles(bindings: merged.bindings)
   BuildTypeEnvResult {
-    env: merge_envs(envs: [kernel, import_env, local_env]),
+    env: TypeEnv { bindings: merged.bindings, recursive_types: cycle_set },
     diagnostics: import_result.diagnostics
   }
 }
@@ -1542,45 +1607,25 @@ fn type_body_to_expr(name: String, body: TypeBody, span: SourceSpan) -> TypeExpr
 // as-is. Compound types (Product, Coproduct, Container, etc.) are
 // resolved recursively.
 //
-// Cycle detection: if a Named reference refers to a type that is
-// currently being resolved (detected by checking if the expansion
-// is itself a Named with the same name), it is kept as a Named
-// reference to break the cycle. This is sound because the name IS
-// defined in the environment.
+// Cycle detection uses env.recursive_types (precomputed by detect_type_cycles
+// at env construction time). Named references to cycle members are kept
+// as Named to break infinite expansion. This replaces the previous approach
+// of threading a growing resolving list through all recursive calls.
 // =========================================================================
 
 fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> ResolveResult {
-  resolve_type_expr_with_resolving(expr: expr, env: env, module_name: module_name, resolving: [])
-}
-
-// resolve_type_expr_with_resolving: tracks names currently being resolved
-// to detect mutual recursion cycles (not just self-reference).
-fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: String, resolving: List<String>) -> ResolveResult {
   match expr {
     Named { name: name, span: span } =>
-      // Cycle detection: if name is in the resolving stack, break the cycle.
-      if resolving |> any(r => r == name) {
+      // Cycle detection: if this type participates in a dependency cycle,
+      // keep it as Named to break infinite expansion. Sound because the
+      // name is guaranteed to be defined in the environment.
+      if env.recursive_types |> any(r => r == name) {
         ResolveResult { resolved: expr, diagnostics: [] }
       } else {
         match lookup_type(env: env, name: name) {
           Some { value: resolved } =>
-            // Check for self-reference (cycle breaker): if the resolved type
-            // is a Named pointing to the same name, keep it to avoid infinite expansion.
-            match resolved {
-              Named { name: inner_name, span: _ } =>
-                if inner_name == name {
-                  ResolveResult { resolved: expr, diagnostics: [] }
-                } else {
-                  // Resolve the target with name added to resolving stack.
-                  resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: concat(resolving, [name]))
-                }
-              _ =>
-                // Resolved to a structural form. Recursively resolve any
-                // Named references inside it.
-                resolve_type_expr_with_resolving(expr: resolved, env: env, module_name: module_name, resolving: concat(resolving, [name]))
-            }
+            resolve_type_expr(expr: resolved, env: env, module_name: module_name)
           None =>
-            // Unresolved name — emit diagnostic.
             ResolveResult {
               resolved: expr,
               diagnostics: [Diagnostic {
@@ -1594,11 +1639,10 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
       }
 
     Primitive { name: _, span: _ } =>
-      // Already fully resolved.
       ResolveResult { resolved: expr, diagnostics: [] }
 
     Product { name: prod_name, fields: fields, span: span } =>
-      let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name, resolving: resolving))
+      let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field)
       let all_diags = flat_map(field_results, fr => fr.diagnostics)
       ResolveResult {
@@ -1607,7 +1651,7 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
       }
 
     Coproduct { name: coprod_name, variants: variants, span: span } =>
-      let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name, resolving: resolving))
+      let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
       let resolved_variants = map(variant_results, vr => vr.variant)
       let all_diags = flat_map(variant_results, vr => vr.diagnostics)
       ResolveResult {
@@ -1616,29 +1660,29 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
       }
 
     Container { kind: kind, element: element, span: span } =>
-      let elem_result = resolve_type_expr_with_resolving(expr: element, env: env, module_name: module_name, resolving: resolving)
+      let elem_result = resolve_type_expr(expr: element, env: env, module_name: module_name)
       ResolveResult {
         resolved: Container { kind: kind, element: elem_result.resolved, span: span },
         diagnostics: elem_result.diagnostics
       }
 
     Optional { inner: inner, span: span } =>
-      let inner_result = resolve_type_expr_with_resolving(expr: inner, env: env, module_name: module_name, resolving: resolving)
+      let inner_result = resolve_type_expr(expr: inner, env: env, module_name: module_name)
       ResolveResult {
         resolved: Optional { inner: inner_result.resolved, span: span },
         diagnostics: inner_result.diagnostics
       }
 
     Refined { base: base, predicates: predicates, span: span } =>
-      let base_result = resolve_type_expr_with_resolving(expr: base, env: env, module_name: module_name, resolving: resolving)
+      let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
       ResolveResult {
         resolved: Refined { base: base_result.resolved, predicates: predicates, span: span },
         diagnostics: base_result.diagnostics
       }
 
     MapType { key: key, value: value, span: span } =>
-      let key_result = resolve_type_expr_with_resolving(expr: key, env: env, module_name: module_name, resolving: resolving)
-      let value_result = resolve_type_expr_with_resolving(expr: value, env: env, module_name: module_name, resolving: resolving)
+      let key_result = resolve_type_expr(expr: key, env: env, module_name: module_name)
+      let value_result = resolve_type_expr(expr: value, env: env, module_name: module_name)
       ResolveResult {
         resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
         diagnostics: concat(key_result.diagnostics, value_result.diagnostics)
@@ -1650,8 +1694,8 @@ fn resolve_type_expr_with_resolving(expr: TypeExpr, env: TypeEnv, module_name: S
 // Field resolution
 // =========================================================================
 
-fn resolve_field(field: Field, env: TypeEnv, module_name: String, resolving: List<String>) -> FieldResult {
-  let type_result = resolve_type_expr_with_resolving(expr: field.type_expr, env: env, module_name: module_name, resolving: resolving)
+fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult {
+  let type_result = resolve_type_expr(expr: field.type_expr, env: env, module_name: module_name)
   let default_result = if field.default_value == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
@@ -1674,8 +1718,8 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String, resolving: Lis
 // Variant resolution
 // =========================================================================
 
-fn resolve_variant(variant: Variant, env: TypeEnv, module_name: String, resolving: List<String>) -> VariantResult {
-  let field_results = map(variant.fields, f => resolve_field(field: f, env: env, module_name: module_name, resolving: resolving))
+fn resolve_variant(variant: Variant, env: TypeEnv, module_name: String) -> VariantResult {
+  let field_results = map(variant.fields, f => resolve_field(field: f, env: env, module_name: module_name))
   let resolved_fields = map(field_results, fr => fr.field)
   let all_diags = flat_map(field_results, fr => fr.diagnostics)
   VariantResult {
@@ -1692,8 +1736,8 @@ fn resolve_variant(variant: Variant, env: TypeEnv, module_name: String, resolvin
 // Param resolution
 // =========================================================================
 
-fn resolve_param(param: Param, env: TypeEnv, module_name: String, resolving: List<String>) -> ParamResult {
-  let type_result = resolve_type_expr_with_resolving(expr: param.type_expr, env: env, module_name: module_name, resolving: resolving)
+fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult {
+  let type_result = resolve_type_expr(expr: param.type_expr, env: env, module_name: module_name)
   let default_result = if param.default_value == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
@@ -1715,8 +1759,8 @@ fn resolve_param(param: Param, env: TypeEnv, module_name: String, resolving: Lis
 // =========================================================================
 
 fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> OperationResult {
-  let input_results = map(op.inputs, f => resolve_field(field: f, env: env, module_name: module_name, resolving: []))
-  let output_results = map(op.outputs, f => resolve_field(field: f, env: env, module_name: module_name, resolving: []))
+  let input_results = map(op.inputs, f => resolve_field(field: f, env: env, module_name: module_name))
+  let output_results = map(op.outputs, f => resolve_field(field: f, env: env, module_name: module_name))
   let resolved_inputs = map(input_results, fr => fr.field)
   let resolved_outputs = map(output_results, fr => fr.field)
   let input_diags = flat_map(input_results, fr => fr.diagnostics)
@@ -1767,8 +1811,8 @@ fn resolve_operation(op: OperationDef, env: TypeEnv, module_name: String) -> Ope
 // =========================================================================
 
 fn resolve_capability(cap: CapabilityDef, env: TypeEnv, module_name: String) -> CapabilityResult {
-  let input_results = map(cap.inputs, f => resolve_field(field: f, env: env, module_name: module_name, resolving: []))
-  let output_results = map(cap.outputs, f => resolve_field(field: f, env: env, module_name: module_name, resolving: []))
+  let input_results = map(cap.inputs, f => resolve_field(field: f, env: env, module_name: module_name))
+  let output_results = map(cap.outputs, f => resolve_field(field: f, env: env, module_name: module_name))
   let resolved_inputs = map(input_results, fr => fr.field)
   let resolved_outputs = map(output_results, fr => fr.field)
   let input_diags = flat_map(input_results, fr => fr.diagnostics)
@@ -1788,8 +1832,8 @@ fn resolve_capability(cap: CapabilityDef, env: TypeEnv, module_name: String) -> 
 // ResourceUse resolution
 // =========================================================================
 
-fn resolve_resource_use(ru: ResourceUse, env: TypeEnv, module_name: String, resolving: List<String>) -> ResourceUseResult {
-  let type_result = resolve_type_expr_with_resolving(expr: ru.resource, env: env, module_name: module_name, resolving: resolving)
+fn resolve_resource_use(ru: ResourceUse, env: TypeEnv, module_name: String) -> ResourceUseResult {
+  let type_result = resolve_type_expr(expr: ru.resource, env: env, module_name: module_name)
   ResourceUseResult {
     resource_use: ResourceUse {
       name: ru.name,
@@ -2205,7 +2249,7 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
       }
 
     FnDef { name: name, params: params, return_type: return_type, body: body, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name, resolving: []))
+      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
       let param_diags = flat_map(param_results, pr => pr.diagnostics)
       let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
@@ -2224,11 +2268,11 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
       }
 
     FuncDef { name: name, params: params, return_type: return_type, uses: uses, body: body, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name, resolving: []))
+      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
       let param_diags = flat_map(param_results, pr => pr.diagnostics)
       let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
-      let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name, resolving: []))
+      let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
       let resolved_uses = map(use_results, ur => ur.resource_use)
       let use_diags = flat_map(use_results, ur => ur.diagnostics)
       let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
@@ -2247,11 +2291,11 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
       }
 
     PatternDef { name: name, params: params, return_type: return_type, uses: uses, body: body, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name, resolving: []))
+      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
       let param_diags = flat_map(param_results, pr => pr.diagnostics)
       let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
-      let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name, resolving: []))
+      let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
       let resolved_uses = map(use_results, ur => ur.resource_use)
       let use_diags = flat_map(use_results, ur => ur.diagnostics)
       let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
@@ -2323,7 +2367,7 @@ fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResu
       }
 
     ExternFuncDecl { name: name, params: params, return_type: return_type, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name, resolving: []))
+      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
       let resolved_params = map(param_results, pr => pr.param)
       let param_diags = flat_map(param_results, pr => pr.diagnostics)
       let ret_result = resolve_type_expr(expr: return_type, env: env, module_name: module_name)
@@ -2351,7 +2395,7 @@ type TypeBodyResult {
 fn resolve_type_body(body: TypeBody, env: TypeEnv, module_name: String) -> TypeBodyResult {
   match body {
     Record { fields: fields } =>
-      let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name, resolving: []))
+      let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field)
       let all_diags = flat_map(field_results, fr => fr.diagnostics)
       TypeBodyResult {
@@ -2360,7 +2404,7 @@ fn resolve_type_body(body: TypeBody, env: TypeEnv, module_name: String) -> TypeB
       }
 
     Sum { variants: variants } =>
-      let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name, resolving: []))
+      let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
       let resolved_variants = map(variant_results, vr => vr.variant)
       let all_diags = flat_map(variant_results, vr => vr.diagnostics)
       TypeBodyResult {
@@ -2498,7 +2542,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   )
   let all_diags = flat_map(results, r => r.diagnostics)
   EnvResolveResult {
-    env: TypeEnv { bindings: resolved_bindings },
+    env: TypeEnv { bindings: resolved_bindings, recursive_types: env.recursive_types },
     diagnostics: all_diags
   }
 }

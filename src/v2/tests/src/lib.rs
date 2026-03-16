@@ -1941,12 +1941,12 @@ fn foo(item: String) -> String {
     fn phase4_typecheck_has_cycle_detection() {
         let source = read_v2_file("src/v2/04_typecheck.dag");
         assert!(
-            source.contains("resolve_type_expr_with_resolving"),
-            "typecheck.dag should contain resolve_type_expr_with_resolving for cycle detection"
+            source.contains("detect_type_cycles"),
+            "typecheck.dag should contain detect_type_cycles for SCC-based cycle detection"
         );
         assert!(
-            source.contains("resolving"),
-            "typecheck.dag should use 'resolving' parameter for cycle tracking"
+            source.contains("recursive_types"),
+            "typecheck.dag should use precomputed recursive_types set for cycle tracking"
         );
     }
 

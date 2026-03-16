@@ -588,7 +588,7 @@ fn compile_struct_field_value(
     let compiled = if is_none {
         compiled
     } else {
-        clone_if_needed(compiled)
+        clone_if_needed(compiled, ctx.fold_accum_name.as_deref())
     };
     let mut result = if is_opt && !is_none && !already_optional {
         code_ir::Expr::Call {
@@ -1059,7 +1059,7 @@ fn compile_intrinsic_call(
     if args.is_empty() {
         return None;
     }
-    let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter));
+    let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter), ctx.fold_accum_name.as_deref());
 
     match name {
         "map" if args.len() == 2 => Some(compile_map_intrinsic(
@@ -1497,7 +1497,7 @@ fn compile_intrinsic_call(
             if let ast::Expr::Call(inner_name, inner_args) = &args[0].1 {
                 // first(skip(list, n)) → list.get(n as usize).cloned()
                 if inner_name == "skip" && inner_args.len() == 2 {
-                    let list = clone_if_needed(compile_expr(&inner_args[0].1, ctx, counter));
+                    let list = clone_if_needed(compile_expr(&inner_args[0].1, ctx, counter), ctx.fold_accum_name.as_deref());
                     let idx = compile_expr(&inner_args[1].1, ctx, counter);
                     return Some(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::MethodCall {
@@ -2433,7 +2433,7 @@ fn compile_call(
         .enumerate()
         .map(|(index, (arg_name, expr))| {
             let expected_type = lookup_call_arg_type(name, index, arg_name.as_deref(), ctx);
-            clone_if_needed(compile_expr_typed(expr, ctx, expected_type, counter))
+            clone_if_needed(compile_expr_typed(expr, ctx, expected_type, counter), ctx.fold_accum_name.as_deref())
         })
         .collect();
     let rust_name = to_snake_case(name);
@@ -2448,16 +2448,25 @@ fn compile_call(
 /// Add .clone() to variable/field expressions that would be consumed by a call.
 /// This ensures generated code doesn't have use-after-move errors.
 /// Redundant clones are optimized away by the compiler.
-fn clone_if_needed(expr: code_ir::Expr) -> code_ir::Expr {
+fn clone_if_needed(expr: code_ir::Expr, fold_accum_name: Option<&str>) -> code_ir::Expr {
     match &expr {
         // Var clone decision is already made in compile_ident — pass through.
         code_ir::Expr::Var(_) => expr,
-        // Field accesses always need cloning (can't move out of a borrowed field).
-        code_ir::Expr::Field(_, _) => code_ir::Expr::MethodCall {
-            receiver: Box::new(expr),
-            method: "clone".to_string(),
-            args: vec![],
-        },
+        code_ir::Expr::Field(receiver, _) => {
+            // In fold context, skip cloning field accesses on the accumulator.
+            // The accumulator is owned and reassigned each iteration, so partial
+            // moves are valid and keep Rc refcount at 1 for in-place mutation.
+            if let Some(accum) = fold_accum_name {
+                if matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == accum) {
+                    return expr;
+                }
+            }
+            code_ir::Expr::MethodCall {
+                receiver: Box::new(expr),
+                method: "clone".to_string(),
+                args: vec![],
+            }
+        }
         // Literals, calls, etc. are temporary values — don't clone
         _ => expr,
     }

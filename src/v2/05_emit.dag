@@ -52,7 +52,7 @@ type EmitResult {
 }
 
 type BlockEmitState {
-  lines: List<String>
+  text: String
   scope: InferScope
 }
 
@@ -71,6 +71,8 @@ type ItemInfo {
   name: String
   kind: String
   service_names: List<String>
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
 }
 
 // =========================================================================
@@ -79,7 +81,7 @@ type ItemInfo {
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [] },
     func_env: FuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
@@ -144,12 +146,17 @@ fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 fn build_item_registry(items: List<TypedItem>) -> Map<String, ItemInfo> {
   let info_list = items |> map(item => match item {
     TypedFuncDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)) }
+      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+        is_self_recursive: false, has_non_tail_self_call: false }
     TypedPatternDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)) }
-    TypedFnDef { name: n } =>
-      ItemInfo { name: n, kind: "fn", service_names: [] }
-    _ => ItemInfo { name: "", kind: "other", service_names: [] }
+      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+        is_self_recursive: false, has_non_tail_self_call: false }
+    TypedFnDef { name: n, body: b } =>
+      ItemInfo { name: n, kind: "fn", service_names: [],
+        is_self_recursive: expr_has_self_call(expr: b.expr, fn_name: n),
+        has_non_tail_self_call: has_non_tail_self_call(expr: b.expr, fn_name: n, in_tail: true) }
+    _ => ItemInfo { name: "", kind: "other", service_names: [],
+        is_self_recursive: false, has_non_tail_self_call: false }
   })
   info_list |> fold(init: empty_map(), f: (acc, i) =>
     map_insert(acc, i.name, i)
@@ -274,12 +281,10 @@ fn collect_service_calls(expr: Expr) -> List<String> {
       }
     }
     Block { stmts: ss, span: _ } =>
-      ss |> map(s => collect_service_calls(expr: s))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      ss |> flat_map(s => collect_service_calls(expr: s))
     Match { scrutinee: s, arms: arm_list, span: _ } => {
       let s_calls = collect_service_calls(expr: s)
-      let arm_calls = arm_list |> map(arm => collect_service_calls(expr: arm.body))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      let arm_calls = arm_list |> flat_map(arm => collect_service_calls(expr: arm.body))
       concat(s_calls, arm_calls)
     }
     BinOp { op: _, left: l, right: r, span: _ } =>
@@ -287,24 +292,21 @@ fn collect_service_calls(expr: Expr) -> List<String> {
     UnaryOp { op: _, operand: e, span: _ } => collect_service_calls(expr: e)
     Lambda { params: _, body: bd, span: _ } => collect_service_calls(expr: bd)
     RecordLit { type_name: _, fields: fs, span: _ } =>
-      fs |> map(f => collect_service_calls(expr: f.value))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      fs |> flat_map(f => collect_service_calls(expr: f.value))
     ListLit { elements: els, span: _ } =>
-      els |> map(e => collect_service_calls(expr: e))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      els |> flat_map(e => collect_service_calls(expr: e))
     Cast { expr: e, target: _, span: _ } => collect_service_calls(expr: e)
     StringInterp { parts: ps, span: _ } =>
-      ps |> map(p => match p {
+      ps |> flat_map(p => match p {
         Interpolation { expr: e } => collect_service_calls(expr: e)
         _ => []
-      }) |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      })
     _ => []
   }
 }
 
 fn collect_service_calls_from_args(args: List<NamedArg>) -> List<String> {
-  args |> map(a => collect_service_calls(expr: a.value))
-    |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+  args |> flat_map(a => collect_service_calls(expr: a.value))
 }
 
 fn unique_strings(items: List<String>) -> List<String> {

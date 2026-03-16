@@ -125,115 +125,161 @@ remains ignored pending full gen-types cleanup.
 **S73:** `cargo check --workspace --all-targets` is not a stable hygiene ratchet
 because `gunbc-codegen` declares bins under `target/codegen/bin/*/main.rs` (generated out-of-band).
 
-### Branch 10: Item kinds are separate species, not DAG nodes (v2)
+### Branch 10: The compiler checks keywords, not graph consistency (v2)
 
-The `.dag` language's foundational principle is that all concepts are
-expressed as DAG nodes — tautological/syllogistic modeling where every
-construct is a node with I/O. A service, a function, a resource, a type
-definition — these are all the same species: a named DAG node with inputs,
-outputs, and properties. The differences (transport binding, computation
-body, capability mode) are properties of the node, not reasons to create
-separate compiler machinery.
+The compiler's job is to ensure bits get where they need to — that every
+edge in the graph connects compatible ports. This is constraint
+satisfaction on the graph structure: classical logic. Either the edges
+match or they don't.
 
-But the v2 compiler's `Item` type has 8 distinct variants:
-`TypeDef`, `FuncDef`, `FnDef`, `ServiceDef`, `ResourceDef`, `DataDef`,
-`ExternFuncDecl`, `PatternDef`. Each variant is handled separately in
-every compiler phase:
+But the v2 compiler doesn't work on the graph. It works on **keywords.**
+The `Item` type has 8 variants (`TypeDef`, `FuncDef`, `FnDef`,
+`ServiceDef`, `ResourceDef`, `DataDef`, `ExternFuncDecl`, `PatternDef`),
+and every compiler phase dispatches on which keyword the author used:
 
-- **Parser:** different syntax productions per item kind
-- **Resolver:** `get_exported_names` enumerates all 8, `get_variant_names`
-  enumerates all 8 again
-- **Typecheck:** `build_type_env` registers `TypeDef` in TypeEnv, ignores
-  the rest. `build_func_env` registers `FnDef`/`FuncDef`/`PatternDef`,
-  ignores the rest. `ServiceDef` and `ResourceDef` are invisible.
-- **Emit:** `emit_typed_item` has a match arm per variant, each calling
-  a dedicated rendering function
+- `build_type_env`: "if TypeDef, register shape. If ResourceDef, register
+  shape. Else skip."
+- `build_func_env`: "if FuncDef, register callable. If FnDef, register
+  callable. Else skip."
+- `infer_item`: "if FuncDef, infer body. If ServiceDef, skip."
+- `emit_typed_item`: per-variant rendering for all 8.
 
-This means adding a new item kind or changing how an existing kind
-participates requires editing every phase. More importantly, items that
-should naturally participate in the same namespace don't — a `service`
-can't be referenced in expressions, a `resource` can't appear in type
-position — because each phase only knows about the specific variants
-it was coded to handle.
+This means the compiler's behavior depends on which magic word the author
+wrote, not on the graph structure. A `service` with operations that have
+typed inputs and outputs is invisible to expression checking — not because
+its graph structure is different from a function, but because the keyword
+says `service` instead of `func`.
 
-**S86: Item variants are per-kind compiler machinery, not unified DAG nodes.**
+**S86: Compiler dispatches on item keywords instead of graph properties.**
 
-**Discovery context (2026-03-16):** After fixing the gist pipeline OOM
-(S85) and import resolution issues, 25 errors remain — all "undefined
-variable 'git'" and cascading field-access failures. `git` is a
-`ServiceDef` in `extdeps/git.dag`. The typecheck doesn't register
-`ServiceDef` items in any environment, so service names are invisible
-to expression typechecking. The heuristic fix (register service names
-as variables) adds another per-kind special case to the growing pile.
+**Discovery context (2026-03-16):** After fixing S85, 25 errors remained
+in the gist pipeline — all "undefined variable 'git'." `git.Core` is a
+`ServiceDef` with typed operations (input/output port shapes). The
+compiler has all the information it needs to check edge compatibility.
+But the keyword `service` routes around the expression checker entirely.
 
-**Current pattern:** Every new item kind requires:
-1. A new `Item` variant in `00_core.dag`
-2. A new `TypedItem` variant in `00_core.dag`
-3. New match arms in resolver (`get_item_name`, `get_variant_names`)
-4. New match arms in typecheck (`resolve_item_types`, `infer_item`)
-5. New match arms in each emitter (`emit_typed_item`, `emit_py_typed_item`)
-6. New registration logic in `build_type_env` / `build_func_env`
+**The 8 keywords analyzed:**
 
-This is a high cost-of-change pattern. `Item` is a closed enum, and
-closed-enum matching is fine per our invariants — adding a variant is a
-compiler error. The deeper problem is that there is no normalized
-structural representation shared across later phases. Each phase
-re-interprets the same variant set independently rather than consuming
-a single structural form lowered once from the AST.
+The minimum structural vocabulary for a DAG is 3 concepts:
+- **Shape** — declares a data structure (what flows through edges)
+- **Computation** — has I/O ports and a body (transforms inputs to outputs)
+- **Boundary** — has I/O ports but no body (provided externally)
 
-**Historical note:** The codebase has gone through several iterations of
-this pattern — `resource`, `tool`, `service`, `pattern`, `extern func` —
-each time adding a new variant and threading it through every phase. The
-intent was always to collapse these to DAG nodes, but the per-kind pattern
-keeps getting reintroduced because the compiler's `Item` type invites it.
+Every keyword maps to one of these + properties:
 
-**Missing fact:** a normalized structural representation shared across
-later phases. After parsing, each phase independently re-interprets the
-8-variant Item enum — building separate registration logic, separate type
-environments, separate emission paths for each kind. The structural
-properties that matter to downstream phases (what names does this item
-introduce? what body does it have? what namespace does it participate in?)
-are not extracted once and carried forward.
+| Keyword | Structural concept | Differentiating property |
+|---------|--------------------|--------------------------|
+| `type` | Shape | — (this IS the shape definition) |
+| `fn` | Computation | purity (derivable: no I/O refs in body) |
+| `func` | Computation | has `uses` clause (I/O declaration) |
+| `service` | Computation | transport binding (external I/O) |
+| `resource` | Shape | capability mode (Read/Write) |
+| `data` | Computation | no inputs, constant body |
+| `extern func` | Boundary | no body (externally provided) |
+| `pattern` | Computation | identical to `func` (pure documentation) |
 
-**Terminal direction:** Keep parse-time `Item` variants — they make
-illegal AST states unrepresentable (a `FuncDef` requires a body
-expression, a `ServiceDef` requires operations, a `TypeDef` requires a
-type body). Then lower once, after parsing, to a structural node IR
-that resolve/typecheck/emit consume:
+The keywords are fine as **parse-time syntax dispatch** (telling the
+parser what syntax to expect) and as **frontend validation sugar** (e.g.,
+`fn` asserts purity — the compiler verifies no I/O refs in the body).
+But they should not be the mechanism by which the compiler decides what
+to check. After parsing, the compiler should work on graph properties:
+does this node have ports? What shapes do they carry? Does it have a
+body to check? Does it have edges to external providers?
 
-```
-Item (parse) ──lower_item──> Node (structural IR)
-```
+**Design principle:** Encode the reason, not the label. The reason a
+caller needs its callee to be pure (e.g., "this context provides no
+Network resource") is stable — it comes from the graph structure and
+doesn't change when code is refactored. The label (`fn` = pure) is
+volatile — it must be updated every time the implementation changes,
+leading to constant keyword churn.
 
-The structural `Node` carries:
-- **Name** and **span** (identity)
-- **Namespace entries** — what names this item introduces (types,
-  constructors, functions, variables) and their signatures
-- **Body** — optional computation (function body, service operations)
-- **Properties** — transport binding, capability mode, etc.
-- **Kind tag** — for diagnostics and source correlation, NOT for dispatch
+The compiler should enforce the stable constraint: "node A calls node B,
+A's context provides resources {R1, R2}, B's subgraph requires {R1, R2,
+R3} — edge unsatisfiable, missing R3." This catches the real problem
+regardless of keywords. The developer learns WHAT would break (R3 is
+unavailable) and WHY (the caller doesn't provide it), not just "you
+used the wrong keyword."
 
-The key difference from replacing `Item` outright: the parse-stage
-variants remain precise (each variant's required fields are required,
-not optional), while the post-lower structural form is what compiler
-phases walk. Replacing the AST with a single mega-node type would
-create a permissive record full of optional fields — violating "illegal
-states unrepresentable."
+By contrast, a keyword-level check ("you wrote `fn` but your body calls
+a service") is a hint — trivially bypassed by changing `fn` to `func`.
+Nothing structurally broke. The developer learned nothing about what
+depends on purity. The label changed, the graph didn't. This is the
+same problem as Python type hints — they look like they're doing
+something, but if they're not enforced by structure, they're noise
+that drifts from reality.
 
-Compiler phases would walk the structural form: "does this node have
-namespace entries? register them. Does this node have a body?
-typecheck/emit it." Rather than: "is this a FuncDef? do the FuncDef
-thing. Is this a ServiceDef? do the ServiceDef thing."
+The rubric applies directly: "if a fact is derivable from authoritative
+structure, compute it once and carry it forward." Resource requirements
+propagate through call edges. The compiler can derive the full I/O
+profile of any node by walking its subgraph. No keyword needed.
 
-This would make `ServiceDef` naturally visible in the expression
-namespace (its namespace entries are registered like any other item's),
-`ResourceDef` naturally usable in type position, and new item kinds
-cheap to add (define the parse variant, implement `lower_item`).
+**Missing fact:** the graph properties of each item — what ports it
+introduces, what shapes they carry, whether it has a body, what edges
+it requires. Currently the compiler derives these by keyword dispatch
+(8-way match). The alternative: extract graph properties once after
+parsing, then the checker works on properties uniformly.
 
-**Smallest safe bridge (current):** Register `ServiceDef` names as
-variables in the expression scope during typecheck, with the service's
-operation namespace as the "type." This is a heuristic — another per-kind
-special case — but it unblocks the gist pipeline. Documented as debt.
+**Terminal direction:** Rename `04_typecheck.dag` to `04_check.dag`
+(graph consistency checker). The checker's job:
+
+1. **Resolve names** — map string references to structural port shapes
+2. **Extract graph properties** — for each item, derive: what names
+   does it introduce? what port shapes? what resources does its
+   subgraph require? This replaces the per-keyword `build_type_env` +
+   `build_func_env` split.
+3. **Propagate port shapes + resource requirements** — walk
+   expressions, determine what each edge carries and what resources
+   each subgraph requires (currently `infer_expr`, extended with
+   resource propagation)
+4. **Check edge consistency** — for every call edge, verify:
+   (a) output port shape is compatible with input port shape
+   (b) caller's resource set satisfies callee's resource requirements
+
+The checker never asks "what keyword is this?" It asks "are all edges
+satisfied?" Error messages say what would break: "node X calls node Y,
+but Y requires Network which X doesn't provide" — not "you used `fn`
+but your body calls a service."
+
+Keywords (`fn`, `func`, `service`, etc.) remain as parse-time syntax
+dispatch. They are NOT validation assertions — the graph structure is
+the sole authority. If a developer changes `fn` to `func`, nothing
+structurally changes (the resource requirements are the same either
+way). The compiler catches the real issue: an unsatisfied edge.
+
+**Terminal vision: keywords are namespacing, not magic.**
+
+Every name in the system — `String`, `Int`, `Network`, `git.Core`,
+`CredentialFlow` — carries meaning because of its DAG composition,
+not because the compiler has a hardcoded case for it. `String` is a
+node defined at the base of the composition chain (currently hardcoded
+in `kernel_type_env()`). In the terminal state, it would be DAG-defined
+in `dsl/std/types.dag` like any other node. The compiler doesn't know
+what "String" means — it knows what a node with certain port shapes
+and composition structure means.
+
+This collapses the IR to a single concept: **a node is a name, optional
+ports, optional body, optional properties, composed from other nodes.**
+What we currently call keywords (`type`, `fn`, `service`, `resource`)
+are syntactic entry points for defining nodes with different default
+structures. After parsing, they're all the same thing. The checker
+sees only nodes and edges.
+
+The parser can keep varied syntax for readability (defining a record
+looks different from defining a function body). But `00_core.dag`'s
+`Item` / `TypedItem` types collapse toward a single `Node` with
+properties. The 8-variant enum, the per-keyword dispatch, and the
+separate type/function environments all disappear.
+
+**Boundaries.** A node with ports but no body — its outputs must be
+provided externally. The checker verifies every consumer's port is
+compatible and a provider exists at link time. Replaces `extern func`
+as a keyword with a structural graph property.
+
+**Smallest safe bridge (current):** Per-keyword heuristics to register
+`ServiceDef` namespace roots as expression-scope variables, and
+permissive field/method access on service types. These are documented
+debt — they work by inventing permissive fallback types (violating the
+rubric) and will be removed when the checker works on graph structure.
 
 ---
 
@@ -253,29 +299,84 @@ parsing annotation), S45/S46 (provider/transport metadata stamping).
 ## V2 self-hosting gap analysis (updated 2026-03-16)
 
 **V2 source:** 10 modules (~9,600 lines), all parse with zero diagnostics.
-**Test status:** 89 pass, 0 fail, 6 ignored (cargo gates + gist pipeline).
+**Test status:** 89 pass, 0 fail, 7 ignored (cargo gates + gist pipeline).
 
 **What works today:**
 - Module discovery, parsing, type codegen, fn codegen (records, match,
   if/else, for, lambda, string interp, intrinsics, `with()`, `concat()`)
 - Rust rendering, crate assembly, runtime shims
 - Target-agnostic emission architecture (Rust + Python renderers)
-- Honest type system (no fabrication in lookup/resolve/emit paths)
 - v1 TCO pass for recursive .dag functions (tokenize_loop is iterative)
 - O(1) lookups for type cache (Map), item registry (Map), module index (Map)
-- Gist 11-module closure: resolve passes in compiled v2 crate
+- Gist 11-module closure: typecheck passes with 0 errors in compiled v2 crate
 
 **Generated v2 crate: cargo check + cargo build pass.**
 
-**Gist pipeline blocker (2026-03-16):** Full pipeline OOMs on `std.types`
-(item 55 of 101: `CredentialFlow`). Root cause: recursive sum type triggers
-infinite recursion in resolver due to dropped cycle-detection state (S85).
-Not an algorithmic scaling issue — a missing language feature.
+**Gist pipeline status (2026-03-16, updated after Streams 1-4):**
+- Resolve: passes (0 errors, 0.1s)
+- Typecheck: passes (0 diagnostics, SCC cycle detection works correctly)
+- Emit: still hangs on multi-module input despite Stream 1 clone fix.
+  The fold accumulator clone overhead was one contributor, but other
+  O(n²) patterns in the emit phase remain (repeated inference, list-based
+  lookups, append-by-concat — see performance audit).
 
-**Path forward:**
-1. Unblock gist: thread `resolving` through resolve helpers (S85 smallest fix)
-2. v2 emitter TCO pass (S84) — required for self-hosting
-3. Recursive type support as a language feature (S85 terminal direction)
+**Blockers and resolution status:**
+
+1. **v1 codegen clone overhead** — FIXED (2026-03-16). `clone_if_needed()`
+   in `fn_codegen.rs` now takes `fold_accum_name: Option<&str>` and skips
+   `.clone()` for field accesses on the fold accumulator variable. This
+   keeps Rc refcount at 1 so `Rc::try_unwrap` succeeds → O(1) in-place
+   mutation instead of deep clone. All 4 call sites updated.
+
+2. **S85: recursive type infinite recursion** — TERMINAL FIX APPLIED
+   (2026-03-16). The `resolving: List<String>` threading is replaced by
+   SCC-based cycle detection at `build_type_env` time. `detect_type_cycles`
+   precomputes `recursive_types: List<String>` on `TypeEnv`. `resolve_type_expr`
+   checks the precomputed set — Named references to cycle members are kept as
+   Named; all others expand. `resolve_type_expr_with_resolving` and the
+   `resolving` parameter are deleted from all helpers. No growing list
+   allocation per resolution step.
+
+**Path forward (5 independent streams):**
+
+Stream 1: **v1 codegen clone overhead** — DONE. `clone_if_needed()` is
+fold-accumulator-aware. All v2 compiler tests pass (89/89).
+
+Stream 2: **S85 terminal fix** — DONE. SCC cycle detection replaces
+`resolving` list. `recursive_types` precomputed on `TypeEnv`.
+`resolve_type_expr_with_resolving` deleted.
+
+Stream 3: **S86 terminal fix** — unified node IR + graph consistency
+checker. Collapse `Item`/`TypedItem` (8 variants each) to a single
+`Node` type. Checker enforces edge constraints on nodes, not keyword
+constraints. Acceptance criteria:
+(a) all S86 heuristics deleted;
+(b) `Item` 8-variant enum replaced with `Node` post-parse;
+(c) `build_type_env` + `build_func_env` replaced with unified graph
+    property extraction from nodes;
+(d) kernel primitives (`String`, `Int`, etc.) DAG-defined in
+    `dsl/std/types.dag`, not hardcoded in `kernel_type_env()`;
+(e) service operations typecheck through normal port-shape propagation;
+(f) error messages say what would break structurally;
+(g) keywords (`fn`, `type`, `service`, `resource`) are parse syntax
+    only — changing them produces no diagnostic change if graph is
+    unchanged.
+Largest stream, most architecturally important. Touches `00_core.dag`,
+`04_typecheck.dag` (rename to `04_check.dag`), emitters, and
+`dsl/std/types.dag`. Parser keeps keyword syntax for readability.
+
+Stream 4: **S84 v2 emitter TCO** — VERIFIED WORKING (2026-03-16). The v2
+emitter already has TCO: `expr_has_self_call()`, `has_non_tail_self_call()`
+classify functions; `emit_tco_body()` / `emit_tco_expr()` render loops.
+Confirmed in generated code: `find_dot_index`, `normalize_access_type` etc.
+emit as `loop { ... continue; ... break; }` patterns. S84 is closed.
+
+Stream 5: **v1 structural closure** — the 5 findings from 2026-03-15
+review (anonymous records, collection intrinsics, test contracts, TCO
+backend contract, embedded metadata). Low priority, none block gist
+or self-hosting.
+
+All 5 streams are independent — no code overlap, any ordering works.
 
 ### Risks identified during Track A–C integration (2026-03-15)
 
@@ -303,14 +404,13 @@ typechecker exceeds the default 8MB thread stack.
 **Fix:** `stacker::maybe_grow` added to re-entrant call sites, growing the
 stack on demand. No manual stack size tuning needed.
 
-**S84: v2 emitter has no TCO pass — CRITICAL for self-hosting.**
+**S84: v2 emitter TCO — RESOLVED (2026-03-16).**
 Track C added tail-call optimization to v1's `fn_codegen.rs` (Stmt::Loop +
-parameter reassignment). This fixes the bootstrapping path: v1 compiles v2 .dag
-files into iterative Rust. **But the v2 emitter (`05_emit_rust.dag`) does not
-perform this transformation.** When v2 compiles itself, the generated Rust will
-use recursive calls for functions like `tokenize_loop`, `resolve_imports`,
-`collect_service_calls`, and every `fold` accumulator pattern. This will
-stack-overflow at runtime, exactly as v1 did before Track C.
+parameter reassignment). The v2 emitter (`05_emit_rust.dag`) ALSO implements
+this transformation via `expr_has_self_call()`, `has_non_tail_self_call()`,
+`emit_tco_body()`, `emit_tco_expr()`, and `emit_tco_reassign()`. Verified in
+generated code: tail-recursive functions emit as `loop { ... continue; ...
+break; }` patterns (confirmed for `find_dot_index`, `normalize_access_type`).
 **Required:** Add a TCO analysis + transformation pass to the v2 emission
 pipeline, analogous to what Track C added to v1. The v2 version should operate
 on the typed IR (between typecheck and emit), detecting self-tail-recursive
@@ -411,36 +511,27 @@ These 7 functions are correct for DAGs. They become bugs only because the
 resolver fails to convert recursive types into structurally finite form
 (cycle breakers). Fix the resolver, and these functions work as-is.
 
-**Smallest safe fix (unblock gist):**
-1. Thread `resolving` through `resolve_field`, `resolve_variant`,
-   `resolve_param` and their callers (signature changes)
-2. Add a recursive-type test case through the full pipeline:
-   `type Node = Leaf | Branch { children: List<Node> }`
-3. This ensures cycle breakers are inserted, making the downstream walks
-   terminate. Does not address `Box<T>` rendering or the opt-in fragility.
+**Smallest safe fix (unblock gist):** APPLIED AND SUPERSEDED.
 
-**Terminal direction (first-class in resolved type IR):**
-Recursive types become first-class in the resolved type IR. The compiler:
-- **Detects cycles automatically** via SCC analysis on the type dependency
-  graph during resolve, producing cycle metadata (which types participate
-  in cycles, which fields are the back-edges)
-- **Carries the fact structurally** on `TypeBinding` (e.g.,
-  `is_recursive: Bool` + `back_edges: List<FieldPath>`) or via a dedicated
-  recursive form in `TypeExpr` (e.g., `Recursive { name, unfolding }`)
-  through all phases — no `resolving` list, no opt-in threading
-- **Renders correctly per-backend** (`Box<T>` for Rust, reference types for
-  other targets) based on the structural marker, not heuristic detection
+**Terminal fix (SCC-based cycle detection) — APPLIED (2026-03-16):**
+The `resolving: List<String>` parameter and `resolve_type_expr_with_resolving`
+are deleted. Replaced by:
+- `type_expr_deps(expr: TypeExpr) -> List<String>` — extracts Named dependencies
+- `reaches_self(root, current, bindings, visited) -> Bool` — DFS reachability
+- `detect_type_cycles(bindings) -> List<String>` — finds all cycle participants
+- `TypeEnv.recursive_types: List<String>` — precomputed at `build_type_env` time
+- `resolve_type_expr` checks `env.recursive_types` — Named refs to cycle members
+  are kept as Named; all others expand. No growing list, no opt-in threading.
 
-Source-level syntax (e.g., `recursive type`) is only warranted if user
-intent beyond mere detection is required — for example, choosing between
-heap indirection strategies or explicitly opting out of recursion as a
-lint. Detection alone is derivable and should not be authored.
+The `resolving` parameter is removed from `resolve_field`, `resolve_variant`,
+`resolve_param`, `resolve_resource_use`, and all their callers.
 
-The `resolving` list and the `resolve_type_expr` /
-`resolve_type_expr_with_resolving` split should both disappear in the
-terminal state — replaced by upfront SCC computation during resolve that
-annotates the type graph once. See discussion in the heuristic roadmap
-(Phase A, `Box::new()` wrapping row).
+**Remaining work:**
+- **`Box<T>` rendering** — the emitter should detect recursive fields and wrap
+  them in `Box<T>` for Rust (based on `recursive_types` set). Currently not done.
+- **Back-edge metadata** — the cycle set tells WHICH types are recursive but not
+  WHICH fields are back-edges. Adding `back_edges: List<FieldPath>` to
+  `TypeBinding` would make `Box` wrapping precise.
 
 **Invariant this violates:** Invariant 9 ("Correctness by construction, not
 by validation"). The current API makes it easy to construct the wrong call.
@@ -606,12 +697,36 @@ it unnecessary. Ordered by dependency.
 | `std_types_prelude()` (S78) | Types from resolved module graph. No hand-written defs. |
 | `module_prelude()` (S79) | Per-module `use` derived from resolved imports. |
 
-### Phase C–F: Further modeling
+### Phase C: Graph consistency checker (S86 terminal direction)
 
-- **C: Variant disambiguation** — typechecker resolves from context (expected type).
-- **D: Optionality** — `TypeExpr::Optional` already modeled. Emitter reads source/target.
-- **E: Ownership** — `.dag` has value semantics. Backend decides (Rust: clone/move, C: copy/refcount, Go: GC, Verilog: wire).
-- **F: Static data** — `data` defs as `ConstDef { name, type, value }`. Per-backend rendering.
+Replace keyword-dispatched typechecker with edge constraint checker
+on a unified node IR:
+
+- **Unified node:** collapse `Item` (8 variants) and `TypedItem`
+  (8 variants) to a single `Node` with properties. A node is a name,
+  optional ports, optional body, optional properties, composed from
+  other nodes. Keywords (`type`, `fn`, `service`, `resource`) are
+  parse-time syntax that produces nodes — not dispatch targets.
+- **No kernel builtins:** `String`, `Int`, `Bool`, etc. are
+  DAG-defined nodes in `dsl/std/types.dag`, not hardcoded in
+  `kernel_type_env()`. The compiler has no concept-specific names.
+- **Edge constraint checking:** for every call edge, verify
+  (a) port shapes compatible, (b) caller's resource set satisfies
+  callee's requirements. Error messages say what would break.
+- **Resource propagation:** walk subgraphs to derive I/O profiles.
+  No purity keywords — purity is structural (empty resource set).
+- The S86 heuristics (`__service_*`, `__field_*`, permissive access)
+  and the `build_type_env` / `build_func_env` split all disappear.
+
+### Phase D–G: Further modeling
+
+- **D: Variant disambiguation** — checker resolves from context (expected type).
+- **E: Optionality** — `TypeExpr::Optional` already modeled. Emitter reads source/target.
+- **F: Ownership** — `.dag` has value semantics. Backend decides (Rust: clone/move, C: copy/refcount, Go: GC, Verilog: wire).
+- **G: Boundaries** — nodes with ports but no body. Outputs must be provided
+  externally. Replaces `extern func` keyword with a structural graph property.
+  The checker verifies: every consumer of the boundary node's output ports is
+  compatible, and a provider exists at link time.
 
 ### What dies with self-hosting
 
@@ -651,4 +766,4 @@ All ratchets are one-way (lists can only shrink).
 | Test quality | BUG-6, E3.2 | Promoted aliases, non-tautological assertions |
 | v2 integration | S82 (namespace collision), G8/G12–G14 (fabrication) | Renamed, honest return types, sum types for sentinels |
 | v2 type system | S85 (recursive types unmodeled) | First-class in resolved type IR: SCC-derived cycle metadata on TypeBinding |
-| v2 item model | S86 (items are separate species) | Keep parse-time Item variants, lower once to structural node IR for later phases |
+| v2 graph model | S86 (keyword dispatch, not graph consistency) | Checker works on graph properties (ports, edges, shapes); keywords are parse sugar + validation, not dispatch |
