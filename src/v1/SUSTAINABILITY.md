@@ -106,6 +106,95 @@ remains ignored pending full gen-types cleanup.
 **S73:** `cargo check --workspace --all-targets` is not a stable hygiene ratchet
 because `gunbc-codegen` declares bins under `target/codegen/bin/*/main.rs` (generated out-of-band).
 
+### Branch 10: Item kinds are separate species, not DAG nodes (v2)
+
+The `.dag` language's foundational principle is that all concepts are
+expressed as DAG nodes — tautological/syllogistic modeling where every
+construct is a node with I/O. A service, a function, a resource, a type
+definition — these are all the same species: a named DAG node with inputs,
+outputs, and properties. The differences (transport binding, computation
+body, capability mode) are properties of the node, not reasons to create
+separate compiler machinery.
+
+But the v2 compiler's `Item` type has 8 distinct variants:
+`TypeDef`, `FuncDef`, `FnDef`, `ServiceDef`, `ResourceDef`, `DataDef`,
+`ExternFuncDecl`, `PatternDef`. Each variant is handled separately in
+every compiler phase:
+
+- **Parser:** different syntax productions per item kind
+- **Resolver:** `get_exported_names` enumerates all 8, `get_variant_names`
+  enumerates all 8 again
+- **Typecheck:** `build_type_env` registers `TypeDef` in TypeEnv, ignores
+  the rest. `build_func_env` registers `FnDef`/`FuncDef`/`PatternDef`,
+  ignores the rest. `ServiceDef` and `ResourceDef` are invisible.
+- **Emit:** `emit_typed_item` has a match arm per variant, each calling
+  a dedicated rendering function
+
+This means adding a new item kind or changing how an existing kind
+participates requires editing every phase. More importantly, items that
+should naturally participate in the same namespace don't — a `service`
+can't be referenced in expressions, a `resource` can't appear in type
+position — because each phase only knows about the specific variants
+it was coded to handle.
+
+**S86: Item variants are per-kind compiler machinery, not unified DAG nodes.**
+
+**Discovery context (2026-03-16):** After fixing the gist pipeline OOM
+(S85) and import resolution issues, 25 errors remain — all "undefined
+variable 'git'" and cascading field-access failures. `git` is a
+`ServiceDef` in `extdeps/git.dag`. The typecheck doesn't register
+`ServiceDef` items in any environment, so service names are invisible
+to expression typechecking. The heuristic fix (register service names
+as variables) adds another per-kind special case to the growing pile.
+
+**Current pattern:** Every new item kind requires:
+1. A new `Item` variant in `00_core.dag`
+2. A new `TypedItem` variant in `00_core.dag`
+3. New match arms in resolver (`get_item_name`, `get_variant_names`)
+4. New match arms in typecheck (`resolve_item_types`, `infer_item`)
+5. New match arms in each emitter (`emit_typed_item`, `emit_py_typed_item`)
+6. New registration logic in `build_type_env` / `build_func_env`
+
+This is open-set enumeration (violates "no case enumeration for open sets")
+on what should be a structural concept.
+
+**Historical note:** The codebase has gone through several iterations of
+this pattern — `resource`, `tool`, `service`, `pattern`, `extern func` —
+each time adding a new variant and threading it through every phase. The
+intent was always to collapse these to DAG nodes, but the per-kind pattern
+keeps getting reintroduced because the compiler's `Item` type invites it.
+
+**Missing fact:** the unified identity of a DAG node. A service IS a node
+with I/O ports and a transport property. A function IS a node with I/O
+ports and a computation body. A resource IS a node with capability
+properties. These are properties on a node, not reasons for separate
+compiler paths.
+
+**Terminal direction:** Replace the 8-variant `Item` enum with a single
+structural node type that carries:
+- **Name** and **span** (identity)
+- **Ports** — inputs and outputs (the I/O contract)
+- **Properties** — transport binding, body expression, capability mode,
+  etc. (what makes a service different from a function)
+- **Kind tag** — optional, for syntax/diagnostic purposes, but NOT used
+  for dispatch in compiler phases
+
+Compiler phases would walk the node structurally: "does this node have a
+body? emit it. Does this node have a transport? wire it." Rather than:
+"is this a FuncDef? do the FuncDef thing. Is this a ServiceDef? do the
+ServiceDef thing."
+
+This is the same collapse that made `TypeExpr` work — v2 types are
+structural values, not string-keyed registry entries. The same principle
+applied to items would make `ServiceDef` naturally visible in the
+expression namespace, `ResourceDef` naturally usable in type position,
+and new item kinds zero-cost to add.
+
+**Smallest safe bridge (current):** Register `ServiceDef` names as
+variables in the expression scope during typecheck, with the service's
+operation namespace as the "type." This is a heuristic — another per-kind
+special case — but it unblocks the gist pipeline. Documented as debt.
+
 ---
 
 ## v2 impact classification
@@ -511,3 +600,4 @@ All ratchets are one-way (lists can only shrink).
 | Test quality | BUG-6, E3.2 | Promoted aliases, non-tautological assertions |
 | v2 integration | S82 (namespace collision), G8/G12–G14 (fabrication) | Renamed, honest return types, sum types for sentinels |
 | v2 type system | S85 (recursive types unmodeled) | Language feature: explicit recursive type declarations |
+| v2 item model | S86 (items are separate species) | Unified DAG node with structural properties, not 8-variant enum |

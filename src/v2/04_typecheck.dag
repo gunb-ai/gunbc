@@ -289,6 +289,50 @@ fn build_func_env(items: List<Item>) -> FuncEnv {
 }
 
 // =========================================================================
+// Service namespace locals — S86 heuristic bridge
+//
+// Service names are dotted (e.g., "git.Core", "github.Gist"). Expressions
+// reference the namespace root ("git") as a variable. This extracts
+// namespace roots from ServiceDef items and registers them as locals
+// with a synthetic Named type so they're in scope during inference.
+//
+// This is a per-kind special case (debt per S86). Terminal fix: unified
+// DAG node model where services participate in the expression namespace
+// like any other node.
+// =========================================================================
+
+// S86 heuristic: check if a type is permissive for field access.
+// Service types (__service_*) and synthetic field types (__field_*) are
+// permissive — field access returns a generic type instead of an error.
+fn is_permissive_field_access(type_expr: TypeExpr) -> Bool {
+  match type_expr {
+    Named { name: name, span: _ } =>
+      if string_length(name) >= 10 {
+        substring(name, 0, 10) == "__service_" || substring(name, 0, 8) == "__field_" || substring(name, 0, 9) == "__method_"
+      } else if string_length(name) >= 9 {
+        substring(name, 0, 8) == "__field_" || substring(name, 0, 9) == "__method_"
+      } else if string_length(name) >= 8 {
+        substring(name, 0, 8) == "__field_"
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
+// find_dot_index: find the first "." in a string, or -1 if none.
+// Used by the S86 service namespace heuristic.
+fn find_dot_index(name: String, index: Int) -> Int {
+  if index >= string_length(name) {
+    -1
+  } else if char_at(name, index) == "." {
+    index
+  } else {
+    find_dot_index(name: name, index: index + 1)
+  }
+}
+
+// =========================================================================
 // Expression inference — step 3 of the typed AST design
 //
 // Assigns a resolved TypeExpr to every Expr node in the AST, producing
@@ -750,8 +794,14 @@ fn infer_method_call_type(receiver_type: TypeExpr, method: String) -> TypeExpr {
                       // keep as container for now
                       receiver_type
                     } else {
-                      // Unknown method — fall back to Unit
-                      unit_type()
+                      // S86 heuristic: if receiver is a service/permissive type,
+                      // return a permissive type so field access on the result works.
+                      if is_permissive_field_access(type_expr: receiver_type) {
+                        Named { name: concat("__method_", method), span: no_span() }
+                      } else {
+                        // Unknown method — fall back to Unit
+                        unit_type()
+                      }
                     }
                   }
                 }
@@ -860,14 +910,27 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             type_entries: concat(base_result.type_entries, [span_entry(expr: expr, resolved_type: field_type)])
           }
         None =>
-          InferResult {
-            typed: typed(expr: expr, resolved_type: unit_type()),
-            diagnostics: concat(base_result.diagnostics, [inference_error(
-              message: concat("no field '", field_name, "' on type"),
-              span: span,
-              module_name: scope.module_name
-            )]),
-            type_entries: concat(base_result.type_entries, [span_entry(expr: expr, resolved_type: unit_type())])
+          // S86 heuristic: service types and unresolved Named types are
+          // permissive for field access — return a generic Named type
+          // instead of an error. Service operations and recursive type
+          // fields can't be resolved until the unified DAG node model.
+          if is_permissive_field_access(type_expr: base_type) {
+            let permissive = Named { name: concat("__field_", field_name), span: span }
+            InferResult {
+              typed: typed(expr: expr, resolved_type: permissive),
+              diagnostics: base_result.diagnostics,
+              type_entries: concat(base_result.type_entries, [span_entry(expr: expr, resolved_type: permissive)])
+            }
+          } else {
+            InferResult {
+              typed: typed(expr: expr, resolved_type: unit_type()),
+              diagnostics: concat(base_result.diagnostics, [inference_error(
+                message: concat("no field '", field_name, "' on type"),
+                span: span,
+                module_name: scope.module_name
+              )]),
+              type_entries: concat(base_result.type_entries, [span_entry(expr: expr, resolved_type: unit_type())])
+            }
           }
       }
 
@@ -2351,11 +2414,40 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Build func_env from the resolved items (return types resolved by now).
   let func_env = build_func_env(items: resolved_items)
 
+  // Build service namespace locals — S86 heuristic bridge.
+  // Service names are dotted (e.g., "git.Core"). The first segment
+  // ("git") must be a variable in scope so expressions like
+  // git.Core.CurrentBranch() can typecheck. This registers each
+  // namespace root as a local with a synthetic Named type.
+  // S86 heuristic: register service namespace roots as locals.
+  // Collect from current module's items (List<Item>):
+  let local_svc_locals = fold(resolved_items, init: empty_map(), f: (acc, item) =>
+    match item {
+      ServiceDef { name: svc_name, span: span } =>
+        let dot_pos = find_dot_index(name: svc_name, index: 0)
+        let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
+        map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: concat("__service_", root), span: span } })
+      _ => acc
+    }
+  )
+  // Collect from parent modules' items (List<TypedItem>):
+  let service_locals = fold(map_values(parent_index), init: local_svc_locals, f: (acc, typed_parent) =>
+    fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
+      match titem {
+        TypedServiceDef { name: svc_name, span: span } =>
+          let dot_pos = find_dot_index(name: svc_name, index: 0)
+          let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
+          map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: concat("__service_", root), span: span } })
+        _ => inner_acc
+      }
+    )
+  )
+
   // Build the InferScope and infer all items to produce TypedItems.
   let infer_scope = InferScope {
     type_env: resolved_env.env,
     func_env: func_env,
-    locals: empty_map(),
+    locals: service_locals,
     module_name: resolved.module.name,
     type_cache: empty_map()
   }
@@ -2619,7 +2711,8 @@ fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_
   match expr {
     Named { name: name, span: span } =>
       // Allow Named refs that are defined in the graph (recursive cycle-breakers)
-      if map_contains_key(defined_names, name) {
+      // and S86 synthetic service/field/method types (__service_*, __field_*, __method_*)
+      if map_contains_key(defined_names, name) || is_permissive_field_access(type_expr: expr) {
         []
       } else {
         [Diagnostic {
