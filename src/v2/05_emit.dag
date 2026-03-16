@@ -524,3 +524,162 @@ fn capitalize_first(s: String) -> String {
 fn service_var_name(service_name: String) -> String {
   to_snake(name: sanitize_service_name(name: service_name))
 }
+
+// =========================================================================
+// Tail-call optimization — shared classification
+//
+// These functions walk the Expr tree to determine TCO eligibility.
+// They are target-agnostic: the same analysis applies to Rust, Python,
+// or any other backend. Rendering the TCO transform is target-specific
+// and lives in each renderer module.
+// =========================================================================
+
+// Check if any sub-expression contains a self-call (Call with func == fn_name).
+fn expr_has_self_call(expr: Expr, fn_name: String) -> Bool {
+  match expr {
+    Call { func: f, args: a, span: _ } =>
+      if f == fn_name { true }
+      else { a |> any(na => expr_has_self_call(expr: na.value, fn_name: fn_name)) }
+    Var { name: _, span: _ } => false
+    Literal { value: _, span: _ } => false
+    FieldAccess { base: b, field: _, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+    MethodCall { receiver: r, method: _, args: a, span: _ } =>
+      expr_has_self_call(expr: r, fn_name: fn_name)
+        || a |> any(na => expr_has_self_call(expr: na.value, fn_name: fn_name))
+    Match { scrutinee: s, arms: arm_list, span: _ } =>
+      expr_has_self_call(expr: s, fn_name: fn_name)
+        || arm_list |> any(arm => expr_has_self_call(expr: arm.body, fn_name: fn_name))
+    If { condition: c, then_branch: t, else_branch: e, span: _ } =>
+      expr_has_self_call(expr: c, fn_name: fn_name)
+        || expr_has_self_call(expr: t, fn_name: fn_name)
+        || match e {
+          Some { value: eb } => expr_has_self_call(expr: eb, fn_name: fn_name)
+          None => false
+        }
+    Let { name: _, value: v, body: bd, span: _ } =>
+      expr_has_self_call(expr: v, fn_name: fn_name)
+        || match bd {
+          Some { value: b } => expr_has_self_call(expr: b, fn_name: fn_name)
+          None => false
+        }
+    Block { stmts: ss, span: _ } =>
+      ss |> any(s => expr_has_self_call(expr: s, fn_name: fn_name))
+    BinOp { op: _, left: l, right: r, span: _ } =>
+      expr_has_self_call(expr: l, fn_name: fn_name)
+        || expr_has_self_call(expr: r, fn_name: fn_name)
+    UnaryOp { op: _, operand: e, span: _ } =>
+      expr_has_self_call(expr: e, fn_name: fn_name)
+    Lambda { params: _, body: bd, span: _ } =>
+      expr_has_self_call(expr: bd, fn_name: fn_name)
+    RecordLit { type_name: _, fields: fs, span: _ } =>
+      fs |> any(fi => expr_has_self_call(expr: fi.value, fn_name: fn_name))
+    ListLit { elements: els, span: _ } =>
+      els |> any(el => expr_has_self_call(expr: el, fn_name: fn_name))
+    StringInterp { parts: ps, span: _ } =>
+      ps |> any(p => match p {
+        Interpolation { expr: e } => expr_has_self_call(expr: e, fn_name: fn_name)
+        Text { value: _ } => false
+      })
+    Cast { expr: e, target: _, span: _ } =>
+      expr_has_self_call(expr: e, fn_name: fn_name)
+    ForEach { variable: _, collection: c, body: bd, span: _ } =>
+      expr_has_self_call(expr: c, fn_name: fn_name)
+        || expr_has_self_call(expr: bd, fn_name: fn_name)
+    Index { base: b, index: i, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+        || expr_has_self_call(expr: i, fn_name: fn_name)
+    Slice { base: b, start: s, end: e, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+        || expr_has_self_call(expr: s, fn_name: fn_name)
+        || expr_has_self_call(expr: e, fn_name: fn_name)
+  }
+}
+
+// Check if any self-call is in a non-tail position, which disqualifies TCO.
+// `in_tail` tracks whether the current expression is in a tail context.
+// Returns true if at least one self-call is NOT in tail position.
+fn has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bool {
+  match expr {
+    Call { func: f, args: a, span: _ } =>
+      if f == fn_name {
+        // This is a self-call. If we're not in tail position, it's non-tail.
+        // Also check args for nested self-calls (always non-tail).
+        if in_tail == false { true }
+        else { a |> any(na => has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false)) }
+      } else {
+        // Non-self call: check args for self-calls (which would be non-tail).
+        a |> any(na => has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false))
+      }
+    Var { name: _, span: _ } => false
+    Literal { value: _, span: _ } => false
+    FieldAccess { base: b, field: _, span: _ } =>
+      has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+    MethodCall { receiver: r, method: _, args: a, span: _ } =>
+      has_non_tail_self_call(expr: r, fn_name: fn_name, in_tail: false)
+        || a |> any(na => has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false))
+    If { condition: c, then_branch: t, else_branch: e, span: _ } =>
+      // Condition is never tail; branches inherit tail context.
+      has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: t, fn_name: fn_name, in_tail: in_tail)
+        || match e {
+          Some { value: eb } => has_non_tail_self_call(expr: eb, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    Match { scrutinee: s, arms: arm_list, span: _ } =>
+      // Scrutinee is never tail; arm bodies inherit tail context.
+      has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
+        || arm_list |> any(arm =>
+          has_non_tail_self_call(expr: arm.body, fn_name: fn_name, in_tail: in_tail))
+    Let { name: _, value: v, body: bd, span: _ } =>
+      // Value is never tail; body (continuation) inherits tail context.
+      has_non_tail_self_call(expr: v, fn_name: fn_name, in_tail: false)
+        || match bd {
+          Some { value: b } => has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    Block { stmts: ss, span: _ } =>
+      // Only the last statement in a block is in tail position.
+      if ss |> count == 0 { false }
+      else {
+        let init_bad = ss |> enumerate
+          |> filter(p => p.first < (ss |> count) - 1)
+          |> any(p => has_non_tail_self_call(expr: p.second, fn_name: fn_name, in_tail: false))
+        let last_bad = match ss |> last {
+          Some { value: last_expr } =>
+            has_non_tail_self_call(expr: last_expr, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+        init_bad || last_bad
+      }
+    BinOp { op: _, left: l, right: r, span: _ } =>
+      has_non_tail_self_call(expr: l, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: r, fn_name: fn_name, in_tail: false)
+    UnaryOp { op: _, operand: e, span: _ } =>
+      has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    Lambda { params: _, body: bd, span: _ } =>
+      // Lambda bodies are separate contexts — self-calls inside are non-tail.
+      has_non_tail_self_call(expr: bd, fn_name: fn_name, in_tail: false)
+    RecordLit { type_name: _, fields: fs, span: _ } =>
+      fs |> any(fi => has_non_tail_self_call(expr: fi.value, fn_name: fn_name, in_tail: false))
+    ListLit { elements: els, span: _ } =>
+      els |> any(el => has_non_tail_self_call(expr: el, fn_name: fn_name, in_tail: false))
+    StringInterp { parts: ps, span: _ } =>
+      ps |> any(p => match p {
+        Interpolation { expr: e } => has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+        Text { value: _ } => false
+      })
+    Cast { expr: e, target: _, span: _ } =>
+      has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    ForEach { variable: _, collection: c, body: bd, span: _ } =>
+      has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: bd, fn_name: fn_name, in_tail: false)
+    Index { base: b, index: i, span: _ } =>
+      has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: i, fn_name: fn_name, in_tail: false)
+    Slice { base: b, start: s, end: e, span: _ } =>
+      has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+  }
+}
