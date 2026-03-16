@@ -3290,7 +3290,7 @@ fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
 }
 
 /// Synthesize struct names and definitions for anonymous record shapes that
-/// don't match any known struct type.
+/// still lack an explicit target after typecheck.
 ///
 /// Returns: (struct items to emit, mapping from sorted-field-key → struct name,
 ///           entries to add to struct_field_types)
@@ -3298,7 +3298,6 @@ fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
 pub fn synthesize_anonymous_structs(
     fn_name: &str,
     body: &ast::FnBody,
-    known_structs: &HashMap<String, HashMap<String, String>>,
     resolved_targets: &HashMap<usize, String>,
 ) -> (
     Vec<code_ir::Item>,
@@ -3312,16 +3311,6 @@ pub fn synthesize_anonymous_structs(
     let mut new_field_types: HashMap<String, HashMap<String, String>> = HashMap::new();
 
     for (idx, shape) in shapes.iter().enumerate() {
-        // Check if any known struct contains all these fields.
-        // If at least one matches, skip synthesis — the record will be
-        // resolved by its typecheck target or expected_type at compile time.
-        let has_known_match = known_structs
-            .values()
-            .any(|ft| shape.iter().all(|f| ft.contains_key(f)));
-        if has_known_match {
-            continue;
-        }
-
         // Synthesize a struct name from the function name.
         let pascal_fn = capitalize_first_char(&fn_name.replace('_', " ")).replace(' ', "");
         let struct_name = if idx == 0 {

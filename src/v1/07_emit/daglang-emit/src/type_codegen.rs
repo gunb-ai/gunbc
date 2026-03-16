@@ -679,7 +679,6 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     let (synth_items, name_map, new_field_types) = fn_codegen::synthesize_anonymous_structs(
         &fd.name,
         &fd.body,
-        &ctx.struct_field_types,
         &ctx.anonymous_record_targets,
     );
     let synthesized_targets =
@@ -1966,15 +1965,19 @@ mod tests {
         ctx.fn_param_types = fn_param_types;
 
         let items = fndef_to_code_ir(&fd, &ctx);
-        match &items[0] {
-            code_ir::Item::Fn(f) => match &f.body[0] {
-                code_ir::Stmt::TailExpr(code_ir::Expr::Call { args, .. }) => match &args[0] {
-                    code_ir::Expr::Struct { name, .. } => assert_eq!(name, "ConfigB"),
-                    other => panic!("expected ConfigB struct arg, got: {other:?}"),
-                },
-                other => panic!("expected tail call body, got: {other:?}"),
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Call { args, .. }) => match &args[0] {
+                code_ir::Expr::Struct { name, .. } => assert_eq!(name, "ConfigB"),
+                other => panic!("expected ConfigB struct arg, got: {other:?}"),
             },
-            other => panic!("expected Fn, got: {other:?}"),
+            other => panic!("expected tail call body, got: {other:?}"),
         }
     }
 
@@ -2042,15 +2045,19 @@ mod tests {
         ctx.fn_param_types = fn_param_types;
 
         let items = fndef_to_code_ir(&fd, &ctx);
-        match &items[0] {
-            code_ir::Item::Fn(f) => match &f.body[0] {
-                code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, rest, .. }) => {
-                    assert_eq!(name, "State");
-                    assert!(rest.is_some(), "expected struct update rest");
-                }
-                other => panic!("expected struct update tail expr, got: {other:?}"),
-            },
-            other => panic!("expected Fn, got: {other:?}"),
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, rest, .. }) => {
+                assert_eq!(name, "State");
+                assert!(rest.is_some(), "expected struct update rest");
+            }
+            other => panic!("expected struct update tail expr, got: {other:?}"),
         }
     }
 
@@ -2123,6 +2130,59 @@ mod tests {
                     ..
                 } => assert_eq!(name, "ConfigB"),
                 other => panic!("expected let-bound ConfigB struct, got: {other:?}"),
+            },
+            other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unresolved_let_bound_anonymous_records_still_synthesize_with_known_struct_overlap() {
+        let fd = FnDef {
+            name: "make".to_string(),
+            type_params: vec![],
+            params: vec![],
+            return_type: TypeExpr::Named("String".to_string()),
+            body: FnBody {
+                stmts: vec![
+                    Stmt::Let(
+                        "cfg".to_string(),
+                        Expr::Record(
+                            None,
+                            vec![(
+                                "value".to_string(),
+                                Expr::Literal(Literal::String("ok".to_string())),
+                            )],
+                        ),
+                    ),
+                    Stmt::Expr(Expr::Literal(Literal::String("done".to_string()))),
+                ],
+            },
+        };
+        let mut ctx = fn_codegen::CompileContext::new();
+        ctx.struct_field_types.insert(
+            "KnownConfig".to_string(),
+            [
+                ("value".to_string(), "String".to_string()),
+                ("extra".to_string(), "Int".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        assert_eq!(items.len(), 2);
+
+        match &items[0] {
+            code_ir::Item::Struct(def) => assert_eq!(def.name, "__MakeState"),
+            other => panic!("expected synthesized struct item, got: {other:?}"),
+        }
+        match &items[1] {
+            code_ir::Item::Fn(f) => match &f.body[0] {
+                code_ir::Stmt::Let {
+                    expr: code_ir::Expr::Struct { name, .. },
+                    ..
+                } => assert_eq!(name, "__MakeState"),
+                other => panic!("expected let-bound synthesized struct, got: {other:?}"),
             },
             other => panic!("expected Fn, got: {other:?}"),
         }
