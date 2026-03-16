@@ -499,27 +499,13 @@ fn compile_return_fields(
         // mean "return this value".
         compile_expr(&fields[0].1, ctx, counter)
     } else {
-        // Multi-field return: try to infer the struct name from context.
         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-        let struct_name = infer_struct_name(&field_names, ctx);
-        let field_types = ctx.struct_field_types.get(&struct_name);
-        let compiled_fields: Vec<(String, code_ir::Expr)> = fields
-            .iter()
-            .map(|(name, expr)| {
-                (
-                    name.clone(),
-                    compile_struct_field_value(expr, &struct_name, name, field_types, ctx, counter),
-                )
-            })
-            .collect();
-        let all_fields = fill_missing_fields(&struct_name, compiled_fields, ctx);
-        let ir_field_types = ctx.struct_field_ir_types.get(&struct_name).cloned();
-        code_ir::Expr::Struct {
-            name: struct_name.clone(),
-            fields: all_fields,
-            rest: None,
-            field_types: ir_field_types,
-        }
+        let Some(struct_name) =
+            resolve_record_struct_name(&field_names, ctx.current_return_type.as_deref(), ctx)
+        else {
+            return unresolved_anonymous_record_error(&field_names);
+        };
+        compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
     }
 }
 
@@ -622,7 +608,20 @@ fn compile_struct_field_value(
 }
 
 /// Infer a struct name from field names using the CompileContext's struct registry.
-fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> String {
+fn explicit_record_struct_name(
+    preferred_struct: Option<&str>,
+    ctx: &CompileContext,
+) -> Option<String> {
+    preferred_struct
+        .filter(|struct_name| {
+            !ctx.enum_variants.contains_key(*struct_name)
+                && (ctx.struct_field_types.contains_key(*struct_name)
+                    || ctx.struct_field_ir_types.contains_key(*struct_name))
+        })
+        .map(str::to_owned)
+}
+
+fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> Option<String> {
     let candidates: Vec<(&String, usize)> = ctx
         .struct_field_types
         .iter()
@@ -630,7 +629,7 @@ fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> Strin
         .map(|(sn, ft)| (sn, ft.len()))
         .collect();
     if candidates.len() == 1 {
-        candidates[0].0.clone()
+        Some(candidates[0].0.clone())
     } else if candidates.len() > 1 {
         let n = field_names.len();
         let mut sorted = candidates;
@@ -641,9 +640,59 @@ fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> Strin
             let exact_b = if *count_b == n { 0usize } else { 1 };
             (exact_a, diff_a, name_a).cmp(&(exact_b, diff_b, name_b))
         });
-        sorted[0].0.clone()
+        Some(sorted[0].0.clone())
     } else {
-        String::new()
+        None
+    }
+}
+
+fn resolve_record_struct_name(
+    field_names: &HashSet<&str>,
+    preferred_struct: Option<&str>,
+    ctx: &CompileContext,
+) -> Option<String> {
+    explicit_record_struct_name(preferred_struct, ctx)
+        .or_else(|| infer_struct_name(field_names, ctx))
+}
+
+fn unresolved_anonymous_record_error(field_names: &HashSet<&str>) -> code_ir::Expr {
+    let mut sorted_fields: Vec<&str> = field_names.iter().copied().collect();
+    sorted_fields.sort_unstable();
+    code_ir::Expr::RawCode(format!(
+        "compile_error!(\"cannot resolve anonymous record type for fields [{}]; make the target struct explicit upstream\")",
+        sorted_fields.join(", ")
+    ))
+}
+
+fn compile_resolved_record_expr(
+    struct_name: &str,
+    fields: &[(String, ast::Expr)],
+    rest: Option<code_ir::Expr>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    let qualified_name = if let Some(enum_name) = ctx.variant_to_enum.get(struct_name) {
+        format!("{enum_name}::{struct_name}")
+    } else {
+        struct_name.to_string()
+    };
+    let field_types = ctx.struct_field_types.get(struct_name);
+    let ir_fields: Vec<(String, code_ir::Expr)> = fields
+        .iter()
+        .map(|(name, expr)| {
+            (
+                name.clone(),
+                compile_struct_field_value(expr, struct_name, name, field_types, ctx, counter),
+            )
+        })
+        .collect();
+    let ir_fields = fill_missing_fields(struct_name, ir_fields, ctx);
+    let ir_field_types = ctx.struct_field_ir_types.get(struct_name).cloned();
+    code_ir::Expr::Struct {
+        name: qualified_name,
+        fields: ir_fields,
+        rest: rest.map(Box::new),
+        field_types: ir_field_types,
     }
 }
 
@@ -719,58 +768,14 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             if name.as_deref() == Some("None") && fields.is_empty() {
                 return code_ir::Expr::Var("None".to_string());
             }
-            let struct_name = name.clone().unwrap_or_else(|| {
-                // Infer the struct type for anonymous records (e.g. fold inits)
-                // by matching field names against known struct definitions.
-                let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-                let candidates: Vec<(&String, usize)> = ctx
-                    .struct_field_types
-                    .iter()
-                    .filter(|(_, ft)| field_names.iter().all(|f| ft.contains_key(*f)))
-                    .map(|(sn, ft)| (sn, ft.len()))
-                    .collect();
-                if candidates.len() == 1 {
-                    candidates[0].0.clone()
-                } else if candidates.len() > 1 {
-                    // Prefer exact field-count match (synthesized structs), then
-                    // smallest superset.
-                    let n = field_names.len();
-                    let mut sorted = candidates;
-                    sorted.sort_by(|(name_a, count_a), (name_b, count_b)| {
-                        let diff_a = (*count_a as isize - n as isize).unsigned_abs();
-                        let exact_a = if *count_a == n { 0usize } else { 1 };
-                        let diff_b = (*count_b as isize - n as isize).unsigned_abs();
-                        let exact_b = if *count_b == n { 0usize } else { 1 };
-                        (exact_a, diff_a, name_a).cmp(&(exact_b, diff_b, name_b))
-                    });
-                    sorted[0].0.clone()
-                } else {
-                    String::new()
-                }
-            });
-            // Qualify variant names: if struct_name is a variant, prefix with parent enum
-            let qualified_name = if let Some(enum_name) = ctx.variant_to_enum.get(&struct_name) {
-                format!("{enum_name}::{struct_name}")
+            if let Some(struct_name) = name.as_deref() {
+                compile_resolved_record_expr(struct_name, fields, None, ctx, counter)
             } else {
-                struct_name.clone()
-            };
-            let field_types = ctx.struct_field_types.get(&struct_name);
-            let ir_fields: Vec<(String, code_ir::Expr)> = fields
-                .iter()
-                .map(|(n, e)| {
-                    (
-                        n.clone(),
-                        compile_struct_field_value(e, &struct_name, n, field_types, ctx, counter),
-                    )
-                })
-                .collect();
-            let ir_fields = fill_missing_fields(&struct_name, ir_fields, ctx);
-            let ir_field_types = ctx.struct_field_ir_types.get(&struct_name).cloned();
-            code_ir::Expr::Struct {
-                name: qualified_name,
-                fields: ir_fields,
-                rest: None,
-                field_types: ir_field_types,
+                let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                let Some(struct_name) = resolve_record_struct_name(&field_names, None, ctx) else {
+                    return unresolved_anonymous_record_error(&field_names);
+                };
+                compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
             }
         }
         ast::Expr::Match(scrutinee, arms) => compile_match(scrutinee, arms, ctx, counter),
@@ -906,6 +911,14 @@ fn compile_expr_typed(
                 rest: None,
                 field_types: None,
             }
+        }
+        ast::Expr::Record(None, fields) => {
+            let field_names: HashSet<&str> = fields.iter().map(|(name, _)| name.as_str()).collect();
+            let Some(struct_name) = resolve_record_struct_name(&field_names, expected_type, ctx)
+            else {
+                return unresolved_anonymous_record_error(&field_names);
+            };
+            compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
         }
         ast::Expr::Match(scrutinee, arms) => {
             compile_match_typed(scrutinee, arms, ctx, expected_type, counter)
@@ -1250,6 +1263,8 @@ fn compile_intrinsic_call(
         "with" if args.len() == 2 => {
             // with(state, { pos: state.pos + 1 }) → State { pos: state.pos + 1, ..state.clone() }
             let base = compile_expr(&args[0].1, ctx, counter);
+            let base_struct_name =
+                infer_ast_expr_type(&args[0].1, ctx).and_then(|ty| named_type_from_ir(&ty));
             // Clone the base value since struct update syntax moves the base
             let cloned_base = code_ir::Expr::MethodCall {
                 receiver: Box::new(base),
@@ -1259,35 +1274,27 @@ fn compile_intrinsic_call(
             // Second arg should be a record literal with update fields
             match &args[1].1 {
                 ast::Expr::Record(name, fields) => {
-                    let struct_name = name.clone().unwrap_or_else(|| {
-                        // Infer struct name from field names
+                    let struct_name = if let Some(struct_name) = name.as_deref() {
+                        struct_name.to_string()
+                    } else {
                         let field_names: HashSet<&str> =
                             fields.iter().map(|(n, _)| n.as_str()).collect();
-                        infer_struct_name(&field_names, ctx)
-                    });
-                    let field_types = ctx.struct_field_types.get(&struct_name);
-                    let ir_fields: Vec<(String, code_ir::Expr)> = fields
-                        .iter()
-                        .map(|(n, e)| {
-                            (
-                                n.clone(),
-                                compile_struct_field_value(
-                                    e,
-                                    &struct_name,
-                                    n,
-                                    field_types,
-                                    ctx,
-                                    counter,
-                                ),
-                            )
-                        })
-                        .collect();
-                    Some(code_ir::Expr::Struct {
-                        name: struct_name,
-                        fields: ir_fields,
-                        rest: Some(Box::new(cloned_base)),
-                        field_types: None,
-                    })
+                        let Some(struct_name) = resolve_record_struct_name(
+                            &field_names,
+                            base_struct_name.as_deref(),
+                            ctx,
+                        ) else {
+                            return Some(unresolved_anonymous_record_error(&field_names));
+                        };
+                        struct_name
+                    };
+                    Some(compile_resolved_record_expr(
+                        &struct_name,
+                        fields,
+                        Some(cloned_base),
+                        ctx,
+                        counter,
+                    ))
                 }
                 _ => {
                     // Fallback: emit as runtime call
@@ -3114,8 +3121,8 @@ fn compile_expr_in_field_context(
     compile_expr_typed(expr, ctx, expected_type.map(|s| s.as_str()), counter)
 }
 
-/// Check if compiled IR contains empty anonymous records in match arms,
-/// which indicates the DSL parser failed to capture complex block bodies.
+/// Check if compiled IR contains unresolved record construction, which
+/// indicates fn codegen lost the target struct name.
 pub fn body_has_empty_construct(stmts: &[code_ir::Stmt]) -> bool {
     stmts.iter().any(|s| match s {
         code_ir::Stmt::TailExpr(e) | code_ir::Stmt::Expr(e) => expr_has_empty(e),
@@ -3126,7 +3133,7 @@ pub fn body_has_empty_construct(stmts: &[code_ir::Stmt]) -> bool {
 
 fn expr_has_empty(e: &code_ir::Expr) -> bool {
     match e {
-        code_ir::Expr::Struct { name, fields, .. } if name.is_empty() && fields.is_empty() => true,
+        code_ir::Expr::Struct { name, .. } if name.is_empty() => true,
         code_ir::Expr::Match { arms, .. } => arms.iter().any(|a| body_has_empty_construct(&a.body)),
         code_ir::Expr::If {
             then_body,
@@ -3560,7 +3567,10 @@ fn classify_self_calls_in_expr(
                 }
             }
         }
-        code_ir::Expr::Match { expr: scrutinee, arms } => {
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => {
             classify_self_calls_in_expr(scrutinee, fn_name, positions);
             for arm in arms {
                 for s in &arm.body {
@@ -3579,7 +3589,10 @@ fn classify_self_calls_in_expr(
                 classify_self_calls_in_expr(arg, fn_name, positions);
             }
         }
-        code_ir::Expr::Field(inner, _) | code_ir::Expr::Deref(inner) | code_ir::Expr::Ref(inner) | code_ir::Expr::RefMut(inner) => {
+        code_ir::Expr::Field(inner, _)
+        | code_ir::Expr::Deref(inner)
+        | code_ir::Expr::Ref(inner)
+        | code_ir::Expr::RefMut(inner) => {
             classify_self_calls_in_expr(inner, fn_name, positions);
         }
         code_ir::Expr::BinOp { left, right, .. } => {
@@ -3600,7 +3613,10 @@ fn classify_self_calls_in_expr(
         code_ir::Expr::Closure { body, .. } => {
             classify_self_calls_in_expr(body, fn_name, positions);
         }
-        code_ir::Expr::FormatStr { args, .. } | code_ir::Expr::MacroCall { args, .. } | code_ir::Expr::Tuple(args) | code_ir::Expr::Array(args) => {
+        code_ir::Expr::FormatStr { args, .. }
+        | code_ir::Expr::MacroCall { args, .. }
+        | code_ir::Expr::Tuple(args)
+        | code_ir::Expr::Array(args) => {
             for arg in args {
                 classify_self_calls_in_expr(arg, fn_name, positions);
             }
@@ -3768,9 +3784,7 @@ fn transform_stmt_for_tco(
         code_ir::Stmt::BlockScope(inner) => {
             code_ir::Stmt::BlockScope(transform_body_for_tco(inner, fn_name, param_names))
         }
-        code_ir::Stmt::Loop { body } => code_ir::Stmt::Loop {
-            body: body.clone(),
-        },
+        code_ir::Stmt::Loop { body } => code_ir::Stmt::Loop { body: body.clone() },
         code_ir::Stmt::Item(item) => code_ir::Stmt::Item(item.clone()),
         code_ir::Stmt::Comment(c) => code_ir::Stmt::Comment(c.clone()),
         code_ir::Stmt::Blank => code_ir::Stmt::Blank,
@@ -4276,6 +4290,172 @@ mod tests {
                 assert!(fields.iter().all(|(name, _)| name != "required"));
             }
             other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn anonymous_record_without_resolved_type_emits_compile_error() {
+        let mut counter = 0usize;
+        let expr = Expr::Record(None, vec![("value".into(), Expr::Literal(Literal::Int(1)))]);
+
+        let ir = compile_expr(&expr, &empty_ctx(), &mut counter);
+        match ir {
+            code_ir::Expr::RawCode(code) => assert!(
+                code.contains("compile_error!")
+                    && code.contains("cannot resolve anonymous record type"),
+                "expected unresolved-record compile_error!, got: {code}"
+            ),
+            other => panic!("expected compile_error! marker, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn field_context_prefers_expected_struct_type_for_anonymous_record() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "Target".to_string(),
+            [("config".to_string(), "Config".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "Config".to_string(),
+            [
+                ("required".to_string(), "String".to_string()),
+                ("optional".to_string(), "Option<String>".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "Other".to_string(),
+            [("required".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.optional_fields.insert(
+            "Config".to_string(),
+            ["optional".to_string()].into_iter().collect(),
+        );
+
+        let expr = Expr::Record(
+            Some("Target".into()),
+            vec![(
+                "config".into(),
+                Expr::Record(
+                    None,
+                    vec![(
+                        "required".into(),
+                        Expr::Literal(Literal::String("ok".into())),
+                    )],
+                ),
+            )],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct { fields, .. } => match &fields[0].1 {
+                code_ir::Expr::Struct { name, fields, .. } => {
+                    assert_eq!(name, "Config");
+                    assert!(fields.iter().any(|(field_name, expr)| {
+                        field_name == "optional"
+                            && matches!(expr, code_ir::Expr::Path(parts) if parts == &["None"])
+                    }));
+                }
+                other => panic!("expected nested Config struct, got: {other:?}"),
+            },
+            other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn return_record_prefers_declared_return_struct_type() {
+        let mut ctx = CompileContext::new();
+        ctx.current_return_type = Some("Target".to_string());
+        ctx.struct_field_types.insert(
+            "Target".to_string(),
+            [
+                ("required".to_string(), "String".to_string()),
+                ("optional".to_string(), "Option<String>".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "Other".to_string(),
+            [("required".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.optional_fields.insert(
+            "Target".to_string(),
+            ["optional".to_string()].into_iter().collect(),
+        );
+
+        let body = FnBody {
+            stmts: vec![Stmt::Return(vec![(
+                "required".into(),
+                Expr::Literal(Literal::String("ok".into())),
+            )])],
+        };
+
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, fields, .. }) => {
+                assert_eq!(name, "Target");
+                assert!(fields.iter().any(|(field_name, expr)| {
+                    field_name == "optional"
+                        && matches!(expr, code_ir::Expr::Path(parts) if parts == &["None"])
+                }));
+            }
+            other => panic!("expected TailExpr(Struct), got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn with_intrinsic_prefers_base_struct_type_for_anonymous_update_record() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "State".to_string(),
+            [
+                ("pos".to_string(), "Int".to_string()),
+                ("kind".to_string(), "String".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "Position".to_string(),
+            [("pos".to_string(), "Int".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.ir_scope
+            .insert("state".to_string(), IrType::Named("State".to_string()));
+
+        let expr = Expr::Call(
+            "with".into(),
+            vec![
+                (None, Expr::Ident("state".into())),
+                (
+                    None,
+                    Expr::Record(None, vec![("pos".into(), Expr::Literal(Literal::Int(1)))]),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct { name, rest, .. } => {
+                assert_eq!(name, "State");
+                assert!(
+                    rest.is_some(),
+                    "expected struct update rest to be preserved"
+                );
+            }
+            other => panic!("expected Struct update, got: {other:?}"),
         }
     }
 
@@ -4895,7 +5075,7 @@ mod tests {
                 pattern: "A".into(),
                 body: vec![code_ir::Stmt::TailExpr(code_ir::Expr::Struct {
                     name: String::new(),
-                    fields: vec![],
+                    fields: vec![("value".into(), code_ir::Expr::IntLit(1))],
                     rest: None,
                     field_types: None,
                 })],
@@ -4967,7 +5147,10 @@ mod tests {
             }),
         ];
         let result = apply_tco("f", &["n".into()], &body);
-        assert!(result.is_none(), "non-tail recursion should NOT be eligible");
+        assert!(
+            result.is_none(),
+            "non-tail recursion should NOT be eligible"
+        );
     }
 
     #[test]
@@ -5006,7 +5189,10 @@ mod tests {
             right: Box::new(code_ir::Expr::IntLit(1)),
         })];
         let result = apply_tco("f", &["n".into()], &body);
-        assert!(result.is_none(), "non-recursive function should return None");
+        assert!(
+            result.is_none(),
+            "non-recursive function should return None"
+        );
     }
 
     #[test]
@@ -5055,7 +5241,11 @@ mod tests {
         };
         // After the rebind stmt, there should be a Break(If{...}) or Expr(If{...}).
         match &loop_body[1] {
-            code_ir::Stmt::Break(code_ir::Expr::If { then_body, else_body, .. }) => {
+            code_ir::Stmt::Break(code_ir::Expr::If {
+                then_body,
+                else_body,
+                ..
+            }) => {
                 // Then branch has a tail call → should have BlockScope with continue.
                 assert!(
                     then_body.iter().any(|s| matches!(s, code_ir::Stmt::BlockScope(inner) if inner.iter().any(|s2| matches!(s2, code_ir::Stmt::Continue)))),
@@ -5063,17 +5253,29 @@ mod tests {
                 );
                 // Else branch has a non-recursive return → should have break.
                 assert!(
-                    else_body.as_ref().unwrap().iter().any(|s| matches!(s, code_ir::Stmt::Break(_))),
+                    else_body
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .any(|s| matches!(s, code_ir::Stmt::Break(_))),
                     "else branch should contain break for the non-recursive return"
                 );
             }
-            code_ir::Stmt::Expr(code_ir::Expr::If { then_body, else_body, .. }) => {
+            code_ir::Stmt::Expr(code_ir::Expr::If {
+                then_body,
+                else_body,
+                ..
+            }) => {
                 assert!(
                     then_body.iter().any(|s| matches!(s, code_ir::Stmt::BlockScope(inner) if inner.iter().any(|s2| matches!(s2, code_ir::Stmt::Continue)))),
                     "then branch should contain continue for the tail call"
                 );
                 assert!(
-                    else_body.as_ref().unwrap().iter().any(|s| matches!(s, code_ir::Stmt::Break(_))),
+                    else_body
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .any(|s| matches!(s, code_ir::Stmt::Break(_))),
                     "else branch should contain break for the non-recursive return"
                 );
             }
@@ -5110,7 +5312,10 @@ mod tests {
         };
 
         // First 2 stmts are rebinds, then the transformed tail call.
-        assert!(loop_body.len() >= 3, "loop body should have rebinds + transformed stmt");
+        assert!(
+            loop_body.len() >= 3,
+            "loop body should have rebinds + transformed stmt"
+        );
         let block = match &loop_body[2] {
             code_ir::Stmt::BlockScope(stmts) => stmts,
             other => panic!("expected BlockScope for tail call, got: {other:?}"),
@@ -5165,7 +5370,10 @@ mod tests {
         match &loop_body[1] {
             code_ir::Stmt::Expr(code_ir::Expr::If { then_body, .. }) => {
                 assert!(
-                    matches!(&then_body[0], code_ir::Stmt::Break(code_ir::Expr::IntLit(0))),
+                    matches!(
+                        &then_body[0],
+                        code_ir::Stmt::Break(code_ir::Expr::IntLit(0))
+                    ),
                     "non-recursive return should become break, got: {:?}",
                     then_body[0]
                 );
