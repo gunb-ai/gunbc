@@ -2587,4 +2587,50 @@ fn collect_text(spans: List<Span>) -> List<String> {
         // Should fall through to stripping refinements
         assert_eq!(type_expr_to_rust(&expr), "String");
     }
+
+    /// End-to-end regression: DSL source through typecheck and Rust emit for
+    /// let-bound anonymous records and `fn(Check.Output)` signatures.
+    #[test]
+    fn e2e_let_bound_anonymous_record_and_fn_check_output_through_rust_emit() {
+        let source = r#"module sample.regression
+type Config {
+  value: String
+}
+fn consume(cfg: Config) -> String {
+  cfg.value
+}
+fn guarded<Check>(predicate: fn(Check.Output) -> Bool) -> String {
+  cfg = { value: "ok" }
+  consume(cfg)
+}"#;
+        let graph = module_graph_from_sources(&[("sample/regression.dag", source)]);
+        let typed = daglang_typecheck::typecheck_module_graph_with_options(
+            &graph,
+            daglang_typecheck::TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("DSL with let-bound anonymous record and fn(Check.Output) should typecheck");
+
+        let rust_source = generate_types_for_modules(&typed, &[]);
+
+        // The Config struct should be emitted.
+        assert!(
+            rust_source.contains("struct Config"),
+            "emitted Rust should contain Config struct: {rust_source}"
+        );
+
+        // The fn(Check.Output) -> Bool parameter should render structurally.
+        assert!(
+            rust_source.contains("fn(Check.Output) -> bool"),
+            "emitted Rust should render fn(Check.Output) -> bool: {rust_source}"
+        );
+
+        // The let-bound anonymous record should resolve to Config via
+        // typecheck metadata (not heuristic field-shape matching).
+        assert!(
+            rust_source.contains("Config {"),
+            "let-bound anonymous record should emit as Config constructor: {rust_source}"
+        );
+    }
 }
