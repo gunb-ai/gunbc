@@ -3158,104 +3158,120 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
 
 /// Collect field-name sets from anonymous records in a function body.
 /// Returns deduplicated sets of field names (sorted for determinism).
-fn collect_anonymous_record_shapes(body: &ast::FnBody) -> Vec<Vec<String>> {
+/// Records that already have explicit typecheck-resolved targets are excluded —
+/// they don't need synthesis consideration.
+fn collect_anonymous_record_shapes(
+    body: &ast::FnBody,
+    resolved: &HashMap<usize, String>,
+) -> Vec<Vec<String>> {
     let mut shapes: Vec<Vec<String>> = Vec::new();
     for stmt in &body.stmts {
-        collect_shapes_in_stmt(stmt, &mut shapes);
+        collect_shapes_in_stmt(stmt, resolved, &mut shapes);
     }
     shapes.sort();
     shapes.dedup();
     shapes
 }
 
-fn collect_shapes_in_stmt(stmt: &ast::Stmt, out: &mut Vec<Vec<String>>) {
+fn collect_shapes_in_stmt(
+    stmt: &ast::Stmt,
+    resolved: &HashMap<usize, String>,
+    out: &mut Vec<Vec<String>>,
+) {
     match stmt {
-        ast::Stmt::Let(_, value) => collect_shapes_in_expr(value, out),
-        ast::Stmt::Assign(_, value) => collect_shapes_in_expr(value, out),
-        ast::Stmt::Expr(e) => collect_shapes_in_expr(e, out),
+        ast::Stmt::Let(_, value) => collect_shapes_in_expr(value, resolved, out),
+        ast::Stmt::Assign(_, value) => collect_shapes_in_expr(value, resolved, out),
+        ast::Stmt::Expr(e) => collect_shapes_in_expr(e, resolved, out),
         ast::Stmt::Return(fields) => {
             for (_, e) in fields {
-                collect_shapes_in_expr(e, out);
+                collect_shapes_in_expr(e, resolved, out);
             }
         }
         ast::Stmt::Node(_) => {}
     }
 }
 
-fn collect_shapes_in_expr(expr: &ast::Expr, out: &mut Vec<Vec<String>>) {
+fn collect_shapes_in_expr(
+    expr: &ast::Expr,
+    resolved: &HashMap<usize, String>,
+    out: &mut Vec<Vec<String>>,
+) {
     match expr {
         ast::Expr::Record(None, fields) => {
-            let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-            names.sort();
-            out.push(names);
+            // Skip records already resolved by typecheck — they don't need synthesis.
+            if !resolved.contains_key(&(expr as *const ast::Expr as usize)) {
+                let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                names.sort();
+                out.push(names);
+            }
             for (_, v) in fields {
-                collect_shapes_in_expr(v, out);
+                collect_shapes_in_expr(v, resolved, out);
             }
         }
         ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
             for (_, v) in fields {
-                collect_shapes_in_expr(v, out);
+                collect_shapes_in_expr(v, resolved, out);
             }
         }
         ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
             for (_, e) in args {
-                collect_shapes_in_expr(e, out);
+                collect_shapes_in_expr(e, resolved, out);
             }
         }
-        ast::Expr::Lambda(_, body) => collect_shapes_in_expr(body, out),
+        ast::Expr::Lambda(_, body) => collect_shapes_in_expr(body, resolved, out),
         ast::Expr::If(cond, then_e, else_e) => {
-            collect_shapes_in_expr(cond, out);
-            collect_shapes_in_expr(then_e, out);
+            collect_shapes_in_expr(cond, resolved, out);
+            collect_shapes_in_expr(then_e, resolved, out);
             if let Some(e) = else_e {
-                collect_shapes_in_expr(e, out);
+                collect_shapes_in_expr(e, resolved, out);
             }
         }
         ast::Expr::BinOp(l, _, r) => {
-            collect_shapes_in_expr(l, out);
-            collect_shapes_in_expr(r, out);
+            collect_shapes_in_expr(l, resolved, out);
+            collect_shapes_in_expr(r, resolved, out);
         }
         ast::Expr::UnaryOp(_, e) | ast::Expr::FieldAccess(e, _) => {
-            collect_shapes_in_expr(e, out);
+            collect_shapes_in_expr(e, resolved, out);
         }
         ast::Expr::Match(scrutinee, arms) => {
-            collect_shapes_in_expr(scrutinee, out);
+            collect_shapes_in_expr(scrutinee, resolved, out);
             for arm in arms {
-                collect_shapes_in_expr(&arm.body, out);
+                collect_shapes_in_expr(&arm.body, resolved, out);
             }
         }
         ast::Expr::List(elems) => {
             for e in elems {
-                collect_shapes_in_expr(e, out);
+                collect_shapes_in_expr(e, resolved, out);
             }
         }
         ast::Expr::Block(stmts) => {
             for s in stmts {
-                collect_shapes_in_stmt(s, out);
+                collect_shapes_in_stmt(s, resolved, out);
             }
         }
         ast::Expr::For(_, iter_expr, _, for_body) => {
-            collect_shapes_in_expr(iter_expr, out);
+            collect_shapes_in_expr(iter_expr, resolved, out);
             match for_body {
-                ast::ForBody::Expr(e) => collect_shapes_in_expr(e, out),
+                ast::ForBody::Expr(e) => collect_shapes_in_expr(e, resolved, out),
                 ast::ForBody::Block(stmts) => {
                     for s in stmts {
-                        collect_shapes_in_stmt(s, out);
+                        collect_shapes_in_stmt(s, resolved, out);
                     }
                 }
             }
         }
         ast::Expr::Map(pairs) => {
             for (k, v) in pairs {
-                collect_shapes_in_expr(k, out);
-                collect_shapes_in_expr(v, out);
+                collect_shapes_in_expr(k, resolved, out);
+                collect_shapes_in_expr(v, resolved, out);
             }
         }
         ast::Expr::Guarded(e, cond) => {
-            collect_shapes_in_expr(e, out);
-            collect_shapes_in_expr(cond, out);
+            collect_shapes_in_expr(e, resolved, out);
+            collect_shapes_in_expr(cond, resolved, out);
         }
         ast::Expr::After(e, _) => {
-            collect_shapes_in_expr(e, out);
+            collect_shapes_in_expr(e, resolved, out);
         }
         _ => {}
     }
@@ -3283,38 +3299,26 @@ pub fn synthesize_anonymous_structs(
     fn_name: &str,
     body: &ast::FnBody,
     known_structs: &HashMap<String, HashMap<String, String>>,
+    resolved_targets: &HashMap<usize, String>,
 ) -> (
     Vec<code_ir::Item>,
     HashMap<Vec<String>, String>,
     HashMap<String, HashMap<String, String>>,
 ) {
-    let shapes = collect_anonymous_record_shapes(body);
+    // Only collect shapes from records that lack explicit typecheck targets.
+    let shapes = collect_anonymous_record_shapes(body, resolved_targets);
     let mut items = Vec::new();
     let mut name_map: HashMap<Vec<String>, String> = HashMap::new();
     let mut new_field_types: HashMap<String, HashMap<String, String>> = HashMap::new();
 
     for (idx, shape) in shapes.iter().enumerate() {
         // Check if any known struct contains all these fields.
-        // If exactly one matches, skip synthesis. If multiple match,
-        // disambiguate by preferring the closest field count. Only
-        // synthesize when no known struct matches at all.
-        let matching: Vec<(&String, usize)> = known_structs
-            .iter()
-            .filter(|(_, ft)| shape.iter().all(|f| ft.contains_key(f)))
-            .map(|(sn, ft)| (sn, ft.len()))
-            .collect();
-        if matching.len() == 1 {
-            continue;
-        }
-        if matching.len() > 1 {
-            // Disambiguate: prefer exact field-count match, then closest.
-            let n = shape.len();
-            let mut sorted = matching;
-            sorted.sort_by_key(|(_, count)| {
-                let diff = (*count as isize - n as isize).unsigned_abs();
-                (if *count == n { 0usize } else { 1 }, diff)
-            });
-            // Best candidate found — no need to synthesize.
+        // If at least one matches, skip synthesis — the record will be
+        // resolved by its typecheck target or expected_type at compile time.
+        let has_known_match = known_structs
+            .values()
+            .any(|ft| shape.iter().all(|f| ft.contains_key(f)));
+        if has_known_match {
             continue;
         }
 

@@ -675,8 +675,13 @@ fn to_screaming_snake(name: &str) -> String {
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
 pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
     // Pre-pass: synthesize struct definitions for anonymous records (fold inits).
-    let (synth_items, name_map, new_field_types) =
-        fn_codegen::synthesize_anonymous_structs(&fd.name, &fd.body, &ctx.struct_field_types);
+    // Records already resolved by typecheck are excluded from consideration.
+    let (synth_items, name_map, new_field_types) = fn_codegen::synthesize_anonymous_structs(
+        &fd.name,
+        &fd.body,
+        &ctx.struct_field_types,
+        &ctx.anonymous_record_targets,
+    );
     let synthesized_targets =
         fn_codegen::annotate_synthesized_anonymous_record_targets(&fd.body, &name_map);
 
