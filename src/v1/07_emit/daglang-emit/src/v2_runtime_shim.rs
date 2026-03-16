@@ -85,6 +85,41 @@ pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: impl AsRef<str>) -> Opt
     table.get(key.as_ref()).cloned()
 }
 
+/// Build a HashMap from a list by extracting a string key from each element.
+/// Duplicate keys: last writer wins (later elements overwrite earlier ones).
+pub fn index_by<V, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -> Rc<HashMap<String, V>>
+where
+    V: Clone,
+{
+    let mut map = HashMap::new();
+    for item in Rc::try_unwrap(list).unwrap_or_else(|rc| (*rc).clone()) {
+        let key = key_fn(&item);
+        map.insert(key, item);
+    }
+    Rc::new(map)
+}
+
+/// Create an empty Rc-wrapped HashMap.
+pub fn empty_map<V>() -> Rc<HashMap<String, V>> {
+    Rc::new(HashMap::new())
+}
+
+/// Insert a key-value pair into an Rc-wrapped HashMap.
+/// O(1) amortized when refcount=1 (true in fold accumulators).
+pub fn map_insert<V: Clone>(map: Rc<HashMap<String, V>>, key: String, value: V) -> Rc<HashMap<String, V>> {
+    let mut m = Rc::try_unwrap(map).unwrap_or_else(|rc| (*rc).clone());
+    m.insert(key, value);
+    Rc::new(m)
+}
+
+/// Merge two Rc-wrapped HashMaps. Overlay entries overwrite base entries.
+/// O(|overlay|) amortized.
+pub fn map_merge<V: Clone>(base: Rc<HashMap<String, V>>, overlay: Rc<HashMap<String, V>>) -> Rc<HashMap<String, V>> {
+    let mut m = Rc::try_unwrap(base).unwrap_or_else(|rc| (*rc).clone());
+    m.extend(Rc::try_unwrap(overlay).unwrap_or_else(|rc| (*rc).clone()));
+    Rc::new(m)
+}
+
 /// Concatenate two lists. Kept for backward compatibility with code that
 /// calls `list_concat` directly; new code should use `concat()` instead.
 pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {

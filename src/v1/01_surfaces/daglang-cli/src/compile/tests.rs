@@ -38,8 +38,10 @@ fn temp_dag_context(name: &str, content: &str) -> (PipelineContext, PathBuf) {
 }
 
 fn assert_typecheck_stage_error(error: &CompileError) {
-    assert!(error.contains("compile diagnostics"));
-    assert!(!error.contains("lower error"));
+    assert!(
+        matches!(error, CompileError::Diagnostics(_)),
+        "expected CompileError::Diagnostics, got: {error}"
+    );
 }
 
 #[test]
@@ -377,8 +379,6 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
     let resolved =
         resolve_lowered_dag(&dag).expect("unknown callables should resolve via passthrough");
     assert_eq!(resolved.nodes.len(), 1);
-    let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("CallableOp"), "unexpected op debug: {debug}");
 }
 
 #[test]

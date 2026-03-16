@@ -24,10 +24,6 @@
 //!   as arguments or struct fields. Prevents use-after-move. Proper fix: the
 //!   v2 compiler should track ownership.
 //!
-//! - `infer_struct_name()`: Matches field names against known struct definitions
-//!   to guess which struct an anonymous record constructs. Needed because the
-//!   DSL doesn't always name its records.
-//!
 //! - `escape_rust_keyword()`: Prefixes Rust keywords with `r#`. Needed because
 //!   the DSL allows keywords as variable names.
 //!
@@ -48,8 +44,10 @@
 //! - `module_prelude()`: Hardcoded cross-module `use` statements.
 
 use daglang_syntax::ast;
+use daglang_syntax::ast_utils::ExprIdentity;
 use gunbc_ir::code_ir;
 use gunbc_ir::code_ir::IrType;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -71,8 +69,12 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
             "String" => IrType::Str,
             _ => IrType::Named(n.clone()),
         },
+        ast::TypeExpr::AssociatedOutput(base) => IrType::Named(format!("{base}::Output")),
         ast::TypeExpr::Generic(n, args) => {
             IrType::Generic(n.clone(), args.iter().map(type_expr_to_ir_type).collect())
+        }
+        ast::TypeExpr::Function(_, _) => {
+            IrType::Named(daglang_syntax::ast_utils::type_expr_to_string(expr))
         }
         ast::TypeExpr::Optional(inner) => IrType::Optional(Box::new(type_expr_to_ir_type(inner))),
         ast::TypeExpr::Refined(inner, _) => type_expr_to_ir_type(inner),
@@ -95,6 +97,8 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
 pub struct CompileContext {
     /// Names of `data` definitions visible in this module.
     pub data_names: HashSet<String>,
+    /// Data definition name → IrType for collection element inference.
+    pub data_ir_types: HashMap<String, IrType>,
     /// Names of `data` definitions that are Map types (need `&` reference, not `.clone()`).
     pub data_map_names: HashSet<String>,
     /// Map from struct name → set of field names that are `Option<T>`.
@@ -111,6 +115,8 @@ pub struct CompileContext {
     pub boxed_fields: HashSet<(String, String)>,
     /// Map from function name → return type name (for v2 crate emit).
     pub fn_return_types: std::collections::HashMap<String, String>,
+    /// Map from function name → exact return IrType when only signature metadata is available.
+    pub fn_return_ir_types: HashMap<String, IrType>,
     /// Map from function name → ordered parameter names and their type names.
     pub fn_param_types: std::collections::HashMap<String, Vec<(String, String)>>,
     /// Set of parameter names that are Optional (for v2 crate emit).
@@ -129,6 +135,365 @@ pub struct CompileContext {
     /// Variable name → number of `Ident` references in the current function body.
     /// Used to elide `.clone()` when a variable is referenced only once (move suffices).
     pub use_counts: HashMap<String, usize>,
+    /// When compiling inside a fold lambda body, the name of the accumulator parameter.
+    /// Used by concat codegen to strip the accumulator's `.clone()` (safe because the
+    /// accumulator is reassigned each iteration, so try_unwrap succeeds → in-place extend).
+    pub fold_accum_name: Option<String>,
+    /// Typecheck-produced anonymous-record constructor targets keyed by stable AST identity.
+    pub anonymous_record_targets: HashMap<ExprIdentity, String>,
+    /// Typecheck-produced synthesized anonymous-record types for this callable.
+    pub synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
+    /// Typecheck-produced resolved expression IrTypes keyed by stable AST identity.
+    pub expr_ir_types: HashMap<ExprIdentity, IrType>,
+    /// Local mapping from this function body's structural expression paths back to
+    /// stable identities produced by typecheck.
+    pub(crate) expr_identities: HashMap<ExprPath, ExprIdentity>,
+    pub(crate) expr_path: RefCell<ExprPath>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub(crate) struct ExprPath(Vec<ExprPathStep>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum StmtExprSlot {
+    LetValue,
+    AssignValue,
+    NodeExpr,
+    NodeGuard,
+    ExprStmt,
+    ReturnField(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ExprPathStep {
+    BodyStmt { index: usize, slot: StmtExprSlot },
+    BlockStmt { index: usize, slot: StmtExprSlot },
+    ForBodyStmt { index: usize, slot: StmtExprSlot },
+    FieldAccessBase,
+    CallArg(usize),
+    ServiceArg(usize),
+    BinOpLeft,
+    BinOpRight,
+    UnaryInner,
+    LambdaBody,
+    ForIterable,
+    ForBodyExpr,
+    StringPart(usize),
+    RecordField(usize),
+    MatchScrutinee,
+    MatchArmGuard(usize),
+    MatchArmBody(usize),
+    IfCond,
+    IfThen,
+    IfElse,
+    ListItem(usize),
+    MapKey(usize),
+    MapValue(usize),
+    GuardedInner,
+    GuardedGuard,
+    AfterInner,
+}
+
+#[derive(Debug, Clone)]
+enum StmtPathOwner {
+    Body,
+    Block(ExprPath),
+    ForBody(ExprPath),
+}
+
+impl ExprPath {
+    fn child(&self, step: ExprPathStep) -> Self {
+        let mut steps = self.0.clone();
+        steps.push(step);
+        Self(steps)
+    }
+}
+
+fn stmt_expr_path(owner: &StmtPathOwner, index: usize, slot: StmtExprSlot) -> ExprPath {
+    match owner {
+        StmtPathOwner::Body => ExprPath(vec![ExprPathStep::BodyStmt { index, slot }]),
+        StmtPathOwner::Block(path) => path.child(ExprPathStep::BlockStmt { index, slot }),
+        StmtPathOwner::ForBody(path) => path.child(ExprPathStep::ForBodyStmt { index, slot }),
+    }
+}
+
+fn record_field_path(path: &ExprPath, index: usize) -> ExprPath {
+    path.child(ExprPathStep::RecordField(index))
+}
+
+fn build_expr_identities(body: &ast::FnBody) -> HashMap<ExprPath, ExprIdentity> {
+    fn walk_stmt_sequence(
+        stmts: &[ast::Stmt],
+        owner: &StmtPathOwner,
+        next_identity: &mut usize,
+        expr_identities: &mut HashMap<ExprPath, ExprIdentity>,
+    ) {
+        for (index, stmt) in stmts.iter().enumerate() {
+            match stmt {
+                ast::Stmt::Let(_, expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::LetValue),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Assign(_, expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::AssignValue),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Expr(expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::ExprStmt),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Node(node) => {
+                    walk_expr(
+                        &node.expr,
+                        stmt_expr_path(owner, index, StmtExprSlot::NodeExpr),
+                        next_identity,
+                        expr_identities,
+                    );
+                    if let Some(guard) = &node.when_guard {
+                        walk_expr(
+                            guard,
+                            stmt_expr_path(owner, index, StmtExprSlot::NodeGuard),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+                ast::Stmt::Return(fields) => {
+                    for (field_index, (_, expr)) in fields.iter().enumerate() {
+                        walk_expr(
+                            expr,
+                            stmt_expr_path(owner, index, StmtExprSlot::ReturnField(field_index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn walk_expr(
+        expr: &ast::Expr,
+        path: ExprPath,
+        next_identity: &mut usize,
+        expr_identities: &mut HashMap<ExprPath, ExprIdentity>,
+    ) {
+        let expr_identity = ExprIdentity(*next_identity);
+        *next_identity += 1;
+        expr_identities.insert(path.clone(), expr_identity);
+        match expr {
+            ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
+            ast::Expr::FieldAccess(base, _) => walk_expr(
+                base,
+                path.child(ExprPathStep::FieldAccessBase),
+                next_identity,
+                expr_identities,
+            ),
+            ast::Expr::Call(_, args) => {
+                for (index, (_, arg)) in args.iter().enumerate() {
+                    walk_expr(
+                        arg,
+                        path.child(ExprPathStep::CallArg(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::ServiceCall(_, args) => {
+                for (index, (_, arg)) in args.iter().enumerate() {
+                    walk_expr(
+                        arg,
+                        path.child(ExprPathStep::ServiceArg(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::BinOp(left, _, right) => {
+                walk_expr(
+                    left,
+                    path.child(ExprPathStep::BinOpLeft),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    right,
+                    path.child(ExprPathStep::BinOpRight),
+                    next_identity,
+                    expr_identities,
+                );
+            }
+            ast::Expr::UnaryOp(_, inner)
+            | ast::Expr::Lambda(_, inner)
+            | ast::Expr::After(inner, _) => {
+                let step = match expr {
+                    ast::Expr::UnaryOp(_, _) => ExprPathStep::UnaryInner,
+                    ast::Expr::Lambda(_, _) => ExprPathStep::LambdaBody,
+                    ast::Expr::After(_, _) => ExprPathStep::AfterInner,
+                    _ => unreachable!(),
+                };
+                walk_expr(inner, path.child(step), next_identity, expr_identities);
+            }
+            ast::Expr::StringInterp(parts) => {
+                for (index, part) in parts.iter().enumerate() {
+                    if let ast::StringPart::Expr(inner) = part {
+                        walk_expr(
+                            inner,
+                            path.child(ExprPathStep::StringPart(index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+            }
+            ast::Expr::Record(_, fields) | ast::Expr::Return(fields) => {
+                for (index, (_, field_expr)) in fields.iter().enumerate() {
+                    walk_expr(
+                        field_expr,
+                        record_field_path(&path, index),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Match(scrutinee, arms) => {
+                walk_expr(
+                    scrutinee,
+                    path.child(ExprPathStep::MatchScrutinee),
+                    next_identity,
+                    expr_identities,
+                );
+                for (index, arm) in arms.iter().enumerate() {
+                    if let Some(guard) = &arm.guard {
+                        walk_expr(
+                            guard,
+                            path.child(ExprPathStep::MatchArmGuard(index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                    walk_expr(
+                        &arm.body,
+                        path.child(ExprPathStep::MatchArmBody(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::If(cond, then_expr, else_expr) => {
+                walk_expr(
+                    cond,
+                    path.child(ExprPathStep::IfCond),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    then_expr,
+                    path.child(ExprPathStep::IfThen),
+                    next_identity,
+                    expr_identities,
+                );
+                if let Some(otherwise) = else_expr {
+                    walk_expr(
+                        otherwise,
+                        path.child(ExprPathStep::IfElse),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::For(_, iterable, _, body) => {
+                walk_expr(
+                    iterable,
+                    path.child(ExprPathStep::ForIterable),
+                    next_identity,
+                    expr_identities,
+                );
+                match body {
+                    ast::ForBody::Expr(expr) => walk_expr(
+                        expr,
+                        path.child(ExprPathStep::ForBodyExpr),
+                        next_identity,
+                        expr_identities,
+                    ),
+                    ast::ForBody::Block(stmts) => walk_stmt_sequence(
+                        stmts,
+                        &StmtPathOwner::ForBody(path.clone()),
+                        next_identity,
+                        expr_identities,
+                    ),
+                }
+            }
+            ast::Expr::List(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    walk_expr(
+                        item,
+                        path.child(ExprPathStep::ListItem(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Map(entries) => {
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    walk_expr(
+                        key,
+                        path.child(ExprPathStep::MapKey(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                    walk_expr(
+                        value,
+                        path.child(ExprPathStep::MapValue(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Guarded(inner, guard) => {
+                walk_expr(
+                    inner,
+                    path.child(ExprPathStep::GuardedInner),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    guard,
+                    path.child(ExprPathStep::GuardedGuard),
+                    next_identity,
+                    expr_identities,
+                );
+            }
+            ast::Expr::Block(stmts) => walk_stmt_sequence(
+                stmts,
+                &StmtPathOwner::Block(path),
+                next_identity,
+                expr_identities,
+            ),
+        }
+    }
+
+    let mut expr_identities = HashMap::new();
+    let mut next_identity = 0usize;
+    walk_stmt_sequence(
+        &body.stmts,
+        &StmtPathOwner::Body,
+        &mut next_identity,
+        &mut expr_identities,
+    );
+    expr_identities
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SynthesizedAnonymousRecordType {
+    pub name: String,
+    pub fields: Vec<(String, IrType)>,
 }
 
 impl Default for CompileContext {
@@ -141,6 +506,7 @@ impl CompileContext {
     pub fn new() -> Self {
         Self {
             data_names: HashSet::new(),
+            data_ir_types: HashMap::new(),
             data_map_names: HashSet::new(),
             optional_fields: std::collections::HashMap::new(),
             variant_to_enum: std::collections::HashMap::new(),
@@ -148,6 +514,7 @@ impl CompileContext {
             enum_variants: std::collections::HashMap::new(),
             boxed_fields: HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
+            fn_return_ir_types: HashMap::new(),
             fn_param_types: std::collections::HashMap::new(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
@@ -156,7 +523,45 @@ impl CompileContext {
             ir_scope: HashMap::new(),
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
+            fold_accum_name: None,
+            anonymous_record_targets: HashMap::new(),
+            synthesized_anonymous_record_types: Vec::new(),
+            expr_ir_types: HashMap::new(),
+            expr_identities: HashMap::new(),
+            expr_path: RefCell::new(ExprPath::default()),
         }
+    }
+
+    fn current_expr_path(&self) -> ExprPath {
+        self.expr_path.borrow().clone()
+    }
+
+    fn with_expr_path<T>(&self, path: ExprPath, f: impl FnOnce() -> T) -> T {
+        let previous = self.expr_path.replace(path);
+        let result = f();
+        self.expr_path.replace(previous);
+        result
+    }
+
+    fn with_child_expr_path<T>(&self, step: ExprPathStep, f: impl FnOnce() -> T) -> T {
+        self.with_expr_path(self.current_expr_path().child(step), f)
+    }
+
+    fn anonymous_record_target(&self) -> Option<&str> {
+        let expr_identity = self.expr_identities.get(&self.current_expr_path())?;
+        self.anonymous_record_targets
+            .get(expr_identity)
+            .map(String::as_str)
+    }
+
+    fn current_expr_ir_type(&self) -> Option<IrType> {
+        let expr_identity = self.expr_identities.get(&self.current_expr_path())?;
+        self.expr_ir_types.get(expr_identity).cloned()
+    }
+
+    fn populate_expr_identities(&mut self, body: &ast::FnBody) {
+        self.expr_identities = build_expr_identities(body);
+        self.expr_path.replace(ExprPath::default());
     }
 }
 
@@ -358,9 +763,10 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
 /// Compile a DSL `FnBody` into a list of abstract IR statements.
 pub fn compile_fn_body(body: &ast::FnBody, ctx: &CompileContext) -> Vec<code_ir::Stmt> {
     let mut ctx = ctx.clone();
+    ctx.populate_expr_identities(body);
     ctx.use_counts = count_ident_uses(&body.stmts);
     let mut counter: usize = 0;
-    compile_stmt_sequence(&body.stmts, &ctx, &mut counter)
+    compile_stmt_sequence(&body.stmts, &ctx, &mut counter, &StmtPathOwner::Body)
 }
 
 /// Check if an AST expression clearly produces an Option<T> value.
@@ -396,7 +802,9 @@ fn track_binding_before_compile(stmt: &ast::Stmt, ctx: &mut CompileContext) {
     let Some((name, expr)) = stmt_binding(stmt) else {
         return;
     };
-    if is_clearly_optional_ast_expr(expr) {
+    if is_clearly_optional_ast_expr(expr)
+        || infer_known_expr_ir_type(expr, ctx).is_some_and(|ty| matches!(ty, IrType::Optional(_)))
+    {
         ctx.optional_params.insert(name.to_string());
     }
 }
@@ -422,13 +830,14 @@ fn compile_stmt_sequence(
     stmts: &[ast::Stmt],
     ctx: &CompileContext,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> Vec<code_ir::Stmt> {
     let len = stmts.len();
     let mut current_ctx = ctx.clone();
     let mut result = Vec::with_capacity(len);
     for (index, stmt) in stmts.iter().enumerate() {
         track_binding_before_compile(stmt, &mut current_ctx);
-        let compiled = compile_stmt(stmt, index + 1 == len, &current_ctx, counter);
+        let compiled = compile_stmt(stmt, index, index + 1 == len, &current_ctx, counter, owner);
         track_binding_after_compile(stmt, &compiled, &mut current_ctx);
         result.push(compiled);
     }
@@ -441,42 +850,56 @@ fn compile_stmt_sequence(
 
 fn compile_stmt(
     stmt: &ast::Stmt,
+    stmt_index: usize,
     is_last: bool,
     ctx: &CompileContext,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> code_ir::Stmt {
     match stmt {
-        ast::Stmt::Let(name, expr) => {
-            let ir_type = infer_ast_expr_type(expr, ctx);
-            code_ir::Stmt::Let {
+        ast::Stmt::Let(name, expr) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::LetValue),
+            || code_ir::Stmt::Let {
                 name: escape_rust_keyword(name),
                 mutable: false,
                 expr: compile_expr(expr, ctx, counter),
-                ir_type,
-            }
-        }
-        ast::Stmt::Assign(name, expr) => code_ir::Stmt::Assign {
-            dest: code_ir::Expr::Var(escape_rust_keyword(name)),
-            value: compile_expr(expr, ctx, counter),
-        },
-        ast::Stmt::Node(ns) => {
-            let ir_type = infer_ast_expr_type(&ns.expr, ctx);
-            code_ir::Stmt::Let {
+                ir_type: ctx
+                    .current_expr_ir_type()
+                    .or_else(|| infer_known_expr_ir_type(expr, ctx)),
+            },
+        ),
+        ast::Stmt::Assign(name, expr) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::AssignValue),
+            || code_ir::Stmt::Assign {
+                dest: code_ir::Expr::Var(escape_rust_keyword(name)),
+                value: compile_expr(expr, ctx, counter),
+            },
+        ),
+        ast::Stmt::Node(ns) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::NodeExpr),
+            || code_ir::Stmt::Let {
                 name: escape_rust_keyword(&ns.name),
                 mutable: false,
                 expr: compile_expr(&ns.expr, ctx, counter),
-                ir_type,
-            }
-        }
-        ast::Stmt::Expr(expr) => {
-            if is_last {
-                code_ir::Stmt::TailExpr(compile_expr(expr, ctx, counter))
-            } else {
-                code_ir::Stmt::Expr(compile_expr(expr, ctx, counter))
-            }
-        }
+                ir_type: ctx
+                    .current_expr_ir_type()
+                    .or_else(|| infer_known_expr_ir_type(&ns.expr, ctx)),
+            },
+        ),
+        ast::Stmt::Expr(expr) => ctx.with_expr_path(
+            stmt_expr_path(owner, stmt_index, StmtExprSlot::ExprStmt),
+            || {
+                if is_last {
+                    code_ir::Stmt::TailExpr(compile_expr(expr, ctx, counter))
+                } else {
+                    code_ir::Stmt::Expr(compile_expr(expr, ctx, counter))
+                }
+            },
+        ),
         ast::Stmt::Return(fields) => {
-            let ir_expr = compile_return_fields(fields, ctx, counter);
+            let ir_expr = compile_return_fields(fields, ctx, counter, |index| {
+                stmt_expr_path(owner, stmt_index, StmtExprSlot::ReturnField(index))
+            });
             if is_last {
                 code_ir::Stmt::TailExpr(ir_expr)
             } else {
@@ -490,6 +913,7 @@ fn compile_return_fields(
     fields: &[(String, ast::Expr)],
     ctx: &CompileContext,
     counter: &mut usize,
+    field_path: impl Fn(usize) -> ExprPath,
 ) -> code_ir::Expr {
     if fields.is_empty() {
         code_ir::Expr::Tuple(vec![])
@@ -497,15 +921,15 @@ fn compile_return_fields(
         // Single-field return: unwrap the record to a bare expression.
         // DSL `return { return: expr }` and `return { value: expr }` both
         // mean "return this value".
-        compile_expr(&fields[0].1, ctx, counter)
+        ctx.with_expr_path(field_path(0), || compile_expr(&fields[0].1, ctx, counter))
     } else {
         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
         let Some(struct_name) =
-            resolve_record_struct_name(&field_names, ctx.current_return_type.as_deref(), ctx)
+            explicit_record_struct_name(ctx.current_return_type.as_deref(), ctx)
         else {
             return unresolved_anonymous_record_error(&field_names);
         };
-        compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
+        compile_resolved_record_expr(&struct_name, fields, None, field_path, ctx, counter)
     }
 }
 
@@ -550,7 +974,7 @@ fn expr_carries_optional_value(expr: &ast::Expr, ctx: &CompileContext) -> bool {
         ast::Expr::Ident(name) if ctx.optional_params.contains(name.as_str()) => true,
         _ => {
             is_clearly_optional_ast_expr(expr)
-                || matches!(infer_ast_expr_type(expr, ctx), Some(IrType::Optional(_)))
+                || matches!(ctx.current_expr_ir_type(), Some(IrType::Optional(_)))
         }
     }
 }
@@ -564,26 +988,34 @@ fn optional_to_required_field_error(target_struct: &str, field_name: &str) -> co
 
 fn compile_struct_field_value(
     expr: &ast::Expr,
+    expr_path: ExprPath,
     target_struct: &str,
     field_name: &str,
     field_types: Option<&std::collections::HashMap<String, String>>,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
-    let compiled = compile_expr_in_field_context(expr, field_name, field_types, ctx, counter);
+    let compiled = ctx.with_expr_path(expr_path.clone(), || {
+        compile_expr_in_field_context(expr, field_name, field_types, ctx, counter)
+    });
     let is_opt = ctx
         .optional_fields
         .get(target_struct)
         .is_some_and(|fields| fields.contains(field_name));
     let is_none = is_none_expr(&compiled);
-    if !is_opt && (is_none || expr_carries_optional_value(expr, ctx)) {
+    let carries_optional_value =
+        ctx.with_expr_path(expr_path.clone(), || expr_carries_optional_value(expr, ctx));
+    if !is_opt && (is_none || carries_optional_value) {
         return optional_to_required_field_error(target_struct, field_name);
     }
-    let already_optional = is_opt && is_already_optional_expr(expr, ctx, target_struct);
+    let already_optional = is_opt
+        && ctx.with_expr_path(expr_path, || {
+            is_already_optional_expr(expr, ctx, target_struct)
+        });
     let compiled = if is_none {
         compiled
     } else {
-        clone_if_needed(compiled)
+        clone_if_needed(compiled, ctx.fold_accum_name.as_deref())
     };
     let mut result = if is_opt && !is_none && !already_optional {
         code_ir::Expr::Call {
@@ -621,38 +1053,14 @@ fn explicit_record_struct_name(
         .map(str::to_owned)
 }
 
-fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> Option<String> {
-    let candidates: Vec<(&String, usize)> = ctx
-        .struct_field_types
-        .iter()
-        .filter(|(_, ft)| field_names.iter().all(|f| ft.contains_key(*f)))
-        .map(|(sn, ft)| (sn, ft.len()))
-        .collect();
-    if candidates.len() == 1 {
-        Some(candidates[0].0.clone())
-    } else if candidates.len() > 1 {
-        let n = field_names.len();
-        let mut sorted = candidates;
-        sorted.sort_by(|(name_a, count_a), (name_b, count_b)| {
-            let diff_a = (*count_a as isize - n as isize).unsigned_abs();
-            let exact_a = if *count_a == n { 0usize } else { 1 };
-            let diff_b = (*count_b as isize - n as isize).unsigned_abs();
-            let exact_b = if *count_b == n { 0usize } else { 1 };
-            (exact_a, diff_a, name_a).cmp(&(exact_b, diff_b, name_b))
-        });
-        Some(sorted[0].0.clone())
-    } else {
-        None
-    }
-}
-
 fn resolve_record_struct_name(
-    field_names: &HashSet<&str>,
     preferred_struct: Option<&str>,
     ctx: &CompileContext,
 ) -> Option<String> {
-    explicit_record_struct_name(preferred_struct, ctx)
-        .or_else(|| infer_struct_name(field_names, ctx))
+    explicit_record_struct_name(preferred_struct, ctx).or_else(|| {
+        ctx.anonymous_record_target()
+            .and_then(|target| explicit_record_struct_name(Some(target), ctx))
+    })
 }
 
 fn unresolved_anonymous_record_error(field_names: &HashSet<&str>) -> code_ir::Expr {
@@ -668,6 +1076,7 @@ fn compile_resolved_record_expr(
     struct_name: &str,
     fields: &[(String, ast::Expr)],
     rest: Option<code_ir::Expr>,
+    field_path: impl Fn(usize) -> ExprPath,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
@@ -679,10 +1088,19 @@ fn compile_resolved_record_expr(
     let field_types = ctx.struct_field_types.get(struct_name);
     let ir_fields: Vec<(String, code_ir::Expr)> = fields
         .iter()
-        .map(|(name, expr)| {
+        .enumerate()
+        .map(|(index, (name, expr))| {
             (
                 name.clone(),
-                compile_struct_field_value(expr, struct_name, name, field_types, ctx, counter),
+                compile_struct_field_value(
+                    expr,
+                    field_path(index),
+                    struct_name,
+                    name,
+                    field_types,
+                    ctx,
+                    counter,
+                ),
             )
         })
         .collect();
@@ -706,9 +1124,20 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
         ast::Expr::Ident(name) => compile_ident(name, ctx),
         ast::Expr::FieldAccess(receiver, field) => {
             // .value on an Option<T> (from Some { value: x } access) → .unwrap()
-            if field == "value" && is_likely_option_receiver_ctx(receiver, ctx) {
+            if field == "value"
+                && (ctx
+                    .with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                        ctx.current_expr_ir_type()
+                    })
+                    .is_some_and(|ty| matches!(ty, IrType::Optional(_)))
+                    || is_likely_option_receiver_ctx(receiver, ctx))
+            {
                 return code_ir::Expr::MethodCall {
-                    receiver: Box::new(compile_expr(receiver, ctx, counter)),
+                    receiver: Box::new(
+                        ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                            compile_expr(receiver, ctx, counter)
+                        }),
+                    ),
                     method: "unwrap".to_string(),
                     args: vec![],
                 };
@@ -719,7 +1148,12 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
-            code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx, counter)), rust_field)
+            code_ir::Expr::Field(
+                Box::new(ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                    compile_expr(receiver, ctx, counter)
+                })),
+                rust_field,
+            )
         }
         ast::Expr::Call(name, args) => {
             if let Some(intrinsic) = compile_intrinsic_call(name, args, ctx, counter) {
@@ -732,11 +1166,15 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             if matches!(op, ast::BinOp::NullCoalesce) {
                 // x ?? y → x.unwrap_or_else(|| y)
                 code_ir::Expr::MethodCall {
-                    receiver: Box::new(compile_expr(left, ctx, counter)),
+                    receiver: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpLeft, || {
+                        compile_expr(left, ctx, counter)
+                    })),
                     method: "unwrap_or_else".to_string(),
                     args: vec![code_ir::Expr::Closure {
                         args: vec![],
-                        body: Box::new(compile_expr(right, ctx, counter)),
+                        body: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
+                            compile_expr(right, ctx, counter)
+                        })),
                     }],
                 }
             } else {
@@ -744,20 +1182,28 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // + is now exclusively arithmetic — string/list concat uses
                 // the `concat()` intrinsic function instead.
                 code_ir::Expr::BinOp {
-                    left: Box::new(compile_expr(left, ctx, counter)),
+                    left: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpLeft, || {
+                        compile_expr(left, ctx, counter)
+                    })),
                     op: compile_binop(op),
-                    right: Box::new(compile_expr(right, ctx, counter)),
+                    right: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
+                        compile_expr(right, ctx, counter)
+                    })),
                 }
             }
         }
         ast::Expr::UnaryOp(op, expr) => code_ir::Expr::UnaryOp {
             op: compile_unaryop(op),
-            expr: Box::new(compile_expr(expr, ctx, counter)),
+            expr: Box::new(ctx.with_child_expr_path(ExprPathStep::UnaryInner, || {
+                compile_expr(expr, ctx, counter)
+            })),
         },
         ast::Expr::Record(name, fields) => {
             // Special case: Some { value: x } → Some(compiled_x) in Rust
             if name.as_deref() == Some("Some") && fields.len() == 1 && fields[0].0 == "value" {
-                let inner = compile_expr(&fields[0].1, ctx, counter);
+                let inner = ctx.with_child_expr_path(ExprPathStep::RecordField(0), || {
+                    compile_expr(&fields[0].1, ctx, counter)
+                });
                 return code_ir::Expr::Call {
                     func: Box::new(code_ir::Expr::Var("Some".to_string())),
                     args: vec![inner],
@@ -769,13 +1215,29 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 return code_ir::Expr::Var("None".to_string());
             }
             if let Some(struct_name) = name.as_deref() {
-                compile_resolved_record_expr(struct_name, fields, None, ctx, counter)
+                let current_path = ctx.current_expr_path();
+                compile_resolved_record_expr(
+                    struct_name,
+                    fields,
+                    None,
+                    |index| record_field_path(&current_path, index),
+                    ctx,
+                    counter,
+                )
             } else {
                 let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-                let Some(struct_name) = resolve_record_struct_name(&field_names, None, ctx) else {
+                let Some(struct_name) = resolve_record_struct_name(None, ctx) else {
                     return unresolved_anonymous_record_error(&field_names);
                 };
-                compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
+                let current_path = ctx.current_expr_path();
+                compile_resolved_record_expr(
+                    &struct_name,
+                    fields,
+                    None,
+                    |index| record_field_path(&current_path, index),
+                    ctx,
+                    counter,
+                )
             }
         }
         ast::Expr::Match(scrutinee, arms) => compile_match(scrutinee, arms, ctx, counter),
@@ -784,7 +1246,9 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
         }
         ast::Expr::Lambda(params, body) => code_ir::Expr::Closure {
             args: params.clone(),
-            body: Box::new(compile_expr(body, ctx, counter)),
+            body: Box::new(ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            })),
         },
         ast::Expr::List(elements) => {
             // DSL List<T> maps to Rust Rc<Vec<T>>, so use Rc::new(vec![...]).
@@ -792,14 +1256,21 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 name: "vec".to_string(),
                 args: elements
                     .iter()
-                    .map(|e| compile_expr(e, ctx, counter))
+                    .enumerate()
+                    .map(|(index, e)| {
+                        ctx.with_child_expr_path(ExprPathStep::ListItem(index), || {
+                            compile_expr(e, ctx, counter)
+                        })
+                    })
                     .collect(),
             })
         }
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx, counter),
         ast::Expr::For(binding, iter_expr, _passthrough, body) => {
             let result_var = fresh(counter, "for_result");
-            let iter = make_owned_iter(compile_expr(iter_expr, ctx, counter));
+            let iter = make_owned_iter(ctx.with_child_expr_path(ExprPathStep::ForIterable, || {
+                compile_expr(iter_expr, ctx, counter)
+            }));
             // Infer element type from body for Vec<T> annotation
             let body_ast_expr = match body {
                 ast::ForBody::Expr(e) => Some(e.as_ref()),
@@ -808,14 +1279,41 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                     _ => None,
                 }),
             };
-            let list_type = body_ast_expr
-                .and_then(|e| infer_ast_expr_type(e, ctx))
-                .map(|t| IrType::Generic("List".to_string(), vec![t]));
+            let list_type = match body {
+                ast::ForBody::Expr(_) => body_ast_expr.and_then(|_| {
+                    ctx.with_child_expr_path(ExprPathStep::ForBodyExpr, || {
+                        ctx.current_expr_ir_type()
+                    })
+                }),
+                ast::ForBody::Block(stmts) => stmts
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(index, stmt)| match stmt {
+                        ast::Stmt::Expr(_) => Some(ctx.with_expr_path(
+                            stmt_expr_path(
+                                &StmtPathOwner::ForBody(ctx.current_expr_path()),
+                                index,
+                                StmtExprSlot::ExprStmt,
+                            ),
+                            || ctx.current_expr_ir_type(),
+                        )),
+                        _ => None,
+                    })
+                    .flatten(),
+            }
+            .map(|t| IrType::Generic("List".to_string(), vec![t]));
             let push_expr = match body {
-                ast::ForBody::Expr(expr) => compile_expr(expr, ctx, counter),
-                ast::ForBody::Block(stmts) => {
-                    code_ir::Expr::Block(compile_stmt_sequence(stmts, ctx, counter))
-                }
+                ast::ForBody::Expr(expr) => ctx
+                    .with_child_expr_path(ExprPathStep::ForBodyExpr, || {
+                        compile_expr(expr, ctx, counter)
+                    }),
+                ast::ForBody::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence(
+                    stmts,
+                    ctx,
+                    counter,
+                    &StmtPathOwner::ForBody(ctx.current_expr_path()),
+                )),
             };
             code_ir::Expr::Block(vec![
                 code_ir::Stmt::Let {
@@ -839,11 +1337,26 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result_var))),
             ])
         }
-        ast::Expr::Return(fields) => compile_return_fields(fields, ctx, counter),
-        ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => {
-            compile_expr(inner, ctx, counter)
+        ast::Expr::Return(fields) => {
+            let current_path = ctx.current_expr_path();
+            compile_return_fields(fields, ctx, counter, |index| {
+                record_field_path(&current_path, index)
+            })
         }
-        ast::Expr::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence(stmts, ctx, counter)),
+        ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => {
+            let step = match expr {
+                ast::Expr::Guarded(_, _) => ExprPathStep::GuardedInner,
+                ast::Expr::After(_, _) => ExprPathStep::AfterInner,
+                _ => unreachable!(),
+            };
+            ctx.with_child_expr_path(step, || compile_expr(inner, ctx, counter))
+        }
+        ast::Expr::Block(stmts) => code_ir::Expr::Block(compile_stmt_sequence(
+            stmts,
+            ctx,
+            counter,
+            &StmtPathOwner::Block(ctx.current_expr_path()),
+        )),
         ast::Expr::ServiceCall(path, args) => {
             // Lower Resource.method(args) → v2_rt::resource_method(args)
             let fn_name = path
@@ -853,7 +1366,12 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 .join("_");
             let compiled_args: Vec<code_ir::Expr> = args
                 .iter()
-                .map(|(_, e)| compile_expr(e, ctx, counter))
+                .enumerate()
+                .map(|(index, (_, e))| {
+                    ctx.with_child_expr_path(ExprPathStep::ServiceArg(index), || {
+                        compile_expr(e, ctx, counter)
+                    })
+                })
                 .collect();
             code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec!["v2_rt".to_string(), fn_name])),
@@ -890,11 +1408,13 @@ fn compile_expr_typed(
             let variant_field_types = ctx.struct_field_types.get(record_name.as_str());
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
                 .iter()
-                .map(|(field_name, field_expr)| {
+                .enumerate()
+                .map(|(index, (field_name, field_expr))| {
                     (
                         field_name.clone(),
                         compile_struct_field_value(
                             field_expr,
+                            record_field_path(&ctx.current_expr_path(), index),
                             record_name,
                             field_name,
                             variant_field_types,
@@ -914,11 +1434,18 @@ fn compile_expr_typed(
         }
         ast::Expr::Record(None, fields) => {
             let field_names: HashSet<&str> = fields.iter().map(|(name, _)| name.as_str()).collect();
-            let Some(struct_name) = resolve_record_struct_name(&field_names, expected_type, ctx)
-            else {
+            let Some(struct_name) = resolve_record_struct_name(expected_type, ctx) else {
                 return unresolved_anonymous_record_error(&field_names);
             };
-            compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
+            let current_path = ctx.current_expr_path();
+            compile_resolved_record_expr(
+                &struct_name,
+                fields,
+                None,
+                |index| record_field_path(&current_path, index),
+                ctx,
+                counter,
+            )
         }
         ast::Expr::Match(scrutinee, arms) => {
             compile_match_typed(scrutinee, arms, ctx, expected_type, counter)
@@ -931,6 +1458,7 @@ fn compile_expr_typed(
             ctx,
             expected_type,
             counter,
+            &StmtPathOwner::Block(ctx.current_expr_path()),
         )),
         _ => compile_expr(expr, ctx, counter),
     }
@@ -1024,6 +1552,42 @@ fn to_screaming_snake(name: &str) -> String {
     result
 }
 
+fn with_call_arg_path<T>(ctx: &CompileContext, index: usize, f: impl FnOnce() -> T) -> T {
+    ctx.with_child_expr_path(ExprPathStep::CallArg(index), f)
+}
+
+fn compile_call_arg(
+    args: &[(Option<String>, ast::Expr)],
+    index: usize,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    with_call_arg_path(ctx, index, || compile_expr(&args[index].1, ctx, counter))
+}
+
+fn compile_call_arg_typed(
+    args: &[(Option<String>, ast::Expr)],
+    index: usize,
+    expected_type: Option<&str>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    with_call_arg_path(ctx, index, || {
+        compile_expr_typed(&args[index].1, ctx, expected_type, counter)
+    })
+}
+
+fn infer_call_arg_type(
+    args: &[(Option<String>, ast::Expr)],
+    index: usize,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    with_call_arg_path(ctx, index, || {
+        ctx.current_expr_ir_type()
+            .or_else(|| infer_known_expr_ir_type(&args[index].1, ctx))
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Function calls
 // ---------------------------------------------------------------------------
@@ -1041,42 +1605,61 @@ fn compile_intrinsic_call(
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> Option<code_ir::Expr> {
+    // Zero-arg intrinsics (before the args.is_empty() guard).
+    // empty_map() → Rc::new(HashMap::new())
+    if name == "empty_map" && args.is_empty() {
+        return Some(rc_wrap(code_ir::Expr::RawCode(
+            "std::collections::HashMap::new()".to_string(),
+        )));
+    }
+
     // First arg is always the collection/receiver.
     // Eagerly evaluated since counter is &mut and can't be captured in a closure.
     if args.is_empty() {
         return None;
     }
-    let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter));
+    let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter), ctx.fold_accum_name.as_deref());
 
     match name {
-        "map" if args.len() == 2 => Some(compile_map_intrinsic(
-            &collection.clone(),
-            args.get(1).map(|(_, e)| e),
-            ctx,
-            counter,
-        )),
-        "filter" if args.len() == 2 => Some(compile_filter_intrinsic(
-            &collection.clone(),
-            args.get(1).map(|(_, e)| e),
-            ctx,
-            counter,
-        )),
+        "map" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
+            compile_map_intrinsic(
+                &collection.clone(),
+                args.get(1).map(|(_, e)| e),
+                ctx,
+                counter,
+            )
+        })),
+        "filter" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
+            compile_filter_intrinsic(
+                &collection.clone(),
+                args.get(1).map(|(_, e)| e),
+                ctx,
+                counter,
+            )
+        })),
         "fold" if args.len() >= 2 => {
-            let init = args
+            let call_path = ctx.current_expr_path();
+            let init_index = args
                 .iter()
-                .find(|(n, _)| n.as_deref() == Some("init"))
-                .or_else(|| args.get(1))
-                .map(|(_, e)| e);
-            let func = args
+                .position(|(n, _)| n.as_deref() == Some("init"))
+                .or_else(|| (args.len() > 1).then_some(1));
+            let init = init_index.map(|index| &args[index].1);
+            let func_index = args
                 .iter()
-                .find(|(n, _)| n.as_deref() == Some("f"))
-                .or_else(|| args.get(2))
-                .map(|(_, e)| e);
+                .position(|(n, _)| n.as_deref() == Some("f"))
+                .or_else(|| (args.len() > 2).then_some(2));
+            let func = func_index.map(|index| &args[index].1);
             Some(compile_fold_intrinsic(
                 &collection.clone(),
                 &args[0].1,
-                init,
-                func,
+                FoldExprContext {
+                    init: init_index
+                        .zip(init)
+                        .map(|(index, expr)| (expr, call_path.child(ExprPathStep::CallArg(index)))),
+                    func: func_index
+                        .zip(func)
+                        .map(|(index, expr)| (expr, call_path.child(ExprPathStep::CallArg(index)))),
+                },
                 ctx,
                 counter,
             ))
@@ -1087,15 +1670,12 @@ fn compile_intrinsic_call(
                 .find(|(n, _)| n.as_deref() == Some("predicate"))
                 .or_else(|| args.get(1))
                 .map(|(_, e)| e);
-            Some(compile_any_intrinsic(
-                &collection.clone(),
-                pred,
-                ctx,
-                counter,
-            ))
+            Some(with_call_arg_path(ctx, 1, || {
+                compile_any_intrinsic(&collection.clone(), pred, ctx, counter)
+            }))
         }
         "contains" if args.len() == 2 => {
-            let target = compile_expr(&args[1].1, ctx, counter);
+            let target = compile_call_arg(args, 1, ctx, counter);
             let result = fresh(counter, "contains");
             let elem = fresh(counter, "elem");
             Some(code_ir::Expr::Block(vec![
@@ -1143,7 +1723,7 @@ fn compile_intrinsic_call(
             ]))
         }
         "join" if args.len() == 2 => {
-            let sep = compile_expr(&args[1].1, ctx, counter);
+            let sep = compile_call_arg(args, 1, ctx, counter);
             let result = fresh(counter, "joined");
             let elem = fresh(counter, "elem");
             let first = fresh(counter, "first");
@@ -1193,7 +1773,7 @@ fn compile_intrinsic_call(
             args: vec![],
         }),
         "split" if args.len() == 2 => {
-            let delim = compile_expr(&args[1].1, ctx, counter);
+            let delim = compile_call_arg(args, 1, ctx, counter);
             let result = fresh(counter, "split_parts");
             let elem = fresh(counter, "part");
             Some(code_ir::Expr::Block(vec![
@@ -1262,9 +1842,9 @@ fn compile_intrinsic_call(
         // v2 compiler intrinsics: immutable record update
         "with" if args.len() == 2 => {
             // with(state, { pos: state.pos + 1 }) → State { pos: state.pos + 1, ..state.clone() }
-            let base = compile_expr(&args[0].1, ctx, counter);
+            let base = compile_call_arg(args, 0, ctx, counter);
             let base_struct_name =
-                infer_ast_expr_type(&args[0].1, ctx).and_then(|ty| named_type_from_ir(&ty));
+                infer_call_arg_type(args, 0, ctx).and_then(|ty| named_type_from_ir(&ty));
             // Clone the base value since struct update syntax moves the base
             let cloned_base = code_ir::Expr::MethodCall {
                 receiver: Box::new(base),
@@ -1279,19 +1859,19 @@ fn compile_intrinsic_call(
                     } else {
                         let field_names: HashSet<&str> =
                             fields.iter().map(|(n, _)| n.as_str()).collect();
-                        let Some(struct_name) = resolve_record_struct_name(
-                            &field_names,
-                            base_struct_name.as_deref(),
-                            ctx,
-                        ) else {
+                        let Some(struct_name) = with_call_arg_path(ctx, 1, || {
+                            resolve_record_struct_name(base_struct_name.as_deref(), ctx)
+                        }) else {
                             return Some(unresolved_anonymous_record_error(&field_names));
                         };
                         struct_name
                     };
+                    let arg_path = ctx.current_expr_path().child(ExprPathStep::CallArg(1));
                     Some(compile_resolved_record_expr(
                         &struct_name,
                         fields,
                         Some(cloned_base),
+                        |index| record_field_path(&arg_path, index),
                         ctx,
                         counter,
                     ))
@@ -1303,7 +1883,7 @@ fn compile_intrinsic_call(
                             "v2_rt".to_string(),
                             "with".to_string(),
                         ])),
-                        args: vec![cloned_base, compile_expr(&args[1].1, ctx, counter)],
+                        args: vec![cloned_base, compile_call_arg(args, 1, ctx, counter)],
                         obligation: None,
                     })
                 }
@@ -1369,7 +1949,11 @@ fn compile_intrinsic_call(
                 if let ast::Expr::List(elements) = &args[1].1 {
                     if elements.len() == 1 {
                         let list = strip_outer_clone(collection.clone());
-                        let item = compile_expr(&elements[0], ctx, counter);
+                        let item = with_call_arg_path(ctx, 1, || {
+                            ctx.with_child_expr_path(ExprPathStep::ListItem(0), || {
+                                compile_expr(&elements[0], ctx, counter)
+                            })
+                        });
                         let v = fresh(counter, "appended");
                         let mut stmts = rc_unwrap_stmts(&v, list, counter);
                         stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -1384,22 +1968,84 @@ fn compile_intrinsic_call(
             }
             // Binary: concat(a, b) → v2_rt::concat(a, b)
             // Variadic: concat(a, b, c) → v2_rt::concat(v2_rt::concat(a, b), c)
-            let mut result = compile_expr(&args[0].1, ctx, counter);
-            for arg in &args[1..] {
+            // Strip fold accumulator's .clone() so try_unwrap succeeds → in-place extend.
+            let first = compile_expr(&args[0].1, ctx, counter);
+            let is_fold_accum = matches!(&args[0].1, ast::Expr::Ident(name) if ctx.fold_accum_name.as_deref() == Some(name.as_str()));
+            let mut result = if is_fold_accum {
+                strip_outer_clone(first)
+            } else {
+                first
+            };
+            for (index, _) in args[1..].iter().enumerate() {
                 result = code_ir::Expr::Call {
                     func: Box::new(code_ir::Expr::Path(vec![
                         "v2_rt".to_string(),
                         "concat".to_string(),
                     ])),
-                    args: vec![result, compile_expr(&arg.1, ctx, counter)],
+                    args: vec![result, compile_call_arg(args, index + 1, ctx, counter)],
                     obligation: None,
                 };
             }
             Some(result)
         }
+        // count(filter(list, pred)) → counting loop (avoids materializing filtered list).
         // count(list) → { let __len = list.len(); __len as i64 }
-        // Uses a temp variable so the collection stays as proper IR for substitution.
         "count" if args.len() == 1 => {
+            // Fuse count(filter(list, pred)) → for e in list { if pred(e) { count += 1; } }
+            if let ast::Expr::Call(filter_name, filter_args) = &args[0].1 {
+                if filter_name == "filter" && filter_args.len() == 2 {
+                    let list = compile_expr(&filter_args[0].1, ctx, counter);
+                    let result = fresh(counter, "count");
+                    let elem = fresh(counter, "elem");
+                    let cond = match &filter_args[1].1 {
+                        ast::Expr::Lambda(params, body) => {
+                            let compiled = compile_expr(body, ctx, counter);
+                            params
+                                .first()
+                                .map(|p| {
+                                    substitute_var(
+                                        &compiled,
+                                        p,
+                                        &code_ir::Expr::Var(elem.clone()),
+                                    )
+                                })
+                                .unwrap_or(compiled)
+                        }
+                        other => code_ir::Expr::Call {
+                            func: Box::new(compile_expr(other, ctx, counter)),
+                            args: vec![code_ir::Expr::Var(elem.clone())],
+                            obligation: None,
+                        },
+                    };
+                    return Some(code_ir::Expr::Block(vec![
+                        code_ir::Stmt::Let {
+                            name: result.clone(),
+                            mutable: true,
+                            expr: code_ir::Expr::RawCode("0i64".to_string()),
+                            ir_type: Some(IrType::Int),
+                        },
+                        code_ir::Stmt::For {
+                            binding: elem,
+                            iter: make_owned_iter(list),
+                            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                                cond: Box::new(cond),
+                                then_body: vec![code_ir::Stmt::Assign {
+                                    dest: code_ir::Expr::Var(result.clone()),
+                                    value: code_ir::Expr::BinOp {
+                                        left: Box::new(code_ir::Expr::Var(result.clone())),
+                                        op: "+".to_string(),
+                                        right: Box::new(code_ir::Expr::RawCode(
+                                            "1i64".to_string(),
+                                        )),
+                                    },
+                                }],
+                                else_body: None,
+                            })],
+                        },
+                        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                    ]));
+                }
+            }
             let tmp = fresh(counter, "len");
             Some(code_ir::Expr::Block(vec![
                 code_ir::Stmt::Let {
@@ -1417,11 +2063,13 @@ fn compile_intrinsic_call(
         }
         // first(list) → list.first().cloned()
         // Fuses first(skip(list, n)) → list.get(n as usize).cloned() — O(1) vs O(n).
+        // Fuses first(filter(list, pred)) → find loop — avoids materializing filtered list.
         "first" if args.len() == 1 => {
-            if let ast::Expr::Call(skip_name, skip_args) = &args[0].1 {
-                if skip_name == "skip" && skip_args.len() == 2 {
-                    let list = clone_if_needed(compile_expr(&skip_args[0].1, ctx, counter));
-                    let idx = compile_expr(&skip_args[1].1, ctx, counter);
+            if let ast::Expr::Call(inner_name, inner_args) = &args[0].1 {
+                // first(skip(list, n)) → list.get(n as usize).cloned()
+                if inner_name == "skip" && inner_args.len() == 2 {
+                    let list = clone_if_needed(compile_expr(&inner_args[0].1, ctx, counter), ctx.fold_accum_name.as_deref());
+                    let idx = compile_expr(&inner_args[1].1, ctx, counter);
                     return Some(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::MethodCall {
                             receiver: Box::new(list),
@@ -1434,6 +2082,64 @@ fn compile_intrinsic_call(
                         method: "cloned".to_string(),
                         args: vec![],
                     });
+                }
+                // first(filter(list, pred)) → find loop
+                if inner_name == "filter" && inner_args.len() == 2 {
+                    let list = compile_expr(&inner_args[0].1, ctx, counter);
+                    let result = fresh(counter, "found");
+                    let elem = fresh(counter, "elem");
+                    let cond = match &inner_args[1].1 {
+                        ast::Expr::Lambda(params, body) => {
+                            let compiled = compile_expr(body, ctx, counter);
+                            params
+                                .first()
+                                .map(|p| {
+                                    substitute_var(
+                                        &compiled,
+                                        p,
+                                        &code_ir::Expr::Var(elem.clone()),
+                                    )
+                                })
+                                .unwrap_or(compiled)
+                        }
+                        other => code_ir::Expr::Call {
+                            func: Box::new(compile_expr(other, ctx, counter)),
+                            args: vec![code_ir::Expr::Var(elem.clone())],
+                            obligation: None,
+                        },
+                    };
+                    return Some(code_ir::Expr::Block(vec![
+                        code_ir::Stmt::Let {
+                            name: result.clone(),
+                            mutable: true,
+                            expr: code_ir::Expr::Var("None".to_string()),
+                            ir_type: None,
+                        },
+                        code_ir::Stmt::For {
+                            binding: elem.clone(),
+                            iter: make_owned_iter(list),
+                            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                                cond: Box::new(cond),
+                                then_body: vec![
+                                    code_ir::Stmt::Assign {
+                                        dest: code_ir::Expr::Var(result.clone()),
+                                        value: code_ir::Expr::Call {
+                                            func: Box::new(code_ir::Expr::Var(
+                                                "Some".to_string(),
+                                            )),
+                                            args: vec![code_ir::Expr::Var(elem)],
+                                            obligation: None,
+                                        },
+                                    },
+                                    code_ir::Stmt::Expr(code_ir::Expr::RawCode(
+                                        "break".to_string(),
+                                    )),
+                                ],
+                                else_body: None,
+                            })],
+                        },
+                        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                    ]));
                 }
             }
             Some(code_ir::Expr::MethodCall {
@@ -1450,7 +2156,7 @@ fn compile_intrinsic_call(
         "append" if args.len() == 2 => {
             // Strip outer .clone() so Rc::try_unwrap succeeds for in-place push.
             let list = strip_outer_clone(collection.clone());
-            let item = compile_expr(&args[1].1, ctx, counter);
+            let item = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -1467,14 +2173,18 @@ fn compile_intrinsic_call(
             let elem = fresh(counter, "elem");
             let mapped = match &args[1].1 {
                 ast::Expr::Lambda(params, body) => {
-                    let compiled = compile_expr(body, ctx, counter);
+                    let compiled = with_call_arg_path(ctx, 1, || {
+                        ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                            compile_expr(body, ctx, counter)
+                        })
+                    });
                     params
                         .first()
                         .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                         .unwrap_or(compiled)
                 }
-                other => code_ir::Expr::Call {
-                    func: Box::new(compile_expr(other, ctx, counter)),
+                _other => code_ir::Expr::Call {
+                    func: Box::new(compile_call_arg(args, 1, ctx, counter)),
                     args: vec![code_ir::Expr::Var(elem.clone())],
                     obligation: None,
                 },
@@ -1545,7 +2255,7 @@ fn compile_intrinsic_call(
         // sort_by(list, key_fn) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.sort_by_key(key_fn); Rc::new(v) }
         "sort_by" if args.len() == 2 => {
             let list = collection.clone();
-            let key_fn = compile_expr(&args[1].1, ctx, counter);
+            let key_fn = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "sorted");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -1567,7 +2277,7 @@ fn compile_intrinsic_call(
         // replace_last(list, value) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; if let Some(last) = v.last_mut() { *last = value; } Rc::new(v) }
         "replace_last" if args.len() == 2 => {
             let list = collection.clone();
-            let value = compile_expr(&args[1].1, ctx, counter);
+            let value = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "replaced");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
@@ -1579,8 +2289,8 @@ fn compile_intrinsic_call(
         }
         // starts_with(s, prefix) → s.starts_with(prefix.as_str())
         "starts_with" if args.len() == 2 => {
-            let s = compile_expr(&args[0].1, ctx, counter);
-            let prefix = compile_expr(&args[1].1, ctx, counter);
+            let s = compile_call_arg(args, 0, ctx, counter);
+            let prefix = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(s),
                 method: "starts_with".to_string(),
@@ -1593,8 +2303,8 @@ fn compile_intrinsic_call(
         }
         // ends_with(s, suffix) → s.ends_with(suffix.as_str())
         "ends_with" if args.len() == 2 => {
-            let s = compile_expr(&args[0].1, ctx, counter);
-            let suffix = compile_expr(&args[1].1, ctx, counter);
+            let s = compile_call_arg(args, 0, ctx, counter);
+            let suffix = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(s),
                 method: "ends_with".to_string(),
@@ -1630,7 +2340,7 @@ fn compile_intrinsic_call(
         }),
         // skip(list, n) → Rc::new(list[n as usize..].to_vec())
         "skip" if args.len() == 2 => {
-            let n = compile_expr(&args[1].1, ctx, counter);
+            let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
                 "{{ let __s = {}; Rc::new(__s[({}) as usize..].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
@@ -1639,7 +2349,7 @@ fn compile_intrinsic_call(
         }
         // take(list, n) → Rc::new(list[..n as usize].to_vec())
         "take" if args.len() == 2 => {
-            let n = compile_expr(&args[1].1, ctx, counter);
+            let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
                 "{{ let __t = {}; Rc::new(__t[..({}) as usize].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
@@ -1648,7 +2358,7 @@ fn compile_intrinsic_call(
         }
         // find(list, pred) → list.iter().find(pred).cloned()
         "find" if args.len() == 2 => {
-            let pred = compile_expr(&args[1].1, ctx, counter);
+            let pred = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::MethodCall {
@@ -1665,7 +2375,7 @@ fn compile_intrinsic_call(
         }
         // get(list, idx) → list.get(idx as usize).cloned()
         "get" if args.len() == 2 => {
-            let idx = compile_expr(&args[1].1, ctx, counter);
+            let idx = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::MethodCall {
                     receiver: Box::new(collection.clone()),
@@ -1678,6 +2388,123 @@ fn compile_intrinsic_call(
                 method: "cloned".to_string(),
                 args: vec![],
             })
+        }
+        // index_by(list, key_fn) → HashMap<String, V> from list using key_fn to extract keys.
+        // Duplicate keys: last writer wins (later elements overwrite earlier ones).
+        "index_by" if args.len() == 2 => {
+            let result = fresh(counter, "indexed");
+            let elem = fresh(counter, "elem");
+            let key_expr = match &args[1].1 {
+                ast::Expr::Lambda(params, body) => {
+                    let compiled = compile_expr(body, ctx, counter);
+                    params
+                        .first()
+                        .map(|p| {
+                            substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()))
+                        })
+                        .unwrap_or(compiled)
+                }
+                other => code_ir::Expr::Call {
+                    func: Box::new(compile_expr(other, ctx, counter)),
+                    args: vec![code_ir::Expr::Var(elem.clone())],
+                    obligation: None,
+                },
+            };
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::Let {
+                    name: result.clone(),
+                    mutable: true,
+                    expr: code_ir::Expr::RawCode(
+                        "std::collections::HashMap::new()".to_string(),
+                    ),
+                    ir_type: None,
+                },
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: make_owned_iter(collection.clone()),
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                        "{result}.insert({key}, {elem})",
+                        key = render_expr_inline(&key_expr),
+                    )))],
+                },
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
+            ]))
+        }
+        // map_get(map, key) → map.get(&key).cloned() — O(1) HashMap lookup.
+        "map_get" if args.len() == 2 => {
+            let key = compile_expr(&args[1].1, ctx, counter);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection.clone()),
+                    method: "get".to_string(),
+                    args: vec![code_ir::Expr::Ref(Box::new(key))],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            })
+        }
+        // map_contains_key(map, key) → map.contains_key(&key) — O(1) membership check.
+        "map_contains_key" if args.len() == 2 => {
+            let key = compile_expr(&args[1].1, ctx, counter);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(collection.clone()),
+                method: "contains_key".to_string(),
+                args: vec![code_ir::Expr::Ref(Box::new(key))],
+            })
+        }
+        // map_values(map) → Rc-unwrap HashMap, into_values, collect into Rc<Vec<_>>.
+        "map_values" if args.len() == 1 => {
+            let rc_var = fresh(counter, "rc");
+            let map_var = fresh(counter, "map_unwrapped");
+            let values = fresh(counter, "values");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_bind(&rc_var, strip_outer_clone(collection.clone())),
+                code_ir::Stmt::let_bind(
+                    &map_var,
+                    code_ir::Expr::RawCode(format!(
+                        "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
+                    )),
+                ),
+                code_ir::Stmt::Let {
+                    name: values.clone(),
+                    mutable: false,
+                    expr: code_ir::Expr::RawCode(format!(
+                        "{map_var}.into_values().collect::<Vec<_>>()"
+                    )),
+                    ir_type: None,
+                },
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(values))),
+            ]))
+        }
+        // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.
+        // O(1) amortized when refcount=1 (true in fold accumulators).
+        "map_insert" if args.len() == 3 => {
+            let map = strip_outer_clone(collection.clone());
+            let key = compile_expr(&args[1].1, ctx, counter);
+            let value = compile_expr(&args[2].1, ctx, counter);
+            let v = fresh(counter, "map_ins");
+            let mut stmts = rc_unwrap_stmts(&v, map, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                "{v}.insert({}, {})",
+                render_expr_inline(&key),
+                render_expr_inline(&value)
+            ))));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
+        }
+        // map_merge(base, overlay) → unwrap base, extend with overlay, re-wrap.
+        // O(|overlay|) amortized.
+        "map_merge" if args.len() == 2 => {
+            let base = strip_outer_clone(collection.clone());
+            let overlay = compile_expr(&args[1].1, ctx, counter);
+            let v = fresh(counter, "map_merged");
+            let mut stmts = rc_unwrap_stmts(&v, base, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                "{v}.extend(Rc::try_unwrap({}).unwrap_or_else(|rc| (*rc).clone()))",
+                render_expr_inline(&overlay)
+            ))));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
         }
         _ => None,
     }
@@ -1697,11 +2524,11 @@ fn resolve_named_or_positional(
     counter: &mut usize,
 ) -> code_ir::Expr {
     // Try named first
-    if let Some((_, expr)) = args.iter().find(|(n, _)| n.as_deref() == Some(name)) {
-        return compile_expr(expr, ctx, counter);
+    if let Some(index) = args.iter().position(|(n, _)| n.as_deref() == Some(name)) {
+        return compile_call_arg(args, index, ctx, counter);
     }
     // Fall back to positional
-    compile_expr(&args[pos].1, ctx, counter)
+    compile_call_arg(args, pos, ctx, counter)
 }
 
 // ---------------------------------------------------------------------------
@@ -1718,7 +2545,9 @@ fn compile_map_intrinsic(
     let elem = fresh(counter, "elem");
     let mapped_value = match mapper {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            });
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -1762,7 +2591,9 @@ fn compile_filter_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            });
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -1800,22 +2631,48 @@ fn compile_filter_intrinsic(
     ])
 }
 
+#[derive(Clone)]
+struct FoldExprContext<'a> {
+    init: Option<(&'a ast::Expr, ExprPath)>,
+    func: Option<(&'a ast::Expr, ExprPath)>,
+}
+
 fn compile_fold_intrinsic(
     collection: &code_ir::Expr,
-    collection_ast: &ast::Expr,
-    init: Option<&ast::Expr>,
-    func: Option<&ast::Expr>,
+    collection_expr: &ast::Expr,
+    fold: FoldExprContext<'_>,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
     let acc = fresh(counter, "acc");
     let elem = fresh(counter, "elem");
-    let init_expr = init
-        .map(|e| compile_expr(e, ctx, counter))
+    let init_expr = fold
+        .init
+        .as_ref()
+        .map(|(expr, path)| ctx.with_expr_path(path.clone(), || compile_expr(expr, ctx, counter)))
         .unwrap_or(code_ir::Expr::IntLit(0));
-    let body_expr = match func {
-        Some(ast::Expr::Lambda(params, body)) => {
-            let mut compiled = compile_expr(body, ctx, counter);
+    let body_expr = match fold.func.as_ref() {
+        Some((ast::Expr::Lambda(params, body), path)) => {
+            // Mark the accumulator param so concat codegen can strip its .clone()
+            // (safe: accumulator is reassigned each iteration → refcount=1 → in-place extend).
+            let mut fold_ctx = ctx.clone();
+            if let Some(p) = params.first() {
+                fold_ctx.fold_accum_name = Some(p.clone());
+            }
+            // Compute use counts for lambda params with weight=1 (reassigned each iter).
+            // Without this, lambda params are excluded from outer use_counts and default
+            // to count=2 in compile_ident → always clone. With correct counts, single-use
+            // accumulators are moved instead of cloned.
+            let mut inner_counts = HashMap::new();
+            count_ident_uses_expr(body, &mut inner_counts, 1);
+            for param in params {
+                if let Some(&count) = inner_counts.get(param) {
+                    fold_ctx.use_counts.insert(param.clone(), count);
+                }
+            }
+            let mut compiled = fold_ctx.with_expr_path(path.child(ExprPathStep::LambdaBody), || {
+                compile_expr(body, &fold_ctx, counter)
+            });
             if let Some(p) = params.first() {
                 compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(acc.clone()));
             }
@@ -1824,8 +2681,8 @@ fn compile_fold_intrinsic(
             }
             compiled
         }
-        Some(other) => code_ir::Expr::Call {
-            func: Box::new(compile_expr(other, ctx, counter)),
+        Some((other, path)) => code_ir::Expr::Call {
+            func: Box::new(ctx.with_expr_path(path.clone(), || compile_expr(other, ctx, counter))),
             args: vec![
                 code_ir::Expr::Var(acc.clone()),
                 code_ir::Expr::Var(elem.clone()),
@@ -1834,37 +2691,26 @@ fn compile_fold_intrinsic(
         },
         None => code_ir::Expr::Var(acc.clone()),
     };
-    // Prefer init type; if it's a list with Unknown element, try the lambda body
-    // with element param type bound from the collection.
-    let init_ir_type = init.and_then(|e| infer_ast_expr_type(e, ctx));
-    let acc_ir_type = match &init_ir_type {
-        Some(IrType::Generic(name, args))
-            if name == "List" && args.first() == Some(&IrType::Unknown) =>
-        {
-            // Init is an empty list — infer element type from lambda body.
-            // Bind the lambda's element param (2nd param) from the collection type
-            // so that expressions like `[item]` resolve to the correct list type.
-            let body_type = match func {
-                Some(ast::Expr::Lambda(params, body)) => {
-                    let elem_type =
-                        infer_ast_expr_type(collection_ast, ctx).and_then(|t| match t {
-                            IrType::Generic(_, a) if !a.is_empty() => Some(a[0].clone()),
-                            _ => None,
-                        });
-                    if let (Some(param), Some(ty)) = (params.get(1), elem_type) {
-                        let mut aug = ctx.clone();
-                        aug.ir_scope.insert(param.clone(), ty);
-                        infer_ast_expr_type(body, &aug)
-                    } else {
-                        infer_ast_expr_type(body, ctx)
-                    }
-                }
+    let acc_ir_type = ctx
+        .current_expr_ir_type()
+        .or_else(|| {
+            fold.init.as_ref().and_then(|(expr, path)| {
+                ctx.with_expr_path(path.clone(), || {
+                    ctx.current_expr_ir_type()
+                        .or_else(|| infer_known_expr_ir_type(expr, ctx))
+                })
+            })
+        })
+        .or_else(|| infer_fold_accumulator_ir_type(collection_expr, &fold, ctx))
+        .or_else(|| {
+            fold.init.as_ref().and_then(|(expr, _)| match expr {
+                ast::Expr::List(items) if items.is_empty() => ctx
+                    .current_return_ir_type
+                    .clone()
+                    .filter(|ty| matches!(ty, IrType::Generic(name, _) if name == "List")),
                 _ => None,
-            };
-            body_type.or(init_ir_type)
-        }
-        _ => init_ir_type,
-    };
+            })
+        });
     code_ir::Expr::Block(vec![
         code_ir::Stmt::Let {
             name: acc.clone(),
@@ -1894,7 +2740,9 @@ fn compile_any_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+                compile_expr(body, ctx, counter)
+            });
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -1932,11 +2780,26 @@ fn compile_any_intrinsic(
 fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_ir::Expr {
     match expr {
         code_ir::Expr::Var(name) if name == from => to.clone(),
+        code_ir::Expr::RawCode(s) => {
+            // Substitute variable references within raw code strings.
+            // Intrinsics like map_insert/map_merge render arguments inline
+            // as RawCode. Without this, fold lambda parameters retain their
+            // DSL names instead of being replaced with generated loop vars.
+            let to_name = match to {
+                code_ir::Expr::Var(name) => name.as_str(),
+                _ => return expr.clone(),
+            };
+            let new_s = replace_word(s, from, to_name);
+            if new_s == *s {
+                expr.clone()
+            } else {
+                code_ir::Expr::RawCode(new_s)
+            }
+        }
         code_ir::Expr::Var(_)
         | code_ir::Expr::Str(_)
         | code_ir::Expr::IntLit(_)
         | code_ir::Expr::BoolLit(_)
-        | code_ir::Expr::RawCode(_)
         | code_ir::Expr::Value(_)
         | code_ir::Expr::Path(_) => expr.clone(),
         code_ir::Expr::Field(receiver, field) => {
@@ -2106,6 +2969,38 @@ fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) 
     }
 }
 
+/// Replace whole-word occurrences of `from` with `to` in a string.
+/// A word boundary is a position where an adjacent character is not
+/// alphanumeric or underscore (i.e., not part of a Rust identifier).
+/// Skips matches followed by `:` (struct field name position).
+fn replace_word(s: &str, from: &str, to: &str) -> String {
+    let bytes = s.as_bytes();
+    let from_bytes = from.as_bytes();
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut result = String::with_capacity(s.len());
+    let mut i = 0;
+    while i <= bytes.len().saturating_sub(from_bytes.len()) {
+        if &bytes[i..i + from_bytes.len()] == from_bytes {
+            let before_ok = i == 0 || !is_word(bytes[i - 1]);
+            let after_pos = i + from_bytes.len();
+            let after_ok = after_pos >= bytes.len() || !is_word(bytes[after_pos]);
+            // Skip struct field names: `name:` should not be substituted
+            let is_field_name = after_pos < bytes.len() && bytes[after_pos] == b':';
+            if before_ok && after_ok && !is_field_name {
+                result.push_str(to);
+                i += from_bytes.len();
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    if i < bytes.len() {
+        result.push_str(&s[i..]);
+    }
+    result
+}
+
 fn compile_call(
     name: &str,
     args: &[(Option<String>, ast::Expr)],
@@ -2115,9 +3010,12 @@ fn compile_call(
     let ir_args: Vec<code_ir::Expr> = args
         .iter()
         .enumerate()
-        .map(|(index, (arg_name, expr))| {
+        .map(|(index, (arg_name, _))| {
             let expected_type = lookup_call_arg_type(name, index, arg_name.as_deref(), ctx);
-            clone_if_needed(compile_expr_typed(expr, ctx, expected_type, counter))
+            clone_if_needed(
+                compile_call_arg_typed(args, index, expected_type, ctx, counter),
+                ctx.fold_accum_name.as_deref(),
+            )
         })
         .collect();
     let rust_name = to_snake_case(name);
@@ -2132,16 +3030,25 @@ fn compile_call(
 /// Add .clone() to variable/field expressions that would be consumed by a call.
 /// This ensures generated code doesn't have use-after-move errors.
 /// Redundant clones are optimized away by the compiler.
-fn clone_if_needed(expr: code_ir::Expr) -> code_ir::Expr {
+fn clone_if_needed(expr: code_ir::Expr, fold_accum_name: Option<&str>) -> code_ir::Expr {
     match &expr {
         // Var clone decision is already made in compile_ident — pass through.
         code_ir::Expr::Var(_) => expr,
-        // Field accesses always need cloning (can't move out of a borrowed field).
-        code_ir::Expr::Field(_, _) => code_ir::Expr::MethodCall {
-            receiver: Box::new(expr),
-            method: "clone".to_string(),
-            args: vec![],
-        },
+        code_ir::Expr::Field(receiver, _) => {
+            // In fold context, skip cloning field accesses on the accumulator.
+            // The accumulator is owned and reassigned each iteration, so partial
+            // moves are valid and keep Rc refcount at 1 for in-place mutation.
+            if let Some(accum) = fold_accum_name {
+                if matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == accum) {
+                    return expr;
+                }
+            }
+            code_ir::Expr::MethodCall {
+                receiver: Box::new(expr),
+                method: "clone".to_string(),
+                args: vec![],
+            }
+        }
         // Literals, calls, etc. are temporary values — don't clone
         _ => expr,
     }
@@ -2213,7 +3120,9 @@ fn compile_match_typed(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
-    let mut compiled_scrutinee = compile_expr(scrutinee, ctx, counter);
+    let mut compiled_scrutinee = ctx.with_child_expr_path(ExprPathStep::MatchScrutinee, || {
+        compile_expr(scrutinee, ctx, counter)
+    });
     // If all non-wildcard/non-null arms use string literal patterns and the
     // scrutinee is not a literal, add a conversion so Rust can match &str patterns
     // against a String value:
@@ -2243,9 +3152,11 @@ fn compile_match_typed(
         expr: Box::new(compiled_scrutinee),
         arms: arms
             .iter()
-            .map(|a| {
+            .enumerate()
+            .map(|(index, a)| {
                 compile_match_arm(
                     a,
+                    index,
                     has_none_arm,
                     scrutinee_type.as_deref(),
                     result_expected_type.as_deref(),
@@ -2391,6 +3302,7 @@ fn infer_match_result_type(arms: &[ast::MatchArm], ctx: &CompileContext) -> Opti
 
 fn compile_match_arm(
     arm: &ast::MatchArm,
+    arm_index: usize,
     option_context: bool,
     expected_type: Option<&str>,
     result_expected_type: Option<&str>,
@@ -2478,11 +3390,9 @@ fn compile_match_arm(
     };
 
     let mut body = deref_stmts;
-    body.push(code_ir::Stmt::TailExpr(compile_expr_typed(
-        &arm.body,
-        &body_ctx,
-        result_expected_type,
-        counter,
+    body.push(code_ir::Stmt::TailExpr(body_ctx.with_child_expr_path(
+        ExprPathStep::MatchArmBody(arm_index),
+        || compile_expr_typed(&arm.body, &body_ctx, result_expected_type, counter),
     )));
     code_ir::MatchArm { pattern, body }
 }
@@ -2635,10 +3545,14 @@ fn compile_if_typed(
     expected_type: Option<&str>,
     counter: &mut usize,
 ) -> code_ir::Expr {
-    let then_stmts = expr_to_stmts_typed(then_expr, ctx, expected_type, counter);
-    let else_stmts = else_expr
-        .as_ref()
-        .map(|expr| expr_to_stmts_typed(expr, ctx, expected_type, counter));
+    let then_stmts = ctx.with_child_expr_path(ExprPathStep::IfThen, || {
+        expr_to_stmts_typed(then_expr, ctx, expected_type, counter)
+    });
+    let else_stmts = else_expr.as_ref().map(|expr| {
+        ctx.with_child_expr_path(ExprPathStep::IfElse, || {
+            expr_to_stmts_typed(expr, ctx, expected_type, counter)
+        })
+    });
 
     // If there's no else branch, any trailing TailExpr in the then-body
     // must be converted to Return — otherwise Rust requires an else clause
@@ -2650,7 +3564,9 @@ fn compile_if_typed(
     };
 
     code_ir::Expr::If {
-        cond: Box::new(compile_expr(cond, ctx, counter)),
+        cond: Box::new(
+            ctx.with_child_expr_path(ExprPathStep::IfCond, || compile_expr(cond, ctx, counter)),
+        ),
         then_body,
         else_body: else_stmts,
     }
@@ -2689,11 +3605,21 @@ fn expr_to_stmts_typed(
 ) -> Vec<code_ir::Stmt> {
     match expr {
         ast::Expr::Return(fields) => {
+            let current_path = ctx.current_expr_path();
             vec![code_ir::Stmt::Return(compile_return_fields(
-                fields, ctx, counter,
+                fields,
+                ctx,
+                counter,
+                |index| record_field_path(&current_path, index),
             ))]
         }
-        ast::Expr::Block(stmts) => compile_stmt_sequence_typed(stmts, ctx, expected_type, counter),
+        ast::Expr::Block(stmts) => compile_stmt_sequence_typed(
+            stmts,
+            ctx,
+            expected_type,
+            counter,
+            &StmtPathOwner::Block(ctx.current_expr_path()),
+        ),
         _ => {
             vec![code_ir::Stmt::TailExpr(compile_expr_typed(
                 expr,
@@ -2710,14 +3636,22 @@ fn compile_stmt_sequence_typed(
     ctx: &CompileContext,
     expected_type: Option<&str>,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> Vec<code_ir::Stmt> {
     let len = stmts.len();
     let mut current_ctx = ctx.clone();
     let mut result = Vec::with_capacity(len);
     for (index, stmt) in stmts.iter().enumerate() {
         track_binding_before_compile(stmt, &mut current_ctx);
-        let compiled =
-            compile_stmt_typed(stmt, index + 1 == len, &current_ctx, expected_type, counter);
+        let compiled = compile_stmt_typed(
+            stmt,
+            index,
+            index + 1 == len,
+            &current_ctx,
+            expected_type,
+            counter,
+            owner,
+        );
         track_binding_after_compile(stmt, &compiled, &mut current_ctx);
         result.push(compiled);
     }
@@ -2726,17 +3660,22 @@ fn compile_stmt_sequence_typed(
 
 fn compile_stmt_typed(
     stmt: &ast::Stmt,
+    stmt_index: usize,
     is_last: bool,
     ctx: &CompileContext,
     expected_type: Option<&str>,
     counter: &mut usize,
+    owner: &StmtPathOwner,
 ) -> code_ir::Stmt {
     if is_last {
         if let ast::Stmt::Expr(expr) = stmt {
-            return code_ir::Stmt::TailExpr(compile_expr_typed(expr, ctx, expected_type, counter));
+            return ctx.with_expr_path(
+                stmt_expr_path(owner, stmt_index, StmtExprSlot::ExprStmt),
+                || code_ir::Stmt::TailExpr(compile_expr_typed(expr, ctx, expected_type, counter)),
+            );
         }
     }
-    compile_stmt(stmt, is_last, ctx, counter)
+    compile_stmt(stmt, stmt_index, is_last, ctx, counter, owner)
 }
 
 // ---------------------------------------------------------------------------
@@ -2750,7 +3689,7 @@ fn compile_string_interp(
 ) -> code_ir::Expr {
     let mut template = String::new();
     let mut args = Vec::new();
-    for part in parts {
+    for (index, part) in parts.iter().enumerate() {
         match part {
             ast::StringPart::Literal(s) => {
                 // Escape literal { and } for Rust format! strings
@@ -2758,7 +3697,11 @@ fn compile_string_interp(
             }
             ast::StringPart::Expr(e) => {
                 template.push_str("{}");
-                args.push(compile_expr(e, ctx, counter));
+                args.push(
+                    ctx.with_child_expr_path(ExprPathStep::StringPart(index), || {
+                        compile_expr(e, ctx, counter)
+                    }),
+                );
             }
         }
     }
@@ -3009,96 +3952,107 @@ fn named_type_from_ir(ty: &IrType) -> Option<String> {
     }
 }
 
-fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+fn infer_list_element_ir_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    match infer_known_expr_ir_type(expr, ctx)? {
+        IrType::Generic(name, args) if name == "List" && args.len() == 1 => Some(args[0].clone()),
+        _ => None,
+    }
+}
+
+fn infer_fold_result_ir_type(
+    expr: &ast::Expr,
+    acc_param: Option<&str>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
     match expr {
-        ast::Expr::Ident(name) => ctx.ir_scope.get(name).cloned(),
-        ast::Expr::List(elements) => {
-            let elem_type = elements
-                .first()
-                .and_then(|item| infer_ast_expr_type(item, ctx))
-                .unwrap_or(IrType::Unknown);
-            Some(IrType::Generic("List".to_string(), vec![elem_type]))
-        }
-        ast::Expr::Literal(lit) => match lit {
-            ast::Literal::Int(_) => Some(IrType::Int),
-            ast::Literal::String(_) => Some(IrType::Str),
-            ast::Literal::Bool(_) => Some(IrType::Bool),
-            ast::Literal::Float(_) => None,
-            ast::Literal::None => None,
-        },
-        ast::Expr::FieldAccess(receiver, field_name) => {
-            // Look up receiver type, then field type in struct definitions
-            if let ast::Expr::Ident(recv_name) = receiver.as_ref() {
-                if let Some(recv_type) = ctx.ir_scope.get(recv_name) {
-                    let struct_name = match recv_type {
-                        IrType::Named(n) => Some(n.as_str()),
-                        IrType::Optional(inner) => match inner.as_ref() {
-                            IrType::Named(n) => Some(n.as_str()),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-                    if let Some(sn) = struct_name {
-                        if let Some(fields) = ctx.struct_field_ir_types.get(sn) {
-                            return fields
-                                .iter()
-                                .find(|(n, _)| n == field_name)
-                                .map(|(_, ty)| ty.clone());
-                        }
-                    }
-                }
+        ast::Expr::Ident(name) if Some(name.as_str()) == acc_param => None,
+        ast::Expr::Call(name, args) if name == "concat" => args.iter().find_map(|(_, arg)| {
+            if matches!(arg, ast::Expr::Ident(name) if Some(name.as_str()) == acc_param) {
+                None
+            } else {
+                infer_known_expr_ir_type(arg, ctx)
             }
-            None
-        }
-        ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
-        ast::Expr::Record(Some(name), _) => Some(IrType::Named(name.clone())),
-        ast::Expr::Call(name, _) if name == "Some" => None,
-        ast::Expr::Call(name, _) if name == "parse_int" => {
-            Some(IrType::Optional(Box::new(IrType::Int)))
-        }
-        ast::Expr::Call(name, args) if name == "concat" && args.len() >= 2 => {
-            // concat(a, b) returns the same type as a or b
-            args.iter()
-                .rev()
-                .find_map(|(_, e)| infer_ast_expr_type(e, ctx))
-        }
-        ast::Expr::Call(name, args) if name == "map" && args.len() >= 2 => {
-            // map(collection, mapper) → List<mapper_return_type>
-            let elem_type = match &args[1].1 {
-                ast::Expr::Lambda(_, body) => {
-                    infer_ast_expr_type(body, ctx).unwrap_or(IrType::Unknown)
-                }
-                _ => IrType::Unknown,
-            };
-            Some(IrType::Generic("List".to_string(), vec![elem_type]))
-        }
-        ast::Expr::Call(name, _) => {
-            // Look up return type from fn_return_types → resolve to Named IrType
-            // when the return type corresponds to a known struct or enum.
-            ctx.fn_return_types
-                .get(name)
-                .or_else(|| ctx.fn_return_types.get(&to_snake_case(name)))
-                .map(|ret_str| {
-                    if ctx.struct_field_ir_types.contains_key(ret_str.as_str())
-                        || ctx.enum_variants.contains_key(ret_str.as_str())
-                    {
-                        IrType::Named(ret_str.clone())
-                    } else {
-                        IrType::Unknown
-                    }
-                })
-        }
-        ast::Expr::Match(_, arms) => infer_match_result_type(arms, ctx).map(IrType::Named),
-        // If/else: try then branch, fall back to else branch
+        }),
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
-            infer_ast_expr_type(then_expr, ctx).or_else(|| infer_ast_expr_type(else_expr, ctx))
+            let then_ty = infer_fold_result_ir_type(then_expr, acc_param, ctx);
+            let else_ty = infer_fold_result_ir_type(else_expr, acc_param, ctx);
+            match (then_ty, else_ty) {
+                (Some(left), Some(right)) if left == right => Some(left),
+                (Some(ty), None) | (None, Some(ty)) => Some(ty),
+                _ => None,
+            }
         }
-        ast::Expr::If(_, then_expr, None) => infer_ast_expr_type(then_expr, ctx),
-        // Block: infer from the last statement
-        ast::Expr::Block(stmts) => stmts.last().and_then(|s| match s {
-            ast::Stmt::Expr(e) => infer_ast_expr_type(e, ctx),
+        ast::Expr::Block(stmts) => stmts.last().and_then(|stmt| match stmt {
+            ast::Stmt::Expr(expr) => infer_fold_result_ir_type(expr, acc_param, ctx),
             _ => None,
         }),
+        _ => infer_known_expr_ir_type(expr, ctx),
+    }
+}
+
+fn infer_fold_accumulator_ir_type(
+    collection_expr: &ast::Expr,
+    fold: &FoldExprContext<'_>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    let (func_expr, _) = fold.func.as_ref()?;
+    let ast::Expr::Lambda(params, body) = func_expr else {
+        return None;
+    };
+    let acc_param = params.first().map(|name| name.as_str());
+    let elem_param = params.get(1).map(|name| name.as_str());
+    let elem_ir_type = infer_list_element_ir_type(collection_expr, ctx);
+    let mut body_ctx = ctx.clone();
+    if let (Some(param), Some(ty)) = (elem_param, elem_ir_type) {
+        body_ctx.ir_scope.insert(param.to_string(), ty);
+    }
+    infer_fold_result_ir_type(body, acc_param, &body_ctx)
+}
+
+fn infer_known_field_ir_type(
+    receiver_type: &IrType,
+    field: &str,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    match receiver_type {
+        IrType::Optional(inner) if field == "value" => Some((**inner).clone()),
+        IrType::Named(name) => ctx
+            .struct_field_ir_types
+            .get(name)
+            .and_then(|fields| fields.iter().find(|(field_name, _)| field_name == field))
+            .map(|(_, ty)| ty.clone()),
+        IrType::Record(fields) => fields
+            .iter()
+            .find(|(field_name, _)| field_name == field)
+            .map(|(_, ty)| ty.clone()),
+        IrType::Tuple(items) if field == "first" => items.first().cloned(),
+        IrType::Tuple(items) if field == "second" => items.get(1).cloned(),
+        _ => None,
+    }
+}
+
+fn infer_known_expr_ir_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    match expr {
+        ast::Expr::Ident(name) => ctx.ir_scope.get(name).cloned(),
+        ast::Expr::FieldAccess(receiver, field) => {
+            let receiver_type = infer_known_expr_ir_type(receiver, ctx)?;
+            infer_known_field_ir_type(&receiver_type, field, ctx)
+        }
+        ast::Expr::Call(name, args) if name == "Some" && args.len() == 1 => {
+            infer_known_expr_ir_type(&args[0].1, ctx).map(|inner| IrType::Optional(Box::new(inner)))
+        }
+        ast::Expr::Call(name, _) => ctx.fn_return_ir_types.get(name).cloned(),
+        ast::Expr::Record(Some(name), fields)
+            if name == "Some" && fields.len() == 1 && fields[0].0 == "value" =>
+        {
+            infer_known_expr_ir_type(&fields[0].1, ctx)
+                .map(|inner| IrType::Optional(Box::new(inner)))
+        }
+        ast::Expr::Record(Some(name), _) if name != "None" => Some(IrType::Named(name.clone())),
+        ast::Expr::List(items) => {
+            let first = infer_known_expr_ir_type(items.first()?, ctx)?;
+            Some(IrType::Generic("List".to_string(), vec![first]))
+        }
         _ => None,
     }
 }
@@ -3168,201 +4122,127 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
 // which is distinct from concat() and not affected by the + operator change.
 
 // ---------------------------------------------------------------------------
-// Anonymous record synthesis
+// Anonymous record materialization
 // ---------------------------------------------------------------------------
 
-/// Collect field-name sets from anonymous records in a function body.
-/// Returns deduplicated sets of field names (sorted for determinism).
-fn collect_anonymous_record_shapes(body: &ast::FnBody) -> Vec<Vec<String>> {
-    let mut shapes: Vec<Vec<String>> = Vec::new();
-    for stmt in &body.stmts {
-        collect_shapes_in_stmt(stmt, &mut shapes);
-    }
-    shapes.sort();
-    shapes.dedup();
-    shapes
-}
-
-fn collect_shapes_in_stmt(stmt: &ast::Stmt, out: &mut Vec<Vec<String>>) {
-    match stmt {
-        ast::Stmt::Let(_, value) => collect_shapes_in_expr(value, out),
-        ast::Stmt::Assign(_, value) => collect_shapes_in_expr(value, out),
-        ast::Stmt::Expr(e) => collect_shapes_in_expr(e, out),
-        ast::Stmt::Return(fields) => {
-            for (_, e) in fields {
-                collect_shapes_in_expr(e, out);
-            }
+fn ir_type_to_type_id(ty: &IrType) -> Option<String> {
+    match ty {
+        IrType::Named(name) => Some(name.clone()),
+        IrType::Generic(name, args) => {
+            let rendered_args = args
+                .iter()
+                .map(ir_type_to_type_id)
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("{name}<{}>", rendered_args.join(", ")))
         }
-        ast::Stmt::Node(_) => {}
-    }
-}
-
-fn collect_shapes_in_expr(expr: &ast::Expr, out: &mut Vec<Vec<String>>) {
-    match expr {
-        ast::Expr::Record(None, fields) => {
-            let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-            names.sort();
-            out.push(names);
-            for (_, v) in fields {
-                collect_shapes_in_expr(v, out);
-            }
+        IrType::Optional(inner) => Some(format!("Optional<{}>", ir_type_to_type_id(inner)?)),
+        IrType::Bool => Some("Bool".to_string()),
+        IrType::Int => Some("Int".to_string()),
+        IrType::Str => Some("String".to_string()),
+        IrType::Tuple(items) => {
+            let rendered_items = items
+                .iter()
+                .map(ir_type_to_type_id)
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("({})", rendered_items.join(", ")))
         }
-        ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
-            for (_, v) in fields {
-                collect_shapes_in_expr(v, out);
-            }
-        }
-        ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
-            for (_, e) in args {
-                collect_shapes_in_expr(e, out);
-            }
-        }
-        ast::Expr::Lambda(_, body) => collect_shapes_in_expr(body, out),
-        ast::Expr::If(cond, then_e, else_e) => {
-            collect_shapes_in_expr(cond, out);
-            collect_shapes_in_expr(then_e, out);
-            if let Some(e) = else_e {
-                collect_shapes_in_expr(e, out);
-            }
-        }
-        ast::Expr::BinOp(l, _, r) => {
-            collect_shapes_in_expr(l, out);
-            collect_shapes_in_expr(r, out);
-        }
-        ast::Expr::UnaryOp(_, e) | ast::Expr::FieldAccess(e, _) => {
-            collect_shapes_in_expr(e, out);
-        }
-        ast::Expr::Match(scrutinee, arms) => {
-            collect_shapes_in_expr(scrutinee, out);
-            for arm in arms {
-                collect_shapes_in_expr(&arm.body, out);
-            }
-        }
-        ast::Expr::List(elems) => {
-            for e in elems {
-                collect_shapes_in_expr(e, out);
-            }
-        }
-        ast::Expr::Block(stmts) => {
-            for s in stmts {
-                collect_shapes_in_stmt(s, out);
-            }
-        }
-        ast::Expr::For(_, iter_expr, _, for_body) => {
-            collect_shapes_in_expr(iter_expr, out);
-            match for_body {
-                ast::ForBody::Expr(e) => collect_shapes_in_expr(e, out),
-                ast::ForBody::Block(stmts) => {
-                    for s in stmts {
-                        collect_shapes_in_stmt(s, out);
-                    }
-                }
-            }
-        }
-        ast::Expr::Map(pairs) => {
-            for (k, v) in pairs {
-                collect_shapes_in_expr(k, out);
-                collect_shapes_in_expr(v, out);
-            }
-        }
-        ast::Expr::Guarded(e, cond) => {
-            collect_shapes_in_expr(e, out);
-            collect_shapes_in_expr(cond, out);
-        }
-        ast::Expr::After(e, _) => {
-            collect_shapes_in_expr(e, out);
-        }
-        _ => {}
+        IrType::Unit => Some("Unit".to_string()),
+        IrType::Record(_) | IrType::Unknown => None,
     }
 }
 
-/// Infer a Rust type string from a literal expression used as a field default.
-fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
-    match expr {
-        ast::Expr::Literal(ast::Literal::String(_)) => "String",
-        ast::Expr::Literal(ast::Literal::Int(_)) => "i64",
-        ast::Expr::Literal(ast::Literal::Float(_)) => "f64",
-        ast::Expr::Literal(ast::Literal::Bool(_)) => "bool",
-        ast::Expr::List(_) => "Vec<String>", // best-effort default
-        _ => "String",                       // fallback
+fn ir_type_to_rust_type(ty: &IrType) -> Option<String> {
+    match ty {
+        IrType::Named(name) => Some(crate::type_mapping::resolve_and_emit(
+            name,
+            None,
+            crate::type_mapping::Backend::Rust,
+        )),
+        IrType::Generic(name, args) if name == "List" && args.len() == 1 => {
+            Some(format!("Rc<Vec<{}>>", ir_type_to_rust_type(&args[0])?))
+        }
+        IrType::Generic(name, args) if name == "Set" && args.len() == 1 => Some(format!(
+            "std::collections::HashSet<{}>",
+            ir_type_to_rust_type(&args[0])?
+        )),
+        IrType::Generic(name, args) if name == "Map" && args.len() == 2 => Some(format!(
+            "std::collections::HashMap<{}, {}>",
+            ir_type_to_rust_type(&args[0])?,
+            ir_type_to_rust_type(&args[1])?
+        )),
+        IrType::Generic(name, args) => Some(format!(
+            "{}<{}>",
+            crate::type_mapping::resolve_and_emit(name, None, crate::type_mapping::Backend::Rust,),
+            args.iter()
+                .map(ir_type_to_rust_type)
+                .collect::<Option<Vec<_>>>()?
+                .join(", ")
+        )),
+        IrType::Optional(inner) => Some(format!("Option<{}>", ir_type_to_rust_type(inner)?)),
+        IrType::Bool => Some("bool".to_string()),
+        IrType::Int => Some("i64".to_string()),
+        IrType::Str => Some("String".to_string()),
+        IrType::Tuple(items) => {
+            let rendered_items = items
+                .iter()
+                .map(ir_type_to_rust_type)
+                .collect::<Option<Vec<_>>>()?;
+            let tuple_body = if rendered_items.len() == 1 {
+                format!("{},", rendered_items[0])
+            } else {
+                rendered_items.join(", ")
+            };
+            Some(format!("({tuple_body})"))
+        }
+        IrType::Unit => Some("()".to_string()),
+        IrType::Record(_) | IrType::Unknown => None,
     }
 }
 
-/// Synthesize struct names and definitions for anonymous record shapes that
-/// don't match any known struct type.
-///
-/// Returns: (struct items to emit, mapping from sorted-field-key → struct name,
-///           entries to add to struct_field_types)
+/// Materialize typecheck-produced synthesized anonymous-record types into code IR.
 #[allow(clippy::type_complexity)]
-pub fn synthesize_anonymous_structs(
-    fn_name: &str,
-    body: &ast::FnBody,
-    known_structs: &HashMap<String, HashMap<String, String>>,
+pub fn materialize_synthesized_anonymous_record_types(
+    synthesized_types: &[SynthesizedAnonymousRecordType],
 ) -> (
     Vec<code_ir::Item>,
-    HashMap<Vec<String>, String>,
     HashMap<String, HashMap<String, String>>,
+    HashMap<String, Vec<(String, IrType)>>,
 ) {
-    let shapes = collect_anonymous_record_shapes(body);
     let mut items = Vec::new();
-    let mut name_map: HashMap<Vec<String>, String> = HashMap::new();
     let mut new_field_types: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut new_field_ir_types: HashMap<String, Vec<(String, IrType)>> = HashMap::new();
 
-    for (idx, shape) in shapes.iter().enumerate() {
-        // Check if any known struct contains all these fields.
-        // If exactly one matches, skip synthesis. If multiple match,
-        // disambiguate by picking the one with the closest field count
-        // (same logic as infer_struct_name). Only synthesize when no
-        // known struct matches at all.
-        let matching: Vec<(&String, usize)> = known_structs
+    for synthesized_type in synthesized_types {
+        let typed_shape = synthesized_type
+            .fields
             .iter()
-            .filter(|(_, ft)| shape.iter().all(|f| ft.contains_key(f)))
-            .map(|(sn, ft)| (sn, ft.len()))
-            .collect();
-        if matching.len() == 1 {
+            .map(|(name, ty)| Some((name.clone(), ir_type_to_type_id(ty)?)))
+            .collect::<Option<Vec<_>>>();
+        let Some(typed_shape) = typed_shape else {
             continue;
-        }
-        if matching.len() > 1 {
-            // Disambiguate: prefer exact field-count match, then closest.
-            let n = shape.len();
-            let mut sorted = matching;
-            sorted.sort_by_key(|(_, count)| {
-                let diff = (*count as isize - n as isize).unsigned_abs();
-                (if *count == n { 0usize } else { 1 }, diff)
-            });
-            // Best candidate found — no need to synthesize.
-            continue;
-        }
-
-        // Synthesize a struct name from the function name.
-        let pascal_fn = capitalize_first_char(&fn_name.replace('_', " ")).replace(' ', "");
-        let struct_name = if idx == 0 {
-            format!("__{pascal_fn}State")
-        } else {
-            format!("__{pascal_fn}State{idx}")
         };
-
-        // Find the anonymous record to infer field types from init values.
-        let field_exprs = find_record_fields_for_shape(body, shape);
-        let fields: Vec<(String, String, bool)> = shape
+        let fields: Vec<(String, String, bool)> = synthesized_type
+            .fields
             .iter()
-            .map(|f| {
-                let ty = field_exprs
-                    .get(f.as_str())
-                    .map(|e| infer_field_type_from_expr(e))
-                    .unwrap_or("String");
-                (f.clone(), ty.to_string(), true)
+            .filter_map(|(field_name, ty)| {
+                ir_type_to_rust_type(ty).map(|rust_ty| (field_name.clone(), rust_ty, true))
             })
             .collect();
-
-        let mut ft_map = HashMap::new();
-        for (name, ty, _) in &fields {
-            ft_map.insert(name.clone(), ty.clone());
+        if fields.len() != synthesized_type.fields.len() {
+            continue;
         }
-        new_field_types.insert(struct_name.clone(), ft_map);
+
+        new_field_types.insert(
+            synthesized_type.name.clone(),
+            typed_shape.into_iter().collect(),
+        );
+        new_field_ir_types.insert(
+            synthesized_type.name.clone(),
+            synthesized_type.fields.clone(),
+        );
 
         items.push(code_ir::Item::Struct(code_ir::StructDef {
-            name: struct_name.clone(),
+            name: synthesized_type.name.clone(),
             is_pub: false,
             derives: vec![
                 "Debug".to_string(),
@@ -3370,271 +4250,68 @@ pub fn synthesize_anonymous_structs(
                 "PartialEq".to_string(),
             ],
             fields,
-            doc: vec![format!("Synthesized fold accumulator for `{fn_name}`.")],
+            doc: vec!["Synthesized anonymous record type.".to_string()],
         }));
-        name_map.insert(shape.clone(), struct_name);
     }
-    (items, name_map, new_field_types)
-}
-
-fn capitalize_first_char(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-    }
-}
-
-/// Find the first anonymous record in the AST matching a given field shape,
-/// and return a map of field name → init expression for type inference.
-fn find_record_fields_for_shape<'a>(
-    body: &'a ast::FnBody,
-    shape: &[String],
-) -> HashMap<&'a str, &'a ast::Expr> {
-    let mut result = HashMap::new();
-    find_record_in_stmts(&body.stmts, shape, &mut result);
-    result
-}
-
-fn find_record_in_stmts<'a>(
-    stmts: &'a [ast::Stmt],
-    shape: &[String],
-    out: &mut HashMap<&'a str, &'a ast::Expr>,
-) {
-    for stmt in stmts {
-        match stmt {
-            ast::Stmt::Let(_, value) | ast::Stmt::Assign(_, value) => {
-                find_record_in_expr(value, shape, out);
-            }
-            ast::Stmt::Expr(e) => find_record_in_expr(e, shape, out),
-            _ => {}
-        }
-        if !out.is_empty() {
-            return;
-        }
-    }
-}
-
-fn find_record_in_expr<'a>(
-    expr: &'a ast::Expr,
-    shape: &[String],
-    out: &mut HashMap<&'a str, &'a ast::Expr>,
-) {
-    if !out.is_empty() {
-        return;
-    }
-    if let ast::Expr::Record(None, fields) = expr {
-        let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-        names.sort();
-        if names == shape {
-            for (n, v) in fields {
-                out.insert(n.as_str(), v);
-            }
-            return;
-        }
-    }
-    // Recurse into sub-expressions.
-    match expr {
-        ast::Expr::Call(_, args) => {
-            for (_, e) in args {
-                find_record_in_expr(e, shape, out);
-            }
-        }
-        ast::Expr::Lambda(_, body) => find_record_in_expr(body, shape, out),
-        ast::Expr::If(c, t, e) => {
-            find_record_in_expr(c, shape, out);
-            find_record_in_expr(t, shape, out);
-            if let Some(e) = e {
-                find_record_in_expr(e, shape, out);
-            }
-        }
-        ast::Expr::BinOp(l, _, r) => {
-            find_record_in_expr(l, shape, out);
-            find_record_in_expr(r, shape, out);
-        }
-        _ => {}
-    }
+    (items, new_field_types, new_field_ir_types)
 }
 
 // ---------------------------------------------------------------------------
 // Tail-Call Optimization (TCO)
 // ---------------------------------------------------------------------------
 
-/// Classification of self-recursive calls in a function body.
-#[derive(Debug, PartialEq, Eq)]
-enum SelfCallPosition {
-    /// The call result is directly returned (tail position).
-    Tail,
-    /// The call result is used in a non-tail context (consumed by another expr).
-    NonTail,
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TcoBlocker {
+    NonTailSelfCall(&'static str),
+    UnsupportedRecursiveContext(&'static str),
+    ResidualSelfCallAfterLowering,
 }
 
-/// Scan a statement list for self-recursive calls and classify each as tail or non-tail.
-/// `fn_name` is the Rust (snake_case) name of the current function.
-fn classify_self_calls(stmts: &[code_ir::Stmt], fn_name: &str) -> Vec<SelfCallPosition> {
-    let mut positions = Vec::new();
-    for stmt in stmts {
-        classify_self_calls_in_stmt(stmt, fn_name, &mut positions);
+#[derive(Debug, Clone)]
+struct TcoPlan {
+    body: Vec<TcoPlanStmt>,
+}
+
+#[derive(Debug, Clone)]
+enum TcoPlanStmt {
+    Raw(code_ir::Stmt),
+    Expr(TcoPlanExpr),
+    TailExpr(TcoPlanExpr),
+    BlockScope(Vec<TcoPlanStmt>),
+    Break(code_ir::Expr),
+    Recur(Vec<code_ir::Expr>),
+}
+
+#[derive(Debug, Clone)]
+enum TcoPlanExpr {
+    If {
+        cond: Box<code_ir::Expr>,
+        then_body: Vec<TcoPlanStmt>,
+        else_body: Option<Vec<TcoPlanStmt>>,
+    },
+    Match {
+        expr: Box<code_ir::Expr>,
+        arms: Vec<TcoPlanArm>,
+    },
+    Block(Vec<TcoPlanStmt>),
+}
+
+#[derive(Debug, Clone)]
+struct TcoPlanArm {
+    pattern: String,
+    body: Vec<TcoPlanStmt>,
+}
+
+#[derive(Debug, Clone)]
+struct Planned<T> {
+    value: T,
+    has_recur: bool,
+}
+
+impl<T> Planned<T> {
+    fn new(value: T, has_recur: bool) -> Self {
+        Self { value, has_recur }
     }
-    positions
-}
-
-fn classify_self_calls_in_stmt(
-    stmt: &code_ir::Stmt,
-    fn_name: &str,
-    positions: &mut Vec<SelfCallPosition>,
-) {
-    match stmt {
-        code_ir::Stmt::Return(expr) => {
-            // return expr; — if expr is a self-call, it's tail.
-            if is_self_call(expr, fn_name) {
-                positions.push(SelfCallPosition::Tail);
-            } else {
-                classify_self_calls_in_expr(expr, fn_name, positions);
-            }
-        }
-        code_ir::Stmt::TailExpr(expr) => {
-            // Implicit return — if expr is a self-call, it's tail.
-            if is_self_call(expr, fn_name) {
-                positions.push(SelfCallPosition::Tail);
-            } else {
-                classify_self_calls_in_expr(expr, fn_name, positions);
-            }
-        }
-        code_ir::Stmt::Expr(expr) => {
-            // Expression statement (not returned) — any self-call here is non-tail.
-            classify_self_calls_in_expr(expr, fn_name, positions);
-        }
-        code_ir::Stmt::Let { expr, .. } => {
-            // let x = expr; — expr is not returned, so any self-call is non-tail.
-            classify_self_calls_in_expr(expr, fn_name, positions);
-        }
-        code_ir::Stmt::Assign { value, .. } => {
-            classify_self_calls_in_expr(value, fn_name, positions);
-        }
-        code_ir::Stmt::For { body, iter, .. } => {
-            classify_self_calls_in_expr(iter, fn_name, positions);
-            for s in body {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
-        }
-        code_ir::Stmt::BlockScope(stmts) | code_ir::Stmt::Loop { body: stmts } => {
-            for s in stmts {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
-        }
-        code_ir::Stmt::Item(_)
-        | code_ir::Stmt::Comment(_)
-        | code_ir::Stmt::Blank
-        | code_ir::Stmt::Continue
-        | code_ir::Stmt::Assert(_)
-        | code_ir::Stmt::Bind { .. }
-        | code_ir::Stmt::Break(_) => {}
-    }
-}
-
-fn classify_self_calls_in_expr(
-    expr: &code_ir::Expr,
-    fn_name: &str,
-    positions: &mut Vec<SelfCallPosition>,
-) {
-    match expr {
-        code_ir::Expr::Call { func, args, .. } => {
-            if is_self_call_by_func(func, fn_name) {
-                // Self-call in a non-tail context (inside another expression).
-                positions.push(SelfCallPosition::NonTail);
-            }
-            // Also scan inside args.
-            for arg in args {
-                classify_self_calls_in_expr(arg, fn_name, positions);
-            }
-        }
-        code_ir::Expr::If {
-            cond,
-            then_body,
-            else_body,
-        } => {
-            classify_self_calls_in_expr(cond, fn_name, positions);
-            // The last stmt of an if-branch can be tail if the if is itself in tail position.
-            // But we are scanning from the stmt level where tail classification already happened.
-            // Here we need to recurse into branches to find self-calls inside them.
-            for s in then_body {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
-            if let Some(else_stmts) = else_body {
-                for s in else_stmts {
-                    classify_self_calls_in_stmt(s, fn_name, positions);
-                }
-            }
-        }
-        code_ir::Expr::Match {
-            expr: scrutinee,
-            arms,
-        } => {
-            classify_self_calls_in_expr(scrutinee, fn_name, positions);
-            for arm in arms {
-                for s in &arm.body {
-                    classify_self_calls_in_stmt(s, fn_name, positions);
-                }
-            }
-        }
-        code_ir::Expr::Block(stmts) => {
-            for s in stmts {
-                classify_self_calls_in_stmt(s, fn_name, positions);
-            }
-        }
-        code_ir::Expr::MethodCall { receiver, args, .. } => {
-            classify_self_calls_in_expr(receiver, fn_name, positions);
-            for arg in args {
-                classify_self_calls_in_expr(arg, fn_name, positions);
-            }
-        }
-        code_ir::Expr::Field(inner, _)
-        | code_ir::Expr::Deref(inner)
-        | code_ir::Expr::Ref(inner)
-        | code_ir::Expr::RefMut(inner) => {
-            classify_self_calls_in_expr(inner, fn_name, positions);
-        }
-        code_ir::Expr::BinOp { left, right, .. } => {
-            classify_self_calls_in_expr(left, fn_name, positions);
-            classify_self_calls_in_expr(right, fn_name, positions);
-        }
-        code_ir::Expr::UnaryOp { expr: inner, .. } => {
-            classify_self_calls_in_expr(inner, fn_name, positions);
-        }
-        code_ir::Expr::Struct { fields, rest, .. } => {
-            for (_, v) in fields {
-                classify_self_calls_in_expr(v, fn_name, positions);
-            }
-            if let Some(r) = rest {
-                classify_self_calls_in_expr(r, fn_name, positions);
-            }
-        }
-        code_ir::Expr::Closure { body, .. } => {
-            classify_self_calls_in_expr(body, fn_name, positions);
-        }
-        code_ir::Expr::FormatStr { args, .. }
-        | code_ir::Expr::MacroCall { args, .. }
-        | code_ir::Expr::Tuple(args)
-        | code_ir::Expr::Array(args) => {
-            for arg in args {
-                classify_self_calls_in_expr(arg, fn_name, positions);
-            }
-        }
-        // Leaf expressions: no sub-expressions to scan.
-        code_ir::Expr::Value(_)
-        | code_ir::Expr::Var(_)
-        | code_ir::Expr::Str(_)
-        | code_ir::Expr::Path(_)
-        | code_ir::Expr::IntLit(_)
-        | code_ir::Expr::BoolLit(_)
-        | code_ir::Expr::RawCode(_) => {}
-    }
-}
-
-/// Check if an expression is a direct self-call: `fn_name(...)`.
-fn is_self_call(expr: &code_ir::Expr, fn_name: &str) -> bool {
-    matches!(expr, code_ir::Expr::Call { func, .. } if is_self_call_by_func(func, fn_name))
 }
 
 fn is_self_call_by_func(func: &code_ir::Expr, fn_name: &str) -> bool {
@@ -3643,45 +4320,292 @@ fn is_self_call_by_func(func: &code_ir::Expr, fn_name: &str) -> bool {
 
 /// Attempt tail-call optimization on a compiled function body.
 ///
-/// Returns `Some(transformed_body)` if all self-recursive calls are in tail position,
-/// `None` if the function is not eligible for TCO.
+/// The implementation is intentionally split into two pure phases:
+/// 1. Build a `TcoPlan` that captures where recursion exits the function.
+/// 2. Lower that plan into Rust-oriented `code_ir::Stmt::Loop` / `Break` /
+///    `Continue` nodes.
 ///
-/// `fn_name` is the Rust (snake_case) function name.
-/// `param_names` are the function's parameter names (in order).
+/// This keeps eligibility and rewriting in one structural pass while still
+/// allowing the Rust backend to decide how the iterative form is rendered.
 pub fn apply_tco(
     fn_name: &str,
     param_names: &[String],
     body: &[code_ir::Stmt],
 ) -> Option<Vec<code_ir::Stmt>> {
-    let positions = classify_self_calls(body, fn_name);
+    let plan = match plan_tco(fn_name, body) {
+        Ok(Some(plan)) => plan,
+        Ok(None) => return None,
+        Err(_) => return None,
+    };
 
-    // No self-calls → not recursive, nothing to optimize.
-    if positions.is_empty() {
+    let lowered = lower_tco_plan(plan, param_names);
+    if ensure_lowered_body_has_no_self_call(&lowered, fn_name).is_err() {
         return None;
     }
+    Some(lowered)
+}
 
-    // Any non-tail self-call → not eligible.
-    if positions.contains(&SelfCallPosition::NonTail) {
-        return None;
+fn plan_tco(fn_name: &str, body: &[code_ir::Stmt]) -> Result<Option<TcoPlan>, TcoBlocker> {
+    let planned = plan_tco_stmts(body, fn_name, true)?;
+    if planned.has_recur {
+        Ok(Some(TcoPlan {
+            body: planned.value,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+fn plan_tco_stmts(
+    stmts: &[code_ir::Stmt],
+    fn_name: &str,
+    tail_context: bool,
+) -> Result<Planned<Vec<TcoPlanStmt>>, TcoBlocker> {
+    let last_idx = stmts.len().saturating_sub(1);
+    let mut planned = Vec::with_capacity(stmts.len());
+    let mut has_recur = false;
+
+    for (idx, stmt) in stmts.iter().enumerate() {
+        let stmt_tail = tail_context && idx == last_idx;
+        let next = plan_tco_stmt(stmt, fn_name, stmt_tail)?;
+        has_recur |= next.has_recur;
+        planned.push(next.value);
     }
 
-    // All self-calls are in tail position. Transform.
-    //
-    // To handle local `let` bindings that shadow parameter names (common in DSL code
-    // like `let acc = concat(acc, [item])`), we use unique loop-variable names:
-    //
-    //   let mut __tco_p_state = state;    // move param into loop var
-    //   let mut __tco_p_acc = acc;
-    //   loop {
-    //       let state = __tco_p_state.clone();  // bind original name each iteration
-    //       let acc = __tco_p_acc.clone();
-    //       // ... original body ...
-    //       // tail call becomes: __tco_p_state = new_val; __tco_p_acc = new_val; continue;
-    //       // non-recursive return becomes: break result;
-    //   }
+    Ok(Planned::new(planned, has_recur))
+}
+
+fn plan_tco_stmt(
+    stmt: &code_ir::Stmt,
+    fn_name: &str,
+    tail_context: bool,
+) -> Result<Planned<TcoPlanStmt>, TcoBlocker> {
+    match stmt {
+        code_ir::Stmt::Return(expr) => plan_function_exit_expr(expr, fn_name),
+        code_ir::Stmt::TailExpr(expr) => {
+            if tail_context {
+                plan_function_exit_expr(expr, fn_name)
+            } else {
+                plan_embedded_expr(expr, fn_name, true)
+            }
+        }
+        code_ir::Stmt::Expr(expr) => plan_embedded_expr(expr, fn_name, false),
+        code_ir::Stmt::Let { expr, .. } => {
+            ensure_expr_has_no_self_call(expr, fn_name, "let binding")?;
+            Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false))
+        }
+        code_ir::Stmt::Bind { expr, .. } => {
+            ensure_expr_has_no_self_call(expr, fn_name, "bind expression")?;
+            Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false))
+        }
+        code_ir::Stmt::Assign { dest, value } => {
+            ensure_expr_has_no_self_call(dest, fn_name, "assignment target")?;
+            ensure_expr_has_no_self_call(value, fn_name, "assignment value")?;
+            Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false))
+        }
+        code_ir::Stmt::Assert(assert) => {
+            if assert_has_self_call(assert, fn_name) {
+                Err(TcoBlocker::NonTailSelfCall("assert"))
+            } else {
+                Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false))
+            }
+        }
+        code_ir::Stmt::For { iter, body, .. } => {
+            ensure_expr_has_no_self_call(iter, fn_name, "for iterator")?;
+            if body_has_self_call(body, fn_name) {
+                Err(TcoBlocker::UnsupportedRecursiveContext("for body"))
+            } else {
+                Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false))
+            }
+        }
+        code_ir::Stmt::Loop { body } => {
+            if body_has_self_call(body, fn_name) {
+                Err(TcoBlocker::UnsupportedRecursiveContext("nested loop body"))
+            } else {
+                Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false))
+            }
+        }
+        code_ir::Stmt::BlockScope(inner) => {
+            let planned = plan_tco_stmts(inner, fn_name, false)?;
+            Ok(Planned::new(
+                TcoPlanStmt::BlockScope(planned.value),
+                planned.has_recur,
+            ))
+        }
+        code_ir::Stmt::Item(_)
+        | code_ir::Stmt::Comment(_)
+        | code_ir::Stmt::Blank
+        | code_ir::Stmt::Continue
+        | code_ir::Stmt::Break(_) => Ok(Planned::new(TcoPlanStmt::Raw(stmt.clone()), false)),
+    }
+}
+
+fn plan_function_exit_expr(
+    expr: &code_ir::Expr,
+    fn_name: &str,
+) -> Result<Planned<TcoPlanStmt>, TcoBlocker> {
+    match expr {
+        code_ir::Expr::Call { func, args, .. } if is_self_call_by_func(func, fn_name) => {
+            if args.iter().any(|arg| expr_has_self_call(arg, fn_name)) {
+                Err(TcoBlocker::NonTailSelfCall("tail call argument"))
+            } else {
+                Ok(Planned::new(TcoPlanStmt::Recur(args.clone()), true))
+            }
+        }
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            ensure_expr_has_no_self_call(cond, fn_name, "if condition")?;
+            let then_plan = plan_tco_stmts(then_body, fn_name, true)?;
+            let else_plan = match else_body {
+                Some(stmts) => Some(plan_tco_stmts(stmts, fn_name, true)?),
+                None => None,
+            };
+            let has_recur =
+                then_plan.has_recur || else_plan.as_ref().is_some_and(|planned| planned.has_recur);
+            Ok(Planned::new(
+                TcoPlanStmt::Expr(TcoPlanExpr::If {
+                    cond: cond.clone(),
+                    then_body: then_plan.value,
+                    else_body: else_plan.map(|planned| planned.value),
+                }),
+                has_recur,
+            ))
+        }
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => {
+            ensure_expr_has_no_self_call(scrutinee, fn_name, "match scrutinee")?;
+            let mut planned_arms = Vec::with_capacity(arms.len());
+            let mut has_recur = false;
+            for arm in arms {
+                let planned = plan_tco_stmts(&arm.body, fn_name, true)?;
+                has_recur |= planned.has_recur;
+                planned_arms.push(TcoPlanArm {
+                    pattern: arm.pattern.clone(),
+                    body: planned.value,
+                });
+            }
+            Ok(Planned::new(
+                TcoPlanStmt::Expr(TcoPlanExpr::Match {
+                    expr: scrutinee.clone(),
+                    arms: planned_arms,
+                }),
+                has_recur,
+            ))
+        }
+        code_ir::Expr::Block(stmts) => {
+            let planned = plan_tco_stmts(stmts, fn_name, true)?;
+            Ok(Planned::new(
+                TcoPlanStmt::Expr(TcoPlanExpr::Block(planned.value)),
+                planned.has_recur,
+            ))
+        }
+        other => {
+            ensure_expr_has_no_self_call(other, fn_name, "return expression")?;
+            Ok(Planned::new(TcoPlanStmt::Break(other.clone()), false))
+        }
+    }
+}
+
+fn plan_embedded_expr(
+    expr: &code_ir::Expr,
+    fn_name: &str,
+    tail_expr: bool,
+) -> Result<Planned<TcoPlanStmt>, TcoBlocker> {
+    match expr {
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            ensure_expr_has_no_self_call(cond, fn_name, "if condition")?;
+            let then_plan = plan_tco_stmts(then_body, fn_name, false)?;
+            let else_plan = match else_body {
+                Some(stmts) => Some(plan_tco_stmts(stmts, fn_name, false)?),
+                None => None,
+            };
+            let has_recur =
+                then_plan.has_recur || else_plan.as_ref().is_some_and(|planned| planned.has_recur);
+            let plan_expr = TcoPlanExpr::If {
+                cond: cond.clone(),
+                then_body: then_plan.value,
+                else_body: else_plan.map(|planned| planned.value),
+            };
+            Ok(Planned::new(
+                if tail_expr {
+                    TcoPlanStmt::TailExpr(plan_expr)
+                } else {
+                    TcoPlanStmt::Expr(plan_expr)
+                },
+                has_recur,
+            ))
+        }
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => {
+            ensure_expr_has_no_self_call(scrutinee, fn_name, "match scrutinee")?;
+            let mut planned_arms = Vec::with_capacity(arms.len());
+            let mut has_recur = false;
+            for arm in arms {
+                let planned = plan_tco_stmts(&arm.body, fn_name, false)?;
+                has_recur |= planned.has_recur;
+                planned_arms.push(TcoPlanArm {
+                    pattern: arm.pattern.clone(),
+                    body: planned.value,
+                });
+            }
+            let plan_expr = TcoPlanExpr::Match {
+                expr: scrutinee.clone(),
+                arms: planned_arms,
+            };
+            Ok(Planned::new(
+                if tail_expr {
+                    TcoPlanStmt::TailExpr(plan_expr)
+                } else {
+                    TcoPlanStmt::Expr(plan_expr)
+                },
+                has_recur,
+            ))
+        }
+        code_ir::Expr::Block(stmts) => {
+            let planned = plan_tco_stmts(stmts, fn_name, false)?;
+            let plan_expr = TcoPlanExpr::Block(planned.value);
+            Ok(Planned::new(
+                if tail_expr {
+                    TcoPlanStmt::TailExpr(plan_expr)
+                } else {
+                    TcoPlanStmt::Expr(plan_expr)
+                },
+                planned.has_recur,
+            ))
+        }
+        other => {
+            let context = if tail_expr {
+                "tail expression"
+            } else {
+                "expression statement"
+            };
+            ensure_expr_has_no_self_call(other, fn_name, context)?;
+            Ok(Planned::new(
+                TcoPlanStmt::Raw(if tail_expr {
+                    code_ir::Stmt::TailExpr(other.clone())
+                } else {
+                    code_ir::Stmt::Expr(other.clone())
+                }),
+                false,
+            ))
+        }
+    }
+}
+
+fn lower_tco_plan(plan: TcoPlan, param_names: &[String]) -> Vec<code_ir::Stmt> {
     let loop_vars: Vec<String> = param_names.iter().map(|p| format!("__tco_p_{p}")).collect();
 
-    // 1. Before loop: move params into mutable loop variables.
     let mut preamble: Vec<code_ir::Stmt> = param_names
         .iter()
         .zip(loop_vars.iter())
@@ -3693,7 +4617,6 @@ pub fn apply_tco(
         })
         .collect();
 
-    // 2. At loop start: bind original names from loop vars.
     let rebind_stmts: Vec<code_ir::Stmt> = param_names
         .iter()
         .zip(loop_vars.iter())
@@ -3709,165 +4632,67 @@ pub fn apply_tco(
         })
         .collect();
 
-    // 3. Transform body: replace tail calls and returns.
-    let transformed = transform_body_for_tco(body, fn_name, &loop_vars);
-
     let mut loop_body = rebind_stmts;
-    loop_body.extend(transformed);
-
+    loop_body.extend(lower_tco_plan_stmts(&plan.body, &loop_vars));
     preamble.push(code_ir::Stmt::Loop { body: loop_body });
-    Some(preamble)
+    preamble
 }
 
-/// Transform a statement list, replacing tail self-calls with continue and returns with break.
-fn transform_body_for_tco(
-    stmts: &[code_ir::Stmt],
-    fn_name: &str,
-    param_names: &[String],
-) -> Vec<code_ir::Stmt> {
+fn lower_tco_plan_stmts(stmts: &[TcoPlanStmt], loop_vars: &[String]) -> Vec<code_ir::Stmt> {
     stmts
         .iter()
-        .map(|s| transform_stmt_for_tco(s, fn_name, param_names))
+        .map(|stmt| lower_tco_plan_stmt(stmt, loop_vars))
         .collect()
 }
 
-fn transform_stmt_for_tco(
-    stmt: &code_ir::Stmt,
-    fn_name: &str,
-    param_names: &[String],
-) -> code_ir::Stmt {
+fn lower_tco_plan_stmt(stmt: &TcoPlanStmt, loop_vars: &[String]) -> code_ir::Stmt {
     match stmt {
-        code_ir::Stmt::Return(expr) => {
-            if let Some(reassign) = try_replace_tail_call(expr, fn_name, param_names) {
-                reassign
-            } else {
-                code_ir::Stmt::Break(expr.clone())
-            }
+        TcoPlanStmt::Raw(stmt) => stmt.clone(),
+        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(expr, loop_vars)),
+        TcoPlanStmt::TailExpr(expr) => {
+            code_ir::Stmt::TailExpr(lower_tco_plan_expr(expr, loop_vars))
         }
-        code_ir::Stmt::TailExpr(expr) => {
-            if let Some(reassign) = try_replace_tail_call(expr, fn_name, param_names) {
-                reassign
-            } else {
-                code_ir::Stmt::Break(expr.clone())
-            }
+        TcoPlanStmt::BlockScope(body) => {
+            code_ir::Stmt::BlockScope(lower_tco_plan_stmts(body, loop_vars))
         }
-        code_ir::Stmt::Expr(expr) => {
-            // An expression statement containing an if/match with tail calls in branches
-            // needs to be walked through. But a bare expression-statement that isn't in
-            // tail position stays as-is.
-            code_ir::Stmt::Expr(transform_expr_for_tco(expr, fn_name, param_names))
-        }
-        code_ir::Stmt::Let {
-            name,
-            mutable,
-            expr,
-            ir_type,
-        } => code_ir::Stmt::Let {
-            name: name.clone(),
-            mutable: *mutable,
-            expr: expr.clone(),
-            ir_type: ir_type.clone(),
-        },
-        code_ir::Stmt::Assign { dest, value } => code_ir::Stmt::Assign {
-            dest: dest.clone(),
-            value: value.clone(),
-        },
-        code_ir::Stmt::For {
-            binding,
-            iter,
-            body,
-        } => code_ir::Stmt::For {
-            binding: binding.clone(),
-            iter: iter.clone(),
-            body: body.clone(),
-        },
-        code_ir::Stmt::BlockScope(inner) => {
-            code_ir::Stmt::BlockScope(transform_body_for_tco(inner, fn_name, param_names))
-        }
-        code_ir::Stmt::Loop { body } => code_ir::Stmt::Loop { body: body.clone() },
-        code_ir::Stmt::Item(item) => code_ir::Stmt::Item(item.clone()),
-        code_ir::Stmt::Comment(c) => code_ir::Stmt::Comment(c.clone()),
-        code_ir::Stmt::Blank => code_ir::Stmt::Blank,
-        code_ir::Stmt::Continue => code_ir::Stmt::Continue,
-        code_ir::Stmt::Break(e) => code_ir::Stmt::Break(e.clone()),
-        code_ir::Stmt::Assert(a) => code_ir::Stmt::Assert(a.clone()),
-        code_ir::Stmt::Bind {
-            targets,
-            intent,
-            expr,
-        } => code_ir::Stmt::Bind {
-            targets: targets.clone(),
-            intent: *intent,
-            expr: expr.clone(),
-        },
+        TcoPlanStmt::Break(expr) => code_ir::Stmt::Break(expr.clone()),
+        TcoPlanStmt::Recur(args) => lower_tco_recur(args, loop_vars),
     }
 }
 
-/// Transform an expression that may contain if/match with tail calls in branches.
-fn transform_expr_for_tco(
-    expr: &code_ir::Expr,
-    fn_name: &str,
-    param_names: &[String],
-) -> code_ir::Expr {
+fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String]) -> code_ir::Expr {
     match expr {
-        code_ir::Expr::If {
+        TcoPlanExpr::If {
             cond,
             then_body,
             else_body,
         } => code_ir::Expr::If {
             cond: cond.clone(),
-            then_body: transform_body_for_tco(then_body, fn_name, param_names),
+            then_body: lower_tco_plan_stmts(then_body, loop_vars),
             else_body: else_body
                 .as_ref()
-                .map(|stmts| transform_body_for_tco(stmts, fn_name, param_names)),
+                .map(|body| lower_tco_plan_stmts(body, loop_vars)),
         },
-        code_ir::Expr::Match {
-            expr: scrutinee,
-            arms,
-        } => code_ir::Expr::Match {
-            expr: scrutinee.clone(),
+        TcoPlanExpr::Match { expr, arms } => code_ir::Expr::Match {
+            expr: expr.clone(),
             arms: arms
                 .iter()
                 .map(|arm| code_ir::MatchArm {
                     pattern: arm.pattern.clone(),
-                    body: transform_body_for_tco(&arm.body, fn_name, param_names),
+                    body: lower_tco_plan_stmts(&arm.body, loop_vars),
                 })
                 .collect(),
         },
-        code_ir::Expr::Block(stmts) => {
-            code_ir::Expr::Block(transform_body_for_tco(stmts, fn_name, param_names))
-        }
-        other => other.clone(),
+        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(stmts, loop_vars)),
     }
 }
 
-/// If `expr` is a self-call `fn_name(arg0, arg1, ...)`, produce a `BlockScope`
-/// containing parameter reassignments followed by `Continue`.
-/// Returns `None` if `expr` is not a self-call.
-fn try_replace_tail_call(
-    expr: &code_ir::Expr,
-    fn_name: &str,
-    param_names: &[String],
-) -> Option<code_ir::Stmt> {
-    let code_ir::Expr::Call { func, args, .. } = expr else {
-        // Check if the expression is an if/match that contains tail calls in branches.
-        return try_replace_tail_call_in_compound(expr, fn_name, param_names);
-    };
-    if !is_self_call_by_func(func, fn_name) {
-        return None;
-    }
+fn lower_tco_recur(args: &[code_ir::Expr], loop_vars: &[String]) -> code_ir::Stmt {
+    let mut stmts = Vec::with_capacity(loop_vars.len() * 2 + 1);
+    let temps: Vec<String> = (0..loop_vars.len()).map(|i| format!("__tco_{i}")).collect();
 
-    // Build: { let __tco_0 = arg0; ...; param0 = __tco_0; ...; continue; }
-    // We use temporaries to avoid order-dependent assignment issues
-    // (e.g., `fn f(a, b) -> ... f(b, a)` would break with direct assignment).
-    let mut stmts = Vec::with_capacity(param_names.len() * 2 + 1);
-
-    // Phase 1: evaluate all args into temporaries.
-    let temps: Vec<String> = (0..param_names.len())
-        .map(|i| format!("__tco_{i}"))
-        .collect();
     for (i, arg) in args.iter().enumerate() {
-        if i < param_names.len() {
+        if i < loop_vars.len() {
             stmts.push(code_ir::Stmt::Let {
                 name: temps[i].clone(),
                 mutable: false,
@@ -3877,88 +4702,151 @@ fn try_replace_tail_call(
         }
     }
 
-    // Phase 2: assign temporaries to parameters.
-    for (i, param) in param_names.iter().enumerate() {
+    for (i, loop_var) in loop_vars.iter().enumerate() {
         if i < args.len() {
             stmts.push(code_ir::Stmt::Assign {
-                dest: code_ir::Expr::Var(param.clone()),
+                dest: code_ir::Expr::Var(loop_var.clone()),
                 value: code_ir::Expr::Var(temps[i].clone()),
             });
         }
     }
 
     stmts.push(code_ir::Stmt::Continue);
-    Some(code_ir::Stmt::BlockScope(stmts))
+    code_ir::Stmt::BlockScope(stmts)
 }
 
-/// Handle if/match expressions where the tail call is inside a branch.
-fn try_replace_tail_call_in_compound(
+fn ensure_expr_has_no_self_call(
     expr: &code_ir::Expr,
     fn_name: &str,
-    param_names: &[String],
-) -> Option<code_ir::Stmt> {
+    context: &'static str,
+) -> Result<(), TcoBlocker> {
+    if expr_has_self_call(expr, fn_name) {
+        Err(TcoBlocker::NonTailSelfCall(context))
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_lowered_body_has_no_self_call(
+    stmts: &[code_ir::Stmt],
+    fn_name: &str,
+) -> Result<(), TcoBlocker> {
+    if body_has_self_call(stmts, fn_name) {
+        Err(TcoBlocker::ResidualSelfCallAfterLowering)
+    } else {
+        Ok(())
+    }
+}
+
+fn stmt_has_self_call(stmt: &code_ir::Stmt, fn_name: &str) -> bool {
+    match stmt {
+        code_ir::Stmt::Let { expr, .. } => expr_has_self_call(expr, fn_name),
+        code_ir::Stmt::Bind { expr, .. } => expr_has_self_call(expr, fn_name),
+        code_ir::Stmt::Assign { dest, value } => {
+            expr_has_self_call(dest, fn_name) || expr_has_self_call(value, fn_name)
+        }
+        code_ir::Stmt::Expr(expr)
+        | code_ir::Stmt::Return(expr)
+        | code_ir::Stmt::TailExpr(expr)
+        | code_ir::Stmt::Break(expr) => expr_has_self_call(expr, fn_name),
+        code_ir::Stmt::Assert(assert) => assert_has_self_call(assert, fn_name),
+        code_ir::Stmt::For { iter, body, .. } => {
+            expr_has_self_call(iter, fn_name) || body_has_self_call(body, fn_name)
+        }
+        code_ir::Stmt::BlockScope(stmts) | code_ir::Stmt::Loop { body: stmts } => {
+            body_has_self_call(stmts, fn_name)
+        }
+        code_ir::Stmt::Item(item) => item_has_self_call(item, fn_name),
+        code_ir::Stmt::Comment(_) | code_ir::Stmt::Blank | code_ir::Stmt::Continue => false,
+    }
+}
+
+fn expr_has_self_call(expr: &code_ir::Expr, fn_name: &str) -> bool {
     match expr {
+        code_ir::Expr::Call { func, args, .. } => {
+            is_self_call_by_func(func, fn_name)
+                || expr_has_self_call(func, fn_name)
+                || args.iter().any(|arg| expr_has_self_call(arg, fn_name))
+        }
         code_ir::Expr::If {
             cond,
             then_body,
             else_body,
         } => {
-            let has_self_calls = then_body.iter().any(|s| stmt_has_self_call(s, fn_name))
+            expr_has_self_call(cond, fn_name)
+                || body_has_self_call(then_body, fn_name)
                 || else_body
                     .as_ref()
-                    .is_some_and(|stmts| stmts.iter().any(|s| stmt_has_self_call(s, fn_name)));
-            if has_self_calls {
-                Some(code_ir::Stmt::Expr(code_ir::Expr::If {
-                    cond: cond.clone(),
-                    then_body: transform_body_for_tco(then_body, fn_name, param_names),
-                    else_body: else_body
-                        .as_ref()
-                        .map(|stmts| transform_body_for_tco(stmts, fn_name, param_names)),
-                }))
-            } else {
-                None
-            }
+                    .is_some_and(|stmts| body_has_self_call(stmts, fn_name))
         }
         code_ir::Expr::Match {
             expr: scrutinee,
             arms,
         } => {
-            let has_self_calls = arms
-                .iter()
-                .any(|arm| arm.body.iter().any(|s| stmt_has_self_call(s, fn_name)));
-            if has_self_calls {
-                Some(code_ir::Stmt::Expr(code_ir::Expr::Match {
-                    expr: scrutinee.clone(),
-                    arms: arms
-                        .iter()
-                        .map(|arm| code_ir::MatchArm {
-                            pattern: arm.pattern.clone(),
-                            body: transform_body_for_tco(&arm.body, fn_name, param_names),
-                        })
-                        .collect(),
-                }))
-            } else {
-                None
-            }
+            expr_has_self_call(scrutinee, fn_name)
+                || arms
+                    .iter()
+                    .any(|arm| body_has_self_call(&arm.body, fn_name))
         }
-        code_ir::Expr::Block(stmts) => {
-            let has_self_calls = stmts.iter().any(|s| stmt_has_self_call(s, fn_name));
-            if has_self_calls {
-                Some(code_ir::Stmt::Expr(code_ir::Expr::Block(
-                    transform_body_for_tco(stmts, fn_name, param_names),
-                )))
-            } else {
-                None
-            }
+        code_ir::Expr::Block(stmts) => body_has_self_call(stmts, fn_name),
+        code_ir::Expr::MethodCall { receiver, args, .. } => {
+            expr_has_self_call(receiver, fn_name)
+                || args.iter().any(|arg| expr_has_self_call(arg, fn_name))
         }
-        _ => None,
+        code_ir::Expr::Field(inner, _)
+        | code_ir::Expr::Deref(inner)
+        | code_ir::Expr::Ref(inner)
+        | code_ir::Expr::RefMut(inner) => expr_has_self_call(inner, fn_name),
+        code_ir::Expr::BinOp { left, right, .. } => {
+            expr_has_self_call(left, fn_name) || expr_has_self_call(right, fn_name)
+        }
+        code_ir::Expr::UnaryOp { expr: inner, .. } => expr_has_self_call(inner, fn_name),
+        code_ir::Expr::Struct { fields, rest, .. } => {
+            fields.iter().any(|(_, v)| expr_has_self_call(v, fn_name))
+                || rest
+                    .as_ref()
+                    .is_some_and(|inner| expr_has_self_call(inner, fn_name))
+        }
+        code_ir::Expr::Closure { .. } => false,
+        code_ir::Expr::FormatStr { args, .. }
+        | code_ir::Expr::MacroCall { args, .. }
+        | code_ir::Expr::Tuple(args)
+        | code_ir::Expr::Array(args) => args.iter().any(|arg| expr_has_self_call(arg, fn_name)),
+        code_ir::Expr::Value(_)
+        | code_ir::Expr::Var(_)
+        | code_ir::Expr::Str(_)
+        | code_ir::Expr::Path(_)
+        | code_ir::Expr::IntLit(_)
+        | code_ir::Expr::BoolLit(_)
+        | code_ir::Expr::RawCode(_) => false,
     }
 }
 
-fn stmt_has_self_call(stmt: &code_ir::Stmt, fn_name: &str) -> bool {
-    let mut positions = Vec::new();
-    classify_self_calls_in_stmt(stmt, fn_name, &mut positions);
-    !positions.is_empty()
+fn body_has_self_call(stmts: &[code_ir::Stmt], fn_name: &str) -> bool {
+    stmts.iter().any(|stmt| stmt_has_self_call(stmt, fn_name))
+}
+
+fn assert_has_self_call(assert: &code_ir::Assert, fn_name: &str) -> bool {
+    match assert {
+        code_ir::Assert::Eq { left, right, .. } => {
+            expr_has_self_call(left, fn_name) || expr_has_self_call(right, fn_name)
+        }
+        code_ir::Assert::True { expr, .. } | code_ir::Assert::NonEmpty { expr, .. } => {
+            expr_has_self_call(expr, fn_name)
+        }
+        code_ir::Assert::Contains { expr, .. } => expr_has_self_call(expr, fn_name),
+    }
+}
+
+fn item_has_self_call(item: &code_ir::Item, _fn_name: &str) -> bool {
+    match item {
+        code_ir::Item::Fn(_)
+        | code_ir::Item::Struct(_)
+        | code_ir::Item::Enum(_)
+        | code_ir::Item::Use(_)
+        | code_ir::Item::Impl(_)
+        | code_ir::Item::Raw(_) => false,
+    }
 }
 
 #[cfg(test)]
@@ -3976,6 +4864,27 @@ mod tests {
             ctx.data_names.insert(n.to_string());
         }
         ctx
+    }
+
+    fn annotate_expr_ir_type(
+        ctx: &mut CompileContext,
+        body: &FnBody,
+        target: &Expr,
+        ir_type: IrType,
+    ) {
+        let mut expr_identity = None;
+        daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+            &body.stmts,
+            &mut |identity, candidate| {
+                if std::ptr::eq(candidate, target) {
+                    expr_identity = Some(identity);
+                }
+            },
+        );
+        ctx.expr_ir_types.insert(
+            expr_identity.expect("expected walked expression identity"),
+            ir_type,
+        );
     }
 
     #[test]
@@ -4151,6 +5060,17 @@ mod tests {
                 Stmt::Expr(Expr::Ident("count".into())),
             ],
         };
+        if let Stmt::Node(node_stmt) = &body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &body,
+                &node_stmt.expr,
+                IrType::Named("Config".into()),
+            );
+        }
+        if let Stmt::Let(_, expr) = &body.stmts[1] {
+            annotate_expr_ir_type(&mut ctx, &body, expr, IrType::Int);
+        }
 
         let ir = compile_fn_body(&body, &ctx);
         match &ir[1] {
@@ -4415,7 +5335,6 @@ mod tests {
 
     #[test]
     fn with_intrinsic_prefers_base_struct_type_for_anonymous_update_record() {
-        let mut counter = 0usize;
         let mut ctx = CompileContext::new();
         ctx.struct_field_types.insert(
             "State".to_string(),
@@ -4435,20 +5354,25 @@ mod tests {
         ctx.ir_scope
             .insert("state".to_string(), IrType::Named("State".to_string()));
 
-        let expr = Expr::Call(
-            "with".into(),
-            vec![
-                (None, Expr::Ident("state".into())),
-                (
-                    None,
-                    Expr::Record(None, vec![("pos".into(), Expr::Literal(Literal::Int(1)))]),
-                ),
-            ],
-        );
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Call(
+                "with".into(),
+                vec![
+                    (None, Expr::Ident("state".into())),
+                    (
+                        None,
+                        Expr::Record(None, vec![("pos".into(), Expr::Literal(Literal::Int(1)))]),
+                    ),
+                ],
+            ))],
+        };
+        if let Stmt::Expr(Expr::Call(_, args)) = &body.stmts[0] {
+            annotate_expr_ir_type(&mut ctx, &body, &args[0].1, IrType::Named("State".into()));
+        }
 
-        let ir = compile_expr(&expr, &ctx, &mut counter);
-        match ir {
-            code_ir::Expr::Struct { name, rest, .. } => {
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, rest, .. }) => {
                 assert_eq!(name, "State");
                 assert!(
                     rest.is_some(),
@@ -4461,25 +5385,34 @@ mod tests {
 
     #[test]
     fn compile_block_updates_scope_for_inner_lets() {
-        let mut counter = 0usize;
         let mut ctx = CompileContext::new();
         ctx.struct_field_ir_types.insert(
             "Config".to_string(),
             vec![("count".to_string(), IrType::Int)],
         );
 
-        let expr = Expr::Block(vec![
-            Stmt::Let("cfg".into(), Expr::Record(Some("Config".into()), vec![])),
-            Stmt::Let(
-                "count".into(),
-                Expr::FieldAccess(Box::new(Expr::Ident("cfg".into())), "count".into()),
-            ),
-            Stmt::Expr(Expr::Ident("count".into())),
-        ]);
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Block(vec![
+                Stmt::Let("cfg".into(), Expr::Record(Some("Config".into()), vec![])),
+                Stmt::Let(
+                    "count".into(),
+                    Expr::FieldAccess(Box::new(Expr::Ident("cfg".into())), "count".into()),
+                ),
+                Stmt::Expr(Expr::Ident("count".into())),
+            ]))],
+        };
+        if let Stmt::Expr(Expr::Block(stmts)) = &body.stmts[0] {
+            if let Stmt::Let(_, expr) = &stmts[0] {
+                annotate_expr_ir_type(&mut ctx, &body, expr, IrType::Named("Config".into()));
+            }
+            if let Stmt::Let(_, expr) = &stmts[1] {
+                annotate_expr_ir_type(&mut ctx, &body, expr, IrType::Int);
+            }
+        }
 
-        let ir = compile_expr(&expr, &ctx, &mut counter);
-        match ir {
-            code_ir::Expr::Block(stmts) => match &stmts[1] {
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Block(stmts)) => match &stmts[1] {
                 code_ir::Stmt::Let {
                     ir_type: Some(IrType::Int),
                     ..
@@ -4685,6 +5618,262 @@ mod tests {
                 assert_eq!(arms[0].pattern, "Some(TokenKind::LitStr)");
             }
             other => panic!("expected Match, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn let_bound_call_result_uses_declared_return_ir_type_for_option_match_patterns() {
+        let mut ctx = CompileContext::new();
+        ctx.enum_variants.insert(
+            "TokenKind".to_string(),
+            ["LitStr".to_string()].into_iter().collect(),
+        );
+        ctx.enum_variants.insert(
+            "LiteralValue".to_string(),
+            ["LitStr".to_string()].into_iter().collect(),
+        );
+        ctx.variant_to_enum
+            .insert("LitStr".to_string(), "LiteralValue".to_string());
+        ctx.fn_return_ir_types.insert(
+            "peek_kind".to_string(),
+            IrType::Optional(Box::new(IrType::Named("TokenKind".to_string()))),
+        );
+
+        let body = FnBody {
+            stmts: vec![
+                Stmt::Let("k".into(), Expr::Call("peek_kind".into(), vec![])),
+                Stmt::Expr(Expr::Match(
+                    Box::new(Expr::Ident("k".into())),
+                    vec![
+                        MatchArm {
+                            pattern: Pattern::Variant(
+                                "Some".into(),
+                                vec![(
+                                    "value".into(),
+                                    Pattern::Variant(
+                                        "LitStr".into(),
+                                        vec![("value".into(), Pattern::Ident("key".into()))],
+                                    ),
+                                )],
+                            ),
+                            guard: None,
+                            body: Expr::Literal(Literal::Int(1)),
+                        },
+                        MatchArm {
+                            pattern: Pattern::Wildcard,
+                            guard: None,
+                            body: Expr::Literal(Literal::Int(0)),
+                        },
+                    ],
+                )),
+            ],
+        };
+
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::Let {
+                ir_type: Some(IrType::Optional(inner)),
+                ..
+            } => assert!(matches!(inner.as_ref(), IrType::Named(name) if name == "TokenKind")),
+            other => panic!("expected optional let binding type, got: {other:?}"),
+        }
+        match &ir[1] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Match { arms, .. }) => {
+                assert_eq!(
+                    arms[0].pattern,
+                    "Some(TokenKind::LitStr { value: key, .. })"
+                );
+            }
+            other => panic!("expected tail match, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn with_uses_base_scope_type_when_expr_metadata_is_missing() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope.insert(
+            "state".to_string(),
+            IrType::Named("ParserState".to_string()),
+        );
+        ctx.struct_field_types.insert(
+            "ParserState".to_string(),
+            [("pos".to_string(), "Int".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "ParserState".to_string(),
+            vec![("pos".to_string(), IrType::Int)],
+        );
+
+        let expr = Expr::Call(
+            "with".into(),
+            vec![
+                (None, Expr::Ident("state".into())),
+                (
+                    None,
+                    Expr::Record(None, vec![("pos".into(), Expr::Literal(Literal::Int(1)))]),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct {
+                name,
+                fields,
+                rest: Some(rest),
+                ..
+            } => {
+                assert_eq!(name, "ParserState");
+                assert!(matches!(&fields[0].1, code_ir::Expr::IntLit(1)));
+                let cloned_state = match rest.as_ref() {
+                    code_ir::Expr::MethodCall {
+                        receiver,
+                        method,
+                        args,
+                    } if method == "clone" && args.is_empty() => match receiver.as_ref() {
+                        code_ir::Expr::Var(name) => name == "state",
+                        code_ir::Expr::MethodCall {
+                            receiver,
+                            method,
+                            args,
+                        } => {
+                            method == "clone"
+                                && args.is_empty()
+                                && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == "state")
+                        }
+                        _ => false,
+                    },
+                    _ => false,
+                };
+                assert!(
+                    cloned_state,
+                    "expected struct update to preserve cloned base, got: {rest:?}"
+                );
+            }
+            other => panic!("expected struct update, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_uses_function_return_ir_type_for_empty_list_accumulator() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.current_return_ir_type = Some(IrType::Generic("List".to_string(), vec![IrType::Str]));
+        ctx.ir_scope.insert(
+            "items".to_string(),
+            IrType::Generic("List".to_string(), vec![IrType::Str]),
+        );
+
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("items".into())),
+                (Some("init".into()), Expr::List(vec![])),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "item".into()],
+                        Box::new(Expr::Ident("acc".into())),
+                    ),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => match &stmts[0] {
+                code_ir::Stmt::Let {
+                    ir_type: Some(IrType::Generic(name, args)),
+                    ..
+                } => {
+                    assert_eq!(name, "List");
+                    assert!(matches!(args.as_slice(), [IrType::Str]));
+                }
+                other => panic!("expected typed fold accumulator let, got: {other:?}"),
+            },
+            other => panic!("expected fold block, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_prefers_lambda_structure_over_function_return_type_for_empty_list_accumulator() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.current_return_ir_type = Some(IrType::Generic(
+            "List".to_string(),
+            vec![IrType::Named("Diagnostic".to_string())],
+        ));
+        ctx.ir_scope.insert(
+            "modules".to_string(),
+            IrType::Generic(
+                "List".to_string(),
+                vec![IrType::Named("TypedModule".to_string())],
+            ),
+        );
+        ctx.struct_field_ir_types.insert(
+            "TypedModule".to_string(),
+            vec![("type_env".to_string(), IrType::Named("TypeEnv".to_string()))],
+        );
+        ctx.struct_field_ir_types.insert(
+            "TypeEnv".to_string(),
+            vec![(
+                "bindings".to_string(),
+                IrType::Generic(
+                    "List".to_string(),
+                    vec![IrType::Named("TypeBinding".to_string())],
+                ),
+            )],
+        );
+
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("modules".into())),
+                (Some("init".into()), Expr::List(vec![])),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "tm".into()],
+                        Box::new(Expr::Call(
+                            "concat".into(),
+                            vec![
+                                (None, Expr::Ident("acc".into())),
+                                (
+                                    None,
+                                    Expr::FieldAccess(
+                                        Box::new(Expr::FieldAccess(
+                                            Box::new(Expr::Ident("tm".into())),
+                                            "type_env".into(),
+                                        )),
+                                        "bindings".into(),
+                                    ),
+                                ),
+                            ],
+                        )),
+                    ),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => match &stmts[0] {
+                code_ir::Stmt::Let {
+                    ir_type: Some(IrType::Generic(name, args)),
+                    ..
+                } => {
+                    assert_eq!(name, "List");
+                    assert!(matches!(
+                        args.as_slice(),
+                        [IrType::Named(inner)] if inner == "TypeBinding"
+                    ));
+                }
+                other => panic!("expected typed fold accumulator let, got: {other:?}"),
+            },
+            other => panic!("expected fold block, got: {other:?}"),
         }
     }
 
@@ -4975,7 +6164,6 @@ mod tests {
 
     #[test]
     fn record_construction_rejects_optional_value_for_required_field() {
-        let mut counter = 0usize;
         let mut ctx = CompileContext::new();
         ctx.struct_field_types.insert(
             "Target".to_string(),
@@ -4990,17 +6178,27 @@ mod tests {
         ctx.ir_scope
             .insert("src".to_string(), IrType::Named("Source".to_string()));
 
-        let expr = Expr::Record(
-            Some("Target".into()),
-            vec![(
-                "required".into(),
-                Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
-            )],
-        );
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Record(
+                Some("Target".into()),
+                vec![(
+                    "required".into(),
+                    Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
+                )],
+            ))],
+        };
+        if let Stmt::Expr(Expr::Record(_, fields)) = &body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &body,
+                &fields[0].1,
+                IrType::Optional(Box::new(IrType::Str)),
+            );
+        }
 
-        let ir = compile_expr(&expr, &ctx, &mut counter);
-        match ir {
-            code_ir::Expr::Struct { fields, .. } => match &fields[0].1 {
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Struct { fields, .. }) => match &fields[0].1 {
                 code_ir::Expr::RawCode(code) => assert!(
                     code.contains("compile_error!")
                         && code.contains("Target.required")
@@ -5016,6 +6214,7 @@ mod tests {
     #[test]
     fn return_record_rejects_optional_value_for_required_field() {
         let mut ctx = CompileContext::new();
+        ctx.current_return_type = Some("Target".to_string());
         ctx.struct_field_types.insert(
             "Target".to_string(),
             [("required".to_string(), "String".to_string())]
@@ -5035,6 +6234,14 @@ mod tests {
                 Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
             )])],
         };
+        if let Stmt::Return(fields) = &body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &body,
+                &fields[0].1,
+                IrType::Optional(Box::new(IrType::Str)),
+            );
+        }
 
         let ir = compile_fn_body(&body, &ctx);
         match &ir[0] {
@@ -5380,5 +6587,76 @@ mod tests {
             }
             other => panic!("expected Expr(If), got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn tco_rejects_tail_expr_inside_non_tail_if_expression() {
+        let body = vec![
+            code_ir::Stmt::Expr(code_ir::Expr::If {
+                cond: Box::new(code_ir::Expr::Var("cond".into())),
+                then_body: vec![code_ir::Stmt::TailExpr(self_call(
+                    "f",
+                    vec![code_ir::Expr::BinOp {
+                        left: Box::new(code_ir::Expr::Var("n".into())),
+                        op: "-".into(),
+                        right: Box::new(code_ir::Expr::IntLit(1)),
+                    }],
+                ))],
+                else_body: Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::IntLit(0))]),
+            }),
+            code_ir::Stmt::Return(code_ir::Expr::Var("n".into())),
+        ];
+
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "tail expressions nested under a non-tail if-expression must block TCO"
+        );
+    }
+
+    #[test]
+    fn tco_rejects_self_call_inside_assert() {
+        let body = vec![
+            code_ir::Stmt::Assert(code_ir::Assert::True {
+                expr: self_call("f", vec![code_ir::Expr::Var("n".into())]),
+                message: "recursive assert".into(),
+            }),
+            code_ir::Stmt::Return(code_ir::Expr::Var("n".into())),
+        ];
+
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "self-calls used in assertions must block TCO"
+        );
+    }
+
+    #[test]
+    fn tco_rejects_tail_expr_inside_final_block_scope() {
+        let body = vec![code_ir::Stmt::BlockScope(vec![code_ir::Stmt::TailExpr(
+            self_call("f", vec![code_ir::Expr::Var("n".into())]),
+        )])];
+
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "lexical block statements must not inherit function tail position"
+        );
+    }
+
+    #[test]
+    fn tco_transform_rejects_self_call_inside_nested_loop() {
+        let body = vec![code_ir::Stmt::Loop {
+            body: vec![code_ir::Stmt::Return(self_call(
+                "f",
+                vec![code_ir::Expr::Var("n".into())],
+            ))],
+        }];
+
+        let result = apply_tco("f", &["n".into()], &body);
+        assert!(
+            result.is_none(),
+            "nested loop bodies containing self-calls must fail TCO rewriting"
+        );
     }
 }

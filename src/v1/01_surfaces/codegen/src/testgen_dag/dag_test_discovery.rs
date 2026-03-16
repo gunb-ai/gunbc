@@ -527,9 +527,7 @@ fn apply_expect(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str) {
     fn resolve_expect_node(target: &ExpectTarget, module_prefix: &str) -> String {
         match target {
             ExpectTarget::Result { .. } => TERMINAL_NODE_SENTINEL.to_string(),
-            ExpectTarget::Node { node_ref, .. } => {
-                resolve_test_node_ref(node_ref, module_prefix)
-            }
+            ExpectTarget::Node { node_ref, .. } => resolve_test_node_ref(node_ref, module_prefix),
         }
     }
 

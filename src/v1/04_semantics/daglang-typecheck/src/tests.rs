@@ -3,6 +3,22 @@ use daglang_contract::FileId;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+fn expr_identity(
+    stmts: &[daglang_syntax::ast::Stmt],
+    target: &daglang_syntax::ast::Expr,
+) -> daglang_syntax::ast_utils::ExprIdentity {
+    let mut found = None;
+    daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+        stmts,
+        &mut |expr_identity, expr| {
+            if std::ptr::eq(expr, target) {
+                found = Some(expr_identity);
+            }
+        },
+    );
+    found.expect("expected walked expression identity")
+}
+
 fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
     let modules = sources
         .iter()
@@ -683,6 +699,60 @@ fn result() -> StageResult {
 }
 
 #[test]
+fn typecheck_tracks_let_bound_anonymous_record_constructor_targets() {
+    let graph = module_graph_from_sources(&[(
+        "sample/records.dag",
+        r#"module sample.records
+type ConfigA {
+  value: String
+}
+type ConfigB {
+  value: String
+}
+fn consume(cfg: ConfigB) -> String {
+  cfg.value
+}
+fn make() -> String {
+  cfg = { value: "ok" }
+  consume(cfg)
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("let-bound record should inherit the typed call target");
+
+    let module = typed.module(0).expect("typed module should exist");
+    let make = module
+        .ast
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            daglang_syntax::ast::Item::FnDef(def) if def.name == "make" => Some(def),
+            _ => None,
+        })
+        .expect("make fn should be present");
+    let record_expr = match &make.body.stmts[0] {
+        daglang_syntax::ast::Stmt::Let(_, expr) | daglang_syntax::ast::Stmt::Assign(_, expr) => {
+            expr
+        }
+        other => panic!("expected first stmt to bind the record, got {other:?}"),
+    };
+    let metadata = module
+        .callable_body_metadata("make")
+        .expect("make should carry callable body metadata");
+    assert_eq!(
+        metadata
+            .anonymous_record_target(expr_identity(&make.body.stmts, record_expr))
+            .map(|target| target.0.as_str()),
+        Some("ConfigB")
+    );
+}
+
+#[test]
 fn strict_mode_accepts_resource_config_named_type_returns() {
     let graph = module_graph_from_sources(&[(
         "sample/resources.dag",
@@ -746,6 +816,72 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 }
 
 #[test]
+fn typecheck_tracks_anonymous_record_targets_through_function_typed_params() {
+    let graph = module_graph_from_sources(&[(
+        "sample/higher_order_records.dag",
+        r#"module sample.higher_order_records
+type Config {
+  value: String
+}
+fn run(callback: fn(Config) -> String) -> String {
+  let cfg = { value: "ok" }
+  callback(cfg)
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("function-typed call contracts should preserve positional parameter types");
+
+    let module = typed.module(0).expect("typed module should exist");
+    let run = module
+        .ast
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            daglang_syntax::ast::Item::FnDef(def) if def.name == "run" => Some(def),
+            _ => None,
+        })
+        .expect("run fn should be present");
+    let daglang_syntax::ast::Stmt::Let(_, record_expr) = &run.body.stmts[0] else {
+        panic!("expected first stmt to bind the record");
+    };
+    let metadata = module
+        .callable_body_metadata("run")
+        .expect("run should carry callable body metadata");
+    assert_eq!(
+        metadata
+            .anonymous_record_target(expr_identity(&run.body.stmts, record_expr))
+            .map(|target| target.0.as_str()),
+        Some("Config")
+    );
+}
+
+#[test]
+fn strict_mode_accepts_associated_output_function_type_parameters() {
+    let graph = module_graph_from_sources(&[(
+        "sample/ensure.dag",
+        r#"module sample.ensure
+pattern ensure<Check, Action>(
+  should_act: fn(Check.Output) -> Bool
+) -> { acted: Bool } {
+  return { acted: true }
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("associated output references in function types should remain valid");
+    assert_eq!(typed.module_count(), 1);
+}
+
+#[test]
 fn function_typed_parameter_call_reports_arity_mismatch() {
     let graph = module_graph_from_sources(&[(
         "sample/callback_arity.dag",
@@ -769,6 +905,32 @@ fn apply(callback: fn(Int) -> Int) -> Int {
             expected,
             got
         } if caller == "apply" && callee == "callback" && *expected == 1 && *got == 0
+    )));
+}
+
+#[test]
+fn function_typed_parameter_call_rejects_placeholder_named_args() {
+    let graph = module_graph_from_sources(&[(
+        "sample/callback_named_placeholder.dag",
+        r#"module sample.callback
+fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
+  callback(__arg0: value)
+}"#,
+    )]);
+    let errors = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("function-typed params should not accept fabricated placeholder names");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnknownCallArgument {
+            caller,
+            callee,
+            argument
+        } if caller == "apply" && callee == "callback" && argument == "__arg0"
     )));
 }
 

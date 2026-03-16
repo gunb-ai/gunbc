@@ -507,22 +507,11 @@ fn handler_body(kind: HandlerKind) -> &'static str {
 "##
         }
         HandlerKind::PrepareWriteContent => {
-            r##"    let mut input_keys: Vec<&str> = inputs.keys().map(|k| k.as_str()).collect();
-    input_keys.sort_unstable();
-    let path = inputs
-        .get("path")
-        .or_else(|| inputs.get("target_path"))
-        .or_else(|| inputs.get("filepath"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let content = inputs
-        .get("content")
-        .or_else(|| inputs.get("return"))
-        .or_else(|| inputs.get("expected_content"))
-        .or_else(|| inputs.get("makefile_content"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
+            r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
+    let content = inputs.get("content").and_then(Value::as_str).unwrap_or("");
     if path.is_empty() || content.is_empty() {
+        let mut input_keys: Vec<&str> = inputs.keys().map(|k| k.as_str()).collect();
+        input_keys.sort_unstable();
         return Err(ExecError::new(format!(
             "missing required `path` or `content` input for prepare_write_content (available inputs: {})",
             input_keys.join(", ")

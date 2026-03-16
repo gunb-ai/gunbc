@@ -103,6 +103,13 @@ cargo test -p gunbc-dag-tests                       # auto-generated DAG tests
 cargo clippy --all-targets -- -D warnings           # lint
 ```
 
+## Review Queue Discipline
+
+When draining review feedback on an automation queue branch:
+- choose one primary invariant theme from `src/v1/README.md` and record it
+- resolve at most one review-feedback item on that branch/PR
+- stop after that item instead of stacking another review-feedback fix on the same branch
+
 ## When in Doubt
 
 Read `src/v1/SUSTAINABILITY.md` for the ledger of past violations and their fixes.

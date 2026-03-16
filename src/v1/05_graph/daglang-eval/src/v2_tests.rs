@@ -16,20 +16,34 @@ use crate::expr::{LoweredExpr, LoweredFnBody, LoweredLiteral, LoweredStmt};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const V2_CORE_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/00_core.dag"));
-const V2_TOKENIZE_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/01_tokenize.dag"));
-const V2_PARSE_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/02_parse.dag"));
-const V2_RESOLVE_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/03_resolve.dag"));
-const V2_TYPECHECK_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/04_typecheck.dag"));
-const V2_EMIT_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/05_emit.dag"));
-const V2_PIPELINE_DAG: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../src/v2/06_pipeline.dag"));
+const V2_CORE_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/00_core.dag"
+));
+const V2_TOKENIZE_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/01_tokenize.dag"
+));
+const V2_PARSE_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/02_parse.dag"
+));
+const V2_RESOLVE_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/03_resolve.dag"
+));
+const V2_TYPECHECK_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/04_typecheck.dag"
+));
+const V2_EMIT_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/05_emit.dag"
+));
+const V2_PIPELINE_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/06_pipeline.dag"
+));
 
 fn empty_siblings() -> HashMap<String, LoweredFnBody> {
     HashMap::new()

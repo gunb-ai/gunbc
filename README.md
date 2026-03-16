@@ -59,9 +59,9 @@ src/v2/
   06_pipeline.dag    Orchestrator: discover -> compile -> write
 ```
 
-Start with `src/v2/WORKBOARD.md` for current status, work queue, and doc roles.
-Use `src/v2/DESIGN.md` for target architecture and `src/v2/POSTMORTEM.md` for
-the exhaustive audit ledger.
+See `src/v2/DESIGN.md` for target architecture. Current status and gap
+analysis are in `ROADMAP.md`. The sustainability ledger tracking open
+violations is `src/v1/SUSTAINABILITY.md`.
 
 The key design change from v1: **types are structural values, not string
 references.** A type like `List<Span>` is stored as
@@ -152,10 +152,12 @@ abstractions.
 
 ### 7. The interpreter maps IR to execution — nothing more
 
-The interpreter (`gunbc-interp`) dispatches `LoweredOp` nodes: pure ops
-go to the evaluator, I/O ops go to the transport layer. It does not
-contain domain logic (that's DSL) or compiler logic (that's the pipeline).
-Every `extern func` backed by Rust is ratcheted and must be justified.
+The resolver (`gunbc-resolve`) dispatches `LoweredOp` nodes: pure ops
+go to the evaluator, I/O ops go to the transport layer. It captures
+declared port structure at resolution time so execution never infers
+port semantics from HashMap key conventions. It does not contain domain
+logic (that's DSL) or compiler logic (that's the pipeline). Every
+`extern func` backed by Rust is ratcheted and must be justified.
 
 ### 8. Every expression lowers to structural DAG nodes or the compilation fails
 
@@ -214,8 +216,7 @@ src/
     07_emit/              Code emission
       daglang-emit/         Generate target-language source from IR
     08_materialize/       Runtime wiring and I/O
-      resolve/              gunbc-resolve: LoweredOp -> DynOp resolution
-      interp/               gunbc-interp: interpreter dispatch
+      resolve/              gunbc-resolve: LoweredOp -> DynOp with port contracts
       transport/            gunbc-lib-transport: the I/O boundary
       blob/                 gunbc-lib-blob: content-addressed storage
     09_execute/           DAG executor

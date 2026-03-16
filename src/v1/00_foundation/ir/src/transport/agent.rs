@@ -140,7 +140,6 @@ pub struct PullRequestSpec {
     pub base_branch: String,
     pub title: String,
     pub body: String,
-    pub issue_number: u64,
     pub draft: bool,
 }
 

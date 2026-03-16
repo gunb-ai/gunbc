@@ -23,6 +23,17 @@ use std::fmt::Write;
 
 /// Render a `SourceFile` to a complete `.rs` source string.
 pub fn render_rust_source(source: &SourceFile) -> String {
+    render_rust_source_inner(source, false)
+}
+
+/// Render Rust source with `stacker::maybe_grow` wrapping on all function bodies.
+/// Used for the v2 generated crate where recursive descent functions can overflow
+/// the stack when processing large .dag files.
+pub fn render_rust_source_with_stacker(source: &SourceFile) -> String {
+    render_rust_source_inner(source, true)
+}
+
+fn render_rust_source_inner(source: &SourceFile, use_stacker: bool) -> String {
     let mut out = String::new();
 
     // Module-level doc comments.
@@ -34,7 +45,7 @@ pub fn render_rust_source(source: &SourceFile) -> String {
     }
 
     for item in &source.items {
-        out.push_str(&render_item(item, 0));
+        out.push_str(&render_item(item, 0, use_stacker));
         out.push('\n');
     }
 
@@ -75,11 +86,11 @@ fn escape_rust_str(s: &str) -> String {
 // Item rendering
 // ===========================================================================
 
-fn render_item(item: &Item, indent: usize) -> String {
+fn render_item(item: &Item, indent: usize, use_stacker: bool) -> String {
     let pad = "    ".repeat(indent);
     match item {
         Item::Use(import) => format!("{}{}\n", pad, render_import(import)),
-        Item::Fn(f) => render_fn_def(f, indent),
+        Item::Fn(f) => render_fn_def(f, indent, use_stacker),
         Item::Enum(e) => render_enum_def(e, indent),
         Item::Impl(i) => render_impl_block(i, indent),
         Item::Struct(s) => render_struct_def(s, indent),
@@ -98,7 +109,7 @@ fn render_import(import: &Import) -> String {
     }
 }
 
-fn render_fn_def(f: &FnDef, indent: usize) -> String {
+fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
     let pad = "    ".repeat(indent);
     let mut out = String::new();
 
@@ -140,9 +151,18 @@ fn render_fn_def(f: &FnDef, indent: usize) -> String {
     )
     .unwrap();
 
-    // Body.
-    for stmt in &f.body {
-        out.push_str(&render_stmt(stmt, indent + 1));
+    // Body — optionally wrapped with stacker::maybe_grow for stack safety.
+    if use_stacker && !f.body.is_empty() {
+        let inner_pad = "    ".repeat(indent + 1);
+        writeln!(out, "{}stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {{", inner_pad).unwrap();
+        for stmt in &f.body {
+            out.push_str(&render_stmt(stmt, indent + 2));
+        }
+        writeln!(out, "{}}})", inner_pad).unwrap();
+    } else {
+        for stmt in &f.body {
+            out.push_str(&render_stmt(stmt, indent + 1));
+        }
     }
 
     writeln!(out, "{}}}", pad).unwrap();
@@ -210,7 +230,7 @@ fn render_impl_block(i: &ImplBlock, indent: usize) -> String {
         if idx > 0 {
             out.push('\n');
         }
-        out.push_str(&render_fn_def(func, indent + 1));
+        out.push_str(&render_fn_def(func, indent + 1, false));
     }
 
     writeln!(out, "{}}}", pad).unwrap();
@@ -258,6 +278,9 @@ fn render_ir_type(ty: &IrType) -> String {
 /// Currently: empty `vec![]` / `Vec::new()` needs `Vec<T>` annotation
 /// when the type can't be inferred from usage context.
 fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
+    if !ir_type_renderable_in_type_position(ir_type) {
+        return false;
+    }
     match expr {
         Expr::MacroCall { name, args } if name == "vec" && args.is_empty() => {
             // Only annotate if we have a concrete element type (not Unknown)
@@ -275,9 +298,31 @@ fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
     }
 }
 
+/// Returns false when the IR type contains constructs that cannot be expressed
+/// as a Rust type annotation (anonymous records, unresolved unknowns).
+fn ir_type_renderable_in_type_position(ty: &IrType) -> bool {
+    match ty {
+        IrType::Record(_) | IrType::Unknown => false,
+        IrType::Generic(_, args) => args.iter().all(ir_type_renderable_in_type_position),
+        IrType::Optional(inner) => ir_type_renderable_in_type_position(inner),
+        IrType::Tuple(items) => items.iter().all(ir_type_renderable_in_type_position),
+        IrType::Named(_) | IrType::Bool | IrType::Int | IrType::Str | IrType::Unit => true,
+    }
+}
+
 // ===========================================================================
 // Statement rendering
 // ===========================================================================
+
+/// Rust operators that have a compound-assignment form (`+=`, `-=`, etc.).
+/// Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`) are excluded —
+/// they have no compound-assignment syntax and would produce invalid Rust.
+fn is_compound_assignable_op(op: &str) -> bool {
+    matches!(
+        op,
+        "+" | "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" | "&&" | "||"
+    )
+}
 
 fn render_stmt(stmt: &Stmt, indent: usize) -> String {
     let pad = "    ".repeat(indent);
@@ -318,9 +363,11 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
         }
         Stmt::Assign { dest, value } => {
             if let Expr::BinOp { left, op, right } = value {
-                let dest_str = render_expr(dest);
-                if render_expr(left) == dest_str {
-                    return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                if is_compound_assignable_op(op) {
+                    let dest_str = render_expr(dest);
+                    if render_expr(left) == dest_str {
+                        return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                    }
                 }
             }
             format!("{}{} = {};\n", pad, render_expr(dest), render_expr(value))
@@ -368,7 +415,7 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             writeln!(out, "{}}}", pad).unwrap();
             out
         }
-        Stmt::Item(item) => render_item(item, indent),
+        Stmt::Item(item) => render_item(item, indent, false),
         Stmt::Loop { body } => {
             let mut out = format!("{}loop {{\n", pad);
             for s in body {
@@ -738,7 +785,7 @@ mod tests {
             doc: vec!["Greet a user.".to_string()],
             attributes: vec![],
         };
-        let rendered = render_fn_def(&f, 0);
+        let rendered = render_fn_def(&f, 0, false);
         assert!(rendered.contains("/// Greet a user."), "doc comment");
         assert!(
             rendered.contains("pub fn greet(name: String) -> String {"),
@@ -1031,7 +1078,10 @@ mod tests {
         };
         let rendered = render_stmt(&loop_stmt, 0);
         assert!(rendered.contains("loop {"), "should render loop keyword");
-        assert!(rendered.contains("break result;"), "should render break with value");
+        assert!(
+            rendered.contains("break result;"),
+            "should render break with value"
+        );
         assert!(rendered.contains("continue;"), "should render continue");
     }
 
@@ -1039,6 +1089,10 @@ mod tests {
     fn render_break_unit_omits_value() {
         let stmt = Stmt::Break(Expr::Tuple(vec![]));
         let rendered = render_stmt(&stmt, 0);
-        assert_eq!(rendered.trim(), "break;", "break () should render as bare break");
+        assert_eq!(
+            rendered.trim(),
+            "break;",
+            "break () should render as bare break"
+        );
     }
 }
