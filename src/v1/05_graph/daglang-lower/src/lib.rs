@@ -374,9 +374,9 @@ pub struct ServiceCallMetadata {
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
-    /// Response provider classification (S45). Stamped from DSL
-    /// `config { response_provider: X }` when present, else inferred from
-    /// service name substrings. Propagated to `Node.response_provider`.
+    /// Response provider classification (S45). Stamped only from explicit DSL
+    /// `config { response_provider: X }`. Propagated to
+    /// `Node.response_provider`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_provider: Option<ResponseProvider>,
 }
@@ -6185,7 +6185,17 @@ fn derive_service_call_metadata(
         None => ServiceTransportClass::Unknown,
     };
 
-    let spec = derive_operation_spec(service, operation, transport, data_registry)?;
+    let response_classification = derive_response_classification(service, operation)?;
+    let response_provider = response_classification
+        .as_ref()
+        .map(|classification| classification.provider);
+    let spec = derive_operation_spec(
+        service,
+        operation,
+        transport,
+        response_classification,
+        data_registry,
+    )?;
 
     // Auto-derive readonly from HTTP method: GET and HEAD are read-only by definition.
     let readonly = operation.readonly
@@ -6194,8 +6204,6 @@ fn derive_service_call_metadata(
             Some(TransportBinding::Rest { method, .. })
                 if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
         );
-
-    let response_provider = response_provider_for_service(service)?;
 
     Ok(ServiceCallMetadata {
         service: service.name.clone(),
@@ -6208,7 +6216,7 @@ fn derive_service_call_metadata(
     })
 }
 
-fn response_provider_for_service(
+fn configured_response_provider_for_service(
     service: &ServiceDef,
 ) -> Result<Option<ResponseProvider>, LowerError> {
     match service.config.response_provider.as_deref() {
@@ -6219,7 +6227,7 @@ fn response_provider_for_service(
                 detail: e,
             }
         })?)),
-        None => Ok(infer_response_provider(&service.name)),
+        None => Ok(None),
     }
 }
 
@@ -6385,11 +6393,12 @@ fn derive_operation_spec(
     service: &ServiceDef,
     operation: &OperationDef,
     transport: ServiceTransportClass,
+    response_classification: Option<ResponseClassification>,
     data_registry: &DataRegistry<'_>,
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation)?
+            Ok(derive_rest_spec(service, operation, response_classification)?
                 .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
@@ -6443,7 +6452,7 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
 /// Derive transport middleware config from service config blocks (TL-12).
 fn derive_middleware_config(
     service: &ServiceDef,
-    operation: &OperationDef,
+    response_classification: Option<ResponseClassification>,
 ) -> Result<Option<TransportMiddlewareConfig>, LowerError> {
     let config = &service.config;
 
@@ -6489,39 +6498,6 @@ fn derive_middleware_config(
         }
     });
 
-    // Derive error shape extraction from error_shape {} blocks (TL-16).
-    // When explicit error_shape is declared, the transport layer uses JSON-path
-    // extraction instead of hardcoded provider parsing.
-    let error_shape = service.config.error_shapes.first().map(|es| {
-        gunbc_ir::transport::middleware::ErrorShapeExtraction {
-            message_path: es
-                .message_path
-                .clone()
-                .unwrap_or_else(|| ".message".to_string()),
-            code_path: es.error_type_path.clone(),
-            details_path: None,
-        }
-    });
-
-    let response_provider = response_provider_for_service(service)?;
-    if error_shape.is_some() && response_provider.is_none() {
-        return Err(LowerError::InvalidTransportSpec {
-            service: service.name.clone(),
-            operation: operation.name.clone(),
-            detail: "service config declares `error_shape` but no authoritative `response_provider` is available; add `response_provider: Generic|GitHub|Gcp|Anthropic|OpenAi`".to_string(),
-        });
-    }
-
-    // TL-15: parse_provider_error_shapes is always false — the transport layer
-    // uses only error_shape JSON-path extraction.
-    let response_classification = response_provider.map(|provider| ResponseClassification {
-        provider,
-        prioritize_auth_errors: true,
-        parse_provider_error_shapes: false,
-        error_shape: error_shape.clone(),
-        output_shape: None, // Per-operation output shapes are on RestOperationSpec.
-    });
-
     if rate_limit.is_none() && retry.is_none() && response_classification.is_none() {
         return Ok(None);
     }
@@ -6534,24 +6510,35 @@ fn derive_middleware_config(
     }))
 }
 
-// S45: `parse_response_provider` removed — use `ResponseProvider::from_str`
-// (in ir/src/transport/middleware.rs) which is the single authority and returns
-// `Err` on unknown values instead of silently falling back to inference.
-
-/// Infer the response provider from service name patterns.
-fn infer_response_provider(service_name: &str) -> Option<ResponseProvider> {
-    let lower = service_name.to_lowercase();
-    if lower.starts_with("github.") || lower.contains("gist") {
-        Some(ResponseProvider::GitHub)
-    } else if lower.starts_with("gcp.") || lower.starts_with("google.") {
-        Some(ResponseProvider::Gcp)
-    } else if lower.contains("anthropic") || lower.starts_with("llm.anthropic") {
-        Some(ResponseProvider::Anthropic)
-    } else if lower.contains("openai") || lower.starts_with("llm.openai") {
-        Some(ResponseProvider::OpenAi)
-    } else {
-        None
+fn derive_response_classification(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> Result<Option<ResponseClassification>, LowerError> {
+    let error_shape = service.config.error_shapes.first().map(|es| {
+        gunbc_ir::transport::middleware::ErrorShapeExtraction {
+            message_path: es
+                .message_path
+                .clone()
+                .unwrap_or_else(|| ".message".to_string()),
+            code_path: es.error_type_path.clone(),
+            details_path: None,
+        }
+    });
+    let response_provider = configured_response_provider_for_service(service)?;
+    if error_shape.is_some() && response_provider.is_none() {
+        return Err(LowerError::InvalidTransportSpec {
+            service: service.name.clone(),
+            operation: operation.name.clone(),
+            detail: "service config declares `error_shape` but no authoritative `response_provider` is available; add `response_provider: Generic|GitHub|Gcp|Anthropic|OpenAi`".to_string(),
+        });
     }
+    Ok(response_provider.map(|provider| ResponseClassification {
+        provider,
+        prioritize_auth_errors: true,
+        parse_provider_error_shapes: false,
+        error_shape,
+        output_shape: None, // Per-operation output shapes are on RestOperationSpec.
+    }))
 }
 
 /// Convert AST status pattern to spec status pattern.
