@@ -1799,6 +1799,85 @@ fn compile_intrinsic_call(
                 args: vec![],
             })
         }
+        // index_by(list, key_fn) → HashMap<String, V> from list using key_fn to extract keys.
+        // Duplicate keys: last writer wins (later elements overwrite earlier ones).
+        "index_by" if args.len() == 2 => {
+            let result = fresh(counter, "indexed");
+            let elem = fresh(counter, "elem");
+            let key_expr = match &args[1].1 {
+                ast::Expr::Lambda(params, body) => {
+                    let compiled = compile_expr(body, ctx, counter);
+                    params
+                        .first()
+                        .map(|p| {
+                            substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()))
+                        })
+                        .unwrap_or(compiled)
+                }
+                other => code_ir::Expr::Call {
+                    func: Box::new(compile_expr(other, ctx, counter)),
+                    args: vec![code_ir::Expr::Var(elem.clone())],
+                    obligation: None,
+                },
+            };
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::Let {
+                    name: result.clone(),
+                    mutable: true,
+                    expr: code_ir::Expr::RawCode(
+                        "std::collections::HashMap::new()".to_string(),
+                    ),
+                    ir_type: None,
+                },
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: make_owned_iter(collection.clone()),
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                        "{result}.insert({key}, {elem})",
+                        key = render_expr_inline(&key_expr),
+                    )))],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+            ]))
+        }
+        // map_get(map, key) → map.get(&key).cloned() — O(1) HashMap lookup.
+        "map_get" if args.len() == 2 => {
+            let key = compile_expr(&args[1].1, ctx, counter);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection.clone()),
+                    method: "get".to_string(),
+                    args: vec![code_ir::Expr::Ref(Box::new(key))],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            })
+        }
+        // map_contains_key(map, key) → map.contains_key(&key) — O(1) membership check.
+        "map_contains_key" if args.len() == 2 => {
+            let key = compile_expr(&args[1].1, ctx, counter);
+            Some(code_ir::Expr::MethodCall {
+                receiver: Box::new(collection.clone()),
+                method: "contains_key".to_string(),
+                args: vec![code_ir::Expr::Ref(Box::new(key))],
+            })
+        }
+        // map_values(map) → Rc::new(map.into_values().collect::<Vec<_>>()) — extract values as list.
+        "map_values" if args.len() == 1 => {
+            let values = fresh(counter, "values");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::Let {
+                    name: values.clone(),
+                    mutable: false,
+                    expr: code_ir::Expr::RawCode(format!(
+                        "{}.into_values().collect::<Vec<_>>()",
+                        render_expr_inline(&collection)
+                    )),
+                    ir_type: None,
+                },
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(values))),
+            ]))
+        }
         _ => None,
     }
 }

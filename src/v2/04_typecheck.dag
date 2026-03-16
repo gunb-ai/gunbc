@@ -1342,27 +1342,12 @@ fn lookup_type(env: TypeEnv, name: String) -> TypeExpr? {
 // first, then transitive deps, then direct imports, then local defs.
 // =========================================================================
 
-// Fold accumulator for deduplication — tracks which names have been
-// processed and the deduplicated result list.
-type DedupeState {
-  seen: List<String>
-  result: List<TypeBinding>
-}
-
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let all_bindings = flat_map(envs, env => env.bindings)
-  // Deduplicate: keep last occurrence of each name (last-writer-wins).
-  // Reverse, then fold left-to-right keeping only the first occurrence of each name.
-  // Since the reversed list puts later bindings first, first-seen == last-writer.
-  let reversed = reverse(all_bindings)
-  let deduped = fold(reversed, init: DedupeState { seen: [], result: [] }, f: (acc, b) =>
-    if contains(acc.seen, b.name) {
-      acc
-    } else {
-      DedupeState { seen: concat([b.name], acc.seen), result: concat([b], acc.result) }
-    }
-  )
-  TypeEnv { bindings: deduped.result }
+  // Deduplicate: index_by keeps last writer for duplicate keys,
+  // which matches the import resolution order (last-writer-wins).
+  let deduped = index_by(all_bindings, b => b.name)
+  TypeEnv { bindings: map_values(deduped) }
 }
 
 // =========================================================================

@@ -85,6 +85,20 @@ pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: impl AsRef<str>) -> Opt
     table.get(key.as_ref()).cloned()
 }
 
+/// Build a HashMap from a list by extracting a string key from each element.
+/// Duplicate keys: last writer wins (later elements overwrite earlier ones).
+pub fn index_by<V, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -> std::collections::HashMap<String, V>
+where
+    V: Clone,
+{
+    let mut map = HashMap::new();
+    for item in Rc::try_unwrap(list).unwrap_or_else(|rc| (*rc).clone()) {
+        let key = key_fn(&item);
+        map.insert(key, item);
+    }
+    map
+}
+
 /// Concatenate two lists. Kept for backward compatibility with code that
 /// calls `list_concat` directly; new code should use `concat()` instead.
 pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
