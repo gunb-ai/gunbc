@@ -30,6 +30,8 @@ pub enum ErrorLayer {
     Service(ServiceErrorLayer),
     Shell(ShellErrorLayer),
     File(FileErrorLayer),
+    /// Structured transport failure classification carried from the transport boundary.
+    TransportFailure(TransportFailureLayer),
     /// Automatically pushed by the executor — identifies the failing node.
     NodeTrace(NodeTraceLayer),
 }
@@ -77,6 +79,44 @@ pub struct ShellErrorLayer {
 pub struct FileErrorLayer {
     pub path: String,
     pub operation: String,
+}
+
+/// Structured transport failure classification from the transport boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransportFailureLayer {
+    pub kind: TransportFailureKind,
+}
+
+/// Normalized transport execution failure kind carried into middleware.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TransportFailureKind {
+    Auth,
+    RateLimit,
+    Client,
+    Server,
+    Network,
+    PipelineCleanup,
+    Unknown,
+}
+
+impl TransportFailureKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auth => "auth",
+            Self::RateLimit => "rate_limit",
+            Self::Client => "client",
+            Self::Server => "server",
+            Self::Network => "network",
+            Self::PipelineCleanup => "pipeline_cleanup",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for TransportFailureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
 }
 
 /// Execution trace — automatically pushed by the executor for every node failure.
@@ -190,7 +230,10 @@ pub fn classify_layers(layers: &[ErrorLayer]) -> ErrorClass {
                 // Keep the last HTTP status seen (could also keep highest).
                 http_status = Some(h.status_code);
             }
-            ErrorLayer::Rest(_) | ErrorLayer::Service(_) | ErrorLayer::NodeTrace(_) => {}
+            ErrorLayer::Rest(_)
+            | ErrorLayer::Service(_)
+            | ErrorLayer::TransportFailure(_)
+            | ErrorLayer::NodeTrace(_) => {}
         }
     }
 
@@ -252,6 +295,22 @@ impl FailureDetail {
             ErrorLayer::NodeTrace(t) => Some(t),
             _ => None,
         })
+    }
+
+    /// The structured transport failure kind, if transport execution recorded one.
+    pub fn transport_failure_kind(&self) -> Option<TransportFailureKind> {
+        self.layers.iter().find_map(|l| match l {
+            ErrorLayer::TransportFailure(t) => Some(t.kind),
+            _ => None,
+        })
+    }
+
+    /// Whether this error is the synthetic pipeline cleanup signal.
+    pub fn is_pipeline_cleanup(&self) -> bool {
+        matches!(
+            self.transport_failure_kind(),
+            Some(TransportFailureKind::PipelineCleanup)
+        )
     }
 }
 
@@ -357,6 +416,27 @@ impl ExecError {
             ErrorLayer::NodeTrace(t) => Some(t),
             _ => None,
         })
+    }
+
+    /// The structured transport failure kind, if transport execution recorded one.
+    pub fn transport_failure_kind(&self) -> Option<TransportFailureKind> {
+        self.layers.iter().find_map(|l| match l {
+            ErrorLayer::TransportFailure(t) => Some(t.kind),
+            _ => None,
+        })
+    }
+
+    /// Whether this error is the synthetic pipeline cleanup signal.
+    pub fn is_pipeline_cleanup(&self) -> bool {
+        matches!(
+            self.transport_failure_kind(),
+            Some(TransportFailureKind::PipelineCleanup)
+        )
+    }
+
+    /// Attach a structured transport failure kind.
+    pub fn with_transport_failure_kind(self, kind: TransportFailureKind) -> Self {
+        self.with_layer(ErrorLayer::TransportFailure(TransportFailureLayer { kind }))
     }
 
     /// Convert to a [`FailureDetail`] snapshot.
@@ -752,6 +832,36 @@ mod tests {
         let err = ExecError::from("bare &str");
         assert_eq!(err.message(), "bare &str");
         assert!(err.layers().is_empty());
+    }
+
+    #[test]
+    fn transport_failure_kind_round_trips_through_failure_detail() {
+        let err = ExecError::new("connection reset")
+            .with_transport_failure_kind(TransportFailureKind::Network);
+
+        assert_eq!(
+            err.transport_failure_kind(),
+            Some(TransportFailureKind::Network)
+        );
+
+        let detail = err.to_failure_detail();
+        assert_eq!(
+            detail.transport_failure_kind(),
+            Some(TransportFailureKind::Network)
+        );
+        assert!(!detail.is_pipeline_cleanup());
+    }
+
+    #[test]
+    fn pipeline_cleanup_detection_is_structural() {
+        let err = ExecError::new("pipeline cleanup (request did not complete)")
+            .with_transport_failure_kind(TransportFailureKind::PipelineCleanup);
+
+        assert!(err.is_pipeline_cleanup());
+        assert_eq!(
+            err.transport_failure_kind(),
+            Some(TransportFailureKind::PipelineCleanup)
+        );
     }
 
     // Preserve backward-compat tests from the original file.

@@ -5,20 +5,19 @@
 //! Inputs:
 //! - `content`: String - Content to comment
 //! - `prefix`: String - Comment prefix (e.g., "#", "//", "///")
-//! - `multiline`: Bool - Whether to use block comment syntax
 //!
 //! Outputs:
 //! - `commented`: String - Commented content
 
 use crate::dag::{Dag, Port};
-use crate::language::LanguageOp;
+use crate::language::{language_metadata_for, LanguageOp};
 use crate::node::Node;
 
 /// Comment syntax for a format/language.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommentSyntax {
-    /// Line comment prefix (e.g., "#", "//")
-    pub line_prefix: &'static str,
+    /// Line comment prefix when the language supports line comments (e.g., "#", "//")
+    pub line_prefix: Option<&'static str>,
     /// Block comment start (e.g., "/*")
     pub block_start: Option<&'static str>,
     /// Block comment end (e.g., "*/")
@@ -27,37 +26,21 @@ pub struct CommentSyntax {
     pub doc_prefix: Option<&'static str>,
 }
 
-/// Makefile/Shell/YAML/TOML comment syntax.
-pub const HASH_COMMENTS: CommentSyntax = CommentSyntax {
-    line_prefix: "#",
-    block_start: None,
-    block_end: None,
-    doc_prefix: None,
-};
-
-/// Rust comment syntax.
-pub const RUST_COMMENTS: CommentSyntax = CommentSyntax {
-    line_prefix: "//",
-    block_start: Some("/*"),
-    block_end: Some("*/"),
-    doc_prefix: Some("///"),
-};
-
-/// Python comment syntax.
-pub const PYTHON_COMMENTS: CommentSyntax = CommentSyntax {
-    line_prefix: "#",
-    block_start: Some("\"\"\""),
-    block_end: Some("\"\"\""),
-    doc_prefix: None,
-};
-
-/// JavaScript/TypeScript comment syntax.
-pub const JS_COMMENTS: CommentSyntax = CommentSyntax {
-    line_prefix: "//",
-    block_start: Some("/*"),
-    block_end: Some("*/"),
-    doc_prefix: Some("/**"),
-};
+/// Build the AddComment opaque node.
+///
+/// Single constructor for the `LanguageOp::AddComment` node spec so that
+/// port signature changes require editing one site.
+pub fn build_add_comment_node() -> Node<LanguageOp> {
+    Node::opaque(
+        "add_comment",
+        vec![
+            Port::scalar("content", "String"),
+            Port::scalar("prefix", "String"),
+        ],
+        vec![Port::scalar("commented", "String")],
+        LanguageOp::AddComment,
+    )
+}
 
 /// Build the CommentPrefix SubDag node.
 ///
@@ -74,15 +57,7 @@ pub fn build_comment_prefix_subdag() -> Node<LanguageOp> {
     let mut inner = Dag::new();
 
     // Add comment node
-    inner.add_node(Node::opaque(
-        "add_comment",
-        vec![
-            Port::scalar("content", "String"),
-            Port::scalar("prefix", "String"),
-        ],
-        vec![Port::scalar("commented", "String")],
-        LanguageOp::AddComment,
-    ));
+    inner.add_node(build_add_comment_node());
 
     // Create the SubDag node with interface
     Node::subdag("comment_prefix", inner)
@@ -90,13 +65,7 @@ pub fn build_comment_prefix_subdag() -> Node<LanguageOp> {
 
 /// Get comment syntax for a language/format.
 pub fn comment_syntax_for(id: &str) -> Option<&'static CommentSyntax> {
-    match id {
-        "rust" => Some(&RUST_COMMENTS),
-        "python" => Some(&PYTHON_COMMENTS),
-        "javascript" | "typescript" => Some(&JS_COMMENTS),
-        "makefile" | "gitignore" | "yaml" | "toml" | "shell" | "bash" => Some(&HASH_COMMENTS),
-        _ => None,
-    }
+    language_metadata_for(id).and_then(|metadata| metadata.comment_syntax.as_ref())
 }
 
 /// Add line comments to content.
@@ -182,8 +151,33 @@ mod tests {
 
     #[test]
     fn test_comment_syntax_for() {
-        assert_eq!(comment_syntax_for("rust").unwrap().line_prefix, "//");
-        assert_eq!(comment_syntax_for("makefile").unwrap().line_prefix, "#");
-        assert_eq!(comment_syntax_for("gitignore").unwrap().line_prefix, "#");
+        assert_eq!(comment_syntax_for("rust").unwrap().line_prefix, Some("//"));
+        assert_eq!(comment_syntax_for("rust").unwrap().doc_prefix, Some("///"));
+        assert_eq!(
+            comment_syntax_for("makefile").unwrap().line_prefix,
+            Some("#")
+        );
+        assert_eq!(
+            comment_syntax_for("gitignore").unwrap().line_prefix,
+            Some("#")
+        );
+        assert_eq!(comment_syntax_for("html").unwrap().line_prefix, None);
+        assert_eq!(
+            comment_syntax_for("html").unwrap().block_start,
+            Some("<!-- ")
+        );
+        assert_eq!(comment_syntax_for("html").unwrap().block_end, Some(" -->"));
+        assert_eq!(
+            comment_syntax_for("python").unwrap().line_prefix,
+            Some("#")
+        );
+        assert_eq!(
+            comment_syntax_for("typescript").unwrap().line_prefix,
+            Some("//")
+        );
+        assert_eq!(
+            comment_syntax_for("typescript").unwrap().block_start,
+            Some("/*")
+        );
     }
 }

@@ -391,7 +391,12 @@ fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
             args: args.clone(),
             body: Box::new(lower_expr(body, config)),
         },
-        Expr::Struct { name, fields, rest, field_types } => Expr::Struct {
+        Expr::Struct {
+            name,
+            fields,
+            rest,
+            field_types,
+        } => Expr::Struct {
             name: to_pascal_case(name),
             fields: fields
                 .iter()

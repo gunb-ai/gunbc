@@ -5,11 +5,17 @@ use syn::{parse_macro_input, Data, DeriveInput, Field, Fields};
 #[proc_macro_derive(DelegateExecutable)]
 pub fn derive_delegate_executable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let enum_ident = input.ident;
+    let DeriveInput {
+        ident: enum_ident,
+        generics,
+        data,
+        ..
+    } = input;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let Data::Enum(data_enum) = input.data else {
+    let Data::Enum(data_enum) = data else {
         return syn::Error::new_spanned(
-            enum_ident,
+            &enum_ident,
             "DelegateExecutable can only be derived for enums",
         )
         .to_compile_error()
@@ -28,7 +34,7 @@ pub fn derive_delegate_executable(input: TokenStream) -> TokenStream {
     }
 
     quote! {
-        impl gunbc_exec::Executable for #enum_ident {
+        impl #impl_generics gunbc_exec::Executable for #enum_ident #ty_generics #where_clause {
             fn execute(
                 &self,
                 inputs: std::collections::HashMap<String, gunbc_ir::Value>,
@@ -48,11 +54,17 @@ pub fn derive_delegate_executable(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(DelegateMockable)]
 pub fn derive_delegate_mockable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let enum_ident = input.ident;
+    let DeriveInput {
+        ident: enum_ident,
+        generics,
+        data,
+        ..
+    } = input;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let Data::Enum(data_enum) = input.data else {
+    let Data::Enum(data_enum) = data else {
         return syn::Error::new_spanned(
-            enum_ident,
+            &enum_ident,
             "DelegateMockable can only be derived for enums",
         )
         .to_compile_error()
@@ -82,7 +94,7 @@ pub fn derive_delegate_mockable(input: TokenStream) -> TokenStream {
     }
 
     quote! {
-        impl gunbc_test::Mockable for #enum_ident {
+        impl #impl_generics gunbc_test::Mockable for #enum_ident #ty_generics #where_clause {
             fn mock_outputs(&self) -> std::collections::HashMap<String, gunbc_ir::Value> {
                 match self {
                     #(#mock_arms)*
@@ -143,15 +155,22 @@ fn extract_single_field_pattern(fields: &Fields) -> Result<proc_macro2::TokenStr
 #[proc_macro_derive(StringEnum, attributes(string_enum))]
 pub fn derive_string_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let enum_ident = &input.ident;
+    let DeriveInput {
+        ident: enum_ident,
+        generics,
+        data,
+        attrs,
+        ..
+    } = input;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let Data::Enum(ref data_enum) = input.data else {
-        return syn::Error::new_spanned(enum_ident, "StringEnum can only be derived for enums")
+    let Data::Enum(data_enum) = data else {
+        return syn::Error::new_spanned(&enum_ident, "StringEnum can only be derived for enums")
             .to_compile_error()
             .into();
     };
 
-    let rename_all = match parse_container_rename_all(&input.attrs) {
+    let rename_all = match parse_container_rename_all(&attrs) {
         Ok(v) => v,
         Err(e) => return e.to_compile_error().into(),
     };
@@ -188,7 +207,7 @@ pub fn derive_string_enum(input: TokenStream) -> TokenStream {
     }
 
     let expanded = quote! {
-        impl #enum_ident {
+        impl #impl_generics #enum_ident #ty_generics #where_clause {
             /// Get the canonical string representation.
             pub fn as_str(&self) -> &'static str {
                 match self {
@@ -205,7 +224,7 @@ pub fn derive_string_enum(input: TokenStream) -> TokenStream {
             }
         }
 
-        impl ::core::fmt::Display for #enum_ident {
+        impl #impl_generics ::core::fmt::Display for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 ::core::write!(f, "{}", self.as_str())
             }

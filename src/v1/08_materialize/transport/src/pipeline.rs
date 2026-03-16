@@ -26,6 +26,7 @@
 //! let response = pipeline.execute(request, "my.operation", true, false)?;
 //! ```
 
+use crate::executor::TransportError;
 use crate::metrics::{MetricsMiddleware, MetricsSink, NullMetricsSink};
 use crate::middleware::{
     MiddlewareContext, MiddlewareOutcome, PostProcessOutcome, SharedMiddlewareState,
@@ -33,13 +34,17 @@ use crate::middleware::{
 };
 use crate::rate_limit::RateLimitMiddleware;
 use crate::retry::RetryMiddleware;
-use gunbc_exec::{ExecError, IntoExecResult};
+use gunbc_exec::{ExecError, TransportFailureKind};
 use gunbc_ir::transport::{TransportMiddlewareConfig, TransportRequest, TransportResponse};
 use std::sync::Arc;
 
 /// Executor function type for actual transport execution.
+///
+/// Custom executors stay at the transport boundary and return
+/// [`TransportError`] so the pipeline can preserve structured failure kind
+/// metadata when converting into [`ExecError`] for middleware.
 pub type ExecutorFn =
-    Box<dyn Fn(&TransportRequest) -> Result<TransportResponse, ExecError> + Send + Sync>;
+    Box<dyn Fn(&TransportRequest) -> Result<TransportResponse, TransportError> + Send + Sync>;
 
 /// Builder for constructing middleware pipelines.
 pub struct TransportPipelineBuilder {
@@ -249,10 +254,11 @@ impl TransportPipeline {
 
         // Execute the actual transport
         let result = if let Some(executor) = &self.executor {
-            executor(&request)
+            executor(&request).map_err(|error| error.into_exec_error("transport error"))
         } else {
             // Use crate-internal executor
-            crate::backend::execute_transport_with_backend(&request).exec_context("transport error")
+            crate::backend::execute_transport_with_backend(&request)
+                .map_err(|error| error.into_exec_error("transport error"))
         };
 
         // Post-process result
@@ -306,7 +312,8 @@ impl TransportPipeline {
         ctx: &mut MiddlewareContext,
     ) {
         // Create a synthetic cleanup error - layers use this to clean up state
-        let cleanup_error = ExecError::new("pipeline cleanup (request did not complete)");
+        let cleanup_error = ExecError::new("pipeline cleanup (request did not complete)")
+            .with_transport_failure_kind(TransportFailureKind::PipelineCleanup);
 
         // Call on_error for layers 0..count in reverse order (inner to outer cleanup)
         for layer in self.layers[..count].iter().rev() {
@@ -346,7 +353,7 @@ mod tests {
         Box::new(move |_req| {
             let count = fail_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if count < 2 {
-                Err(ExecError::new("transient failure"))
+                Err(TransportError::network("transient failure"))
             } else {
                 Ok(TransportResponse::Local(LocalResponse {
                     outputs: serde_json::json!({"result": "ok"}),

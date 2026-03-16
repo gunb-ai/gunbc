@@ -11,7 +11,7 @@
 //! - `converted`: String - Name in target case
 
 use crate::dag::{Dag, Port};
-use crate::language::LanguageOp;
+use crate::language::{language_metadata_for, LanguageOp};
 use crate::language::NamingCase;
 use crate::node::Node;
 
@@ -27,33 +27,6 @@ pub struct LanguageNaming {
     pub constant_case: NamingCase,
     pub module_case: NamingCase,
 }
-
-/// Rust naming conventions.
-pub const RUST_NAMING: LanguageNaming = LanguageNaming {
-    type_case: NamingCase::PascalCase,
-    function_case: NamingCase::SnakeCase,
-    variable_case: NamingCase::SnakeCase,
-    constant_case: NamingCase::ScreamingSnakeCase,
-    module_case: NamingCase::SnakeCase,
-};
-
-/// Python naming conventions.
-pub const PYTHON_NAMING: LanguageNaming = LanguageNaming {
-    type_case: NamingCase::PascalCase,
-    function_case: NamingCase::SnakeCase,
-    variable_case: NamingCase::SnakeCase,
-    constant_case: NamingCase::ScreamingSnakeCase,
-    module_case: NamingCase::SnakeCase,
-};
-
-/// TypeScript/JavaScript naming conventions.
-pub const TYPESCRIPT_NAMING: LanguageNaming = LanguageNaming {
-    type_case: NamingCase::PascalCase,
-    function_case: NamingCase::CamelCase,
-    variable_case: NamingCase::CamelCase,
-    constant_case: NamingCase::ScreamingSnakeCase,
-    module_case: NamingCase::KebabCase,
-};
 
 /// Build the NamingConventions SubDag node.
 ///
@@ -86,12 +59,7 @@ pub fn build_naming_conventions_subdag() -> Node<LanguageOp> {
 
 /// Get the naming conventions for a language.
 pub fn naming_for_language(language: &str) -> Option<&'static LanguageNaming> {
-    match language {
-        "rust" => Some(&RUST_NAMING),
-        "python" => Some(&PYTHON_NAMING),
-        "typescript" | "javascript" => Some(&TYPESCRIPT_NAMING),
-        _ => None,
-    }
+    language_metadata_for(language).and_then(|m| m.naming)
 }
 
 /// Convert a name to match a language's convention for a specific context.

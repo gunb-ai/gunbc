@@ -10,6 +10,7 @@
 //! functions exist in this module — the compiler emits all provider knowledge
 //! as `ErrorShapeExtraction` config (TL-14 / TL-16).
 
+use gunbc_exec::{ExecError, TransportFailureKind};
 use gunbc_ir::transport::{
     ErrorShapeExtraction, HttpResponse, ResponseClassification, ResponseProvider, RestResponse,
 };
@@ -110,12 +111,80 @@ pub fn classify_http_response(
 /// Classify a transport-layer execution failure (no HTTP status available).
 pub fn classify_transport_error(message: &str) -> ClassifiedResponse {
     ClassifiedResponse {
-        kind: ClassifiedErrorKind::Network,
+        kind: classify_transport_error_kind(message),
         provider: ResponseProvider::Generic,
         status: None,
         message: Some(message.to_string()),
         retry_after_ms: None,
     }
+}
+
+impl From<TransportFailureKind> for ClassifiedErrorKind {
+    fn from(kind: TransportFailureKind) -> Self {
+        match kind {
+            TransportFailureKind::Auth => Self::Auth,
+            TransportFailureKind::RateLimit => Self::RateLimit,
+            TransportFailureKind::Client => Self::Client,
+            TransportFailureKind::Server => Self::Server,
+            TransportFailureKind::Network => Self::Network,
+            TransportFailureKind::PipelineCleanup | TransportFailureKind::Unknown => Self::Unknown,
+        }
+    }
+}
+
+/// Classify an execution error that already carries transport failure structure.
+pub(crate) fn classify_exec_error(error: &ExecError) -> Option<ClassifiedResponse> {
+    let kind = error.transport_failure_kind()?;
+    if kind == TransportFailureKind::PipelineCleanup {
+        return None;
+    }
+
+    Some(ClassifiedResponse {
+        kind: kind.into(),
+        provider: ResponseProvider::Generic,
+        status: None,
+        message: Some(error.message().to_string()),
+        retry_after_ms: None,
+    })
+}
+
+fn classify_transport_error_kind(message: &str) -> ClassifiedErrorKind {
+    let lower = message.to_ascii_lowercase();
+
+    if message_has_auth_indicator(Some(message)) {
+        return ClassifiedErrorKind::Auth;
+    }
+    if message_has_rate_limit_indicator(Some(message)) || lower.contains("429") {
+        return ClassifiedErrorKind::RateLimit;
+    }
+    if lower.contains("invalid")
+        || lower.contains("missing")
+        || lower.contains("config")
+        || lower.contains("serializ")
+        || lower.contains("deserializ")
+        || lower.contains("parse")
+        || lower.contains("unsupported")
+        || lower.contains("unexpected")
+    {
+        return ClassifiedErrorKind::Client;
+    }
+    if lower.contains("server")
+        || lower.contains("internal error")
+        || lower.contains("5xx")
+        || lower.contains("500")
+        || lower.contains("502")
+        || lower.contains("503")
+        || lower.contains("504")
+        || lower.contains("service unavailable")
+        || lower.contains("bad gateway")
+        || lower.contains("gateway timeout")
+    {
+        return ClassifiedErrorKind::Server;
+    }
+    if message_has_network_indicator(&lower) {
+        return ClassifiedErrorKind::Network;
+    }
+    ClassifiedErrorKind::Unknown
 }
 
 fn classify_status(
@@ -225,6 +294,25 @@ fn message_has_rate_limit_indicator(message: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+fn message_has_network_indicator(message: &str) -> bool {
+    message.contains("network")
+        || message.contains("timeout")
+        || message.contains("timed out")
+        || message.contains("transient")
+        || message.contains("connection")
+        || message.contains("connect")
+        || message.contains("dns")
+        || message.contains("tls")
+        || message.contains("socket")
+        || message.contains("broken pipe")
+        || message.contains("refused")
+        || message.contains("reset by peer")
+        || message.contains("unreachable")
+        || message.contains("eof")
+        || message.contains("http request failed")
+        || message.contains("i/o")
+}
+
 fn parse_retry_after_ms(headers: &HashMap<String, String>) -> Option<u64> {
     let raw = headers
         .iter()
@@ -320,6 +408,7 @@ pub fn is_success(response: &TransportResponse) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::{ExecError, TransportFailureKind};
     use gunbc_ir::transport::{HttpResponse, RestResponse};
 
     /// Helper: Build a policy with error_shape for GitHub-style errors.
@@ -489,6 +578,32 @@ mod tests {
         let classified = classify_transport_error("connect timeout");
         assert_eq!(classified.kind, ClassifiedErrorKind::Network);
         assert!(classified.retryable());
+    }
+
+    #[test]
+    fn classify_transport_error_does_not_fabricate_network_for_client_errors() {
+        let classified = classify_transport_error("failed to serialize body");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Client);
+        assert!(!classified.retryable());
+    }
+
+    #[test]
+    fn classify_exec_error_uses_structured_transport_failure_kind() {
+        let error = ExecError::new("connection reset")
+            .with_transport_failure_kind(TransportFailureKind::Network);
+
+        let classified = classify_exec_error(&error).expect("classification");
+        assert_eq!(classified.kind, ClassifiedErrorKind::Network);
+        assert_eq!(classified.message, Some("connection reset".to_string()));
+        assert!(classified.retryable());
+    }
+
+    #[test]
+    fn classify_exec_error_ignores_pipeline_cleanup() {
+        let error = ExecError::new("pipeline cleanup (request did not complete)")
+            .with_transport_failure_kind(TransportFailureKind::PipelineCleanup);
+
+        assert!(classify_exec_error(&error).is_none());
     }
 
     // Middleware integration tests

@@ -1591,7 +1591,9 @@ impl<'a, T: Clone + 'static> TestGenerator<'a, T> {
                     Self::record_ident(first, used);
                 }
             }
-            Expr::Struct { name, fields, rest, .. } => {
+            Expr::Struct {
+                name, fields, rest, ..
+            } => {
                 Self::record_ident(name, used);
                 for (_, expr) in fields {
                     Self::collect_idents_from_expr(expr, used);
@@ -5374,7 +5376,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
         let mut identity_to_node: HashMap<gunbc_test::NodeIdentity, &gunbc_ir::Node<T>> =
             HashMap::new();
         for node in &self.dag.nodes {
-            if let Some(identity) = gunbc_test::NodeIdentity::from_node_id(&node.id.0) {
+            if let Some(identity) = gunbc_test::NodeIdentity::from_origin(&node.origin) {
                 // First match wins (multiple sub-instances share the same identity).
                 identity_to_node.entry(identity).or_insert(node);
             }
@@ -5679,7 +5681,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
         let mut identity_to_node: HashMap<gunbc_test::NodeIdentity, &gunbc_ir::Node<T>> =
             HashMap::new();
         for node in &self.dag.nodes {
-            if let Some(identity) = gunbc_test::NodeIdentity::from_node_id(&node.id.0) {
+            if let Some(identity) = gunbc_test::NodeIdentity::from_origin(&node.origin) {
                 identity_to_node.entry(identity).or_insert(node);
             }
         }
@@ -5922,7 +5924,7 @@ impl<T: Clone + 'static> TestGenerator<'_, T> {
         let mut identity_to_node: HashMap<gunbc_test::NodeIdentity, &gunbc_ir::Node<T>> =
             HashMap::new();
         for node in &self.dag.nodes {
-            if let Some(identity) = gunbc_test::NodeIdentity::from_node_id(&node.id.0) {
+            if let Some(identity) = gunbc_test::NodeIdentity::from_origin(&node.origin) {
                 identity_to_node.entry(identity).or_insert(node);
             }
         }
@@ -7222,7 +7224,17 @@ fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{build, build::*, Cardinality, Dag, Node, Value, ValueExpr};
+    use gunbc_ir::{build, build::*, Cardinality, Dag, Node, NodeOrigin, Value, ValueExpr};
+
+    fn test_origin(module: &str, item: &str) -> NodeOrigin {
+        NodeOrigin::UserCode {
+            file: "test.dag".into(),
+            module: module.into(),
+            item: item.into(),
+            span_start: 0,
+            span_end: 0,
+        }
+    }
 
     #[test]
     fn test_platform_mock_token_includes_host_and_variants() {
@@ -8532,12 +8544,15 @@ mod tests {
     #[test]
     fn test_corpus_section_pure_node_exact_match() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "mod_a::compute",
-            vec![port("x", "Int")],
-            vec![port("result", "Int")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "mod_a::compute",
+                vec![port("x", "Int")],
+                vec![port("result", "Int")],
+                (),
+            )
+            .with_origin(test_origin("mod_a", "compute")),
+        );
 
         let identity = gunbc_test::NodeIdentity::new("mod_a", "compute");
         let mut corpus_entry = gunbc_test::MockCorpus::new();
@@ -8612,7 +8627,8 @@ mod tests {
                 vec![port("body", "String")],
                 (),
             )
-            .with_kind(NodeKind::TransportExecute),
+            .with_kind(NodeKind::TransportExecute)
+            .with_origin(test_origin("svc", "fetch")),
         );
 
         let identity = gunbc_test::NodeIdentity::new("svc", "fetch");
@@ -8674,12 +8690,15 @@ mod tests {
     #[test]
     fn test_corpus_section_skips_unknown_identity() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "known::node",
-            vec![port("in", "String")],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "known::node",
+                vec![port("in", "String")],
+                vec![port("out", "String")],
+                (),
+            )
+            .with_origin(test_origin("known", "node")),
+        );
 
         // Corpus entry for a node NOT in the DAG.
         let unknown_identity = gunbc_test::NodeIdentity::new("unknown", "node");
@@ -8728,12 +8747,15 @@ mod tests {
     #[test]
     fn test_corpus_section_multiple_examples_per_node() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "math::add",
-            vec![port("a", "Int"), port("b", "Int")],
-            vec![port("sum", "Int")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "math::add",
+                vec![port("a", "Int"), port("b", "Int")],
+                vec![port("sum", "Int")],
+                (),
+            )
+            .with_origin(test_origin("math", "add")),
+        );
 
         let identity = gunbc_test::NodeIdentity::new("math", "add");
         let mut corpus_entry = gunbc_test::MockCorpus::new();
@@ -8800,18 +8822,24 @@ mod tests {
     #[test]
     fn test_adjacent_pair_section_generates_wiring_test() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "svc::prepare",
-            vec![port("url", "String")],
-            vec![port("request", "String")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "svc::execute",
-            vec![port("request", "String"), port("timeout", "Int")],
-            vec![port("response", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "svc::prepare",
+                vec![port("url", "String")],
+                vec![port("request", "String")],
+                (),
+            )
+            .with_origin(test_origin("svc", "prepare")),
+        );
+        dag.add_node(
+            Node::opaque(
+                "svc::execute",
+                vec![port("request", "String"), port("timeout", "Int")],
+                vec![port("response", "String")],
+                (),
+            )
+            .with_origin(test_origin("svc", "execute")),
+        );
         dag.add_edge(edge("svc::prepare", "request", "svc::execute", "request"));
 
         let edge_example = gunbc_test::EdgeExample {
@@ -8886,12 +8914,15 @@ mod tests {
     #[test]
     fn test_adjacent_pair_section_skips_unknown_nodes() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "known::a",
-            vec![port("in", "String")],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "known::a",
+                vec![port("in", "String")],
+                vec![port("out", "String")],
+                (),
+            )
+            .with_origin(test_origin("known", "a")),
+        );
         // Edge references a target node not in the DAG.
         let edge_example = gunbc_test::EdgeExample {
             provenance: gunbc_test::Provenance {
@@ -8937,12 +8968,15 @@ mod tests {
     #[test]
     fn test_cross_workflow_section_generates_consistency_test() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "shared::format",
-            vec![port("input", "String")],
-            vec![port("output", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "shared::format",
+                vec![port("input", "String")],
+                vec![port("output", "String")],
+                (),
+            )
+            .with_origin(test_origin("shared", "format")),
+        );
 
         let identity = gunbc_test::NodeIdentity::new("shared", "format");
         let mut corpus_entry = gunbc_test::MockCorpus::new();
@@ -9012,12 +9046,15 @@ mod tests {
     #[test]
     fn test_cross_workflow_section_skips_single_workflow_node() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "solo::node",
-            vec![port("in", "String")],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "solo::node",
+                vec![port("in", "String")],
+                vec![port("out", "String")],
+                (),
+            )
+            .with_origin(test_origin("solo", "node")),
+        );
 
         let identity = gunbc_test::NodeIdentity::new("solo", "node");
         let mut corpus_entry = gunbc_test::MockCorpus::new();

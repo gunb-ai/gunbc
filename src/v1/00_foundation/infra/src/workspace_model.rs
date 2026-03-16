@@ -1,12 +1,11 @@
-//! Workspace structure model — commit policies and toolchain requirements.
+//! Workspace structure model — commit policies.
 //!
 //! The hardcoded `workspace_crates()` (32 CrateSpec entries) and
 //! `known_generator_edges()` (6 GeneratorEdge entries) have been removed.
 //! Crate structure is derivable from `cargo metadata`. Generator edges
 //! are modeled in DSL tool definitions and `CompileOutput.output_paths`.
 //!
-//! What remains: commit policies (used by .gitignore generation) and
-//! toolchain requirements.
+//! What remains: commit policies (used by .gitignore generation).
 
 // ── Commit Policy ───────────────────────────────────────────────────
 
@@ -102,41 +101,6 @@ pub fn derive_gitignore(policies: &[CommitPolicy]) -> String {
     lines.join("\n")
 }
 
-// ── Toolchain Requirements ──────────────────────────────────────────
-
-/// A toolchain requirement for building/running the repo.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolchainRequirement {
-    pub tool: &'static str,
-    pub min_version: Option<&'static str>,
-    pub purpose: &'static str,
-    pub install_hint: &'static str,
-}
-
-/// Canonical toolchain requirements.
-pub fn toolchain_requirements() -> Vec<ToolchainRequirement> {
-    vec![
-        ToolchainRequirement {
-            tool: "rustc",
-            min_version: Some("1.75.0"),
-            purpose: "Rust compiler",
-            install_hint: "rustup update stable",
-        },
-        ToolchainRequirement {
-            tool: "cargo",
-            min_version: Some("1.75.0"),
-            purpose: "Rust package manager",
-            install_hint: "rustup update stable",
-        },
-        ToolchainRequirement {
-            tool: "make",
-            min_version: None,
-            purpose: "Build orchestration",
-            install_hint: "apt install make",
-        },
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,11 +150,5 @@ mod tests {
             gitignore.contains(".env"),
             ".env should be in derived gitignore"
         );
-    }
-
-    #[test]
-    fn toolchain_requirements_include_rustc() {
-        let reqs = toolchain_requirements();
-        assert!(reqs.iter().any(|r| r.tool == "rustc"), "must require rustc");
     }
 }

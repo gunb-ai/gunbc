@@ -16,7 +16,9 @@
 
 use crate::registry::TestgenTargetDef;
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
-use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
+use daglang_syntax::ast::{
+    ExpectStmt, ExpectTarget, Expr, FixtureDef, Literal, TestDef, TestNodeRef,
+};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
 use gunbc_resolve::builder::compile_and_resolve;
@@ -47,11 +49,7 @@ pub struct CompilableModule {
     pub dsl_path: String,
     /// Dot-separated module name (e.g., "tools.bootstrap").
     pub module_name: String,
-    /// Number of callable items in the module (func, fn, pattern, pipeline).
-    ///
-    /// Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs` —
-    /// the canonical set of item types that produce executable DAGs.
-    /// If a new callable item type is added to the AST, both must be updated.
+    /// Number of items in the module that produce executable DAGs.
     pub callable_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
@@ -134,18 +132,10 @@ fn analyze_compilable_module(base: &Path, path: &Path) -> Result<Option<Compilab
     let ast = daglang_syntax::parser::parse(&source)
         .map_err(|e| format!("cannot parse {}: {e:?}", path.display()))?;
 
-    // Count callable items — these are the item types that produce executable DAGs.
-    // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
-    use daglang_syntax::ast::Item;
     let callable_count = ast
         .items
         .iter()
-        .filter(|item| {
-            matches!(
-                item.node,
-                Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
-            )
-        })
+        .filter(|item| item.node.produces_executable_dag())
         .count();
 
     if callable_count == 0 {
@@ -378,9 +368,8 @@ pub fn discover_dag_tests(dsl_root: &Path) -> Vec<DagTestTarget> {
 /// 4. Applies input declarations
 /// 5. Applies expect assertions
 ///
-/// Mock node IDs from `.dag` files are unqualified (e.g., `load_manifest/execute`).
-/// The lowered DAG uses module-qualified IDs (e.g., `tools.deps::load_manifest/execute`).
-/// This function qualifies mock node IDs with the module prefix so they match.
+/// Local test node references are resolved against the surrounding DSL module.
+/// Qualified references keep their explicit module path.
 pub fn build_mock_spec_from_test<T: gunbc_exec::Executable + Clone + Send>(
     dag: &Dag<T>,
     target: &DagTestTarget,
@@ -393,27 +382,26 @@ pub fn build_mock_spec_from_test<T: gunbc_exec::Executable + Clone + Send>(
     if let Some(fixture_name) = &target.test_def.fixture {
         if let Some(fixture) = target.fixtures.get(fixture_name) {
             for mock in &fixture.mocks {
-                apply_mock(&mut spec, mock, &module_prefix, dag);
+                apply_mock(&mut spec, mock, &module_prefix);
             }
         }
     }
 
     // Apply test-local mocks
     for mock in &target.test_def.mocks {
-        apply_mock(&mut spec, mock, &module_prefix, dag);
+        apply_mock(&mut spec, mock, &module_prefix);
     }
 
     // Apply input declarations
     for input in &target.test_def.inputs {
-        let raw_node_id = input.node_segments.join("/");
-        let node_id = qualify_node_id(&raw_node_id, &module_prefix, dag);
+        let node_id = resolve_test_node_ref(&input.node_ref, &module_prefix);
         let value = interpret_expr(&input.value);
         spec = spec.input_mock(&node_id, &input.port, value);
     }
 
     // Apply expect assertions
     for expect in &target.test_def.expects {
-        apply_expect(&mut spec, expect, &module_prefix, dag);
+        apply_expect(&mut spec, expect, &module_prefix);
     }
 
     spec
@@ -493,31 +481,28 @@ fn module_prefix_from_dsl_module(dsl_module: &str) -> String {
         .replace('/', ".")
 }
 
-/// Qualify a node ID with the module prefix if the unqualified ID isn't in the DAG.
-///
-/// Tries unqualified first, then `{module_prefix}::{node_id}`.
-fn qualify_node_id<T>(raw_node_id: &str, module_prefix: &str, dag: &Dag<T>) -> String {
-    // Already qualified or exists as-is?
-    if dag.nodes.iter().any(|n| n.id.0 == raw_node_id) {
-        return raw_node_id.to_string();
+fn resolve_test_node_ref(node_ref: &TestNodeRef, module_prefix: &str) -> String {
+    match node_ref {
+        TestNodeRef::Local { node_segments } => {
+            let node_id = node_segments.join("/");
+            if node_id.is_empty() {
+                String::new()
+            } else {
+                format!("{module_prefix}::{node_id}")
+            }
+        }
+        TestNodeRef::Qualified {
+            module,
+            node_segments,
+        } => {
+            let node_id = node_segments.join("/");
+            format!("{module}::{node_id}")
+        }
     }
-    // Try with module prefix
-    let qualified = format!("{module_prefix}::{raw_node_id}");
-    if dag.nodes.iter().any(|n| n.id.0 == qualified) {
-        return qualified;
-    }
-    // Fall back to qualified (will be caught by validation later)
-    qualified
 }
 
-fn apply_mock<T>(
-    spec: &mut MockSpec,
-    mock: &daglang_syntax::ast::MockDecl,
-    module_prefix: &str,
-    dag: &Dag<T>,
-) {
-    let raw_node_id = mock.node_segments.join("/");
-    let node_id = qualify_node_id(&raw_node_id, module_prefix, dag);
+fn apply_mock(spec: &mut MockSpec, mock: &daglang_syntax::ast::MockDecl, module_prefix: &str) {
+    let node_id = resolve_test_node_ref(&mock.node_ref, module_prefix);
     let value = interpret_expr(&mock.value);
 
     if is_transport_response(&mock.value) {
@@ -537,94 +522,73 @@ fn apply_mock<T>(
     }
 }
 
-fn apply_expect<T>(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str, dag: &Dag<T>) {
-    match expect {
-        ExpectStmt::Eq(lhs, rhs) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let node = qualify_node_id(&node, module_prefix, dag);
-                let value = interpret_expr(rhs);
-                spec.live_expected_outputs.push(LiveExpectedOutput {
-                    node,
-                    port,
-                    matcher: OutputMatcher::exact(value),
-                });
-            }
-        }
-        ExpectStmt::Contains(lhs, rhs) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let node = qualify_node_id(&node, module_prefix, dag);
-                let substr = expr_to_string(rhs);
-                spec.live_expected_outputs.push(LiveExpectedOutput {
-                    node,
-                    port,
-                    matcher: OutputMatcher::contains(&substr),
-                });
-            }
-        }
-        ExpectStmt::Is(lhs, type_name) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let node = qualify_node_id(&node, module_prefix, dag);
-                let matcher = match type_name.as_str() {
-                    "String" => OutputMatcher::IsString,
-                    "Secret" => OutputMatcher::IsSecret,
-                    "Bool" => OutputMatcher::IsBool,
-                    "Int" => OutputMatcher::IsInt,
-                    "NonEmpty" => OutputMatcher::NonEmpty,
-                    _ => OutputMatcher::Any,
-                };
-                spec.live_expected_outputs.push(LiveExpectedOutput {
-                    node,
-                    port,
-                    matcher,
-                });
-            }
-        }
-        ExpectStmt::Truthy(lhs) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let node = qualify_node_id(&node, module_prefix, dag);
-                spec.live_expected_outputs.push(LiveExpectedOutput {
-                    node,
-                    port,
-                    matcher: OutputMatcher::NonEmpty,
-                });
-            }
-        }
-        // Comparison operators: use NonEmpty as a baseline
-        ExpectStmt::Ne(lhs, _)
-        | ExpectStmt::Lt(lhs, _)
-        | ExpectStmt::Gt(lhs, _)
-        | ExpectStmt::Le(lhs, _)
-        | ExpectStmt::Ge(lhs, _) => {
-            if let Some((node, port)) = extract_result_path(lhs) {
-                let node = qualify_node_id(&node, module_prefix, dag);
-                spec.live_expected_outputs.push(LiveExpectedOutput {
-                    node,
-                    port,
-                    matcher: OutputMatcher::NonEmpty,
-                });
+fn apply_expect(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str) {
+    /// Resolve the node ID for an expect target, qualifying local refs.
+    fn resolve_expect_node(target: &ExpectTarget, module_prefix: &str) -> String {
+        match target {
+            ExpectTarget::Result { .. } => TERMINAL_NODE_SENTINEL.to_string(),
+            ExpectTarget::Node { node_ref, .. } => {
+                resolve_test_node_ref(node_ref, module_prefix)
             }
         }
     }
-}
 
-/// Extract (node_id, port_name) from a `result.field` expression.
-///
-/// Mirrors `daglang_emit::test_mock_emit::extract_result_path`.
-fn extract_result_path(expr: &Expr) -> Option<(String, String)> {
-    match expr {
-        Expr::FieldAccess(base, field) => {
-            if let Expr::Ident(name) = base.as_ref() {
-                if name == "result" {
-                    return Some((TERMINAL_NODE_SENTINEL.to_string(), field.clone()));
-                }
-                return Some((name.clone(), field.clone()));
-            }
-            if let Some((parent_node, parent_port)) = extract_result_path(base) {
-                return Some((format!("{parent_node}/{parent_port}"), field.clone()));
-            }
-            None
+    match expect {
+        ExpectStmt::Eq(target, rhs) => {
+            let node = resolve_expect_node(target, module_prefix);
+            let value = interpret_expr(rhs);
+            spec.live_expected_outputs.push(LiveExpectedOutput {
+                node,
+                port: target.port().to_string(),
+                matcher: OutputMatcher::exact(value),
+            });
         }
-        _ => None,
+        ExpectStmt::Contains(target, rhs) => {
+            let node = resolve_expect_node(target, module_prefix);
+            let substr = expr_to_string(rhs);
+            spec.live_expected_outputs.push(LiveExpectedOutput {
+                node,
+                port: target.port().to_string(),
+                matcher: OutputMatcher::contains(&substr),
+            });
+        }
+        ExpectStmt::Is(target, type_name) => {
+            let node = resolve_expect_node(target, module_prefix);
+            let matcher = match type_name.as_str() {
+                "String" => OutputMatcher::IsString,
+                "Secret" => OutputMatcher::IsSecret,
+                "Bool" => OutputMatcher::IsBool,
+                "Int" => OutputMatcher::IsInt,
+                "NonEmpty" => OutputMatcher::NonEmpty,
+                _ => OutputMatcher::Any,
+            };
+            spec.live_expected_outputs.push(LiveExpectedOutput {
+                node,
+                port: target.port().to_string(),
+                matcher,
+            });
+        }
+        ExpectStmt::Truthy(target) => {
+            let node = resolve_expect_node(target, module_prefix);
+            spec.live_expected_outputs.push(LiveExpectedOutput {
+                node,
+                port: target.port().to_string(),
+                matcher: OutputMatcher::NonEmpty,
+            });
+        }
+        // Comparison operators: use NonEmpty as a baseline
+        ExpectStmt::Ne(target, _)
+        | ExpectStmt::Lt(target, _)
+        | ExpectStmt::Gt(target, _)
+        | ExpectStmt::Le(target, _)
+        | ExpectStmt::Ge(target, _) => {
+            let node = resolve_expect_node(target, module_prefix);
+            spec.live_expected_outputs.push(LiveExpectedOutput {
+                node,
+                port: target.port().to_string(),
+                matcher: OutputMatcher::NonEmpty,
+            });
+        }
     }
 }
 
@@ -794,5 +758,49 @@ mod tests {
         let call = dag_builder_call_for_module("tools/unknown.dag");
         assert!(call.contains("compile_and_resolve"));
         assert!(call.contains("unknown.dag"));
+    }
+
+    #[test]
+    fn build_mock_spec_qualifies_local_refs_without_dag_probing() {
+        let source = r#"
+test explicit_node_refs {
+    mock local/execute.response -> rest_response(200, { ok: true })
+    mock tools.shared::shared/execute.response -> rest_response(200, { ok: false })
+    input local.prepare.arg -> "value"
+    expect local.execute.ok
+    expect result.done
+}
+"#;
+        let ast = daglang_syntax::parser::parse(source).expect("should parse");
+        let test_file = TestFile::from_source(&ast);
+        let target = DagTestTarget {
+            dsl_module: "tools/bootstrap.dag".to_string(),
+            test_name: "explicit_node_refs".to_string(),
+            test_def: test_file.tests[0].clone(),
+            fixtures: BTreeMap::new(),
+        };
+
+        let spec = build_mock_spec_from_test(&Dag::<DynOp>::new(), &target);
+
+        assert_eq!(spec.transport_mocks.len(), 2);
+        assert_eq!(
+            spec.transport_mocks[0].node,
+            "tools.bootstrap::local/execute"
+        );
+        assert_eq!(spec.transport_mocks[1].node, "tools.shared::shared/execute");
+
+        assert_eq!(spec.input_mocks.len(), 1);
+        assert_eq!(spec.input_mocks[0].node, "tools.bootstrap::local/prepare");
+
+        assert_eq!(
+            spec.live_expected_outputs
+                .iter()
+                .map(|output| (output.node.as_str(), output.port.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("tools.bootstrap::local/execute", "ok"),
+                (TERMINAL_NODE_SENTINEL, "done"),
+            ]
+        );
     }
 }

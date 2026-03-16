@@ -1361,9 +1361,9 @@ mod tests {
             .resource_lock("target:manager");
 
         // Legacy and canonical IDs should both resolve.
+        assert!(spec.get_resource("res:file:Makefile").is_some());
         assert!(spec.get_resource("file:Makefile").is_some());
-        assert!(spec.get_resource("file:Makefile").is_some());
-        assert!(spec.get_resource("target:manager").is_some());
+        assert!(spec.get_resource("res:target:manager").is_some());
         assert!(spec.get_resource("target:manager").is_some());
     }
 
