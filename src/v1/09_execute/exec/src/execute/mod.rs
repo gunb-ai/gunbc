@@ -533,6 +533,10 @@ fn remap_mode_inputs(
         ExecutionMode::DryRun(mocks) => {
             ExecutionMode::DryRun(remap_input_mocks(&mocks, input_remaps))
         }
+        ExecutionMode::Simulate(config) => ExecutionMode::Simulate(SimConfig {
+            boundary_mocks: remap_input_mocks(&config.boundary_mocks, input_remaps),
+            ..config
+        }),
         other => other,
     }
 }

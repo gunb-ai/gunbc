@@ -16,6 +16,7 @@
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
 use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
+use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
 
 use crate::fn_codegen;
@@ -81,6 +82,7 @@ fn collect_callable_type_maps_from_signatures<'a>(
     )
 }
 
+#[cfg(test)]
 fn collect_anonymous_record_targets(
     metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
 ) -> std::collections::HashMap<daglang_syntax::ast_utils::ExprIdentity, String> {
@@ -91,6 +93,7 @@ fn collect_anonymous_record_targets(
         .collect()
 }
 
+#[cfg(test)]
 fn collect_synthesized_anonymous_record_types(
     metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
 ) -> Vec<fn_codegen::SynthesizedAnonymousRecordType> {
@@ -104,6 +107,7 @@ fn collect_synthesized_anonymous_record_types(
         .collect()
 }
 
+#[cfg(test)]
 fn collect_expr_ir_types(
     metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
 ) -> std::collections::HashMap<daglang_syntax::ast_utils::ExprIdentity, gunbc_ir::code_ir::IrType> {
@@ -1077,6 +1081,7 @@ pub fn typedefs_to_source_file(
     }
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_ir_types: std::collections::HashMap::new(),
         data_map_names: std::collections::HashSet::new(),
         optional_fields,
         variant_to_enum,
@@ -1084,6 +1089,7 @@ pub fn typedefs_to_source_file(
         enum_variants,
         boxed_fields: std::collections::HashSet::new(),
         fn_return_types: std::collections::HashMap::new(),
+        fn_return_ir_types: std::collections::HashMap::new(),
         fn_param_types: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
@@ -1093,6 +1099,11 @@ pub fn typedefs_to_source_file(
         struct_field_ir_types,
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
+        anonymous_record_targets: std::collections::HashMap::new(),
+        synthesized_anonymous_record_types: Vec::new(),
+        expr_ir_types: std::collections::HashMap::new(),
+        expr_identities: std::collections::HashMap::new(),
+        expr_path: std::cell::RefCell::new(Default::default()),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1238,6 +1249,11 @@ pub fn generate_types_for_modules(
             struct_field_ir_types: sfit,
             use_counts: std::collections::HashMap::new(),
             fold_accum_name: None,
+            anonymous_record_targets: std::collections::HashMap::new(),
+            synthesized_anonymous_record_types: Vec::new(),
+            expr_ir_types: std::collections::HashMap::new(),
+            expr_identities: std::collections::HashMap::new(),
+            expr_path: std::cell::RefCell::new(Default::default()),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1789,6 +1805,7 @@ mod tests {
                 ir_scope: HashMap::new(),
                 struct_field_ir_types,
                 use_counts: HashMap::new(),
+                fold_accum_name: None,
                 anonymous_record_targets: collect_anonymous_record_targets(
                     module.callable_body_metadata(fn_name),
                 ),

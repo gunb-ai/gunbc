@@ -2054,6 +2054,32 @@ fn test_remap_mode_inputs_dry_run() {
 }
 
 #[test]
+fn test_remap_mode_inputs_simulate() {
+    let mut sim_mocks = BoundaryMocks::new();
+    sim_mocks.set_input("subdag", "port", Value::Int(99));
+
+    let mut remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+    remaps.insert(
+        ("subdag".to_string(), "port".to_string()),
+        vec![("subdag/inner".to_string(), "inner_port".to_string())],
+    );
+
+    let mode = ExecutionMode::Simulate(SimConfig::new().with_mocks(sim_mocks));
+    let result = remap_mode_inputs(mode, &remaps);
+
+    match result {
+        ExecutionMode::Simulate(config) => {
+            assert_eq!(
+                config.boundary_mocks.get_input("subdag/inner", "inner_port"),
+                Some(&Value::Int(99)),
+                "Simulate boundary mocks should be remapped"
+            );
+        }
+        _ => panic!("expected Simulate mode"),
+    }
+}
+
+#[test]
 fn test_remap_mode_inputs_real_unchanged() {
     let remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
     let mode = remap_mode_inputs(ExecutionMode::Real, &remaps);

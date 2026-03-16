@@ -52,7 +52,7 @@ type EmitResult {
 }
 
 type BlockEmitState {
-  text: String
+  lines: List<String>
   scope: InferScope
 }
 

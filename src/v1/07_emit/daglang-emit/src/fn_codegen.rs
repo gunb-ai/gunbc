@@ -139,6 +139,361 @@ pub struct CompileContext {
     /// Used by concat codegen to strip the accumulator's `.clone()` (safe because the
     /// accumulator is reassigned each iteration, so try_unwrap succeeds → in-place extend).
     pub fold_accum_name: Option<String>,
+    /// Typecheck-produced anonymous-record constructor targets keyed by stable AST identity.
+    pub anonymous_record_targets: HashMap<ExprIdentity, String>,
+    /// Typecheck-produced synthesized anonymous-record types for this callable.
+    pub synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
+    /// Typecheck-produced resolved expression IrTypes keyed by stable AST identity.
+    pub expr_ir_types: HashMap<ExprIdentity, IrType>,
+    /// Local mapping from this function body's structural expression paths back to
+    /// stable identities produced by typecheck.
+    pub(crate) expr_identities: HashMap<ExprPath, ExprIdentity>,
+    pub(crate) expr_path: RefCell<ExprPath>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub(crate) struct ExprPath(Vec<ExprPathStep>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum StmtExprSlot {
+    LetValue,
+    AssignValue,
+    NodeExpr,
+    NodeGuard,
+    ExprStmt,
+    ReturnField(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ExprPathStep {
+    BodyStmt { index: usize, slot: StmtExprSlot },
+    BlockStmt { index: usize, slot: StmtExprSlot },
+    ForBodyStmt { index: usize, slot: StmtExprSlot },
+    FieldAccessBase,
+    CallArg(usize),
+    ServiceArg(usize),
+    BinOpLeft,
+    BinOpRight,
+    UnaryInner,
+    LambdaBody,
+    ForIterable,
+    ForBodyExpr,
+    StringPart(usize),
+    RecordField(usize),
+    MatchScrutinee,
+    MatchArmGuard(usize),
+    MatchArmBody(usize),
+    IfCond,
+    IfThen,
+    IfElse,
+    ListItem(usize),
+    MapKey(usize),
+    MapValue(usize),
+    GuardedInner,
+    GuardedGuard,
+    AfterInner,
+}
+
+#[derive(Debug, Clone)]
+enum StmtPathOwner {
+    Body,
+    Block(ExprPath),
+    ForBody(ExprPath),
+}
+
+impl ExprPath {
+    fn child(&self, step: ExprPathStep) -> Self {
+        let mut steps = self.0.clone();
+        steps.push(step);
+        Self(steps)
+    }
+}
+
+fn stmt_expr_path(owner: &StmtPathOwner, index: usize, slot: StmtExprSlot) -> ExprPath {
+    match owner {
+        StmtPathOwner::Body => ExprPath(vec![ExprPathStep::BodyStmt { index, slot }]),
+        StmtPathOwner::Block(path) => path.child(ExprPathStep::BlockStmt { index, slot }),
+        StmtPathOwner::ForBody(path) => path.child(ExprPathStep::ForBodyStmt { index, slot }),
+    }
+}
+
+fn record_field_path(path: &ExprPath, index: usize) -> ExprPath {
+    path.child(ExprPathStep::RecordField(index))
+}
+
+fn build_expr_identities(body: &ast::FnBody) -> HashMap<ExprPath, ExprIdentity> {
+    fn walk_stmt_sequence(
+        stmts: &[ast::Stmt],
+        owner: &StmtPathOwner,
+        next_identity: &mut usize,
+        expr_identities: &mut HashMap<ExprPath, ExprIdentity>,
+    ) {
+        for (index, stmt) in stmts.iter().enumerate() {
+            match stmt {
+                ast::Stmt::Let(_, expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::LetValue),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Assign(_, expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::AssignValue),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Expr(expr) => walk_expr(
+                    expr,
+                    stmt_expr_path(owner, index, StmtExprSlot::ExprStmt),
+                    next_identity,
+                    expr_identities,
+                ),
+                ast::Stmt::Node(node) => {
+                    walk_expr(
+                        &node.expr,
+                        stmt_expr_path(owner, index, StmtExprSlot::NodeExpr),
+                        next_identity,
+                        expr_identities,
+                    );
+                    if let Some(guard) = &node.when_guard {
+                        walk_expr(
+                            guard,
+                            stmt_expr_path(owner, index, StmtExprSlot::NodeGuard),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+                ast::Stmt::Return(fields) => {
+                    for (field_index, (_, expr)) in fields.iter().enumerate() {
+                        walk_expr(
+                            expr,
+                            stmt_expr_path(owner, index, StmtExprSlot::ReturnField(field_index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn walk_expr(
+        expr: &ast::Expr,
+        path: ExprPath,
+        next_identity: &mut usize,
+        expr_identities: &mut HashMap<ExprPath, ExprIdentity>,
+    ) {
+        let expr_identity = ExprIdentity(*next_identity);
+        *next_identity += 1;
+        expr_identities.insert(path.clone(), expr_identity);
+        match expr {
+            ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
+            ast::Expr::FieldAccess(base, _) => walk_expr(
+                base,
+                path.child(ExprPathStep::FieldAccessBase),
+                next_identity,
+                expr_identities,
+            ),
+            ast::Expr::Call(_, args) => {
+                for (index, (_, arg)) in args.iter().enumerate() {
+                    walk_expr(
+                        arg,
+                        path.child(ExprPathStep::CallArg(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::ServiceCall(_, args) => {
+                for (index, (_, arg)) in args.iter().enumerate() {
+                    walk_expr(
+                        arg,
+                        path.child(ExprPathStep::ServiceArg(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::BinOp(left, _, right) => {
+                walk_expr(
+                    left,
+                    path.child(ExprPathStep::BinOpLeft),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    right,
+                    path.child(ExprPathStep::BinOpRight),
+                    next_identity,
+                    expr_identities,
+                );
+            }
+            ast::Expr::UnaryOp(_, inner)
+            | ast::Expr::Lambda(_, inner)
+            | ast::Expr::After(inner, _) => {
+                let step = match expr {
+                    ast::Expr::UnaryOp(_, _) => ExprPathStep::UnaryInner,
+                    ast::Expr::Lambda(_, _) => ExprPathStep::LambdaBody,
+                    ast::Expr::After(_, _) => ExprPathStep::AfterInner,
+                    _ => unreachable!(),
+                };
+                walk_expr(inner, path.child(step), next_identity, expr_identities);
+            }
+            ast::Expr::StringInterp(parts) => {
+                for (index, part) in parts.iter().enumerate() {
+                    if let ast::StringPart::Expr(inner) = part {
+                        walk_expr(
+                            inner,
+                            path.child(ExprPathStep::StringPart(index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                }
+            }
+            ast::Expr::Record(_, fields) | ast::Expr::Return(fields) => {
+                for (index, (_, field_expr)) in fields.iter().enumerate() {
+                    walk_expr(
+                        field_expr,
+                        record_field_path(&path, index),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Match(scrutinee, arms) => {
+                walk_expr(
+                    scrutinee,
+                    path.child(ExprPathStep::MatchScrutinee),
+                    next_identity,
+                    expr_identities,
+                );
+                for (index, arm) in arms.iter().enumerate() {
+                    if let Some(guard) = &arm.guard {
+                        walk_expr(
+                            guard,
+                            path.child(ExprPathStep::MatchArmGuard(index)),
+                            next_identity,
+                            expr_identities,
+                        );
+                    }
+                    walk_expr(
+                        &arm.body,
+                        path.child(ExprPathStep::MatchArmBody(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::If(cond, then_expr, else_expr) => {
+                walk_expr(
+                    cond,
+                    path.child(ExprPathStep::IfCond),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    then_expr,
+                    path.child(ExprPathStep::IfThen),
+                    next_identity,
+                    expr_identities,
+                );
+                if let Some(otherwise) = else_expr {
+                    walk_expr(
+                        otherwise,
+                        path.child(ExprPathStep::IfElse),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::For(_, iterable, _, body) => {
+                walk_expr(
+                    iterable,
+                    path.child(ExprPathStep::ForIterable),
+                    next_identity,
+                    expr_identities,
+                );
+                match body {
+                    ast::ForBody::Expr(expr) => walk_expr(
+                        expr,
+                        path.child(ExprPathStep::ForBodyExpr),
+                        next_identity,
+                        expr_identities,
+                    ),
+                    ast::ForBody::Block(stmts) => walk_stmt_sequence(
+                        stmts,
+                        &StmtPathOwner::ForBody(path.clone()),
+                        next_identity,
+                        expr_identities,
+                    ),
+                }
+            }
+            ast::Expr::List(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    walk_expr(
+                        item,
+                        path.child(ExprPathStep::ListItem(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Map(entries) => {
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    walk_expr(
+                        key,
+                        path.child(ExprPathStep::MapKey(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                    walk_expr(
+                        value,
+                        path.child(ExprPathStep::MapValue(index)),
+                        next_identity,
+                        expr_identities,
+                    );
+                }
+            }
+            ast::Expr::Guarded(inner, guard) => {
+                walk_expr(
+                    inner,
+                    path.child(ExprPathStep::GuardedInner),
+                    next_identity,
+                    expr_identities,
+                );
+                walk_expr(
+                    guard,
+                    path.child(ExprPathStep::GuardedGuard),
+                    next_identity,
+                    expr_identities,
+                );
+            }
+            ast::Expr::Block(stmts) => walk_stmt_sequence(
+                stmts,
+                &StmtPathOwner::Block(path),
+                next_identity,
+                expr_identities,
+            ),
+        }
+    }
+
+    let mut expr_identities = HashMap::new();
+    let mut next_identity = 0usize;
+    walk_stmt_sequence(
+        &body.stmts,
+        &StmtPathOwner::Body,
+        &mut next_identity,
+        &mut expr_identities,
+    );
+    expr_identities
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SynthesizedAnonymousRecordType {
+    pub name: String,
+    pub fields: Vec<(String, IrType)>,
 }
 
 impl Default for CompileContext {
@@ -169,6 +524,11 @@ impl CompileContext {
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
             fold_accum_name: None,
+            anonymous_record_targets: HashMap::new(),
+            synthesized_anonymous_record_types: Vec::new(),
+            expr_ir_types: HashMap::new(),
+            expr_identities: HashMap::new(),
+            expr_path: RefCell::new(ExprPath::default()),
         }
     }
 
@@ -1616,7 +1976,7 @@ fn compile_intrinsic_call(
             } else {
                 first
             };
-            for arg in &args[1..] {
+            for (index, _) in args[1..].iter().enumerate() {
                 result = code_ir::Expr::Call {
                     func: Box::new(code_ir::Expr::Path(vec![
                         "v2_rt".to_string(),
@@ -2291,8 +2651,8 @@ fn compile_fold_intrinsic(
         .as_ref()
         .map(|(expr, path)| ctx.with_expr_path(path.clone(), || compile_expr(expr, ctx, counter)))
         .unwrap_or(code_ir::Expr::IntLit(0));
-    let body_expr = match func {
-        Some(ast::Expr::Lambda(params, body)) => {
+    let body_expr = match fold.func.as_ref() {
+        Some((ast::Expr::Lambda(params, body), path)) => {
             // Mark the accumulator param so concat codegen can strip its .clone()
             // (safe: accumulator is reassigned each iteration → refcount=1 → in-place extend).
             let mut fold_ctx = ctx.clone();
@@ -2310,7 +2670,9 @@ fn compile_fold_intrinsic(
                     fold_ctx.use_counts.insert(param.clone(), count);
                 }
             }
-            let mut compiled = compile_expr(body, &fold_ctx, counter);
+            let mut compiled = fold_ctx.with_expr_path(path.child(ExprPathStep::LambdaBody), || {
+                compile_expr(body, &fold_ctx, counter)
+            });
             if let Some(p) = params.first() {
                 compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(acc.clone()));
             }
@@ -2650,7 +3012,10 @@ fn compile_call(
         .enumerate()
         .map(|(index, (arg_name, _))| {
             let expected_type = lookup_call_arg_type(name, index, arg_name.as_deref(), ctx);
-            clone_if_needed(compile_expr_typed(expr, ctx, expected_type, counter), ctx.fold_accum_name.as_deref())
+            clone_if_needed(
+                compile_call_arg_typed(args, index, expected_type, ctx, counter),
+                ctx.fold_accum_name.as_deref(),
+            )
         })
         .collect();
     let rust_name = to_snake_case(name);

@@ -699,6 +699,11 @@ fn emit_module(
         struct_field_ir_types: struct_field_ir_types.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
+        anonymous_record_targets: std::collections::HashMap::new(),
+        synthesized_anonymous_record_types: Vec::new(),
+        expr_ir_types: std::collections::HashMap::new(),
+        expr_identities: std::collections::HashMap::new(),
+        expr_path: std::cell::RefCell::new(Default::default()),
     };
 
     for item in items {
