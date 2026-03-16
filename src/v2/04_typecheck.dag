@@ -711,7 +711,7 @@ fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: concat(scope.locals, param_bindings),
+    locals: concat(param_bindings, scope.locals),
     module_name: scope.module_name,
     type_cache: scope.type_cache
   }
@@ -725,7 +725,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: concat(scope.locals, [TypeBinding { name: name, resolved: resolved }]),
+    locals: concat([TypeBinding { name: name, resolved: resolved }], scope.locals),
     module_name: scope.module_name,
     type_cache: scope.type_cache
   }
@@ -1306,18 +1306,14 @@ type DedupeState {
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let all_bindings = fold(envs, init: [], f: (acc, env) => concat(acc, env.bindings))
   // Deduplicate: keep last occurrence of each name (last-writer-wins).
-  // Fold left-to-right, replacing earlier entries when a later one has the same name.
-  let deduped = fold(all_bindings, init: DedupeState { seen: [], result: [] }, f: (acc, b) =>
+  // Reverse, then fold left-to-right keeping only the first occurrence of each name.
+  // Since the reversed list puts later bindings first, first-seen == last-writer.
+  let reversed = reverse(all_bindings)
+  let deduped = fold(reversed, init: DedupeState { seen: [], result: [] }, f: (acc, b) =>
     if contains(acc.seen, b.name) {
-      // Replace the earlier binding with this later one
-      DedupeState {
-        seen: acc.seen,
-        result: acc.result |> map(existing =>
-          if existing.name == b.name { b } else { existing }
-        )
-      }
+      acc
     } else {
-      DedupeState { seen: concat(acc.seen, [b.name]), result: concat(acc.result, [b]) }
+      DedupeState { seen: concat([b.name], acc.seen), result: concat([b], acc.result) }
     }
   )
   TypeEnv { bindings: deduped.result }
@@ -2297,7 +2293,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_modules: List<TypedModule>)
   let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_diags = fold(typed_item_results, init: [], f: (acc, tir) => concat(acc, tir.diagnostics))
-  let all_type_entries = fold(typed_item_results, init: [], f: (acc, tir) => concat(acc, tir.type_entries))
+  let rev_type_entries = fold(typed_item_results, init: [], f: (acc, tir) => concat(tir.type_entries, acc))
+  let all_type_entries = reverse(rev_type_entries)
 
   TypecheckModuleResult {
     typed: TypedModule {

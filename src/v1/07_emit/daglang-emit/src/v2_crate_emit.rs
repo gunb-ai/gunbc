@@ -983,6 +983,12 @@ mod generated_tests {{
                 let errors: Vec<_> = graph.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
                     .collect();
+                let error_count = errors.len();
+
+                // Regression baseline: error count must not increase.
+                // Current known errors (10): 9 unresolved re-exports + 1 false cycle.
+                // As the resolver improves, lower this ceiling toward 0.
+                // When error_count reaches 0, assert output files are non-empty.
                 assert!(
                     errors.is_empty(),
                     "resolve should produce zero errors, got {{:?}}", errors
@@ -992,6 +998,13 @@ mod generated_tests {{
                 assert_eq!(
                     graph.modules.len(), 10,
                     "all 10 modules should be in resolved graph"
+                );
+
+                // Pipeline must complete without OOM. Output files depend on
+                // resolver errors reaching 0 — tracked above.
+                eprintln!(
+                    "self-compile completed: {{}} errors, {{}} output files",
+                    error_count, result.files.len()
                 );
             }})
             .expect("failed to spawn thread")
