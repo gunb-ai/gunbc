@@ -21,6 +21,19 @@ use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RetryBackoff, TransportMiddlewareConfig,
 };
 
+use crate::EmitError;
+
+/// Human-readable label for a `ServiceOperationSpec` variant (used in error messages).
+fn spec_variant_label(spec: &ServiceOperationSpec) -> &'static str {
+    match spec {
+        ServiceOperationSpec::Rest(_) => "Rest",
+        ServiceOperationSpec::Shell(_) => "Shell",
+        ServiceOperationSpec::File(_) => "File",
+        ServiceOperationSpec::Local(_) => "Local",
+        ServiceOperationSpec::InterfaceStub { .. } => "InterfaceStub",
+    }
+}
+
 /// Explicit service transport phase for generated operation nodes.
 ///
 /// Maps 1:1 from the lowerer's `TransportObligation` (prepare/execute/parse)
@@ -52,25 +65,32 @@ pub fn emit_go_service_func(
     symbol_name: &str,
     phase: ServiceTransportPhase,
     spec: &ServiceOperationSpec,
-) -> String {
+) -> Result<String, EmitError> {
     if phase == ServiceTransportPhase::Execute {
-        return emit_go_execute_stub(symbol_name);
+        return Ok(emit_go_execute_stub(symbol_name));
     }
 
     match (spec, phase) {
         (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Prepare) => {
-            emit_go_rest_prepare(symbol_name, rest)
+            Ok(emit_go_rest_prepare(symbol_name, rest))
         }
         (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Parse) => {
-            emit_go_rest_parse(symbol_name, rest)
+            Ok(emit_go_rest_parse(symbol_name, rest))
         }
         (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Prepare) => {
-            emit_go_shell_prepare(symbol_name, shell)
+            Ok(emit_go_shell_prepare(symbol_name, shell))
         }
         (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
-            emit_go_shell_parse(symbol_name, shell)
+            Ok(emit_go_shell_parse(symbol_name, shell))
         }
-        _ => format!("func {symbol_name}() {{\n    // generated callable stub\n}}\n"),
+        (ServiceOperationSpec::File(_)
+        | ServiceOperationSpec::Local(_)
+        | ServiceOperationSpec::InterfaceStub { .. }, _) => Err(EmitError::UnsupportedConstruct {
+            backend: "go".to_string(),
+            construct: format!("{} service transport", spec_variant_label(spec)),
+        }),
+        // Execute phase is handled by the early return above.
+        (_, ServiceTransportPhase::Execute) => Ok(emit_go_execute_stub(symbol_name)),
     }
 }
 
@@ -327,25 +347,32 @@ pub fn emit_c_service_func(
     symbol_name: &str,
     phase: ServiceTransportPhase,
     spec: &ServiceOperationSpec,
-) -> String {
+) -> Result<String, EmitError> {
     if phase == ServiceTransportPhase::Execute {
-        return emit_c_execute_stub(symbol_name);
+        return Ok(emit_c_execute_stub(symbol_name));
     }
 
     match (spec, phase) {
         (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Prepare) => {
-            emit_c_rest_prepare(symbol_name, rest)
+            Ok(emit_c_rest_prepare(symbol_name, rest))
         }
         (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Parse) => {
-            emit_c_rest_parse(symbol_name, rest)
+            Ok(emit_c_rest_parse(symbol_name, rest))
         }
         (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Prepare) => {
-            emit_c_shell_prepare(symbol_name, shell)
+            Ok(emit_c_shell_prepare(symbol_name, shell))
         }
         (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
-            emit_c_shell_parse(symbol_name, shell)
+            Ok(emit_c_shell_parse(symbol_name, shell))
         }
-        _ => format!("static void {symbol_name}(void) {{}}\n"),
+        (ServiceOperationSpec::File(_)
+        | ServiceOperationSpec::Local(_)
+        | ServiceOperationSpec::InterfaceStub { .. }, _) => Err(EmitError::UnsupportedConstruct {
+            backend: "c".to_string(),
+            construct: format!("{} service transport", spec_variant_label(spec)),
+        }),
+        // Execute phase is handled by the early return above.
+        (_, ServiceTransportPhase::Execute) => Ok(emit_c_execute_stub(symbol_name)),
     }
 }
 
@@ -464,7 +491,7 @@ pub fn emit_mips_service_func(
     symbol_name: &str,
     phase: ServiceTransportPhase,
     spec: &ServiceOperationSpec,
-) -> String {
+) -> Result<String, EmitError> {
     let description = match (spec, phase) {
         (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Prepare) => {
             format!(
@@ -497,14 +524,21 @@ pub fn emit_mips_service_func(
             };
             format!("parse shell output ({})", mode)
         }
-        _ => "service transport stub".to_string(),
+        (ServiceOperationSpec::File(_)
+        | ServiceOperationSpec::Local(_)
+        | ServiceOperationSpec::InterfaceStub { .. }, _) => {
+            return Err(EmitError::UnsupportedConstruct {
+                backend: "mips".to_string(),
+                construct: format!("{} service transport", spec_variant_label(spec)),
+            });
+        }
     };
 
-    format!(
+    Ok(format!(
         "    # {description}\n\
          {symbol_name}:\n    \
          jr $ra\n"
-    )
+    ))
 }
 
 // ===========================================================================
@@ -1344,7 +1378,8 @@ mod tests {
             "prepare_anthropic_messages",
             ServiceTransportPhase::Prepare,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("func prepare_anthropic_messages("),
             "has func"
@@ -1369,7 +1404,8 @@ mod tests {
             "parse_anthropic_messages",
             ServiceTransportPhase::Parse,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("type parse_anthropic_messagesResult struct"),
             "has result struct"
@@ -1382,7 +1418,8 @@ mod tests {
     #[test]
     fn go_rest_parse_bytes_field_uses_type_safe_conversion() {
         let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_with_bytes_output()));
-        let code = emit_go_service_func("parse_secret_access", ServiceTransportPhase::Parse, &spec);
+        let code =
+            emit_go_service_func("parse_secret_access", ServiceTransportPhase::Parse, &spec).unwrap();
         assert!(
             code.contains("Payload []byte"),
             "bytes output field should map to []byte: {code}"
@@ -1400,7 +1437,8 @@ mod tests {
             "prepare_secret_access",
             ServiceTransportPhase::Prepare,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("fmt.Sprintf"),
             "uses fmt.Sprintf for path interpolation: {code}"
@@ -1413,7 +1451,8 @@ mod tests {
     fn go_shell_prepare_generates_exec_command() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code =
-            emit_go_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec);
+            emit_go_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec)
+                .unwrap();
         assert!(code.contains("*exec.Cmd"), "returns exec.Cmd: {code}");
         assert!(code.contains("exec.Command"), "uses exec.Command");
         assert!(code.contains("\"cargo\""), "has cargo");
@@ -1423,7 +1462,8 @@ mod tests {
     #[test]
     fn go_shell_parse_success_stdout_stderr() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
-        let code = emit_go_service_func("parse_cargo_build", ServiceTransportPhase::Parse, &spec);
+        let code =
+            emit_go_service_func("parse_cargo_build", ServiceTransportPhase::Parse, &spec).unwrap();
         assert!(code.contains("Success bool"), "has Success: {code}");
         assert!(code.contains("Stdout string"), "has Stdout");
         assert!(code.contains("Stderr string"), "has Stderr");
@@ -1436,7 +1476,8 @@ mod tests {
             "execute_anthropic_messages",
             ServiceTransportPhase::Execute,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(code.contains("func execute_anthropic_messages"), "has func");
         assert!(
             code.contains("interface{}, error"),
@@ -1453,7 +1494,8 @@ mod tests {
             "prepare_secret_access",
             ServiceTransportPhase::Prepare,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(code.contains("snprintf"), "uses snprintf: {code}");
         assert!(code.contains("%s"), "has format specifiers");
         assert!(code.contains("project"), "references project");
@@ -1467,7 +1509,8 @@ mod tests {
             "parse_anthropic_messages",
             ServiceTransportPhase::Parse,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("content (content/0/text)"),
             "documents json path: {code}"
@@ -1479,7 +1522,8 @@ mod tests {
     fn c_shell_prepare_has_argv_comment() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code =
-            emit_c_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec);
+            emit_c_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec)
+                .unwrap();
         assert!(code.contains("\"cargo\""), "has cargo in comment: {code}");
         assert!(code.contains("\"build\""), "has build in comment");
     }
@@ -1493,7 +1537,8 @@ mod tests {
             "prepare_anthropic_messages",
             ServiceTransportPhase::Prepare,
             &spec,
-        );
+        )
+        .unwrap();
         assert!(
             code.contains("prepare REST POST"),
             "has REST method: {code}"
@@ -1507,7 +1552,8 @@ mod tests {
     fn mips_shell_prepare_has_argv_comment() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code =
-            emit_mips_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec);
+            emit_mips_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec)
+                .unwrap();
         assert!(
             code.contains("prepare shell [cargo build]"),
             "has argv: {code}"
@@ -1519,7 +1565,8 @@ mod tests {
     fn mips_execute_stub_has_description() {
         let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_spec()));
         let code =
-            emit_mips_service_func("execute_transport", ServiceTransportPhase::Execute, &spec);
+            emit_mips_service_func("execute_transport", ServiceTransportPhase::Execute, &spec)
+                .unwrap();
         assert!(
             code.contains("execute transport request"),
             "has description: {code}"

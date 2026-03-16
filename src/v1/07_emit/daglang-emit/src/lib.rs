@@ -696,7 +696,7 @@ pub fn emit_go_bundle_classified(
     for sym in &symbols {
         if let Some(ref spec) = sym.spec {
             let phase = require_service_phase(sym)?;
-            symbol_funcs_parts.push(service_emit::emit_go_service_func(&sym.name, phase, spec));
+            symbol_funcs_parts.push(service_emit::emit_go_service_func(&sym.name, phase, spec)?);
         } else {
             symbol_funcs_parts.push(format!(
                 "func {name}() {{\n    // generated callable stub\n}}\n",
@@ -801,7 +801,7 @@ pub fn emit_c_bundle_classified(
     for sym in &symbols {
         if let Some(ref spec) = sym.spec {
             let phase = require_service_phase(sym)?;
-            symbol_funcs_parts.push(service_emit::emit_c_service_func(&sym.name, phase, spec));
+            symbol_funcs_parts.push(service_emit::emit_c_service_func(&sym.name, phase, spec)?);
         } else {
             symbol_funcs_parts.push(format!("static void {name}(void) {{}}\n", name = sym.name));
         }
@@ -888,7 +888,7 @@ pub fn emit_mips_bundle_classified(
     for sym in &symbols {
         if let Some(ref spec) = sym.spec {
             let phase = require_service_phase(sym)?;
-            label_defs_parts.push(service_emit::emit_mips_service_func(&sym.name, phase, spec));
+            label_defs_parts.push(service_emit::emit_mips_service_func(&sym.name, phase, spec)?);
         } else {
             label_defs_parts.push(format!("{name}:\n    jr $ra\n", name = sym.name));
         }
