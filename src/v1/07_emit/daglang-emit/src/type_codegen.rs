@@ -92,6 +92,16 @@ fn collect_anonymous_record_targets(
         .collect()
 }
 
+fn collect_typecheck_anonymous_record_field_types(
+    metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
+) -> std::collections::HashMap<usize, Vec<(String, gunbc_ir::code_ir::IrType)>> {
+    metadata
+        .into_iter()
+        .flat_map(|metadata| metadata.anonymous_record_field_types())
+        .map(|(expr_id, fields)| (expr_id, fields.to_vec()))
+        .collect()
+}
+
 fn collect_data_ir_types<'a>(
     data_defs: impl IntoIterator<Item = &'a DataDef>,
 ) -> std::collections::HashMap<String, gunbc_ir::code_ir::IrType> {
@@ -726,7 +736,11 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     analysis_ctx.ir_scope = ir_scope.clone();
 
     let anonymous_record_field_types =
-        fn_codegen::collect_anonymous_record_field_types(&fd.body, &analysis_ctx);
+        if !analysis_ctx.typecheck_anonymous_record_field_types.is_empty() {
+            analysis_ctx.typecheck_anonymous_record_field_types.clone()
+        } else {
+            fn_codegen::collect_anonymous_record_field_types(&fd.body, &analysis_ctx)
+        };
     let (synth_items, synthesized_targets, new_field_types) =
         fn_codegen::synthesize_anonymous_structs(
             &fd.name,
@@ -1071,6 +1085,7 @@ pub fn typedefs_to_source_file(
         struct_field_ir_types,
         use_counts: std::collections::HashMap::new(),
         anonymous_record_targets: std::collections::HashMap::new(),
+        typecheck_anonymous_record_field_types: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1217,6 +1232,10 @@ pub fn generate_types_for_modules(
             anonymous_record_targets: collect_anonymous_record_targets(
                 module.callable_body_metadata(fd.name.as_str()),
             ),
+            typecheck_anonymous_record_field_types:
+                collect_typecheck_anonymous_record_field_types(
+                    module.callable_body_metadata(fd.name.as_str()),
+                ),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }

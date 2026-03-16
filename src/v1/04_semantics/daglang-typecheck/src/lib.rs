@@ -3220,8 +3220,8 @@ fn parse_function_type_arity(args: &str) -> usize {
     arity
 }
 
-fn call_arg_expected_record_type<'a>(
-    contract: &'a CallableContract,
+fn call_arg_expected_record_type(
+    contract: &CallableContract,
     arg_index: usize,
     arg_name: Option<&str>,
     record_type_registry: &RecordTypeRegistry,
@@ -3320,10 +3320,12 @@ fn annotate_expr_with_expected_record<'a>(
                 resolve_record_fields(expected_type, infer_context.record_type_registry)
             {
                 for (field_name, field_expr) in fields {
-                    if let Some(field_ty) = expected_fields.get(field_name) {
+                    if let Some(ValueType::Named(field_type_name)) =
+                        expected_fields.get(field_name)
+                    {
                         annotate_expr_with_expected_record(
                             field_expr,
-                            field_ty,
+                            field_type_name,
                             local_bindings,
                             binding_exprs,
                             infer_context,
@@ -3339,10 +3341,12 @@ fn annotate_expr_with_expected_record<'a>(
                 resolve_record_fields(record_name, infer_context.record_type_registry)
             {
                 for (field_name, field_expr) in fields {
-                    if let Some(field_ty) = expected_fields.get(field_name) {
+                    if let Some(ValueType::Named(field_type_name)) =
+                        expected_fields.get(field_name)
+                    {
                         annotate_expr_with_expected_record(
                             field_expr,
-                            field_ty,
+                            field_type_name,
                             local_bindings,
                             binding_exprs,
                             infer_context,
@@ -3555,6 +3559,78 @@ fn collect_constructor_targets_from_expr<'a>(
                 metadata,
             );
         }
+        Expr::Call(name, args) if name == "fold" && args.len() >= 2 => {
+            let init = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("init"))
+                .or_else(|| args.get(1))
+                .map(|(_, e)| e);
+            let func = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("f"))
+                .or_else(|| args.get(2))
+                .map(|(_, e)| e);
+
+            if let Some(init_expr) = init {
+                let (acc_ty, _) = infer_fold_accumulator_type(
+                    &args[0].1,
+                    init_expr,
+                    func,
+                    local_bindings,
+                    infer_context,
+                );
+
+                // Annotate init anonymous record with the merged accumulator field types.
+                // The merged type refines incomplete init fields (e.g. empty list [] becomes
+                // List<Span> after merging with the fold body).
+                if let (Expr::Record(None, _), ValueType::Record(ref fields)) =
+                    (init_expr, &acc_ty)
+                {
+                    metadata.annotate_anonymous_record_field_types(init_expr, fields);
+                }
+
+                // Recurse into fold lambda body with typed accumulator and element params
+                // so nested anonymous records inherit the refined scope.
+                if let Some(Expr::Lambda(params, body)) = func {
+                    let (collection_ty, _) =
+                        infer_expr_type(&args[0].1, local_bindings, infer_context);
+                    let mut fold_scope_types = local_bindings.clone();
+                    let mut fold_scope_exprs = binding_exprs.clone();
+                    if let Some(param) = params.first() {
+                        fold_scope_types.insert(param.clone(), acc_ty);
+                        fold_scope_exprs.remove(param);
+                    }
+                    if let (Some(param), Some(elem_ty)) = (
+                        params.get(1),
+                        collection_element_value_type(&collection_ty),
+                    ) {
+                        fold_scope_types.insert(param.clone(), elem_ty);
+                        fold_scope_exprs.remove(param);
+                    }
+                    collect_constructor_targets_from_expr(
+                        body,
+                        &fold_scope_types,
+                        &fold_scope_exprs,
+                        infer_context,
+                        metadata,
+                    );
+                }
+            }
+
+            // Recurse into all non-lambda args for general annotation.
+            for (_, arg_expr) in args {
+                if matches!(arg_expr, Expr::Lambda(..)) {
+                    continue;
+                }
+                collect_constructor_targets_from_expr(
+                    arg_expr,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
         Expr::Call(name, args) => {
             if name == "with" && args.len() == 2 {
                 let (base_ty, _) = infer_expr_type(&args[0].1, local_bindings, infer_context);
@@ -3589,7 +3665,7 @@ fn collect_constructor_targets_from_expr<'a>(
                         ) {
                             annotate_expr_with_expected_record(
                                 arg_expr,
-                                expected_ty,
+                                &expected_ty,
                                 local_bindings,
                                 binding_exprs,
                                 infer_context,
@@ -3651,15 +3727,29 @@ fn collect_constructor_targets_from_expr<'a>(
             }
         }
         Expr::Record(type_name, fields) => {
+            // For anonymous records, infer and annotate field types so downstream
+            // stages can synthesize struct definitions without re-inference.
+            if type_name.is_none() {
+                let inferred_fields: HashMap<String, ValueType> = fields
+                    .iter()
+                    .map(|(name, field_expr)| {
+                        let (ty, _) = infer_expr_type(field_expr, local_bindings, infer_context);
+                        (name.clone(), ty)
+                    })
+                    .collect();
+                metadata.annotate_anonymous_record_field_types(expr, &inferred_fields);
+            }
             let record_fields = type_name
                 .as_deref()
                 .and_then(|name| resolve_record_fields(name, infer_context.record_type_registry));
             for (field_name, field_expr) in fields {
                 if let Some(expected_fields) = &record_fields {
-                    if let Some(field_ty) = expected_fields.get(field_name) {
+                    if let Some(ValueType::Named(field_type_name)) =
+                        expected_fields.get(field_name)
+                    {
                         annotate_expr_with_expected_record(
                             field_expr,
-                            field_ty,
+                            field_type_name,
                             local_bindings,
                             binding_exprs,
                             infer_context,
@@ -5278,7 +5368,7 @@ fn merge_ir_types(
 }
 
 fn merge_record_ir_fields(
-    existing: &mut Vec<(String, gunbc_ir::code_ir::IrType)>,
+    existing: &mut [(String, gunbc_ir::code_ir::IrType)],
     next: &[(String, gunbc_ir::code_ir::IrType)],
 ) {
     if existing.len() != next.len()
@@ -5375,7 +5465,11 @@ fn build_bound_service_call_registry(
                                     ServiceCallContract {
                                         arity: contract.inputs.len(),
                                         params: contract.inputs.keys().cloned().collect(),
-                                        outputs: contract.outputs.clone(),
+                                        outputs: contract
+                                            .outputs
+                                            .iter()
+                                            .map(|(k, v)| (k.clone(), ValueType::Named(v.clone())))
+                                            .collect(),
                                     },
                                 )
                             })
@@ -5394,7 +5488,11 @@ fn build_bound_service_call_registry(
                                     ServiceCallContract {
                                         arity: contract.inputs.len(),
                                         params: contract.inputs.keys().cloned().collect(),
-                                        outputs: contract.outputs.clone(),
+                                        outputs: contract
+                                            .outputs
+                                            .iter()
+                                            .map(|(k, v)| (k.clone(), ValueType::Named(v.clone())))
+                                            .collect(),
                                     },
                                 )
                             })

@@ -129,6 +129,9 @@ pub struct CompileContext {
     pub use_counts: HashMap<String, usize>,
     /// Typecheck-produced anonymous-record constructor targets keyed by AST expression identity.
     pub anonymous_record_targets: HashMap<usize, String>,
+    /// Typecheck-produced anonymous-record field types keyed by AST expression identity.
+    /// When populated, these replace emit-side `collect_anonymous_record_field_types` inference.
+    pub typecheck_anonymous_record_field_types: HashMap<usize, Vec<(String, IrType)>>,
 }
 
 impl Default for CompileContext {
@@ -158,6 +161,7 @@ impl CompileContext {
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
             anonymous_record_targets: HashMap::new(),
+            typecheck_anonymous_record_field_types: HashMap::new(),
         }
     }
 
