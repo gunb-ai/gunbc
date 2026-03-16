@@ -9276,7 +9276,8 @@ fn ensure_param_source_node(
                 },
             },
         )
-        .with_kind(gunbc_ir::node::NodeKind::ParamSource),
+        .with_kind(gunbc_ir::node::NodeKind::ParamSource)
+        .with_input_alias(lowered_node_id(module_name, callable), param),
     );
     node_id
 }

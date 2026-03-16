@@ -1281,6 +1281,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1319,6 +1320,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1357,6 +1359,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1397,6 +1400,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1438,6 +1442,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1557,6 +1562,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1608,6 +1614,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1646,6 +1653,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1691,6 +1699,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -2082,6 +2091,7 @@ mod tests {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         };
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(bad_node);

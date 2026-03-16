@@ -89,6 +89,7 @@ pub fn execute_workflow_plan(
     dry_run: bool,
 ) -> ExecutionSummary {
     let run_start = Instant::now();
+    let is_ci = std::env::var("GITHUB_ACTIONS").is_ok();
     let mut results = Vec::new();
     let mut executed = 0usize;
     let mut failed = 0usize;
@@ -97,7 +98,41 @@ pub fn execute_workflow_plan(
     let mut has_failure = false;
 
     for node_plan in &plan.nodes {
-        let PlanAction::Execute { miss_reason } = &node_plan.action;
+        let miss_reason = match &node_plan.action {
+            PlanAction::Structural => {
+                // Structural nodes (Aggregate, Report) have no commands.
+                // The planner explicitly marks these — no inference needed.
+                if has_failure {
+                    skipped += 1;
+                    results.push(UnitResult {
+                        node_id: node_plan.node_id.clone(),
+                        success: false,
+                        cached: false,
+                        pending_approval: false,
+                        duration_ms: 0,
+                        miss_reason: None,
+                    });
+                    emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Skipped);
+                } else {
+                    executed += 1;
+                    results.push(UnitResult {
+                        node_id: node_plan.node_id.clone(),
+                        success: true,
+                        cached: false,
+                        pending_approval: false,
+                        duration_ms: 0,
+                        miss_reason: None,
+                    });
+                    emit_unit_status(
+                        &node_plan.node_id,
+                        is_ci,
+                        UnitStatus::Executed { success: true },
+                    );
+                }
+                continue;
+            }
+            PlanAction::Execute { miss_reason } => miss_reason,
+        };
 
         if has_failure {
             // Skip downstream units after a failure (fail-closed).
@@ -110,29 +145,34 @@ pub fn execute_workflow_plan(
                 duration_ms: 0,
                 miss_reason: Some(miss_reason.clone()),
             });
-            emit_unit_status(&node_plan.node_id, UnitStatus::Skipped);
+            emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Skipped);
             continue;
         }
 
         let Some(cmd) = commands.get(&node_plan.node_id) else {
-            // Report nodes and aggregate nodes may not have commands.
-            // Treat them as successful no-ops.
-            executed += 1;
+            // All structural no-op nodes are handled above via PlanAction::Structural.
+            // A missing command for an Execute node is unexpected.
+            failed += 1;
+            has_failure = true;
             results.push(UnitResult {
                 node_id: node_plan.node_id.clone(),
-                success: true,
+                success: false,
                 cached: false,
                 pending_approval: false,
                 duration_ms: 0,
                 miss_reason: Some(miss_reason.clone()),
             });
-            emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+            emit_unit_status(
+                &node_plan.node_id,
+                is_ci,
+                UnitStatus::Executed { success: false },
+            );
             continue;
         };
 
         if dry_run {
             executed += 1;
-            emit_unit_status(&node_plan.node_id, UnitStatus::DryRun(&cmd.label));
+            emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::DryRun(&cmd.label));
             results.push(UnitResult {
                 node_id: node_plan.node_id.clone(),
                 success: true,
@@ -144,7 +184,7 @@ pub fn execute_workflow_plan(
             continue;
         }
 
-        emit_unit_status(&node_plan.node_id, UnitStatus::Running(&cmd.label));
+        emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::Running(&cmd.label));
         let unit_start = Instant::now();
         let execution_outcome = run_unit_command(cmd);
         let duration_ms = unit_start.elapsed().as_millis() as u64;
@@ -152,19 +192,27 @@ pub fn execute_workflow_plan(
 
         let (success, pending_approval) = match execution_outcome {
             CommandExecutionOutcome::Success => {
-                emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+                emit_unit_status(
+                    &node_plan.node_id,
+                    is_ci,
+                    UnitStatus::Executed { success: true },
+                );
                 (true, false)
             }
             CommandExecutionOutcome::PendingApproval => {
                 pending_approvals += 1;
                 has_failure = true;
-                emit_unit_status(&node_plan.node_id, UnitStatus::PendingApproval);
+                emit_unit_status(&node_plan.node_id, is_ci, UnitStatus::PendingApproval);
                 (false, true)
             }
             CommandExecutionOutcome::Failure => {
                 failed += 1;
                 has_failure = true;
-                emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: false });
+                emit_unit_status(
+                    &node_plan.node_id,
+                    is_ci,
+                    UnitStatus::Executed { success: false },
+                );
                 (false, false)
             }
         };
@@ -227,8 +275,7 @@ enum UnitStatus<'a> {
     Skipped,
 }
 
-fn emit_unit_status(node_id: &NodeId, status: UnitStatus<'_>) {
-    let is_ci = std::env::var("GITHUB_ACTIONS").is_ok();
+fn emit_unit_status(node_id: &NodeId, is_ci: bool, status: UnitStatus<'_>) {
     match status {
         UnitStatus::Running(label) => {
             if is_ci {
@@ -289,11 +336,34 @@ mod tests {
     }
 
     #[test]
-    fn execute_nodes_without_commands_succeed_as_noop() {
+    fn structural_nodes_succeed_as_noop() {
+        let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let plan = WorkflowPlan {
+            nodes: vec![make_node_plan("report", PlanAction::Structural)],
+            coordination: CoordinationStatus {
+                ready: vec![],
+                blocked: BTreeMap::new(),
+            },
+        };
+
+        let summary = execute_workflow_plan(
+            &spec,
+            &plan,
+            &BTreeMap::new(),
+            Path::new("/tmp/nonexistent"),
+            false,
+        );
+        assert_eq!(summary.executed, 1);
+        assert!(summary.success());
+        assert!(summary.results[0].miss_reason.is_none());
+    }
+
+    #[test]
+    fn execute_node_without_command_fails() {
         let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
-                "report",
+                "build",
                 PlanAction::Execute {
                     miss_reason: MissReason::NoPriorRun,
                 },
@@ -309,10 +379,10 @@ mod tests {
             &plan,
             &BTreeMap::new(),
             Path::new("/tmp/nonexistent"),
-            true,
+            false,
         );
-        assert_eq!(summary.executed, 1);
-        assert!(summary.success());
+        assert_eq!(summary.failed, 1);
+        assert!(!summary.success());
     }
 
     #[test]
@@ -349,18 +419,8 @@ mod tests {
         let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![
-                make_node_plan(
-                    "a",
-                    PlanAction::Execute {
-                        miss_reason: MissReason::NoPriorRun,
-                    },
-                ),
-                make_node_plan(
-                    "b",
-                    PlanAction::Execute {
-                        miss_reason: MissReason::NoPriorRun,
-                    },
-                ),
+                make_node_plan("a", PlanAction::Structural),
+                make_node_plan("b", PlanAction::Structural),
             ],
             coordination: CoordinationStatus {
                 ready: vec![],
@@ -373,7 +433,7 @@ mod tests {
             &plan,
             &BTreeMap::new(),
             Path::new("/tmp/nonexistent"),
-            true,
+            false,
         );
         assert_eq!(summary.total_units, 2);
         assert_eq!(summary.cache_hits, 0);

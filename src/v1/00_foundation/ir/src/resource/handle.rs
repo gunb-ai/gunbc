@@ -8,7 +8,7 @@
 //! - The freshness key at time of acquisition (proof it was fresh)
 //! - A capability marker preventing forgery
 
-use super::super::{ResourceId, Value};
+use super::super::{ResourceId, SecretString, Value};
 use super::ContentHash;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -231,6 +231,9 @@ impl<R> TryFrom<Value> for ResourceHandle<R> {
 }
 
 /// Serialization support for ResourceHandle.
+///
+/// This uses the same structural fields as the runtime `Value` encoding so
+/// serde does not become a second, forgeable construction path.
 impl<R> Serialize for ResourceHandle<R> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -238,9 +241,11 @@ impl<R> Serialize for ResourceHandle<R> {
     {
         use serde::ser::SerializeStruct;
 
-        let mut state = serializer.serialize_struct("ResourceHandle", 2)?;
+        let mut state = serializer.serialize_struct("ResourceHandle", 4)?;
+        state.serialize_field("type", RESOURCE_HANDLE_MARKER)?;
         state.serialize_field("resource_id", &self.resource_id)?;
         state.serialize_field("key", &self.key)?;
+        state.serialize_field("cap", &SecretString::new(&*PROCESS_SECRET))?;
         state.end()
     }
 }
@@ -253,11 +258,29 @@ impl<'de, R> Deserialize<'de> for ResourceHandle<R> {
     {
         #[derive(Deserialize)]
         struct HandleData {
+            #[serde(rename = "type")]
+            type_field: String,
             resource_id: ResourceId,
             key: ContentHash,
+            cap: SecretString,
         }
 
         let data = HandleData::deserialize(deserializer)?;
+
+        if data.type_field != RESOURCE_HANDLE_MARKER {
+            return Err(serde::de::Error::custom(format!(
+                "Invalid type: expected '{}', got '{}'",
+                RESOURCE_HANDLE_MARKER, data.type_field
+            )));
+        }
+
+        #[allow(clippy::disallowed_methods)] // Approved: capability-marker validation
+        if data.cap.expose_plaintext_for_transport() != *PROCESS_SECRET {
+            return Err(serde::de::Error::custom(
+                "Missing or invalid capability marker",
+            ));
+        }
+
         Ok(ResourceHandle {
             resource_id: data.resource_id,
             key: data.key,
@@ -365,5 +388,31 @@ mod tests {
 
         assert_eq!(h1, h2);
         assert_ne!(h1, h3);
+    }
+
+    #[test]
+    fn test_handle_serde_roundtrip() {
+        let original: ResourceHandle<TestResource> = ResourceHandle::acquire(
+            ResourceId::new("test:serde"),
+            ContentHash::from_bytes(b"serde"),
+        );
+
+        let json = serde_json::to_string(&original).expect("serialize should succeed");
+        let restored: ResourceHandle<TestResource> =
+            serde_json::from_str(&json).expect("deserialize should succeed");
+
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn test_handle_serde_rejects_missing_capability_marker() {
+        let json = serde_json::json!({
+            "type": RESOURCE_HANDLE_MARKER,
+            "resource_id": "test:serde-forged",
+            "key": ContentHash::from_bytes(b"serde-forged"),
+        });
+
+        let result: Result<ResourceHandle<TestResource>, _> = serde_json::from_value(json);
+        assert!(result.is_err(), "serde input without cap should be rejected");
     }
 }

@@ -1042,7 +1042,9 @@ fn eval_block_s<'a>(
 // `eval_block_s` / `eval_match_s` which can push continuations.
 
 fn eval_expr(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {
-    stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || eval_expr_inner(expr, env, ctx))
+    stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {
+        eval_expr_inner(expr, env, ctx)
+    })
 }
 
 fn eval_expr_inner(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<Value, EvalError> {

@@ -11,8 +11,8 @@
 //! - `converted`: String - Name in target case
 
 use crate::dag::{Dag, Port};
-use crate::language::{language_metadata_for, LanguageOp};
 use crate::language::NamingCase;
+use crate::language::{language_metadata_for, LanguageOp};
 use crate::node::Node;
 
 /// Naming conventions for a language.

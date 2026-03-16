@@ -262,6 +262,13 @@ pub struct Node<T> {
     /// `PatternExpansion` origin.
     #[serde(default)]
     pub origin: NodeOrigin,
+    /// Mock-resolution alias for param-source nodes.
+    ///
+    /// When set, `resolve_mock_input` looks up `(alias_node, alias_port)` in
+    /// the boundary mocks instead of scanning by port-name convention. Stamped
+    /// by the lowerer from `CallParamSource { callable, param }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_alias: Option<(NodeId, PortName)>,
 }
 
 impl<T> Node<T> {
@@ -280,6 +287,7 @@ impl<T> Node<T> {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         }
     }
 
@@ -354,6 +362,7 @@ impl<T> Node<T> {
             response_provider: None,
             static_fingerprint: None,
             origin: NodeOrigin::default(),
+            input_alias: None,
         }
     }
 
@@ -409,6 +418,12 @@ impl<T> Node<T> {
     /// Set the structural node kind.
     pub fn with_kind(mut self, kind: NodeKind) -> Self {
         self.kind = kind;
+        self
+    }
+
+    /// Set the mock-resolution input alias for param-source nodes.
+    pub fn with_input_alias(mut self, node_id: impl Into<NodeId>, port: impl Into<PortName>) -> Self {
+        self.input_alias = Some((node_id.into(), port.into()));
         self
     }
 
@@ -516,6 +531,7 @@ impl<T> Node<T> {
             response_provider: self.response_provider,
             static_fingerprint: self.static_fingerprint,
             origin: self.origin,
+            input_alias: self.input_alias,
         }
     }
 

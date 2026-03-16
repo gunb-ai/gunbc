@@ -204,6 +204,7 @@ version = "0.1.0"
 dependencies = [
  "daglang-derive",
  "daglang-lower",
+ "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
  "gunbc-ir",
@@ -412,18 +413,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
-]
-
-[[package]]
-name = "gunbc-interp"
-version = "0.1.0"
-dependencies = [
- "daglang-eval",
- "daglang-lower",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "serde_json",
 ]
 
 [[package]]

@@ -83,9 +83,12 @@ pub fn emit_go_service_func(
         (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
             Ok(emit_go_shell_parse(symbol_name, shell))
         }
-        (ServiceOperationSpec::File(_)
-        | ServiceOperationSpec::Local(_)
-        | ServiceOperationSpec::InterfaceStub { .. }, _) => Err(EmitError::UnsupportedConstruct {
+        (
+            ServiceOperationSpec::File(_)
+            | ServiceOperationSpec::Local(_)
+            | ServiceOperationSpec::InterfaceStub { .. },
+            _,
+        ) => Err(EmitError::UnsupportedConstruct {
             backend: "go".to_string(),
             construct: format!("{} service transport", spec_variant_label(spec)),
         }),
@@ -365,9 +368,12 @@ pub fn emit_c_service_func(
         (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
             Ok(emit_c_shell_parse(symbol_name, shell))
         }
-        (ServiceOperationSpec::File(_)
-        | ServiceOperationSpec::Local(_)
-        | ServiceOperationSpec::InterfaceStub { .. }, _) => Err(EmitError::UnsupportedConstruct {
+        (
+            ServiceOperationSpec::File(_)
+            | ServiceOperationSpec::Local(_)
+            | ServiceOperationSpec::InterfaceStub { .. },
+            _,
+        ) => Err(EmitError::UnsupportedConstruct {
             backend: "c".to_string(),
             construct: format!("{} service transport", spec_variant_label(spec)),
         }),
@@ -524,9 +530,12 @@ pub fn emit_mips_service_func(
             };
             format!("parse shell output ({})", mode)
         }
-        (ServiceOperationSpec::File(_)
-        | ServiceOperationSpec::Local(_)
-        | ServiceOperationSpec::InterfaceStub { .. }, _) => {
+        (
+            ServiceOperationSpec::File(_)
+            | ServiceOperationSpec::Local(_)
+            | ServiceOperationSpec::InterfaceStub { .. },
+            _,
+        ) => {
             return Err(EmitError::UnsupportedConstruct {
                 backend: "mips".to_string(),
                 construct: format!("{} service transport", spec_variant_label(spec)),
@@ -1418,8 +1427,8 @@ mod tests {
     #[test]
     fn go_rest_parse_bytes_field_uses_type_safe_conversion() {
         let spec = ServiceOperationSpec::Rest(Box::new(sample_rest_with_bytes_output()));
-        let code =
-            emit_go_service_func("parse_secret_access", ServiceTransportPhase::Parse, &spec).unwrap();
+        let code = emit_go_service_func("parse_secret_access", ServiceTransportPhase::Parse, &spec)
+            .unwrap();
         assert!(
             code.contains("Payload []byte"),
             "bytes output field should map to []byte: {code}"

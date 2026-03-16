@@ -43,8 +43,7 @@ fn collect_callable_type_maps_from_signatures<'a>(
     signatures: impl IntoIterator<Item = &'a daglang_typecheck::TypedItemSignature>,
 ) -> (CallableReturnTypes, CallableParamTypes) {
     let mut return_types = std::collections::HashMap::<String, Option<String>>::new();
-    let mut param_types =
-        std::collections::HashMap::<String, Option<Vec<(String, String)>>>::new();
+    let mut param_types = std::collections::HashMap::<String, Option<Vec<(String, String)>>>::new();
 
     for signature in signatures {
         let callable = match signature {
@@ -85,6 +84,48 @@ fn collect_callable_type_maps_from_signatures<'a>(
     )
 }
 
+fn collect_anonymous_record_targets(
+    metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
+) -> std::collections::HashMap<daglang_syntax::ast_utils::ExprIdentity, String> {
+    metadata
+        .into_iter()
+        .flat_map(|metadata| metadata.anonymous_record_targets())
+        .map(|(expr_identity, target)| (expr_identity, target.0.clone()))
+        .collect()
+}
+
+fn collect_synthesized_anonymous_record_types(
+    metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
+) -> Vec<fn_codegen::SynthesizedAnonymousRecordType> {
+    metadata
+        .into_iter()
+        .flat_map(|metadata| metadata.synthesized_anonymous_record_types().iter())
+        .map(|synthesized| fn_codegen::SynthesizedAnonymousRecordType {
+            name: synthesized.name.0.clone(),
+            fields: synthesized.fields.clone(),
+        })
+        .collect()
+}
+
+fn collect_expr_ir_types(
+    metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
+) -> std::collections::HashMap<daglang_syntax::ast_utils::ExprIdentity, gunbc_ir::code_ir::IrType> {
+    metadata
+        .into_iter()
+        .flat_map(|metadata| metadata.expr_ir_types())
+        .map(|(expr_identity, ir_type)| (expr_identity, ir_type.clone()))
+        .collect()
+}
+
+fn collect_data_ir_types<'a>(
+    data_defs: impl IntoIterator<Item = &'a DataDef>,
+) -> std::collections::HashMap<String, gunbc_ir::code_ir::IrType> {
+    data_defs
+        .into_iter()
+        .map(|dd| (dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
+        .collect()
+}
+
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
@@ -111,6 +152,14 @@ pub fn type_expr_to_rust_with_registry(
             registry,
             crate::type_mapping::Backend::Rust,
         ),
+        TypeExpr::AssociatedOutput(base) => {
+            let resolved_base = crate::type_mapping::resolve_and_emit(
+                base,
+                registry,
+                crate::type_mapping::Backend::Rust,
+            );
+            format!("{resolved_base}::Output")
+        }
         TypeExpr::Generic(name, args) => {
             use crate::language_model::{self, ContainerKind};
             let model = language_model::model_for_backend(crate::type_mapping::Backend::Rust);
@@ -148,6 +197,15 @@ pub fn type_expr_to_rust_with_registry(
                 format!("{}<{}>", mapped, arg_strs.join(", "))
             }
         }
+        TypeExpr::Function(params, output) => format!(
+            "fn({}) -> {}",
+            params
+                .iter()
+                .map(|param| type_expr_to_rust_with_registry(param, registry))
+                .collect::<Vec<_>>()
+                .join(", "),
+            type_expr_to_rust_with_registry(output, registry)
+        ),
         TypeExpr::Optional(inner) => {
             format!(
                 "Option<{}>",
@@ -523,8 +581,10 @@ fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(
 fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => name.clone(),
+        TypeExpr::AssociatedOutput(base) => format!("{base}::Output"),
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
+        TypeExpr::Function(_, _) => "Function".to_string(),
         TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         TypeExpr::Record(_) => "Anonymous".to_string(),
     }
@@ -749,18 +809,6 @@ fn to_screaming_snake(name: &str) -> String {
 /// `data_names` provides the set of `data` definition names visible in the
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
 pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
-    // Pre-pass: synthesize struct definitions for anonymous records (fold inits).
-    let (synth_items, _name_map, new_field_types) =
-        fn_codegen::synthesize_anonymous_structs(&fd.name, &fd.body, &ctx.struct_field_types);
-
-    // Collect optional parameters (T? → Option<T>)
-    let optional_params: std::collections::HashSet<String> = fd
-        .params
-        .iter()
-        .filter(|p| matches!(&p.ty, TypeExpr::Optional(_)))
-        .map(|p| p.name.clone())
-        .collect();
-
     // S81: Collect parameter name → type name map for scrutinee type inference
     let param_types: std::collections::HashMap<String, String> = fd
         .params
@@ -797,14 +845,30 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .map(|p| (p.name.clone(), fn_codegen::type_expr_to_ir_type(&p.ty)))
         .collect();
 
+    let mut analysis_ctx = ctx.clone();
+    analysis_ctx.param_types = param_types.clone();
+    analysis_ctx.current_return_type = return_type_name.clone();
+    analysis_ctx.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
+    analysis_ctx.ir_scope = ir_scope.clone();
+
+    let (synth_items, new_field_types, new_field_ir_types) =
+        fn_codegen::materialize_synthesized_anonymous_record_types(
+            &analysis_ctx.synthesized_anonymous_record_types,
+        );
+
+    // Collect optional parameters (T? → Option<T>)
+    let optional_params: std::collections::HashSet<String> = fd
+        .params
+        .iter()
+        .filter(|p| matches!(&p.ty, TypeExpr::Optional(_)))
+        .map(|p| p.name.clone())
+        .collect();
+
     let ctx = {
-        let mut augmented = ctx.clone();
+        let mut augmented = analysis_ctx;
         augmented.struct_field_types.extend(new_field_types);
+        augmented.struct_field_ir_types.extend(new_field_ir_types);
         augmented.optional_params = optional_params;
-        augmented.param_types = param_types;
-        augmented.current_return_type = return_type_name;
-        augmented.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
-        augmented.ir_scope = ir_scope;
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -1118,7 +1182,14 @@ pub fn typedefs_to_source_file(
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
         enum_accessor_fields: HashMap::new(),
+        data_ir_types: std::collections::HashMap::new(),
+        fn_return_ir_types: std::collections::HashMap::new(),
         optional_return_fns: std::collections::HashSet::new(),
+        anonymous_record_targets: std::collections::HashMap::new(),
+        synthesized_anonymous_record_types: Vec::new(),
+        expr_ir_types: std::collections::HashMap::new(),
+        expr_identities: std::collections::HashMap::new(),
+        expr_path: std::cell::RefCell::new(Default::default()),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1145,6 +1216,7 @@ pub fn typedefs_to_source_file(
     }
 }
 
+
 /// Extract TypeDefs from a `TypedProject` and produce a rendered Rust source
 /// string containing all generated types for the specified module paths.
 pub fn generate_types_for_modules(
@@ -1163,7 +1235,7 @@ pub fn generate_types_for_modules(
     // for cross-pass reference storage, so we clone the needed items.
     let mut type_defs: Vec<TypeDef> = Vec::new();
     let mut data_defs: Vec<DataDef> = Vec::new();
-    let mut fn_defs: Vec<FnDef> = Vec::new();
+    let mut fn_defs: Vec<(usize, usize)> = Vec::new();
     let mut static_struct_types: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 
@@ -1172,7 +1244,7 @@ pub fn generate_types_for_modules(
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
             continue;
         }
-        for item in &module.ast.items {
+        for (item_index, item) in module.ast.items.iter().enumerate() {
             match &item.node {
                 daglang_syntax::ast::Item::TypeDef(td) => {
                     type_defs.push(td.clone());
@@ -1190,8 +1262,8 @@ pub fn generate_types_for_modules(
                     }
                     data_defs.push(dd.clone());
                 }
-                daglang_syntax::ast::Item::FnDef(fd) => {
-                    fn_defs.push(fd.clone());
+                daglang_syntax::ast::Item::FnDef(_) => {
+                    fn_defs.push((module.graph_index, item_index));
                 }
                 _ => {}
             }
@@ -1214,11 +1286,23 @@ pub fn generate_types_for_modules(
         all_items.extend(datadef_to_code_ir_with(dd, &type_def_refs));
     }
 
-    for fd in &fn_defs {
+    for (module_index, item_index) in &fn_defs {
+        let module = typed
+            .module(*module_index)
+            .expect("typed module should exist for collected fn");
+        let item = module
+            .ast
+            .items
+            .get(*item_index)
+            .expect("collected fn item index should remain valid");
+        let daglang_syntax::ast::Item::FnDef(fd) = &item.node else {
+            panic!("collected fn item should still be a function");
+        };
         let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         for dd in &data_defs {
             fn_data_names.insert(dd.name.clone());
         }
+        let data_ir_types = collect_data_ir_types(data_defs.iter());
         let mut opt_fields = std::collections::HashMap::new();
         let mut v2e = std::collections::HashMap::new();
         let mut ambig = std::collections::HashSet::new();
@@ -1234,6 +1318,7 @@ pub fn generate_types_for_modules(
         }
         let fn_ctx = fn_codegen::CompileContext {
             data_names: fn_data_names,
+            data_ir_types,
             data_map_names: std::collections::HashSet::new(),
             optional_fields: opt_fields,
             variant_to_enum: v2e,
@@ -1241,6 +1326,7 @@ pub fn generate_types_for_modules(
             enum_variants: ev,
             boxed_fields: std::collections::HashSet::new(),
             fn_return_types: global_fn_return_types.clone(),
+            fn_return_ir_types: std::collections::HashMap::new(),
             fn_param_types: global_fn_param_types.clone(),
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
@@ -1252,6 +1338,15 @@ pub fn generate_types_for_modules(
             fold_accum_name: None,
             enum_accessor_fields: HashMap::new(),
             optional_return_fns: std::collections::HashSet::new(),
+            anonymous_record_targets: collect_anonymous_record_targets(
+                module.callable_body_metadata(&fd.name),
+            ),
+            synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
+                module.callable_body_metadata(&fd.name),
+            ),
+            expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(&fd.name)),
+            expr_identities: std::collections::HashMap::new(),
+            expr_path: std::cell::RefCell::new(Default::default()),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1465,6 +1560,8 @@ fn collect_direct_type_refs(
                 edges.push((field_name.to_string(), name.clone()));
             }
         }
+        TypeExpr::AssociatedOutput(_) => {}
+        TypeExpr::Function(_, _) => {}
         TypeExpr::Optional(inner) => {
             collect_direct_type_refs(inner, field_name, known_types, edges);
         }
@@ -1663,11 +1760,162 @@ fn format_variant_boxed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::ast::{
-        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, Refinement, Stmt, TypeBody,
+        DataDef, Expr, Field, FnBody, FnDef, Item, Literal, Param, Refinement, Stmt, TypeBody,
         TypeDef, TypeExpr, Variant,
     };
     use daglang_typecheck::{TypedBinding, TypedCallableSignature, TypedItemSignature};
+    use std::collections::{HashMap, HashSet};
+    use std::path::PathBuf;
+
+    fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
+        let modules = sources
+            .iter()
+            .map(|(path, source)| {
+                let ast = daglang_syntax::parser::parse(source).expect("source should parse");
+                let module_path = ast
+                    .module_path
+                    .as_ref()
+                    .map(|module| module.node.clone())
+                    .expect("module declarations are required in tests");
+                ResolvedModule {
+                    path: PathBuf::from(path),
+                    ast,
+                    module_path,
+                    dependencies: Vec::new(),
+                    source: source.to_string(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let module_lookup = modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| (module.module_path.as_dotted(), index))
+            .collect::<HashMap<_, _>>();
+        let mut modules = modules;
+        for module in &mut modules {
+            module.dependencies = module
+                .ast
+                .imports
+                .iter()
+                .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+                .collect::<Vec<_>>();
+        }
+        ModuleGraph { modules }
+    }
+
+    fn annotate_expr_ir_type(
+        ctx: &mut fn_codegen::CompileContext,
+        body: &FnBody,
+        target: &Expr,
+        ir_type: gunbc_ir::code_ir::IrType,
+    ) {
+        let mut expr_identity = None;
+        daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+            &body.stmts,
+            &mut |identity, candidate| {
+                if std::ptr::eq(candidate, target) {
+                    expr_identity = Some(identity);
+                }
+            },
+        );
+        ctx.expr_ir_types.insert(
+            expr_identity.expect("expected walked expression identity"),
+            ir_type,
+        );
+    }
+
+    fn compile_context_from_typechecked_metadata(
+        source: &str,
+        fn_name: &str,
+    ) -> (FnDef, fn_codegen::CompileContext) {
+        let graph = module_graph_from_sources(&[("sample/test.dag", source)]);
+        let typed = daglang_typecheck::typecheck_module_graph_with_options(
+            &graph,
+            daglang_typecheck::TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("source should typecheck");
+        let module = typed.module(0).expect("typed module should exist");
+        let reparsed = daglang_syntax::parser::parse(source).expect("source should reparse");
+        let fd = reparsed
+            .items
+            .iter()
+            .find_map(|item| match &item.node {
+                Item::FnDef(def) if def.name == fn_name => Some(def.clone()),
+                _ => None,
+            })
+            .expect("expected function to exist in reparsed AST");
+        let type_defs = reparsed
+            .items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::TypeDef(td) => Some(td),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let data_defs = reparsed
+            .items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::DataDef(dd) => Some(dd),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let (fn_return_types, fn_param_types) =
+            collect_callable_type_maps_from_signatures(module.signatures.iter());
+        let mut optional_fields = HashMap::new();
+        let mut variant_to_enum = HashMap::new();
+        let mut ambiguous_variants = HashSet::new();
+        let mut struct_field_types = HashMap::new();
+        let mut struct_field_ir_types = HashMap::new();
+        let mut enum_variants = HashMap::new();
+        for td in &type_defs {
+            collect_optional_fields(td, &mut optional_fields);
+            collect_variant_to_enum(td, &mut variant_to_enum, &mut ambiguous_variants);
+            collect_struct_field_types(td, &mut struct_field_types);
+            collect_struct_field_ir_types(td, &mut struct_field_ir_types);
+            collect_enum_variants(td, &mut enum_variants);
+        }
+
+        (
+            fd,
+            fn_codegen::CompileContext {
+                data_names: data_defs.iter().map(|dd| dd.name.clone()).collect(),
+                data_ir_types: collect_data_ir_types(data_defs.iter().copied()),
+                data_map_names: HashSet::new(),
+                optional_fields,
+                variant_to_enum,
+                struct_field_types,
+                enum_variants,
+                boxed_fields: HashSet::new(),
+                fn_return_types,
+                fn_return_ir_types: HashMap::new(),
+                fn_param_types,
+                optional_params: HashSet::new(),
+                param_types: HashMap::new(),
+                current_return_type: None,
+                current_return_ir_type: None,
+                ir_scope: HashMap::new(),
+                struct_field_ir_types,
+                use_counts: HashMap::new(),
+                fold_accum_name: None,
+                anonymous_record_targets: collect_anonymous_record_targets(
+                    module.callable_body_metadata(fn_name),
+                ),
+                synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
+                    module.callable_body_metadata(fn_name),
+                ),
+                expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fn_name)),
+                expr_identities: HashMap::new(),
+                expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
+                enum_accessor_fields: HashMap::new(),
+                optional_return_fns: HashSet::new(),
+            },
+        )
+    }
 
     #[test]
     fn simple_enum_generates_copy_hash() {
@@ -2023,17 +2271,29 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types;
         ctx.fn_param_types = fn_param_types;
+        if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &fd.body,
+                &args[0].1,
+                gunbc_ir::code_ir::IrType::Named("ConfigB".to_string()),
+            );
+        }
 
         let items = fndef_to_code_ir(&fd, &ctx);
-        match &items[0] {
-            code_ir::Item::Fn(f) => match &f.body[0] {
-                code_ir::Stmt::TailExpr(code_ir::Expr::Call { args, .. }) => match &args[0] {
-                    code_ir::Expr::Struct { name, .. } => assert_eq!(name, "ConfigB"),
-                    other => panic!("expected ConfigB struct arg, got: {other:?}"),
-                },
-                other => panic!("expected tail call body, got: {other:?}"),
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Call { args, .. }) => match &args[0] {
+                code_ir::Expr::Struct { name, .. } => assert_eq!(name, "ConfigB"),
+                other => panic!("expected ConfigB struct arg, got: {other:?}"),
             },
-            other => panic!("expected Fn, got: {other:?}"),
+            other => panic!("expected tail call body, got: {other:?}"),
         }
     }
 
@@ -2099,17 +2359,219 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types;
         ctx.fn_param_types = fn_param_types;
+        if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &fd.body,
+                &args[0].1,
+                gunbc_ir::code_ir::IrType::Named("State".to_string()),
+            );
+            let mut expr_identity = None;
+            daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+                &fd.body.stmts,
+                &mut |identity, candidate| {
+                    if std::ptr::eq(candidate, &args[1].1) {
+                        expr_identity = Some(identity);
+                    }
+                },
+            );
+            let expr_identity = expr_identity.expect("expected walked expression identity");
+            ctx.anonymous_record_targets
+                .insert(expr_identity, "State".to_string());
+            ctx.expr_ir_types.insert(
+                expr_identity,
+                gunbc_ir::code_ir::IrType::Named("State".to_string()),
+            );
+        }
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, rest, .. }) => {
+                assert_eq!(name, "State");
+                assert!(rest.is_some(), "expected struct update rest");
+            }
+            other => panic!("expected struct update tail expr, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn explicit_anonymous_record_targets_drive_let_bound_codegen() {
+        let signatures = vec![TypedItemSignature::Fn(TypedCallableSignature {
+            name: "consume".to_string(),
+            params: vec![TypedBinding {
+                name: "cfg".to_string(),
+                ty: gunbc_ir::types::TypeId::from("ConfigB"),
+            }],
+            outputs: vec![TypedBinding {
+                name: "return".to_string(),
+                ty: gunbc_ir::types::TypeId::from("String"),
+            }],
+        })];
+        let (fn_return_types, fn_param_types) =
+            collect_callable_type_maps_from_signatures(signatures.iter());
+        let fd = FnDef {
+            name: "make".to_string(),
+            type_params: vec![],
+            params: vec![],
+            return_type: TypeExpr::Named("String".to_string()),
+            body: FnBody {
+                stmts: vec![
+                    Stmt::Let(
+                        "cfg".to_string(),
+                        Expr::Record(
+                            None,
+                            vec![(
+                                "value".to_string(),
+                                Expr::Literal(Literal::String("ok".to_string())),
+                            )],
+                        ),
+                    ),
+                    Stmt::Expr(Expr::Call(
+                        "consume".to_string(),
+                        vec![(None, Expr::Ident("cfg".to_string()))],
+                    )),
+                ],
+            },
+        };
+        let mut ctx = fn_codegen::CompileContext::new();
+        ctx.struct_field_types.insert(
+            "ConfigA".to_string(),
+            [("value".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ConfigB".to_string(),
+            [("value".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        if let Stmt::Let(_, expr) = &fd.body.stmts[0] {
+            let mut expr_identity = None;
+            daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+                &fd.body.stmts,
+                &mut |identity, candidate| {
+                    if std::ptr::eq(candidate, expr) {
+                        expr_identity = Some(identity);
+                    }
+                },
+            );
+            ctx.anonymous_record_targets.insert(
+                expr_identity.expect("expected walked expression identity"),
+                "ConfigB".to_string(),
+            );
+            annotate_expr_ir_type(
+                &mut ctx,
+                &fd.body,
+                expr,
+                gunbc_ir::code_ir::IrType::Named("ConfigB".to_string()),
+            );
+        }
+        ctx.fn_return_types = fn_return_types;
+        ctx.fn_param_types = fn_param_types;
 
         let items = fndef_to_code_ir(&fd, &ctx);
         match &items[0] {
             code_ir::Item::Fn(f) => match &f.body[0] {
-                code_ir::Stmt::TailExpr(code_ir::Expr::Struct { name, rest, .. }) => {
-                    assert_eq!(name, "State");
-                    assert!(rest.is_some(), "expected struct update rest");
+                code_ir::Stmt::Let {
+                    ir_type: Some(gunbc_ir::code_ir::IrType::Named(ir_type)),
+                    expr: code_ir::Expr::Struct { name, .. },
+                    ..
+                } => {
+                    assert_eq!(name, "ConfigB");
+                    assert_eq!(ir_type, "ConfigB");
                 }
-                other => panic!("expected struct update tail expr, got: {other:?}"),
+                other => panic!("expected let-bound ConfigB struct, got: {other:?}"),
             },
             other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn typechecked_anonymous_record_targets_survive_reparse_into_emit() {
+        let source = r#"module sample.records
+type ConfigB {
+  value: String
+}
+fn consume(cfg: ConfigB) -> String {
+  cfg.value
+}
+fn make() -> String {
+  let cfg = { value: "ok" }
+  consume(cfg)
+}"#;
+        let (fd, ctx) = compile_context_from_typechecked_metadata(source, "make");
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::Let {
+                expr: code_ir::Expr::Struct { name, .. },
+                ..
+            } => assert_eq!(name, "ConfigB"),
+            other => panic!("expected let-bound ConfigB struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn typechecked_fold_accumulator_types_survive_reparse_into_emit() {
+        let source = r#"module sample.records
+type Span {
+  text: String
+}
+fn collect_text(spans: List<Span>) -> List<String> {
+  let state = fold(spans,
+    init: { texts: [] },
+    f: (acc, span) => { texts: concat(acc.texts, [span.text]) }
+  )
+  state.texts
+}"#;
+        let (fd, ctx) = compile_context_from_typechecked_metadata(source, "collect_text");
+        assert!(
+            ctx.synthesized_anonymous_record_types
+                .iter()
+                .any(|ty| ty.name.starts_with("__CollecttextState")),
+            "expected typecheck metadata to carry the synthesized accumulator type",
+        );
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        let synthesized_name = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Struct(code_ir::StructDef { name, .. })
+                    if name.starts_with("__CollecttextState") =>
+                {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .expect("expected synthesized accumulator type to be emitted from typecheck metadata");
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::Let {
+                ir_type: Some(gunbc_ir::code_ir::IrType::Named(ir_type)),
+                ..
+            } => assert_eq!(ir_type, &synthesized_name),
+            other => panic!("expected synthesized accumulator let type, got: {other:?}"),
         }
     }
 
@@ -2305,5 +2767,56 @@ mod tests {
         );
         // Should fall through to stripping refinements
         assert_eq!(type_expr_to_rust(&expr), "String");
+    }
+
+    /// End-to-end regression: DSL source through typecheck and Rust emit for
+    /// let-bound anonymous records and `fn(Check.Output)` signatures.
+    #[test]
+    fn e2e_let_bound_anonymous_record_and_fn_check_output_through_rust_emit() {
+        let source = r#"module sample.regression
+type Config {
+  value: String
+}
+fn consume(cfg: Config) -> String {
+  cfg.value
+}
+fn guarded<Check>(predicate: fn(Check.Output) -> Bool) -> String {
+  let cfg = { value: "ok" }
+  consume(cfg)
+}"#;
+        let graph = module_graph_from_sources(&[("sample/regression.dag", source)]);
+        let typed = daglang_typecheck::typecheck_module_graph_with_options(
+            &graph,
+            daglang_typecheck::TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("DSL with let-bound anonymous record and fn(Check.Output) should typecheck");
+
+        let rust_source = generate_types_for_modules(&typed, &[]);
+
+        // The Config struct should be emitted.
+        assert!(
+            rust_source.contains("struct Config"),
+            "emitted Rust should contain Config struct: {rust_source}"
+        );
+
+        // The fn(Check.Output) -> Bool parameter should render with valid Rust
+        // associated-type syntax (:: not .).
+        assert!(
+            rust_source.contains("fn(Check::Output) -> bool"),
+            "emitted Rust should render fn(Check::Output) -> bool: {rust_source}"
+        );
+
+        // The let-bound anonymous record should resolve inside the function
+        // body via typecheck metadata rather than falling back to compile_error!.
+        assert!(
+            rust_source.contains("let cfg = Config {"),
+            "let-bound anonymous record should emit as a Config constructor in the body: {rust_source}"
+        );
+        assert!(
+            !rust_source.contains("cannot resolve anonymous record type"),
+            "production emit should not degrade to compile_error!: {rust_source}"
+        );
     }
 }
