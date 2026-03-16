@@ -3281,7 +3281,7 @@ fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContra
                 .collect::<HashMap<_, _>>();
             Some(CallableContract {
                 arity: params.len(),
-                params: param_order.iter().cloned().collect(),
+                params: HashSet::new(),
                 param_order,
                 param_types,
                 output: value_type_from_type_expr(output),

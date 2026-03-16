@@ -909,6 +909,32 @@ fn apply(callback: fn(Int) -> Int) -> Int {
 }
 
 #[test]
+fn function_typed_parameter_call_rejects_placeholder_named_args() {
+    let graph = module_graph_from_sources(&[(
+        "sample/callback_named_placeholder.dag",
+        r#"module sample.callback
+fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
+  callback(__arg0: value)
+}"#,
+    )]);
+    let errors = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("function-typed params should not accept fabricated placeholder names");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnknownCallArgument {
+            caller,
+            callee,
+            argument
+        } if caller == "apply" && callee == "callback" && argument == "__arg0"
+    )));
+}
+
+#[test]
 fn strict_mode_accepts_sum_variant_constructor_call_targets() {
     let graph = module_graph_from_sources(&[(
         "sample/constructors.dag",
