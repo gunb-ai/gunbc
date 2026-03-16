@@ -103,7 +103,7 @@ type OpEntry {
 }
 
 // Derive outputs from a Node's return_type (Optional<TypeExpr>).
-// After PortContract dissolution, outputs live in return_type:
+// Outputs live in return_type:
 //   - Single output: return_type is the TypeExpr directly
 //   - Multiple outputs: return_type is Product { fields: outputs }
 //   - No outputs: return_type is none
@@ -244,9 +244,6 @@ type EnvDefResolveResult {
   env_def: EnvDef
   diagnostics: List<Diagnostic>
 }
-
-// MockResponseResolveResult, ResponseMappingResolveResult, ExitMappingResolveResult:
-// dissolved (Unit 5) — response/exit/mock data is now in Node properties.
 
 // Internal result type for variant-level resolution.
 type VariantResult {
@@ -2033,9 +2030,6 @@ fn resolve_transport_binding(transport: TransportBinding, env: TypeEnv, module_n
   }
 }
 
-// resolve_mock_response, resolve_response_mapping, resolve_exit_mapping:
-// dissolved (Unit 5) — data now lives in Node properties, resolved by resolve_field_init.
-
 fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match expr {
     Literal { value: _, span: _ } =>
@@ -2339,7 +2333,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let func_env = build_func_env(items: resolved_items)
 
   // Build service registry: map service paths to OpEntry lists from children.
-  // After PortContract dissolution, outputs are derived from child return_type.
   let local_svc_registry = fold(resolved_items, init: empty_map(), f: (acc, item) =>
     if item.transport != none && item.children |> count > 0 {
       let entries = item.children |> map(c =>
@@ -2563,8 +2556,6 @@ fn collect_unresolved_in_item(item: Node, module_name: String, defined_names: Ma
   let prop_diags = fold(item.properties, init: [], f: (acc, property) =>
     concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
   )
-  // PortContract dissolved: unresolved types are now found via child_diags (children walk)
-  // and prop_diags (properties walk), which cover the dissolved response/exit/mock properties.
   concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
 }
 
@@ -2678,10 +2669,6 @@ fn collect_unresolved_in_transport_binding(transport: TransportBinding, module_n
     LocalBinding => []
   }
 }
-
-// collect_unresolved_in_response_mapping, collect_unresolved_in_mock_response,
-// collect_unresolved_in_exit_mapping: dissolved (Unit 5) — now covered by
-// collect_unresolved_in_field_init via the properties walk.
 
 fn collect_unresolved_in_expr(expr: Expr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
   match expr {
@@ -2807,7 +2794,6 @@ fn collect_unresolved_in_typed_item(item: TypedNode, module_name: String, define
   let prop_diags = fold(item.properties, init: [], f: (acc, property) =>
     concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
   )
-  // PortContract dissolved: unresolved types are found via child_diags and prop_diags.
   concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
 }
 

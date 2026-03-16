@@ -144,11 +144,6 @@ type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 // Disj = disjunction: exactly one child holds (sum variants).
 type Connective = Conj | Disj
 
-type TypeBody
-  = Record { fields: List<Field> }
-  | Sum { variants: List<Variant> }
-  | Alias { base: TypeExpr }
-
 type Field {
   name: String
   type_expr: TypeExpr
@@ -267,11 +262,6 @@ type ServiceConfig {
   retry: Expr?
 }
 
-// ResponseMapping, MockResponseDef, ExitMapping: dissolved (Unit 5).
-// Response mappings -> properties: { name: "response_<status>", value: type_name }
-// Mock responses -> properties: { name: "mock_<status>", value: body_expr }
-// Exit mappings -> properties: { name: "exit_<code>", value: type_name }
-
 type AuthConfig {
   scheme: String
   header: String
@@ -295,8 +285,6 @@ type OperationDef {
   span: SourceSpan
 }
 
-// OperationModifier: dissolved (Unit 5 Phase B).
-// Modifiers become properties: { name: "idempotent"|"readonly"|"hermetic", value: true }
 type OperationModifier = Idempotent | Readonly | Hermetic
 
 type CapabilityDef {
@@ -305,11 +293,6 @@ type CapabilityDef {
   outputs: List<Field>
   span: SourceSpan
 }
-
-// PortContract: dissolved (Unit 5 Phase D).
-// All operation/capability metadata now lives in Node properties + return_type.
-// Service detection: transport != none
-// Resource detection: transport == none && children |> count > 0
 
 // =========================================================================
 // Render target — which language the emitter produces.
@@ -459,60 +442,4 @@ type TypedNode {
   config: ServiceConfig?
 }
 
-// =========================================================================
-// Bridge helpers — derive TypeBody from Node's connective + children.
-// These allow downstream code (typecheck, resolve, emit) to access the
-// structural type body without storing it redundantly on Node.
-// =========================================================================
-
-fn child_node_to_field(node: Node) -> Field {
-  let type_expr = match node.return_type {
-    Some { value: Optional { inner: inner, span: _ } } => inner,
-    Some { value: te } => te,
-    None => Primitive { name: "Unknown", span: node.span }
-  }
-  let optional = match node.return_type {
-    Some { value: Optional { inner: _, span: _ } } => true,
-    _ => false
-  }
-  Field { name: node.name, type_expr: type_expr, optional: optional, default_value: node.body, from_key: none, span: node.span }
-}
-
-fn child_node_to_variant(node: Node) -> Variant {
-  let fields = node.children |> map(c => child_node_to_field(node: c))
-  Variant { name: node.name, fields: fields, span: node.span }
-}
-
-fn node_shape(node: Node) -> TypeBody? {
-  match node.connective {
-    Some { value: Conj } => Some { value: Record { fields: node.children |> map(c => child_node_to_field(node: c)) } },
-    Some { value: Disj } => Some { value: Sum { variants: node.children |> map(c => child_node_to_variant(node: c)) } },
-    None => if node.return_type != none { Some { value: Alias { base: node.return_type.value } } } else { none }
-  }
-}
-
-fn typed_child_to_field(node: TypedNode) -> Field {
-  let type_expr = match node.return_type {
-    Optional { inner: inner, span: _ } => inner,
-    te => te
-  }
-  let optional = match node.return_type {
-    Optional { inner: _, span: _ } => true,
-    _ => false
-  }
-  Field { name: node.name, type_expr: type_expr, optional: optional, default_value: none, from_key: none, span: node.span }
-}
-
-fn typed_child_to_variant(node: TypedNode) -> Variant {
-  let fields = node.children |> map(c => typed_child_to_field(node: c))
-  Variant { name: node.name, fields: fields, span: node.span }
-}
-
-fn typed_node_shape(node: TypedNode) -> TypeBody? {
-  match node.connective {
-    Some { value: Conj } => Some { value: Record { fields: node.children |> map(c => typed_child_to_field(node: c)) } },
-    Some { value: Disj } => Some { value: Sum { variants: node.children |> map(c => typed_child_to_variant(node: c)) } },
-    None => none
-  }
-}
 

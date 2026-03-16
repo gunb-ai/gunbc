@@ -18,7 +18,7 @@ import v2.std.core {
   Import, ImportAll, ImportSpecific,
   Node, TypedNode,
   Connective, Conj, Disj,
-  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
+  TypeExpr, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
   ContainerKind, ResourceUse,
@@ -290,7 +290,7 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
   else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return(return_type: item.return_type) {
-    emit_type_alias(name: item.name, base: item.return_type)
+    concat("pub type ", item.name, " = ", emit_type_expr(type_expr: item.return_type), ";")
   }
   // Function with body: fn or func (distinguished from data by type_annotation)
   else if item.body != none && item.type_annotation == none {
@@ -326,81 +326,9 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
 }
 
 // =========================================================================
-// Type definitions
-// =========================================================================
-
-fn emit_type_def(name: String, body: TypeBody) -> String {
-  match body {
-    Record { fields: fs } => emit_struct_def(name: name, fields: fs)
-    Sum { variants: vs } => emit_enum_def(name: name, variants: vs)
-    Alias { base: te } => emit_type_alias(name: name, base: te)
-  }
-}
-
-fn emit_struct_def(name: String, fields: List<Field>) -> String {
-  let derives = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
-  let field_lines = fields |> map(f => emit_struct_field(field: f))
-  let fields_str = field_lines |> join(separator: "\n")
-  if fields |> count == 0 {
-    concat(derives, "\npub struct ", name, ";")
-  } else {
-    concat(derives, "\npub struct ", name, " {\n", fields_str, "\n}")
-  }
-}
-
-fn emit_struct_field(field: Field) -> String {
-  let ty = if field.optional {
-    concat("Option<", emit_type_expr(type_expr: field.type_expr), ">")
-  } else {
-    emit_type_expr(type_expr: field.type_expr)
-  }
-  let rename_attr = match field.from_key {
-    Some { value: key } => concat("    #[serde(rename = \"", key, "\")]\n")
-    None => ""
-  }
-  let default_doc = match field.default_value {
-    Some { value: expr } => concat("    /// Default: ", emit_expr(expr: expr, registry: empty_map()), "\n")
-    None => ""
-  }
-  concat(rename_attr, default_doc, "    pub ", rust_ident(name: field.name), ": ", ty, ",")
-}
-
-fn emit_enum_def(name: String, variants: List<Variant>) -> String {
-  let derives = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
-  let serde_tag = "#[serde(tag = \"_variant\")]"
-  let variant_lines = variants |> map(v => emit_variant(variant: v))
-  let variants_str = variant_lines |> join(separator: "\n")
-  concat(derives, "\n", serde_tag, "\npub enum ", name, " {\n", variants_str, "\n}")
-}
-
-fn emit_variant(variant: Variant) -> String {
-  if variant.fields |> count == 0 {
-    concat("    ", variant.name, ",")
-  } else {
-    let field_lines = variant.fields |> map(f =>
-      concat("        ", rust_ident(name: f.name), ": ", emit_field_type(field: f), ",")
-    )
-    let fields_str = field_lines |> join(separator: "\n")
-    concat("    ", variant.name, " {\n", fields_str, "\n    },")
-  }
-}
-
-fn emit_field_type(field: Field) -> String {
-  if field.optional {
-    concat("Option<", emit_type_expr(type_expr: field.type_expr), ">")
-  } else {
-    emit_type_expr(type_expr: field.type_expr)
-  }
-}
-
-fn emit_type_alias(name: String, base: TypeExpr) -> String {
-  concat("pub type ", name, " = ", emit_type_expr(type_expr: base), ";")
-}
-
-// =========================================================================
 // Connective-based type emission — dispatches on TypedNode children
 //
-// After shape dissolution, type structure is encoded as:
+// Type structure is encoded as:
 //   Records: connective=Conj, children = one TypedNode per field
 //   Sums:    connective=Disj, children = one TypedNode per variant
 //   Aliases: connective=none, return_type carries the aliased type
@@ -1419,13 +1347,13 @@ fn emit_service_new_method(name: String, transport: TransportBinding) -> String 
   }
 }
 
-// Extract modifier names from properties (dissolved from OperationModifier).
+// Extract modifier names from properties.
 fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
   properties |> filter(p => p.name == "idempotent" || p.name == "readonly" || p.name == "hermetic")
     |> map(p => p.name)
 }
 
-// Extract mock properties from properties (dissolved from MockResponseDef).
+// Extract mock properties from properties.
 fn extract_mock_props(properties: List<FieldInit>) -> List<FieldInit> {
   properties |> filter(p => starts_with_prefix(s: p.name, prefix: "mock_"))
 }
@@ -1463,7 +1391,6 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
   } else {
     concat("&self, ", params_str)
   }
-  // After PortContract dissolution: return_type carries outputs, properties carry modifiers/mocks
   let ret_type = emit_type_expr(type_expr: op_node.return_type)
   // Use per-operation transport override if present, otherwise service-level transport.
   let effective_transport = match op_node.transport {
@@ -1486,8 +1413,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
 }
 
 // Emit the dry-run branch for an operation method.
-// If mock_response data is available, use it. Otherwise, return Default::default().
-// Dry-run branch using dissolved mock properties instead of MockResponseDef.
+// If mock data is available, use it. Otherwise, return Default::default().
 fn emit_dry_run_branch_from_props(op_name: String, return_type: TypeExpr, mock_props: List<FieldInit>, registry: Map<String, ItemInfo>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
@@ -1507,8 +1433,6 @@ fn emit_dry_run_branch_from_props(op_name: String, return_type: TypeExpr, mock_p
     concat(log_line, "\nOk(serde_json::from_value(serde_json::Value::Object(Default::default()))?)")
   }
 }
-
-// emit_operation_return_type: dissolved — return_type is now emitted directly via emit_type_expr.
 
 fn emit_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>) -> String {
   match transport {
@@ -1596,12 +1520,9 @@ fn emit_capability_method(cap_node: TypedNode) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  // After PortContract dissolution: return_type carries the output type directly
   let ret = emit_type_expr(type_expr: cap_node.return_type)
   concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
-
-// emit_capability_return_type: dissolved — return_type is now emitted directly via emit_type_expr.
 
 // =========================================================================
 // Data definition emission
@@ -1680,7 +1601,7 @@ fn is_typed_service_item(item: TypedNode) -> Bool {
 fn emit_typed_service_tests(item: TypedNode, registry: Map<String, ItemInfo>) -> List<String> {
   if item.children |> count > 0 {
     let safe_name = sanitize_service_name(name: item.name)
-    // After PortContract dissolution: mock data lives in properties with "mock_" prefix
+    // Mock data lives in properties with "mock_" prefix
     item.children
       |> filter(c => extract_mock_props(properties: c.properties) |> count > 0)
       |> map(c => emit_operation_test(service_name: safe_name, op_node: c, registry: registry))

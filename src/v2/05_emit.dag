@@ -21,7 +21,7 @@ import v2.std.core {
   Import,
   Node, TypedNode,
   Connective, Conj, Disj,
-  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
+  TypeExpr, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
   ContainerKind, ResourceUse,

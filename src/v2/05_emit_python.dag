@@ -16,7 +16,7 @@ import v2.std.core {
   Import, ImportAll, ImportSpecific,
   Node, TypedNode,
   Connective, Conj, Disj,
-  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
+  TypeExpr, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
   ContainerKind, ResourceUse,
@@ -200,7 +200,7 @@ fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: I
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
   else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_py_type_alias_return(return_type: item.return_type) {
-    emit_py_type_alias(name: item.name, base: item.return_type)
+    concat(item.name, " = ", emit_py_type_expr(type_expr: item.return_type))
   }
   else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
@@ -230,83 +230,9 @@ fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: I
 }
 
 // =========================================================================
-// Type definitions
-// =========================================================================
-
-fn emit_py_type_def(name: String, body: TypeBody) -> String {
-  match body {
-    Record { fields: fs } => emit_py_dataclass(name: name, fields: fs)
-    Sum { variants: vs } => emit_py_enum_def(name: name, variants: vs)
-    Alias { base: te } => emit_py_type_alias(name: name, base: te)
-  }
-}
-
-fn emit_py_dataclass(name: String, fields: List<Field>) -> String {
-  if fields |> count == 0 {
-    concat("@dataclass\nclass ", name, ":\n    pass")
-  } else {
-    let field_lines = fields |> map(f => emit_py_dataclass_field(field: f))
-    let fields_str = field_lines |> join(separator: "\n")
-    concat("@dataclass\nclass ", name, ":\n", fields_str)
-  }
-}
-
-fn emit_py_dataclass_field(field: Field) -> String {
-  let ty = if field.optional {
-    concat("Optional[", emit_py_type_expr(type_expr: field.type_expr), "]")
-  } else {
-    emit_py_type_expr(type_expr: field.type_expr)
-  }
-  let default_str = match field.default_value {
-    Some { value: expr } => concat(" = ", emit_py_expr(expr: expr, registry: empty_map()))
-    None =>
-      if field.optional {
-        " = None"
-      } else {
-        ""
-      }
-  }
-  concat("    ", py_ident(name: field.name), ": ", ty, default_str)
-}
-
-fn emit_py_enum_def(name: String, variants: List<Variant>) -> String {
-  let has_data = variants |> any(v => v.fields |> count > 0)
-  if has_data {
-    // Tagged union: emit as a set of dataclasses + a Union type alias
-    let variant_classes = variants |> map(v => emit_py_variant_class(parent_name: name, variant: v))
-    let variant_names = variants |> map(v => concat(name, v.name))
-    let union_str = variant_names |> join(separator: ", ")
-    let classes_str = variant_classes |> join(separator: "\n\n\n")
-    concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
-  } else {
-    // Simple enum: all unit variants
-    let variant_lines = variants |> map(v =>
-      concat("    ", v.name, " = auto()")
-    )
-    let variants_str = variant_lines |> join(separator: "\n")
-    concat("class ", name, "(Enum):\n", variants_str)
-  }
-}
-
-fn emit_py_variant_class(parent_name: String, variant: Variant) -> String {
-  let class_name = concat(parent_name, variant.name)
-  if variant.fields |> count == 0 {
-    concat("@dataclass\nclass ", class_name, ":\n    pass")
-  } else {
-    let field_lines = variant.fields |> map(f => emit_py_dataclass_field(field: f))
-    let fields_str = field_lines |> join(separator: "\n")
-    concat("@dataclass\nclass ", class_name, ":\n", fields_str)
-  }
-}
-
-fn emit_py_type_alias(name: String, base: TypeExpr) -> String {
-  concat(name, " = ", emit_py_type_expr(type_expr: base))
-}
-
-// =========================================================================
 // Connective-based type emission — dispatches on TypedNode children
 //
-// After shape dissolution, type structure is encoded as:
+// Type structure is encoded as:
 //   Records: connective=Conj, children = one TypedNode per field
 //   Sums:    connective=Disj, children = one TypedNode per variant
 //   Aliases: connective=none, return_type carries the aliased type
@@ -1154,7 +1080,6 @@ fn emit_py_operation_method(service_name: String, transport: TransportBinding, o
   } else {
     concat("self, ", params_str)
   }
-  // After PortContract dissolution: return_type carries outputs directly
   let ret_type = emit_py_type_expr(type_expr: op_node.return_type)
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
@@ -1165,8 +1090,6 @@ fn emit_py_operation_method(service_name: String, transport: TransportBinding, o
     "(", all_params, ") -> ", ret_type, ":\n",
     indent(text: body, level: 1))
 }
-
-// emit_py_operation_return_type: dissolved — return_type is now emitted directly via emit_py_type_expr.
 
 fn emit_py_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>) -> String {
   match transport {
@@ -1266,14 +1189,11 @@ fn emit_py_capability_method(cap_node: TypedNode) -> String {
   } else {
     concat("self, ", params_str)
   }
-  // After PortContract dissolution: return_type carries the output type directly
   let ret = emit_py_type_expr(type_expr: cap_node.return_type)
   concat("@abstractmethod\n",
     "async def ", py_ident(name: cap_node.name), "(", all_params, ") -> ", ret, ":\n",
     "    ...")
 }
-
-// emit_py_capability_return_type: dissolved — return_type is now emitted directly via emit_py_type_expr.
 
 // =========================================================================
 // Data definition emission
