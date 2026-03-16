@@ -1,11 +1,11 @@
 use crate::lower_c::{lower_to_c, CConfig};
 use crate::lower_go::{lower_to_go, GoConfig};
 use crate::lower_mips::{lower_to_mips, MipsConfig};
+use crate::render_c::render_c_source;
+use crate::render_go::render_go_source;
 use crate::render_mips::render_mips_source;
-use gunbc_ir::code_ir::c_ir::{CItem, CStmt};
-use gunbc_ir::code_ir::register_ir::{Instruction, Register};
 use gunbc_ir::code_ir::{
-    BindIntent, BindTarget, CallObligation, Expr, FnDef, Item, SourceFile, Stmt,
+    CallObligation, Expr, FnDef, Item, SourceFile, Stmt,
 };
 
 fn adversarial_transport_source() -> SourceFile {
@@ -42,114 +42,81 @@ fn adversarial_transport_source() -> SourceFile {
     }
 }
 
+fn count_occurrences(haystack: &str, needle: &str) -> usize {
+    haystack.matches(needle).count()
+}
+
 #[test]
 fn adversarial_fixture_enforces_cross_backend_invariants() {
     let source = adversarial_transport_source();
 
-    // Go structural invariants.
+    // Go output invariants.
     let go_cfg = GoConfig {
         package_name: "harness".to_string(),
         ..GoConfig::default()
     };
     let go_lowered = lower_to_go(&source, &go_cfg).expect("go lowering should succeed");
-    let go_main = go_lowered
-        .items
-        .iter()
-        .find_map(|item| match item {
-            Item::Fn(f) if f.name == "Main" => Some(f),
-            _ => None,
-        })
-        .expect("lowered Go should contain Main");
-    let scoped_err_blocks = go_main
-        .body
-        .iter()
-        .filter(|stmt| {
-            matches!(
-                stmt,
-                Stmt::BlockScope(inner)
-                    if matches!(
-                        inner.first(),
-                        Some(Stmt::Bind {
-                            targets,
-                            intent: BindIntent::Declare,
-                            ..
-                        }) if matches!(
-                            targets.as_slice(),
-                            [BindTarget::Discard, BindTarget::Name(err)] if err == "err"
-                        )
-                    )
-            )
-        })
-        .count();
+    let rendered_go = render_go_source(&go_lowered);
+    let scoped_err_blocks = count_occurrences(
+        &rendered_go,
+        "\t {\n\t\t_, err := transport.Execute(request)\n",
+    );
     assert_eq!(
         scoped_err_blocks, 2,
-        "repeated transport expression statements should isolate err in block scope"
+        "repeated transport expression statements should render as isolated Go block scopes"
+    );
+    assert_eq!(
+        count_occurrences(&rendered_go, "return err"),
+        3,
+        "each Go transport call should preserve its explicit error return"
+    );
+    assert!(
+        rendered_go.contains("return nil"),
+        "fallible Go main should render an explicit success return"
     );
 
-    // C structural invariants.
+    // C output invariants.
     let c_lowered = lower_to_c(&source, &CConfig::default()).expect("c lowering should succeed");
-    let c_main = c_lowered
-        .items
-        .iter()
-        .find_map(|item| match item {
-            CItem::FnDef(f) if f.name == "main" => Some(f),
-            _ => None,
-        })
-        .expect("lowered C should contain main");
-    let rc_scope_count = c_main
-        .body
-        .iter()
-        .filter(|stmt| {
-            matches!(
-                stmt,
-                CStmt::BlockScope(inner)
-                    if matches!(
-                        inner.first(),
-                        Some(CStmt::Decl { name, .. }) if name == "__rc"
-                    )
-            )
-        })
-        .count();
+    let rendered_c = render_c_source(&c_lowered);
+    let rc_scope_count = count_occurrences(
+        &rendered_c,
+        "    {\n        int __rc = gunbc_transport_execute(request);\n",
+    );
     assert_eq!(
         rc_scope_count, 2,
-        "repeated transport expression statements should isolate __rc in C block scope"
+        "repeated transport expression statements should render as isolated C block scopes"
+    );
+    assert_eq!(
+        count_occurrences(&rendered_c, "return -1;"),
+        3,
+        "each C transport call should preserve its explicit error return"
+    );
+    assert!(
+        rendered_c.contains("return 0;"),
+        "fallible C main should render an explicit success return"
     );
 
-    // MIPS structural invariants.
+    // MIPS output invariants.
     let mips =
         lower_to_mips(&c_lowered, &MipsConfig::default()).expect("mips lowering should succeed");
-    let main_fn = mips
-        .functions
-        .iter()
-        .find(|f| f.label == "main")
-        .expect("mips program should contain main");
-    let jump_epilogue_count = main_fn
-        .body
-        .iter()
-        .filter(|inst| matches!(inst, Instruction::JumpEpilogue))
-        .count();
-    assert!(
-        jump_epilogue_count >= 3,
-        "main should route all returns through epilogue (expected >=3 jumps, got {jump_epilogue_count})"
-    );
-    assert!(
-        !main_fn
-            .body
-            .iter()
-            .any(|inst| matches!(inst, Instruction::JumpReg(Register::Ra))),
-        "lowered main body should not contain direct jr $ra"
-    );
-
     let rendered_mips = render_mips_source(&mips);
     assert!(
         rendered_mips.contains("main_epilogue:"),
         "rendered assembly should include explicit epilogue label"
     );
-    let (before_epilogue, _) = rendered_mips
+    let (before_epilogue, after_epilogue) = rendered_mips
         .split_once("main_epilogue:")
         .expect("epilogue label should be present");
     assert!(
         !before_epilogue.contains("\tjr $ra"),
         "assembly before epilogue label should not contain direct jr $ra"
+    );
+    assert!(
+        before_epilogue.contains("\tj main_epilogue\n"),
+        "assembly should route return paths through the explicit epilogue label"
+    );
+    assert!(
+        after_epilogue.contains("\tjr $ra\n"),
+        "epilogue should contain the only direct return instruction"
     );
 }
