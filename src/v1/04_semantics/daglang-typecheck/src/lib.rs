@@ -188,6 +188,7 @@ pub struct TypedCallableSignature {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TypedCallableBodyMetadata {
     anonymous_record_targets: HashMap<usize, gunbc_ir::types::TypeId>,
+    anonymous_record_field_types: HashMap<usize, Vec<(String, gunbc_ir::code_ir::IrType)>>,
     conflicted_anonymous_records: HashSet<usize>,
 }
 
@@ -211,6 +212,23 @@ impl TypedCallableBodyMetadata {
             .map(|(expr_id, target)| (*expr_id, target))
     }
 
+    pub fn anonymous_record_field_types_for_expr(
+        &self,
+        expr: &Expr,
+    ) -> Option<&[(String, gunbc_ir::code_ir::IrType)]> {
+        self.anonymous_record_field_types
+            .get(&expr_identity(expr))
+            .map(Vec::as_slice)
+    }
+
+    pub fn anonymous_record_field_types(
+        &self,
+    ) -> impl Iterator<Item = (usize, &[(String, gunbc_ir::code_ir::IrType)])> + '_ {
+        self.anonymous_record_field_types
+            .iter()
+            .map(|(expr_id, fields)| (*expr_id, fields.as_slice()))
+    }
+
     fn annotate_anonymous_record_target(&mut self, expr: &Expr, target: &str) {
         let expr_id = expr_identity(expr);
         let target = gunbc_ir::types::TypeId::from(target);
@@ -227,6 +245,23 @@ impl TypedCallableBodyMetadata {
                 self.anonymous_record_targets.insert(expr_id, target);
             }
         }
+    }
+
+    fn annotate_anonymous_record_field_types(
+        &mut self,
+        expr: &Expr,
+        fields: &HashMap<String, ValueType>,
+    ) {
+        let expr_id = expr_identity(expr);
+        let mut next_fields = fields
+            .iter()
+            .map(|(name, ty)| (name.clone(), value_type_to_ir_type(ty)))
+            .collect::<Vec<_>>();
+        next_fields.sort_by(|left, right| left.0.cmp(&right.0));
+        self.anonymous_record_field_types
+            .entry(expr_id)
+            .and_modify(|existing| merge_record_ir_fields(existing, &next_fields))
+            .or_insert(next_fields);
     }
 }
 
@@ -2051,7 +2086,7 @@ fn collect_pipeline_param_bindings(module: &ResolvedModule) -> HashMap<String, V
         if let Item::ParamDecl(decl) = &item.node {
             bindings.insert(
                 decl.name.clone(),
-                ValueType::Named(type_expr_to_string(&decl.ty)),
+                value_type_from_type_expr(&decl.ty),
             );
         }
     }
@@ -2225,7 +2260,7 @@ fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
                     let daglang_syntax::ast::TypeBody::Record(fields) = &def.body else {
                         continue;
                     };
-                    let signature = field_signature_map(fields);
+                    let signature = field_value_type_map(fields);
                     let full_name = format!("{module_prefix}.{}", def.name);
                     registry.full.insert(full_name.clone(), signature.clone());
                     registry.full.entry(def.name.clone()).or_insert(signature);
@@ -2242,7 +2277,7 @@ fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
                         .or_insert(Some(full_name));
                 }
                 Item::ResourceDef(def) if !def.config.is_empty() => {
-                    let signature = field_signature_map(&def.config);
+                    let signature = field_value_type_map(&def.config);
                     let config_name = format!("{}.Config", def.name);
                     let full_name = format!("{module_prefix}.{config_name}");
                     registry.full.insert(full_name.clone(), signature.clone());
@@ -2309,7 +2344,7 @@ struct CallableContract {
     arity: usize,
     params: HashSet<String>,
     param_order: Vec<String>,
-    param_types: HashMap<String, String>,
+    param_types: HashMap<String, ValueType>,
     output: ValueType,
 }
 
@@ -2317,7 +2352,7 @@ struct CallableContract {
 struct ServiceCallContract {
     arity: usize,
     params: HashSet<String>,
-    outputs: HashMap<String, String>,
+    outputs: HashMap<String, ValueType>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2363,9 +2398,9 @@ fn collect_unique_callables(
                         param_types: def
                             .params
                             .iter()
-                            .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                            .map(|param| (param.name.clone(), value_type_from_type_expr(&param.ty)))
                             .collect(),
-                        output: ValueType::Named(type_expr_to_string(&def.return_type)),
+                        output: value_type_from_type_expr(&def.return_type),
                     },
                 ),
                 Item::FuncDef(def) => register_callable_contract(
@@ -2378,12 +2413,12 @@ fn collect_unique_callables(
                         param_types: def
                             .params
                             .iter()
-                            .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                            .map(|param| (param.name.clone(), value_type_from_type_expr(&param.ty)))
                             .collect(),
                         output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
-                            ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
+                            value_type_from_type_expr(&def.outputs[0].ty)
                         } else {
-                            ValueType::Record(field_signature_map(&def.outputs))
+                            ValueType::Record(field_value_type_map(&def.outputs))
                         },
                     },
                 ),
@@ -2397,12 +2432,12 @@ fn collect_unique_callables(
                         param_types: def
                             .params
                             .iter()
-                            .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                            .map(|param| (param.name.clone(), value_type_from_type_expr(&param.ty)))
                             .collect(),
                         output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
-                            ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
+                            value_type_from_type_expr(&def.outputs[0].ty)
                         } else {
-                            ValueType::Record(field_signature_map(&def.outputs))
+                            ValueType::Record(field_value_type_map(&def.outputs))
                         },
                     },
                 ),
@@ -2428,7 +2463,7 @@ fn collect_unique_callables(
                                         .fields
                                         .iter()
                                         .map(|field| {
-                                            (field.name.clone(), type_expr_to_string(&field.ty))
+                                            (field.name.clone(), value_type_from_type_expr(&field.ty))
                                         })
                                         .collect(),
                                     output: ValueType::Named(def.name.clone()),
@@ -2661,7 +2696,7 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
                         .iter()
                         .map(|field| field.name.clone())
                         .collect(),
-                    outputs: field_signature_map(&operation.outputs),
+                    outputs: field_value_type_map(&operation.outputs),
                 };
                 let service_tail = service
                     .name
@@ -2721,14 +2756,15 @@ struct GenericArityRegistry {
 
 #[derive(Debug, Clone, Default)]
 struct RecordTypeRegistry {
-    full: HashMap<String, HashMap<String, String>>,
+    full: HashMap<String, HashMap<String, ValueType>>,
     short: HashMap<String, Option<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ValueType {
     Named(String),
-    Record(HashMap<String, String>),
+    Generic(String, Vec<ValueType>),
+    Record(HashMap<String, ValueType>),
     /// The typechecker could not determine a concrete type for this expression.
     ///
     /// This occurs in legitimate cases where inference is incomplete (e.g.,
@@ -3189,16 +3225,17 @@ fn call_arg_expected_record_type<'a>(
     arg_index: usize,
     arg_name: Option<&str>,
     record_type_registry: &RecordTypeRegistry,
-) -> Option<&'a str> {
+) -> Option<String> {
     let ty = arg_name
-        .and_then(|name| contract.param_types.get(name).map(String::as_str))
+        .and_then(|name| contract.param_types.get(name))
         .or_else(|| {
             contract
                 .param_order
                 .get(arg_index)
-                .and_then(|name| contract.param_types.get(name).map(String::as_str))
+                .and_then(|name| contract.param_types.get(name))
         })?;
-    record_target_type(ty, record_type_registry)
+    let display = ty.display_name();
+    record_target_type(&display, record_type_registry).map(str::to_string)
 }
 
 fn collect_constructor_targets_from_stmts<'a>(
@@ -3976,7 +4013,7 @@ fn analyze_callable_body(
         .map(|param| {
             (
                 param.name.clone(),
-                ValueType::Named(type_expr_to_string(&param.ty)),
+                value_type_from_type_expr(&param.ty),
             )
         })
         .collect::<HashMap<_, _>>();
@@ -4185,7 +4222,7 @@ fn infer_expr_type_for_expected_named_record(
         let (inferred, val_errors) = infer_expr_type(value_expr, local_bindings, infer_context);
         errors.extend(val_errors);
         let inferred_name = inferred.display_name();
-        inferred_fields.insert(name.clone(), inferred_name.clone());
+        inferred_fields.insert(name.clone(), inferred.clone());
         let Some(expected_field_ty) = expected_fields.get(name) else {
             errors.push(TypeError::NoSuchField {
                 ty: expected_type.to_string(),
@@ -4194,12 +4231,13 @@ fn infer_expr_type_for_expected_named_record(
             compatible = false;
             continue;
         };
+        let expected_field_name = expected_field_ty.display_name();
         if !gunbc_ir::type_registry::TypeRegistry::with_core_types().is_compatible(
             &normalize_type_id(&inferred_name),
-            &normalize_type_id(expected_field_ty),
+            &normalize_type_id(&expected_field_name),
         ) {
             errors.push(TypeError::TypeMismatch {
-                expected: expected_field_ty.clone(),
+                expected: expected_field_name,
                 got: inferred_name,
             });
             compatible = false;
@@ -4248,7 +4286,7 @@ fn infer_block_expr_type(
                 for (field_name, expr) in fields {
                     let (inferred, stmt_errors) = infer_expr_type(expr, &scope, infer_context);
                     errors.extend(stmt_errors);
-                    record.insert(field_name.clone(), inferred.display_name());
+                    record.insert(field_name.clone(), inferred);
                 }
                 trailing_expr_type = ValueType::Record(record);
             }
@@ -4256,6 +4294,47 @@ fn infer_block_expr_type(
     }
 
     (trailing_expr_type, errors)
+}
+
+fn infer_fold_accumulator_type(
+    collection_expr: &Expr,
+    init_expr: &Expr,
+    func: Option<&Expr>,
+    local_bindings: &HashMap<String, ValueType>,
+    infer_context: &ExprInferenceContext<'_>,
+) -> (ValueType, Vec<TypeError>) {
+    let (init_ty, mut errors) = infer_expr_type(init_expr, local_bindings, infer_context);
+    let body_ty = match func {
+        Some(Expr::Lambda(params, body)) => {
+            let (collection_ty, collection_errors) =
+                infer_expr_type(collection_expr, local_bindings, infer_context);
+            errors.extend(collection_errors);
+            let mut lambda_scope = local_bindings.clone();
+            if let Some(param) = params.first() {
+                lambda_scope.insert(param.clone(), init_ty.clone());
+            }
+            if let (Some(param), Some(elem_ty)) = (
+                params.get(1),
+                collection_element_value_type(&collection_ty),
+            ) {
+                lambda_scope.insert(param.clone(), elem_ty);
+            }
+            let (body_ty, body_errors) = infer_expr_type(body, &lambda_scope, infer_context);
+            errors.extend(body_errors);
+            Some(body_ty)
+        }
+        Some(other) => {
+            let (body_ty, body_errors) = infer_expr_type(other, local_bindings, infer_context);
+            errors.extend(body_errors);
+            Some(body_ty)
+        }
+        None => None,
+    };
+
+    let value = body_ty
+        .map(|body_ty| merge_value_types(init_ty.clone(), body_ty))
+        .unwrap_or(init_ty);
+    (value, errors)
 }
 
 fn infer_expr_type(
@@ -4296,7 +4375,7 @@ fn infer_expr_type(
             errors.extend(base_errors);
             match base_type {
                 ValueType::Record(fields) => match fields.get(field) {
-                    Some(ty) => ValueType::Named(ty.clone()),
+                    Some(ty) => ty.clone(),
                     None => {
                         errors.push(TypeError::NoSuchField {
                             ty: "Record".to_string(),
@@ -4308,7 +4387,7 @@ fn infer_expr_type(
                 ValueType::Named(name) => {
                     match resolve_record_fields(&name, infer_context.record_type_registry) {
                         Some(fields) => match fields.get(field) {
-                            Some(ty) => ValueType::Named(ty.clone()),
+                            Some(ty) => ty.clone(),
                             None => {
                                 errors.push(TypeError::NoSuchField {
                                     ty: name,
@@ -4320,8 +4399,100 @@ fn infer_expr_type(
                         None => ValueType::Inferred,
                     }
                 }
-                ValueType::Inferred => ValueType::Inferred,
+                ValueType::Generic(_, _) | ValueType::Inferred => ValueType::Inferred,
             }
+        }
+        Expr::Call(name, args) if name == "concat" && args.len() >= 2 => args
+            .iter()
+            .map(|(_, arg)| infer_expr_type(arg, local_bindings, infer_context))
+            .fold(ValueType::Inferred, |acc, (arg_ty, arg_errors)| {
+                errors.extend(arg_errors);
+                merge_value_types(acc, arg_ty)
+            }),
+        Expr::Call(name, args) if name == "map" && args.len() >= 2 => {
+            let (collection_ty, collection_errors) =
+                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            errors.extend(collection_errors);
+            let elem_ty = match &args[1].1 {
+                Expr::Lambda(params, body) if params.len() == 1 => {
+                    let mut lambda_scope = local_bindings.clone();
+                    if let Some(collection_elem_ty) = collection_element_value_type(&collection_ty)
+                    {
+                        lambda_scope.insert(params[0].clone(), collection_elem_ty);
+                    }
+                    let (body_ty, body_errors) = infer_expr_type(body, &lambda_scope, infer_context);
+                    errors.extend(body_errors);
+                    body_ty
+                }
+                Expr::Lambda(_, body) => {
+                    let (body_ty, body_errors) =
+                        infer_expr_type(body, local_bindings, infer_context);
+                    errors.extend(body_errors);
+                    body_ty
+                }
+                other => {
+                    let (body_ty, body_errors) =
+                        infer_expr_type(other, local_bindings, infer_context);
+                    errors.extend(body_errors);
+                    body_ty
+                }
+            };
+            ValueType::Generic("List".to_string(), vec![elem_ty])
+        }
+        Expr::Call(name, args) if name == "filter" && !args.is_empty() => {
+            let (collection_ty, collection_errors) =
+                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            errors.extend(collection_errors);
+            if let Some((_, predicate_expr)) = args.get(1) {
+                let (_, predicate_errors) =
+                    infer_expr_type(predicate_expr, local_bindings, infer_context);
+                errors.extend(predicate_errors);
+            }
+            collection_ty
+        }
+        Expr::Call(name, args) if name == "with" && !args.is_empty() => {
+            let (base_ty, base_errors) =
+                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            errors.extend(base_errors);
+            if let Some((_, update_expr)) = args.get(1) {
+                let (_, update_errors) =
+                    infer_expr_type(update_expr, local_bindings, infer_context);
+                errors.extend(update_errors);
+            }
+            base_ty
+        }
+        Expr::Call(name, args) if name == "fold" && args.len() >= 2 => {
+            let init = args
+                .iter()
+                .find(|(arg_name, _)| arg_name.as_deref() == Some("init"))
+                .or_else(|| args.get(1))
+                .map(|(_, expr)| expr);
+            let func = args
+                .iter()
+                .find(|(arg_name, _)| arg_name.as_deref() == Some("f"))
+                .or_else(|| args.get(2))
+                .map(|(_, expr)| expr);
+            match init {
+                Some(init_expr) => {
+                    let (acc_ty, acc_errors) = infer_fold_accumulator_type(
+                        &args[0].1,
+                        init_expr,
+                        func,
+                        local_bindings,
+                        infer_context,
+                    );
+                    errors.extend(acc_errors);
+                    acc_ty
+                }
+                None => ValueType::Inferred,
+            }
+        }
+        Expr::Call(name, args) if name == "any" || name == "contains" => {
+            for (_, arg) in args {
+                let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
+                errors.extend(arg_errors);
+            }
+            ValueType::Named("Bool".to_string())
         }
         Expr::Call(name, args) => {
             for (_, arg) in args {
@@ -4377,13 +4548,20 @@ fn infer_expr_type(
                 | daglang_syntax::ast::BinOp::And
                 | daglang_syntax::ast::BinOp::Or => ValueType::Named("Bool".to_string()),
                 daglang_syntax::ast::BinOp::NullCoalesce => lhs_ty,
-                _ => match (lhs_ty, rhs_ty) {
+                _ => match (&lhs_ty, &rhs_ty) {
                     (ValueType::Named(lhs), ValueType::Named(rhs))
-                        if strip_generic_params(&lhs) == strip_generic_params(&rhs) =>
+                        if strip_generic_params(lhs) == strip_generic_params(rhs) =>
                     {
-                        ValueType::Named(lhs)
+                        lhs_ty
                     }
-                    _ => ValueType::Inferred,
+                    _ => {
+                        let merged = merge_value_types(lhs_ty, rhs_ty);
+                        if merged.is_inferred() {
+                            ValueType::Inferred
+                        } else {
+                            merged
+                        }
+                    }
                 },
             }
         }
@@ -4419,7 +4597,7 @@ fn infer_expr_type(
                             let (val, val_errors) =
                                 infer_expr_type(expr, local_bindings, infer_context);
                             errors.extend(val_errors);
-                            (name.clone(), val.display_name())
+                            (name.clone(), val)
                         })
                         .collect(),
                 )
@@ -4428,7 +4606,7 @@ fn infer_expr_type(
         Expr::Match(scrutinee, arms) => {
             let (_scr_ty, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
             errors.extend(scr_errors);
-            let mut arm_types: Vec<String> = Vec::new();
+            let mut arm_types: Vec<ValueType> = Vec::new();
             for arm in arms {
                 if let Some(guard) = &arm.guard {
                     let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
@@ -4438,19 +4616,23 @@ fn infer_expr_type(
                     infer_expr_type(&arm.body, local_bindings, infer_context);
                 errors.extend(body_errors);
                 if !arm_ty.is_inferred() {
-                    arm_types.push(arm_ty.display_name());
+                    arm_types.push(arm_ty);
                 }
             }
             // WS3-5: Check compatibility across arms
             if arm_types.len() >= 2 {
-                let first = &arm_types[0];
+                let first = arm_types[0].display_name();
                 for other in &arm_types[1..] {
                     let (compat, confident) =
-                        are_branch_types_compatible(first, other, infer_context.variant_parents);
+                        are_branch_types_compatible(
+                            &first,
+                            &other.display_name(),
+                            infer_context.variant_parents,
+                        );
                     if !compat && confident {
                         errors.push(TypeError::MatchArmTypeMismatch {
                             first_type: first.clone(),
-                            mismatched_type: other.clone(),
+                            mismatched_type: other.display_name(),
                         });
                         break;
                     }
@@ -4463,8 +4645,8 @@ fn infer_expr_type(
             // S67: Return the unified arm type when all concrete arms agree,
             // rather than unconditionally returning Inferred.
             if let Some(first) = arm_types.first() {
-                if arm_types.iter().all(|t| t == first) {
-                    ValueType::Named(first.clone())
+                if arm_types.iter().all(|ty| ty == first) {
+                    first.clone()
                 } else {
                     ValueType::Inferred
                 }
@@ -4501,8 +4683,9 @@ fn infer_expr_type(
                         let (compat, confident) =
                             are_branch_types_compatible(&t, &e, infer_context.variant_parents);
                         if compat {
-                            if t == e {
-                                then_ty
+                            let merged = merge_value_types(then_ty.clone(), otherwise.clone());
+                            if !merged.is_inferred() {
+                                merged
                             } else {
                                 ValueType::Inferred
                             }
@@ -4523,11 +4706,13 @@ fn infer_expr_type(
             }
         }
         Expr::For(binding, iterable, passthrough, body) => {
-            let (_, iter_errors) = infer_expr_type(iterable, local_bindings, infer_context);
+            let (iter_ty, iter_errors) = infer_expr_type(iterable, local_bindings, infer_context);
             errors.extend(iter_errors);
             let mut loop_scope = local_bindings.clone();
-            // Element type inference is not modeled yet; make loop binding available in body.
-            loop_scope.insert(binding.clone(), ValueType::Inferred);
+            loop_scope.insert(
+                binding.clone(),
+                collection_element_value_type(&iter_ty).unwrap_or(ValueType::Inferred),
+            );
             for name in passthrough {
                 let passthrough_ty = local_bindings
                     .get(name)
@@ -4548,20 +4733,29 @@ fn infer_expr_type(
             val
         }
         Expr::List(items) => {
-            for item in items {
-                let (_, item_errors) = infer_expr_type(item, local_bindings, infer_context);
-                errors.extend(item_errors);
-            }
-            ValueType::Named("List".to_string())
+            let elem_ty = items
+                .iter()
+                .map(|item| infer_expr_type(item, local_bindings, infer_context))
+                .fold(ValueType::Inferred, |acc, (item_ty, item_errors)| {
+                    errors.extend(item_errors);
+                    merge_value_types(acc, item_ty)
+                });
+            ValueType::Generic("List".to_string(), vec![elem_ty])
         }
         Expr::Map(entries) => {
+            let mut key_ty = ValueType::Inferred;
+            let mut value_ty = ValueType::Inferred;
             for (key, value) in entries {
-                let (_, key_errors) = infer_expr_type(key, local_bindings, infer_context);
+                let (inferred_key_ty, key_errors) =
+                    infer_expr_type(key, local_bindings, infer_context);
                 errors.extend(key_errors);
-                let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
-                errors.extend(val_errors);
+                key_ty = merge_value_types(key_ty, inferred_key_ty);
+                let (inferred_value_ty, value_errors) =
+                    infer_expr_type(value, local_bindings, infer_context);
+                errors.extend(value_errors);
+                value_ty = merge_value_types(value_ty, inferred_value_ty);
             }
-            ValueType::Named("Map".to_string())
+            ValueType::Generic("Map".to_string(), vec![key_ty, value_ty])
         }
         Expr::Guarded(inner, guard) => {
             let (_, inner_errors) = infer_expr_type(inner, local_bindings, infer_context);
@@ -4581,7 +4775,7 @@ fn infer_expr_type(
                 .map(|(name, expr)| {
                     let (val, val_errors) = infer_expr_type(expr, local_bindings, infer_context);
                     errors.extend(val_errors);
-                    (name.clone(), val.display_name())
+                    (name.clone(), val)
                 })
                 .collect(),
         ),
@@ -4598,6 +4792,14 @@ impl ValueType {
     fn display_name(&self) -> String {
         match self {
             Self::Named(name) => name.clone(),
+            Self::Generic(name, params) => format!(
+                "{name}<{}>",
+                params
+                    .iter()
+                    .map(ValueType::display_name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Self::Record(_) => "Record".to_string(),
             Self::Inferred => "Any".to_string(),
         }
@@ -4707,7 +4909,7 @@ fn strip_generic_params(name: &str) -> &str {
 fn resolve_record_fields(
     ty: &str,
     registry: &RecordTypeRegistry,
-) -> Option<HashMap<String, String>> {
+) -> Option<HashMap<String, ValueType>> {
     let canonical = strip_generic_params(ty).to_string();
     if let Some(fields) = registry.full.get(&canonical) {
         return Some(fields.clone());
@@ -4921,6 +5123,176 @@ fn field_signature_map(fields: &[Field]) -> HashMap<String, String> {
         .iter()
         .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
         .collect()
+}
+
+fn field_value_type_map(fields: &[Field]) -> HashMap<String, ValueType> {
+    fields
+        .iter()
+        .map(|field| (field.name.clone(), value_type_from_type_expr(&field.ty)))
+        .collect()
+}
+
+fn value_type_from_type_expr(expr: &TypeExpr) -> ValueType {
+    match expr {
+        TypeExpr::Named(name) => ValueType::Named(name.clone()),
+        TypeExpr::Generic(name, args) => ValueType::Generic(
+            name.clone(),
+            args.iter().map(value_type_from_type_expr).collect(),
+        ),
+        TypeExpr::Optional(_) => ValueType::Named(type_expr_to_string(expr)),
+        TypeExpr::Refined(inner, _) => value_type_from_type_expr(inner),
+        TypeExpr::Record(fields) => ValueType::Record(field_value_type_map(fields)),
+    }
+}
+
+fn collection_element_value_type(ty: &ValueType) -> Option<ValueType> {
+    match ty {
+        ValueType::Generic(_, args) if !args.is_empty() => Some(args[0].clone()),
+        _ => None,
+    }
+}
+
+fn merge_value_types(left: ValueType, right: ValueType) -> ValueType {
+    match (left, right) {
+        (ValueType::Inferred, other) | (other, ValueType::Inferred) => other,
+        (ValueType::Generic(left_name, left_args), ValueType::Generic(right_name, right_args))
+            if left_name == right_name && left_args.len() == right_args.len() =>
+        {
+            ValueType::Generic(
+                left_name,
+                left_args
+                    .into_iter()
+                    .zip(right_args)
+                    .map(|(left_ty, right_ty)| merge_value_types(left_ty, right_ty))
+                    .collect(),
+            )
+        }
+        (ValueType::Record(left_fields), ValueType::Record(right_fields))
+            if left_fields.len() == right_fields.len()
+                && left_fields.keys().all(|name| right_fields.contains_key(name)) =>
+        {
+            ValueType::Record(
+                left_fields
+                    .into_iter()
+                    .map(|(name, left_ty)| {
+                        let right_ty = right_fields
+                            .get(&name)
+                            .cloned()
+                            .unwrap_or(ValueType::Inferred);
+                        (name, merge_value_types(left_ty, right_ty))
+                    })
+                    .collect(),
+            )
+        }
+        (left_ty, right_ty) if left_ty == right_ty => left_ty,
+        _ => ValueType::Inferred,
+    }
+}
+
+fn value_type_to_ir_type(ty: &ValueType) -> gunbc_ir::code_ir::IrType {
+    use gunbc_ir::code_ir::IrType;
+
+    match ty {
+        ValueType::Named(name) if name.ends_with('?') => IrType::Optional(Box::new(
+            value_type_to_ir_type(&ValueType::Named(
+                name.trim_end_matches('?').trim().to_string(),
+            )),
+        )),
+        ValueType::Named(name) => match name.as_str() {
+            "Bool" => IrType::Bool,
+            "Int" => IrType::Int,
+            "String" => IrType::Str,
+            "Unit" => IrType::Unit,
+            _ => IrType::Named(name.clone()),
+        },
+        ValueType::Generic(name, params) => IrType::Generic(
+            name.clone(),
+            params.iter().map(value_type_to_ir_type).collect(),
+        ),
+        ValueType::Record(fields) => {
+            let mut ir_fields = fields
+                .iter()
+                .map(|(name, field_ty)| (name.clone(), value_type_to_ir_type(field_ty)))
+                .collect::<Vec<_>>();
+            ir_fields.sort_by(|left, right| left.0.cmp(&right.0));
+            IrType::Record(ir_fields)
+        }
+        ValueType::Inferred => IrType::Unknown,
+    }
+}
+
+fn merge_ir_types(
+    left: gunbc_ir::code_ir::IrType,
+    right: gunbc_ir::code_ir::IrType,
+) -> gunbc_ir::code_ir::IrType {
+    use gunbc_ir::code_ir::IrType;
+
+    match (left, right) {
+        (IrType::Unknown, other) | (other, IrType::Unknown) => other,
+        (IrType::Generic(left_name, left_args), IrType::Generic(right_name, right_args))
+            if left_name == right_name && left_args.len() == right_args.len() =>
+        {
+            IrType::Generic(
+                left_name,
+                left_args
+                    .into_iter()
+                    .zip(right_args)
+                    .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty))
+                    .collect(),
+            )
+        }
+        (IrType::Record(left_fields), IrType::Record(right_fields))
+            if left_fields.len() == right_fields.len()
+                && left_fields
+                    .iter()
+                    .map(|(name, _)| name)
+                    .eq(right_fields.iter().map(|(name, _)| name)) =>
+        {
+            IrType::Record(
+                left_fields
+                    .into_iter()
+                    .zip(right_fields)
+                    .map(|((name, left_ty), (_, right_ty))| {
+                        (name, merge_ir_types(left_ty, right_ty))
+                    })
+                    .collect(),
+            )
+        }
+        (IrType::Optional(left_inner), IrType::Optional(right_inner)) => {
+            IrType::Optional(Box::new(merge_ir_types(*left_inner, *right_inner)))
+        }
+        (IrType::Tuple(left_items), IrType::Tuple(right_items))
+            if left_items.len() == right_items.len() =>
+        {
+            IrType::Tuple(
+                left_items
+                    .into_iter()
+                    .zip(right_items)
+                    .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty))
+                    .collect(),
+            )
+        }
+        (left_ty, right_ty) if left_ty == right_ty => left_ty,
+        _ => IrType::Unknown,
+    }
+}
+
+fn merge_record_ir_fields(
+    existing: &mut Vec<(String, gunbc_ir::code_ir::IrType)>,
+    next: &[(String, gunbc_ir::code_ir::IrType)],
+) {
+    if existing.len() != next.len()
+        || !existing
+            .iter()
+            .map(|(name, _)| name)
+            .eq(next.iter().map(|(name, _)| name))
+    {
+        return;
+    }
+
+    for ((_, existing_ty), (_, next_ty)) in existing.iter_mut().zip(next.iter()) {
+        *existing_ty = merge_ir_types(existing_ty.clone(), next_ty.clone());
+    }
 }
 
 fn resolve_interface_contract(
