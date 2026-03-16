@@ -92,6 +92,15 @@ fn collect_anonymous_record_targets(
         .collect()
 }
 
+fn collect_data_ir_types<'a>(
+    data_defs: impl IntoIterator<Item = &'a DataDef>,
+) -> std::collections::HashMap<String, gunbc_ir::code_ir::IrType> {
+    data_defs
+        .into_iter()
+        .map(|dd| (dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
+        .collect()
+}
+
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
@@ -674,24 +683,6 @@ fn to_screaming_snake(name: &str) -> String {
 /// `data_names` provides the set of `data` definition names visible in the
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
 pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
-    // Pre-pass: synthesize struct definitions for anonymous records (fold inits).
-    // Records already resolved by typecheck are excluded from consideration.
-    let (synth_items, name_map, new_field_types) = fn_codegen::synthesize_anonymous_structs(
-        &fd.name,
-        &fd.body,
-        &ctx.anonymous_record_targets,
-    );
-    let synthesized_targets =
-        fn_codegen::annotate_synthesized_anonymous_record_targets(&fd.body, &name_map);
-
-    // Collect optional parameters (T? → Option<T>)
-    let optional_params: std::collections::HashSet<String> = fd
-        .params
-        .iter()
-        .filter(|p| matches!(&p.ty, TypeExpr::Optional(_)))
-        .map(|p| p.name.clone())
-        .collect();
-
     // S81: Collect parameter name → type name map for scrutinee type inference
     let param_types: std::collections::HashMap<String, String> = fd
         .params
@@ -728,14 +719,34 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .map(|p| (p.name.clone(), fn_codegen::type_expr_to_ir_type(&p.ty)))
         .collect();
 
+    let mut analysis_ctx = ctx.clone();
+    analysis_ctx.param_types = param_types.clone();
+    analysis_ctx.current_return_type = return_type_name.clone();
+    analysis_ctx.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
+    analysis_ctx.ir_scope = ir_scope.clone();
+
+    let anonymous_record_field_types =
+        fn_codegen::collect_anonymous_record_field_types(&fd.body, &analysis_ctx);
+    let (synth_items, synthesized_targets, new_field_types) =
+        fn_codegen::synthesize_anonymous_structs(
+            &fd.name,
+            &fd.body,
+            &analysis_ctx.anonymous_record_targets,
+            &anonymous_record_field_types,
+        );
+
+    // Collect optional parameters (T? → Option<T>)
+    let optional_params: std::collections::HashSet<String> = fd
+        .params
+        .iter()
+        .filter(|p| matches!(&p.ty, TypeExpr::Optional(_)))
+        .map(|p| p.name.clone())
+        .collect();
+
     let ctx = {
-        let mut augmented = ctx.clone();
+        let mut augmented = analysis_ctx;
         augmented.struct_field_types.extend(new_field_types);
         augmented.optional_params = optional_params;
-        augmented.param_types = param_types;
-        augmented.current_return_type = return_type_name;
-        augmented.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
-        augmented.ir_scope = ir_scope;
         augmented
             .anonymous_record_targets
             .extend(synthesized_targets);
@@ -1035,6 +1046,15 @@ pub fn typedefs_to_source_file(
     }
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_ir_types: items
+            .iter()
+            .filter_map(|item| match &item.node {
+                daglang_syntax::ast::Item::DataDef(dd) => {
+                    Some((dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
+                }
+                _ => None,
+            })
+            .collect(),
         data_map_names: std::collections::HashSet::new(),
         optional_fields,
         variant_to_enum,
@@ -1162,6 +1182,7 @@ pub fn generate_types_for_modules(
         for dd in &data_defs {
             fn_data_names.insert(dd.name.clone());
         }
+        let data_ir_types = collect_data_ir_types(data_defs.iter());
         let mut opt_fields = std::collections::HashMap::new();
         let mut v2e = std::collections::HashMap::new();
         let mut ambig = std::collections::HashSet::new();
@@ -1177,6 +1198,7 @@ pub fn generate_types_for_modules(
         }
         let fn_ctx = fn_codegen::CompileContext {
             data_names: fn_data_names,
+            data_ir_types,
             data_map_names: std::collections::HashSet::new(),
             optional_fields: opt_fields,
             variant_to_enum: v2e,
@@ -2185,6 +2207,179 @@ mod tests {
                 other => panic!("expected let-bound synthesized struct, got: {other:?}"),
             },
             other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn synthesized_fold_accumulator_uses_collection_element_record_type() {
+        let fd = FnDef {
+            name: "pick_color".to_string(),
+            type_params: vec![],
+            params: vec![],
+            return_type: TypeExpr::Named("SemanticColor".to_string()),
+            body: FnBody {
+                stmts: vec![
+                    Stmt::Let(
+                        "entry".to_string(),
+                        Expr::Call(
+                            "fold".to_string(),
+                            vec![
+                                (None, Expr::Ident("entries".to_string())),
+                                (
+                                    Some("init".to_string()),
+                                    Expr::Record(
+                                        None,
+                                        vec![(
+                                            "color".to_string(),
+                                            Expr::Ident("Default".to_string()),
+                                        )],
+                                    ),
+                                ),
+                                (
+                                    Some("f".to_string()),
+                                    Expr::Lambda(
+                                        vec!["acc".to_string(), "entry".to_string()],
+                                        Box::new(Expr::Ident("entry".to_string())),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ),
+                    Stmt::Expr(Expr::FieldAccess(
+                        Box::new(Expr::Ident("entry".to_string())),
+                        "color".to_string(),
+                    )),
+                ],
+            },
+        };
+
+        let mut ctx = fn_codegen::CompileContext::new();
+        ctx.data_names.insert("entries".to_string());
+        ctx.data_ir_types.insert(
+            "entries".to_string(),
+            gunbc_ir::code_ir::IrType::Generic(
+                "List".to_string(),
+                vec![gunbc_ir::code_ir::IrType::Named("Entry".to_string())],
+            ),
+        );
+        ctx.struct_field_types.insert(
+            "Entry".to_string(),
+            [("color".to_string(), "SemanticColor".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Entry".to_string(),
+            vec![(
+                "color".to_string(),
+                gunbc_ir::code_ir::IrType::Named("SemanticColor".to_string()),
+            )],
+        );
+        ctx.enum_variants.insert(
+            "SemanticColor".to_string(),
+            ["Default".to_string(), "Info".to_string()]
+                .into_iter()
+                .collect(),
+        );
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        match &items[0] {
+            code_ir::Item::Struct(def) => {
+                assert_eq!(def.name, "__PickcolorState");
+                assert_eq!(
+                    def.fields,
+                    vec![("color".to_string(), "SemanticColor".to_string(), true)]
+                );
+            }
+            other => panic!("expected synthesized struct item, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn synthesized_fold_accumulator_refines_empty_list_field_from_lambda_body() {
+        let fd = FnDef {
+            name: "keep_spans".to_string(),
+            type_params: vec![],
+            params: vec![Param {
+                name: "spans".to_string(),
+                ty: TypeExpr::Generic(
+                    "List".to_string(),
+                    vec![TypeExpr::Named("Span".to_string())],
+                ),
+                default: None,
+            }],
+            return_type: TypeExpr::Generic(
+                "List".to_string(),
+                vec![TypeExpr::Named("Span".to_string())],
+            ),
+            body: FnBody {
+                stmts: vec![
+                    Stmt::Let(
+                        "state".to_string(),
+                        Expr::Call(
+                            "fold".to_string(),
+                            vec![
+                                (None, Expr::Ident("spans".to_string())),
+                                (
+                                    Some("init".to_string()),
+                                    Expr::Record(
+                                        None,
+                                        vec![("kept".to_string(), Expr::List(vec![]))],
+                                    ),
+                                ),
+                                (
+                                    Some("f".to_string()),
+                                    Expr::Lambda(
+                                        vec!["acc".to_string(), "span".to_string()],
+                                        Box::new(Expr::Record(
+                                            None,
+                                            vec![(
+                                                "kept".to_string(),
+                                                Expr::Call(
+                                                    "concat".to_string(),
+                                                    vec![
+                                                        (
+                                                            None,
+                                                            Expr::FieldAccess(
+                                                                Box::new(Expr::Ident(
+                                                                    "acc".to_string(),
+                                                                )),
+                                                                "kept".to_string(),
+                                                            ),
+                                                        ),
+                                                        (
+                                                            None,
+                                                            Expr::List(vec![Expr::Ident(
+                                                                "span".to_string(),
+                                                            )]),
+                                                        ),
+                                                    ],
+                                                ),
+                                            )],
+                                        )),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ),
+                    Stmt::Expr(Expr::FieldAccess(
+                        Box::new(Expr::Ident("state".to_string())),
+                        "kept".to_string(),
+                    )),
+                ],
+            },
+        };
+
+        let items = fndef_to_code_ir(&fd, &fn_codegen::CompileContext::new());
+        match &items[0] {
+            code_ir::Item::Struct(def) => {
+                assert_eq!(def.name, "__KeepspansState");
+                assert_eq!(
+                    def.fields,
+                    vec![("kept".to_string(), "Rc<Vec<Span>>".to_string(), true)]
+                );
+            }
+            other => panic!("expected synthesized struct item, got: {other:?}"),
         }
     }
 

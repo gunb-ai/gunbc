@@ -91,6 +91,8 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
 pub struct CompileContext {
     /// Names of `data` definitions visible in this module.
     pub data_names: HashSet<String>,
+    /// Data definition name → IrType for collection element inference.
+    pub data_ir_types: HashMap<String, IrType>,
     /// Names of `data` definitions that are Map types (need `&` reference, not `.clone()`).
     pub data_map_names: HashSet<String>,
     /// Map from struct name → set of field names that are `Option<T>`.
@@ -139,6 +141,7 @@ impl CompileContext {
     pub fn new() -> Self {
         Self {
             data_names: HashSet::new(),
+            data_ir_types: HashMap::new(),
             data_map_names: HashSet::new(),
             optional_fields: std::collections::HashMap::new(),
             variant_to_enum: std::collections::HashMap::new(),
@@ -1816,37 +1819,16 @@ fn compile_fold_intrinsic(
         },
         None => code_ir::Expr::Var(acc.clone()),
     };
-    // Prefer init type; if it's a list with Unknown element, try the lambda body
-    // with element param type bound from the collection.
-    let init_ir_type = init.and_then(|e| infer_ast_expr_type(e, ctx));
-    let acc_ir_type = match &init_ir_type {
-        Some(IrType::Generic(name, args))
-            if name == "List" && args.first() == Some(&IrType::Unknown) =>
-        {
-            // Init is an empty list — infer element type from lambda body.
-            // Bind the lambda's element param (2nd param) from the collection type
-            // so that expressions like `[item]` resolve to the correct list type.
-            let body_type = match func {
-                Some(ast::Expr::Lambda(params, body)) => {
-                    let elem_type =
-                        infer_ast_expr_type(collection_ast, ctx).and_then(|t| match t {
-                            IrType::Generic(_, a) if !a.is_empty() => Some(a[0].clone()),
-                            _ => None,
-                        });
-                    if let (Some(param), Some(ty)) = (params.get(1), elem_type) {
-                        let mut aug = ctx.clone();
-                        aug.ir_scope.insert(param.clone(), ty);
-                        infer_ast_expr_type(body, &aug)
-                    } else {
-                        infer_ast_expr_type(body, ctx)
-                    }
-                }
-                _ => None,
-            };
-            body_type.or(init_ir_type)
+    let acc_ir_type = init.and_then(|init_expr| {
+        let mut fold_args = vec![
+            (None, collection_ast.clone()),
+            (Some("init".to_string()), init_expr.clone()),
+        ];
+        if let Some(func_expr) = func.cloned() {
+            fold_args.push((Some("f".to_string()), func_expr));
         }
-        _ => init_ir_type,
-    };
+        infer_ast_expr_type(&ast::Expr::Call("fold".to_string(), fold_args), ctx)
+    });
     code_ir::Expr::Block(vec![
         code_ir::Stmt::Let {
             name: acc.clone(),
@@ -2992,12 +2974,189 @@ fn named_type_from_ir(ty: &IrType) -> Option<String> {
 }
 
 fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    infer_ast_expr_type_in_scope(expr, &ctx.ir_scope, ctx)
+}
+
+fn infer_ast_expr_type_in_scope(
+    expr: &ast::Expr,
+    scope: &HashMap<String, IrType>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    fn merge_ir_types(left: IrType, right: IrType, ctx: &CompileContext) -> IrType {
+        fn expand_named_record_ir_type(ty: IrType, ctx: &CompileContext) -> IrType {
+            match ty {
+                IrType::Named(name) => ctx
+                    .struct_field_ir_types
+                    .get(name.as_str())
+                    .cloned()
+                    .map(IrType::Record)
+                    .unwrap_or(IrType::Named(name)),
+                other => other,
+            }
+        }
+
+        let left = expand_named_record_ir_type(left, ctx);
+        let right = expand_named_record_ir_type(right, ctx);
+
+        match (left, right) {
+            (IrType::Unknown, other) | (other, IrType::Unknown) => other,
+            (IrType::Record(left_fields), IrType::Record(right_fields))
+                if left_fields.len() == right_fields.len()
+                    && left_fields
+                        .iter()
+                        .map(|(name, _)| name)
+                        .eq(right_fields.iter().map(|(name, _)| name)) =>
+            {
+                IrType::Record(
+                    left_fields
+                        .into_iter()
+                        .zip(right_fields)
+                        .map(|((name, left_ty), (_, right_ty))| {
+                            (name, merge_ir_types(left_ty, right_ty, ctx))
+                        })
+                        .collect(),
+                )
+            }
+            (IrType::Generic(left_name, left_args), IrType::Generic(right_name, right_args))
+                if left_name == right_name && left_args.len() == right_args.len() =>
+            {
+                IrType::Generic(
+                    left_name,
+                    left_args
+                        .into_iter()
+                        .zip(right_args)
+                        .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty, ctx))
+                        .collect(),
+                )
+            }
+            (IrType::Optional(left_inner), IrType::Optional(right_inner)) => {
+                IrType::Optional(Box::new(merge_ir_types(*left_inner, *right_inner, ctx)))
+            }
+            (IrType::Tuple(left_items), IrType::Tuple(right_items))
+                if left_items.len() == right_items.len() =>
+            {
+                IrType::Tuple(
+                    left_items
+                        .into_iter()
+                        .zip(right_items)
+                        .map(|(left_ty, right_ty)| merge_ir_types(left_ty, right_ty, ctx))
+                        .collect(),
+                )
+            }
+            (left_ty, right_ty) if left_ty == right_ty => left_ty,
+            (left_ty, _) => left_ty,
+        }
+    }
+
+    fn merge_inferred_ir_types(
+        left: Option<IrType>,
+        right: Option<IrType>,
+        ctx: &CompileContext,
+    ) -> Option<IrType> {
+        match (left, right) {
+            (Some(left_ty), Some(right_ty)) => Some(merge_ir_types(left_ty, right_ty, ctx)),
+            (Some(ty), None) | (None, Some(ty)) => Some(ty),
+            (None, None) => None,
+        }
+    }
+
+    fn collection_element_ir_type(ty: &IrType) -> Option<IrType> {
+        match ty {
+            IrType::Generic(_, args) if !args.is_empty() => Some(args[0].clone()),
+            _ => None,
+        }
+    }
+
+    fn infer_block_expr_type_in_scope(
+        stmts: &[ast::Stmt],
+        scope: &HashMap<String, IrType>,
+        ctx: &CompileContext,
+    ) -> Option<IrType> {
+        let mut block_scope = scope.clone();
+        let mut trailing = None;
+        for stmt in stmts {
+            match stmt {
+                ast::Stmt::Let(name, expr) | ast::Stmt::Assign(name, expr) => {
+                    let inferred = infer_ast_expr_type_in_scope(expr, &block_scope, ctx);
+                    if let Some(ir_type) = inferred.clone() {
+                        block_scope.insert(name.clone(), ir_type);
+                    }
+                    trailing = None;
+                }
+                ast::Stmt::Node(node_stmt) => {
+                    let inferred = infer_ast_expr_type_in_scope(&node_stmt.expr, &block_scope, ctx);
+                    if let Some(ir_type) = inferred.clone() {
+                        block_scope.insert(node_stmt.name.clone(), ir_type);
+                    }
+                    trailing = None;
+                }
+                ast::Stmt::Expr(expr) => {
+                    trailing = infer_ast_expr_type_in_scope(expr, &block_scope, ctx);
+                }
+                ast::Stmt::Return(fields) => {
+                    if let [(_, value_expr)] = fields.as_slice() {
+                        trailing = infer_ast_expr_type_in_scope(value_expr, &block_scope, ctx);
+                    } else {
+                        trailing = Some(IrType::Record(
+                            fields
+                                .iter()
+                                .map(|(name, value_expr)| {
+                                    (
+                                        name.clone(),
+                                        infer_ast_expr_type_in_scope(value_expr, &block_scope, ctx)
+                                            .unwrap_or(IrType::Unknown),
+                                    )
+                                })
+                                .collect(),
+                        ));
+                    }
+                }
+            }
+        }
+        trailing
+    }
+
+    fn infer_fold_accumulator_type_in_scope(
+        collection_ast: &ast::Expr,
+        init_expr: &ast::Expr,
+        func: Option<&ast::Expr>,
+        scope: &HashMap<String, IrType>,
+        ctx: &CompileContext,
+    ) -> Option<IrType> {
+        let init_ir_type = infer_ast_expr_type_in_scope(init_expr, scope, ctx);
+        let body_ir_type = match func {
+            Some(ast::Expr::Lambda(params, body)) => {
+                let collection_type = infer_ast_expr_type_in_scope(collection_ast, scope, ctx);
+                let mut lambda_scope = scope.clone();
+                if let (Some(param), Some(ir_type)) = (params.first(), init_ir_type.clone()) {
+                    lambda_scope.insert(param.clone(), ir_type);
+                }
+                if let (Some(param), Some(elem_type)) = (
+                    params.get(1),
+                    collection_type
+                        .as_ref()
+                        .and_then(collection_element_ir_type),
+                ) {
+                    lambda_scope.insert(param.clone(), elem_type);
+                }
+                infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+            }
+            Some(other) => infer_ast_expr_type_in_scope(other, scope, ctx),
+            None => None,
+        };
+        merge_inferred_ir_types(init_ir_type, body_ir_type, ctx)
+    }
+
     match expr {
-        ast::Expr::Ident(name) => ctx.ir_scope.get(name).cloned(),
+        ast::Expr::Ident(name) => scope
+            .get(name)
+            .or_else(|| ctx.data_ir_types.get(name))
+            .cloned(),
         ast::Expr::List(elements) => {
             let elem_type = elements
-                .first()
-                .and_then(|item| infer_ast_expr_type(item, ctx))
+                .iter()
+                .filter_map(|item| infer_ast_expr_type_in_scope(item, scope, ctx))
+                .reduce(|left_ty, right_ty| merge_ir_types(left_ty, right_ty, ctx))
                 .unwrap_or(IrType::Unknown);
             Some(IrType::Generic("List".to_string(), vec![elem_type]))
         }
@@ -3005,85 +3164,151 @@ fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType>
             ast::Literal::Int(_) => Some(IrType::Int),
             ast::Literal::String(_) => Some(IrType::Str),
             ast::Literal::Bool(_) => Some(IrType::Bool),
-            ast::Literal::Float(_) => None,
+            ast::Literal::Float(_) => Some(IrType::Named("Float".to_string())),
             ast::Literal::None => None,
         },
         ast::Expr::FieldAccess(receiver, field_name) => {
-            // Look up receiver type, then field type in struct definitions
-            if let ast::Expr::Ident(recv_name) = receiver.as_ref() {
-                if let Some(recv_type) = ctx.ir_scope.get(recv_name) {
-                    let struct_name = match recv_type {
-                        IrType::Named(n) => Some(n.as_str()),
-                        IrType::Optional(inner) => match inner.as_ref() {
-                            IrType::Named(n) => Some(n.as_str()),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-                    if let Some(sn) = struct_name {
-                        if let Some(fields) = ctx.struct_field_ir_types.get(sn) {
-                            return fields
+            let receiver_type = infer_ast_expr_type_in_scope(receiver, scope, ctx)?;
+            match receiver_type {
+                IrType::Record(fields) => fields
+                    .into_iter()
+                    .find(|(name, _)| name == field_name)
+                    .map(|(_, ty)| ty),
+                IrType::Named(name) => {
+                    ctx.struct_field_ir_types
+                        .get(name.as_str())
+                        .and_then(|fields| {
+                            fields
                                 .iter()
-                                .find(|(n, _)| n == field_name)
-                                .map(|(_, ty)| ty.clone());
-                        }
-                    }
+                                .find(|(name, _)| name == field_name)
+                                .map(|(_, ty)| ty.clone())
+                        })
                 }
+                IrType::Optional(inner) => match inner.as_ref() {
+                    IrType::Named(name) => {
+                        ctx.struct_field_ir_types
+                            .get(name.as_str())
+                            .and_then(|fields| {
+                                fields
+                                    .iter()
+                                    .find(|(name, _)| name == field_name)
+                                    .map(|(_, ty)| ty.clone())
+                            })
+                    }
+                    IrType::Record(fields) => fields
+                        .iter()
+                        .find(|(name, _)| name == field_name)
+                        .map(|(_, ty)| ty.clone()),
+                    _ => None,
+                },
+                _ => None,
             }
-            None
         }
-        ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
-        ast::Expr::Record(None, _) => ctx
+        ast::Expr::Record(None, fields) => ctx
             .anonymous_record_target(expr)
-            .map(|name| IrType::Named(name.to_string())),
+            .map(|name| IrType::Named(name.to_string()))
+            .or_else(|| {
+                Some(IrType::Record(
+                    fields
+                        .iter()
+                        .map(|(field_name, field_expr)| {
+                            (
+                                field_name.clone(),
+                                infer_ast_expr_type_in_scope(field_expr, scope, ctx)
+                                    .unwrap_or(IrType::Unknown),
+                            )
+                        })
+                        .collect(),
+                ))
+            }),
+        ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
         ast::Expr::Record(Some(name), _) => Some(IrType::Named(name.clone())),
         ast::Expr::Call(name, _) if name == "Some" => None,
         ast::Expr::Call(name, _) if name == "parse_int" => {
             Some(IrType::Optional(Box::new(IrType::Int)))
         }
-        ast::Expr::Call(name, args) if name == "concat" && args.len() >= 2 => {
-            // concat(a, b) returns the same type as a or b
-            args.iter()
-                .rev()
-                .find_map(|(_, e)| infer_ast_expr_type(e, ctx))
-        }
+        ast::Expr::Call(name, args) if name == "concat" && args.len() >= 2 => args
+            .iter()
+            .filter_map(|(_, expr)| infer_ast_expr_type_in_scope(expr, scope, ctx))
+            .reduce(|left_ty, right_ty| merge_ir_types(left_ty, right_ty, ctx)),
         ast::Expr::Call(name, args) if name == "map" && args.len() >= 2 => {
-            // map(collection, mapper) → List<mapper_return_type>
+            let collection_type = infer_ast_expr_type_in_scope(&args[0].1, scope, ctx);
             let elem_type = match &args[1].1 {
+                ast::Expr::Lambda(params, body)
+                    if params.len() == 1
+                        && collection_type
+                            .as_ref()
+                            .and_then(collection_element_ir_type)
+                            .is_some() =>
+                {
+                    let mut lambda_scope = scope.clone();
+                    lambda_scope.insert(
+                        params[0].clone(),
+                        collection_type
+                            .as_ref()
+                            .and_then(collection_element_ir_type)
+                            .unwrap_or(IrType::Unknown),
+                    );
+                    infer_ast_expr_type_in_scope(body, &lambda_scope, ctx)
+                        .unwrap_or(IrType::Unknown)
+                }
                 ast::Expr::Lambda(_, body) => {
-                    infer_ast_expr_type(body, ctx).unwrap_or(IrType::Unknown)
+                    infer_ast_expr_type_in_scope(body, scope, ctx).unwrap_or(IrType::Unknown)
                 }
                 _ => IrType::Unknown,
             };
             Some(IrType::Generic("List".to_string(), vec![elem_type]))
         }
-        ast::Expr::Call(name, _) => {
-            // Look up return type from fn_return_types → resolve to Named IrType
-            // when the return type corresponds to a known struct or enum.
-            ctx.fn_return_types
-                .get(name)
-                .or_else(|| ctx.fn_return_types.get(&to_snake_case(name)))
-                .map(|ret_str| {
-                    if ctx.struct_field_ir_types.contains_key(ret_str.as_str())
-                        || ctx.enum_variants.contains_key(ret_str.as_str())
-                    {
-                        IrType::Named(ret_str.clone())
-                    } else {
-                        IrType::Unknown
-                    }
-                })
+        ast::Expr::Call(name, args) if name == "filter" && !args.is_empty() => {
+            infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
         }
-        ast::Expr::Match(_, arms) => infer_match_result_type(arms, ctx).map(IrType::Named),
-        // If/else: try then branch, fall back to else branch
-        ast::Expr::If(_, then_expr, Some(else_expr)) => {
-            infer_ast_expr_type(then_expr, ctx).or_else(|| infer_ast_expr_type(else_expr, ctx))
+        ast::Expr::Call(name, args) if name == "with" && !args.is_empty() => {
+            infer_ast_expr_type_in_scope(&args[0].1, scope, ctx)
         }
-        ast::Expr::If(_, then_expr, None) => infer_ast_expr_type(then_expr, ctx),
-        // Block: infer from the last statement
-        ast::Expr::Block(stmts) => stmts.last().and_then(|s| match s {
-            ast::Stmt::Expr(e) => infer_ast_expr_type(e, ctx),
-            _ => None,
-        }),
+        ast::Expr::Call(name, args) if name == "fold" && args.len() >= 2 => {
+            let init = args
+                .iter()
+                .find(|(arg_name, _)| arg_name.as_deref() == Some("init"))
+                .or_else(|| args.get(1))
+                .map(|(_, expr)| expr);
+            let func = args
+                .iter()
+                .find(|(arg_name, _)| arg_name.as_deref() == Some("f"))
+                .or_else(|| args.get(2))
+                .map(|(_, expr)| expr);
+            init.and_then(|init_expr| {
+                infer_fold_accumulator_type_in_scope(&args[0].1, init_expr, func, scope, ctx)
+            })
+        }
+        ast::Expr::Call(name, _) if name == "any" || name == "contains" => Some(IrType::Bool),
+        ast::Expr::Call(name, _) => ctx
+            .fn_return_types
+            .get(name)
+            .or_else(|| ctx.fn_return_types.get(&to_snake_case(name)))
+            .map(|ret_str| {
+                if ctx.struct_field_ir_types.contains_key(ret_str.as_str())
+                    || ctx.enum_variants.contains_key(ret_str.as_str())
+                {
+                    IrType::Named(ret_str.clone())
+                } else {
+                    IrType::Unknown
+                }
+            }),
+        ast::Expr::Match(scrutinee, arms) => {
+            let _ = infer_ast_expr_type_in_scope(scrutinee, scope, ctx);
+            arms.iter().fold(None, |acc, arm| {
+                let arm_type = infer_ast_expr_type_in_scope(&arm.body, scope, ctx);
+                merge_inferred_ir_types(acc, arm_type, ctx)
+            })
+        }
+        ast::Expr::If(_, then_expr, Some(else_expr)) => merge_inferred_ir_types(
+            infer_ast_expr_type_in_scope(then_expr, scope, ctx),
+            infer_ast_expr_type_in_scope(else_expr, scope, ctx),
+            ctx,
+        ),
+        ast::Expr::If(_, then_expr, None) => infer_ast_expr_type_in_scope(then_expr, scope, ctx),
+        ast::Expr::Block(stmts) => infer_block_expr_type_in_scope(stmts, scope, ctx),
+        ast::Expr::StringInterp(_) => Some(IrType::Str),
         _ => None,
     }
 }
@@ -3156,185 +3381,443 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
 // Anonymous record synthesis
 // ---------------------------------------------------------------------------
 
-/// Collect field-name sets from anonymous records in a function body.
-/// Returns deduplicated sets of field names (sorted for determinism).
-/// Records that already have explicit typecheck-resolved targets are excluded —
-/// they don't need synthesis consideration.
-fn collect_anonymous_record_shapes(
+pub fn collect_anonymous_record_field_types(
     body: &ast::FnBody,
-    resolved: &HashMap<usize, String>,
-) -> Vec<Vec<String>> {
-    let mut shapes: Vec<Vec<String>> = Vec::new();
-    for stmt in &body.stmts {
-        collect_shapes_in_stmt(stmt, resolved, &mut shapes);
+    ctx: &CompileContext,
+) -> HashMap<usize, Vec<(String, IrType)>> {
+    fn collection_element_ir_type(ty: &IrType) -> Option<IrType> {
+        match ty {
+            IrType::Generic(_, args) if !args.is_empty() => Some(args[0].clone()),
+            _ => None,
+        }
     }
-    shapes.sort();
-    shapes.dedup();
-    shapes
-}
 
-fn collect_shapes_in_stmt(
-    stmt: &ast::Stmt,
-    resolved: &HashMap<usize, String>,
-    out: &mut Vec<Vec<String>>,
-) {
-    match stmt {
-        ast::Stmt::Let(_, value) => collect_shapes_in_expr(value, resolved, out),
-        ast::Stmt::Assign(_, value) => collect_shapes_in_expr(value, resolved, out),
-        ast::Stmt::Expr(e) => collect_shapes_in_expr(e, resolved, out),
-        ast::Stmt::Return(fields) => {
-            for (_, e) in fields {
-                collect_shapes_in_expr(e, resolved, out);
-            }
-        }
-        ast::Stmt::Node(_) => {}
-    }
-}
-
-fn collect_shapes_in_expr(
-    expr: &ast::Expr,
-    resolved: &HashMap<usize, String>,
-    out: &mut Vec<Vec<String>>,
-) {
-    match expr {
-        ast::Expr::Record(None, fields) => {
-            // Skip records already resolved by typecheck — they don't need synthesis.
-            if !resolved.contains_key(&(expr as *const ast::Expr as usize)) {
-                let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-                names.sort();
-                out.push(names);
-            }
-            for (_, v) in fields {
-                collect_shapes_in_expr(v, resolved, out);
-            }
-        }
-        ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
-            for (_, v) in fields {
-                collect_shapes_in_expr(v, resolved, out);
-            }
-        }
-        ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
-            for (_, e) in args {
-                collect_shapes_in_expr(e, resolved, out);
-            }
-        }
-        ast::Expr::Lambda(_, body) => collect_shapes_in_expr(body, resolved, out),
-        ast::Expr::If(cond, then_e, else_e) => {
-            collect_shapes_in_expr(cond, resolved, out);
-            collect_shapes_in_expr(then_e, resolved, out);
-            if let Some(e) = else_e {
-                collect_shapes_in_expr(e, resolved, out);
-            }
-        }
-        ast::Expr::BinOp(l, _, r) => {
-            collect_shapes_in_expr(l, resolved, out);
-            collect_shapes_in_expr(r, resolved, out);
-        }
-        ast::Expr::UnaryOp(_, e) | ast::Expr::FieldAccess(e, _) => {
-            collect_shapes_in_expr(e, resolved, out);
-        }
-        ast::Expr::Match(scrutinee, arms) => {
-            collect_shapes_in_expr(scrutinee, resolved, out);
-            for arm in arms {
-                collect_shapes_in_expr(&arm.body, resolved, out);
-            }
-        }
-        ast::Expr::List(elems) => {
-            for e in elems {
-                collect_shapes_in_expr(e, resolved, out);
-            }
-        }
-        ast::Expr::Block(stmts) => {
-            for s in stmts {
-                collect_shapes_in_stmt(s, resolved, out);
-            }
-        }
-        ast::Expr::For(_, iter_expr, _, for_body) => {
-            collect_shapes_in_expr(iter_expr, resolved, out);
-            match for_body {
-                ast::ForBody::Expr(e) => collect_shapes_in_expr(e, resolved, out),
-                ast::ForBody::Block(stmts) => {
-                    for s in stmts {
-                        collect_shapes_in_stmt(s, resolved, out);
+    fn collect_field_types_in_stmts(
+        stmts: &[ast::Stmt],
+        ctx: &CompileContext,
+        scope: &mut HashMap<String, IrType>,
+        out: &mut HashMap<usize, Vec<(String, IrType)>>,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                ast::Stmt::Let(name, expr) | ast::Stmt::Assign(name, expr) => {
+                    collect_field_types_in_expr(expr, ctx, scope, out);
+                    if let Some(ir_type) = infer_ast_expr_type_in_scope(expr, scope, ctx) {
+                        scope.insert(name.clone(), ir_type);
+                    }
+                }
+                ast::Stmt::Node(node_stmt) => {
+                    collect_field_types_in_expr(&node_stmt.expr, ctx, scope, out);
+                    if let Some(ir_type) = infer_ast_expr_type_in_scope(&node_stmt.expr, scope, ctx)
+                    {
+                        scope.insert(node_stmt.name.clone(), ir_type);
+                    }
+                }
+                ast::Stmt::Expr(expr) => collect_field_types_in_expr(expr, ctx, scope, out),
+                ast::Stmt::Return(fields) => {
+                    for (_, expr) in fields {
+                        collect_field_types_in_expr(expr, ctx, scope, out);
                     }
                 }
             }
         }
-        ast::Expr::Map(pairs) => {
-            for (k, v) in pairs {
-                collect_shapes_in_expr(k, resolved, out);
-                collect_shapes_in_expr(v, resolved, out);
+    }
+
+    fn collect_field_types_in_expr(
+        expr: &ast::Expr,
+        ctx: &CompileContext,
+        scope: &HashMap<String, IrType>,
+        out: &mut HashMap<usize, Vec<(String, IrType)>>,
+    ) {
+        match expr {
+            ast::Expr::Record(None, fields) => {
+                let expr_id = expr as *const ast::Expr as usize;
+                if !ctx.anonymous_record_targets.contains_key(&expr_id) {
+                    if let Some(IrType::Record(field_types)) =
+                        infer_ast_expr_type_in_scope(expr, scope, ctx)
+                    {
+                        out.entry(expr_id).or_insert(field_types);
+                    }
+                }
+                for (_, field_expr) in fields {
+                    collect_field_types_in_expr(field_expr, ctx, scope, out);
+                }
+            }
+            ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
+                for (_, field_expr) in fields {
+                    collect_field_types_in_expr(field_expr, ctx, scope, out);
+                }
+            }
+            ast::Expr::Call(name, args) if name == "fold" && args.len() >= 2 => {
+                let init = args
+                    .iter()
+                    .find(|(arg_name, _)| arg_name.as_deref() == Some("init"))
+                    .or_else(|| args.get(1))
+                    .map(|(_, expr)| expr);
+                if let Some(init_expr @ ast::Expr::Record(None, _)) = init {
+                    let expr_id = init_expr as *const ast::Expr as usize;
+                    if !ctx.anonymous_record_targets.contains_key(&expr_id) {
+                        if let Some(IrType::Record(field_types)) =
+                            infer_ast_expr_type_in_scope(expr, scope, ctx)
+                        {
+                            out.insert(expr_id, field_types);
+                        }
+                    }
+                }
+                for (_, arg_expr) in args {
+                    collect_field_types_in_expr(arg_expr, ctx, scope, out);
+                }
+            }
+            ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
+                for (_, arg_expr) in args {
+                    collect_field_types_in_expr(arg_expr, ctx, scope, out);
+                }
+            }
+            ast::Expr::Lambda(params, body) => {
+                let mut lambda_scope = scope.clone();
+                for param in params {
+                    lambda_scope.insert(param.clone(), IrType::Unknown);
+                }
+                collect_field_types_in_expr(body, ctx, &lambda_scope, out);
+            }
+            ast::Expr::If(cond, then_expr, else_expr) => {
+                collect_field_types_in_expr(cond, ctx, scope, out);
+                collect_field_types_in_expr(then_expr, ctx, scope, out);
+                if let Some(otherwise) = else_expr {
+                    collect_field_types_in_expr(otherwise, ctx, scope, out);
+                }
+            }
+            ast::Expr::BinOp(lhs, _, rhs) => {
+                collect_field_types_in_expr(lhs, ctx, scope, out);
+                collect_field_types_in_expr(rhs, ctx, scope, out);
+            }
+            ast::Expr::UnaryOp(_, inner)
+            | ast::Expr::FieldAccess(inner, _)
+            | ast::Expr::After(inner, _) => {
+                collect_field_types_in_expr(inner, ctx, scope, out);
+            }
+            ast::Expr::Match(scrutinee, arms) => {
+                collect_field_types_in_expr(scrutinee, ctx, scope, out);
+                for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        collect_field_types_in_expr(guard, ctx, scope, out);
+                    }
+                    collect_field_types_in_expr(&arm.body, ctx, scope, out);
+                }
+            }
+            ast::Expr::List(items) => {
+                for item in items {
+                    collect_field_types_in_expr(item, ctx, scope, out);
+                }
+            }
+            ast::Expr::Block(stmts) => {
+                let mut block_scope = scope.clone();
+                collect_field_types_in_stmts(stmts, ctx, &mut block_scope, out);
+            }
+            ast::Expr::For(binding, iter_expr, passthrough, body) => {
+                collect_field_types_in_expr(iter_expr, ctx, scope, out);
+                let mut loop_scope = scope.clone();
+                let elem_type = infer_ast_expr_type_in_scope(iter_expr, scope, ctx)
+                    .as_ref()
+                    .and_then(collection_element_ir_type)
+                    .unwrap_or(IrType::Unknown);
+                loop_scope.insert(binding.clone(), elem_type);
+                for name in passthrough {
+                    if let Some(ir_type) = scope.get(name).cloned() {
+                        loop_scope.insert(name.clone(), ir_type);
+                    }
+                }
+                match body {
+                    ast::ForBody::Expr(expr) => {
+                        collect_field_types_in_expr(expr, ctx, &loop_scope, out);
+                    }
+                    ast::ForBody::Block(stmts) => {
+                        collect_field_types_in_stmts(stmts, ctx, &mut loop_scope, out);
+                    }
+                }
+            }
+            ast::Expr::Map(entries) => {
+                for (key, value) in entries {
+                    collect_field_types_in_expr(key, ctx, scope, out);
+                    collect_field_types_in_expr(value, ctx, scope, out);
+                }
+            }
+            ast::Expr::Guarded(inner, guard) => {
+                collect_field_types_in_expr(inner, ctx, scope, out);
+                collect_field_types_in_expr(guard, ctx, scope, out);
+            }
+            ast::Expr::StringInterp(parts) => {
+                for part in parts {
+                    if let ast::StringPart::Expr(expr) = part {
+                        collect_field_types_in_expr(expr, ctx, scope, out);
+                    }
+                }
+            }
+            ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
+        }
+    }
+
+    let mut field_types = HashMap::new();
+    let mut scope = ctx.ir_scope.clone();
+    collect_field_types_in_stmts(&body.stmts, ctx, &mut scope, &mut field_types);
+    field_types
+}
+
+fn collect_unresolved_anonymous_record_expr_ids(
+    body: &ast::FnBody,
+    resolved: &HashMap<usize, String>,
+) -> Vec<usize> {
+    fn collect_from_stmts(
+        stmts: &[ast::Stmt],
+        resolved: &HashMap<usize, String>,
+        out: &mut Vec<usize>,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                ast::Stmt::Let(_, expr) | ast::Stmt::Assign(_, expr) | ast::Stmt::Expr(expr) => {
+                    collect_from_expr(expr, resolved, out);
+                }
+                ast::Stmt::Return(fields) => {
+                    for (_, expr) in fields {
+                        collect_from_expr(expr, resolved, out);
+                    }
+                }
+                ast::Stmt::Node(node_stmt) => {
+                    collect_from_expr(&node_stmt.expr, resolved, out);
+                }
             }
         }
-        ast::Expr::Guarded(e, cond) => {
-            collect_shapes_in_expr(e, resolved, out);
-            collect_shapes_in_expr(cond, resolved, out);
+    }
+
+    fn collect_from_expr(
+        expr: &ast::Expr,
+        resolved: &HashMap<usize, String>,
+        out: &mut Vec<usize>,
+    ) {
+        match expr {
+            ast::Expr::Record(None, fields) => {
+                let expr_id = expr as *const ast::Expr as usize;
+                if !resolved.contains_key(&expr_id) {
+                    out.push(expr_id);
+                }
+                for (_, field_expr) in fields {
+                    collect_from_expr(field_expr, resolved, out);
+                }
+            }
+            ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
+                for (_, field_expr) in fields {
+                    collect_from_expr(field_expr, resolved, out);
+                }
+            }
+            ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
+                for (_, expr) in args {
+                    collect_from_expr(expr, resolved, out);
+                }
+            }
+            ast::Expr::Lambda(_, body) => collect_from_expr(body, resolved, out),
+            ast::Expr::If(cond, then_expr, else_expr) => {
+                collect_from_expr(cond, resolved, out);
+                collect_from_expr(then_expr, resolved, out);
+                if let Some(otherwise) = else_expr {
+                    collect_from_expr(otherwise, resolved, out);
+                }
+            }
+            ast::Expr::BinOp(lhs, _, rhs) => {
+                collect_from_expr(lhs, resolved, out);
+                collect_from_expr(rhs, resolved, out);
+            }
+            ast::Expr::UnaryOp(_, inner)
+            | ast::Expr::FieldAccess(inner, _)
+            | ast::Expr::After(inner, _) => {
+                collect_from_expr(inner, resolved, out);
+            }
+            ast::Expr::Match(scrutinee, arms) => {
+                collect_from_expr(scrutinee, resolved, out);
+                for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        collect_from_expr(guard, resolved, out);
+                    }
+                    collect_from_expr(&arm.body, resolved, out);
+                }
+            }
+            ast::Expr::List(items) => {
+                for item in items {
+                    collect_from_expr(item, resolved, out);
+                }
+            }
+            ast::Expr::Block(stmts) => collect_from_stmts(stmts, resolved, out),
+            ast::Expr::For(_, iter_expr, _, body) => {
+                collect_from_expr(iter_expr, resolved, out);
+                match body {
+                    ast::ForBody::Expr(expr) => collect_from_expr(expr, resolved, out),
+                    ast::ForBody::Block(stmts) => collect_from_stmts(stmts, resolved, out),
+                }
+            }
+            ast::Expr::Map(entries) => {
+                for (key, value) in entries {
+                    collect_from_expr(key, resolved, out);
+                    collect_from_expr(value, resolved, out);
+                }
+            }
+            ast::Expr::Guarded(inner, guard) => {
+                collect_from_expr(inner, resolved, out);
+                collect_from_expr(guard, resolved, out);
+            }
+            ast::Expr::StringInterp(parts) => {
+                for part in parts {
+                    if let ast::StringPart::Expr(expr) = part {
+                        collect_from_expr(expr, resolved, out);
+                    }
+                }
+            }
+            ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
         }
-        ast::Expr::After(e, _) => {
-            collect_shapes_in_expr(e, resolved, out);
+    }
+
+    let mut expr_ids = Vec::new();
+    collect_from_stmts(&body.stmts, resolved, &mut expr_ids);
+    expr_ids
+}
+
+fn ir_type_to_type_id(ty: &IrType) -> Option<String> {
+    match ty {
+        IrType::Named(name) => Some(name.clone()),
+        IrType::Generic(name, args) => {
+            let rendered_args = args
+                .iter()
+                .map(ir_type_to_type_id)
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("{name}<{}>", rendered_args.join(", ")))
         }
-        _ => {}
+        IrType::Optional(inner) => Some(format!("Optional<{}>", ir_type_to_type_id(inner)?)),
+        IrType::Bool => Some("Bool".to_string()),
+        IrType::Int => Some("Int".to_string()),
+        IrType::Str => Some("String".to_string()),
+        IrType::Tuple(items) => {
+            let rendered_items = items
+                .iter()
+                .map(ir_type_to_type_id)
+                .collect::<Option<Vec<_>>>()?;
+            Some(format!("({})", rendered_items.join(", ")))
+        }
+        IrType::Unit => Some("Unit".to_string()),
+        IrType::Record(_) | IrType::Unknown => None,
     }
 }
 
-/// Infer a Rust type string from a literal expression used as a field default.
-fn infer_field_type_from_expr(expr: &ast::Expr) -> &'static str {
-    match expr {
-        ast::Expr::Literal(ast::Literal::String(_)) => "String",
-        ast::Expr::Literal(ast::Literal::Int(_)) => "i64",
-        ast::Expr::Literal(ast::Literal::Float(_)) => "f64",
-        ast::Expr::Literal(ast::Literal::Bool(_)) => "bool",
-        ast::Expr::List(_) => "Vec<String>", // best-effort default
-        _ => "String",                       // fallback
+fn ir_type_to_rust_type(ty: &IrType) -> Option<String> {
+    match ty {
+        IrType::Named(name) => Some(crate::type_mapping::resolve_and_emit(
+            name,
+            None,
+            crate::type_mapping::Backend::Rust,
+        )),
+        IrType::Generic(name, args) if name == "List" && args.len() == 1 => {
+            Some(format!("Rc<Vec<{}>>", ir_type_to_rust_type(&args[0])?))
+        }
+        IrType::Generic(name, args) if name == "Set" && args.len() == 1 => Some(format!(
+            "std::collections::HashSet<{}>",
+            ir_type_to_rust_type(&args[0])?
+        )),
+        IrType::Generic(name, args) if name == "Map" && args.len() == 2 => Some(format!(
+            "std::collections::HashMap<{}, {}>",
+            ir_type_to_rust_type(&args[0])?,
+            ir_type_to_rust_type(&args[1])?
+        )),
+        IrType::Generic(name, args) => Some(format!(
+            "{}<{}>",
+            crate::type_mapping::resolve_and_emit(name, None, crate::type_mapping::Backend::Rust,),
+            args.iter()
+                .map(ir_type_to_rust_type)
+                .collect::<Option<Vec<_>>>()?
+                .join(", ")
+        )),
+        IrType::Optional(inner) => Some(format!("Option<{}>", ir_type_to_rust_type(inner)?)),
+        IrType::Bool => Some("bool".to_string()),
+        IrType::Int => Some("i64".to_string()),
+        IrType::Str => Some("String".to_string()),
+        IrType::Tuple(items) => {
+            let rendered_items = items
+                .iter()
+                .map(ir_type_to_rust_type)
+                .collect::<Option<Vec<_>>>()?;
+            let tuple_body = if rendered_items.len() == 1 {
+                format!("{},", rendered_items[0])
+            } else {
+                rendered_items.join(", ")
+            };
+            Some(format!("({tuple_body})"))
+        }
+        IrType::Unit => Some("()".to_string()),
+        IrType::Record(_) | IrType::Unknown => None,
     }
 }
 
 /// Synthesize struct names and definitions for anonymous record shapes that
 /// still lack an explicit target after typecheck.
 ///
-/// Returns: (struct items to emit, mapping from sorted-field-key → struct name,
-///           entries to add to struct_field_types)
+/// Returns: (struct items to emit, mapping from AST expression identity →
+///           synthesized struct name, entries to add to struct_field_types)
 #[allow(clippy::type_complexity)]
 pub fn synthesize_anonymous_structs(
     fn_name: &str,
     body: &ast::FnBody,
     resolved_targets: &HashMap<usize, String>,
+    field_types_by_expr: &HashMap<usize, Vec<(String, IrType)>>,
 ) -> (
     Vec<code_ir::Item>,
-    HashMap<Vec<String>, String>,
+    HashMap<usize, String>,
     HashMap<String, HashMap<String, String>>,
 ) {
-    // Only collect shapes from records that lack explicit typecheck targets.
-    let shapes = collect_anonymous_record_shapes(body, resolved_targets);
+    let expr_ids = collect_unresolved_anonymous_record_expr_ids(body, resolved_targets);
     let mut items = Vec::new();
-    let mut name_map: HashMap<Vec<String>, String> = HashMap::new();
+    let mut expr_targets = HashMap::new();
+    let mut typed_shape_names: HashMap<Vec<(String, String)>, String> = HashMap::new();
     let mut new_field_types: HashMap<String, HashMap<String, String>> = HashMap::new();
 
-    for (idx, shape) in shapes.iter().enumerate() {
-        // Synthesize a struct name from the function name.
+    for expr_id in expr_ids {
+        let Some(field_types) = field_types_by_expr.get(&expr_id) else {
+            continue;
+        };
+        let Some(typed_shape) = field_types
+            .iter()
+            .map(|(name, ty)| Some((name.clone(), ir_type_to_type_id(ty)?)))
+            .collect::<Option<Vec<_>>>()
+        else {
+            continue;
+        };
+        let mut typed_shape = typed_shape;
+        typed_shape.sort_by(|left, right| left.0.cmp(&right.0));
+
+        if let Some(existing) = typed_shape_names.get(&typed_shape) {
+            expr_targets.insert(expr_id, existing.clone());
+            continue;
+        }
+
         let pascal_fn = capitalize_first_char(&fn_name.replace('_', " ")).replace(' ', "");
-        let struct_name = if idx == 0 {
+        let struct_name = if typed_shape_names.is_empty() {
             format!("__{pascal_fn}State")
         } else {
-            format!("__{pascal_fn}State{idx}")
+            format!("__{pascal_fn}State{}", typed_shape_names.len())
         };
-
-        // Find the anonymous record to infer field types from init values.
-        let field_exprs = find_record_fields_for_shape(body, shape);
-        let fields: Vec<(String, String, bool)> = shape
+        let fields: Vec<(String, String, bool)> = typed_shape
             .iter()
-            .map(|f| {
-                let ty = field_exprs
-                    .get(f.as_str())
-                    .map(|e| infer_field_type_from_expr(e))
-                    .unwrap_or("String");
-                (f.clone(), ty.to_string(), true)
+            .filter_map(|(field_name, _)| {
+                field_types
+                    .iter()
+                    .find(|(name, _)| name == field_name)
+                    .and_then(|(_, ty)| {
+                        ir_type_to_rust_type(ty).map(|rust_ty| (field_name.clone(), rust_ty, true))
+                    })
             })
             .collect();
+        if fields.len() != typed_shape.len() {
+            continue;
+        }
 
         let mut ft_map = HashMap::new();
-        for (name, ty, _) in &fields {
-            ft_map.insert(name.clone(), ty.clone());
+        for (field_name, field_ty) in &typed_shape {
+            ft_map.insert(field_name.clone(), field_ty.clone());
         }
         new_field_types.insert(struct_name.clone(), ft_map);
 
@@ -3349,138 +3832,10 @@ pub fn synthesize_anonymous_structs(
             fields,
             doc: vec![format!("Synthesized fold accumulator for `{fn_name}`.")],
         }));
-        name_map.insert(shape.clone(), struct_name);
+        typed_shape_names.insert(typed_shape, struct_name.clone());
+        expr_targets.insert(expr_id, struct_name);
     }
-    (items, name_map, new_field_types)
-}
-
-pub fn annotate_synthesized_anonymous_record_targets(
-    body: &ast::FnBody,
-    shape_targets: &HashMap<Vec<String>, String>,
-) -> HashMap<usize, String> {
-    let mut targets = HashMap::new();
-    for stmt in &body.stmts {
-        collect_synthesized_targets_in_stmt(stmt, shape_targets, &mut targets);
-    }
-    targets
-}
-
-fn collect_synthesized_targets_in_stmt(
-    stmt: &ast::Stmt,
-    shape_targets: &HashMap<Vec<String>, String>,
-    targets: &mut HashMap<usize, String>,
-) {
-    match stmt {
-        ast::Stmt::Let(_, value) | ast::Stmt::Assign(_, value) | ast::Stmt::Expr(value) => {
-            collect_synthesized_targets_in_expr(value, shape_targets, targets);
-        }
-        ast::Stmt::Return(fields) => {
-            for (_, expr) in fields {
-                collect_synthesized_targets_in_expr(expr, shape_targets, targets);
-            }
-        }
-        ast::Stmt::Node(node_stmt) => {
-            collect_synthesized_targets_in_expr(&node_stmt.expr, shape_targets, targets);
-        }
-    }
-}
-
-fn collect_synthesized_targets_in_expr(
-    expr: &ast::Expr,
-    shape_targets: &HashMap<Vec<String>, String>,
-    targets: &mut HashMap<usize, String>,
-) {
-    match expr {
-        ast::Expr::Record(None, fields) => {
-            let mut shape: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
-            shape.sort();
-            if let Some(target) = shape_targets.get(&shape) {
-                targets.insert(expr as *const ast::Expr as usize, target.clone());
-            }
-            for (_, value) in fields {
-                collect_synthesized_targets_in_expr(value, shape_targets, targets);
-            }
-        }
-        ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
-            for (_, value) in fields {
-                collect_synthesized_targets_in_expr(value, shape_targets, targets);
-            }
-        }
-        ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
-            for (_, value) in args {
-                collect_synthesized_targets_in_expr(value, shape_targets, targets);
-            }
-        }
-        ast::Expr::Lambda(_, body) => {
-            collect_synthesized_targets_in_expr(body, shape_targets, targets);
-        }
-        ast::Expr::If(cond, then_expr, else_expr) => {
-            collect_synthesized_targets_in_expr(cond, shape_targets, targets);
-            collect_synthesized_targets_in_expr(then_expr, shape_targets, targets);
-            if let Some(otherwise) = else_expr {
-                collect_synthesized_targets_in_expr(otherwise, shape_targets, targets);
-            }
-        }
-        ast::Expr::BinOp(lhs, _, rhs) => {
-            collect_synthesized_targets_in_expr(lhs, shape_targets, targets);
-            collect_synthesized_targets_in_expr(rhs, shape_targets, targets);
-        }
-        ast::Expr::UnaryOp(_, inner)
-        | ast::Expr::FieldAccess(inner, _)
-        | ast::Expr::After(inner, _) => {
-            collect_synthesized_targets_in_expr(inner, shape_targets, targets);
-        }
-        ast::Expr::Guarded(inner, guard) => {
-            collect_synthesized_targets_in_expr(inner, shape_targets, targets);
-            collect_synthesized_targets_in_expr(guard, shape_targets, targets);
-        }
-        ast::Expr::Match(scrutinee, arms) => {
-            collect_synthesized_targets_in_expr(scrutinee, shape_targets, targets);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_synthesized_targets_in_expr(guard, shape_targets, targets);
-                }
-                collect_synthesized_targets_in_expr(&arm.body, shape_targets, targets);
-            }
-        }
-        ast::Expr::List(items) => {
-            for item in items {
-                collect_synthesized_targets_in_expr(item, shape_targets, targets);
-            }
-        }
-        ast::Expr::Block(stmts) => {
-            for stmt in stmts {
-                collect_synthesized_targets_in_stmt(stmt, shape_targets, targets);
-            }
-        }
-        ast::Expr::For(_, iter_expr, _, body) => {
-            collect_synthesized_targets_in_expr(iter_expr, shape_targets, targets);
-            match body {
-                ast::ForBody::Expr(expr) => {
-                    collect_synthesized_targets_in_expr(expr, shape_targets, targets);
-                }
-                ast::ForBody::Block(stmts) => {
-                    for stmt in stmts {
-                        collect_synthesized_targets_in_stmt(stmt, shape_targets, targets);
-                    }
-                }
-            }
-        }
-        ast::Expr::Map(entries) => {
-            for (key, value) in entries {
-                collect_synthesized_targets_in_expr(key, shape_targets, targets);
-                collect_synthesized_targets_in_expr(value, shape_targets, targets);
-            }
-        }
-        ast::Expr::StringInterp(parts) => {
-            for part in parts {
-                if let ast::StringPart::Expr(expr) = part {
-                    collect_synthesized_targets_in_expr(expr, shape_targets, targets);
-                }
-            }
-        }
-        ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
-    }
+    (items, expr_targets, new_field_types)
 }
 
 fn capitalize_first_char(s: &str) -> String {
@@ -3488,77 +3843,6 @@ fn capitalize_first_char(s: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-    }
-}
-
-/// Find the first anonymous record in the AST matching a given field shape,
-/// and return a map of field name → init expression for type inference.
-fn find_record_fields_for_shape<'a>(
-    body: &'a ast::FnBody,
-    shape: &[String],
-) -> HashMap<&'a str, &'a ast::Expr> {
-    let mut result = HashMap::new();
-    find_record_in_stmts(&body.stmts, shape, &mut result);
-    result
-}
-
-fn find_record_in_stmts<'a>(
-    stmts: &'a [ast::Stmt],
-    shape: &[String],
-    out: &mut HashMap<&'a str, &'a ast::Expr>,
-) {
-    for stmt in stmts {
-        match stmt {
-            ast::Stmt::Let(_, value) | ast::Stmt::Assign(_, value) => {
-                find_record_in_expr(value, shape, out);
-            }
-            ast::Stmt::Expr(e) => find_record_in_expr(e, shape, out),
-            _ => {}
-        }
-        if !out.is_empty() {
-            return;
-        }
-    }
-}
-
-fn find_record_in_expr<'a>(
-    expr: &'a ast::Expr,
-    shape: &[String],
-    out: &mut HashMap<&'a str, &'a ast::Expr>,
-) {
-    if !out.is_empty() {
-        return;
-    }
-    if let ast::Expr::Record(None, fields) = expr {
-        let mut names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-        names.sort();
-        if names == shape {
-            for (n, v) in fields {
-                out.insert(n.as_str(), v);
-            }
-            return;
-        }
-    }
-    // Recurse into sub-expressions.
-    match expr {
-        ast::Expr::Call(_, args) => {
-            for (_, e) in args {
-                find_record_in_expr(e, shape, out);
-            }
-        }
-        ast::Expr::Lambda(_, body) => find_record_in_expr(body, shape, out),
-        ast::Expr::If(c, t, e) => {
-            find_record_in_expr(c, shape, out);
-            find_record_in_expr(t, shape, out);
-            if let Some(e) = e {
-                find_record_in_expr(e, shape, out);
-            }
-        }
-        ast::Expr::BinOp(l, _, r) => {
-            find_record_in_expr(l, shape, out);
-            find_record_in_expr(r, shape, out);
-        }
-        _ => {}
     }
 }
 

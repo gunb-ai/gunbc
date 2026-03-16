@@ -454,6 +454,15 @@ fn emit_module(
 
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_ir_types: items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::DataDef(dd) => {
+                    Some((dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
+                }
+                _ => None,
+            })
+            .collect(),
         data_map_names,
         optional_fields: optional_fields.clone(),
         variant_to_enum: variant_to_enum.clone(),
