@@ -2293,8 +2293,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_modules: List<TypedModule>)
   let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_diags = fold(typed_item_results, init: [], f: (acc, tir) => concat(acc, tir.diagnostics))
-  let rev_type_entries = fold(typed_item_results, init: [], f: (acc, tir) => concat(tir.type_entries, acc))
-  let all_type_entries = reverse(rev_type_entries)
+  let all_type_entries = fold(typed_item_results, init: [], f: (acc, tir) => concat(acc, tir.type_entries))
 
   TypecheckModuleResult {
     typed: TypedModule {

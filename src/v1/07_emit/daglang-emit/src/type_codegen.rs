@@ -928,6 +928,7 @@ pub fn typedefs_to_source_file(
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types: std::collections::HashMap::new(),
         use_counts: std::collections::HashMap::new(),
+        fold_accum_name: None,
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1051,6 +1052,7 @@ pub fn generate_types_for_modules(
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: std::collections::HashMap::new(),
             use_counts: std::collections::HashMap::new(),
+            fold_accum_name: None,
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }

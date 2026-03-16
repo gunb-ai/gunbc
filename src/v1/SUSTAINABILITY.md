@@ -183,6 +183,18 @@ on the typed IR (between typecheck and emit), detecting self-tail-recursive
 functions and rewriting them to use a loop construct that the per-target
 renderers can emit (`loop {}` for Rust, `while True:` for Python).
 
+**v1 implementation note (2026-03-15):** Track C now uses a `TcoPlan`
+intermediate in `fn_codegen.rs` rather than the earlier classify-then-rewrite
+pair of passes. This is the smallest redesign that satisfies the v1 invariants:
+tail position is modeled structurally instead of by threaded booleans, analysis
+and rewriting share one representation, and unsupported recursive contexts fail
+closed instead of partially transforming. We explicitly did **not** introduce a
+full CFG / terminator IR in v1. A CFG would be cleaner long-term and would make
+TCO just another edge rewrite, but the blast radius is too large for a bootstrap
+compiler whose long-term future is still uncertain. If v1 becomes strategic,
+promote control flow to a real block/terminator IR instead of extending
+`TcoPlan`.
+
 ---
 
 ## Heuristic elimination roadmap

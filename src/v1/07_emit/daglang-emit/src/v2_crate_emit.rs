@@ -482,6 +482,7 @@ fn emit_module(
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
         struct_field_ir_types: struct_field_ir_types.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
+        fold_accum_name: None,
     };
 
     for item in items {
