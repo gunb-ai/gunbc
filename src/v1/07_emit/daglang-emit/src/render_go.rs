@@ -318,8 +318,9 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
         }
         Stmt::Continue => format!("{}continue\n", pad),
         Stmt::Break(expr) => {
-            // Go doesn't have break-with-value; use a variable.
-            format!("{}_ = {} // break\n", pad, render_expr(expr))
+            // `Stmt::Loop` is currently emitted for TCO rewriting, so
+            // break-with-value should leave the function with that value.
+            format!("{}return {}\n", pad, render_expr(expr))
         }
     }
 }
@@ -740,6 +741,29 @@ mod tests {
         let rendered = render_stmt(&stmt, 0);
         assert!(rendered.contains("for _, item := range items {"), "range");
         assert!(rendered.contains("fmt.Println(item)"), "body");
+    }
+
+    #[test]
+    fn render_tco_loop_break_returns_value() {
+        let stmt = Stmt::Loop {
+            body: vec![
+                Stmt::Expr(Expr::If {
+                    cond: Box::new(Expr::var("done")),
+                    then_body: vec![Stmt::Break(Expr::var("result"))],
+                    else_body: None,
+                }),
+                Stmt::Continue,
+            ],
+        };
+        let rendered = render_stmt(&stmt, 0);
+        assert!(rendered.contains("for {"), "loop header");
+        assert!(rendered.contains("if done {"), "if condition");
+        assert!(rendered.contains("return result"), "break should return the loop value");
+        assert!(
+            !rendered.contains("_ = result // break"),
+            "break should not degrade to a no-op assignment"
+        );
+        assert!(rendered.contains("continue"), "recursive path should still continue");
     }
 
     // -- C2.8: Integration test --

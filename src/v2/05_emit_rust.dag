@@ -15,7 +15,7 @@
 module v2.compiler.emit_rust
 
 import v2.std.core {
-  Import,
+  Import, ImportAll, ImportSpecific,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
@@ -29,27 +29,29 @@ import v2.std.core {
   FuncSig,
   TypedItem,
   TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl
+  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
 }
 
 import v2.compiler.typecheck {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
-  build_params_scope, extend_scope
+  build_params_scope, extend_scope,
+  normalize_access_type, for_each_element_type
 }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, ItemInfo, InterpPart,
-  no_span, empty_emit_scope, module_emit_scope,
+  empty_emit_scope, module_emit_scope,
   infer_expr_type, scope_after_expr,
-  build_item_registry, lookup_item, lookup_func_sig, named_arg_matches, order_call_args,
+  build_item_registry, lookup_item, named_arg_matches, order_call_args,
   is_service_call_receiver, extract_service_name,
   collect_service_calls, collect_service_calls_from_args, unique_strings,
   has_nested_records, emit_data_value_json, escape_json_string,
   module_to_filename,
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name
+  capitalize_first, sanitize_service_name, service_var_name,
+  expr_has_self_call, has_non_tail_self_call
 }
 
 // =========================================================================
@@ -101,7 +103,7 @@ fn emit_lib_rs(modules: List<TypedModule>) -> TextFile {
 // Module emission
 // =========================================================================
 
-fn emit_module(typed_module: TypedModule, registry: List<ItemInfo>) -> TextFile {
+fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_prelude()
@@ -225,7 +227,7 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: TypedItem, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_typed_item(item: TypedItem, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match item {
     TypedTypeDef { name: n, body: b, span: _ } =>
       emit_type_def(name: n, body: b)
@@ -244,6 +246,8 @@ fn emit_typed_item(item: TypedItem, registry: List<ItemInfo>, scope: InferScope)
       let params_str = emit_params(params: ps)
       let ret_str = emit_return_type(return_type: rt)
       concat("pub fn ", rust_ident(name: n), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
+    TypedPatternDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
+      emit_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
   }
 }
 
@@ -281,7 +285,7 @@ fn emit_struct_field(field: Field) -> String {
     None => ""
   }
   let default_doc = match field.default_value {
-    Some { value: expr } => concat("    /// Default: ", emit_expr(expr: expr, registry: []), "\n")
+    Some { value: expr } => concat("    /// Default: ", emit_expr(expr: expr, registry: empty_map()), "\n")
     None => ""
   }
   concat(rename_attr, default_doc, "    pub ", rust_ident(name: field.name), ": ", ty, ",")
@@ -404,13 +408,24 @@ fn emit_coproduct_type_expr(name: String?, variants: List<Variant>) -> String {
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let params_str = emit_params(params: params)
   let ret_str = emit_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let body_str = emit_expr_in_scope(expr: body, registry: registry, scope: body_scope)
-  concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
-    indent(text: body_str, level: 1), "\n}")
+  // Tail-call optimization: if the function body contains self-recursive
+  // calls and all are in tail position, emit a loop+reassignment form.
+  let use_tco = expr_has_self_call(expr: body, fn_name: name)
+    && has_non_tail_self_call(expr: body, fn_name: name, in_tail: true) == false
+  if use_tco {
+    let tco_params_str = emit_tco_params(params: params)
+    let body_str = emit_tco_body(expr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
+    concat("pub fn ", rust_ident(name: name), "(", tco_params_str, ")", ret_str, " {\n",
+      indent(text: body_str, level: 1), "\n}")
+  } else {
+    let body_str = emit_expr_in_scope(expr: body, registry: registry, scope: body_scope)
+    concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+      indent(text: body_str, level: 1), "\n}")
+  }
 }
 
 // =========================================================================
@@ -423,7 +438,7 @@ fn emit_func_def(
   return_type: TypeExpr,
   uses: List<ResourceUse>,
   body: Expr,
-  registry: List<ItemInfo>,
+  registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
   let service_names = unique_strings(items: collect_service_calls(expr: body))
@@ -439,7 +454,7 @@ fn emit_func_def(
 // Emit a func body, wrapping the tail expression in Ok(...).
 // For let-chains the leading bindings are emitted as statements,
 // and only the final expression is wrapped.
-fn emit_func_body(body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match body {
     Let { name: n, value: v, body: inner, span: _ } => {
       let val_str = emit_expr_in_scope(expr: v, registry: registry, scope: scope)
@@ -473,6 +488,139 @@ fn emit_func_body(body: Expr, registry: List<ItemInfo>, scope: InferScope) -> St
     }
     _ => concat("Ok(", emit_expr_in_scope(expr: body, registry: registry, scope: scope), ")")
   }
+}
+
+// =========================================================================
+// Tail-Call Optimization (TCO) — Rust rendering
+//
+// When a pure fn body contains self-recursive calls and every self-call
+// is in tail position, we transform the emitted code from direct recursion
+// to a loop+reassignment pattern:
+//
+//   pub fn f(mut x: T, mut y: U) -> R {
+//       loop {
+//           // ... original body ...
+//           // tail call f(a, b) becomes:
+//           //   { let __tco_0 = a; let __tco_1 = b; x = __tco_0; y = __tco_1; continue; }
+//           // non-recursive return becomes: break result;
+//       }
+//   }
+//
+// Classification (expr_has_self_call, all_self_calls_are_tail) is shared
+// and lives in 05_emit.dag. Only the Rust-specific rendering is here.
+// =========================================================================
+
+// Emit parameters with `mut` prefix for TCO-eligible functions.
+fn emit_tco_params(params: List<Param>) -> String {
+  let strs = params |> map(p => emit_tco_param(param: p))
+  strs |> join(separator: ", ")
+}
+
+fn emit_tco_param(param: Param) -> String {
+  let ty = emit_type_expr(type_expr: param.type_expr)
+  let ref_ty = if needs_reference(type_expr: param.type_expr) {
+    concat("&", ty)
+  } else {
+    ty
+  }
+  concat("mut ", rust_ident(name: param.name), ": ", ref_ty)
+}
+
+// Emit the TCO-transformed body: wrap in loop { ... }.
+fn emit_tco_body(expr: Expr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let inner = emit_tco_expr(expr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope)
+  concat("loop {\n", indent(text: inner, level: 1), "\n}")
+}
+
+// Emit an expression in TCO context: tail calls become reassignment+continue,
+// non-recursive results become break.
+fn emit_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  match expr {
+    Call { func: f, args: a, span: _ } =>
+      if f == fn_name {
+        // Tail self-call: emit temporaries, reassign params, continue.
+        emit_tco_reassign(args: a, params: params, registry: registry, scope: scope)
+      } else {
+        // Non-self call in tail position: break with result.
+        let call_str = emit_call(func: f, args: a, registry: registry, scope: scope)
+        concat("break ", call_str, ";")
+      }
+    If { condition: c, then_branch: t, else_branch: e, span: _ } =>
+      let cond_str = emit_expr_in_scope(expr: c, registry: registry, scope: scope)
+      let then_str = emit_tco_expr(expr: t, fn_name: fn_name, params: params, registry: registry, scope: scope)
+      match e {
+        Some { value: eb } =>
+          let else_str = emit_tco_expr(expr: eb, fn_name: fn_name, params: params, registry: registry, scope: scope)
+          concat("if ", cond_str, " {\n",
+            indent(text: then_str, level: 1), "\n} else {\n",
+            indent(text: else_str, level: 1), "\n}")
+        None =>
+          concat("if ", cond_str, " {\n",
+            indent(text: then_str, level: 1), "\n}")
+      }
+    Match { scrutinee: s, arms: arm_list, span: _ } =>
+      let scrut_str = emit_expr_in_scope(expr: s, registry: registry, scope: scope)
+      let arm_strs = arm_list |> map(arm =>
+        emit_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: scope))
+      let arms_str = arm_strs |> join(separator: "\n")
+      concat("match ", scrut_str, " {\n", arms_str, "\n}")
+    Let { name: n, value: v, body: bd, span: _ } =>
+      let val_str = emit_expr_in_scope(expr: v, registry: registry, scope: scope)
+      let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
+      let next_scope = extend_scope(scope: scope, name: n, resolved: infer_expr_type(expr: v, scope: scope))
+      match bd {
+        Some { value: b } =>
+          concat(let_line, "\n", emit_tco_expr(expr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope))
+        None => let_line
+      }
+    Block { stmts: ss, span: _ } =>
+      if ss |> count == 0 {
+        "break;"
+      } else {
+        let init_state = ss |> enumerate
+          |> filter(p => p.first < (ss |> count) - 1)
+          |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, pair) {
+            let line = emit_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
+            let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
+            BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+          })
+        let last_str = match ss |> last {
+          Some { value: last_expr } =>
+            emit_tco_expr(expr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope)
+          None => "break;"
+        }
+        let all_lines = concat(init_state.lines, [last_str])
+        all_lines |> join(separator: "\n")
+      }
+    // Any other expression in tail position: not a self-call, so break.
+    _ =>
+      let val_str = emit_expr_in_scope(expr: expr, registry: registry, scope: scope)
+      concat("break ", val_str, ";")
+  }
+}
+
+fn emit_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let pat_str = emit_pattern(pattern: arm.pattern)
+  let guard_str = match arm.guard {
+    Some { value: g } => concat(" if ", emit_expr_in_scope(expr: g, registry: registry, scope: scope))
+    None => ""
+  }
+  let body_str = emit_tco_expr(expr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope)
+  concat("    ", pat_str, guard_str, " => { ", body_str, " },")
+}
+
+// Emit the reassignment block for a tail self-call:
+//   { let __tco_0 = arg0; let __tco_1 = arg1; param0 = __tco_0; param1 = __tco_1; continue; }
+// Temporaries prevent order-dependent assignment issues (e.g., f(b, a)).
+fn emit_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let ordered_args = args |> map(a => emit_expr_in_scope(expr: a.value, registry: registry, scope: scope))
+  let param_names = params |> map(p => rust_ident(name: p.name))
+  let temp_lets = ordered_args |> enumerate |> map(pair =>
+    concat("let __tco_", to_string(value: pair.first), " = ", pair.second, ";"))
+  let assigns = param_names |> enumerate |> map(pair =>
+    concat(pair.second, " = __tco_", to_string(value: pair.first), ";"))
+  let all_lines = concat(temp_lets, assigns, ["continue;"])
+  concat("{\n", indent(text: all_lines |> join(separator: "\n"), level: 1), "\n}")
 }
 
 fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
@@ -533,11 +681,11 @@ fn needs_reference(type_expr: TypeExpr) -> Bool {
 // Expression emission
 // =========================================================================
 
-fn emit_expr(expr: Expr, registry: List<ItemInfo>) -> String {
+fn emit_expr(expr: Expr, registry: Map<String, ItemInfo>) -> String {
   emit_expr_in_scope(expr: expr, registry: registry, scope: empty_emit_scope())
 }
 
-fn emit_expr_in_scope(expr: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_expr_in_scope(expr: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match expr {
     Literal { value: v, span: _ } => emit_literal(value: v)
     Var { name: n, span: _ } => rust_ident(name: n)
@@ -553,8 +701,8 @@ fn emit_expr_in_scope(expr: Expr, registry: List<ItemInfo>, scope: InferScope) -
       emit_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope)
     Let { name: n, value: v, body: bd, span: _ } =>
       emit_let(name: n, value: v, body: bd, registry: registry, scope: scope)
-    RecordLit { type_name: tn, fields: fs, span: _ } =>
-      emit_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope)
+    RecordLit { type_name: tn, fields: fs, span: span } =>
+      emit_record_lit(type_name: tn, fields: fs, span: span, registry: registry, scope: scope)
     ListLit { elements: els, span: _ } =>
       emit_list_lit(elements: els, registry: registry, scope: scope)
     BinOp { op: o, left: l, right: r, span: _ } =>
@@ -606,7 +754,7 @@ fn emit_string_literal(s: String) -> String {
 // Call emission
 // =========================================================================
 
-fn emit_call(func: String, args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_call(func: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ordered_args = order_call_args(args: args, func: func, scope: scope)
   let arg_strs = ordered_args |> map(a => emit_call_arg(arg: a, registry: registry, scope: scope))
   let callee = lookup_item(registry: registry, name: func)
@@ -629,7 +777,7 @@ fn emit_call(func: String, args: List<NamedArg>, registry: List<ItemInfo>, scope
 
 // Emit a for-each loop from the ForEach AST node.
 // Produces a Rust statement-level for loop (side effects, no return value).
-fn emit_for_each(variable: String, collection: Expr, body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_for_each(variable: String, collection: Expr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let coll_str = emit_expr_in_scope(expr: collection, registry: registry, scope: scope)
   let elem_type = for_each_element_type(type_expr: infer_expr_type(expr: collection, scope: scope))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
@@ -639,7 +787,7 @@ fn emit_for_each(variable: String, collection: Expr, body: Expr, registry: List<
 }
 
 // Emit Index expression using the inferred base type.
-fn emit_index(base: Expr, index: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_index(base: Expr, index: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_expr_in_scope(expr: base, registry: registry, scope: scope)
   let index_str = emit_expr_in_scope(expr: index, registry: registry, scope: scope)
   let base_type = normalize_access_type(type_expr: infer_expr_type(expr: base, scope: scope))
@@ -658,7 +806,7 @@ fn emit_index(base: Expr, index: Expr, registry: List<ItemInfo>, scope: InferSco
 }
 
 // Emit Slice expression using the inferred base type.
-fn emit_slice(base: Expr, start: Expr, end: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_slice(base: Expr, start: Expr, end: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_expr_in_scope(expr: base, registry: registry, scope: scope)
   let start_str = emit_expr_in_scope(expr: start, registry: registry, scope: scope)
   let end_str = emit_expr_in_scope(expr: end, registry: registry, scope: scope)
@@ -675,11 +823,11 @@ fn emit_slice(base: Expr, start: Expr, end: Expr, registry: List<ItemInfo>, scop
   }
 }
 
-fn emit_call_arg(arg: NamedArg, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_call_arg(arg: NamedArg, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   emit_expr_in_scope(expr: arg.value, registry: registry, scope: scope)
 }
 
-fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   // Service call: git.Core.CurrentBranch() -> git_core.current_branch().await?
   if is_service_call_receiver(receiver: receiver) {
     match extract_service_name(receiver: receiver) {
@@ -720,7 +868,7 @@ fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, regist
 }
 
 // Extract and emit the first argument from a named arg list, or empty string if no args.
-fn emit_first_arg(args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match args |> first {
     Some { value: a } => emit_call_arg(arg: a, registry: registry, scope: scope)
     None => "todo!(\"missing method argument\")"
@@ -731,14 +879,14 @@ fn emit_first_arg(args: List<NamedArg>, registry: List<ItemInfo>, scope: InferSc
 // Match emission
 // =========================================================================
 
-fn emit_match(scrutinee: Expr, arms: List<MatchArm>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let scrut_str = emit_expr_in_scope(expr: scrutinee, registry: registry, scope: scope)
   let arm_strs = arms |> map(arm => emit_match_arm(arm: arm, registry: registry, scope: scope))
   let arms_str = arm_strs |> join(separator: "\n")
   concat("match ", scrut_str, " {\n", arms_str, "\n}")
 }
 
-fn emit_match_arm(arm: MatchArm, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let pat_str = emit_pattern(pattern: arm.pattern)
   let guard_str = match arm.guard {
     Some { value: g } => concat(" if ", emit_expr_in_scope(expr: g, registry: registry, scope: scope))
@@ -775,7 +923,7 @@ fn emit_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> Str
 // If/else emission
 // =========================================================================
 
-fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let cond_str = emit_expr_in_scope(expr: condition, registry: registry, scope: scope)
   let then_str = emit_expr_in_scope(expr: then_branch, registry: registry, scope: scope)
   match else_branch {
@@ -795,7 +943,7 @@ fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Lis
 // Let binding emission
 // =========================================================================
 
-fn emit_let(name: String, value: Expr, body: Expr?, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_let(name: String, value: Expr, body: Expr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let val_str = emit_expr_in_scope(expr: value, registry: registry, scope: scope)
   let let_line = concat("let ", rust_ident(name: name), " = ", val_str, ";")
   match body {
@@ -810,10 +958,27 @@ fn emit_let(name: String, value: Expr, body: Expr?, registry: List<ItemInfo>, sc
 // Record literal emission
 // =========================================================================
 
-fn emit_record_lit(type_name: String?, fields: List<FieldInit>, registry: List<ItemInfo>, scope: InferScope) -> String {
-  match type_name {
+fn explicit_record_struct_name(type_name: String?, inferred_type: TypeExpr) -> String? {
+  match normalize_access_type(type_expr: inferred_type) {
+    Named { name: name, span: _ } => Some { value: name }
+    Product { name: name, fields: _, span: _ } =>
+      if name == none { type_name } else { name }
+    _ => type_name
+  }
+}
+
+fn resolve_record_struct_name(type_name: String?, fields: List<FieldInit>, span: SourceSpan, scope: InferScope) -> String? {
+  let inferred_type = infer_expr_type(
+    expr: RecordLit { type_name: type_name, fields: fields, span: span },
+    scope: scope
+  )
+  explicit_record_struct_name(type_name: type_name, inferred_type: inferred_type)
+}
+
+fn emit_record_lit(type_name: String?, fields: List<FieldInit>, span: SourceSpan, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  match resolve_record_struct_name(type_name: type_name, fields: fields, span: span, scope: scope) {
     None =>
-      "todo!(\"anonymous record literal emission requires a named type\")"
+      "compile_error!(\"cannot resolve anonymous record type in emitter\")"
     Some { value: tn } =>
       if fields |> count == 0 {
         concat(tn, " {}")
@@ -831,7 +996,7 @@ fn emit_record_lit(type_name: String?, fields: List<FieldInit>, registry: List<I
 // List literal emission
 // =========================================================================
 
-fn emit_list_lit(elements: List<Expr>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_list_lit(elements: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   if elements |> count == 0 {
     "vec![]"
   } else {
@@ -845,7 +1010,7 @@ fn emit_list_lit(elements: List<Expr>, registry: List<ItemInfo>, scope: InferSco
 // Binary operator emission
 // =========================================================================
 
-fn emit_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let l_str = emit_expr_in_scope(expr: left, registry: registry, scope: scope)
   let r_str = emit_expr_in_scope(expr: right, registry: registry, scope: scope)
   if is_null_coalesce_op(op: op) {
@@ -887,7 +1052,7 @@ fn is_null_coalesce_op(op: BinOpKind) -> Bool {
 // Unary operator emission
 // =========================================================================
 
-fn emit_unary_op(op: UnaryOpKind, operand: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_expr_in_scope(expr: operand, registry: registry, scope: scope)
   match op {
     Not => concat("!", expr_str)
@@ -899,7 +1064,7 @@ fn emit_unary_op(op: UnaryOpKind, operand: Expr, registry: List<ItemInfo>, scope
 // Lambda emission
 // =========================================================================
 
-fn emit_lambda(params: List<String>, body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_lambda(params: List<String>, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let param_strs = params |> map(p => rust_ident(name: p))
   let params_str = param_strs |> join(separator: ", ")
   let body_str = emit_expr_in_scope(expr: body, registry: registry, scope: scope)
@@ -910,7 +1075,7 @@ fn emit_lambda(params: List<String>, body: Expr, registry: List<ItemInfo>, scope
 // String interpolation emission
 // =========================================================================
 
-fn emit_string_interp(parts: List<StringPart>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let fmt_parts = parts |> map(p => interp_format_part(part: p, registry: registry, scope: scope))
   let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
   let args = fmt_parts
@@ -924,7 +1089,7 @@ fn emit_string_interp(parts: List<StringPart>, registry: List<ItemInfo>, scope: 
   }
 }
 
-fn interp_format_part(part: StringPart, registry: List<ItemInfo>, scope: InferScope) -> InterpPart {
+fn interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope) -> InterpPart {
   match part {
     Text { value: v } =>
       // Escape braces in format strings
@@ -942,7 +1107,7 @@ fn interp_format_part(part: StringPart, registry: List<ItemInfo>, scope: InferSc
 // Block emission
 // =========================================================================
 
-fn emit_block(stmts: List<Expr>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let state = stmts |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, stmt) {
     let line = emit_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
     let next_scope = scope_after_expr(expr: stmt, scope: acc.scope)
@@ -956,7 +1121,7 @@ fn emit_block(stmts: List<Expr>, registry: List<ItemInfo>, scope: InferScope) ->
 // Cast emission
 // =========================================================================
 
-fn emit_cast(expr: Expr, target: TypeExpr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_expr_in_scope(expr: expr, registry: registry, scope: scope)
   let ty_str = emit_type_expr(type_expr: target)
   if is_primitive_numeric(type_expr: target) {
@@ -994,7 +1159,7 @@ fn emit_service_def(
   transport: TransportBinding,
   config: ServiceConfig?,
   operations: List<OperationDef>,
-  registry: List<ItemInfo>
+  registry: Map<String, ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: name)
   let struct_def = emit_service_struct(name: safe_name, transport: transport, config: config)
@@ -1027,7 +1192,7 @@ fn emit_service_config_fields(transport: TransportBinding, config: ServiceConfig
   }
 }
 
-fn emit_service_impl(name: String, transport: TransportBinding, operations: List<OperationDef>, registry: List<ItemInfo>) -> String {
+fn emit_service_impl(name: String, transport: TransportBinding, operations: List<OperationDef>, registry: Map<String, ItemInfo>) -> String {
   let method_strs = operations |> map(op =>
     emit_operation_method(service_name: name, transport: transport, operation: op, registry: registry)
   )
@@ -1052,7 +1217,7 @@ fn emit_modifier_doc(modifiers: List<OperationModifier>) -> String {
   }
 }
 
-fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
+fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
   let input_params = operation.inputs |> map(f =>
     concat(rust_ident(name: f.name), ": ", emit_field_type(field: f))
   )
@@ -1091,7 +1256,7 @@ fn emit_operation_return_type(outputs: List<Field>) -> String {
   }
 }
 
-fn emit_transport_call(transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
+fn emit_transport_call(transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
   match transport {
     RestBinding { base_url: _, auth: a, headers: hs } =>
       emit_rest_call(operation: operation, auth: a, headers: hs, registry: registry)
@@ -1104,7 +1269,7 @@ fn emit_transport_call(transport: TransportBinding, operation: OperationDef, reg
   }
 }
 
-fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<HeaderDef>, registry: List<ItemInfo>) -> String {
+fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<HeaderDef>, registry: Map<String, ItemInfo>) -> String {
   let client_init = "let client = reqwest::Client::new();"
   let url_line = concat("let url = format!(\"{}/{}\", self.base_url, \"",
     rust_ident(name: operation.name), "\");")
@@ -1127,7 +1292,7 @@ fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<Head
   all_lines |> join(separator: "\n")
 }
 
-fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: List<ItemInfo>) -> String {
+fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: Map<String, ItemInfo>) -> String {
   let cmd_line = concat("let output = std::process::Command::new(\"",
     rust_ident(name: operation.name), "\")")
   let env_lines = env |> map(e =>
@@ -1204,7 +1369,7 @@ fn emit_capability_return_type(outputs: List<Field>) -> String {
 // lazy_static or a function that returns the value.
 // =========================================================================
 
-fn emit_data_def(name: String, type_expr: TypeExpr, value: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_data_def(name: String, type_expr: TypeExpr, value: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ty_str = emit_type_expr(type_expr: type_expr)
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type(type_expr: type_expr) {
@@ -1248,7 +1413,7 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
   let m = typed_module.module
   let service_items = typed_module.items |> filter(item => is_typed_service_item(item: item))
   let test_fns = service_items
-    |> map(item => emit_typed_service_tests(item: item, registry: []))
+    |> map(item => emit_typed_service_tests(item: item, registry: empty_map()))
     |> fold(init: [], f: fn(acc, tests) { concat(acc, tests) })
   if test_fns |> count == 0 {
     TextFile { path: "", content: "" }
@@ -1272,7 +1437,7 @@ fn is_typed_service_item(item: TypedItem) -> Bool {
   }
 }
 
-fn emit_typed_service_tests(item: TypedItem, registry: List<ItemInfo>) -> List<String> {
+fn emit_typed_service_tests(item: TypedItem, registry: Map<String, ItemInfo>) -> List<String> {
   match item {
     TypedServiceDef { name: sn, transport: _, config: _, operations: ops, span: _ } => {
       let safe_name = sanitize_service_name(name: sn)
@@ -1284,7 +1449,7 @@ fn emit_typed_service_tests(item: TypedItem, registry: List<ItemInfo>) -> List<S
   }
 }
 
-fn emit_operation_test(service_name: String, operation: OperationDef, registry: List<ItemInfo>) -> String {
+fn emit_operation_test(service_name: String, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
   let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: operation.name))
   let mock_setup = operation.mock_response |> map(mr =>
     emit_mock_response_setup(mock: mr, registry: registry)
@@ -1296,7 +1461,7 @@ fn emit_operation_test(service_name: String, operation: OperationDef, registry: 
     "}")
 }
 
-fn emit_mock_response_setup(mock: MockResponseDef, registry: List<ItemInfo>) -> String {
+fn emit_mock_response_setup(mock: MockResponseDef, registry: Map<String, ItemInfo>) -> String {
   let status_str = emit_expr(expr: mock.status, registry: registry)
   let body_str = emit_expr(expr: mock.body, registry: registry)
   let desc = match mock.description {

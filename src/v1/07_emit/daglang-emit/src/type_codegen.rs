@@ -131,8 +131,8 @@ pub fn type_expr_to_rust_with_registry(
                 };
                 let resolved = language_model::resolve_container(kind, &inner, key, model)
                     .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")));
-                // Wrap List in Rc<> for O(1) clone (S76 fix)
-                if kind == ContainerKind::List {
+                // Wrap List and Map in Rc<> for O(1) clone (S76 fix)
+                if kind == ContainerKind::List || kind == ContainerKind::Map {
                     format!("Rc<{}>", resolved)
                 } else {
                     resolved
@@ -1032,6 +1032,7 @@ pub fn typedefs_to_source_file(
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types,
         use_counts: std::collections::HashMap::new(),
+        fold_accum_name: None,
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1162,6 +1163,7 @@ pub fn generate_types_for_modules(
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: sfit,
             use_counts: std::collections::HashMap::new(),
+            fold_accum_name: None,
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1881,7 +1883,7 @@ mod tests {
 
     #[test]
     fn typed_callable_signatures_drive_anonymous_record_call_args() {
-        let signatures = vec![TypedItemSignature::Fn(TypedCallableSignature {
+        let signatures = [TypedItemSignature::Fn(TypedCallableSignature {
             name: "consume".to_string(),
             params: vec![TypedBinding {
                 name: "cfg".to_string(),
@@ -1946,7 +1948,7 @@ mod tests {
 
     #[test]
     fn typed_callable_signatures_drive_with_base_record_updates() {
-        let signatures = vec![TypedItemSignature::Fn(TypedCallableSignature {
+        let signatures = [TypedItemSignature::Fn(TypedCallableSignature {
             name: "make_state".to_string(),
             params: vec![],
             outputs: vec![TypedBinding {

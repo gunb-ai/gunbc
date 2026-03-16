@@ -20,7 +20,9 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.typecheck { typecheck_and_validate, TypedGraph }
-import v2.compiler.emit { emit_target, EmitResult }
+import v2.compiler.emit { EmitResult }
+import v2.compiler.emit_rust { emit_rust }
+import v2.compiler.emit_python { emit_python }
 
 // =========================================================================
 // Types
@@ -49,6 +51,22 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 // =========================================================================
 // Full pipeline
 // =========================================================================
+
+// Resolve-only pipeline: tokenize -> parse -> resolve.
+// Returns diagnostics from all three stages without proceeding to typecheck.
+fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
+  let tokenized = map(sources, s => tokenize(source: s.content))
+  let parse_results = map(tokenized, t => parse(tokens: t))
+  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
+  let has_errors = any(parse_results, p => p.error != None)
+  if has_errors {
+    CompileResult { files: [], diagnostics: parse_diagnostics }
+  } else {
+    let modules = map(parse_results, p => p.module.value)
+    let graph = resolve_modules(modules: modules)
+    CompileResult { files: [], diagnostics: concat(parse_diagnostics, graph.diagnostics) }
+  }
+}
 
 // Pure compiler pipeline: sources in, compiled files out.
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
@@ -104,7 +122,10 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     // Stage 5: Emit target-language files.
     // Dispatches to the appropriate renderer based on RenderTarget.
     // Precondition: no errors from any prior stage.
-    let emit_result = emit_target(typed: typed, target: target)
+    let emit_result = match target {
+      Rust => emit_rust(typed: typed)
+      Python => emit_python(typed: typed)
+    }
 
     CompileResult {
       files: emit_result.files,

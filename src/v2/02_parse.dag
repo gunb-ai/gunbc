@@ -19,7 +19,7 @@ module v2.compiler.parse
 import v2.std.core {
   Module, Import, ImportNames, ImportAll, ImportSpecific,
   Item, TypeDef, FuncDef, FnDef, ServiceDef,
-  ResourceDef, DataDef, ExternFuncDecl,
+  ResourceDef, DataDef, ExternFuncDecl, PatternDef,
   TypeExpr, Named, Product, Coproduct, Container, Refined, Optional,
   MapType, Primitive,
   ContainerKind, List, Set, NonEmptyList, NonEmptySet,
@@ -1175,10 +1175,17 @@ fn parse_func_def(state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let body = r.expr
 
-  let item = FuncDef {
-    name: name, params: params,
-    return_type: return_type, uses: uses,
-    body: body, span: start_span
+  let item = match k {
+    Some { value: KwPattern } => PatternDef {
+      name: name, params: params,
+      return_type: return_type, uses: uses,
+      body: body, span: start_span
+    }
+    _ => FuncDef {
+      name: name, params: params,
+      return_type: return_type, uses: uses,
+      body: body, span: start_span
+    }
   }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }

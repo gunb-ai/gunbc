@@ -4,7 +4,7 @@
 // This module provides:
 //   - The `emit` entry point that dispatches to per-target renderers
 //   - Scope management helpers (module_emit_scope, empty_emit_scope)
-//   - Item registry (build_item_registry, lookup_item, lookup_func_sig)
+//   - Item registry (build_item_registry, lookup_item, lookup_func_sig_in_scope)
 //   - Service call detection and collection
 //   - Name conversion utilities (to_snake, to_screaming_snake, etc.)
 //   - Indentation and string formatting utilities
@@ -30,10 +30,9 @@ import v2.std.core {
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
   FuncSig,
-  RenderTarget,
   TypedItem,
   TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl
+  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
 }
 
 import v2.compiler.typecheck {
@@ -42,9 +41,6 @@ import v2.compiler.typecheck {
   SpanType, expr_span,
   build_params_scope, extend_scope
 }
-
-import v2.compiler.emit_rust { emit_rust }
-import v2.compiler.emit_python { emit_python }
 
 // =========================================================================
 // Emit result — files plus diagnostic channel for downstream consumers.
@@ -56,7 +52,7 @@ type EmitResult {
 }
 
 type BlockEmitState {
-  lines: List<String>
+  text: String
   scope: InferScope
 }
 
@@ -75,44 +71,34 @@ type ItemInfo {
   name: String
   kind: String
   service_names: List<String>
-}
-
-// =========================================================================
-// Entry point — target dispatch
-// =========================================================================
-
-fn emit_target(typed: TypedGraph, target: RenderTarget) -> EmitResult {
-  match target {
-    Rust => emit_rust(typed: typed)
-    Python => emit_python(typed: typed)
-  }
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
 }
 
 // =========================================================================
 // Scope helpers
 // =========================================================================
 
-fn no_span() -> SourceSpan {
-  SourceSpan { start: 0, end: 0 }
-}
-
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: [] },
-    func_env: FuncEnv { signatures: [] },
-    locals: [],
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [] },
+    func_env: FuncEnv { signatures: empty_map() },
+    locals: empty_map(),
     module_name: "",
-    type_cache: []
+    type_cache: empty_map()
   }
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
+  let cache_map = typed_module.type_cache |> fold(init: empty_map(), f: (acc, entry) =>
+    map_insert(acc, span_key(start: entry.start, end: entry.end), entry.resolved_type)
+  )
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
-    locals: [],
+    locals: empty_map(),
     module_name: typed_module.module.name,
-    type_cache: typed_module.type_cache
+    type_cache: cache_map
   }
 }
 
@@ -121,19 +107,23 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 // through the typecheck import. infer_expr_type reads from the type cache built
 // during typecheck — no re-inference at emit time.
 
-fn lookup_type_by_span(cache: List<SpanType>, start: Int, end: Int) -> TypeExpr? {
-  let matches = cache |> filter(e => e.start == start && e.end == end)
-  match first(matches) {
-    Some { value: entry } => Some { value: entry.resolved_type }
-    None => None
-  }
+fn span_key(start: Int, end: Int) -> String {
+  concat(to_string(value: start), ":", to_string(value: end))
+}
+
+fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
+  map_get(cache, span_key(start: start, end: end))
+}
+
+fn missing_emit_type(span: SourceSpan) -> TypeExpr {
+  Named { name: "__EmitTypeCacheMiss", span: span }
 }
 
 fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
   let s = expr_span(expr: expr)
   match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
     Some { value: t } => t
-    None => Primitive { name: "Unit", span: SourceSpan { start: 0, end: 0 } }
+    None => missing_emit_type(span: s)
   }
 }
 
@@ -153,24 +143,32 @@ fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 // Item registry
 // =========================================================================
 
-fn build_item_registry(items: List<TypedItem>) -> List<ItemInfo> {
-  items |> map(item => match item {
+fn build_item_registry(items: List<TypedItem>) -> Map<String, ItemInfo> {
+  let info_list = items |> map(item => match item {
     TypedFuncDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)) }
-    TypedFnDef { name: n } =>
-      ItemInfo { name: n, kind: "fn", service_names: [] }
-    _ => ItemInfo { name: "", kind: "other", service_names: [] }
+      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+        is_self_recursive: false, has_non_tail_self_call: false }
+    TypedPatternDef { name: n, body: b } =>
+      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+        is_self_recursive: false, has_non_tail_self_call: false }
+    TypedFnDef { name: n, body: b } =>
+      ItemInfo { name: n, kind: "fn", service_names: [],
+        is_self_recursive: expr_has_self_call(expr: b.expr, fn_name: n),
+        has_non_tail_self_call: has_non_tail_self_call(expr: b.expr, fn_name: n, in_tail: true) }
+    _ => ItemInfo { name: "", kind: "other", service_names: [],
+        is_self_recursive: false, has_non_tail_self_call: false }
   })
+  info_list |> fold(init: empty_map(), f: (acc, i) =>
+    map_insert(acc, i.name, i)
+  )
 }
 
-fn lookup_item(registry: List<ItemInfo>, name: String) -> ItemInfo? {
-  let matches = registry |> filter(i => i.name == name)
-  first(matches)
+fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
+  map_get(registry, name)
 }
 
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> FuncSig? {
-  let matches = scope.func_env.signatures |> filter(sig => sig.name == name)
-  first(matches)
+  map_get(scope.func_env.signatures, name)
 }
 
 fn named_arg_matches(arg: NamedArg, name: String) -> Bool {
@@ -283,12 +281,10 @@ fn collect_service_calls(expr: Expr) -> List<String> {
       }
     }
     Block { stmts: ss, span: _ } =>
-      ss |> map(s => collect_service_calls(expr: s))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      ss |> flat_map(s => collect_service_calls(expr: s))
     Match { scrutinee: s, arms: arm_list, span: _ } => {
       let s_calls = collect_service_calls(expr: s)
-      let arm_calls = arm_list |> map(arm => collect_service_calls(expr: arm.body))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      let arm_calls = arm_list |> flat_map(arm => collect_service_calls(expr: arm.body))
       concat(s_calls, arm_calls)
     }
     BinOp { op: _, left: l, right: r, span: _ } =>
@@ -296,24 +292,21 @@ fn collect_service_calls(expr: Expr) -> List<String> {
     UnaryOp { op: _, operand: e, span: _ } => collect_service_calls(expr: e)
     Lambda { params: _, body: bd, span: _ } => collect_service_calls(expr: bd)
     RecordLit { type_name: _, fields: fs, span: _ } =>
-      fs |> map(f => collect_service_calls(expr: f.value))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      fs |> flat_map(f => collect_service_calls(expr: f.value))
     ListLit { elements: els, span: _ } =>
-      els |> map(e => collect_service_calls(expr: e))
-        |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      els |> flat_map(e => collect_service_calls(expr: e))
     Cast { expr: e, target: _, span: _ } => collect_service_calls(expr: e)
     StringInterp { parts: ps, span: _ } =>
-      ps |> map(p => match p {
+      ps |> flat_map(p => match p {
         Interpolation { expr: e } => collect_service_calls(expr: e)
         _ => []
-      }) |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+      })
     _ => []
   }
 }
 
 fn collect_service_calls_from_args(args: List<NamedArg>) -> List<String> {
-  args |> map(a => collect_service_calls(expr: a.value))
-    |> fold(init: [], f: fn(acc, c) { concat(acc, c) })
+  args |> flat_map(a => collect_service_calls(expr: a.value))
 }
 
 fn unique_strings(items: List<String>) -> List<String> {
@@ -537,4 +530,163 @@ fn capitalize_first(s: String) -> String {
 // Derive the variable name for a service: "git.Core" -> "git_core"
 fn service_var_name(service_name: String) -> String {
   to_snake(name: sanitize_service_name(name: service_name))
+}
+
+// =========================================================================
+// Tail-call optimization — shared classification
+//
+// These functions walk the Expr tree to determine TCO eligibility.
+// They are target-agnostic: the same analysis applies to Rust, Python,
+// or any other backend. Rendering the TCO transform is target-specific
+// and lives in each renderer module.
+// =========================================================================
+
+// Check if any sub-expression contains a self-call (Call with func == fn_name).
+fn expr_has_self_call(expr: Expr, fn_name: String) -> Bool {
+  match expr {
+    Call { func: f, args: a, span: _ } =>
+      if f == fn_name { true }
+      else { a |> any(na => expr_has_self_call(expr: na.value, fn_name: fn_name)) }
+    Var { name: _, span: _ } => false
+    Literal { value: _, span: _ } => false
+    FieldAccess { base: b, field: _, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+    MethodCall { receiver: r, method: _, args: a, span: _ } =>
+      expr_has_self_call(expr: r, fn_name: fn_name)
+        || a |> any(na => expr_has_self_call(expr: na.value, fn_name: fn_name))
+    Match { scrutinee: s, arms: arm_list, span: _ } =>
+      expr_has_self_call(expr: s, fn_name: fn_name)
+        || arm_list |> any(arm => expr_has_self_call(expr: arm.body, fn_name: fn_name))
+    If { condition: c, then_branch: t, else_branch: e, span: _ } =>
+      expr_has_self_call(expr: c, fn_name: fn_name)
+        || expr_has_self_call(expr: t, fn_name: fn_name)
+        || match e {
+          Some { value: eb } => expr_has_self_call(expr: eb, fn_name: fn_name)
+          None => false
+        }
+    Let { name: _, value: v, body: bd, span: _ } =>
+      expr_has_self_call(expr: v, fn_name: fn_name)
+        || match bd {
+          Some { value: b } => expr_has_self_call(expr: b, fn_name: fn_name)
+          None => false
+        }
+    Block { stmts: ss, span: _ } =>
+      ss |> any(s => expr_has_self_call(expr: s, fn_name: fn_name))
+    BinOp { op: _, left: l, right: r, span: _ } =>
+      expr_has_self_call(expr: l, fn_name: fn_name)
+        || expr_has_self_call(expr: r, fn_name: fn_name)
+    UnaryOp { op: _, operand: e, span: _ } =>
+      expr_has_self_call(expr: e, fn_name: fn_name)
+    Lambda { params: _, body: bd, span: _ } =>
+      expr_has_self_call(expr: bd, fn_name: fn_name)
+    RecordLit { type_name: _, fields: fs, span: _ } =>
+      fs |> any(fi => expr_has_self_call(expr: fi.value, fn_name: fn_name))
+    ListLit { elements: els, span: _ } =>
+      els |> any(el => expr_has_self_call(expr: el, fn_name: fn_name))
+    StringInterp { parts: ps, span: _ } =>
+      ps |> any(p => match p {
+        Interpolation { expr: e } => expr_has_self_call(expr: e, fn_name: fn_name)
+        Text { value: _ } => false
+      })
+    Cast { expr: e, target: _, span: _ } =>
+      expr_has_self_call(expr: e, fn_name: fn_name)
+    ForEach { variable: _, collection: c, body: bd, span: _ } =>
+      expr_has_self_call(expr: c, fn_name: fn_name)
+        || expr_has_self_call(expr: bd, fn_name: fn_name)
+    Index { base: b, index: i, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+        || expr_has_self_call(expr: i, fn_name: fn_name)
+    Slice { base: b, start: s, end: e, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+        || expr_has_self_call(expr: s, fn_name: fn_name)
+        || expr_has_self_call(expr: e, fn_name: fn_name)
+  }
+}
+
+// Check if any self-call is in a non-tail position, which disqualifies TCO.
+// `in_tail` tracks whether the current expression is in a tail context.
+// Returns true if at least one self-call is NOT in tail position.
+fn has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bool {
+  match expr {
+    Call { func: f, args: a, span: _ } =>
+      if f == fn_name {
+        // This is a self-call. If we're not in tail position, it's non-tail.
+        // Also check args for nested self-calls (always non-tail).
+        if in_tail == false { true }
+        else { a |> any(na => has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false)) }
+      } else {
+        // Non-self call: check args for self-calls (which would be non-tail).
+        a |> any(na => has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false))
+      }
+    Var { name: _, span: _ } => false
+    Literal { value: _, span: _ } => false
+    FieldAccess { base: b, field: _, span: _ } =>
+      has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+    MethodCall { receiver: r, method: _, args: a, span: _ } =>
+      has_non_tail_self_call(expr: r, fn_name: fn_name, in_tail: false)
+        || a |> any(na => has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false))
+    If { condition: c, then_branch: t, else_branch: e, span: _ } =>
+      // Condition is never tail; branches inherit tail context.
+      has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: t, fn_name: fn_name, in_tail: in_tail)
+        || match e {
+          Some { value: eb } => has_non_tail_self_call(expr: eb, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    Match { scrutinee: s, arms: arm_list, span: _ } =>
+      // Scrutinee is never tail; arm bodies inherit tail context.
+      has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
+        || arm_list |> any(arm =>
+          has_non_tail_self_call(expr: arm.body, fn_name: fn_name, in_tail: in_tail))
+    Let { name: _, value: v, body: bd, span: _ } =>
+      // Value is never tail; body (continuation) inherits tail context.
+      has_non_tail_self_call(expr: v, fn_name: fn_name, in_tail: false)
+        || match bd {
+          Some { value: b } => has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    Block { stmts: ss, span: _ } =>
+      // Only the last statement in a block is in tail position.
+      if ss |> count == 0 { false }
+      else {
+        let init_bad = ss |> enumerate
+          |> filter(p => p.first < (ss |> count) - 1)
+          |> any(p => has_non_tail_self_call(expr: p.second, fn_name: fn_name, in_tail: false))
+        let last_bad = match ss |> last {
+          Some { value: last_expr } =>
+            has_non_tail_self_call(expr: last_expr, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+        init_bad || last_bad
+      }
+    BinOp { op: _, left: l, right: r, span: _ } =>
+      has_non_tail_self_call(expr: l, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: r, fn_name: fn_name, in_tail: false)
+    UnaryOp { op: _, operand: e, span: _ } =>
+      has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    Lambda { params: _, body: bd, span: _ } =>
+      // Lambda bodies are separate contexts — self-calls inside are non-tail.
+      has_non_tail_self_call(expr: bd, fn_name: fn_name, in_tail: false)
+    RecordLit { type_name: _, fields: fs, span: _ } =>
+      fs |> any(fi => has_non_tail_self_call(expr: fi.value, fn_name: fn_name, in_tail: false))
+    ListLit { elements: els, span: _ } =>
+      els |> any(el => has_non_tail_self_call(expr: el, fn_name: fn_name, in_tail: false))
+    StringInterp { parts: ps, span: _ } =>
+      ps |> any(p => match p {
+        Interpolation { expr: e } => has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+        Text { value: _ } => false
+      })
+    Cast { expr: e, target: _, span: _ } =>
+      has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    ForEach { variable: _, collection: c, body: bd, span: _ } =>
+      has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: bd, fn_name: fn_name, in_tail: false)
+    Index { base: b, index: i, span: _ } =>
+      has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: i, fn_name: fn_name, in_tail: false)
+    Slice { base: b, start: s, end: e, span: _ } =>
+      has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
+        || has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+  }
 }
