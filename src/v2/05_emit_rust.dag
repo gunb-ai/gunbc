@@ -15,7 +15,7 @@
 module v2.compiler.emit_rust
 
 import v2.std.core {
-  Import,
+  Import, ImportAll, ImportSpecific,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
@@ -35,12 +35,13 @@ import v2.std.core {
 import v2.compiler.typecheck {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
-  build_params_scope, extend_scope
+  build_params_scope, extend_scope,
+  normalize_access_type, for_each_element_type
 }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, ItemInfo, InterpPart,
-  no_span, empty_emit_scope, module_emit_scope,
+  empty_emit_scope, module_emit_scope,
   infer_expr_type, scope_after_expr,
   build_item_registry, lookup_item, named_arg_matches, order_call_args,
   is_service_call_receiver, extract_service_name,

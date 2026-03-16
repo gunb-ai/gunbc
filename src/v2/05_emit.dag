@@ -4,7 +4,7 @@
 // This module provides:
 //   - The `emit` entry point that dispatches to per-target renderers
 //   - Scope management helpers (module_emit_scope, empty_emit_scope)
-//   - Item registry (build_item_registry, lookup_item, lookup_func_sig)
+//   - Item registry (build_item_registry, lookup_item, lookup_func_sig_in_scope)
 //   - Service call detection and collection
 //   - Name conversion utilities (to_snake, to_screaming_snake, etc.)
 //   - Indentation and string formatting utilities
@@ -30,7 +30,6 @@ import v2.std.core {
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
   FuncSig,
-  RenderTarget,
   TypedItem,
   TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
   TypedResourceDef, TypedDataDef, TypedExternFuncDecl
@@ -78,10 +77,6 @@ type ItemInfo {
 // Scope helpers
 // =========================================================================
 
-fn no_span() -> SourceSpan {
-  SourceSpan { start: 0, end: 0 }
-}
-
 fn empty_emit_scope() -> InferScope {
   InferScope {
     type_env: TypeEnv { bindings: [] },
@@ -109,17 +104,25 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 
 fn lookup_type_by_span(cache: List<SpanType>, start: Int, end: Int) -> TypeExpr? {
   let matches = cache |> filter(e => e.start == start && e.end == end)
-  match first(matches) {
-    Some { value: entry } => Some { value: entry.resolved_type }
-    None => None
+  if matches |> count == 1 {
+    match first(matches) {
+      Some { value: entry } => Some { value: entry.resolved_type }
+      None => None
+    }
+  } else {
+    None
   }
+}
+
+fn missing_emit_type(span: SourceSpan) -> TypeExpr {
+  Named { name: "__EmitTypeCacheMiss", span: span }
 }
 
 fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
   let s = expr_span(expr: expr)
   match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
     Some { value: t } => t
-    None => Primitive { name: "Unit", span: SourceSpan { start: 0, end: 0 } }
+    None => missing_emit_type(span: s)
   }
 }
 
