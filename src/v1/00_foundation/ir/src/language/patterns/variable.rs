@@ -16,6 +16,8 @@ use crate::language::LanguageOp;
 use crate::node::Node;
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::iter::Peekable;
+use std::str::Chars;
 
 /// Variable syntax styles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,22 +79,36 @@ pub fn expand_variables(template: &str, variables: &HashMap<String, String>) -> 
             match chars.peek() {
                 Some('(') => {
                     chars.next(); // consume '('
-                    let var_name: String = chars.by_ref().take_while(|&c| c != ')').collect();
-                    if let Some(value) = variables.get(&var_name) {
-                        result.push_str(value);
-                    } else {
-                        // Keep original if variable not found
-                        write!(result, "$({})", var_name).unwrap();
+                    match read_variable_name(&mut chars, ')') {
+                        Ok(var_name) => {
+                            if let Some(value) = variables.get(&var_name) {
+                                result.push_str(value);
+                            } else {
+                                // Keep original if variable not found
+                                write!(result, "$({})", var_name).unwrap();
+                            }
+                        }
+                        Err(var_name) => {
+                            result.push_str("$(");
+                            result.push_str(&var_name);
+                        }
                     }
                 }
                 Some('{') => {
                     chars.next(); // consume '{'
-                    let var_name: String = chars.by_ref().take_while(|&c| c != '}').collect();
-                    if let Some(value) = variables.get(&var_name) {
-                        result.push_str(value);
-                    } else {
-                        // Keep original if variable not found
-                        write!(result, "${{{}}}", var_name).unwrap();
+                    match read_variable_name(&mut chars, '}') {
+                        Ok(var_name) => {
+                            if let Some(value) = variables.get(&var_name) {
+                                result.push_str(value);
+                            } else {
+                                // Keep original if variable not found
+                                write!(result, "${{{}}}", var_name).unwrap();
+                            }
+                        }
+                        Err(var_name) => {
+                            result.push_str("${");
+                            result.push_str(&var_name);
+                        }
                     }
                 }
                 Some(&c2) if c2 == '@' || c2 == '<' || c2 == '^' || c2 == '*' => {
@@ -111,6 +127,19 @@ pub fn expand_variables(template: &str, variables: &HashMap<String, String>) -> 
     }
 
     result
+}
+
+fn read_variable_name(chars: &mut Peekable<Chars<'_>>, terminator: char) -> Result<String, String> {
+    let mut var_name = String::new();
+
+    for c in chars.by_ref() {
+        if c == terminator {
+            return Ok(var_name);
+        }
+        var_name.push(c);
+    }
+
+    Err(var_name)
 }
 
 #[cfg(test)]
@@ -172,5 +201,21 @@ mod tests {
 
         // Missing variables should keep original syntax
         assert_eq!(expand_variables("$(MISSING)", &vars), "$(MISSING)");
+    }
+
+    #[test]
+    fn test_expand_variables_unterminated_parens_are_preserved() {
+        let mut vars = HashMap::new();
+        vars.insert("CC".to_string(), "gcc".to_string());
+
+        assert_eq!(expand_variables("$(CC", &vars), "$(CC");
+    }
+
+    #[test]
+    fn test_expand_variables_unterminated_braces_are_preserved() {
+        let mut vars = HashMap::new();
+        vars.insert("NAME".to_string(), "test".to_string());
+
+        assert_eq!(expand_variables("${NAME", &vars), "${NAME");
     }
 }
