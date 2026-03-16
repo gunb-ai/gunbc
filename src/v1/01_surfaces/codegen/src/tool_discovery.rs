@@ -17,6 +17,7 @@ use daglang_driver::{
     CachedEntrypoint, CachedFuncParam, DriverContext, InferredEntrypoint,
 };
 use daglang_syntax::ast::{Expr, Item, Literal, TypeExpr};
+use daglang_syntax::ast_utils::is_bool_type;
 use gunbc_cli::ParamType;
 use gunbc_ir::{cargo, Cardinality, WorkspaceLayout};
 
@@ -329,14 +330,6 @@ fn infer_success_port(fields: &[daglang_syntax::ast::Field]) -> Option<String> {
                 .any(|field| field.name == *candidate && is_bool_type(&field.ty))
         })
         .map(str::to_string)
-}
-
-fn is_bool_type(ty: &TypeExpr) -> bool {
-    match ty {
-        TypeExpr::Named(name) => name == "Bool",
-        TypeExpr::Refined(inner, _) => is_bool_type(inner),
-        _ => false,
-    }
 }
 
 /// Convert DslParam map to cached format for serialization.

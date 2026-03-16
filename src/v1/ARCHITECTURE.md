@@ -68,16 +68,16 @@ sentence, without saying 'and also'?"
 
 | Crate | Purpose | Input | Output | Deps (internal) | Side effects | Failure mode |
 |-------|---------|-------|--------|-----------------|-------------|-------------|
-| `gunbc-interp` | Interpret graph IR: pure → eval, I/O → transport | `VerifiedDag<LoweredOp>` + config | `InterpretResult` | ir, eval, exec, transport | I/O via transport only | `InterpretError` |
+| `gunbc-resolve` | Resolve `LoweredOp` → `DynOp` with port-structured contracts | `Dag<LoweredOp>` + node ports | `Dag<DynOp>` | ir, eval, exec, lower, transport, blob | None (pure translation) | `ResolveError` |
 | `gunbc-exec` | Schedule DAG nodes in topological order | `Dag<T: Executable>` + config | execution log + outputs | ir | None (scheduling only) | `ExecError` |
 | `gunbc-lib-transport` | Execute shell, HTTP, filesystem I/O | `TransportRequest` | `TransportResponse` | ir, exec | **The I/O boundary** | `TransportError` |
 
 ### Constraints on the contract table
 
-- `gunbc-interp` accepts `VerifiedDag<LoweredOp>` only. It does not
-  build graphs, load caches, or compile DSL source. Those are
-  orchestration concerns that belong in the driver or a runtime
-  orchestrator above the interpreter.
+- `gunbc-resolve` captures declared port structure from `Node<LoweredOp>`
+  at resolution time. Each `DynOp` carries its own output ports,
+  input port names (e.g., `GetField`'s input port), and passthrough
+  contract, so execution never infers port semantics from HashMap keys.
 - `gunbc-exec` is a generic scheduler. It does not know about
   `LoweredOp`. It schedules any `Dag<T: Executable>`.
 - `gunbc-lib-transport` is the only crate that performs direct I/O.
@@ -104,18 +104,16 @@ compiler. Extracting it into `daglang-eval` lets both the compiler and
 interpreter depend on it as a shared library, without depending on each
 other.
 
-### Why no resolver?
+### Why does the resolver exist?
 
-The current resolver (`gunbc-resolve`) converts `LoweredOp` → `DynOp`
-by wrapping each lowered operation in a Rust struct implementing
-`Executable`. This is pure translation overhead — the evaluator already
-handles every pure operation. The resolver exists because the executor
-expected trait objects, not because resolution is a meaningful semantic
-step.
-
-In the target architecture, the interpreter dispatches on `LoweredOp`
-directly: pure ops → evaluator, transport → transport layer. No
-translation step, no separate op structs, no duplication.
+The resolver (`gunbc-resolve`) converts `LoweredOp` → `DynOp` by
+capturing declared port structure from `Node<LoweredOp>` into each
+concrete `Executable` struct. This is not pure translation overhead —
+the resolver binds port declarations (input port names, output port
+lists, optionality) into each op at resolution time, so execution
+dispatches by name rather than inferring port semantics from HashMap
+key conventions. The resolver is the boundary where node-level port
+metadata becomes execution-level contracts.
 
 ### Why is the interpreter not part of the compiler?
 
@@ -137,10 +135,11 @@ Separation means:
 
 `gunbc-exec` provides: topological scheduling, dry-run interception,
 progress tracking, execution logging, CI context. These are generic DAG
-execution concerns. `gunbc-interp` provides the `LoweredOp`-specific
-dispatch (pure → eval, transport → I/O). Keeping them separate means
-the scheduler can be reused for other DAG types (test mocks, scripted
-DAGs) without pulling in the interpreter's dependencies.
+execution concerns. `gunbc-resolve` provides the `LoweredOp`-specific
+dispatch (pure → eval, transport → I/O) by binding port structure into
+concrete `DynOp` implementations. Keeping them separate means the
+scheduler can be reused for other DAG types (test mocks, scripted DAGs)
+without pulling in the resolver's dependencies.
 
 ---
 
@@ -316,13 +315,12 @@ COMPILER:
   daglang-driver        (orchestrates compiler stages)
 
 INTERPRETER:
-  gunbc-interp          (ir, eval, exec, transport) ← NEW (from resolve)
+  gunbc-resolve         (ir, eval, exec, lower, transport, blob)
   gunbc-exec            (ir)
   gunbc-lib-transport   (ir, exec)
 ```
 
 Changes:
-- `gunbc-resolve` (9 deps) → `gunbc-interp` (4 deps, no compiler deps)
 - `gunbc-primitives` → deleted (ops in `daglang-eval`)
 - `eval.rs` → extracted from `daglang-lower` to `daglang-eval`
 - `PIPE_METHOD_REGISTRY` → deleted (type-intrinsics + DSL fn items)

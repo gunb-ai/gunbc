@@ -703,27 +703,28 @@ fn collect_contract_obligations<T>(
             edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
         );
 
-        // Determine reason and discharge/invalidate status from entailment
-        let (reason, status) = match &entailment {
-            EntailmentStatus::Verified => (
-                format!("Edge {}: predicate entailment verified", edge_label),
-                "verified",
-            ),
-            EntailmentStatus::Unknown { reason } => (
+        // Build reason from entailment variant (exhaustive — compiler error if
+        // a new variant is added). Capture discharge action from the enum
+        // discriminant directly, not through a string intermediary.
+        let reason = match &entailment {
+            EntailmentStatus::Verified => {
+                format!("Edge {}: predicate entailment verified", edge_label)
+            }
+            EntailmentStatus::Unknown { reason } => {
                 format!(
                     "Edge {}: predicate entailment unknown ({})",
                     edge_label, reason
-                ),
-                "unknown",
-            ),
-            EntailmentStatus::Invalid { reason } => (
+                )
+            }
+            EntailmentStatus::Invalid { reason } => {
                 format!(
                     "Edge {}: predicate entailment INVALID ({})",
                     edge_label, reason
-                ),
-                "invalid",
-            ),
+                )
+            }
         };
+        let is_verified = matches!(&entailment, EntailmentStatus::Verified);
+        let is_invalid = matches!(&entailment, EntailmentStatus::Invalid { .. });
 
         let obligation = ProofObligation::new(
             Obligation::EdgePredicateEntailment {
@@ -739,17 +740,13 @@ fn collect_contract_obligations<T>(
             ObligationSource::Contract,
         );
 
-        match status {
-            "verified" => {
-                obligations.push(obligation.discharge("Predicate entailment statically verified"));
-            }
-            "invalid" => {
-                obligations.push(obligation.invalidate(reason));
-            }
-            _ => {
-                // Unknown — needs runtime test
-                obligations.push(obligation);
-            }
+        if is_verified {
+            obligations.push(obligation.discharge("Predicate entailment statically verified"));
+        } else if is_invalid {
+            obligations.push(obligation.invalidate(reason));
+        } else {
+            // Unknown — needs runtime test
+            obligations.push(obligation);
         }
     }
 

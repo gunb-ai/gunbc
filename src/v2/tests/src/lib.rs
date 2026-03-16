@@ -3416,6 +3416,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("check")
+            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
@@ -3440,6 +3441,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("build")
+            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo build");
@@ -3471,6 +3473,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
@@ -3506,6 +3509,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--offline")
             .arg("--")
             .arg("self_compile_all_modules")
             .current_dir(&tmp_dir)
@@ -3543,6 +3547,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--offline")
             .arg("--")
             .arg("gist_resolve_all_modules")
             .current_dir(&tmp_dir)
@@ -3579,6 +3584,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--offline")
             .arg("--")
             .arg("gist_compile_all_modules")
             .current_dir(&tmp_dir)

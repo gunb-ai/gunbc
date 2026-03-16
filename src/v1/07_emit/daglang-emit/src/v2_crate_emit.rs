@@ -370,6 +370,19 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    let global_fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+                    Some((rust_name, fn_codegen::type_expr_to_ir_type(&fd.return_type)))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
     let global_fn_param_types: HashMap<String, Vec<(String, String)>> = modules
         .iter()
         .flat_map(|(_, sf)| {
@@ -458,6 +471,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &defined_type_signatures,
             &module_struct_field_ir_types,
             &global_fn_return_types,
+            &global_fn_return_ir_types,
             &global_fn_param_types,
         );
         // Track which types this module defines with their structural signature.
@@ -625,6 +639,7 @@ fn emit_module(
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
     struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
     global_fn_return_types: &HashMap<String, String>,
+    global_fn_return_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
     global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
@@ -658,6 +673,15 @@ fn emit_module(
 
     let ctx = fn_codegen::CompileContext {
         data_names,
+        data_ir_types: items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::DataDef(dd) => {
+                    Some((dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
+                }
+                _ => None,
+            })
+            .collect(),
         data_map_names,
         optional_fields: optional_fields.clone(),
         variant_to_enum: variant_to_enum.clone(),
@@ -665,6 +689,7 @@ fn emit_module(
         enum_variants: enum_variants_map,
         boxed_fields: recursive_fields.clone(),
         fn_return_types: global_fn_return_types.clone(),
+        fn_return_ir_types: global_fn_return_ir_types.clone(),
         fn_param_types: global_fn_param_types.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
@@ -674,6 +699,11 @@ fn emit_module(
         struct_field_ir_types: struct_field_ir_types.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
+        anonymous_record_targets: std::collections::HashMap::new(),
+        synthesized_anonymous_record_types: Vec::new(),
+        expr_ir_types: std::collections::HashMap::new(),
+        expr_identities: std::collections::HashMap::new(),
+        expr_path: std::cell::RefCell::new(Default::default()),
     };
 
     for item in items {
@@ -813,8 +843,10 @@ fn build_struct_field_ir_types(
 fn type_expr_to_rust_name(expr: &daglang_syntax::ast::TypeExpr) -> String {
     match expr {
         daglang_syntax::ast::TypeExpr::Named(name) => name.clone(),
+        daglang_syntax::ast::TypeExpr::AssociatedOutput(base) => format!("{base}::Output"),
         daglang_syntax::ast::TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         daglang_syntax::ast::TypeExpr::Generic(name, _) => name.clone(),
+        daglang_syntax::ast::TypeExpr::Function(_, _) => "Function".to_string(),
         daglang_syntax::ast::TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         daglang_syntax::ast::TypeExpr::Record(_) => "Anonymous".to_string(),
     }

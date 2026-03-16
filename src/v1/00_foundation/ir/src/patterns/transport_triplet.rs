@@ -166,7 +166,7 @@ pub fn add_transport_triplet_typed<T>(
 ///   - `prepare.skip → execute.skip`
 ///   - `execute.response → parse.response`
 ///   - `execute.skip → parse.skip`
-///   - `prepare.skip_reason → parse.skip_reason` (bypasses execute)
+///   - `execute.skip_reason → parse.skip_reason`
 ///
 /// Returns a [`NodeRef`] to the SubDag node.
 #[allow(clippy::too_many_arguments)]
@@ -288,7 +288,7 @@ pub fn add_skippable_transport_triplet_typed<T>(
         "skip",
     ));
     inner.add_edge(Edge::new(
-        prepare_name.as_str(),
+        execute_name.as_str(),
         "skip_reason",
         parse_name.as_str(),
         "skip_reason",
@@ -507,6 +507,24 @@ mod tests {
         if let NodeBody::SubDag(ref inner, _) = step.body {
             assert_eq!(inner.nodes.len(), 3);
             assert_eq!(inner.edges.len(), 5); // request, skip, response, skip(2), skip_reason
+            assert!(
+                inner.edges.iter().any(|edge| {
+                    edge.from_node.0 == "execute_step"
+                        && edge.from_port.0 == "skip_reason"
+                        && edge.to_node.0 == "parse_step"
+                        && edge.to_port.0 == "skip_reason"
+                }),
+                "skip_reason should flow through execute before parse"
+            );
+            assert!(
+                !inner.edges.iter().any(|edge| {
+                    edge.from_node.0 == "prepare_step"
+                        && edge.from_port.0 == "skip_reason"
+                        && edge.to_node.0 == "parse_step"
+                        && edge.to_port.0 == "skip_reason"
+                }),
+                "parse skip_reason should not bypass execute"
+            );
         } else {
             panic!("Expected SubDag");
         }

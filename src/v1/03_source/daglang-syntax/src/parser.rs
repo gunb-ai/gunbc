@@ -1616,7 +1616,9 @@ impl Parser {
     }
 
     fn finish_type_expr(&mut self, name: String) -> Result<TypeExpr, ParseError> {
-        let mut ty = if self.eat(&TokenKind::Lt) {
+        let mut ty = if name == "fn" && self.check(&TokenKind::LParen) {
+            self.parse_function_type_expr()?
+        } else if self.eat(&TokenKind::Lt) {
             let mut args = vec![self.parse_type_expr()?];
             while self.eat(&TokenKind::Comma) {
                 args.push(self.parse_type_expr()?);
@@ -1630,6 +1632,8 @@ impl Parser {
         {
             let suffix = self.consume_type_suffix();
             TypeExpr::Named(format!("{name}{suffix}"))
+        } else if let Some(base) = name.strip_suffix(".Output") {
+            TypeExpr::AssociatedOutput(base.to_string())
         } else {
             TypeExpr::Named(name)
         };
@@ -1654,6 +1658,24 @@ impl Parser {
         }
 
         Ok(ty)
+    }
+
+    fn parse_function_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
+        self.expect(&TokenKind::LParen)?;
+        let mut params = Vec::new();
+        if !self.check(&TokenKind::RParen) {
+            params.push(self.parse_type_expr()?);
+            while self.eat(&TokenKind::Comma) {
+                if self.check(&TokenKind::RParen) {
+                    break;
+                }
+                params.push(self.parse_type_expr()?);
+            }
+        }
+        self.expect(&TokenKind::RParen)?;
+        self.expect(&TokenKind::Arrow)?;
+        let output = self.parse_type_expr()?;
+        Ok(TypeExpr::Function(params, Box::new(output)))
     }
 
     fn parse_refinement(&mut self) -> Result<Refinement, ParseError> {
@@ -4368,6 +4390,47 @@ fn classify_transports(transports: List<TransportClass>) -> DerivedClassificatio
     }
 
     #[test]
+    fn parse_function_type_alias_structurally() {
+        let sf =
+            parse_or_panic("module test\ntype Callback = fn(Int, List<String>) -> { ok: Bool }");
+        match &sf.items[0].node {
+            Item::TypeDef(td) => match &td.body {
+                TypeBody::Alias(TypeExpr::Function(params, output)) => {
+                    assert_eq!(params.len(), 2);
+                    assert!(matches!(&params[0], TypeExpr::Named(name) if name == "Int"));
+                    assert!(matches!(&params[1], TypeExpr::Generic(name, args)
+                            if name == "List"
+                                && matches!(args.as_slice(), [TypeExpr::Named(inner)] if inner == "String")));
+                    assert!(matches!(output.as_ref(), TypeExpr::Record(fields)
+                            if matches!(fields.as_slice(), [field]
+                                if field.name == "ok"
+                                    && matches!(field.ty, TypeExpr::Named(ref name) if name == "Bool"))));
+                }
+                other => panic!("expected function alias, got {other:?}"),
+            },
+            other => panic!("expected TypeDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_associated_output_type_structurally() {
+        let sf = parse_or_panic("module test\ntype Predicate = fn(Check.Output) -> Bool");
+        match &sf.items[0].node {
+            Item::TypeDef(td) => match &td.body {
+                TypeBody::Alias(TypeExpr::Function(params, output)) => {
+                    assert!(matches!(
+                        params.as_slice(),
+                        [TypeExpr::AssociatedOutput(base)] if base == "Check"
+                    ));
+                    assert!(matches!(output.as_ref(), TypeExpr::Named(name) if name == "Bool"));
+                }
+                other => panic!("expected function alias, got {other:?}"),
+            },
+            other => panic!("expected TypeDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_data_declaration() {
         let sf = parse_or_panic(
             r#"module test
@@ -5344,14 +5407,8 @@ service rest.T {
                         assert_eq!(
                             *node_ref,
                             TestNodeRef::Qualified {
-                                module: ModulePath::new(vec![
-                                    "tools".into(),
-                                    "shared".into()
-                                ]),
-                                node_segments: vec![
-                                    "shared_node".into(),
-                                    "execute".into()
-                                ],
+                                module: ModulePath::new(vec!["tools".into(), "shared".into()]),
+                                node_segments: vec!["shared_node".into(), "execute".into()],
                             }
                         );
                         assert_eq!(port, "done");

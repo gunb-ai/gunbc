@@ -111,7 +111,6 @@ mod tests {
             base_branch: "main".into(),
             title: "Add my feature".into(),
             body: "Closes #42\n\nImplements the design.".into(),
-            issue_number: 42,
             draft: false,
         }
     }

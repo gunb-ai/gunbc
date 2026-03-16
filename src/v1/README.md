@@ -39,6 +39,12 @@ number is 1. Every invariant below serves that goal.
 Active liabilities and their measured costs are tracked in
 `src/v1/SUSTAINABILITY.md`.
 
+The invariant headings in this document are also the canonical theme
+labels for ratchets, review feedback, and queue planning. A review queue
+branch must declare exactly one primary theme from this list and stop
+before taking a second review item from a different theme, so CI
+failures stay attributable to a single ratchet.
+
 ### No duplicate representations
 
 Every fact should be encoded in exactly one place. When two structures

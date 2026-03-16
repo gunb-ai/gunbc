@@ -40,7 +40,7 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::types::PortName;
-use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
+use gunbc_ir::{Cardinality, Dag, Edge, Node, NodeKind, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 
@@ -640,62 +640,43 @@ impl Executable for PrepareFileReadCompatOp {
 
 /// File-write prepare adapter for DSL content-upsert chains.
 ///
-/// Requires `path` and content inputs. Content is looked up under `content`,
-/// `return`, or `expected_content` because the DSL lowering pipeline uses
-/// different port names depending on the call path (callable return values
-/// are named `return`, content-upsert compare nodes use `expected_content`,
-/// and direct wiring uses `content`).
+/// Requires canonical `path` and `content` inputs. The lowering pipeline
+/// always stamps prepare-write nodes with exactly these two port names
+/// (see `expand_single_content_upsert` and `add_content_upsert_chain`),
+/// so no alias guessing is needed.
 #[derive(Debug, Clone)]
 struct PrepareFileWriteCompatOp;
 
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let input_keys = {
-            let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
-            keys.sort();
-            keys.join(", ")
-        };
-        if matches!(inputs.get("path"), Some(Value::Skipped)) {
+        if matches!(inputs.get("path"), Some(Value::Skipped))
+            || matches!(inputs.get("content"), Some(Value::Skipped))
+        {
             return OutputMap::new()
                 .value("request", Value::Skipped)
                 .bool("skip", true)
                 .ok();
         }
-        let path_value = inputs
-            .get("path")
-            .or_else(|| inputs.get("target_path"))
-            .or_else(|| inputs.get("filepath"));
-        if matches!(path_value, Some(Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        let path = path_value.and_then(Value::as_str).ok_or_else(|| {
-            ExecError::new(
-                format!(
-                    "PrepareFileWrite: missing required `path` input — check content-upsert wiring (available inputs: {input_keys})"
-                ),
-            )
+        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+            let input_keys = {
+                let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                keys.join(", ")
+            };
+            ExecError::new(format!(
+                "PrepareFileWrite: missing required `path` input — check content-upsert wiring (available inputs: {input_keys})"
+            ))
         })?;
-        let content_value = inputs
-            .get("content")
-            .or_else(|| inputs.get("return"))
-            .or_else(|| inputs.get("expected_content"))
-            .or_else(|| inputs.get("makefile_content"));
-        if matches!(content_value, Some(Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        let content = content_value
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new(format!(
-                    "PrepareFileWrite: missing content input (expected `content`, `return`, or `expected_content`; available inputs: {input_keys})"
-                ))
-            })?;
+        let content = inputs.get("content").and_then(Value::as_str).ok_or_else(|| {
+            let input_keys = {
+                let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                keys.join(", ")
+            };
+            ExecError::new(format!(
+                "PrepareFileWrite: missing required `content` input — check content-upsert wiring (available inputs: {input_keys})"
+            ))
+        })?;
         OutputMap::new()
             .request(
                 "request",
@@ -768,8 +749,9 @@ fn resolve_lowered_dag_impl(
             response_provider: node.response_provider,
             static_fingerprint: None,
             origin: node.origin.clone(),
+            input_alias: node.input_alias.clone(),
         };
-        normalize_release_resource_inputs(&mut resolved_node);
+        normalize_release_resource_inputs(node, &mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
@@ -820,8 +802,8 @@ fn collect_sibling_fn_bodies(
     fns
 }
 
-fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
-    if !node.id.0.starts_with("release_resource_") {
+fn normalize_release_resource_inputs(lowered: &Node<LoweredOp>, node: &mut Node<DynOp>) {
+    if lowered.kind != NodeKind::ResourceRelease {
         return;
     }
     for input in &mut node.inputs {
@@ -1198,18 +1180,10 @@ fn resolve_service_transport(
                     return Ok(DynOp::new(GenericPrepareOp { spec: spec.clone() }));
                 }
                 Some(TransportRole::Parse) => {
-                    let auth_scheme = match spec {
-                        ServiceOperationSpec::Rest(rest_spec) => rest_spec
-                            .auth_scheme
-                            .clone()
-                            .unwrap_or_else(|| "none".to_string()),
-                        _ => String::new(),
-                    };
                     return Ok(DynOp::new(GenericParseOp {
                         spec: spec.clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
-                        auth_scheme,
                     }));
                 }
                 // Execute role is handled by the early return above.
@@ -2153,10 +2127,10 @@ mod tests {
     }
 
     #[test]
-    fn normalize_release_resource_inputs_uses_list_cardinality() {
+    fn normalize_release_resource_inputs_uses_structural_resource_release_kind() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
-            "release_resource_std_resources_Filesystem",
+            "release_filesystem",
             vec![Port::new("resource_handle", "ResourceHandle")],
             vec![Port::new("released", "Bool")],
             LoweredOp::Callable {
@@ -2168,11 +2142,12 @@ mod tests {
                 resource_target: None,
                 fn_body: None,
             },
-        ));
+        )
+        .with_kind(NodeKind::ResourceRelease));
 
         let resolved = resolve_lowered_dag_with(&dag).expect("release node should resolve");
         let release_node = resolved
-            .get_node(&"release_resource_std_resources_Filesystem".into())
+            .get_node(&"release_filesystem".into())
             .expect("release node should exist");
         let handle_port = release_node
             .inputs

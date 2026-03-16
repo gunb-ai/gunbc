@@ -278,6 +278,9 @@ fn render_ir_type(ty: &IrType) -> String {
 /// Currently: empty `vec![]` / `Vec::new()` needs `Vec<T>` annotation
 /// when the type can't be inferred from usage context.
 fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
+    if !ir_type_renderable_in_type_position(ir_type) {
+        return false;
+    }
     match expr {
         Expr::MacroCall { name, args } if name == "vec" && args.is_empty() => {
             // Only annotate if we have a concrete element type (not Unknown)
@@ -295,9 +298,31 @@ fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
     }
 }
 
+/// Returns false when the IR type contains constructs that cannot be expressed
+/// as a Rust type annotation (anonymous records, unresolved unknowns).
+fn ir_type_renderable_in_type_position(ty: &IrType) -> bool {
+    match ty {
+        IrType::Record(_) | IrType::Unknown => false,
+        IrType::Generic(_, args) => args.iter().all(ir_type_renderable_in_type_position),
+        IrType::Optional(inner) => ir_type_renderable_in_type_position(inner),
+        IrType::Tuple(items) => items.iter().all(ir_type_renderable_in_type_position),
+        IrType::Named(_) | IrType::Bool | IrType::Int | IrType::Str | IrType::Unit => true,
+    }
+}
+
 // ===========================================================================
 // Statement rendering
 // ===========================================================================
+
+/// Rust operators that have a compound-assignment form (`+=`, `-=`, etc.).
+/// Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`) are excluded —
+/// they have no compound-assignment syntax and would produce invalid Rust.
+fn is_compound_assignable_op(op: &str) -> bool {
+    matches!(
+        op,
+        "+" | "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" | "&&" | "||"
+    )
+}
 
 fn render_stmt(stmt: &Stmt, indent: usize) -> String {
     let pad = "    ".repeat(indent);
@@ -338,9 +363,11 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
         }
         Stmt::Assign { dest, value } => {
             if let Expr::BinOp { left, op, right } = value {
-                let dest_str = render_expr(dest);
-                if render_expr(left) == dest_str {
-                    return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                if is_compound_assignable_op(op) {
+                    let dest_str = render_expr(dest);
+                    if render_expr(left) == dest_str {
+                        return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                    }
                 }
             }
             format!("{}{} = {};\n", pad, render_expr(dest), render_expr(value))
@@ -1051,7 +1078,10 @@ mod tests {
         };
         let rendered = render_stmt(&loop_stmt, 0);
         assert!(rendered.contains("loop {"), "should render loop keyword");
-        assert!(rendered.contains("break result;"), "should render break with value");
+        assert!(
+            rendered.contains("break result;"),
+            "should render break with value"
+        );
         assert!(rendered.contains("continue;"), "should render continue");
     }
 
@@ -1059,6 +1089,10 @@ mod tests {
     fn render_break_unit_omits_value() {
         let stmt = Stmt::Break(Expr::Tuple(vec![]));
         let rendered = render_stmt(&stmt, 0);
-        assert_eq!(rendered.trim(), "break;", "break () should render as bare break");
+        assert_eq!(
+            rendered.trim(),
+            "break;",
+            "break () should render as bare break"
+        );
     }
 }

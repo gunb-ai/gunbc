@@ -16,7 +16,13 @@ use crate::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER};
 /// Per-node planner action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlanAction {
-    Execute { miss_reason: MissReason },
+    Execute {
+        miss_reason: MissReason,
+    },
+    /// Node is structural (e.g. Aggregate, Report) — no command to run.
+    /// The planner communicates no-op intent explicitly rather than relying
+    /// on the executor to infer it from a missing command map entry.
+    Structural,
 }
 
 /// Node-level plan entry.
@@ -158,6 +164,10 @@ pub fn plan_workflow_with_mode(
     let order = topo_sort(&spec.dag);
 
     let ordered_edges = canonical_edge_order(&spec.dag.edges);
+    let mut edges_by_target: BTreeMap<&NodeId, Vec<&gunbc_ir::Edge>> = BTreeMap::new();
+    for &edge in &ordered_edges {
+        edges_by_target.entry(&edge.to_node).or_default().push(edge);
+    }
     for node_id in order {
         let node = spec
             .dag
@@ -200,7 +210,11 @@ pub fn plan_workflow_with_mode(
 
         let node_inputs = planner_inputs.get(&node_id).cloned().unwrap_or_default();
         let input_hashes = hash_input_map(&node_inputs)?;
-        let upstream_keys = collect_upstream_keys(&node_id, &keys_by_node, &ordered_edges);
+        let incoming = edges_by_target
+            .get(&node_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        let upstream_keys = collect_upstream_keys(&keys_by_node, incoming);
 
         let key = MaterializationKey::new(
             work_id.clone(),
@@ -214,8 +228,11 @@ pub fn plan_workflow_with_mode(
         )
         .map_err(WorkflowPlannerError::Key)?;
 
-        let action = PlanAction::Execute {
-            miss_reason: MissReason::NoPriorRun,
+        let action = match op {
+            WorkflowOp::Aggregate(_) | WorkflowOp::Report(_) => PlanAction::Structural,
+            WorkflowOp::InvokeProcessUnit(_) => PlanAction::Execute {
+                miss_reason: MissReason::NoPriorRun,
+            },
         };
 
         keys_by_node.insert(node_id.clone(), key.clone());
@@ -244,19 +261,19 @@ fn validate_strict_dry_run_inputs(
     spec: &WorkflowSpec,
     planner_inputs: &PlannerInputs,
 ) -> Result<(), WorkflowPlannerError> {
-    for node in &spec.dag.nodes {
-        let incoming_data_ports = spec
-            .dag
-            .edges
-            .iter()
-            .filter(|edge| edge.to_node == node.id && edge.kind.carries_data())
-            .map(|edge| edge.to_port.clone())
-            .collect::<BTreeSet<_>>();
+    let mut incoming_data_ports: BTreeMap<&NodeId, BTreeSet<&PortName>> = BTreeMap::new();
+    for edge in &spec.dag.edges {
+        if edge.kind.carries_data() {
+            incoming_data_ports
+                .entry(&edge.to_node)
+                .or_default()
+                .insert(&edge.to_port);
+        }
+    }
 
-        let provided = planner_inputs
-            .get(&node.id)
-            .map(|ports| ports.keys().cloned().collect::<BTreeSet<_>>())
-            .unwrap_or_default();
+    for node in &spec.dag.nodes {
+        let node_data_ports = incoming_data_ports.get(&node.id);
+        let provided = planner_inputs.get(&node.id);
 
         for input in &node.inputs {
             if input.name.0 == PORT_AFTER || input.name.is_resource() {
@@ -266,7 +283,10 @@ fn validate_strict_dry_run_inputs(
                 continue;
             }
 
-            if !incoming_data_ports.contains(&input.name) && !provided.contains(&input.name) {
+            let has_incoming = node_data_ports.is_some_and(|ports| ports.contains(&input.name));
+            let has_provided = provided.is_some_and(|ports| ports.contains_key(&input.name));
+
+            if !has_incoming && !has_provided {
                 return Err(WorkflowPlannerError::StrictDryRunMissingInput {
                     node_id: node.id.clone(),
                     port: input.name.clone(),
@@ -315,15 +335,11 @@ fn hash_value(value: &Value) -> Result<String, WorkflowPlannerError> {
 }
 
 fn collect_upstream_keys(
-    node_id: &NodeId,
     keys_by_node: &BTreeMap<NodeId, MaterializationKey>,
-    ordered_edges: &[&gunbc_ir::Edge],
+    incoming_edges: &[&gunbc_ir::Edge],
 ) -> BTreeMap<PortName, Vec<MaterializationDigest>> {
     let mut upstream: BTreeMap<PortName, Vec<MaterializationDigest>> = BTreeMap::new();
-    for edge in ordered_edges {
-        if &edge.to_node != node_id {
-            continue;
-        }
+    for edge in incoming_edges {
         let Some(upstream_key) = keys_by_node.get(&edge.from_node) else {
             continue;
         };
@@ -345,8 +361,11 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
     let mut capability_status = BTreeMap::new();
 
     for node in &plan.nodes {
+        let miss_reason = match &node.action {
+            PlanAction::Structural => continue,
+            PlanAction::Execute { miss_reason } => miss_reason,
+        };
         let canonical_name = node.work_id.unit_id.0.clone();
-        let PlanAction::Execute { miss_reason } = &node.action;
         execute_set.push(node.node_id.clone());
         miss_reasons.insert(node.node_id.clone(), miss_reason.clone());
         let entry = capability_status
@@ -438,7 +457,8 @@ mod tests {
     use super::*;
     use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
     use crate::schema::{
-        required_input_contract, required_output_contract, WorkflowId, WorkflowSpec, WorkflowUnit,
+        required_input_contract, required_output_contract, AggregateSpec, ReportSpec, WorkflowId,
+        WorkflowSpec, WorkflowUnit,
     };
 
     fn temp_root() -> std::path::PathBuf {
@@ -568,5 +588,69 @@ mod tests {
         );
         plan_workflow_with_mode(&spec, &registry, &planner_inputs, &root, DryRunMode::Strict)
             .expect("strict mode should pass when required input is provided");
+    }
+
+    #[test]
+    fn aggregate_and_report_nodes_get_structural_action() {
+        let root = temp_root();
+        let mut dag = gunbc_ir::Dag::new();
+        dag.add_node(Node::opaque(
+            "wf.build",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "wf.build",
+            ))),
+        ));
+        dag.add_node(Node::opaque(
+            "wf.agg",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::Aggregate(AggregateSpec::new("agg"))),
+        ));
+        dag.add_node(Node::opaque(
+            "wf.report",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::Report(ReportSpec::new("report"))),
+        ));
+        dag.add_edge(Edge::new("wf.build", "result", "wf.agg", "after"));
+        dag.add_edge(Edge::new("wf.agg", "result", "wf.report", "after"));
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let mut registry = ProcessUnitRegistry::new();
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("wf", "wf.build"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ));
+
+        let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
+
+        let build = plan
+            .nodes
+            .iter()
+            .find(|n| n.node_id.0 == "wf.build")
+            .unwrap();
+        let agg = plan.nodes.iter().find(|n| n.node_id.0 == "wf.agg").unwrap();
+        let report = plan
+            .nodes
+            .iter()
+            .find(|n| n.node_id.0 == "wf.report")
+            .unwrap();
+
+        assert!(
+            matches!(build.action, PlanAction::Execute { .. }),
+            "InvokeProcessUnit should be Execute"
+        );
+        assert_eq!(
+            agg.action,
+            PlanAction::Structural,
+            "Aggregate should be Structural"
+        );
+        assert_eq!(
+            report.action,
+            PlanAction::Structural,
+            "Report should be Structural"
+        );
     }
 }
