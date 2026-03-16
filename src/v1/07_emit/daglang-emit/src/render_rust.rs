@@ -294,6 +294,16 @@ fn ir_type_renderable_in_type_position(ty: &IrType) -> bool {
 // Statement rendering
 // ===========================================================================
 
+/// Rust operators that have a compound-assignment form (`+=`, `-=`, etc.).
+/// Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`) are excluded —
+/// they have no compound-assignment syntax and would produce invalid Rust.
+fn is_compound_assignable_op(op: &str) -> bool {
+    matches!(
+        op,
+        "+" | "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" | "&&" | "||"
+    )
+}
+
 fn render_stmt(stmt: &Stmt, indent: usize) -> String {
     let pad = "    ".repeat(indent);
     match stmt {
@@ -333,9 +343,11 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
         }
         Stmt::Assign { dest, value } => {
             if let Expr::BinOp { left, op, right } = value {
-                let dest_str = render_expr(dest);
-                if render_expr(left) == dest_str {
-                    return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                if is_compound_assignable_op(op) {
+                    let dest_str = render_expr(dest);
+                    if render_expr(left) == dest_str {
+                        return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                    }
                 }
             }
             format!("{}{} = {};\n", pad, render_expr(dest), render_expr(value))
