@@ -12,7 +12,7 @@
 //! 1. Collect reachable symbols from the DAG (dead-path pruning via FC-14)
 //! 2. Emit per-backend source files (types, functions, transport wiring,
 //!    CLI entrypoints, test harnesses, mock specs, progress manifests)
-//! 3. Emit service transport code per language (REST, shell, file)
+//! 3. Emit service transport code per language (REST, shell)
 //! 4. Emit middleware config manifests (TL-14)
 //! 5. Package all files into an `EmissionBundle` with summary metadata
 //!
@@ -522,24 +522,29 @@ fn symbols_from_classified(input: &EmitInput) -> Vec<CollectedSymbol> {
     for c in &input.callables {
         symbols.push(CollectedSymbol {
             name: sanitize_identifier(&format!("{}_{}", c.module, c.name)),
-            spec: None,
-            service_phase: None,
+            service: None,
         });
     }
 
     for t in &input.transports {
         symbols.push(CollectedSymbol {
             name: sanitize_identifier(&format!("{}_{}", t.module, t.name)),
-            spec: t.service_metadata.spec.clone(),
-            service_phase: Some(t.phase.into()),
+            service: t
+                .service_metadata
+                .spec
+                .as_ref()
+                .and_then(CollectedServiceSymbol::from_spec)
+                .map(|spec| CollectedServiceSymbol {
+                    spec,
+                    phase: t.phase.into(),
+                }),
         });
     }
 
     for p in &input.primitives {
         symbols.push(CollectedSymbol {
             name: sanitize_identifier(&format!("{}_{}", p.module, p.name)),
-            spec: None,
-            service_phase: None,
+            service: None,
         });
     }
 
@@ -549,16 +554,14 @@ fn symbols_from_classified(input: &EmitInput) -> Vec<CollectedSymbol> {
                 "{}_{}_collection_{:?}",
                 c.module, c.callable, c.kind
             )),
-            spec: None,
-            service_phase: None,
+            service: None,
         });
     }
 
     for p in &input.pipelines {
         symbols.push(CollectedSymbol {
             name: sanitize_identifier(&format!("{}_{}", p.module, p.name)),
-            spec: None,
-            service_phase: None,
+            service: None,
         });
     }
 
@@ -690,13 +693,16 @@ pub fn emit_go_bundle_classified(
         .map(|entry| sanitize_identifier(entry))
         .collect::<Vec<_>>();
 
-    let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
+    let has_service_transport = symbols.iter().any(CollectedSymbol::is_multi_target_service);
 
     let mut symbol_funcs_parts: Vec<String> = Vec::with_capacity(symbols.len());
     for sym in &symbols {
-        if let Some(ref spec) = sym.spec {
-            let phase = require_service_phase(sym)?;
-            symbol_funcs_parts.push(service_emit::emit_go_service_func(&sym.name, phase, spec)?);
+        if let Some(service) = sym.service.as_ref() {
+            symbol_funcs_parts.push(emit_service_symbol(
+                &sym.name,
+                service,
+                service_emit::emit_go_service_func,
+            )?);
         } else {
             symbol_funcs_parts.push(format!(
                 "func {name}() {{\n    // generated callable stub\n}}\n",
@@ -789,7 +795,7 @@ pub fn emit_c_bundle_classified(
     let (callable_count, pipeline_count) = counts_from_classified(input);
     let manifest_rendered = render_manifest(&input.manifest);
     let embedded_asset = single_required_embedded_asset(required_assets, embedded_data, "c")?;
-    let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
+    let has_service_transport = symbols.iter().any(CollectedSymbol::is_multi_target_service);
     let entrypoints = input
         .manifest
         .entrypoint_nodes
@@ -799,9 +805,12 @@ pub fn emit_c_bundle_classified(
 
     let mut symbol_funcs_parts: Vec<String> = Vec::with_capacity(symbols.len());
     for sym in &symbols {
-        if let Some(ref spec) = sym.spec {
-            let phase = require_service_phase(sym)?;
-            symbol_funcs_parts.push(service_emit::emit_c_service_func(&sym.name, phase, spec)?);
+        if let Some(service) = sym.service.as_ref() {
+            symbol_funcs_parts.push(emit_service_symbol(
+                &sym.name,
+                service,
+                service_emit::emit_c_service_func,
+            )?);
         } else {
             symbol_funcs_parts.push(format!("static void {name}(void) {{}}\n", name = sym.name));
         }
@@ -886,9 +895,12 @@ pub fn emit_mips_bundle_classified(
 
     let mut label_defs_parts: Vec<String> = Vec::with_capacity(symbols.len());
     for sym in &symbols {
-        if let Some(ref spec) = sym.spec {
-            let phase = require_service_phase(sym)?;
-            label_defs_parts.push(service_emit::emit_mips_service_func(&sym.name, phase, spec)?);
+        if let Some(service) = sym.service.as_ref() {
+            label_defs_parts.push(emit_service_symbol(
+                &sym.name,
+                service,
+                service_emit::emit_mips_service_func,
+            )?);
         } else {
             label_defs_parts.push(format!("{name}:\n    jr $ra\n", name = sym.name));
         }
@@ -996,22 +1008,73 @@ pub fn emit_mips_bundle(
     emit_mips_bundle_classified(&input, required_assets, embedded_data)
 }
 
-/// A collected symbol from the DAG, with optional service transport metadata.
+/// A collected symbol from the DAG, with optional multi-target service metadata.
 struct CollectedSymbol {
     name: String,
-    spec: Option<ServiceOperationSpec>,
-    service_phase: Option<service_emit::ServiceTransportPhase>,
+    service: Option<CollectedServiceSymbol>,
 }
 
-fn require_service_phase(
-    symbol: &CollectedSymbol,
-) -> Result<service_emit::ServiceTransportPhase, EmitError> {
-    symbol.service_phase.ok_or_else(|| {
-        EmitError::InvalidLoweredNode(format!(
-            "service symbol `{}` missing transport phase metadata",
-            symbol.name
-        ))
-    })
+impl CollectedSymbol {
+    fn is_multi_target_service(&self) -> bool {
+        self.service.is_some()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CollectedServiceSymbol {
+    spec: MultiTargetServiceSpec,
+    phase: service_emit::ServiceTransportPhase,
+}
+
+impl CollectedServiceSymbol {
+    fn from_spec(spec: &ServiceOperationSpec) -> Option<MultiTargetServiceSpec> {
+        MultiTargetServiceSpec::from_spec(spec)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum MultiTargetServiceSpec {
+    Rest(Box<daglang_lower::RestOperationSpec>),
+    Shell(daglang_lower::ShellOperationSpec),
+}
+
+impl MultiTargetServiceSpec {
+    fn from_spec(spec: &ServiceOperationSpec) -> Option<Self> {
+        match spec {
+            ServiceOperationSpec::Rest(rest) => Some(Self::Rest(rest.clone())),
+            ServiceOperationSpec::Shell(shell) => Some(Self::Shell(shell.clone())),
+            ServiceOperationSpec::File(_)
+            | ServiceOperationSpec::Local(_)
+            | ServiceOperationSpec::InterfaceStub { .. } => None,
+        }
+    }
+
+    fn as_service_operation_spec(&self) -> ServiceOperationSpec {
+        match self {
+            Self::Rest(rest) => ServiceOperationSpec::Rest(rest.clone()),
+            Self::Shell(shell) => ServiceOperationSpec::Shell(shell.clone()),
+        }
+    }
+
+    fn middleware(&self) -> Option<&gunbc_ir::transport::TransportMiddlewareConfig> {
+        match self {
+            Self::Rest(rest) => rest.middleware.as_ref(),
+            Self::Shell(_) => None,
+        }
+    }
+}
+
+fn emit_service_symbol(
+    name: &str,
+    service: &CollectedServiceSymbol,
+    emit_fn: fn(
+        &str,
+        service_emit::ServiceTransportPhase,
+        &ServiceOperationSpec,
+    ) -> Result<String, EmitError>,
+) -> Result<String, EmitError> {
+    let spec = service.spec.as_service_operation_spec();
+    emit_fn(name, service.phase, &spec)
 }
 
 /// Collect middleware configs from symbols for JSON manifest emission (TL-14).
@@ -1024,10 +1087,13 @@ fn collect_middleware_configs(
     let mut seen = HashSet::new();
     let mut configs = Vec::new();
     for sym in symbols {
-        if sym.service_phase != Some(service_emit::ServiceTransportPhase::Prepare) {
+        let Some(service) = sym.service.as_ref() else {
+            continue;
+        };
+        if service.phase != service_emit::ServiceTransportPhase::Prepare {
             continue;
         }
-        let middleware = sym.spec.as_ref().and_then(service_emit::extract_middleware);
+        let middleware = service.spec.middleware();
         if let Some(mw) = middleware {
             if seen.insert(&sym.name) {
                 configs.push((sym.name.clone(), mw));
@@ -1657,6 +1723,121 @@ mod tests {
         dag
     }
 
+    /// Build a sample DAG with unsupported multi-target service specs.
+    fn unsupported_service_spec_dag() -> Dag<LoweredOp> {
+        use daglang_lower::{
+            FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec, ServiceCallMetadata,
+            ServiceOperationSpec, ServiceTransportClass,
+        };
+        use gunbc_ir::transport::FileOp;
+
+        let output_fields = vec![OutputFieldSpec {
+            name: "content".to_string(),
+            type_id: "String".to_string(),
+            json_path: "content".to_string(),
+            is_secret: false,
+            is_raw_body: false,
+            is_optional: false,
+        }];
+
+        let file_spec = ServiceOperationSpec::File(FileOperationSpec {
+            operation: FileOp::Read,
+            path_template: "{path}".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "path".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: false,
+            }],
+            output_fields: output_fields.clone(),
+        });
+        let local_spec = ServiceOperationSpec::Local(LocalOperationSpec {
+            input_fields: vec![FieldSpec {
+                name: "input".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: false,
+            }],
+            output_fields: output_fields.clone(),
+        });
+        let interface_stub_spec = ServiceOperationSpec::InterfaceStub {
+            interface: "svc.Store".to_string(),
+            capability: "Fetch".to_string(),
+        };
+
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "svc::file_prepare",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Transport {
+                module: "extdeps.fs".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::prepare::fs.File::Read".to_string(),
+                obligation: TransportObligation::Prepare,
+                service_metadata: Box::new(ServiceCallMetadata {
+                    service: "fs.File".to_string(),
+                    operation: "Read".to_string(),
+                    transport: ServiceTransportClass::FileBoundary,
+                    idempotent: true,
+                    readonly: true,
+                    spec: Some(file_spec),
+                    response_provider: None,
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "svc::local_prepare",
+            vec![Port::scalar("input", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Transport {
+                module: "extdeps.local".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::prepare::local.Compute::Eval".to_string(),
+                obligation: TransportObligation::Prepare,
+                service_metadata: Box::new(ServiceCallMetadata {
+                    service: "local.Compute".to_string(),
+                    operation: "Eval".to_string(),
+                    transport: ServiceTransportClass::LocalDirect,
+                    idempotent: true,
+                    readonly: true,
+                    spec: Some(local_spec),
+                    response_provider: None,
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "svc::interface_prepare",
+            vec![],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Transport {
+                module: "extdeps.stub".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::prepare::svc.Store::Fetch".to_string(),
+                obligation: TransportObligation::Prepare,
+                service_metadata: Box::new(ServiceCallMetadata {
+                    service: "svc.Store".to_string(),
+                    operation: "Fetch".to_string(),
+                    transport: ServiceTransportClass::InterfaceStub,
+                    idempotent: true,
+                    readonly: true,
+                    spec: Some(interface_stub_spec),
+                    response_provider: None,
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        dag
+    }
+
     // -- SC7.1: Go backend emits service transport functions --
 
     #[test]
@@ -1874,6 +2055,60 @@ mod tests {
         assert!(
             !c_main.content.contains("static void"),
             "C should not have void stubs for service nodes"
+        );
+    }
+
+    #[test]
+    fn unsupported_service_specs_do_not_reach_multi_target_service_emission() {
+        let dag = unsupported_service_spec_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+
+        let go_bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("go emit should fall back to generic stubs");
+        let c_bundle = emit_c_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("c emit should fall back to generic stubs");
+        let mips_bundle =
+            emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+                .expect("mips emit should fall back to generic stubs");
+
+        let go_main = go_bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.go"))
+            .expect("should have main.go");
+        assert!(
+            go_main.content.contains("generated callable stub"),
+            "Go should treat unsupported service specs as generic stubs"
+        );
+        assert!(
+            !go_main.content.contains("\"net/http\"") && !go_main.content.contains("\"os/exec\""),
+            "Go should not import multi-target service transport packages"
+        );
+
+        let c_main = c_bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.c"))
+            .expect("should have main.c");
+        assert!(
+            c_main.content.contains("static void"),
+            "C should fall back to generic callable stubs"
+        );
+        assert!(
+            !c_main.content.contains("#include <curl/curl.h>"),
+            "C should not emit REST transport support for unsupported specs"
+        );
+
+        let mips_main = mips_bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.s"))
+            .expect("should have main.s");
+        assert!(
+            !mips_main.content.contains("prepare REST")
+                && !mips_main.content.contains("prepare shell"),
+            "MIPS should skip multi-target service transport emission"
         );
     }
 
