@@ -564,6 +564,61 @@ pub fn eval_builtin_call(
                 Err(EvalError::new("'with' requires base and updates"))
             }
         }
+        "map_get" => {
+            if args.len() >= 2 {
+                match (&args[0].1, &args[1].1) {
+                    (Value::Map(map), key) => {
+                        let key = value_to_string(key);
+                        let mut result = BTreeMap::new();
+                        if let Some(value) = map.get(&key) {
+                            result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                            result.insert("value".to_string(), value.clone());
+                        } else {
+                            result.insert("_variant".to_string(), Value::Str("None".to_string()));
+                        }
+                        Ok(Value::Map(result))
+                    }
+                    _ => Err(EvalError::new("'map_get' requires a map and key")),
+                }
+            } else {
+                Err(EvalError::new("'map_get' requires map and key"))
+            }
+        }
+        "map_values" => match args.first() {
+            Some((_, Value::Map(map))) => Ok(Value::List(map.values().cloned().collect())),
+            _ => Err(EvalError::new("'map_values' requires a map")),
+        },
+        "empty_map" => Ok(Value::Map(BTreeMap::new())),
+        "map_insert" => {
+            if args.len() >= 3 {
+                match &args[0].1 {
+                    Value::Map(map) => {
+                        let key = value_to_string(&args[1].1);
+                        let value = args[2].1.clone();
+                        let mut new_map = map.clone();
+                        new_map.insert(key, value);
+                        Ok(Value::Map(new_map))
+                    }
+                    _ => Err(EvalError::new("'map_insert' requires a map, key, value")),
+                }
+            } else {
+                Err(EvalError::new("'map_insert' requires map, key, value"))
+            }
+        }
+        "map_merge" => {
+            if args.len() >= 2 {
+                match (&args[0].1, &args[1].1) {
+                    (Value::Map(base), Value::Map(overlay)) => {
+                        let mut merged = base.clone();
+                        merged.extend(overlay.iter().map(|(k, v)| (k.clone(), v.clone())));
+                        Ok(Value::Map(merged))
+                    }
+                    _ => Err(EvalError::new("'map_merge' requires two maps")),
+                }
+            } else {
+                Err(EvalError::new("'map_merge' requires two maps"))
+            }
+        },
         "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
         "code_point" => {
             let val = require_builtin_arg("c", 0, args);

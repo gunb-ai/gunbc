@@ -116,6 +116,8 @@ type Item
   | ResourceDef { name: String, properties: List<FieldInit>, capabilities: List<CapabilityDef>, span: SourceSpan }
   | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: SourceSpan }
   | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
+  // pattern: composable workflow (same syntax as func, different semantic role)
+  | PatternDef { name: String, params: List<Param>, return_type: TypeExpr?, uses: List<ResourceUse>, body: Expr, span: SourceSpan }
 
 // =========================================================================
 // Type expressions
@@ -370,6 +372,7 @@ type TypedItem
   | TypedResourceDef { name: String, properties: List<FieldInit>, capabilities: List<CapabilityDef>, span: SourceSpan }
   | TypedDataDef { name: String, type_expr: TypeExpr, value: TypedExpr, span: SourceSpan }
   | TypedExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
+  | TypedPatternDef { name: String, params: List<Param>, return_type: TypeExpr, uses: List<ResourceUse>, body: TypedExpr, span: SourceSpan }
 
 type FuncSig {
   name: String
@@ -379,5 +382,5 @@ type FuncSig {
 }
 
 type FuncEnv {
-  signatures: List<FuncSig>
+  signatures: Map<String, FuncSig>
 }

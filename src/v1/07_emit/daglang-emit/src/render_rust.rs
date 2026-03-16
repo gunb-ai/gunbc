@@ -23,6 +23,17 @@ use std::fmt::Write;
 
 /// Render a `SourceFile` to a complete `.rs` source string.
 pub fn render_rust_source(source: &SourceFile) -> String {
+    render_rust_source_inner(source, false)
+}
+
+/// Render Rust source with `stacker::maybe_grow` wrapping on all function bodies.
+/// Used for the v2 generated crate where recursive descent functions can overflow
+/// the stack when processing large .dag files.
+pub fn render_rust_source_with_stacker(source: &SourceFile) -> String {
+    render_rust_source_inner(source, true)
+}
+
+fn render_rust_source_inner(source: &SourceFile, use_stacker: bool) -> String {
     let mut out = String::new();
 
     // Module-level doc comments.
@@ -34,7 +45,7 @@ pub fn render_rust_source(source: &SourceFile) -> String {
     }
 
     for item in &source.items {
-        out.push_str(&render_item(item, 0));
+        out.push_str(&render_item(item, 0, use_stacker));
         out.push('\n');
     }
 
@@ -75,11 +86,11 @@ fn escape_rust_str(s: &str) -> String {
 // Item rendering
 // ===========================================================================
 
-fn render_item(item: &Item, indent: usize) -> String {
+fn render_item(item: &Item, indent: usize, use_stacker: bool) -> String {
     let pad = "    ".repeat(indent);
     match item {
         Item::Use(import) => format!("{}{}\n", pad, render_import(import)),
-        Item::Fn(f) => render_fn_def(f, indent),
+        Item::Fn(f) => render_fn_def(f, indent, use_stacker),
         Item::Enum(e) => render_enum_def(e, indent),
         Item::Impl(i) => render_impl_block(i, indent),
         Item::Struct(s) => render_struct_def(s, indent),
@@ -98,7 +109,7 @@ fn render_import(import: &Import) -> String {
     }
 }
 
-fn render_fn_def(f: &FnDef, indent: usize) -> String {
+fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
     let pad = "    ".repeat(indent);
     let mut out = String::new();
 
@@ -140,9 +151,18 @@ fn render_fn_def(f: &FnDef, indent: usize) -> String {
     )
     .unwrap();
 
-    // Body.
-    for stmt in &f.body {
-        out.push_str(&render_stmt(stmt, indent + 1));
+    // Body — optionally wrapped with stacker::maybe_grow for stack safety.
+    if use_stacker && !f.body.is_empty() {
+        let inner_pad = "    ".repeat(indent + 1);
+        writeln!(out, "{}stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {{", inner_pad).unwrap();
+        for stmt in &f.body {
+            out.push_str(&render_stmt(stmt, indent + 2));
+        }
+        writeln!(out, "{}}})", inner_pad).unwrap();
+    } else {
+        for stmt in &f.body {
+            out.push_str(&render_stmt(stmt, indent + 1));
+        }
     }
 
     writeln!(out, "{}}}", pad).unwrap();
@@ -210,7 +230,7 @@ fn render_impl_block(i: &ImplBlock, indent: usize) -> String {
         if idx > 0 {
             out.push('\n');
         }
-        out.push_str(&render_fn_def(func, indent + 1));
+        out.push_str(&render_fn_def(func, indent + 1, false));
     }
 
     writeln!(out, "{}}}", pad).unwrap();
@@ -395,7 +415,7 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             writeln!(out, "{}}}", pad).unwrap();
             out
         }
-        Stmt::Item(item) => render_item(item, indent),
+        Stmt::Item(item) => render_item(item, indent, false),
         Stmt::Loop { body } => {
             let mut out = format!("{}loop {{\n", pad);
             for s in body {
@@ -765,7 +785,7 @@ mod tests {
             doc: vec!["Greet a user.".to_string()],
             attributes: vec![],
         };
-        let rendered = render_fn_def(&f, 0);
+        let rendered = render_fn_def(&f, 0, false);
         assert!(rendered.contains("/// Greet a user."), "doc comment");
         assert!(
             rendered.contains("pub fn greet(name: String) -> String {"),

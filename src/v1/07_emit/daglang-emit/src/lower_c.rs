@@ -182,7 +182,7 @@ fn lower_fn_def(
         .map(|(name, ty)| (name.clone(), map_to_c_type_with_registry(ty, registry)))
         .collect();
 
-    let mut body = lower_body(&f.body, has_transport, config);
+    let mut body = lower_body(&f.body, has_transport, config)?;
 
     // If fallible, add `return 0;` at the end (success).
     if has_transport {
@@ -202,15 +202,32 @@ fn lower_fn_def(
 // Body statement lowering
 // ===========================================================================
 
-fn lower_body(stmts: &[Stmt], in_fallible_fn: bool, config: &CConfig) -> Vec<CStmt> {
+fn lower_body(
+    stmts: &[Stmt],
+    in_fallible_fn: bool,
+    config: &CConfig,
+) -> Result<Vec<CStmt>, LowerError> {
     let mut result = Vec::new();
     for stmt in stmts {
-        lower_stmt_into(&mut result, stmt, in_fallible_fn, config);
+        lower_stmt_into(&mut result, stmt, in_fallible_fn, config)?;
     }
-    result
+    Ok(result)
 }
 
-fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, config: &CConfig) {
+fn unsupported_c_stmt(construct: &str) -> LowerError {
+    LowerError::UnsupportedConstruct {
+        tier_from: "AbstractIR",
+        tier_to: "CStyleIR",
+        construct: construct.to_string(),
+    }
+}
+
+fn lower_stmt_into(
+    out: &mut Vec<CStmt>,
+    stmt: &Stmt,
+    in_fallible_fn: bool,
+    config: &CConfig,
+) -> Result<(), LowerError> {
     match stmt {
         Stmt::Let { name, expr, .. } => {
             let c_expr = lower_expr(expr, config);
@@ -308,7 +325,7 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
         Stmt::BlockScope(body) => {
             let mut c_body = Vec::new();
             for s in body {
-                lower_stmt_into(&mut c_body, s, in_fallible_fn, config);
+                lower_stmt_into(&mut c_body, s, in_fallible_fn, config)?;
             }
             out.push(CStmt::BlockScope(c_body));
         }
@@ -356,7 +373,7 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
                         index: Box::new(CExpr::Var(idx.clone())),
                     }),
                 });
-                fb.extend(lower_body(body, in_fallible_fn, config));
+                fb.extend(lower_body(body, in_fallible_fn, config)?);
                 fb
             };
 
@@ -385,7 +402,7 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
         Stmt::Item(item) => {
             // Nested items are unusual in C but possible.
             let mut inner_items = Vec::new();
-            let _ = lower_item_into(&mut inner_items, item, config, None);
+            lower_item_into(&mut inner_items, item, config, None)?;
             for ci in inner_items {
                 if let CItem::FnDef(f) = ci {
                     for s in f.body {
@@ -394,22 +411,17 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
                 }
             }
         }
-        Stmt::Loop { body } => {
-            // C: while(1) { ... }
-            let c_body = lower_body(body, in_fallible_fn, config);
-            out.push(CStmt::Comment("loop {".to_string()));
-            for s in c_body {
-                out.push(s);
-            }
-            out.push(CStmt::Comment("}".to_string()));
+        Stmt::Loop { body: _ } => {
+            return Err(unsupported_c_stmt("Stmt::Loop"));
         }
         Stmt::Continue => {
-            out.push(CStmt::Comment("continue".to_string()));
+            return Err(unsupported_c_stmt("Stmt::Continue"));
         }
         Stmt::Break(_) => {
-            out.push(CStmt::Comment("break".to_string()));
+            return Err(unsupported_c_stmt("Stmt::Break"));
         }
     }
+    Ok(())
 }
 
 // ===========================================================================
@@ -1182,6 +1194,40 @@ mod tests {
             matches!(&lowered, CExpr::Call { func, .. } if func == "snprintf"),
             "FormatStr should lower to snprintf, got {lowered:?}"
         );
+    }
+
+    #[test]
+    fn lower_c_rejects_loop_control_stmts() {
+        let cases = vec![
+            ("Stmt::Loop", Stmt::Loop { body: vec![] }),
+            ("Stmt::Continue", Stmt::Continue),
+            ("Stmt::Break", Stmt::Break(Expr::Tuple(vec![]))),
+        ];
+
+        for (expected, stmt) in cases {
+            let source = SourceFile {
+                doc: vec![],
+                items: vec![Item::Fn(FnDef {
+                    name: "main".to_string(),
+                    is_pub: true,
+                    params: vec![],
+                    return_type: None,
+                    body: vec![stmt],
+                    doc: vec![],
+                    attributes: vec![],
+                })],
+            };
+
+            let err = lower_to_c(&source, &CConfig::default())
+                .expect_err("unsupported loop control should fail C lowering");
+            assert!(
+                matches!(
+                    err,
+                    LowerError::UnsupportedConstruct { ref construct, .. } if construct == expected
+                ),
+                "expected {expected} rejection, got {err:?}"
+            );
+        }
     }
 
     // -- B4.6: Integration test --
