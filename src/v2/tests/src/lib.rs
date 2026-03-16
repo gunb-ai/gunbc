@@ -3132,6 +3132,43 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
+    /// Run the generated v2 crate's gist_resolve_all_modules test -- proves
+    /// the compiled v2 compiler can tokenize, parse, and resolve the 12
+    /// gist transitive dependencies (real-world DSL modules with services,
+    /// resources, patterns, and func definitions).
+    #[test]
+    #[ignore] // Requires cargo build + full pipeline; run with --ignored
+    fn v2_crate_gist_resolve() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-resolve");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--")
+            .arg("gist_resolve_all_modules")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            panic!(
+                "gist_resolve_all_modules failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
+                tmp_dir.display(),
+                stdout,
+                stderr
+            );
+        }
+
+        assert!(
+            stdout.contains("gist_resolve_all_modules"),
+            "expected gist_resolve_all_modules to appear in test output:\n{}",
+            stdout
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
     /// Generate the v2 crate to target/v2-compiler/ for inspection.
     /// Does not clean up — the crate persists for manual browsing/running.
     #[test]
