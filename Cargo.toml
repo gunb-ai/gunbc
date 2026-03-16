@@ -14,7 +14,6 @@ members = [
     "src/v1/06_artifacts/daglang-derive",
     "src/v1/07_emit/daglang-emit",
     "src/v1/08_materialize/resolve",
-    "src/v1/08_materialize/interp",
     "src/v1/08_materialize/blob",
     "src/v1/08_materialize/transport",
     "src/v1/09_execute/exec",
