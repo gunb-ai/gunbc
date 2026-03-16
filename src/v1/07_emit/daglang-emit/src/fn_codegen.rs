@@ -1033,6 +1033,14 @@ fn compile_intrinsic_call(
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> Option<code_ir::Expr> {
+    // Zero-arg intrinsics (before the args.is_empty() guard).
+    // empty_map() → Rc::new(HashMap::new())
+    if name == "empty_map" && args.is_empty() {
+        return Some(rc_wrap(code_ir::Expr::RawCode(
+            "std::collections::HashMap::new()".to_string(),
+        )));
+    }
+
     // First arg is always the collection/receiver.
     // Eagerly evaluated since counter is &mut and can't be captured in a closure.
     if args.is_empty() {
@@ -1837,7 +1845,7 @@ fn compile_intrinsic_call(
                         key = render_expr_inline(&key_expr),
                     )))],
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(result))),
             ]))
         }
         // map_get(map, key) → map.get(&key).cloned() — O(1) HashMap lookup.
@@ -1862,21 +1870,59 @@ fn compile_intrinsic_call(
                 args: vec![code_ir::Expr::Ref(Box::new(key))],
             })
         }
-        // map_values(map) → Rc::new(map.into_values().collect::<Vec<_>>()) — extract values as list.
+        // map_values(map) → Rc-unwrap HashMap, into_values, collect into Rc<Vec<_>>.
         "map_values" if args.len() == 1 => {
+            let rc_var = fresh(counter, "rc");
+            let map_var = fresh(counter, "map_unwrapped");
             let values = fresh(counter, "values");
             Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_bind(&rc_var, strip_outer_clone(collection.clone())),
+                code_ir::Stmt::let_bind(
+                    &map_var,
+                    code_ir::Expr::RawCode(format!(
+                        "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
+                    )),
+                ),
                 code_ir::Stmt::Let {
                     name: values.clone(),
                     mutable: false,
                     expr: code_ir::Expr::RawCode(format!(
-                        "{}.into_values().collect::<Vec<_>>()",
-                        render_expr_inline(&collection)
+                        "{map_var}.into_values().collect::<Vec<_>>()"
                     )),
                     ir_type: None,
                 },
                 code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(values))),
             ]))
+        }
+        // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.
+        // O(1) amortized when refcount=1 (true in fold accumulators).
+        "map_insert" if args.len() == 3 => {
+            let map = strip_outer_clone(collection.clone());
+            let key = compile_expr(&args[1].1, ctx, counter);
+            let value = compile_expr(&args[2].1, ctx, counter);
+            let v = fresh(counter, "map_ins");
+            let mut stmts = rc_unwrap_stmts(&v, map, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                "{v}.insert({}, {})",
+                render_expr_inline(&key),
+                render_expr_inline(&value)
+            ))));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
+        }
+        // map_merge(base, overlay) → unwrap base, extend with overlay, re-wrap.
+        // O(|overlay|) amortized.
+        "map_merge" if args.len() == 2 => {
+            let base = strip_outer_clone(collection.clone());
+            let overlay = compile_expr(&args[1].1, ctx, counter);
+            let v = fresh(counter, "map_merged");
+            let mut stmts = rc_unwrap_stmts(&v, base, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                "{v}.extend(Rc::try_unwrap({}).unwrap_or_else(|rc| (*rc).clone()))",
+                render_expr_inline(&overlay)
+            ))));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
         }
         _ => None,
     }
@@ -2148,11 +2194,26 @@ fn compile_any_intrinsic(
 fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_ir::Expr {
     match expr {
         code_ir::Expr::Var(name) if name == from => to.clone(),
+        code_ir::Expr::RawCode(s) => {
+            // Substitute variable references within raw code strings.
+            // Intrinsics like map_insert/map_merge render arguments inline
+            // as RawCode. Without this, fold lambda parameters retain their
+            // DSL names instead of being replaced with generated loop vars.
+            let to_name = match to {
+                code_ir::Expr::Var(name) => name.as_str(),
+                _ => return expr.clone(),
+            };
+            let new_s = replace_word(s, from, to_name);
+            if new_s == *s {
+                expr.clone()
+            } else {
+                code_ir::Expr::RawCode(new_s)
+            }
+        }
         code_ir::Expr::Var(_)
         | code_ir::Expr::Str(_)
         | code_ir::Expr::IntLit(_)
         | code_ir::Expr::BoolLit(_)
-        | code_ir::Expr::RawCode(_)
         | code_ir::Expr::Value(_)
         | code_ir::Expr::Path(_) => expr.clone(),
         code_ir::Expr::Field(receiver, field) => {
@@ -2320,6 +2381,38 @@ fn substitute_var_in_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) 
         },
         other => other.clone(),
     }
+}
+
+/// Replace whole-word occurrences of `from` with `to` in a string.
+/// A word boundary is a position where an adjacent character is not
+/// alphanumeric or underscore (i.e., not part of a Rust identifier).
+/// Skips matches followed by `:` (struct field name position).
+fn replace_word(s: &str, from: &str, to: &str) -> String {
+    let bytes = s.as_bytes();
+    let from_bytes = from.as_bytes();
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut result = String::with_capacity(s.len());
+    let mut i = 0;
+    while i <= bytes.len().saturating_sub(from_bytes.len()) {
+        if &bytes[i..i + from_bytes.len()] == from_bytes {
+            let before_ok = i == 0 || !is_word(bytes[i - 1]);
+            let after_pos = i + from_bytes.len();
+            let after_ok = after_pos >= bytes.len() || !is_word(bytes[after_pos]);
+            // Skip struct field names: `name:` should not be substituted
+            let is_field_name = after_pos < bytes.len() && bytes[after_pos] == b':';
+            if before_ok && after_ok && !is_field_name {
+                result.push_str(to);
+                i += from_bytes.len();
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    if i < bytes.len() {
+        result.push_str(&s[i..]);
+    }
+    result
 }
 
 fn compile_call(

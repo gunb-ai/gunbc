@@ -32,7 +32,7 @@ import v2.std.core {
   FuncSig,
   TypedItem,
   TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl
+  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
 }
 
 import v2.compiler.typecheck {
@@ -79,21 +79,24 @@ type ItemInfo {
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: [] },
-    func_env: FuncEnv { signatures: [] },
-    locals: [],
+    type_env: TypeEnv { bindings: empty_map() },
+    func_env: FuncEnv { signatures: empty_map() },
+    locals: empty_map(),
     module_name: "",
-    type_cache: []
+    type_cache: empty_map()
   }
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
+  let cache_map = typed_module.type_cache |> fold(init: empty_map(), f: (acc, entry) =>
+    map_insert(acc, span_key(start: entry.start, end: entry.end), entry.resolved_type)
+  )
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
-    locals: [],
+    locals: empty_map(),
     module_name: typed_module.module.name,
-    type_cache: typed_module.type_cache
+    type_cache: cache_map
   }
 }
 
@@ -102,16 +105,12 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 // through the typecheck import. infer_expr_type reads from the type cache built
 // during typecheck — no re-inference at emit time.
 
-fn lookup_type_by_span(cache: List<SpanType>, start: Int, end: Int) -> TypeExpr? {
-  let matches = cache |> filter(e => e.start == start && e.end == end)
-  if matches |> count == 1 {
-    match first(matches) {
-      Some { value: entry } => Some { value: entry.resolved_type }
-      None => None
-    }
-  } else {
-    None
-  }
+fn span_key(start: Int, end: Int) -> String {
+  concat(to_string(value: start), ":", to_string(value: end))
+}
+
+fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
+  map_get(cache, span_key(start: start, end: end))
 }
 
 fn missing_emit_type(span: SourceSpan) -> TypeExpr {
@@ -142,24 +141,27 @@ fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 // Item registry
 // =========================================================================
 
-fn build_item_registry(items: List<TypedItem>) -> List<ItemInfo> {
-  items |> map(item => match item {
+fn build_item_registry(items: List<TypedItem>) -> Map<String, ItemInfo> {
+  let info_list = items |> map(item => match item {
     TypedFuncDef { name: n, body: b } =>
+      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)) }
+    TypedPatternDef { name: n, body: b } =>
       ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)) }
     TypedFnDef { name: n } =>
       ItemInfo { name: n, kind: "fn", service_names: [] }
     _ => ItemInfo { name: "", kind: "other", service_names: [] }
   })
+  info_list |> fold(init: empty_map(), f: (acc, i) =>
+    map_insert(acc, i.name, i)
+  )
 }
 
-fn lookup_item(registry: List<ItemInfo>, name: String) -> ItemInfo? {
-  let matches = registry |> filter(i => i.name == name)
-  first(matches)
+fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
+  map_get(registry, name)
 }
 
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> FuncSig? {
-  let matches = scope.func_env.signatures |> filter(sig => sig.name == name)
-  first(matches)
+  map_get(scope.func_env.signatures, name)
 }
 
 fn named_arg_matches(arg: NamedArg, name: String) -> Bool {

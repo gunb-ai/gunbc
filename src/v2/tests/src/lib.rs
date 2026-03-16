@@ -305,6 +305,207 @@ mod tests {
         compile_sources_with_target(output, sources, "Rust")
     }
 
+    fn zero_span_value() -> gunbc_ir::Value {
+        let mut span = std::collections::BTreeMap::new();
+        span.insert("start".to_string(), gunbc_ir::Value::Int(0));
+        span.insert("end".to_string(), gunbc_ir::Value::Int(0));
+        gunbc_ir::Value::Map(span)
+    }
+
+    fn named_type_value(name: &str) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Named".to_string()),
+        );
+        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        map.insert("span".to_string(), zero_span_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn type_binding_value(name: &str, resolved: gunbc_ir::Value) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        map.insert("resolved".to_string(), resolved);
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn type_env_value(bindings: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        let binding_map: std::collections::BTreeMap<String, gunbc_ir::Value> = bindings
+            .into_iter()
+            .filter_map(|binding| match &binding {
+                gunbc_ir::Value::Map(fields) => match fields.get("name") {
+                    Some(gunbc_ir::Value::Str(name)) => Some((name.clone(), binding.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        map.insert("bindings".to_string(), gunbc_ir::Value::Map(binding_map));
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn bool_type_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Primitive".to_string()),
+        );
+        map.insert("name".to_string(), gunbc_ir::Value::Str("Bool".to_string()));
+        map.insert("span".to_string(), zero_span_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn string_type_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Primitive".to_string()),
+        );
+        map.insert("name".to_string(), gunbc_ir::Value::Str("String".to_string()));
+        map.insert("span".to_string(), zero_span_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn field_value(name: &str, type_expr: gunbc_ir::Value) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        map.insert("type_expr".to_string(), type_expr);
+        map.insert("optional".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("default_value".to_string(), gunbc_ir::Value::Unit);
+        map.insert("from_key".to_string(), gunbc_ir::Value::Unit);
+        map.insert("span".to_string(), zero_span_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn product_type_value(
+        name: Option<&str>,
+        fields: Vec<gunbc_ir::Value>,
+    ) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Product".to_string()),
+        );
+        map.insert(
+            "name".to_string(),
+            match name {
+                Some(name) => gunbc_ir::Value::Str(name.to_string()),
+                None => gunbc_ir::Value::Unit,
+            },
+        );
+        map.insert("fields".to_string(), gunbc_ir::Value::List(fields));
+        map.insert("span".to_string(), zero_span_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn literal_value_string(value: &str) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("LitStr".to_string()),
+        );
+        map.insert("value".to_string(), gunbc_ir::Value::Str(value.to_string()));
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn literal_value_bool(value: bool) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("LitBool".to_string()),
+        );
+        map.insert("value".to_string(), gunbc_ir::Value::Bool(value));
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn literal_expr_value(
+        literal: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Literal".to_string()),
+        );
+        map.insert("value".to_string(), literal);
+        map.insert("span".to_string(), span);
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        map.insert("value".to_string(), value);
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn span_type_value(
+        start: i64,
+        end: i64,
+        resolved_type: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("start".to_string(), gunbc_ir::Value::Int(start));
+        map.insert("end".to_string(), gunbc_ir::Value::Int(end));
+        map.insert("resolved_type".to_string(), resolved_type);
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn func_env_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "signatures".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn infer_scope_value(
+        type_env: gunbc_ir::Value,
+        type_cache: Vec<gunbc_ir::Value>,
+    ) -> gunbc_ir::Value {
+        // type_cache is now Map<String, TypeExpr> keyed by "start:end"
+        let mut cache_map = std::collections::BTreeMap::new();
+        for entry in &type_cache {
+            if let gunbc_ir::Value::Map(m) = entry {
+                let start = match m.get("start") {
+                    Some(gunbc_ir::Value::Int(i)) => i.to_string(),
+                    _ => continue,
+                };
+                let end = match m.get("end") {
+                    Some(gunbc_ir::Value::Int(i)) => i.to_string(),
+                    _ => continue,
+                };
+                if let Some(resolved) = m.get("resolved_type") {
+                    cache_map.insert(format!("{}:{}", start, end), resolved.clone());
+                }
+            }
+        }
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("type_env".to_string(), type_env);
+        map.insert("func_env".to_string(), func_env_value());
+        map.insert(
+            "locals".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "module_name".to_string(),
+            gunbc_ir::Value::Str("main".to_string()),
+        );
+        map.insert("type_cache".to_string(), gunbc_ir::Value::Map(cache_map));
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn returned_value(outputs: HashMap<String, gunbc_ir::Value>) -> gunbc_ir::Value {
+        if let Some(value) = outputs.get("return") {
+            value.clone()
+        } else {
+            gunbc_ir::Value::Map(outputs.into_iter().collect())
+        }
+    }
+
     fn diagnostic_messages(diags: &gunbc_ir::Value) -> Vec<String> {
         match diags {
             gunbc_ir::Value::List(items) => items
@@ -1435,7 +1636,7 @@ fn foo(item: String) -> String {
         assert!(!typed_modules.is_empty());
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::List(vec![]));
+        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1508,7 +1709,7 @@ fn foo(item: String) -> String {
         };
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::List(vec![]));
+        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -2359,6 +2560,200 @@ fn example(items: List<String>) -> Int {
     }
 
     #[test]
+    fn phase6_anonymous_record_literal_fails_closed_without_named_type() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut span = std::collections::BTreeMap::new();
+        span.insert("start".to_string(), gunbc_ir::Value::Int(10));
+        span.insert("end".to_string(), gunbc_ir::Value::Int(20));
+        let span = gunbc_ir::Value::Map(span);
+
+        let record_fields = vec![
+            field_value("name", string_type_value()),
+            field_value("enabled", bool_type_value()),
+        ];
+        let scope = infer_scope_value(
+            type_env_value(vec![type_binding_value(
+                "Config",
+                product_type_value(Some("Config"), record_fields.clone()),
+            )]),
+            vec![span_type_value(
+                10,
+                20,
+                product_type_value(None, record_fields),
+            )],
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
+        inputs.insert(
+            "fields".to_string(),
+            gunbc_ir::Value::List(vec![
+                field_init_value(
+                    "name",
+                    literal_expr_value(literal_value_string("demo"), span.clone()),
+                ),
+                field_init_value(
+                    "enabled",
+                    literal_expr_value(literal_value_bool(true), span.clone()),
+                ),
+            ]),
+        );
+        inputs.insert("span".to_string(), span);
+        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert("scope".to_string(), scope);
+
+        let rendered = returned_value(
+            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+        );
+        let main_rs = match rendered {
+            gunbc_ir::Value::Str(rendered) => rendered,
+            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+        };
+
+        assert!(
+            main_rs.contains("cannot resolve anonymous record type in emitter"),
+            "anonymous record literal should fail closed without a named type:\n{}",
+            main_rs
+        );
+        assert!(
+            !main_rs.contains("Config {"),
+            "anonymous record literal should not guess a matching named struct:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_anonymous_record_literal_does_not_rank_shape_candidates() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut span = std::collections::BTreeMap::new();
+        span.insert("start".to_string(), gunbc_ir::Value::Int(10));
+        span.insert("end".to_string(), gunbc_ir::Value::Int(20));
+        let span = gunbc_ir::Value::Map(span);
+
+        let exact_fields = vec![
+            field_value("name", string_type_value()),
+            field_value("enabled", bool_type_value()),
+        ];
+        let wider_fields = vec![
+            field_value("name", string_type_value()),
+            field_value("enabled", bool_type_value()),
+            field_value("owner", string_type_value()),
+            field_value("region", string_type_value()),
+            field_value("version", string_type_value()),
+            field_value("stage", string_type_value()),
+            field_value("mode", string_type_value()),
+            field_value("team", string_type_value()),
+            field_value("service", string_type_value()),
+            field_value("profile", string_type_value()),
+        ];
+        let scope = infer_scope_value(
+            type_env_value(vec![
+                type_binding_value("Config", product_type_value(Some("Config"), exact_fields.clone())),
+                type_binding_value(
+                    "ConfigExpanded",
+                    product_type_value(Some("ConfigExpanded"), wider_fields),
+                ),
+            ]),
+            vec![span_type_value(
+                10,
+                20,
+                product_type_value(None, exact_fields),
+            )],
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
+        inputs.insert(
+            "fields".to_string(),
+            gunbc_ir::Value::List(vec![
+                field_init_value(
+                    "name",
+                    literal_expr_value(literal_value_string("demo"), span.clone()),
+                ),
+                field_init_value(
+                    "enabled",
+                    literal_expr_value(literal_value_bool(true), span.clone()),
+                ),
+            ]),
+        );
+        inputs.insert("span".to_string(), span);
+        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert("scope".to_string(), scope);
+
+        let rendered = returned_value(
+            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+        );
+        let main_rs = match rendered {
+            gunbc_ir::Value::Str(rendered) => rendered,
+            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+        };
+
+        assert!(
+            main_rs.contains("cannot resolve anonymous record type in emitter"),
+            "anonymous record literal should fail closed instead of ranking candidates:\n{}",
+            main_rs
+        );
+        assert!(
+            !main_rs.contains("ConfigExpanded {"),
+            "anonymous record literal should not guess a wider structural superset:\n{}",
+            main_rs
+        );
+        assert!(
+            !main_rs.contains("Config {"),
+            "anonymous record literal should not guess an exact structural match either:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_qualified_type_names_canonicalize_to_local_binding() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let config_type = named_type_value("Config");
+        let env = type_env_value(vec![type_binding_value("Config", config_type.clone())]);
+
+        let mut lookup_inputs = HashMap::new();
+        lookup_inputs.insert("env".to_string(), env);
+        lookup_inputs.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("pkg.Config".to_string()),
+        );
+        let lookup_result = returned_value(
+            call_fn(&output, "lookup_type", lookup_inputs).expect("lookup_type should succeed"),
+        );
+        match lookup_result {
+            gunbc_ir::Value::Map(map) => {
+                let value = if map.get("_variant")
+                    == Some(&gunbc_ir::Value::Str("Some".to_string()))
+                {
+                    map.get("value")
+                } else if map.get("value").is_some() {
+                    map.get("value")
+                } else {
+                    None
+                };
+                assert_eq!(
+                    value,
+                    Some(&config_type),
+                    "lookup_type should reuse the local binding for canonicalized names: {:?}",
+                    map
+                );
+            }
+            other => panic!("lookup_type should return an option map, got: {:?}", other),
+        }
+
+        let mut eq_inputs = HashMap::new();
+        eq_inputs.insert("left".to_string(), named_type_value("Config"));
+        eq_inputs.insert("right".to_string(), named_type_value("pkg.Config"));
+        let eq_result = call_fn(&output, "type_expr_equals", eq_inputs)
+            .expect("type_expr_equals should succeed");
+        assert!(
+            matches!(eq_result.get("return"), Some(gunbc_ir::Value::Bool(true))),
+            "type_expr_equals should treat qualified and local names as equivalent: {:?}",
+            eq_result
+        );
+    }
+
+    #[test]
     fn phase6_empty_import_block_emits_no_rust_import() {
         let output = compile_all_modules().expect("compilation should succeed");
         let result = compile_sources_with(
@@ -2774,7 +3169,7 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::List(vec![]));
+            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()
@@ -3176,6 +3571,42 @@ fn example(items: List<String>) -> Int {
         assert!(
             stdout.contains("gist_resolve_all_modules"),
             "expected gist_resolve_all_modules to appear in test output:\n{}",
+            stdout
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// Run the generated v2 crate's gist_compile_all_modules test -- proves
+    /// the compiled v2 compiler can tokenize, parse, resolve, typecheck,
+    /// and emit the gist transitive dependency chain without OOM.
+    #[test]
+    #[ignore] // Requires cargo build + full pipeline; run with --ignored
+    fn v2_crate_gist_compile() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-compile");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--")
+            .arg("gist_compile_all_modules")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            panic!(
+                "gist_compile_all_modules failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
+                tmp_dir.display(),
+                stdout,
+                stderr
+            );
+        }
+
+        assert!(
+            stdout.contains("gist_compile_all_modules"),
+            "expected gist_compile_all_modules to appear in test output:\n{}",
             stdout
         );
 

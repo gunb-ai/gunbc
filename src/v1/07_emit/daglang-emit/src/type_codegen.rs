@@ -72,8 +72,8 @@ pub fn type_expr_to_rust_with_registry(
                 };
                 let resolved = language_model::resolve_container(kind, &inner, key, model)
                     .unwrap_or_else(|| format!("{}<{}>", name, arg_strs.join(", ")));
-                // Wrap List in Rc<> for O(1) clone (S76 fix)
-                if kind == ContainerKind::List {
+                // Wrap List and Map in Rc<> for O(1) clone (S76 fix)
+                if kind == ContainerKind::List || kind == ContainerKind::Map {
                     format!("Rc<{}>", resolved)
                 } else {
                     resolved

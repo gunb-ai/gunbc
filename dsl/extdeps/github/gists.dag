@@ -10,7 +10,7 @@
 module extdeps.github.gists
 
 import extdeps.github.github { GitHubUser }
-import std.types { Timestamp }
+import std.types { Timestamp, GistId, Url }
 import std.errors { GitHubErrorShape }
 
 // ── Gist model ────────────────────────────────────────────────────

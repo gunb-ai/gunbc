@@ -52,6 +52,22 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 // Full pipeline
 // =========================================================================
 
+// Resolve-only pipeline: tokenize -> parse -> resolve.
+// Returns diagnostics from all three stages without proceeding to typecheck.
+fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
+  let tokenized = map(sources, s => tokenize(source: s.content))
+  let parse_results = map(tokenized, t => parse(tokens: t))
+  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
+  let has_errors = any(parse_results, p => p.error != None)
+  if has_errors {
+    CompileResult { files: [], diagnostics: parse_diagnostics }
+  } else {
+    let modules = map(parse_results, p => p.module.value)
+    let graph = resolve_modules(modules: modules)
+    CompileResult { files: [], diagnostics: concat(parse_diagnostics, graph.diagnostics) }
+  }
+}
+
 // Pure compiler pipeline: sources in, compiled files out.
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
 // The target parameter selects the output language (Rust, Python).

@@ -72,9 +72,14 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
   // Phase 1: check for duplicate module declarations
   let dup_diags = check_duplicate_modules(modules: modules)
 
+  // Build a module index for O(1) lookup during import resolution.
+  let module_index = modules |> fold(init: empty_map(), f: (acc, m) =>
+    map_insert(acc, m.name, m)
+  )
+
   // Phase 2: resolve each module's imports
   let resolve_results = modules |> map(m =>
-    resolve_module_imports(module: m, all_modules: modules)
+    resolve_module_imports(module: m, module_index: module_index)
   )
   let resolved_imports_list = resolve_results |> map(r => r.resolved_imports)
   let import_diags = resolve_results |> flat_map(r => r.diagnostics)
@@ -124,12 +129,8 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
 // =========================================================================
 
 // Find a module by its module declaration path (the `name` field).
-fn find_module(modules: List<Module>, path: String) -> Module? {
-  let matches = modules |> filter(m => m.name == path)
-  match matches |> first {
-    Some { value: m } => Some { value: m }
-    None => None
-  }
+fn find_module(module_index: Map<String, Module>, path: String) -> Module? {
+  map_get(module_index, path)
 }
 
 // =========================================================================
@@ -143,9 +144,9 @@ type ModuleResolveResult {
 }
 
 // Resolve all imports for a single module.
-fn resolve_module_imports(module: Module, all_modules: List<Module>) -> ModuleResolveResult {
+fn resolve_module_imports(module: Module, module_index: Map<String, Module>) -> ModuleResolveResult {
   let results = module.imports |> map(imp =>
-    resolve_import(import: imp, modules: all_modules, importing_module: module.name)
+    resolve_import(import: imp, module_index: module_index, importing_module: module.name)
   )
   let resolved = results
     |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
@@ -166,10 +167,10 @@ type ImportResolveResult {
 // Resolve a single import: find target module, validate imported names.
 fn resolve_import(
   import: Import,
-  modules: List<Module>,
+  module_index: Map<String, Module>,
   importing_module: String
 ) -> ImportResolveResult {
-  let target = find_module(modules: modules, path: import.module_path)
+  let target = find_module(module_index: module_index, path: import.module_path)
   match target {
     None => {
       let diag = Diagnostic {
@@ -226,13 +227,20 @@ fn resolve_import(
 // their names so callers can import variant constructors directly.
 // Explicitly imported names are re-exported: if module A does
 // `import B { Foo }`, then importers of A can also see Foo.
+// Kernel primitives (String, Int, Bool, etc.) are always available
+// and treated as implicitly exported by every module.
 fn get_exported_names(module: Module) -> List<String> {
   let item_names = module.items |> map(item => get_item_name(item: item))
   let variant_names = module.items
     |> flat_map(item => get_variant_names(item: item))
   let imported_names = module.imports
     |> flat_map(imp => get_import_specific_names(names: imp.names))
-  concat(item_names, variant_names, imported_names)
+  concat(item_names, variant_names, imported_names, kernel_type_names())
+}
+
+// The 8 kernel primitives that are implicitly available in every module.
+fn kernel_type_names() -> List<String> {
+  ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"]
 }
 
 // Extract explicitly named imports from an ImportNames value.
@@ -255,6 +263,7 @@ fn get_item_name(item: Item) -> String {
     ResourceDef { name: n } => n
     DataDef { name: n } => n
     ExternFuncDecl { name: n } => n
+    PatternDef { name: n } => n
   }
 }
 
@@ -276,6 +285,7 @@ fn get_variant_names(item: Item) -> List<String> {
     ResourceDef { name: _ } => []
     DataDef { name: _ } => []
     ExternFuncDecl { name: _ } => []
+    PatternDef { name: _ } => []
   }
 }
 

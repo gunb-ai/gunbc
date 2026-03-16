@@ -27,7 +27,7 @@ import v2.std.core {
   FuncSig,
   TypedItem,
   TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl
+  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
 }
 
 import v2.compiler.typecheck {
@@ -97,7 +97,7 @@ fn emit_init_py(modules: List<TypedModule>) -> TextFile {
 // Module emission
 // =========================================================================
 
-fn emit_py_module(typed_module: TypedModule, registry: List<ItemInfo>) -> TextFile {
+fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_py_prelude(typed_module: typed_module)
@@ -163,7 +163,7 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_py_typed_item(item: TypedItem, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_typed_item(item: TypedItem, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match item {
     TypedTypeDef { name: n, body: b, span: _ } =>
       emit_py_type_def(name: n, body: b)
@@ -182,6 +182,8 @@ fn emit_py_typed_item(item: TypedItem, registry: List<ItemInfo>, scope: InferSco
       let ret_str = emit_py_return_type(return_type: rt)
       concat("def ", py_ident(name: n), "(", params_str, ")", ret_str, ":\n",
         "    raise NotImplementedError(\"extern func\")")
+    TypedPatternDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
+      emit_py_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
   }
 }
 
@@ -214,7 +216,7 @@ fn emit_py_dataclass_field(field: Field) -> String {
     emit_py_type_expr(type_expr: field.type_expr)
   }
   let default_str = match field.default_value {
-    Some { value: expr } => concat(" = ", emit_py_expr(expr: expr, registry: []))
+    Some { value: expr } => concat(" = ", emit_py_expr(expr: expr, registry: empty_map()))
     None =>
       if field.optional {
         " = None"
@@ -332,7 +334,7 @@ fn emit_py_coproduct_type_expr(name: String?, variants: List<Variant>) -> String
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_py_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let params_str = emit_py_params(params: params)
   let ret_str = emit_py_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
@@ -361,7 +363,7 @@ fn emit_py_func_def(
   return_type: TypeExpr,
   uses: List<ResourceUse>,
   body: Expr,
-  registry: List<ItemInfo>,
+  registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
   let service_names = unique_strings(items: collect_service_calls(expr: body))
@@ -373,7 +375,7 @@ fn emit_py_func_def(
     indent(text: body_str, level: 1))
 }
 
-fn emit_py_func_body(body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match body {
     Let { name: n, value: v, body: inner, span: _ } => {
       let val_str = emit_py_expr_in_scope(expr: v, registry: registry, scope: scope)
@@ -457,14 +459,14 @@ fn emit_py_return_type(return_type: TypeExpr) -> String {
 // =========================================================================
 
 // Emit the TCO-transformed body: wrap in while True loop.
-fn emit_py_tco_body(expr: Expr, fn_name: String, params: List<Param>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_tco_body(expr: Expr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let inner = emit_py_tco_expr(expr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope)
   concat("while True:\n", indent(text: inner, level: 1))
 }
 
 // Emit an expression in Python TCO context: tail calls become reassignment+continue,
 // non-recursive results become return.
-fn emit_py_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match expr {
     Call { func: f, args: a, span: _ } =>
       if f == fn_name {
@@ -529,7 +531,7 @@ fn emit_py_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: 
   }
 }
 
-fn emit_py_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let pat_str = emit_py_pattern(pattern: arm.pattern)
   let guard_str = match arm.guard {
     Some { value: g } => concat(" if ", emit_py_expr_in_scope(expr: g, registry: registry, scope: scope))
@@ -543,7 +545,7 @@ fn emit_py_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, re
 // Emit the reassignment block for a tail self-call in Python:
 //   __tco_0 = arg0; __tco_1 = arg1; param0 = __tco_0; param1 = __tco_1; continue
 // Temporaries prevent order-dependent assignment issues (e.g., f(b, a)).
-fn emit_py_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ordered_args = args |> map(a => emit_py_expr_in_scope(expr: a.value, registry: registry, scope: scope))
   let param_names = params |> map(p => py_ident(name: p.name))
   let temp_lets = ordered_args |> enumerate |> map(pair =>
@@ -558,11 +560,11 @@ fn emit_py_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Lis
 // Expression emission
 // =========================================================================
 
-fn emit_py_expr(expr: Expr, registry: List<ItemInfo>) -> String {
+fn emit_py_expr(expr: Expr, registry: Map<String, ItemInfo>) -> String {
   emit_py_expr_in_scope(expr: expr, registry: registry, scope: empty_emit_scope())
 }
 
-fn emit_py_expr_in_scope(expr: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_expr_in_scope(expr: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match expr {
     Literal { value: v, span: _ } => emit_py_literal(value: v)
     Var { name: n, span: _ } => py_ident(name: n)
@@ -630,7 +632,7 @@ fn emit_py_string_literal(s: String) -> String {
 // Call emission
 // =========================================================================
 
-fn emit_py_call(func: String, args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_call(func: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ordered_args = order_call_args(args: args, func: func, scope: scope)
   let arg_strs = ordered_args |> map(a => emit_py_call_arg(arg: a, registry: registry, scope: scope))
   let callee = lookup_item(registry: registry, name: func)
@@ -651,11 +653,11 @@ fn emit_py_call(func: String, args: List<NamedArg>, registry: List<ItemInfo>, sc
   }
 }
 
-fn emit_py_call_arg(arg: NamedArg, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_call_arg(arg: NamedArg, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   emit_py_expr_in_scope(expr: arg.value, registry: registry, scope: scope)
 }
 
-fn emit_py_for_each(variable: String, collection: Expr, body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_for_each(variable: String, collection: Expr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let coll_str = emit_py_expr_in_scope(expr: collection, registry: registry, scope: scope)
   let elem_type = for_each_element_type(type_expr: infer_expr_type(expr: collection, scope: scope))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
@@ -664,20 +666,20 @@ fn emit_py_for_each(variable: String, collection: Expr, body: Expr, registry: Li
     indent(text: body_str, level: 1))
 }
 
-fn emit_py_index(base: Expr, index: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_index(base: Expr, index: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_py_expr_in_scope(expr: base, registry: registry, scope: scope)
   let index_str = emit_py_expr_in_scope(expr: index, registry: registry, scope: scope)
   concat(base_str, "[", index_str, "]")
 }
 
-fn emit_py_slice(base: Expr, start: Expr, end: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_slice(base: Expr, start: Expr, end: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_py_expr_in_scope(expr: base, registry: registry, scope: scope)
   let start_str = emit_py_expr_in_scope(expr: start, registry: registry, scope: scope)
   let end_str = emit_py_expr_in_scope(expr: end, registry: registry, scope: scope)
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_py_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   // Service call: git.Core.CurrentBranch() -> await git_core.current_branch()
   if is_service_call_receiver(receiver: receiver) {
     match extract_service_name(receiver: receiver) {
@@ -717,7 +719,7 @@ fn emit_py_method_call(receiver: Expr, method: String, args: List<NamedArg>, reg
   }
 }
 
-fn emit_py_first_arg(args: List<NamedArg>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match args |> first {
     Some { value: a } => emit_py_call_arg(arg: a, registry: registry, scope: scope)
     None => "raise NotImplementedError(\"missing method argument\")"
@@ -728,14 +730,14 @@ fn emit_py_first_arg(args: List<NamedArg>, registry: List<ItemInfo>, scope: Infe
 // Match emission — Python match/case (PEP 634)
 // =========================================================================
 
-fn emit_py_match(scrutinee: Expr, arms: List<MatchArm>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let scrut_str = emit_py_expr_in_scope(expr: scrutinee, registry: registry, scope: scope)
   let arm_strs = arms |> map(arm => emit_py_match_arm(arm: arm, registry: registry, scope: scope))
   let arms_str = arm_strs |> join(separator: "\n")
   concat("match ", scrut_str, ":\n", arms_str)
 }
 
-fn emit_py_match_arm(arm: MatchArm, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let pat_str = emit_py_pattern(pattern: arm.pattern)
   let guard_str = match arm.guard {
     Some { value: g } => concat(" if ", emit_py_expr_in_scope(expr: g, registry: registry, scope: scope))
@@ -773,7 +775,7 @@ fn emit_py_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> 
 // If/else emission — Python ternary for expressions
 // =========================================================================
 
-fn emit_py_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let cond_str = emit_py_expr_in_scope(expr: condition, registry: registry, scope: scope)
   let then_str = emit_py_expr_in_scope(expr: then_branch, registry: registry, scope: scope)
   match else_branch {
@@ -791,7 +793,7 @@ fn emit_py_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: 
 // Let binding emission
 // =========================================================================
 
-fn emit_py_let(name: String, value: Expr, body: Expr?, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_let(name: String, value: Expr, body: Expr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let val_str = emit_py_expr_in_scope(expr: value, registry: registry, scope: scope)
   let let_line = concat(py_ident(name: name), " = ", val_str)
   match body {
@@ -806,7 +808,7 @@ fn emit_py_let(name: String, value: Expr, body: Expr?, registry: List<ItemInfo>,
 // Record literal emission
 // =========================================================================
 
-fn emit_py_record_lit(type_name: String?, fields: List<FieldInit>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_record_lit(type_name: String?, fields: List<FieldInit>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match type_name {
     None => {
       // Anonymous record -> dict literal
@@ -837,7 +839,7 @@ fn emit_py_record_lit(type_name: String?, fields: List<FieldInit>, registry: Lis
 // List literal emission
 // =========================================================================
 
-fn emit_py_list_lit(elements: List<Expr>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_list_lit(elements: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   if elements |> count == 0 {
     "[]"
   } else {
@@ -851,7 +853,7 @@ fn emit_py_list_lit(elements: List<Expr>, registry: List<ItemInfo>, scope: Infer
 // Binary operator emission
 // =========================================================================
 
-fn emit_py_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let l_str = emit_py_expr_in_scope(expr: left, registry: registry, scope: scope)
   let r_str = emit_py_expr_in_scope(expr: right, registry: registry, scope: scope)
   if is_py_null_coalesce_op(op: op) {
@@ -893,7 +895,7 @@ fn is_py_null_coalesce_op(op: BinOpKind) -> Bool {
 // Unary operator emission
 // =========================================================================
 
-fn emit_py_unary_op(op: UnaryOpKind, operand: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_py_expr_in_scope(expr: operand, registry: registry, scope: scope)
   match op {
     Not => concat("not ", expr_str)
@@ -905,7 +907,7 @@ fn emit_py_unary_op(op: UnaryOpKind, operand: Expr, registry: List<ItemInfo>, sc
 // Lambda emission
 // =========================================================================
 
-fn emit_py_lambda(params: List<String>, body: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_lambda(params: List<String>, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let param_strs = params |> map(p => py_ident(name: p))
   let params_str = param_strs |> join(separator: ", ")
   let body_str = emit_py_expr_in_scope(expr: body, registry: registry, scope: scope)
@@ -916,13 +918,13 @@ fn emit_py_lambda(params: List<String>, body: Expr, registry: List<ItemInfo>, sc
 // String interpolation emission — f-strings
 // =========================================================================
 
-fn emit_py_string_interp(parts: List<StringPart>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let segments = parts |> map(p => py_interp_segment(part: p, registry: registry, scope: scope))
   let fstr = segments |> join(separator: "")
   concat("f\"", fstr, "\"")
 }
 
-fn py_interp_segment(part: StringPart, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn py_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match part {
     Text { value: v } =>
       // Escape braces in f-strings
@@ -937,7 +939,7 @@ fn py_interp_segment(part: StringPart, registry: List<ItemInfo>, scope: InferSco
 // Block emission
 // =========================================================================
 
-fn emit_py_block(stmts: List<Expr>, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let state = stmts |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, stmt) {
     let line = emit_py_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
     let next_scope = scope_after_expr(expr: stmt, scope: acc.scope)
@@ -950,7 +952,7 @@ fn emit_py_block(stmts: List<Expr>, registry: List<ItemInfo>, scope: InferScope)
 // Cast emission
 // =========================================================================
 
-fn emit_py_cast(expr: Expr, target: TypeExpr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_py_expr_in_scope(expr: expr, registry: registry, scope: scope)
   let ty_str = emit_py_type_expr(type_expr: target)
   concat(ty_str, "(", expr_str, ")")
@@ -970,7 +972,7 @@ fn emit_py_service_def(
   transport: TransportBinding,
   config: ServiceConfig?,
   operations: List<OperationDef>,
-  registry: List<ItemInfo>
+  registry: Map<String, ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: name)
   let init_method = emit_py_service_init(transport: transport, config: config)
@@ -1008,7 +1010,7 @@ fn emit_py_service_init(transport: TransportBinding, config: ServiceConfig?) -> 
   }
 }
 
-fn emit_py_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
+fn emit_py_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
   let input_params = operation.inputs |> map(f =>
     concat(py_ident(name: f.name), ": ", emit_py_type_expr(type_expr: f.type_expr))
   )
@@ -1044,7 +1046,7 @@ fn emit_py_operation_return_type(outputs: List<Field>) -> String {
   }
 }
 
-fn emit_py_transport_call(transport: TransportBinding, operation: OperationDef, registry: List<ItemInfo>) -> String {
+fn emit_py_transport_call(transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
   match transport {
     RestBinding { base_url: _, auth: a, headers: hs } =>
       emit_py_rest_call(operation: operation, auth: a, headers: hs)
@@ -1168,7 +1170,7 @@ fn emit_py_capability_return_type(outputs: List<Field>) -> String {
 // data name: Type = value  ->  module-level constant
 // =========================================================================
 
-fn emit_py_data_def(name: String, type_expr: TypeExpr, value: Expr, registry: List<ItemInfo>, scope: InferScope) -> String {
+fn emit_py_data_def(name: String, type_expr: TypeExpr, value: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ty_str = emit_py_type_expr(type_expr: type_expr)
   let upper_name = to_screaming_snake(name: name)
   let val_str = emit_py_expr_in_scope(expr: value, registry: registry, scope: scope)

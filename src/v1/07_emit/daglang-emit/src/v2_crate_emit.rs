@@ -24,8 +24,8 @@
 //! - **`module_prelude()`**: Derived from each .dag file's module declaration and
 //!   import list.
 
-use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
@@ -41,6 +41,239 @@ use crate::v2_runtime_shim;
 pub struct GeneratedFile {
     pub rel_path: String,
     pub content: String,
+}
+
+#[derive(Debug, Clone)]
+struct EmbeddedDagSource {
+    rel_path: String,
+    module_name: String,
+    const_name: String,
+    dsl_logical_path: Option<String>,
+    content: String,
+    include_in_self_parse: bool,
+    include_in_self_resolve: bool,
+    include_in_gist_resolve: bool,
+}
+
+#[derive(Debug, Clone)]
+struct LoadedDagSource {
+    rel_path: String,
+    module_name: String,
+    imports: Vec<String>,
+    content: String,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct EmbeddedDagMarks {
+    include_in_self_parse: bool,
+    include_in_self_resolve: bool,
+    include_in_gist_resolve: bool,
+}
+
+fn workspace_root_from_manifest_dir() -> PathBuf {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .ancestors()
+        .nth(4)
+        .expect("could not find workspace root from CARGO_MANIFEST_DIR")
+        .to_path_buf()
+}
+
+fn dag_source_const_name(rel_path: &str) -> String {
+    let mut sanitized = String::new();
+    let mut last_was_underscore = false;
+    for ch in rel_path.chars() {
+        if ch.is_ascii_alphanumeric() {
+            sanitized.push(ch.to_ascii_uppercase());
+            last_was_underscore = false;
+        } else if !last_was_underscore {
+            sanitized.push('_');
+            last_was_underscore = true;
+        }
+    }
+    while sanitized.ends_with('_') {
+        sanitized.pop();
+    }
+    format!("{sanitized}_SOURCE")
+}
+
+fn compiler_seed_paths(workspace_root: &Path) -> Vec<String> {
+    let mut rel_paths = std::fs::read_dir(workspace_root.join("src/v2"))
+        .unwrap_or_else(|e| panic!("failed to read src/v2/: {e}"))
+        .filter_map(|entry| {
+            let entry = entry.unwrap_or_else(|e| panic!("failed to read src/v2 entry: {e}"));
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            if file_name.ends_with(".dag") {
+                Some(format!("src/v2/{file_name}"))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    rel_paths.sort();
+    rel_paths
+}
+
+fn load_dag_source(workspace_root: &Path, rel_path: &str) -> LoadedDagSource {
+    let dag_path = workspace_root.join(rel_path);
+    let content = std::fs::read_to_string(&dag_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", dag_path.display(), e));
+    let parsed = daglang_syntax::parser::parse(&content)
+        .unwrap_or_else(|errors| panic!("failed to parse {}: {errors:?}", dag_path.display()));
+    let module_name = parsed
+        .module_path
+        .as_ref()
+        .map(|path| path.node.as_dotted())
+        .unwrap_or_else(|| panic!("expected module declaration in {}", dag_path.display()));
+    let imports = parsed
+        .imports
+        .iter()
+        .map(|import| import.node.path.as_dotted())
+        .collect();
+    LoadedDagSource {
+        rel_path: rel_path.to_string(),
+        module_name,
+        imports,
+        content,
+    }
+}
+
+fn load_dag_source_cached(
+    workspace_root: &Path,
+    rel_path: &str,
+    cache: &mut HashMap<String, LoadedDagSource>,
+) -> LoadedDagSource {
+    if let Some(loaded) = cache.get(rel_path) {
+        return loaded.clone();
+    }
+    let loaded = load_dag_source(workspace_root, rel_path);
+    cache.insert(rel_path.to_string(), loaded.clone());
+    loaded
+}
+
+fn resolve_import_rel_path(
+    module_path: &str,
+    compiler_module_paths: &HashMap<String, String>,
+) -> String {
+    compiler_module_paths
+        .get(module_path)
+        .cloned()
+        .unwrap_or_else(|| format!("dsl/{}.dag", module_path.replace('.', "/")))
+}
+
+fn mark_embedded_dag_source(
+    sources: &mut BTreeMap<String, EmbeddedDagSource>,
+    loaded: &LoadedDagSource,
+    marks: EmbeddedDagMarks,
+) {
+    let entry = sources
+        .entry(loaded.rel_path.clone())
+        .or_insert_with(|| EmbeddedDagSource {
+            rel_path: loaded.rel_path.clone(),
+            module_name: loaded.module_name.clone(),
+            const_name: dag_source_const_name(&loaded.rel_path),
+            dsl_logical_path: loaded
+                .rel_path
+                .strip_prefix("dsl/")
+                .map(|path| path.to_string()),
+            content: loaded.content.clone(),
+            include_in_self_parse: false,
+            include_in_self_resolve: false,
+            include_in_gist_resolve: false,
+        });
+    assert_eq!(
+        entry.module_name, loaded.module_name,
+        "embedded source module drift for {}",
+        loaded.rel_path
+    );
+    assert_eq!(
+        entry.content, loaded.content,
+        "embedded source content drift for {}",
+        loaded.rel_path
+    );
+    entry.include_in_self_parse |= marks.include_in_self_parse;
+    entry.include_in_self_resolve |= marks.include_in_self_resolve;
+    entry.include_in_gist_resolve |= marks.include_in_gist_resolve;
+}
+
+fn collect_import_closure(
+    workspace_root: &Path,
+    compiler_module_paths: &HashMap<String, String>,
+    seed_rel_paths: &[String],
+    marks: EmbeddedDagMarks,
+    cache: &mut HashMap<String, LoadedDagSource>,
+    sources: &mut BTreeMap<String, EmbeddedDagSource>,
+) {
+    let mut stack = seed_rel_paths.to_vec();
+    let mut visited = HashSet::new();
+    while let Some(rel_path) = stack.pop() {
+        if !visited.insert(rel_path.clone()) {
+            continue;
+        }
+        let loaded = load_dag_source_cached(workspace_root, &rel_path, cache);
+        mark_embedded_dag_source(sources, &loaded, marks);
+        for import_path in &loaded.imports {
+            stack.push(resolve_import_rel_path(import_path, compiler_module_paths));
+        }
+    }
+}
+
+fn collect_embedded_dag_sources() -> Vec<EmbeddedDagSource> {
+    let workspace_root = workspace_root_from_manifest_dir();
+    let compiler_seed_paths = compiler_seed_paths(&workspace_root);
+    let mut cache = HashMap::new();
+    let mut compiler_module_paths = HashMap::new();
+    let mut sources = BTreeMap::new();
+
+    for rel_path in &compiler_seed_paths {
+        let loaded = load_dag_source_cached(&workspace_root, rel_path, &mut cache);
+        compiler_module_paths.insert(loaded.module_name.clone(), loaded.rel_path.clone());
+        mark_embedded_dag_source(
+            &mut sources,
+            &loaded,
+            EmbeddedDagMarks {
+                include_in_self_parse: true,
+                ..EmbeddedDagMarks::default()
+            },
+        );
+    }
+
+    collect_import_closure(
+        &workspace_root,
+        &compiler_module_paths,
+        &compiler_seed_paths,
+        EmbeddedDagMarks {
+            include_in_self_resolve: true,
+            ..EmbeddedDagMarks::default()
+        },
+        &mut cache,
+        &mut sources,
+    );
+
+    let gist_seed_paths = vec!["dsl/gunbc/tools/gist.dag".to_string()];
+    collect_import_closure(
+        &workspace_root,
+        &compiler_module_paths,
+        &gist_seed_paths,
+        EmbeddedDagMarks {
+            include_in_gist_resolve: true,
+            ..EmbeddedDagMarks::default()
+        },
+        &mut cache,
+        &mut sources,
+    );
+
+    let mut seen_const_names = HashSet::new();
+    for source in sources.values() {
+        assert!(
+            seen_const_names.insert(source.const_name.clone()),
+            "duplicate embedded source const name: {}",
+            source.const_name
+        );
+    }
+
+    sources.into_values().collect()
 }
 
 fn rust_mod_for_module_path(path: &str) -> String {
@@ -256,51 +489,9 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         content: v2_runtime_shim::V2_RUNTIME_SOURCE.to_string(),
     });
 
-    // 8. Emit generated test module
-    //    Read all v2 .dag source files at crate-assembly time so the
-    //    self-compile test can embed them as const strings in the generated crate.
-    let dag_sources = {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        // daglang-emit lives at src/v1/07_emit/daglang-emit/, workspace root is 4 up
-        let workspace_root = manifest_dir
-            .ancestors()
-            .nth(4)
-            .expect("could not find workspace root from CARGO_MANIFEST_DIR");
-        let dag_files = [
-            // v2 compiler sources
-            ("std_types", "dsl/std/types.dag"),
-            ("00_core", "src/v2/00_core.dag"),
-            ("01_tokenize", "src/v2/01_tokenize.dag"),
-            ("02_parse", "src/v2/02_parse.dag"),
-            ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
-            ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-            // gist.dag transitive dependencies (topological order)
-            ("gist_std_errors", "dsl/std/errors.dag"),
-            ("gist_cloud", "dsl/extdeps/cloud/cloud.dag"),
-            ("gist_shell", "dsl/extdeps/shell.dag"),
-            ("gist_gcp", "dsl/extdeps/cloud/gcp/gcp.dag"),
-            ("gist_git", "dsl/extdeps/git.dag"),
-            ("gist_github", "dsl/extdeps/github/github.dag"),
-            ("gist_resources", "dsl/std/resources.dag"),
-            ("gist_github_gists", "dsl/extdeps/github/gists.dag"),
-            ("gist_credentials", "dsl/gunbc/auth/credentials.dag"),
-            ("gist_github_auth", "dsl/extdeps/github/auth.dag"),
-            ("gist_gist", "dsl/gunbc/tools/gist.dag"),
-        ];
-        dag_files
-            .iter()
-            .map(|(stem, rel_path)| {
-                let dag_path = workspace_root.join(rel_path);
-                let content = std::fs::read_to_string(&dag_path)
-                    .unwrap_or_else(|e| panic!("failed to read {}: {}", dag_path.display(), e));
-                (stem.to_string(), content)
-            })
-            .collect::<Vec<(String, String)>>()
-    };
+    // 8. Emit generated test module from the workspace source tree and import
+    //    closure so the generated crate embeds a single, structural source set.
+    let dag_sources = collect_embedded_dag_sources();
     files.push(GeneratedFile {
         rel_path: "src/generated_tests.rs".to_string(),
         content: emit_test_module(&dag_sources),
@@ -713,10 +904,10 @@ fn build_optional_fields(type_defs: &[&TypeDef]) -> HashMap<String, HashSet<Stri
 /// crate assembly itself — they travel with the generated crate, not with the test
 /// harness.
 ///
-/// `dag_sources` contains all v2 .dag source files as (stem, content) pairs,
-/// embedded as const strings in the generated test module so the compiled v2
-/// compiler can process its own source files through the full pipeline.
-fn emit_test_module(dag_sources: &[(String, String)]) -> String {
+/// `dag_sources` contains the compiler and fixture source closure derived from
+/// the workspace tree and import graph, embedded as const strings in the
+/// generated test module.
+fn emit_test_module(dag_sources: &[EmbeddedDagSource]) -> String {
     // Pick the right raw string delimiter for each source.
     // We use r##"..."## so the content can contain r#"..."# sequences.
     // If any source contains "## we escalate to r###"..."###.
@@ -730,42 +921,61 @@ fn emit_test_module(dag_sources: &[(String, String)]) -> String {
 
     // Build const declarations for each .dag source file
     let mut const_decls = String::new();
-    let const_names = [
-        // v2 compiler sources
-        ("std_types", "STD_TYPES_DAG_SOURCE"),
-        ("00_core", "CORE_DAG_SOURCE"),
-        ("01_tokenize", "TOKENIZE_DAG_SOURCE"),
-        ("02_parse", "PARSE_DAG_SOURCE"),
-        ("03_resolve", "RESOLVE_DAG_SOURCE"),
-        ("04_typecheck", "TYPECHECK_DAG_SOURCE"),
-        ("05_emit", "EMIT_DAG_SOURCE"),
-        ("05_emit_rust", "EMIT_RUST_DAG_SOURCE"),
-        ("05_emit_python", "EMIT_PYTHON_DAG_SOURCE"),
-        ("06_pipeline", "PIPELINE_DAG_SOURCE"),
-        // gist.dag transitive dependencies
-        ("gist_std_errors", "GIST_STD_ERRORS_DAG_SOURCE"),
-        ("gist_cloud", "GIST_CLOUD_DAG_SOURCE"),
-        ("gist_shell", "GIST_SHELL_DAG_SOURCE"),
-        ("gist_gcp", "GIST_GCP_DAG_SOURCE"),
-        ("gist_git", "GIST_GIT_DAG_SOURCE"),
-        ("gist_github", "GIST_GITHUB_DAG_SOURCE"),
-        ("gist_resources", "GIST_RESOURCES_DAG_SOURCE"),
-        ("gist_github_gists", "GIST_GITHUB_GISTS_DAG_SOURCE"),
-        ("gist_credentials", "GIST_CREDENTIALS_DAG_SOURCE"),
-        ("gist_github_auth", "GIST_GITHUB_AUTH_DAG_SOURCE"),
-        ("gist_gist", "GIST_GIST_DAG_SOURCE"),
-    ];
-    for (stem, const_name) in &const_names {
-        let content = dag_sources
-            .iter()
-            .find(|(s, _)| s == stem)
-            .unwrap_or_else(|| panic!("missing .dag source for {}", stem));
-        let (open, close) = raw_delimiters(&content.1);
+    for source in dag_sources {
+        let (open, close) = raw_delimiters(&source.content);
         const_decls.push_str(&format!(
             "    const {}: &str = {}{}{};\n",
-            const_name, open, content.1, close
+            source.const_name, open, source.content, close
         ));
     }
+
+    let tokenize_source_const = dag_sources
+        .iter()
+        .find(|source| source.rel_path == "src/v2/01_tokenize.dag")
+        .map(|source| source.const_name.clone())
+        .expect("missing src/v2/01_tokenize.dag embedded source");
+
+    let self_parse_sources = dag_sources
+        .iter()
+        .filter(|source| source.include_in_self_parse)
+        .map(|source| {
+            format!(
+                "                    (\"{}\", {}, \"{}\"),\n",
+                source.rel_path, source.const_name, source.module_name
+            )
+        })
+        .collect::<String>();
+
+    let self_resolve_sources = dag_sources
+        .iter()
+        .filter(|source| source.include_in_self_resolve)
+        .map(|source| {
+            format!(
+                "                    (\"{}\", {}),\n",
+                source.rel_path, source.const_name
+            )
+        })
+        .collect::<String>();
+
+    let self_resolve_source_count = dag_sources
+        .iter()
+        .filter(|source| source.include_in_self_resolve)
+        .count();
+
+    let gist_resolve_sources = dag_sources
+        .iter()
+        .filter(|source| source.include_in_gist_resolve)
+        .map(|source| {
+            let logical_path = source
+                .dsl_logical_path
+                .as_ref()
+                .unwrap_or_else(|| panic!("gist source {} is not under dsl/", source.rel_path));
+            format!(
+                "                    crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }},\n",
+                logical_path, source.const_name
+            )
+        })
+        .collect::<String>();
 
     format!(
         r#"#[cfg(test)]
@@ -828,7 +1038,7 @@ mod generated_tests {{
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {{
                 // Tokenize the v2 compiler's own tokenizer source
-                let tokens = tokenize(TOKENIZE_DAG_SOURCE.to_string());
+                let tokens = tokenize({tokenize_source_const}.to_string());
 
                 // Token list should be non-empty
                 assert!(!tokens.is_empty(), "tokenizing 01_tokenize.dag should produce tokens");
@@ -919,16 +1129,7 @@ mod generated_tests {{
                 // Parse all v2 modules including 02_parse.dag (3600+ lines).
                 // Rc<Vec<T>> wrapping (S76 fix) makes this feasible — clone is O(1).
                 let modules: Vec<(&str, &str, &str)> = vec![
-                    ("00_core.dag", CORE_DAG_SOURCE, "v2.std.core"),
-                    ("01_tokenize.dag", TOKENIZE_DAG_SOURCE, "v2.compiler.tokenize"),
-                    ("02_parse.dag", PARSE_DAG_SOURCE, "v2.compiler.parse"),
-                    ("03_resolve.dag", RESOLVE_DAG_SOURCE, "v2.compiler.resolve"),
-                    ("04_typecheck.dag", TYPECHECK_DAG_SOURCE, "v2.compiler.typecheck"),
-                    ("05_emit.dag", EMIT_DAG_SOURCE, "v2.compiler.emit"),
-                    ("05_emit_rust.dag", EMIT_RUST_DAG_SOURCE, "v2.compiler.emit_rust"),
-                    ("05_emit_python.dag", EMIT_PYTHON_DAG_SOURCE, "v2.compiler.emit_python"),
-                    ("06_pipeline.dag", PIPELINE_DAG_SOURCE, "v2.compiler.pipeline"),
-                ];
+{self_parse_sources}                ];
                 for (file, source, expected_name) in &modules {{
                     let tokens = tokenize(source.to_string());
                     assert!(
@@ -956,31 +1157,20 @@ mod generated_tests {{
         result.expect("self-parse-all test panicked");
     }}
 
-    /// Self-compile through resolve: tokenize, parse, and resolve all 10
-    /// v2 .dag sources (including std.types). Proves the compiled v2 compiler
-    /// can process its own source through the first 3 pipeline stages with
-    /// zero errors.
+    /// Resolve-only self-hosting ratchet: tokenize, parse, and resolve the
+    /// compiler source closure, including external imports like std.types.
+    /// Proves the compiled v2 compiler can process its own source through the
+    /// first 3 pipeline stages with zero errors.
     ///
     /// Full pipeline (typecheck + emit) is a future milestone — currently
-    /// OOMs in debug mode due to the generated typechecker's memory usage
-    /// on 10 modules.
+    /// OOMs in debug mode due to the generated typechecker's memory usage.
     #[test]
     fn self_compile_all_modules() {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
                 let all_sources: Vec<(&str, &str)> = vec![
-                    ("std_types.dag", STD_TYPES_DAG_SOURCE),
-                    ("00_core.dag", CORE_DAG_SOURCE),
-                    ("01_tokenize.dag", TOKENIZE_DAG_SOURCE),
-                    ("02_parse.dag", PARSE_DAG_SOURCE),
-                    ("03_resolve.dag", RESOLVE_DAG_SOURCE),
-                    ("04_typecheck.dag", TYPECHECK_DAG_SOURCE),
-                    ("05_emit.dag", EMIT_DAG_SOURCE),
-                    ("05_emit_rust.dag", EMIT_RUST_DAG_SOURCE),
-                    ("05_emit_python.dag", EMIT_PYTHON_DAG_SOURCE),
-                    ("06_pipeline.dag", PIPELINE_DAG_SOURCE),
-                ];
+{self_resolve_sources}                ];
 
                 // Stage 1: Tokenize all sources
                 let token_lists: Vec<_> = all_sources.iter()
@@ -1012,26 +1202,25 @@ mod generated_tests {{
                     .collect();
                 let error_count = errors.len();
 
-                // Regression baseline: error count must not increase.
-                // Current known errors (10): 9 unresolved re-exports + 1 false cycle.
-                // As the resolver improves, lower this ceiling toward 0.
-                // When error_count reaches 0, assert output files are non-empty.
+                // Resolve-only regression ratchet.
+                // Keep this at zero errors; if the source closure changes, the
+                // derived module count below updates with it.
                 assert!(
                     errors.is_empty(),
                     "resolve should produce zero errors, got {{:?}}", errors
                 );
 
-                // Verify all 10 modules survived resolve
+                // Verify the full compiler source closure survived resolve.
                 assert_eq!(
-                    graph.modules.len(), 10,
-                    "all 10 modules should be in resolved graph"
+                    graph.modules.len(), {self_resolve_source_count},
+                    "all compiler-source modules should be in resolved graph"
                 );
 
-                // Pipeline must complete without OOM. Output files depend on
-                // resolver errors reaching 0 — tracked above.
+                // Pipeline must complete without OOM. Full emit coverage depends
+                // on resolver errors reaching 0 — tracked above.
                 eprintln!(
-                    "self-compile completed: {{}} errors, {{}} output files",
-                    error_count, result.files.len()
+                    "self-resolve completed: {{}} errors, {{}} modules",
+                    error_count, graph.modules.len()
                 );
             }})
             .expect("failed to spawn thread")
@@ -1039,7 +1228,7 @@ mod generated_tests {{
         result.expect("self-compile-all test panicked");
     }}
 
-    /// Gist resolve: feed gist.dag's 12 transitive dependencies through
+    /// Gist resolve: feed gist.dag's transitive source closure through
     /// tokenize -> parse -> resolve via the v2 compiler's own pipeline.
     /// Proves the compiled v2 compiler can process real-world DSL modules
     /// (services, resources, patterns) beyond its own source.
@@ -1048,25 +1237,11 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                // Gist's transitive dependencies in topological order.
-                // std.types is shared with the v2 compiler sources.
+                // Gist's transitive source closure, derived from imports.
                 let sources: Vec<crate::pipeline::SourceFile> = vec![
-                    crate::pipeline::SourceFile {{ path: "std/types.dag".to_string(), content: STD_TYPES_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "std/errors.dag".to_string(), content: GIST_STD_ERRORS_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/cloud/cloud.dag".to_string(), content: GIST_CLOUD_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/shell.dag".to_string(), content: GIST_SHELL_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: GIST_GCP_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/git.dag".to_string(), content: GIST_GIT_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/github/github.dag".to_string(), content: GIST_GITHUB_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "std/resources.dag".to_string(), content: GIST_RESOURCES_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/github/gists.dag".to_string(), content: GIST_GITHUB_GISTS_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "gunbc/auth/credentials.dag".to_string(), content: GIST_CREDENTIALS_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "extdeps/github/auth.dag".to_string(), content: GIST_GITHUB_AUTH_DAG_SOURCE.to_string() }},
-                    crate::pipeline::SourceFile {{ path: "gunbc/tools/gist.dag".to_string(), content: GIST_GIST_DAG_SOURCE.to_string() }},
-                ];
-                let result = crate::pipeline::compile_sources(
+{gist_resolve_sources}                ];
+                let result = crate::pipeline::resolve_sources(
                     std::rc::Rc::new(sources),
-                    crate::v2_core::RenderTarget::Rust,
                 );
 
                 // Count error-severity diagnostics from tokenize + parse + resolve.
@@ -1078,14 +1253,14 @@ mod generated_tests {{
                     .collect();
                 let error_count = errors.len();
 
-                // Regression baseline: track error count as it decreases.
-                // DSL modules use constructs (service, resource, pattern, func
-                // with uses-clauses) that the v2 resolver may not yet handle.
-                // Set the ceiling based on what currently passes and lower it
-                // as the resolver improves.
+                eprintln!("gist resolve error count: {{}}", error_count);
+                for e in &errors {{
+                    eprintln!("  {{:?}}", e);
+                }}
+
                 assert!(
-                    error_count <= 50,
-                    "gist resolve error count regressed: {{}} errors (ceiling 50): {{:?}}",
+                    error_count == 0,
+                    "gist resolve errors: {{}} errors (expected 0): {{:?}}",
                     error_count, errors
                 );
             }})
@@ -1093,9 +1268,56 @@ mod generated_tests {{
             .join();
         result.expect("gist-resolve-all test panicked");
     }}
+
+    /// Gist full pipeline: tokenize -> parse -> resolve -> typecheck -> emit.
+    /// Proves the compiled v2 compiler can process the gist dependency chain
+    /// through all pipeline stages without OOM.
+    #[test]
+    fn gist_compile_all_modules() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                let sources: Vec<crate::pipeline::SourceFile> = vec![
+{gist_resolve_sources}                ];
+                let result = crate::pipeline::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v2_core::RenderTarget::Rust,
+                );
+
+                let errors: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .collect();
+                let error_count = errors.len();
+
+                eprintln!("gist compile error count: {{}}", error_count);
+                for e in &errors {{
+                    eprintln!("  {{:?}}", e);
+                }}
+
+                assert!(
+                    error_count == 0,
+                    "gist compile errors: {{}} errors (expected 0): {{:?}}",
+                    error_count, errors
+                );
+
+                let has_content = result.files.iter().any(|f| !f.content.is_empty());
+                assert!(
+                    has_content,
+                    "gist compile should produce at least one non-empty file"
+                );
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("gist-compile-all test panicked");
+    }}
 }}
 "#,
         const_decls = const_decls,
+        tokenize_source_const = tokenize_source_const,
+        self_parse_sources = self_parse_sources,
+        self_resolve_sources = self_resolve_sources,
+        self_resolve_source_count = self_resolve_source_count,
+        gist_resolve_sources = gist_resolve_sources,
     )
 }
 
