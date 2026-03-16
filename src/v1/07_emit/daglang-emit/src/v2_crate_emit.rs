@@ -137,6 +137,19 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    let global_fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+                    Some((rust_name, fn_codegen::type_expr_to_ir_type(&fd.return_type)))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
     let global_fn_param_types: HashMap<String, Vec<(String, String)>> = modules
         .iter()
         .flat_map(|(_, sf)| {
@@ -225,6 +238,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &defined_type_signatures,
             &module_struct_field_ir_types,
             &global_fn_return_types,
+            &global_fn_return_ir_types,
             &global_fn_param_types,
         );
         // Track which types this module defines with their structural signature.
@@ -421,6 +435,7 @@ fn emit_module(
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
     struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
     global_fn_return_types: &HashMap<String, String>,
+    global_fn_return_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
     global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
@@ -470,6 +485,7 @@ fn emit_module(
         enum_variants: enum_variants_map,
         boxed_fields: recursive_fields.clone(),
         fn_return_types: global_fn_return_types.clone(),
+        fn_return_ir_types: global_fn_return_ir_types.clone(),
         fn_param_types: global_fn_param_types.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir

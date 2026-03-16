@@ -115,6 +115,8 @@ pub struct CompileContext {
     pub boxed_fields: HashSet<(String, String)>,
     /// Map from function name → return type name (for v2 crate emit).
     pub fn_return_types: std::collections::HashMap<String, String>,
+    /// Map from function name → exact return IrType when only signature metadata is available.
+    pub fn_return_ir_types: HashMap<String, IrType>,
     /// Map from function name → ordered parameter names and their type names.
     pub fn_param_types: std::collections::HashMap<String, Vec<(String, String)>>,
     /// Set of parameter names that are Optional (for v2 crate emit).
@@ -508,6 +510,7 @@ impl CompileContext {
             enum_variants: std::collections::HashMap::new(),
             boxed_fields: HashSet::new(),
             fn_return_types: std::collections::HashMap::new(),
+            fn_return_ir_types: HashMap::new(),
             fn_param_types: std::collections::HashMap::new(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
@@ -794,7 +797,9 @@ fn track_binding_before_compile(stmt: &ast::Stmt, ctx: &mut CompileContext) {
     let Some((name, expr)) = stmt_binding(stmt) else {
         return;
     };
-    if is_clearly_optional_ast_expr(expr) {
+    if is_clearly_optional_ast_expr(expr)
+        || infer_known_expr_ir_type(expr, ctx).is_some_and(|ty| matches!(ty, IrType::Optional(_)))
+    {
         ctx.optional_params.insert(name.to_string());
     }
 }
@@ -853,7 +858,9 @@ fn compile_stmt(
                 name: escape_rust_keyword(name),
                 mutable: false,
                 expr: compile_expr(expr, ctx, counter),
-                ir_type: ctx.current_expr_ir_type(),
+                ir_type: ctx
+                    .current_expr_ir_type()
+                    .or_else(|| infer_known_expr_ir_type(expr, ctx)),
             },
         ),
         ast::Stmt::Assign(name, expr) => ctx.with_expr_path(
@@ -869,7 +876,9 @@ fn compile_stmt(
                 name: escape_rust_keyword(&ns.name),
                 mutable: false,
                 expr: compile_expr(&ns.expr, ctx, counter),
-                ir_type: ctx.current_expr_ir_type(),
+                ir_type: ctx
+                    .current_expr_ir_type()
+                    .or_else(|| infer_known_expr_ir_type(&ns.expr, ctx)),
             },
         ),
         ast::Stmt::Expr(expr) => ctx.with_expr_path(
@@ -1564,11 +1573,14 @@ fn compile_call_arg_typed(
 }
 
 fn infer_call_arg_type(
-    _args: &[(Option<String>, ast::Expr)],
+    args: &[(Option<String>, ast::Expr)],
     index: usize,
     ctx: &CompileContext,
 ) -> Option<IrType> {
-    with_call_arg_path(ctx, index, || ctx.current_expr_ir_type())
+    with_call_arg_path(ctx, index, || {
+        ctx.current_expr_ir_type()
+            .or_else(|| infer_known_expr_ir_type(&args[index].1, ctx))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1626,6 +1638,7 @@ fn compile_intrinsic_call(
             let func = func_index.map(|index| &args[index].1);
             Some(compile_fold_intrinsic(
                 &collection.clone(),
+                &args[0].1,
                 FoldExprContext {
                     init: init_index
                         .zip(init)
@@ -2382,6 +2395,7 @@ struct FoldExprContext<'a> {
 
 fn compile_fold_intrinsic(
     collection: &code_ir::Expr,
+    collection_expr: &ast::Expr,
     fold: FoldExprContext<'_>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -2416,7 +2430,26 @@ fn compile_fold_intrinsic(
         },
         None => code_ir::Expr::Var(acc.clone()),
     };
-    let acc_ir_type = ctx.current_expr_ir_type();
+    let acc_ir_type = ctx
+        .current_expr_ir_type()
+        .or_else(|| {
+            fold.init.as_ref().and_then(|(expr, path)| {
+                ctx.with_expr_path(path.clone(), || {
+                    ctx.current_expr_ir_type()
+                        .or_else(|| infer_known_expr_ir_type(expr, ctx))
+                })
+            })
+        })
+        .or_else(|| infer_fold_accumulator_ir_type(collection_expr, &fold, ctx))
+        .or_else(|| {
+            fold.init.as_ref().and_then(|(expr, _)| match expr {
+                ast::Expr::List(items) if items.is_empty() => ctx
+                    .current_return_ir_type
+                    .clone()
+                    .filter(|ty| matches!(ty, IrType::Generic(name, _) if name == "List")),
+                _ => None,
+            })
+        });
     code_ir::Expr::Block(vec![
         code_ir::Stmt::Let {
             name: acc.clone(),
@@ -3601,6 +3634,111 @@ fn named_type_from_ir(ty: &IrType) -> Option<String> {
     match ty {
         IrType::Named(name) => Some(name.clone()),
         IrType::Optional(inner) => named_type_from_ir(inner),
+        _ => None,
+    }
+}
+
+fn infer_list_element_ir_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    match infer_known_expr_ir_type(expr, ctx)? {
+        IrType::Generic(name, args) if name == "List" && args.len() == 1 => Some(args[0].clone()),
+        _ => None,
+    }
+}
+
+fn infer_fold_result_ir_type(
+    expr: &ast::Expr,
+    acc_param: Option<&str>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    match expr {
+        ast::Expr::Ident(name) if Some(name.as_str()) == acc_param => None,
+        ast::Expr::Call(name, args) if name == "concat" => args.iter().find_map(|(_, arg)| {
+            if matches!(arg, ast::Expr::Ident(name) if Some(name.as_str()) == acc_param) {
+                None
+            } else {
+                infer_known_expr_ir_type(arg, ctx)
+            }
+        }),
+        ast::Expr::If(_, then_expr, Some(else_expr)) => {
+            let then_ty = infer_fold_result_ir_type(then_expr, acc_param, ctx);
+            let else_ty = infer_fold_result_ir_type(else_expr, acc_param, ctx);
+            match (then_ty, else_ty) {
+                (Some(left), Some(right)) if left == right => Some(left),
+                (Some(ty), None) | (None, Some(ty)) => Some(ty),
+                _ => None,
+            }
+        }
+        ast::Expr::Block(stmts) => stmts.last().and_then(|stmt| match stmt {
+            ast::Stmt::Expr(expr) => infer_fold_result_ir_type(expr, acc_param, ctx),
+            _ => None,
+        }),
+        _ => infer_known_expr_ir_type(expr, ctx),
+    }
+}
+
+fn infer_fold_accumulator_ir_type(
+    collection_expr: &ast::Expr,
+    fold: &FoldExprContext<'_>,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    let (func_expr, _) = fold.func.as_ref()?;
+    let ast::Expr::Lambda(params, body) = func_expr else {
+        return None;
+    };
+    let acc_param = params.first().map(|name| name.as_str());
+    let elem_param = params.get(1).map(|name| name.as_str());
+    let elem_ir_type = infer_list_element_ir_type(collection_expr, ctx);
+    let mut body_ctx = ctx.clone();
+    if let (Some(param), Some(ty)) = (elem_param, elem_ir_type) {
+        body_ctx.ir_scope.insert(param.to_string(), ty);
+    }
+    infer_fold_result_ir_type(body, acc_param, &body_ctx)
+}
+
+fn infer_known_field_ir_type(
+    receiver_type: &IrType,
+    field: &str,
+    ctx: &CompileContext,
+) -> Option<IrType> {
+    match receiver_type {
+        IrType::Optional(inner) if field == "value" => Some((**inner).clone()),
+        IrType::Named(name) => ctx
+            .struct_field_ir_types
+            .get(name)
+            .and_then(|fields| fields.iter().find(|(field_name, _)| field_name == field))
+            .map(|(_, ty)| ty.clone()),
+        IrType::Record(fields) => fields
+            .iter()
+            .find(|(field_name, _)| field_name == field)
+            .map(|(_, ty)| ty.clone()),
+        IrType::Tuple(items) if field == "first" => items.first().cloned(),
+        IrType::Tuple(items) if field == "second" => items.get(1).cloned(),
+        _ => None,
+    }
+}
+
+fn infer_known_expr_ir_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    match expr {
+        ast::Expr::Ident(name) => ctx.ir_scope.get(name).cloned(),
+        ast::Expr::FieldAccess(receiver, field) => {
+            let receiver_type = infer_known_expr_ir_type(receiver, ctx)?;
+            infer_known_field_ir_type(&receiver_type, field, ctx)
+        }
+        ast::Expr::Call(name, args) if name == "Some" && args.len() == 1 => {
+            infer_known_expr_ir_type(&args[0].1, ctx).map(|inner| IrType::Optional(Box::new(inner)))
+        }
+        ast::Expr::Call(name, _) => ctx.fn_return_ir_types.get(name).cloned(),
+        ast::Expr::Record(Some(name), fields)
+            if name == "Some" && fields.len() == 1 && fields[0].0 == "value" =>
+        {
+            infer_known_expr_ir_type(&fields[0].1, ctx)
+                .map(|inner| IrType::Optional(Box::new(inner)))
+        }
+        ast::Expr::Record(Some(name), _) if name != "None" => Some(IrType::Named(name.clone())),
+        ast::Expr::List(items) => {
+            let first = infer_known_expr_ir_type(items.first()?, ctx)?;
+            Some(IrType::Generic("List".to_string(), vec![first]))
+        }
         _ => None,
     }
 }
@@ -5078,6 +5216,262 @@ mod tests {
                 assert_eq!(arms[0].pattern, "Some(TokenKind::LitStr)");
             }
             other => panic!("expected Match, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn let_bound_call_result_uses_declared_return_ir_type_for_option_match_patterns() {
+        let mut ctx = CompileContext::new();
+        ctx.enum_variants.insert(
+            "TokenKind".to_string(),
+            ["LitStr".to_string()].into_iter().collect(),
+        );
+        ctx.enum_variants.insert(
+            "LiteralValue".to_string(),
+            ["LitStr".to_string()].into_iter().collect(),
+        );
+        ctx.variant_to_enum
+            .insert("LitStr".to_string(), "LiteralValue".to_string());
+        ctx.fn_return_ir_types.insert(
+            "peek_kind".to_string(),
+            IrType::Optional(Box::new(IrType::Named("TokenKind".to_string()))),
+        );
+
+        let body = FnBody {
+            stmts: vec![
+                Stmt::Let("k".into(), Expr::Call("peek_kind".into(), vec![])),
+                Stmt::Expr(Expr::Match(
+                    Box::new(Expr::Ident("k".into())),
+                    vec![
+                        MatchArm {
+                            pattern: Pattern::Variant(
+                                "Some".into(),
+                                vec![(
+                                    "value".into(),
+                                    Pattern::Variant(
+                                        "LitStr".into(),
+                                        vec![("value".into(), Pattern::Ident("key".into()))],
+                                    ),
+                                )],
+                            ),
+                            guard: None,
+                            body: Expr::Literal(Literal::Int(1)),
+                        },
+                        MatchArm {
+                            pattern: Pattern::Wildcard,
+                            guard: None,
+                            body: Expr::Literal(Literal::Int(0)),
+                        },
+                    ],
+                )),
+            ],
+        };
+
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::Let {
+                ir_type: Some(IrType::Optional(inner)),
+                ..
+            } => assert!(matches!(inner.as_ref(), IrType::Named(name) if name == "TokenKind")),
+            other => panic!("expected optional let binding type, got: {other:?}"),
+        }
+        match &ir[1] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Match { arms, .. }) => {
+                assert_eq!(
+                    arms[0].pattern,
+                    "Some(TokenKind::LitStr { value: key, .. })"
+                );
+            }
+            other => panic!("expected tail match, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn with_uses_base_scope_type_when_expr_metadata_is_missing() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope.insert(
+            "state".to_string(),
+            IrType::Named("ParserState".to_string()),
+        );
+        ctx.struct_field_types.insert(
+            "ParserState".to_string(),
+            [("pos".to_string(), "Int".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "ParserState".to_string(),
+            vec![("pos".to_string(), IrType::Int)],
+        );
+
+        let expr = Expr::Call(
+            "with".into(),
+            vec![
+                (None, Expr::Ident("state".into())),
+                (
+                    None,
+                    Expr::Record(None, vec![("pos".into(), Expr::Literal(Literal::Int(1)))]),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct {
+                name,
+                fields,
+                rest: Some(rest),
+                ..
+            } => {
+                assert_eq!(name, "ParserState");
+                assert!(matches!(&fields[0].1, code_ir::Expr::IntLit(1)));
+                let cloned_state = match rest.as_ref() {
+                    code_ir::Expr::MethodCall {
+                        receiver,
+                        method,
+                        args,
+                    } if method == "clone" && args.is_empty() => match receiver.as_ref() {
+                        code_ir::Expr::Var(name) => name == "state",
+                        code_ir::Expr::MethodCall {
+                            receiver,
+                            method,
+                            args,
+                        } => {
+                            method == "clone"
+                                && args.is_empty()
+                                && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == "state")
+                        }
+                        _ => false,
+                    },
+                    _ => false,
+                };
+                assert!(
+                    cloned_state,
+                    "expected struct update to preserve cloned base, got: {rest:?}"
+                );
+            }
+            other => panic!("expected struct update, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_uses_function_return_ir_type_for_empty_list_accumulator() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.current_return_ir_type = Some(IrType::Generic("List".to_string(), vec![IrType::Str]));
+        ctx.ir_scope.insert(
+            "items".to_string(),
+            IrType::Generic("List".to_string(), vec![IrType::Str]),
+        );
+
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("items".into())),
+                (Some("init".into()), Expr::List(vec![])),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "item".into()],
+                        Box::new(Expr::Ident("acc".into())),
+                    ),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => match &stmts[0] {
+                code_ir::Stmt::Let {
+                    ir_type: Some(IrType::Generic(name, args)),
+                    ..
+                } => {
+                    assert_eq!(name, "List");
+                    assert!(matches!(args.as_slice(), [IrType::Str]));
+                }
+                other => panic!("expected typed fold accumulator let, got: {other:?}"),
+            },
+            other => panic!("expected fold block, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_prefers_lambda_structure_over_function_return_type_for_empty_list_accumulator() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.current_return_ir_type = Some(IrType::Generic(
+            "List".to_string(),
+            vec![IrType::Named("Diagnostic".to_string())],
+        ));
+        ctx.ir_scope.insert(
+            "modules".to_string(),
+            IrType::Generic(
+                "List".to_string(),
+                vec![IrType::Named("TypedModule".to_string())],
+            ),
+        );
+        ctx.struct_field_ir_types.insert(
+            "TypedModule".to_string(),
+            vec![("type_env".to_string(), IrType::Named("TypeEnv".to_string()))],
+        );
+        ctx.struct_field_ir_types.insert(
+            "TypeEnv".to_string(),
+            vec![(
+                "bindings".to_string(),
+                IrType::Generic(
+                    "List".to_string(),
+                    vec![IrType::Named("TypeBinding".to_string())],
+                ),
+            )],
+        );
+
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("modules".into())),
+                (Some("init".into()), Expr::List(vec![])),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "tm".into()],
+                        Box::new(Expr::Call(
+                            "concat".into(),
+                            vec![
+                                (None, Expr::Ident("acc".into())),
+                                (
+                                    None,
+                                    Expr::FieldAccess(
+                                        Box::new(Expr::FieldAccess(
+                                            Box::new(Expr::Ident("tm".into())),
+                                            "type_env".into(),
+                                        )),
+                                        "bindings".into(),
+                                    ),
+                                ),
+                            ],
+                        )),
+                    ),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => match &stmts[0] {
+                code_ir::Stmt::Let {
+                    ir_type: Some(IrType::Generic(name, args)),
+                    ..
+                } => {
+                    assert_eq!(name, "List");
+                    assert!(matches!(
+                        args.as_slice(),
+                        [IrType::Named(inner)] if inner == "TypeBinding"
+                    ));
+                }
+                other => panic!("expected typed fold accumulator let, got: {other:?}"),
+            },
+            other => panic!("expected fold block, got: {other:?}"),
         }
     }
 
