@@ -258,6 +258,9 @@ fn render_ir_type(ty: &IrType) -> String {
 /// Currently: empty `vec![]` / `Vec::new()` needs `Vec<T>` annotation
 /// when the type can't be inferred from usage context.
 fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
+    if !ir_type_renderable_in_type_position(ir_type) {
+        return false;
+    }
     match expr {
         Expr::MacroCall { name, args } if name == "vec" && args.is_empty() => {
             // Only annotate if we have a concrete element type (not Unknown)
@@ -272,6 +275,18 @@ fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
             needs_type_annotation(&args[0], ir_type)
         }
         _ => false,
+    }
+}
+
+/// Returns false when the IR type contains constructs that cannot be expressed
+/// as a Rust type annotation (anonymous records, unresolved unknowns).
+fn ir_type_renderable_in_type_position(ty: &IrType) -> bool {
+    match ty {
+        IrType::Record(_) | IrType::Unknown => false,
+        IrType::Generic(_, args) => args.iter().all(ir_type_renderable_in_type_position),
+        IrType::Optional(inner) => ir_type_renderable_in_type_position(inner),
+        IrType::Tuple(items) => items.iter().all(ir_type_renderable_in_type_position),
+        IrType::Named(_) | IrType::Bool | IrType::Int | IrType::Str | IrType::Unit => true,
     }
 }
 
