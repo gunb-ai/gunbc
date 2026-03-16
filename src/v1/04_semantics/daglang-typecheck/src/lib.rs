@@ -3262,15 +3262,31 @@ fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, Callabl
         .collect()
 }
 
+fn positional_callable_param_name(index: usize) -> String {
+    format!("__arg{}", index)
+}
+
 fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContract> {
     match ty {
-        TypeExpr::Function(params, output) => Some(CallableContract {
-            arity: params.len(),
-            params: HashSet::new(),
-            param_order: Vec::new(),
-            param_types: HashMap::new(),
-            output: value_type_from_type_expr(output),
-        }),
+        TypeExpr::Function(params, output) => {
+            let param_order = params
+                .iter()
+                .enumerate()
+                .map(|(index, _)| positional_callable_param_name(index))
+                .collect::<Vec<_>>();
+            let param_types = param_order
+                .iter()
+                .cloned()
+                .zip(params.iter().map(value_type_from_type_expr))
+                .collect::<HashMap<_, _>>();
+            Some(CallableContract {
+                arity: params.len(),
+                params: param_order.iter().cloned().collect(),
+                param_order,
+                param_types,
+                output: value_type_from_type_expr(output),
+            })
+        }
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
             parse_function_type_callable_contract(inner)
         }

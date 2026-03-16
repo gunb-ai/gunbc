@@ -816,6 +816,51 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 }
 
 #[test]
+fn typecheck_tracks_anonymous_record_targets_through_function_typed_params() {
+    let graph = module_graph_from_sources(&[(
+        "sample/higher_order_records.dag",
+        r#"module sample.higher_order_records
+type Config {
+  value: String
+}
+fn run(callback: fn(Config) -> String) -> String {
+  let cfg = { value: "ok" }
+  callback(cfg)
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("function-typed call contracts should preserve positional parameter types");
+
+    let module = typed.module(0).expect("typed module should exist");
+    let run = module
+        .ast
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            daglang_syntax::ast::Item::FnDef(def) if def.name == "run" => Some(def),
+            _ => None,
+        })
+        .expect("run fn should be present");
+    let daglang_syntax::ast::Stmt::Let(_, record_expr) = &run.body.stmts[0] else {
+        panic!("expected first stmt to bind the record");
+    };
+    let metadata = module
+        .callable_body_metadata("run")
+        .expect("run should carry callable body metadata");
+    assert_eq!(
+        metadata
+            .anonymous_record_target(expr_identity(&run.body.stmts, record_expr))
+            .map(|target| target.0.as_str()),
+        Some("Config")
+    );
+}
+
+#[test]
 fn strict_mode_accepts_associated_output_function_type_parameters() {
     let graph = module_graph_from_sources(&[(
         "sample/ensure.dag",
