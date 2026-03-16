@@ -5,7 +5,6 @@
 //! Inputs:
 //! - `content`: String - Content to comment
 //! - `prefix`: String - Comment prefix (e.g., "#", "//", "///")
-//! - `multiline`: Bool - Whether to use block comment syntax
 //!
 //! Outputs:
 //! - `commented`: String - Commented content
