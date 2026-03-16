@@ -18,6 +18,7 @@ module v2.compiler.parse
 
 import v2.std.core {
   Module, Import, ImportNames, ImportAll, ImportSpecific,
+  Node,
   Item, TypeDef, FuncDef, FnDef, ServiceDef,
   ResourceDef, DataDef, ExternFuncDecl, PatternDef,
   TypeExpr, Named, Product, Coproduct, Container, Refined, Optional,
@@ -84,7 +85,7 @@ type EatResult { consumed: Bool, state: ParserState, token: Token? }
 type TokenResult { token: Token, state: ParserState, err: Diagnostic? }
 type NameResult { name: String, state: ParserState, err: Diagnostic? }
 type ExprResult { expr: Expr, state: ParserState, err: Diagnostic? }
-type ItemResult { item: Item, state: ParserState, err: Diagnostic? }
+type ItemResult { item: Node, state: ParserState, err: Diagnostic? }
 type TypeResult { type_expr: TypeExpr, state: ParserState, err: Diagnostic? }
 type ModuleResult { module: Module, state: ParserState, err: Diagnostic? }
 type ImportResult { import: Import, state: ParserState, err: Diagnostic? }
@@ -104,7 +105,7 @@ type ConfigResult { config: ServiceConfig, state: ParserState, err: Diagnostic? 
 
 // List results
 type ImportsResult { imports: List<Import>, state: ParserState, err: Diagnostic? }
-type ItemsResult { items: List<Item>, state: ParserState, err: Diagnostic? }
+type ItemsResult { items: List<Node>, state: ParserState, err: Diagnostic? }
 type NamesResult { names: List<String>, state: ParserState, err: Diagnostic? }
 type FieldsResult { fields: List<Field>, state: ParserState, err: Diagnostic? }
 type FieldInitsResult { fields: List<FieldInit>, state: ParserState, err: Diagnostic? }
@@ -546,7 +547,7 @@ fn parse_items(state: ParserState) -> ItemsResult {
   parse_items_acc(state: state, acc: [])
 }
 
-fn parse_items_acc(state: ParserState, acc: List<Item>) -> ItemsResult {
+fn parse_items_acc(state: ParserState, acc: List<Node>) -> ItemsResult {
   let s = skip_newlines(state: state)
   if at_end(state: s) || check(state: s, tag: "Eof") {
     ItemsResult { items: reverse(acc), state: s, err: none }
@@ -629,7 +630,7 @@ fn parse_item(state: ParserState) -> ItemResult {
     Some { value: KwExtern }   => parse_extern_decl(state: s)
     Some { value: KwPattern }  => parse_func_def(state: s)
     Some { value: KwInterface } => parse_func_def(state: s)
-    _ => ItemResult { item: TypeDef { name: "", body: Record { fields: [] }, span: SourceSpan { start: 0, end: 0 } }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(state: s)) } }
+    _ => ItemResult { item: Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(state: s)) } }
   }
 }
 
@@ -639,7 +640,7 @@ fn parse_item(state: ParserState) -> ItemResult {
 
 fn parse_type_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   let r = expect(state: state, tag: "KwType")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -657,7 +658,7 @@ fn parse_type_def(state: ParserState) -> ItemResult {
     let r2 = expect(state: s, tag: "RBrace")
     if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
     let body = Record { fields: r.fields }
-    let item = TypeDef { name: name, body: body, span: start_span }
+    let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
     ItemResult { item: item, state: skip_newlines(state: r2.state), err: none }
   } else {
     // Sum type or alias: type Name = ...
@@ -670,7 +671,7 @@ fn parse_type_def(state: ParserState) -> ItemResult {
 
 // After `type Name =`, determine if this is a sum type or alias.
 fn parse_type_body_after_eq(state: ParserState, name: String, start_span: SourceSpan) -> ItemResult {
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   // Check if the first token is an identifier (potential variant name)
   // followed by LBrace or Pipe (sum type indicators).
   // If it's an identifier, try to parse as a sum type.
@@ -689,7 +690,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
       if has_err(err: rest.err) { return ItemResult { item: dummy, state: rest.state, err: rest.err } }
       let variants = rest.variants
       let body = Sum { variants: variants }
-      let item = TypeDef { name: name, body: body, span: start_span }
+      let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
       ItemResult { item: item, state: skip_newlines(state: rest.state), err: none }
     } else {
       // It's an alias: type Name = SomeType
@@ -699,7 +700,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
       let wr = try_where_clause(state: r.state, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
       let body = Alias { base: wr.type_expr }
-      let item = TypeDef { name: name, body: body, span: start_span }
+      let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
       ItemResult { item: item, state: skip_newlines(state: wr.state), err: none }
     }
   } else {
@@ -710,7 +711,7 @@ fn parse_type_body_after_eq(state: ParserState, name: String, start_span: Source
     let wr = try_where_clause(state: r.state, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
     let body = Alias { base: wr.type_expr }
-    let item = TypeDef { name: name, body: body, span: start_span }
+    let item = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: Some { value: body }, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
     ItemResult { item: item, state: skip_newlines(state: wr.state), err: none }
   }
 }
@@ -1103,7 +1104,7 @@ fn parse_optional_from_key(state: ParserState) -> FromKeyResult {
 
 fn parse_fn_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   let r = expect(state: state, tag: "KwFn")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1127,9 +1128,12 @@ fn parse_fn_def(state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let body = r.expr
 
-  let item = FnDef {
-    name: name, params: params,
-    return_type: return_type, body: body, span: start_span
+  let item = Node {
+    name: name, span: start_span, children: [], params: params,
+    return_type: return_type, uses: [],
+    body: Some { value: body }, shape: none, transport: none,
+    properties: [], type_annotation: none,
+    operations: [], capabilities: [], config: none
   }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }
@@ -1140,7 +1144,7 @@ fn parse_fn_def(state: ParserState) -> ItemResult {
 
 fn parse_func_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   // Accept func, pattern, or interface as the leading keyword
   let k = peek_kind(state: state)
   let r = match k {
@@ -1175,17 +1179,12 @@ fn parse_func_def(state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let body = r.expr
 
-  let item = match k {
-    Some { value: KwPattern } => PatternDef {
-      name: name, params: params,
-      return_type: return_type, uses: uses,
-      body: body, span: start_span
-    }
-    _ => FuncDef {
-      name: name, params: params,
-      return_type: return_type, uses: uses,
-      body: body, span: start_span
-    }
+  let item = Node {
+    name: name, span: start_span, children: [], params: params,
+    return_type: return_type, uses: uses,
+    body: Some { value: body }, shape: none, transport: none,
+    properties: [], type_annotation: none,
+    operations: [], capabilities: [], config: none
   }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }
@@ -1256,7 +1255,7 @@ fn parse_optional_return_type(state: ParserState) -> OptRetResult {
 
 fn parse_service_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   let r = expect(state: state, tag: "KwService")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1276,12 +1275,13 @@ fn parse_service_def(state: ParserState) -> ItemResult {
   let r2 = expect(state: s, tag: "RBrace")
   if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
 
-  let item = ServiceDef {
-    name: name,
-    transport: r.transport,
-    config: r.config,
-    operations: r.operations,
-    span: start_span
+  let item = Node {
+    name: name, span: start_span,
+    children: [],
+    params: [], return_type: none, uses: [], body: none, shape: none,
+    transport: Some { value: r.transport }, properties: [],
+    type_annotation: none,
+    operations: r.operations, capabilities: [], config: r.config
   }
   ItemResult { item: item, state: skip_newlines(state: r2.state), err: none }
 }
@@ -1896,7 +1896,7 @@ fn parse_mock_response_entries_acc(state: ParserState, acc: List<MockResponseDef
 
 fn parse_resource_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   let r = expect(state: state, tag: "KwResource")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1913,11 +1913,13 @@ fn parse_resource_def(state: ParserState) -> ItemResult {
   let r2 = expect(state: skip_newlines(state: r.state), tag: "RBrace")
   if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
 
-  let item = ResourceDef {
-    name: name,
-    properties: r.properties,
-    capabilities: r.capabilities,
-    span: start_span
+  let item = Node {
+    name: name, span: start_span,
+    children: [],
+    params: [], return_type: none, uses: [], body: none, shape: none,
+    transport: none, properties: r.properties,
+    type_annotation: none,
+    operations: [], capabilities: r.capabilities, config: none
   }
   ItemResult { item: item, state: skip_newlines(state: r2.state), err: none }
 }
@@ -2087,7 +2089,7 @@ fn parse_io_blocks_acc(state: ParserState, inputs: List<Field>, outputs: List<Fi
 
 fn parse_data_def(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   let r = expect(state: state, tag: "KwData")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -2108,8 +2110,12 @@ fn parse_data_def(state: ParserState) -> ItemResult {
   let r = parse_expr(state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
-  let item = DataDef {
-    name: name, type_expr: te, value: r.expr, span: start_span
+  let item = Node {
+    name: name, span: start_span, children: [], params: [],
+    return_type: none, uses: [],
+    body: Some { value: r.expr }, shape: none, transport: none,
+    properties: [], type_annotation: Some { value: te },
+    operations: [], capabilities: [], config: none
   }
   ItemResult { item: item, state: skip_newlines(state: r.state), err: none }
 }
@@ -2120,7 +2126,7 @@ fn parse_data_def(state: ParserState) -> ItemResult {
 
 fn parse_extern_decl(state: ParserState) -> ItemResult {
   let start_span = current_span(state: state)
-  let dummy = TypeDef { name: "", body: Record { fields: [] }, span: start_span }
+  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, shape: none, transport: none, properties: [], type_annotation: none, operations: [], capabilities: [], config: none }
   let r = expect(state: state, tag: "KwExtern")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -2140,9 +2146,12 @@ fn parse_extern_decl(state: ParserState) -> ItemResult {
         Some { value: t } => t
         None => Named { name: "Unit", span: start_span }
       }
-      let item = ExternFuncDecl {
-        name: name, params: r3.params,
-        return_type: return_type, span: start_span
+      let item = Node {
+        name: name, span: start_span, children: [], params: r3.params,
+        return_type: Some { value: return_type }, uses: [],
+        body: none, shape: none, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none
       }
       ItemResult { item: item, state: skip_newlines(state: ret.state), err: none }
     }
@@ -2159,9 +2168,12 @@ fn parse_extern_decl(state: ParserState) -> ItemResult {
         Some { value: t } => t
         None => Named { name: "Unit", span: start_span }
       }
-      let item = ExternFuncDecl {
-        name: name, params: r3.params,
-        return_type: return_type, span: start_span
+      let item = Node {
+        name: name, span: start_span, children: [], params: r3.params,
+        return_type: Some { value: return_type }, uses: [],
+        body: none, shape: none, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none
       }
       ItemResult { item: item, state: skip_newlines(state: ret.state), err: none }
     }

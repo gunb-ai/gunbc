@@ -19,6 +19,7 @@ module v2.compiler.emit
 
 import v2.std.core {
   Import,
+  Node, TypedNode,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
@@ -29,10 +30,7 @@ import v2.std.core {
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
-  FuncSig,
-  TypedItem,
-  TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
+  FuncSig
 }
 
 import v2.compiler.typecheck {
@@ -143,21 +141,22 @@ fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 // Item registry
 // =========================================================================
 
-fn build_item_registry(items: List<TypedItem>) -> Map<String, ItemInfo> {
-  let info_list = items |> map(item => match item {
-    TypedFuncDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+fn build_item_registry(items: List<TypedNode>) -> Map<String, ItemInfo> {
+  let info_list = items |> map(item =>
+    if item.body != none && item.uses |> count > 0 {
+      // func or pattern (async, has uses)
+      ItemInfo { name: item.name, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: item.body.value.expr)),
         is_self_recursive: false, has_non_tail_self_call: false }
-    TypedPatternDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+    } else if item.body != none && item.params |> count > 0 {
+      // fn (pure function)
+      ItemInfo { name: item.name, kind: "fn", service_names: [],
+        is_self_recursive: expr_has_self_call(expr: item.body.value.expr, fn_name: item.name),
+        has_non_tail_self_call: has_non_tail_self_call(expr: item.body.value.expr, fn_name: item.name, in_tail: true) }
+    } else {
+      ItemInfo { name: item.name, kind: "other", service_names: [],
         is_self_recursive: false, has_non_tail_self_call: false }
-    TypedFnDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "fn", service_names: [],
-        is_self_recursive: expr_has_self_call(expr: b.expr, fn_name: n),
-        has_non_tail_self_call: has_non_tail_self_call(expr: b.expr, fn_name: n, in_tail: true) }
-    _ => ItemInfo { name: "", kind: "other", service_names: [],
-        is_self_recursive: false, has_non_tail_self_call: false }
-  })
+    }
+  )
   info_list |> fold(init: empty_map(), f: (acc, i) =>
     map_insert(acc, i.name, i)
   )

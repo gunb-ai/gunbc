@@ -16,6 +16,7 @@ module v2.compiler.emit_rust
 
 import v2.std.core {
   Import, ImportAll, ImportSpecific,
+  Node, TypedNode,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
@@ -26,10 +27,7 @@ import v2.std.core {
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
-  FuncSig,
-  TypedItem,
-  TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
+  FuncSig
 }
 
 import v2.compiler.typecheck {
@@ -227,27 +225,42 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: TypedItem, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  match item {
-    TypedTypeDef { name: n, body: b, span: _ } =>
-      emit_type_def(name: n, body: b)
-    TypedFnDef { name: n, params: ps, return_type: rt, body: bd, span: _ } =>
-      emit_fn_def(name: n, params: ps, return_type: rt, body: bd.expr, registry: registry, scope: scope)
-    TypedFuncDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
-      emit_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
-    TypedServiceDef { name: n, transport: t, config: c, operations: ops, span: _ } =>
-      emit_service_def(name: n, transport: t, config: c, operations: ops, registry: registry)
-    TypedResourceDef { name: n, capabilities: caps, span: _ } =>
-      emit_resource_def(name: n, capabilities: caps)
-    TypedDataDef { name: n, type_expr: te, value: v, span: _ } =>
-      emit_data_def(name: n, type_expr: te, value: v.expr, registry: registry, scope: scope)
-    TypedExternFuncDecl { name: n, params: ps, return_type: rt, span: _ } =>
-      // Extern func declarations emit as function signatures with no body
-      let params_str = emit_params(params: ps)
-      let ret_str = emit_return_type(return_type: rt)
-      concat("pub fn ", rust_ident(name: n), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
-    TypedPatternDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
-      emit_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
+fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  // Type definition: has shape
+  if item.shape != none {
+    emit_type_def(name: item.name, body: item.shape.value)
+  }
+  // Function with body: fn or func (distinguished from data by type_annotation)
+  else if item.body != none && item.type_annotation == none {
+    if item.uses |> count > 0 {
+      // async func/pattern
+      emit_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value.expr, registry: registry, scope: scope)
+    } else {
+      // pure fn (including zero-param functions)
+      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value.expr, registry: registry, scope: scope)
+    }
+  }
+  // Data: has body and type_annotation (data constant)
+  else if item.body != none && item.type_annotation != none {
+    emit_data_def(name: item.name, type_expr: item.type_annotation.value, value: item.body.value.expr, registry: registry, scope: scope)
+  }
+  // Service: has operations
+  else if item.operations |> count > 0 {
+    let svc_transport = if item.transport == none { LocalBinding } else { item.transport.value }
+    emit_service_def(name: item.name, transport: svc_transport, config: item.config, operations: item.operations, registry: registry)
+  }
+  // Resource: has capabilities
+  else if item.capabilities |> count > 0 {
+    emit_resource_def(name: item.name, capabilities: item.capabilities)
+  }
+  // Extern func: has params but no body
+  else if item.params |> count > 0 {
+    let params_str = emit_params(params: item.params)
+    let ret_str = emit_return_type(return_type: item.return_type)
+    concat("pub fn ", rust_ident(name: item.name), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
+  }
+  else {
+    concat("// unhandled node: ", item.name)
   }
 }
 
@@ -1435,22 +1448,18 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
   }
 }
 
-fn is_typed_service_item(item: TypedItem) -> Bool {
-  match item {
-    TypedServiceDef { name: _ } => true
-    _ => false
-  }
+fn is_typed_service_item(item: TypedNode) -> Bool {
+  item.operations |> count > 0
 }
 
-fn emit_typed_service_tests(item: TypedItem, registry: Map<String, ItemInfo>) -> List<String> {
-  match item {
-    TypedServiceDef { name: sn, transport: _, config: _, operations: ops, span: _ } => {
-      let safe_name = sanitize_service_name(name: sn)
-      ops
-        |> filter(op => op.mock_response |> count > 0)
-        |> map(op => emit_operation_test(service_name: safe_name, operation: op, registry: registry))
-    }
-    _ => []
+fn emit_typed_service_tests(item: TypedNode, registry: Map<String, ItemInfo>) -> List<String> {
+  if item.operations |> count > 0 {
+    let safe_name = sanitize_service_name(name: item.name)
+    item.operations
+      |> filter(op => op.mock_response |> count > 0)
+      |> map(op => emit_operation_test(service_name: safe_name, operation: op, registry: registry))
+  } else {
+    []
   }
 }
 

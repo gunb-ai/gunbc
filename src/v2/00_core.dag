@@ -92,7 +92,7 @@ type TokenKind
 type Module {
   name: String
   imports: List<Import>
-  items: List<Item>
+  items: List<Node>
   span: SourceSpan
 }
 
@@ -383,4 +383,111 @@ type FuncSig {
 
 type FuncEnv {
   signatures: Map<String, FuncSig>
+}
+
+// =========================================================================
+// Node — unified recursive structure
+//
+// Everything is a node in DAG composition. Keywords (fn, type, service)
+// are parse sugar that tell the parser what fields to expect. After
+// parsing, everything is a Node. The checker validates edge constraints
+// on node properties — never asks "what keyword?"
+//
+// The type is self-referential: children: List<Node>. An operation is a
+// Node with params and return_type. A capability is a Node with
+// input/output ports. OperationDef and CapabilityDef dissolve into Node.
+// =========================================================================
+
+type Node {
+  name: String
+  span: SourceSpan
+  // Fractal composition — operations, capabilities, items are all children
+  children: List<Node>
+  // Ports — what flows in and out
+  params: List<Param>
+  return_type: TypeExpr?
+  uses: List<ResourceUse>
+  // Computation — how it executes (none = externally provided)
+  body: Expr?
+  // Shape — type structure (none = not a type definition)
+  shape: TypeBody?
+  // Binding — external execution strategy
+  transport: TransportBinding?
+  // Metadata
+  properties: List<FieldInit>
+  type_annotation: TypeExpr?
+  // Temporary: service/resource data until operations/capabilities dissolve into Node
+  operations: List<OperationDef>
+  capabilities: List<CapabilityDef>
+  config: ServiceConfig?
+}
+
+type TypedNode {
+  name: String
+  span: SourceSpan
+  children: List<TypedNode>
+  params: List<Param>
+  return_type: TypeExpr
+  uses: List<ResourceUse>
+  body: TypedExpr?
+  shape: TypeBody?
+  transport: TransportBinding?
+  properties: List<FieldInit>
+  type_annotation: TypeExpr?
+  operations: List<OperationDef>
+  capabilities: List<CapabilityDef>
+  config: ServiceConfig?
+}
+
+// =========================================================================
+// Node conversion — Item to Node
+//
+// Converts the keyword-dispatched Item sum type into the unified Node
+// representation. Each Item variant populates the relevant Node fields
+// and leaves others as defaults.
+// =========================================================================
+
+fn item_to_node(item: Item) -> Node {
+  match item {
+    TypeDef { name: n, body: b, span: s } =>
+      Node { name: n, span: s, children: [], params: [], return_type: none,
+        uses: [], body: none, shape: Some { value: b }, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none }
+    FnDef { name: n, params: ps, return_type: rt, body: bd, span: s } =>
+      Node { name: n, span: s, children: [], params: ps, return_type: rt,
+        uses: [], body: Some { value: bd }, shape: none, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none }
+    FuncDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: s } =>
+      Node { name: n, span: s, children: [], params: ps, return_type: rt,
+        uses: us, body: Some { value: bd }, shape: none, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none }
+    ServiceDef { name: n, transport: t, config: c, operations: ops, span: s } =>
+      Node { name: n, span: s, children: [],
+        params: [], return_type: none, uses: [], body: none, shape: none,
+        transport: Some { value: t }, properties: [], type_annotation: none,
+        operations: ops, capabilities: [], config: c }
+    ResourceDef { name: n, properties: props, capabilities: caps, span: s } =>
+      Node { name: n, span: s, children: [],
+        params: [], return_type: none, uses: [], body: none, shape: none,
+        transport: none, properties: props, type_annotation: none,
+        operations: [], capabilities: caps, config: none }
+    DataDef { name: n, type_expr: te, value: v, span: s } =>
+      Node { name: n, span: s, children: [], params: [], return_type: none,
+        uses: [], body: Some { value: v }, shape: none, transport: none,
+        properties: [], type_annotation: Some { value: te },
+        operations: [], capabilities: [], config: none }
+    ExternFuncDecl { name: n, params: ps, return_type: rt, span: s } =>
+      Node { name: n, span: s, children: [], params: ps, return_type: Some { value: rt },
+        uses: [], body: none, shape: none, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none }
+    PatternDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: s } =>
+      Node { name: n, span: s, children: [], params: ps, return_type: rt,
+        uses: us, body: Some { value: bd }, shape: none, transport: none,
+        properties: [], type_annotation: none,
+        operations: [], capabilities: [], config: none }
+  }
 }

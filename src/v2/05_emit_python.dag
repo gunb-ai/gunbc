@@ -14,6 +14,7 @@ module v2.compiler.emit_python
 
 import v2.std.core {
   Import, ImportAll, ImportSpecific,
+  Node, TypedNode,
   TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
   TextFile, Diagnostic, SourceSpan,
@@ -24,10 +25,7 @@ import v2.std.core {
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
-  FuncSig,
-  TypedItem,
-  TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
+  FuncSig
 }
 
 import v2.compiler.typecheck {
@@ -163,27 +161,35 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_py_typed_item(item: TypedItem, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  match item {
-    TypedTypeDef { name: n, body: b, span: _ } =>
-      emit_py_type_def(name: n, body: b)
-    TypedFnDef { name: n, params: ps, return_type: rt, body: bd, span: _ } =>
-      emit_py_fn_def(name: n, params: ps, return_type: rt, body: bd.expr, registry: registry, scope: scope)
-    TypedFuncDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
-      emit_py_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
-    TypedServiceDef { name: n, transport: t, config: c, operations: ops, span: _ } =>
-      emit_py_service_def(name: n, transport: t, config: c, operations: ops, registry: registry)
-    TypedResourceDef { name: n, capabilities: caps, span: _ } =>
-      emit_py_resource_def(name: n, capabilities: caps)
-    TypedDataDef { name: n, type_expr: te, value: v, span: _ } =>
-      emit_py_data_def(name: n, type_expr: te, value: v.expr, registry: registry, scope: scope)
-    TypedExternFuncDecl { name: n, params: ps, return_type: rt, span: _ } =>
-      let params_str = emit_py_params(params: ps)
-      let ret_str = emit_py_return_type(return_type: rt)
-      concat("def ", py_ident(name: n), "(", params_str, ")", ret_str, ":\n",
-        "    raise NotImplementedError(\"extern func\")")
-    TypedPatternDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
-      emit_py_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
+fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  if item.shape != none {
+    emit_py_type_def(name: item.name, body: item.shape.value)
+  }
+  else if item.body != none && item.type_annotation == none {
+    if item.uses |> count > 0 {
+      emit_py_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value.expr, registry: registry, scope: scope)
+    } else {
+      emit_py_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value.expr, registry: registry, scope: scope)
+    }
+  }
+  else if item.body != none && item.type_annotation != none {
+    emit_py_data_def(name: item.name, type_expr: item.type_annotation.value, value: item.body.value.expr, registry: registry, scope: scope)
+  }
+  else if item.operations |> count > 0 {
+    let svc_transport = if item.transport == none { LocalBinding } else { item.transport.value }
+    emit_py_service_def(name: item.name, transport: svc_transport, config: item.config, operations: item.operations, registry: registry)
+  }
+  else if item.capabilities |> count > 0 {
+    emit_py_resource_def(name: item.name, capabilities: item.capabilities)
+  }
+  else if item.params |> count > 0 {
+    let params_str = emit_py_params(params: item.params)
+    let ret_str = emit_py_return_type(return_type: item.return_type)
+    concat("def ", py_ident(name: item.name), "(", params_str, ")", ret_str, ":\n",
+      "    raise NotImplementedError(\"extern func\")")
+  }
+  else {
+    concat("# unhandled node: ", item.name)
   }
 }
 
@@ -1219,9 +1225,6 @@ fn has_py_service_items(typed: TypedGraph) -> Bool {
   )
 }
 
-fn is_py_typed_service_item(item: TypedItem) -> Bool {
-  match item {
-    TypedServiceDef { name: _ } => true
-    _ => false
-  }
+fn is_py_typed_service_item(item: TypedNode) -> Bool {
+  item.operations |> count > 0
 }

@@ -19,10 +19,9 @@ module v2.compiler.typecheck
 
 import std.types { SourceSpan }
 import v2.std.core {
-  Module, Item, ImportNames, ImportAll, ImportSpecific,
+  Module, Node, TypedNode, ImportNames, ImportAll, ImportSpecific,
   TypeExpr, TypeBody, Field, Variant, Param,
   Expr, Diagnostic,
-  TypeDef, FuncDef, FnDef, ServiceDef, ResourceDef, DataDef, ExternFuncDecl, PatternDef,
   Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive,
   Record, Sum, Alias,
   OperationDef, CapabilityDef, ResourceUse,
@@ -30,8 +29,6 @@ import v2.std.core {
   TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef, MockResponseDef,
   Error,
   TypedExpr,
-  TypedItem, TypedTypeDef, TypedFnDef, TypedFuncDef,
-  TypedServiceDef, TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef,
   FuncSig, FuncEnv,
   ForEach,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -66,7 +63,7 @@ type SpanType {
 
 type TypedModule {
   module: Module
-  items: List<TypedItem>
+  items: List<TypedNode>
   type_env: TypeEnv
   func_env: FuncEnv
   type_cache: List<SpanType>
@@ -114,7 +111,7 @@ type BlockInferState {
 }
 
 type TypedItemResult {
-  item: TypedItem
+  item: TypedNode
   diagnostics: List<Diagnostic>
   type_entries: List<SpanType>
 }
@@ -126,7 +123,7 @@ type AccessCheckResult {
 
 // Internal result type for item-level resolution.
 type ItemResult {
-  item: Item
+  item: Node
   diagnostics: List<Diagnostic>
 }
 
@@ -251,7 +248,7 @@ type ResourceUseResult {
 
 // =========================================================================
 // Build function environment from module items.
-// Extracts signatures from FnDef, FuncDef, and ExternFuncDecl items.
+// Extracts signatures from Node items that have params.
 // =========================================================================
 
 // Unwrap an optional return type at a function boundary.
@@ -270,20 +267,16 @@ fn unwrap_return_type(rt: TypeExpr?) -> TypeExpr {
   result.resolved
 }
 
-fn build_func_env(items: List<Item>) -> FuncEnv {
+fn build_func_env(items: List<Node>) -> FuncEnv {
   // Called with resolved items (after resolve_item_types), so return_type
   // fields have already been resolved by resolve_optional_type_expr.
   let sigs = fold(items, init: empty_map(), f: (acc, item) =>
-    match item {
-      FnDef { name: n, params: ps, return_type: rt, body: _, span: _ } =>
-        map_insert(acc, n, FuncSig { name: n, params: ps, return_type: unwrap_return_type(rt: rt), is_async: false })
-      FuncDef { name: n, params: ps, return_type: rt, uses: _, body: _, span: _ } =>
-        map_insert(acc, n, FuncSig { name: n, params: ps, return_type: unwrap_return_type(rt: rt), is_async: true })
-      PatternDef { name: n, params: ps, return_type: rt, uses: _, body: _, span: _ } =>
-        map_insert(acc, n, FuncSig { name: n, params: ps, return_type: unwrap_return_type(rt: rt), is_async: true })
-      ExternFuncDecl { name: n, params: ps, return_type: rt, span: _ } =>
-        map_insert(acc, n, FuncSig { name: n, params: ps, return_type: rt, is_async: false })
-      _ => acc
+    if item.params |> count > 0 {
+      let is_async = item.uses |> count > 0
+      let rt = unwrap_return_type(rt: item.return_type)
+      map_insert(acc, item.name, FuncSig { name: item.name, params: item.params, return_type: rt, is_async: is_async })
+    } else {
+      acc
     }
   )
   FuncEnv { signatures: sigs }
@@ -294,7 +287,7 @@ fn build_func_env(items: List<Item>) -> FuncEnv {
 //
 // Service names are dotted (e.g., "git.Core", "github.Gist"). Expressions
 // reference the namespace root ("git") as a variable. This extracts
-// namespace roots from ServiceDef items and registers them as locals
+// namespace roots from service Node items and registers them as locals
 // with a synthetic Named type so they're in scope during inference.
 //
 // This is a per-kind special case (debt per S86). Terminal fix: unified
@@ -1263,138 +1256,93 @@ fn infer_record_lit(expr: Expr, scope: InferScope) -> InferResult {
 }
 
 // -------------------------------------------------------------------------
-// infer_item: wraps each Item into its TypedItem counterpart
+// infer_item: wraps each Node into its TypedNode counterpart
 // -------------------------------------------------------------------------
 
-fn infer_item(item: Item, scope: InferScope) -> TypedItemResult {
-  match item {
-    FnDef { name: name, params: params, return_type: ret_type, body: body, span: span } =>
-      let fn_scope = build_params_scope(scope: scope, params: params)
-      let body_result = infer_expr(expr: body, scope: fn_scope)
-      // Resolve return type: use declared if present, else inferred from body
-      let resolved_ret = if ret_type == none {
-        body_result.typed.resolved_type
-      } else {
-        ret_type.value
-      }
-      TypedItemResult {
-        item: TypedFnDef {
-          name: name,
-          params: params,
-          return_type: resolved_ret,
-          body: body_result.typed,
-          span: span
-        },
-        diagnostics: body_result.diagnostics,
-        type_entries: body_result.type_entries
-      }
-
-    FuncDef { name: name, params: params, return_type: ret_type, uses: uses, body: body, span: span } =>
-      let func_scope = build_params_scope(scope: scope, params: params)
-      let body_result = infer_expr(expr: body, scope: func_scope)
-      let resolved_ret = if ret_type == none {
-        body_result.typed.resolved_type
-      } else {
-        ret_type.value
-      }
-      TypedItemResult {
-        item: TypedFuncDef {
-          name: name,
-          params: params,
-          return_type: resolved_ret,
-          uses: uses,
-          body: body_result.typed,
-          span: span
-        },
-        diagnostics: body_result.diagnostics,
-        type_entries: body_result.type_entries
-      }
-
-    PatternDef { name: name, params: params, return_type: ret_type, uses: uses, body: body, span: span } =>
-      let func_scope = build_params_scope(scope: scope, params: params)
-      let body_result = infer_expr(expr: body, scope: func_scope)
-      let resolved_ret = if ret_type == none {
-        body_result.typed.resolved_type
-      } else {
-        ret_type.value
-      }
-      TypedItemResult {
-        item: TypedPatternDef {
-          name: name,
-          params: params,
-          return_type: resolved_ret,
-          uses: uses,
-          body: body_result.typed,
-          span: span
-        },
-        diagnostics: body_result.diagnostics,
-        type_entries: body_result.type_entries
-      }
-
-    DataDef { name: name, type_expr: type_expr, value: value, span: span } =>
-      let val_result = infer_expr(expr: value, scope: scope)
-      TypedItemResult {
-        item: TypedDataDef {
-          name: name,
-          type_expr: type_expr,
-          value: val_result.typed,
-          span: span
-        },
-        diagnostics: val_result.diagnostics,
-        type_entries: val_result.type_entries
-      }
-
-    TypeDef { name: name, body: body, span: span } =>
-      TypedItemResult {
-        item: TypedTypeDef { name: name, body: body, span: span },
-        diagnostics: [],
-        type_entries: []
-      }
-
-    ServiceDef { name: name, transport: transport, config: config, operations: operations, span: span } =>
-      TypedItemResult {
-        item: TypedServiceDef {
-          name: name,
-          transport: transport,
-          config: config,
-          operations: operations,
-          span: span
-        },
-        diagnostics: [],
-        type_entries: []
-      }
-
-    ResourceDef { name: name, properties: props, capabilities: caps, span: span } =>
-      TypedItemResult {
-        item: TypedResourceDef {
-          name: name,
-          properties: props,
-          capabilities: caps,
-          span: span
-        },
-        diagnostics: [],
-        type_entries: []
-      }
-
-    ExternFuncDecl { name: name, params: params, return_type: ret_type, span: span } =>
-      TypedItemResult {
-        item: TypedExternFuncDecl {
-          name: name,
-          params: params,
-          return_type: ret_type,
-          span: span
-        },
-        diagnostics: [],
-        type_entries: []
-      }
+fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
+  // Type definition: has shape
+  if item.shape != none {
+    TypedItemResult {
+      item: TypedNode {
+        name: item.name, span: item.span, children: [], params: item.params,
+        return_type: unit_type(), uses: item.uses, body: none,
+        shape: item.shape, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        operations: item.operations, capabilities: item.capabilities, config: item.config
+      },
+      diagnostics: [], type_entries: []
+    }
+  }
+  // Function with body: infer body, resolve return type
+  else if item.body != none && item.params |> count > 0 {
+    let fn_scope = build_params_scope(scope: scope, params: item.params)
+    let body_result = infer_expr(expr: item.body.value, scope: fn_scope)
+    let resolved_ret = if item.return_type == none {
+      body_result.typed.resolved_type
+    } else {
+      item.return_type.value
+    }
+    TypedItemResult {
+      item: TypedNode {
+        name: item.name, span: item.span, children: [], params: item.params,
+        return_type: resolved_ret, uses: item.uses, body: Some { value: body_result.typed },
+        shape: none, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        operations: item.operations, capabilities: item.capabilities, config: item.config
+      },
+      diagnostics: body_result.diagnostics, type_entries: body_result.type_entries
+    }
+  }
+  // Data definition: has body but no params, has type_annotation
+  else if item.body != none && item.params |> count == 0 {
+    let val_result = infer_expr(expr: item.body.value, scope: scope)
+    let resolved_ret = if item.type_annotation == none { val_result.typed.resolved_type } else { item.type_annotation.value }
+    TypedItemResult {
+      item: TypedNode {
+        name: item.name, span: item.span, children: [], params: [],
+        return_type: resolved_ret, uses: [], body: Some { value: val_result.typed },
+        shape: none, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        operations: item.operations, capabilities: item.capabilities, config: item.config
+      },
+      diagnostics: val_result.diagnostics, type_entries: val_result.type_entries
+    }
+  }
+  // Extern func: has params but no body
+  else if item.params |> count > 0 && item.body == none {
+    let resolved_ret = if item.return_type == none { unit_type() } else { item.return_type.value }
+    TypedItemResult {
+      item: TypedNode {
+        name: item.name, span: item.span, children: [], params: item.params,
+        return_type: resolved_ret, uses: item.uses, body: none,
+        shape: none, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        operations: item.operations, capabilities: item.capabilities, config: item.config
+      },
+      diagnostics: [], type_entries: []
+    }
+  }
+  // Service/Resource/other: pass through
+  else {
+    let resolved_ret = if item.return_type == none { unit_type() } else { item.return_type.value }
+    TypedItemResult {
+      item: TypedNode {
+        name: item.name, span: item.span, children: [], params: item.params,
+        return_type: resolved_ret, uses: item.uses, body: none,
+        shape: item.shape, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        operations: item.operations, capabilities: item.capabilities, config: item.config
+      },
+      diagnostics: [], type_entries: []
+    }
   }
 }
 
 // -------------------------------------------------------------------------
-// infer_items: walk all items in a module and produce TypedItems
+// infer_items: walk all items in a module and produce TypedNodes
 // -------------------------------------------------------------------------
 
-fn infer_items(items: List<Item>, scope: InferScope) -> List<TypedItemResult> {
+fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
   map(items, item => infer_item(item: item, scope: scope))
 }
 
@@ -1555,16 +1503,17 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_env = import_result.env
 
   // Collect local type definitions from module items.
-  // ResourceDef names are registered as nominal types so they can be
+  // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
-    match item {
-      TypeDef { name: name, body: body, span: span } =>
-        let resolved = type_body_to_expr(name: name, body: body, span: span)
-        map_insert(acc, name, TypeBinding { name: name, resolved: resolved })
-      ResourceDef { name: name, span: span } =>
-        map_insert(acc, name, TypeBinding { name: name, resolved: Named { name: name, span: span } })
-      _ => acc
+    if item.shape != none {
+      let body = item.shape.value
+      let resolved = type_body_to_expr(name: item.name, body: body, span: item.span)
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved })
+    } else if item.capabilities |> count > 0 {
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: Named { name: item.name, span: item.span } })
+    } else {
+      acc
     }
   )
   let local_env = TypeEnv { bindings: local_bindings, recursive_types: [] }
@@ -2233,153 +2182,100 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
 }
 
 // =========================================================================
-// Resolve all type expressions within a single Item
+// Resolve all type expressions within a single Node
 //
 // Walks through the item's type references (params, return types,
 // field types, etc.) and resolves each one against the environment.
 // =========================================================================
 
-fn resolve_item_types(item: Item, env: TypeEnv, module_name: String) -> ItemResult {
-  match item {
-    TypeDef { name: name, body: body, span: span } =>
-      let body_result = resolve_type_body(body: body, env: env, module_name: module_name)
-      ItemResult {
-        item: TypeDef { name: name, body: body_result.body, span: span },
-        diagnostics: body_result.diagnostics
-      }
+fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
+  // Resolve shape if present
+  let shape_resolved = if item.shape == none {
+    TypeBodyResult { body: Record { fields: [] }, diagnostics: [] }
+  } else {
+    resolve_type_body(body: item.shape.value, env: env, module_name: module_name)
+  }
+  let resolved_shape = if item.shape == none { none } else { Some { value: shape_resolved.body } }
+  let shape_diags = shape_resolved.diagnostics
 
-    FnDef { name: name, params: params, return_type: return_type, body: body, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
-      let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = flat_map(param_results, pr => pr.diagnostics)
-      let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
-      let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
-      // Wrap resolved type back in Option to preserve return_type: TypeExpr? contract.
-      let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
-      ItemResult {
-        item: FnDef {
-          name: name,
-          params: resolved_params,
-          return_type: resolved_ret,
-          body: body_result.expr,
-          span: span
-        },
-        diagnostics: concat(param_diags, ret_result.diagnostics, body_result.diagnostics)
-      }
+  // Resolve params
+  let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
+  let resolved_params = map(param_results, pr => pr.param)
+  let param_diags = flat_map(param_results, pr => pr.diagnostics)
 
-    FuncDef { name: name, params: params, return_type: return_type, uses: uses, body: body, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
-      let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = flat_map(param_results, pr => pr.diagnostics)
-      let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
-      let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
-      let resolved_uses = map(use_results, ur => ur.resource_use)
-      let use_diags = flat_map(use_results, ur => ur.diagnostics)
-      let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
-      // Wrap resolved type back in Option to preserve return_type: TypeExpr? contract.
-      let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
-      ItemResult {
-        item: FuncDef {
-          name: name,
-          params: resolved_params,
-          return_type: resolved_ret,
-          uses: resolved_uses,
-          body: body_result.expr,
-          span: span
-        },
-        diagnostics: concat(param_diags, ret_result.diagnostics, use_diags, body_result.diagnostics)
-      }
+  // Resolve return type
+  let ret_result = resolve_optional_type_expr(expr: item.return_type, env: env, module_name: module_name)
+  let resolved_ret = if item.return_type == none { none } else { Some { value: ret_result.resolved } }
 
-    PatternDef { name: name, params: params, return_type: return_type, uses: uses, body: body, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
-      let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = flat_map(param_results, pr => pr.diagnostics)
-      let ret_result = resolve_optional_type_expr(expr: return_type, env: env, module_name: module_name)
-      let use_results = map(uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
-      let resolved_uses = map(use_results, ur => ur.resource_use)
-      let use_diags = flat_map(use_results, ur => ur.diagnostics)
-      let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
-      let resolved_ret = if return_type == none { none } else { Some { value: ret_result.resolved } }
-      ItemResult {
-        item: PatternDef {
-          name: name,
-          params: resolved_params,
-          return_type: resolved_ret,
-          uses: resolved_uses,
-          body: body_result.expr,
-          span: span
-        },
-        diagnostics: concat(param_diags, ret_result.diagnostics, use_diags, body_result.diagnostics)
-      }
+  // Resolve uses
+  let use_results = map(item.uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
+  let resolved_uses = map(use_results, ur => ur.resource_use)
+  let use_diags = flat_map(use_results, ur => ur.diagnostics)
 
-    ServiceDef { name: name, transport: transport, config: config, operations: operations, span: span } =>
-      let transport_result = resolve_transport_binding(transport: transport, env: env, module_name: module_name)
-      let config_result = if config == none {
-        ServiceConfigResolveResult {
-          config: ServiceConfig { endpoint: Literal { value: LitNull, span: no_span() }, auth: none, rate_limit: none, retry: none },
-          diagnostics: []
-        }
-      } else {
-        resolve_service_config(config: config.value, env: env, module_name: module_name)
-      }
-      let op_results = map(operations, op => resolve_operation(op: op, env: env, module_name: module_name))
-      let resolved_ops = map(op_results, opr => opr.operation)
-      let op_diags = flat_map(op_results, opr => opr.diagnostics)
-      ItemResult {
-        item: ServiceDef {
-          name: name,
-          transport: transport_result.transport,
-          config: if config == none { none } else { Some { value: config_result.config } },
-          operations: resolved_ops,
-          span: span
-        },
-        diagnostics: concat(transport_result.diagnostics, config_result.diagnostics, op_diags)
-      }
+  // Resolve body if present
+  let body_resolved = if item.body == none {
+    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+  } else {
+    resolve_expr_types(expr: item.body.value, env: env, module_name: module_name)
+  }
+  let resolved_body = if item.body == none { none } else { Some { value: body_resolved.expr } }
+  let body_diags = body_resolved.diagnostics
 
-    ResourceDef { name: name, properties: props, capabilities: capabilities, span: span } =>
-      let prop_results = map(props, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
-      let resolved_props = map(prop_results, pr => pr.field_init)
-      let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
-      let cap_results = map(capabilities, c => resolve_capability(cap: c, env: env, module_name: module_name))
-      let resolved_caps = map(cap_results, cr => cr.capability)
-      let cap_diags = flat_map(cap_results, cr => cr.diagnostics)
-      ItemResult {
-        item: ResourceDef {
-          name: name,
-          properties: resolved_props,
-          capabilities: resolved_caps,
-          span: span
-        },
-        diagnostics: concat(prop_diags, cap_diags)
-      }
+  // Resolve type_annotation if present
+  let anno_resolved = if item.type_annotation == none {
+    ResolveResult { resolved: unit_type(), diagnostics: [] }
+  } else {
+    resolve_type_expr(expr: item.type_annotation.value, env: env, module_name: module_name)
+  }
+  let resolved_anno = if item.type_annotation == none { none } else { Some { value: anno_resolved.resolved } }
+  let anno_diags = anno_resolved.diagnostics
 
-    DataDef { name: name, type_expr: type_expr, value: value, span: span } =>
-      let type_result = resolve_type_expr(expr: type_expr, env: env, module_name: module_name)
-      let value_result = resolve_expr_types(expr: value, env: env, module_name: module_name)
-      ItemResult {
-        item: DataDef {
-          name: name,
-          type_expr: type_result.resolved,
-          value: value_result.expr,
-          span: span
-        },
-        diagnostics: concat(type_result.diagnostics, value_result.diagnostics)
-      }
+  // Resolve transport if present
+  let transport_resolved = if item.transport == none {
+    TransportResolveResult { transport: LocalBinding, diagnostics: [] }
+  } else {
+    resolve_transport_binding(transport: item.transport.value, env: env, module_name: module_name)
+  }
+  let resolved_transport = if item.transport == none { none } else { Some { value: transport_resolved.transport } }
+  let transport_diags = transport_resolved.diagnostics
 
-    ExternFuncDecl { name: name, params: params, return_type: return_type, span: span } =>
-      let param_results = map(params, p => resolve_param(param: p, env: env, module_name: module_name))
-      let resolved_params = map(param_results, pr => pr.param)
-      let param_diags = flat_map(param_results, pr => pr.diagnostics)
-      let ret_result = resolve_type_expr(expr: return_type, env: env, module_name: module_name)
-      ItemResult {
-        item: ExternFuncDecl {
-          name: name,
-          params: resolved_params,
-          return_type: ret_result.resolved,
-          span: span
-        },
-        diagnostics: concat(param_diags, ret_result.diagnostics)
-      }
+  // Resolve operations
+  let op_results = map(item.operations, op => resolve_operation(op: op, env: env, module_name: module_name))
+  let resolved_ops = map(op_results, opr => opr.operation)
+  let op_diags = flat_map(op_results, opr => opr.diagnostics)
+
+  // Resolve capabilities
+  let cap_results = map(item.capabilities, c => resolve_capability(cap: c, env: env, module_name: module_name))
+  let resolved_caps = map(cap_results, cr => cr.capability)
+  let cap_diags = flat_map(cap_results, cr => cr.diagnostics)
+
+  // Resolve config if present
+  let config_resolved = if item.config == none {
+    ServiceConfigResolveResult {
+      config: ServiceConfig { endpoint: Literal { value: LitNull, span: no_span() }, auth: none, rate_limit: none, retry: none },
+      diagnostics: []
+    }
+  } else {
+    resolve_service_config(config: item.config.value, env: env, module_name: module_name)
+  }
+  let resolved_config = if item.config == none { none } else { Some { value: config_resolved.config } }
+  let config_diags = config_resolved.diagnostics
+
+  // Resolve properties
+  let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
+  let resolved_props = map(prop_results, pr => pr.field_init)
+  let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
+
+  ItemResult {
+    item: Node {
+      name: item.name, span: item.span, children: item.children,
+      params: resolved_params, return_type: resolved_ret,
+      uses: resolved_uses, body: resolved_body,
+      shape: resolved_shape, transport: resolved_transport,
+      properties: resolved_props, type_annotation: resolved_anno,
+      operations: resolved_ops, capabilities: resolved_caps, config: resolved_config
+    },
+    diagnostics: concat(shape_diags, param_diags, ret_result.diagnostics, use_diags, body_diags, anno_diags, transport_diags, op_diags, cap_diags, config_diags, prop_diags)
   }
 }
 
@@ -2464,30 +2360,34 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // git.Core.CurrentBranch() can typecheck. This registers each
   // namespace root as a local with a synthetic Named type.
   // S86 heuristic: register service namespace roots as locals.
-  // Collect from current module's items (List<Item>):
+  // Collect from current module's items (List<Node>):
   let local_svc_locals = fold(resolved_items, init: empty_map(), f: (acc, item) =>
-    match item {
-      ServiceDef { name: svc_name, span: span } =>
-        let dot_pos = find_dot_index(name: svc_name, index: 0)
-        let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-        map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: concat("__service_", root), span: span } })
-      _ => acc
+    if item.transport != none && item.operations |> count > 0 {
+      let svc_name = item.name
+      let span = item.span
+      let dot_pos = find_dot_index(name: svc_name, index: 0)
+      let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
+      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: concat("__service_", root), span: span } })
+    } else {
+      acc
     }
   )
-  // Collect from parent modules' items (List<TypedItem>):
+  // Collect from parent modules' items (List<TypedNode>):
   let service_locals = fold(map_values(parent_index), init: local_svc_locals, f: (acc, typed_parent) =>
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
-      match titem {
-        TypedServiceDef { name: svc_name, span: span } =>
-          let dot_pos = find_dot_index(name: svc_name, index: 0)
-          let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-          map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: concat("__service_", root), span: span } })
-        _ => inner_acc
+      if titem.transport != none && titem.operations |> count > 0 {
+        let svc_name = titem.name
+        let span = titem.span
+        let dot_pos = find_dot_index(name: svc_name, index: 0)
+        let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
+        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: concat("__service_", root), span: span } })
+      } else {
+        inner_acc
       }
     )
   )
 
-  // Build the InferScope and infer all items to produce TypedItems.
+  // Build the InferScope and infer all items to produce TypedNodes.
   let infer_scope = InferScope {
     type_env: resolved_env.env,
     func_env: func_env,
@@ -2627,7 +2527,7 @@ fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
       concat(inner_acc, collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names))
     )
     // Also check typed items (tm.items) — these contain resolved_type on
-    // TypedExpr bodies and the resolved return_type on TypedFnDef/TypedFuncDef.
+    // TypedExpr bodies and the resolved return_type on TypedNode.
     let typed_item_diags = fold(tm.items, init: [], f: (inner_acc, titem) =>
       concat(inner_acc, collect_unresolved_in_typed_item(item: titem, module_name: tm.module.name, defined_names: defined_names))
     )
@@ -2635,103 +2535,58 @@ fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
   )
 }
 
-fn collect_unresolved_in_item(item: Item, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match item {
-    TypeDef { name: _, body: body, span: _ } =>
-      collect_unresolved_in_type_body(body: body, module_name: module_name, defined_names: defined_names)
-
-    FnDef { name: _, params: params, return_type: return_type, body: body, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      let ret_diags = if return_type == none { [] }
-        else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
-      let body_diags = collect_unresolved_in_expr(expr: body, module_name: module_name, defined_names: defined_names)
-      concat(param_diags, ret_diags, body_diags)
-
-    FuncDef { name: _, params: params, return_type: return_type, uses: uses, body: body, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      let ret_diags = if return_type == none { [] }
-        else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
-      let use_diags = fold(uses, init: [], f: (acc, u) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
-      )
-      let body_diags = collect_unresolved_in_expr(expr: body, module_name: module_name, defined_names: defined_names)
-      concat(param_diags, ret_diags, use_diags, body_diags)
-
-    ServiceDef { name: _, transport: transport, config: config, operations: operations, span: _ } =>
-      let transport_diags = collect_unresolved_in_transport_binding(transport: transport, module_name: module_name, defined_names: defined_names)
-      let config_diags = if config == none {
-        []
-      } else {
-        collect_unresolved_in_service_config(config: config.value, module_name: module_name, defined_names: defined_names)
-      }
-      let op_diags = fold(operations, init: [], f: (acc, op) =>
-        let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        let response_diags = fold(op.response, init: [], f: (inner_acc, response) =>
-          concat(inner_acc, collect_unresolved_in_response_mapping(mapping: response, module_name: module_name, defined_names: defined_names))
-        )
-        let mock_diags = fold(op.mock_response, init: [], f: (inner_acc, mock) =>
-          concat(inner_acc, collect_unresolved_in_mock_response(mock_response: mock, module_name: module_name, defined_names: defined_names))
-        )
-        let exit_diags = fold(op.exit_mappings, init: [], f: (inner_acc, exit_mapping) =>
-          concat(inner_acc, collect_unresolved_in_exit_mapping(mapping: exit_mapping, module_name: module_name, defined_names: defined_names))
-        )
-        let transport_diags = if op.transport == none {
-          []
-        } else {
-          collect_unresolved_in_transport_binding(transport: op.transport.value, module_name: module_name, defined_names: defined_names)
-        }
-        concat(acc, input_diags, output_diags, response_diags, mock_diags, exit_diags, transport_diags)
-      )
-      concat(transport_diags, config_diags, op_diags)
-
-    ResourceDef { name: _, properties: properties, capabilities: capabilities, span: _ } =>
-      let property_diags = fold(properties, init: [], f: (acc, property) =>
-        concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
-      )
-      let capability_diags = fold(capabilities, init: [], f: (acc, cap) =>
-        let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        concat(acc, input_diags, output_diags)
-      )
-      concat(property_diags, capability_diags)
-
-    DataDef { name: _, type_expr: type_expr, value: value, span: _ } =>
-      concat(
-        collect_unresolved_in_type_expr(expr: type_expr, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_expr(expr: value, module_name: module_name, defined_names: defined_names)
-      )
-
-    ExternFuncDecl { name: _, params: params, return_type: return_type, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      concat(param_diags, collect_unresolved_in_type_expr(expr: return_type, module_name: module_name, defined_names: defined_names))
-
-    PatternDef { name: _, params: params, return_type: return_type, uses: uses, body: body, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      let ret_diags = if return_type == none { [] }
-        else { collect_unresolved_in_type_expr(expr: return_type.value, module_name: module_name, defined_names: defined_names) }
-      let use_diags = fold(uses, init: [], f: (acc, u) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
-      )
-      let body_diags = collect_unresolved_in_expr(expr: body, module_name: module_name, defined_names: defined_names)
-      concat(param_diags, ret_diags, use_diags, body_diags)
-  }
+fn collect_unresolved_in_item(item: Node, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
+  let shape_diags = if item.shape == none { [] }
+    else { collect_unresolved_in_type_body(body: item.shape.value, module_name: module_name, defined_names: defined_names) }
+  let param_diags = fold(item.params, init: [], f: (acc, p) =>
+    concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
+  )
+  let ret_diags = if item.return_type == none { [] }
+    else { collect_unresolved_in_type_expr(expr: item.return_type.value, module_name: module_name, defined_names: defined_names) }
+  let use_diags = fold(item.uses, init: [], f: (acc, u) =>
+    concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
+  )
+  let body_diags = if item.body == none { [] }
+    else { collect_unresolved_in_expr(expr: item.body.value, module_name: module_name, defined_names: defined_names) }
+  let anno_diags = if item.type_annotation == none { [] }
+    else { collect_unresolved_in_type_expr(expr: item.type_annotation.value, module_name: module_name, defined_names: defined_names) }
+  let transport_diags = if item.transport == none { [] }
+    else { collect_unresolved_in_transport_binding(transport: item.transport.value, module_name: module_name, defined_names: defined_names) }
+  let op_diags = fold(item.operations, init: [], f: (acc, op) =>
+    let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    let response_diags = fold(op.response, init: [], f: (inner_acc, response) =>
+      concat(inner_acc, collect_unresolved_in_response_mapping(mapping: response, module_name: module_name, defined_names: defined_names))
+    )
+    let mock_diags = fold(op.mock_response, init: [], f: (inner_acc, mock) =>
+      concat(inner_acc, collect_unresolved_in_mock_response(mock_response: mock, module_name: module_name, defined_names: defined_names))
+    )
+    let exit_diags = fold(op.exit_mappings, init: [], f: (inner_acc, exit_mapping) =>
+      concat(inner_acc, collect_unresolved_in_exit_mapping(mapping: exit_mapping, module_name: module_name, defined_names: defined_names))
+    )
+    let op_transport_diags = if op.transport == none { [] }
+      else { collect_unresolved_in_transport_binding(transport: op.transport.value, module_name: module_name, defined_names: defined_names) }
+    concat(acc, input_diags, output_diags, response_diags, mock_diags, exit_diags, op_transport_diags)
+  )
+  let cap_diags = fold(item.capabilities, init: [], f: (acc, cap) =>
+    let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    concat(acc, input_diags, output_diags)
+  )
+  let config_diags = if item.config == none { [] }
+    else { collect_unresolved_in_service_config(config: item.config.value, module_name: module_name, defined_names: defined_names) }
+  let prop_diags = fold(item.properties, init: [], f: (acc, property) =>
+    concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
+  )
+  concat(shape_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, op_diags, cap_diags, config_diags, prop_diags)
 }
 
 fn collect_unresolved_in_type_body(body: TypeBody, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
@@ -2979,105 +2834,63 @@ fn collect_unresolved_in_expr(expr: Expr, module_name: String, defined_names: Ma
 }
 
 // =========================================================================
-// Validation: check TypedItems for unresolved types
+// Validation: check TypedNodes for unresolved types
 //
-// Walks the typed AST (TypedItem list) and checks that return types and
+// Walks the typed AST (TypedNode list) and checks that return types and
 // inferred resolved_type fields on TypedExprs contain no unresolved Named.
 // =========================================================================
 
-fn collect_unresolved_in_typed_item(item: TypedItem, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match item {
-    TypedTypeDef { name: _, body: body, span: _ } =>
-      collect_unresolved_in_type_body(body: body, module_name: module_name, defined_names: defined_names)
-
-    TypedFnDef { name: _, params: params, return_type: rt, body: body, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      let ret_diags = collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names)
-      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
-      concat(param_diags, ret_diags, body_diags)
-
-    TypedFuncDef { name: _, params: params, return_type: rt, uses: uses, body: body, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      let ret_diags = collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names)
-      let use_diags = fold(uses, init: [], f: (acc, u) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
-      )
-      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
-      concat(param_diags, ret_diags, use_diags, body_diags)
-
-    TypedServiceDef { name: _, transport: transport, config: config, operations: operations, span: _ } =>
-      let transport_diags = collect_unresolved_in_transport_binding(transport: transport, module_name: module_name, defined_names: defined_names)
-      let config_diags = if config == none {
-        []
-      } else {
-        collect_unresolved_in_service_config(config: config.value, module_name: module_name, defined_names: defined_names)
-      }
-      let op_diags = fold(operations, init: [], f: (acc, op) =>
-        let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        let response_diags = fold(op.response, init: [], f: (inner_acc, response) =>
-          concat(inner_acc, collect_unresolved_in_response_mapping(mapping: response, module_name: module_name, defined_names: defined_names))
-        )
-        let mock_diags = fold(op.mock_response, init: [], f: (inner_acc, mock) =>
-          concat(inner_acc, collect_unresolved_in_mock_response(mock_response: mock, module_name: module_name, defined_names: defined_names))
-        )
-        let exit_diags = fold(op.exit_mappings, init: [], f: (inner_acc, exit_mapping) =>
-          concat(inner_acc, collect_unresolved_in_exit_mapping(mapping: exit_mapping, module_name: module_name, defined_names: defined_names))
-        )
-        let transport_diags = if op.transport == none {
-          []
-        } else {
-          collect_unresolved_in_transport_binding(transport: op.transport.value, module_name: module_name, defined_names: defined_names)
-        }
-        concat(acc, input_diags, output_diags, response_diags, mock_diags, exit_diags, transport_diags)
-      )
-      concat(transport_diags, config_diags, op_diags)
-
-    TypedResourceDef { name: _, properties: properties, capabilities: capabilities, span: _ } =>
-      let property_diags = fold(properties, init: [], f: (acc, property) =>
-        concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
-      )
-      let capability_diags = fold(capabilities, init: [], f: (acc, cap) =>
-        let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-        concat(acc, input_diags, output_diags)
-      )
-      concat(property_diags, capability_diags)
-
-    TypedDataDef { name: _, type_expr: type_expr, value: body, span: _ } =>
-      let type_diags = collect_unresolved_in_type_expr(expr: type_expr, module_name: module_name, defined_names: defined_names)
-      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
-      concat(type_diags, body_diags)
-
-    TypedExternFuncDecl { name: _, params: params, return_type: rt, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      concat(param_diags, collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names))
-
-    TypedPatternDef { name: _, params: params, return_type: rt, uses: uses, body: body, span: _ } =>
-      let param_diags = fold(params, init: [], f: (acc, p) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-      let ret_diags = collect_unresolved_in_type_expr(expr: rt, module_name: module_name, defined_names: defined_names)
-      let use_diags = fold(uses, init: [], f: (acc, u) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
-      )
-      let body_diags = collect_unresolved_in_typed_expr(texpr: body, module_name: module_name, defined_names: defined_names)
-      concat(param_diags, ret_diags, use_diags, body_diags)
-  }
+fn collect_unresolved_in_typed_item(item: TypedNode, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
+  let shape_diags = if item.shape == none { [] }
+    else { collect_unresolved_in_type_body(body: item.shape.value, module_name: module_name, defined_names: defined_names) }
+  let param_diags = fold(item.params, init: [], f: (acc, p) =>
+    concat(acc, collect_unresolved_in_type_expr(expr: p.type_expr, module_name: module_name, defined_names: defined_names))
+  )
+  let ret_diags = collect_unresolved_in_type_expr(expr: item.return_type, module_name: module_name, defined_names: defined_names)
+  let use_diags = fold(item.uses, init: [], f: (acc, u) =>
+    concat(acc, collect_unresolved_in_type_expr(expr: u.resource, module_name: module_name, defined_names: defined_names))
+  )
+  let body_diags = if item.body == none { [] }
+    else { collect_unresolved_in_typed_expr(texpr: item.body.value, module_name: module_name, defined_names: defined_names) }
+  let anno_diags = if item.type_annotation == none { [] }
+    else { collect_unresolved_in_type_expr(expr: item.type_annotation.value, module_name: module_name, defined_names: defined_names) }
+  let transport_diags = if item.transport == none { [] }
+    else { collect_unresolved_in_transport_binding(transport: item.transport.value, module_name: module_name, defined_names: defined_names) }
+  let op_diags = fold(item.operations, init: [], f: (acc, op) =>
+    let input_diags = fold(op.inputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    let output_diags = fold(op.outputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    let response_diags = fold(op.response, init: [], f: (inner_acc, response) =>
+      concat(inner_acc, collect_unresolved_in_response_mapping(mapping: response, module_name: module_name, defined_names: defined_names))
+    )
+    let mock_diags = fold(op.mock_response, init: [], f: (inner_acc, mock) =>
+      concat(inner_acc, collect_unresolved_in_mock_response(mock_response: mock, module_name: module_name, defined_names: defined_names))
+    )
+    let exit_diags = fold(op.exit_mappings, init: [], f: (inner_acc, exit_mapping) =>
+      concat(inner_acc, collect_unresolved_in_exit_mapping(mapping: exit_mapping, module_name: module_name, defined_names: defined_names))
+    )
+    let op_transport_diags = if op.transport == none { [] }
+      else { collect_unresolved_in_transport_binding(transport: op.transport.value, module_name: module_name, defined_names: defined_names) }
+    concat(acc, input_diags, output_diags, response_diags, mock_diags, exit_diags, op_transport_diags)
+  )
+  let cap_diags = fold(item.capabilities, init: [], f: (acc, cap) =>
+    let input_diags = fold(cap.inputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    let output_diags = fold(cap.outputs, init: [], f: (inner_acc, f) =>
+      concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
+    )
+    concat(acc, input_diags, output_diags)
+  )
+  let config_diags = if item.config == none { [] }
+    else { collect_unresolved_in_service_config(config: item.config.value, module_name: module_name, defined_names: defined_names) }
+  let prop_diags = fold(item.properties, init: [], f: (acc, property) =>
+    concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
+  )
+  concat(shape_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, op_diags, cap_diags, config_diags, prop_diags)
 }
 
 fn collect_unresolved_in_typed_expr(texpr: TypedExpr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
