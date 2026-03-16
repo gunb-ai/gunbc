@@ -199,21 +199,62 @@ pub enum Instruction {
 
 /// MIPS32 register set.
 ///
-/// Named registers following standard MIPS conventions.
+/// Each hardware register is an explicit variant — invalid indices are
+/// unrepresentable at construction time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Register {
     /// `$zero` — always 0.
     Zero,
     /// `$at` — assembler temporary.
     At,
-    /// `$v0`-`$v1` — function return values / syscall number.
-    V(u8),
-    /// `$a0`-`$a3` — function arguments.
-    A(u8),
-    /// `$t0`-`$t9` — temporaries (caller-saved).
-    T(u8),
-    /// `$s0`-`$s7` — saved (callee-saved).
-    S(u8),
+    /// `$v0` — function return value / syscall number.
+    V0,
+    /// `$v1` — function return value.
+    V1,
+    /// `$a0` — function argument 0.
+    A0,
+    /// `$a1` — function argument 1.
+    A1,
+    /// `$a2` — function argument 2.
+    A2,
+    /// `$a3` — function argument 3.
+    A3,
+    /// `$t0` — temporary (caller-saved).
+    T0,
+    /// `$t1` — temporary (caller-saved).
+    T1,
+    /// `$t2` — temporary (caller-saved).
+    T2,
+    /// `$t3` — temporary (caller-saved).
+    T3,
+    /// `$t4` — temporary (caller-saved).
+    T4,
+    /// `$t5` — temporary (caller-saved).
+    T5,
+    /// `$t6` — temporary (caller-saved).
+    T6,
+    /// `$t7` — temporary (caller-saved).
+    T7,
+    /// `$t8` — temporary (caller-saved).
+    T8,
+    /// `$t9` — temporary (caller-saved).
+    T9,
+    /// `$s0` — saved (callee-saved).
+    S0,
+    /// `$s1` — saved (callee-saved).
+    S1,
+    /// `$s2` — saved (callee-saved).
+    S2,
+    /// `$s3` — saved (callee-saved).
+    S3,
+    /// `$s4` — saved (callee-saved).
+    S4,
+    /// `$s5` — saved (callee-saved).
+    S5,
+    /// `$s6` — saved (callee-saved).
+    S6,
+    /// `$s7` — saved (callee-saved).
+    S7,
     /// `$gp` — global pointer.
     Gp,
     /// `$sp` — stack pointer.
@@ -224,48 +265,74 @@ pub enum Register {
     Ra,
 }
 
+/// `$a0`–`$a3` indexed by position (for calling-convention loops).
+pub const ARG_REGS: [Register; 4] = [Register::A0, Register::A1, Register::A2, Register::A3];
+
+/// `$t0`–`$t9` indexed by position (for the temp-register allocator).
+pub const TEMP_REGS: [Register; 10] = [
+    Register::T0,
+    Register::T1,
+    Register::T2,
+    Register::T3,
+    Register::T4,
+    Register::T5,
+    Register::T6,
+    Register::T7,
+    Register::T8,
+    Register::T9,
+];
+
 impl Register {
     /// Canonical MIPS register name (e.g., `$t0`, `$sp`).
     pub fn name(self) -> &'static str {
         match self {
             Self::Zero => "$zero",
             Self::At => "$at",
-            Self::V(0) => "$v0",
-            Self::V(1) => "$v1",
-            Self::V(n) => unreachable!("MIPS $v register index must be 0..=1, got {n}"),
-            Self::A(0) => "$a0",
-            Self::A(1) => "$a1",
-            Self::A(2) => "$a2",
-            Self::A(3) => "$a3",
-            Self::A(n) => unreachable!("MIPS $a register index must be 0..=3, got {n}"),
-            Self::T(n) => match n {
-                0 => "$t0",
-                1 => "$t1",
-                2 => "$t2",
-                3 => "$t3",
-                4 => "$t4",
-                5 => "$t5",
-                6 => "$t6",
-                7 => "$t7",
-                8 => "$t8",
-                9 => "$t9",
-                _ => unreachable!("MIPS $t register index must be 0..=9, got {n}"),
-            },
-            Self::S(n) => match n {
-                0 => "$s0",
-                1 => "$s1",
-                2 => "$s2",
-                3 => "$s3",
-                4 => "$s4",
-                5 => "$s5",
-                6 => "$s6",
-                7 => "$s7",
-                _ => unreachable!("MIPS $s register index must be 0..=7, got {n}"),
-            },
+            Self::V0 => "$v0",
+            Self::V1 => "$v1",
+            Self::A0 => "$a0",
+            Self::A1 => "$a1",
+            Self::A2 => "$a2",
+            Self::A3 => "$a3",
+            Self::T0 => "$t0",
+            Self::T1 => "$t1",
+            Self::T2 => "$t2",
+            Self::T3 => "$t3",
+            Self::T4 => "$t4",
+            Self::T5 => "$t5",
+            Self::T6 => "$t6",
+            Self::T7 => "$t7",
+            Self::T8 => "$t8",
+            Self::T9 => "$t9",
+            Self::S0 => "$s0",
+            Self::S1 => "$s1",
+            Self::S2 => "$s2",
+            Self::S3 => "$s3",
+            Self::S4 => "$s4",
+            Self::S5 => "$s5",
+            Self::S6 => "$s6",
+            Self::S7 => "$s7",
             Self::Gp => "$gp",
             Self::Sp => "$sp",
             Self::Fp => "$fp",
             Self::Ra => "$ra",
+        }
+    }
+
+    /// If this is a temporary register (`$t0`–`$t9`), return its index.
+    pub fn temp_index(self) -> Option<u8> {
+        match self {
+            Self::T0 => Some(0),
+            Self::T1 => Some(1),
+            Self::T2 => Some(2),
+            Self::T3 => Some(3),
+            Self::T4 => Some(4),
+            Self::T5 => Some(5),
+            Self::T6 => Some(6),
+            Self::T7 => Some(7),
+            Self::T8 => Some(8),
+            Self::T9 => Some(9),
+            _ => None,
         }
     }
 }

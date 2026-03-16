@@ -322,9 +322,9 @@ mod tests {
                 frame: empty_frame(),
                 body: vec![
                     Instruction::Add {
-                        rd: Register::V(0),
-                        rs: Register::A(0),
-                        rt: Register::A(1),
+                        rd: Register::V0,
+                        rs: Register::A0,
+                        rt: Register::A1,
                     },
                     Instruction::JumpReg(Register::Ra),
                 ],
@@ -353,7 +353,7 @@ mod tests {
                 frame: empty_frame(),
                 body: vec![
                     Instruction::LoadImm {
-                        rt: Register::V(0),
+                        rt: Register::V0,
                         imm: 10,
                     },
                     Instruction::Syscall,
@@ -375,33 +375,33 @@ mod tests {
     fn render_arithmetic_instructions() {
         assert_eq!(
             render_instruction(&Instruction::Add {
-                rd: Register::T(0),
-                rs: Register::T(1),
-                rt: Register::T(2),
+                rd: Register::T0,
+                rs: Register::T1,
+                rt: Register::T2,
             }),
             "\tadd $t0, $t1, $t2\n"
         );
         assert_eq!(
             render_instruction(&Instruction::AddImm {
-                rt: Register::T(0),
-                rs: Register::T(1),
+                rt: Register::T0,
+                rs: Register::T1,
                 imm: -4,
             }),
             "\taddi $t0, $t1, -4\n"
         );
         assert_eq!(
             render_instruction(&Instruction::Sub {
-                rd: Register::T(0),
-                rs: Register::T(1),
-                rt: Register::T(2),
+                rd: Register::T0,
+                rs: Register::T1,
+                rt: Register::T2,
             }),
             "\tsub $t0, $t1, $t2\n"
         );
         assert_eq!(
             render_instruction(&Instruction::Mul {
-                rd: Register::T(0),
-                rs: Register::T(1),
-                rt: Register::T(2),
+                rd: Register::T0,
+                rs: Register::T1,
+                rt: Register::T2,
             }),
             "\tmul $t0, $t1, $t2\n"
         );
@@ -411,7 +411,7 @@ mod tests {
     fn render_load_store_instructions() {
         assert_eq!(
             render_instruction(&Instruction::LoadWord {
-                rt: Register::T(0),
+                rt: Register::T0,
                 offset: 8,
                 base: Register::Sp,
             }),
@@ -419,7 +419,7 @@ mod tests {
         );
         assert_eq!(
             render_instruction(&Instruction::StoreWord {
-                rt: Register::T(0),
+                rt: Register::T0,
                 offset: 0,
                 base: Register::Sp,
             }),
@@ -427,30 +427,30 @@ mod tests {
         );
         assert_eq!(
             render_instruction(&Instruction::LoadByte {
-                rt: Register::T(0),
+                rt: Register::T0,
                 offset: 0,
-                base: Register::T(1),
+                base: Register::T1,
             }),
             "\tlb $t0, 0($t1)\n"
         );
         assert_eq!(
             render_instruction(&Instruction::StoreByte {
-                rt: Register::T(0),
+                rt: Register::T0,
                 offset: 0,
-                base: Register::T(1),
+                base: Register::T1,
             }),
             "\tsb $t0, 0($t1)\n"
         );
         assert_eq!(
             render_instruction(&Instruction::LoadImm {
-                rt: Register::V(0),
+                rt: Register::V0,
                 imm: 42,
             }),
             "\tli $v0, 42\n"
         );
         assert_eq!(
             render_instruction(&Instruction::LoadAddr {
-                rt: Register::A(0),
+                rt: Register::A0,
                 label: "msg".to_string(),
             }),
             "\tla $a0, msg\n"
@@ -461,7 +461,7 @@ mod tests {
     fn render_branch_jump_instructions() {
         assert_eq!(
             render_instruction(&Instruction::BranchEq {
-                rs: Register::T(0),
+                rs: Register::T0,
                 rt: Register::Zero,
                 label: "L_end".to_string(),
             }),
@@ -469,24 +469,24 @@ mod tests {
         );
         assert_eq!(
             render_instruction(&Instruction::BranchNe {
-                rs: Register::T(0),
-                rt: Register::T(1),
+                rs: Register::T0,
+                rt: Register::T1,
                 label: "L_loop".to_string(),
             }),
             "\tbne $t0, $t1, L_loop\n"
         );
         assert_eq!(
             render_instruction(&Instruction::BranchGe {
-                rs: Register::T(0),
-                rt: Register::T(1),
+                rs: Register::T0,
+                rt: Register::T1,
                 label: "L_done".to_string(),
             }),
             "\tbge $t0, $t1, L_done\n"
         );
         assert_eq!(
             render_instruction(&Instruction::BranchLt {
-                rs: Register::T(0),
-                rt: Register::T(1),
+                rs: Register::T0,
+                rt: Register::T1,
                 label: "L_body".to_string(),
             }),
             "\tblt $t0, $t1, L_body\n"
@@ -509,16 +509,16 @@ mod tests {
     fn render_data_movement_instructions() {
         assert_eq!(
             render_instruction(&Instruction::Move {
-                rd: Register::A(0),
-                rs: Register::T(0),
+                rd: Register::A0,
+                rs: Register::T0,
             }),
             "\tmove $a0, $t0\n"
         );
         assert_eq!(
             render_instruction(&Instruction::SetLt {
-                rd: Register::T(0),
-                rs: Register::T(1),
-                rt: Register::T(2),
+                rd: Register::T0,
+                rs: Register::T1,
+                rt: Register::T2,
             }),
             "\tslt $t0, $t1, $t2\n"
         );
@@ -546,7 +546,7 @@ mod tests {
         let frame = StackFrame {
             size: 32,
             locals: vec![("x".to_string(), 0, 4), ("y".to_string(), 4, 4)],
-            saved_regs: vec![(Register::S(0), 8), (Register::S(1), 12)],
+            saved_regs: vec![(Register::S0, 8), (Register::S1, 12)],
             ra_offset: Some(28),
         };
 
@@ -604,18 +604,18 @@ mod tests {
                 body: vec![
                     Instruction::Comment("print hello world".to_string()),
                     Instruction::LoadImm {
-                        rt: Register::V(0),
+                        rt: Register::V0,
                         imm: 4,
                     },
                     Instruction::LoadAddr {
-                        rt: Register::A(0),
+                        rt: Register::A0,
                         label: "msg".to_string(),
                     },
                     Instruction::Syscall,
                     Instruction::Blank,
                     Instruction::Comment("exit".to_string()),
                     Instruction::LoadImm {
-                        rt: Register::V(0),
+                        rt: Register::V0,
                         imm: 10,
                     },
                     Instruction::Syscall,
@@ -654,23 +654,23 @@ mod tests {
                 frame: StackFrame {
                     size: 24,
                     locals: vec![("result".to_string(), 0, 4)],
-                    saved_regs: vec![(Register::S(0), 4)],
+                    saved_regs: vec![(Register::S0, 4)],
                     ra_offset: Some(20),
                 },
                 body: vec![
                     Instruction::Comment("save arg".to_string()),
                     Instruction::Move {
-                        rd: Register::S(0),
-                        rs: Register::A(0),
+                        rd: Register::S0,
+                        rs: Register::A0,
                     },
                     Instruction::JumpAndLink("read_file".to_string()),
                     Instruction::StoreWord {
-                        rt: Register::V(0),
+                        rt: Register::V0,
                         offset: 0,
                         base: Register::Sp,
                     },
                     Instruction::LoadWord {
-                        rt: Register::V(0),
+                        rt: Register::V0,
                         offset: 0,
                         base: Register::Sp,
                     },

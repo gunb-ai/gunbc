@@ -150,7 +150,7 @@ impl LowerCtx {
             let offset = state.alloc_local(name, size);
             if i < 4 {
                 state.emit(Instruction::StoreWord {
-                    rt: Register::A(i as u8),
+                    rt: ARG_REGS[i],
                     offset: offset as i16,
                     base: Register::Sp,
                 });
@@ -169,7 +169,7 @@ impl LowerCtx {
             if !ends_with_return {
                 state.emit(Instruction::Comment("exit program".to_string()));
                 state.emit(Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: syscall::EXIT,
                 });
                 state.emit(Instruction::Syscall);
@@ -305,7 +305,7 @@ impl LowerCtx {
                 if let Some(e) = expr {
                     let reg = self.lower_expr(state, e)?;
                     state.emit(Instruction::Move {
-                        rd: Register::V(0),
+                        rd: Register::V0,
                         rs: reg,
                     });
                     state.free_temp(reg);
@@ -530,19 +530,19 @@ impl LowerCtx {
                 let size_reg = self.lower_expr(state, size_expr)?;
                 state.has_calls = true;
                 state.emit(Instruction::Move {
-                    rd: Register::A(0),
+                    rd: Register::A0,
                     rs: size_reg,
                 });
                 state.free_temp(size_reg);
                 state.emit(Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: syscall::SBRK,
                 });
                 state.emit(Instruction::Syscall);
                 let result = state.alloc_temp()?;
                 state.emit(Instruction::Move {
                     rd: result,
-                    rs: Register::V(0),
+                    rs: Register::V0,
                 });
                 Ok(result)
             }
@@ -778,7 +778,7 @@ impl LowerCtx {
         for (i, arg) in args.iter().enumerate().take(4) {
             let reg = self.lower_expr(state, arg)?;
             state.emit(Instruction::Move {
-                rd: Register::A(i as u8),
+                rd: ARG_REGS[i],
                 rs: reg,
             });
             state.free_temp(reg);
@@ -820,7 +820,7 @@ impl LowerCtx {
         let result = state.alloc_temp()?;
         state.emit(Instruction::Move {
             rd: result,
-            rs: Register::V(0),
+            rs: Register::V0,
         });
         Ok(result)
     }
@@ -839,14 +839,14 @@ impl LowerCtx {
         for (i, arg) in args.iter().enumerate().take(3) {
             let reg = self.lower_expr(state, arg)?;
             state.emit(Instruction::Move {
-                rd: Register::A(i as u8),
+                rd: ARG_REGS[i],
                 rs: reg,
             });
             state.free_temp(reg);
         }
 
         state.emit(Instruction::LoadImm {
-            rt: Register::V(0),
+            rt: Register::V0,
             imm: syscall_num,
         });
         state.emit(Instruction::Syscall);
@@ -855,7 +855,7 @@ impl LowerCtx {
         let result = state.alloc_temp()?;
         state.emit(Instruction::Move {
             rd: result,
-            rs: Register::V(0),
+            rs: Register::V0,
         });
         Ok(result)
     }
@@ -1129,10 +1129,10 @@ impl FnState {
 
     /// Allocate a temporary register ($t0-$t9).
     fn alloc_temp(&mut self) -> Result<Register, LowerError> {
-        for i in 0..10u8 {
+        for (i, &reg) in TEMP_REGS.iter().enumerate() {
             if self.temps_in_use & (1 << i) == 0 {
                 self.temps_in_use |= 1 << i;
-                return Ok(Register::T(i));
+                return Ok(reg);
             }
         }
         Err(LowerError::InternalError(
@@ -1142,7 +1142,7 @@ impl FnState {
 
     /// Release a temporary register.
     fn free_temp(&mut self, reg: Register) {
-        if let Register::T(n) = reg {
+        if let Some(n) = reg.temp_index() {
             self.temps_in_use &= !(1u16 << n);
         }
     }
@@ -1338,12 +1338,12 @@ mod tests {
 
         let r0 = state.alloc_temp().expect("should allocate $t0");
         let r1 = state.alloc_temp().expect("should allocate $t1");
-        assert_eq!(r0, Register::T(0));
-        assert_eq!(r1, Register::T(1));
+        assert_eq!(r0, Register::T0);
+        assert_eq!(r1, Register::T1);
 
         state.free_temp(r0);
         let r2 = state.alloc_temp().expect("should reuse freed $t0");
-        assert_eq!(r2, Register::T(0), "freed $t0 should be reused");
+        assert_eq!(r2, Register::T0, "freed $t0 should be reused");
 
         state.free_temp(r1);
         state.free_temp(r2);
@@ -1401,7 +1401,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::LoadImm {
-                    rt: Register::T(0),
+                    rt: Register::T0,
                     imm: 42
                 }
             )
@@ -1410,7 +1410,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::StoreWord {
-                    rt: Register::T(0),
+                    rt: Register::T0,
                     base: Register::Sp,
                     ..
                 }
@@ -1528,7 +1528,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::StoreWord {
-                    rt: Register::A(0),
+                    rt: Register::A0,
                     ..
                 }
             )
@@ -1537,7 +1537,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::StoreWord {
-                    rt: Register::A(1),
+                    rt: Register::A1,
                     ..
                 }
             )
@@ -1570,7 +1570,10 @@ mod tests {
                 matches!(
                     i,
                     Instruction::Move {
-                        rd: Register::A(_),
+                        rd: Register::A0
+                            | Register::A1
+                            | Register::A2
+                            | Register::A3,
                         ..
                     }
                 )
@@ -1590,7 +1593,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::Move {
-                    rd: Register::V(0),
+                    rd: Register::V0,
                     ..
                 }
             )
@@ -1663,7 +1666,7 @@ mod tests {
         let b = state.alloc_temp().expect("should allocate temp");
         let result = ctx.emit_strcmp(&mut state, a, b);
 
-        assert!(matches!(result, Register::T(_)));
+        assert!(result.temp_index().is_some());
         // Should contain LoadByte, BranchNe, BranchEq, AddImm, Jump.
         let has_lb = state
             .body
@@ -1722,7 +1725,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: 10
                 }
             )
@@ -1746,7 +1749,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: 4
                 }
             )
@@ -1772,7 +1775,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: 9
                 }
             )
@@ -1794,7 +1797,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: 13
                 }
             )
@@ -1837,7 +1840,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::LoadImm {
-                    rt: Register::V(0),
+                    rt: Register::V0,
                     imm: 1
                 }
             )
@@ -2129,7 +2132,7 @@ mod tests {
             matches!(
                 i,
                 Instruction::StoreWord {
-                    rt: Register::A(0),
+                    rt: Register::A0,
                     ..
                 }
             )
