@@ -59,10 +59,7 @@ pub fn is_map_string_string(expr: &TypeExpr) -> bool {
 /// Returns true if the type is a function type `fn(...)` (possibly refined/optional).
 pub fn is_function_type(expr: &TypeExpr) -> bool {
     match expr {
-        TypeExpr::Named(n) => {
-            let compact: String = n.chars().filter(|ch| !ch.is_whitespace()).collect();
-            compact.starts_with("fn(")
-        }
+        TypeExpr::Function(_, _) => true,
         TypeExpr::Refined(inner, _) | TypeExpr::Optional(inner) => is_function_type(inner),
         _ => false,
     }
@@ -77,6 +74,15 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
                 .map(type_expr_to_string)
                 .collect::<Vec<_>>()
                 .join(", ")
+        ),
+        TypeExpr::Function(params, output) => format!(
+            "fn({}) -> {}",
+            params
+                .iter()
+                .map(type_expr_to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+            type_expr_to_string(output)
         ),
         TypeExpr::Optional(inner) => format!("{}?", type_expr_to_string(inner)),
         TypeExpr::Refined(inner, _) => type_expr_to_string(inner),
@@ -108,6 +114,7 @@ pub fn canonical_resource_type_name(name: &str) -> String {
 pub fn resource_type_name(resource_type: &TypeExpr) -> String {
     match resource_type {
         TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_resource_type_name(name),
+        TypeExpr::Function(_, _) => "fn".to_string(),
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => resource_type_name(inner),
         TypeExpr::Record(_) => "Record".to_string(),
     }

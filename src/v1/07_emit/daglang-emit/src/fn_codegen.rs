@@ -70,6 +70,9 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
         ast::TypeExpr::Generic(n, args) => {
             IrType::Generic(n.clone(), args.iter().map(type_expr_to_ir_type).collect())
         }
+        ast::TypeExpr::Function(_, _) => {
+            IrType::Named(daglang_syntax::ast_utils::type_expr_to_string(expr))
+        }
         ast::TypeExpr::Optional(inner) => IrType::Optional(Box::new(type_expr_to_ir_type(inner))),
         ast::TypeExpr::Refined(inner, _) => type_expr_to_ir_type(inner),
         ast::TypeExpr::Record(fields) => IrType::Record(

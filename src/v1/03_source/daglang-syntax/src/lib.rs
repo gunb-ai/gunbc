@@ -195,6 +195,8 @@ pub mod ast {
     pub enum TypeExpr {
         Named(String),
         Generic(String, Vec<TypeExpr>),
+        /// Function type: `fn(A, B) -> C`
+        Function(Vec<TypeExpr>, Box<TypeExpr>),
         Optional(Box<TypeExpr>),
         /// Refined type: `Base where constraint1, constraint2`
         Refined(Box<TypeExpr>, Vec<Refinement>),

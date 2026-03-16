@@ -173,6 +173,15 @@ pub fn type_expr_to_rust_with_registry(
                 format!("{}<{}>", mapped, arg_strs.join(", "))
             }
         }
+        TypeExpr::Function(params, output) => format!(
+            "fn({}) -> {}",
+            params
+                .iter()
+                .map(|param| type_expr_to_rust_with_registry(param, registry))
+                .collect::<Vec<_>>()
+                .join(", "),
+            type_expr_to_rust_with_registry(output, registry)
+        ),
         TypeExpr::Optional(inner) => {
             format!(
                 "Option<{}>",
@@ -468,6 +477,7 @@ fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
         TypeExpr::Named(name) => name.clone(),
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
+        TypeExpr::Function(_, _) => "Function".to_string(),
         TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         TypeExpr::Record(_) => "Anonymous".to_string(),
     }
@@ -1362,6 +1372,7 @@ fn collect_direct_type_refs(
                 edges.push((field_name.to_string(), name.clone()));
             }
         }
+        TypeExpr::Function(_, _) => {}
         TypeExpr::Optional(inner) => {
             collect_direct_type_refs(inner, field_name, known_types, edges);
         }

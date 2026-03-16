@@ -800,6 +800,27 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 }
 
 #[test]
+fn strict_mode_accepts_associated_output_function_type_parameters() {
+    let graph = module_graph_from_sources(&[(
+        "sample/ensure.dag",
+        r#"module sample.ensure
+pattern ensure<Check, Action>(
+  should_act: fn(Check.Output) -> Bool
+) -> { acted: Bool } {
+  return { acted: true }
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("associated output references in function types should remain valid");
+    assert_eq!(typed.module_count(), 1);
+}
+
+#[test]
 fn function_typed_parameter_call_reports_arity_mismatch() {
     let graph = module_graph_from_sources(&[(
         "sample/callback_arity.dag",

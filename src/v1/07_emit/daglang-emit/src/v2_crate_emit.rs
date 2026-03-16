@@ -621,6 +621,7 @@ fn type_expr_to_rust_name(expr: &daglang_syntax::ast::TypeExpr) -> String {
         daglang_syntax::ast::TypeExpr::Named(name) => name.clone(),
         daglang_syntax::ast::TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         daglang_syntax::ast::TypeExpr::Generic(name, _) => name.clone(),
+        daglang_syntax::ast::TypeExpr::Function(_, _) => "Function".to_string(),
         daglang_syntax::ast::TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         daglang_syntax::ast::TypeExpr::Record(_) => "Anonymous".to_string(),
     }

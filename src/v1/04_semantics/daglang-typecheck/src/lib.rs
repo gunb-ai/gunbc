@@ -33,7 +33,7 @@ use daglang_syntax::ast::{
     Refinement, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    is_function_type, resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
+    resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
 use gunbc_ir::{TypeRegistry, BUILTIN_TYPES};
 
@@ -1270,6 +1270,12 @@ fn register_inline_records(ty: &TypeExpr, registry: &mut TypeRegistry) {
                 register_inline_records(arg, registry);
             }
         }
+        TypeExpr::Function(params, output) => {
+            for param in params {
+                register_inline_records(param, registry);
+            }
+            register_inline_records(output, registry);
+        }
         TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
             register_inline_records(inner, registry);
         }
@@ -1298,6 +1304,12 @@ fn collect_type_deps_from_expr<'a>(
             for arg in args {
                 collect_type_deps_from_expr(arg, type_names, deps);
             }
+        }
+        TypeExpr::Function(params, output) => {
+            for param in params {
+                collect_type_deps_from_expr(param, type_names, deps);
+            }
+            collect_type_deps_from_expr(output, type_names, deps);
         }
         TypeExpr::Optional(inner) => {
             collect_type_deps_from_expr(inner, type_names, deps);
@@ -3150,74 +3162,19 @@ fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, Callabl
 }
 
 fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContract> {
-    if !is_function_type(ty) {
-        return None;
-    }
-    let raw = type_expr_to_string(ty);
-    let compact: String = raw.chars().filter(|ch| !ch.is_whitespace()).collect();
-    let close_paren = find_matching_paren(&compact, 2)?;
-    let args = &compact[3..close_paren];
-    let output = compact
-        .get(close_paren + 1..)?
-        .strip_prefix("->")
-        .filter(|text| !text.is_empty())?
-        .to_string();
-    Some(CallableContract {
-        arity: parse_function_type_arity(args),
-        params: HashSet::new(),
-        param_order: Vec::new(),
-        param_types: HashMap::new(),
-        output: ValueType::Named(output),
-    })
-}
-
-fn find_matching_paren(text: &str, open_index: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, ch) in text.char_indices().filter(|(idx, _)| *idx >= open_index) {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(index);
-                }
-            }
-            _ => {}
+    match ty {
+        TypeExpr::Function(params, output) => Some(CallableContract {
+            arity: params.len(),
+            params: HashSet::new(),
+            param_order: Vec::new(),
+            param_types: HashMap::new(),
+            output: value_type_from_type_expr(output),
+        }),
+        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => {
+            parse_function_type_callable_contract(inner)
         }
+        _ => None,
     }
-    None
-}
-
-fn parse_function_type_arity(args: &str) -> usize {
-    if args.is_empty() {
-        return 0;
-    }
-    let mut arity = 1usize;
-    let mut paren_depth = 0usize;
-    let mut angle_depth = 0usize;
-    let mut bracket_depth = 0usize;
-    let mut brace_depth = 0usize;
-    for ch in args.chars() {
-        match ch {
-            '(' => paren_depth += 1,
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            '<' => angle_depth += 1,
-            '>' => angle_depth = angle_depth.saturating_sub(1),
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth = bracket_depth.saturating_sub(1),
-            '{' => brace_depth += 1,
-            '}' => brace_depth = brace_depth.saturating_sub(1),
-            ',' if paren_depth == 0
-                && angle_depth == 0
-                && bracket_depth == 0
-                && brace_depth == 0 =>
-            {
-                arity += 1;
-            }
-            _ => {}
-        }
-    }
-    arity
 }
 
 fn call_arg_expected_record_type(
@@ -5217,6 +5174,7 @@ fn value_type_from_type_expr(expr: &TypeExpr) -> ValueType {
             name.clone(),
             args.iter().map(value_type_from_type_expr).collect(),
         ),
+        TypeExpr::Function(_, _) => ValueType::Named(type_expr_to_string(expr)),
         TypeExpr::Optional(_) => ValueType::Named(type_expr_to_string(expr)),
         TypeExpr::Refined(inner, _) => value_type_from_type_expr(inner),
         TypeExpr::Record(fields) => ValueType::Record(field_value_type_map(fields)),
@@ -5583,6 +5541,9 @@ fn validate_type_expr(
     let mut errors = Vec::new();
     match ty {
         TypeExpr::Named(name) => {
+            if is_associated_output_type(name, known_types) {
+                return errors;
+            }
             if should_validate_named_type(name) && !known_types.contains(name) {
                 let tail = name.rsplit('.').next().unwrap_or(name);
                 if !known_types.contains(tail) {
@@ -5624,6 +5585,22 @@ fn validate_type_expr(
                     context,
                 ));
             }
+        }
+        TypeExpr::Function(params, output) => {
+            for (index, param) in params.iter().enumerate() {
+                errors.extend(validate_type_expr(
+                    param,
+                    known_types,
+                    generic_arity_registry,
+                    &format!("{context}.param{}", index + 1),
+                ));
+            }
+            errors.extend(validate_type_expr(
+                output,
+                known_types,
+                generic_arity_registry,
+                &format!("{context}.return"),
+            ));
         }
         TypeExpr::Optional(inner) => {
             errors.extend(validate_type_expr(
@@ -5859,6 +5836,13 @@ fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op:
 fn should_validate_named_type(name: &str) -> bool {
     name.chars()
         .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '.'))
+}
+
+fn is_associated_output_type(name: &str, known_types: &HashSet<String>) -> bool {
+    matches!(
+        name.rsplit_once('.'),
+        Some((base, "Output")) if known_types.contains(base)
+    )
 }
 
 #[cfg(test)]
