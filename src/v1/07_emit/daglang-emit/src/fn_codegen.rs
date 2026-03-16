@@ -1402,9 +1402,64 @@ fn compile_intrinsic_call(
             }
             Some(result)
         }
+        // count(filter(list, pred)) → counting loop (avoids materializing filtered list).
         // count(list) → { let __len = list.len(); __len as i64 }
-        // Uses a temp variable so the collection stays as proper IR for substitution.
         "count" if args.len() == 1 => {
+            // Fuse count(filter(list, pred)) → for e in list { if pred(e) { count += 1; } }
+            if let ast::Expr::Call(filter_name, filter_args) = &args[0].1 {
+                if filter_name == "filter" && filter_args.len() == 2 {
+                    let list = compile_expr(&filter_args[0].1, ctx, counter);
+                    let result = fresh(counter, "count");
+                    let elem = fresh(counter, "elem");
+                    let cond = match &filter_args[1].1 {
+                        ast::Expr::Lambda(params, body) => {
+                            let compiled = compile_expr(body, ctx, counter);
+                            params
+                                .first()
+                                .map(|p| {
+                                    substitute_var(
+                                        &compiled,
+                                        p,
+                                        &code_ir::Expr::Var(elem.clone()),
+                                    )
+                                })
+                                .unwrap_or(compiled)
+                        }
+                        other => code_ir::Expr::Call {
+                            func: Box::new(compile_expr(other, ctx, counter)),
+                            args: vec![code_ir::Expr::Var(elem.clone())],
+                            obligation: None,
+                        },
+                    };
+                    return Some(code_ir::Expr::Block(vec![
+                        code_ir::Stmt::Let {
+                            name: result.clone(),
+                            mutable: true,
+                            expr: code_ir::Expr::RawCode("0i64".to_string()),
+                            ir_type: Some(IrType::Int),
+                        },
+                        code_ir::Stmt::For {
+                            binding: elem,
+                            iter: make_owned_iter(list),
+                            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                                cond: Box::new(cond),
+                                then_body: vec![code_ir::Stmt::Assign {
+                                    dest: code_ir::Expr::Var(result.clone()),
+                                    value: code_ir::Expr::BinOp {
+                                        left: Box::new(code_ir::Expr::Var(result.clone())),
+                                        op: "+".to_string(),
+                                        right: Box::new(code_ir::Expr::RawCode(
+                                            "1i64".to_string(),
+                                        )),
+                                    },
+                                }],
+                                else_body: None,
+                            })],
+                        },
+                        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                    ]));
+                }
+            }
             let tmp = fresh(counter, "len");
             Some(code_ir::Expr::Block(vec![
                 code_ir::Stmt::Let {
@@ -1422,11 +1477,13 @@ fn compile_intrinsic_call(
         }
         // first(list) → list.first().cloned()
         // Fuses first(skip(list, n)) → list.get(n as usize).cloned() — O(1) vs O(n).
+        // Fuses first(filter(list, pred)) → find loop — avoids materializing filtered list.
         "first" if args.len() == 1 => {
-            if let ast::Expr::Call(skip_name, skip_args) = &args[0].1 {
-                if skip_name == "skip" && skip_args.len() == 2 {
-                    let list = clone_if_needed(compile_expr(&skip_args[0].1, ctx, counter));
-                    let idx = compile_expr(&skip_args[1].1, ctx, counter);
+            if let ast::Expr::Call(inner_name, inner_args) = &args[0].1 {
+                // first(skip(list, n)) → list.get(n as usize).cloned()
+                if inner_name == "skip" && inner_args.len() == 2 {
+                    let list = clone_if_needed(compile_expr(&inner_args[0].1, ctx, counter));
+                    let idx = compile_expr(&inner_args[1].1, ctx, counter);
                     return Some(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::MethodCall {
                             receiver: Box::new(list),
@@ -1439,6 +1496,64 @@ fn compile_intrinsic_call(
                         method: "cloned".to_string(),
                         args: vec![],
                     });
+                }
+                // first(filter(list, pred)) → find loop
+                if inner_name == "filter" && inner_args.len() == 2 {
+                    let list = compile_expr(&inner_args[0].1, ctx, counter);
+                    let result = fresh(counter, "found");
+                    let elem = fresh(counter, "elem");
+                    let cond = match &inner_args[1].1 {
+                        ast::Expr::Lambda(params, body) => {
+                            let compiled = compile_expr(body, ctx, counter);
+                            params
+                                .first()
+                                .map(|p| {
+                                    substitute_var(
+                                        &compiled,
+                                        p,
+                                        &code_ir::Expr::Var(elem.clone()),
+                                    )
+                                })
+                                .unwrap_or(compiled)
+                        }
+                        other => code_ir::Expr::Call {
+                            func: Box::new(compile_expr(other, ctx, counter)),
+                            args: vec![code_ir::Expr::Var(elem.clone())],
+                            obligation: None,
+                        },
+                    };
+                    return Some(code_ir::Expr::Block(vec![
+                        code_ir::Stmt::Let {
+                            name: result.clone(),
+                            mutable: true,
+                            expr: code_ir::Expr::Var("None".to_string()),
+                            ir_type: None,
+                        },
+                        code_ir::Stmt::For {
+                            binding: elem.clone(),
+                            iter: make_owned_iter(list),
+                            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                                cond: Box::new(cond),
+                                then_body: vec![
+                                    code_ir::Stmt::Assign {
+                                        dest: code_ir::Expr::Var(result.clone()),
+                                        value: code_ir::Expr::Call {
+                                            func: Box::new(code_ir::Expr::Var(
+                                                "Some".to_string(),
+                                            )),
+                                            args: vec![code_ir::Expr::Var(elem)],
+                                            obligation: None,
+                                        },
+                                    },
+                                    code_ir::Stmt::Expr(code_ir::Expr::RawCode(
+                                        "break".to_string(),
+                                    )),
+                                ],
+                                else_body: None,
+                            })],
+                        },
+                        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+                    ]));
                 }
             }
             Some(code_ir::Expr::MethodCall {
@@ -1825,6 +1940,17 @@ fn compile_fold_intrinsic(
             let mut fold_ctx = ctx.clone();
             if let Some(p) = params.first() {
                 fold_ctx.fold_accum_name = Some(p.clone());
+            }
+            // Compute use counts for lambda params with weight=1 (reassigned each iter).
+            // Without this, lambda params are excluded from outer use_counts and default
+            // to count=2 in compile_ident → always clone. With correct counts, single-use
+            // accumulators are moved instead of cloned.
+            let mut inner_counts = HashMap::new();
+            count_ident_uses_expr(body, &mut inner_counts, 1);
+            for param in params {
+                if let Some(&count) = inner_counts.get(param) {
+                    fold_ctx.use_counts.insert(param.clone(), count);
+                }
             }
             let mut compiled = compile_expr(body, &fold_ctx, counter);
             if let Some(p) = params.first() {
