@@ -640,62 +640,43 @@ impl Executable for PrepareFileReadCompatOp {
 
 /// File-write prepare adapter for DSL content-upsert chains.
 ///
-/// Requires `path` and content inputs. Content is looked up under `content`,
-/// `return`, or `expected_content` because the DSL lowering pipeline uses
-/// different port names depending on the call path (callable return values
-/// are named `return`, content-upsert compare nodes use `expected_content`,
-/// and direct wiring uses `content`).
+/// Requires canonical `path` and `content` inputs. The lowering pipeline
+/// always stamps prepare-write nodes with exactly these two port names
+/// (see `expand_single_content_upsert` and `add_content_upsert_chain`),
+/// so no alias guessing is needed.
 #[derive(Debug, Clone)]
 struct PrepareFileWriteCompatOp;
 
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let input_keys = {
-            let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
-            keys.sort();
-            keys.join(", ")
-        };
-        if matches!(inputs.get("path"), Some(Value::Skipped)) {
+        if matches!(inputs.get("path"), Some(Value::Skipped))
+            || matches!(inputs.get("content"), Some(Value::Skipped))
+        {
             return OutputMap::new()
                 .value("request", Value::Skipped)
                 .bool("skip", true)
                 .ok();
         }
-        let path_value = inputs
-            .get("path")
-            .or_else(|| inputs.get("target_path"))
-            .or_else(|| inputs.get("filepath"));
-        if matches!(path_value, Some(Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        let path = path_value.and_then(Value::as_str).ok_or_else(|| {
-            ExecError::new(
-                format!(
-                    "PrepareFileWrite: missing required `path` input — check content-upsert wiring (available inputs: {input_keys})"
-                ),
-            )
+        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+            let input_keys = {
+                let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                keys.join(", ")
+            };
+            ExecError::new(format!(
+                "PrepareFileWrite: missing required `path` input — check content-upsert wiring (available inputs: {input_keys})"
+            ))
         })?;
-        let content_value = inputs
-            .get("content")
-            .or_else(|| inputs.get("return"))
-            .or_else(|| inputs.get("expected_content"))
-            .or_else(|| inputs.get("makefile_content"));
-        if matches!(content_value, Some(Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .bool("skip", true)
-                .ok();
-        }
-        let content = content_value
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new(format!(
-                    "PrepareFileWrite: missing content input (expected `content`, `return`, or `expected_content`; available inputs: {input_keys})"
-                ))
-            })?;
+        let content = inputs.get("content").and_then(Value::as_str).ok_or_else(|| {
+            let input_keys = {
+                let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                keys.join(", ")
+            };
+            ExecError::new(format!(
+                "PrepareFileWrite: missing required `content` input — check content-upsert wiring (available inputs: {input_keys})"
+            ))
+        })?;
         OutputMap::new()
             .request(
                 "request",
