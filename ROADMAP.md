@@ -25,11 +25,37 @@ compiler can always see through a name to the structure underneath.
 
 ---
 
-## Stage 1: Gist end-to-end
+## Parallel tracks
 
-Validate the full pipeline on a real workload before attempting self-hosting.
+Work is organized into tracks that can proceed independently. Dependencies
+between tracks are noted; within each track, steps are sequential.
 
-### 1a: Gist compilation
+```
+Track A: Pipeline validation        Track B: Node convergence      Track C: Language emission
+(gist → self-compile → bootstrap)   (TypeExpr → Expr → transport)  (extdeps model)
+─────────────────────────────────   ──────────────────────────────  ─────────────────────────
+A1: Gist compilation                B1: TypeExpr → Node             C1: Define LanguageSpec
+A2: Runtime bridge                  B2: Rename typecheck → infer        interface
+A3: Gist end-to-end                 B3: Expr → Node                 C2: Rust/Python extdeps
+A4: Full self-compile pipeline      B4: Transport dissolution       C3: Emitters consult
+A5: Bootstrap stage 0→1                                                 extdeps
+A6: Fixed point                                                     C4: --target CLI
+A7: v1 retirement
+```
+
+**Dependencies:**
+- A5 (bootstrap) requires A4 (full self-compile)
+- A6 (fixed point) requires A5
+- B1-B4 are validated by re-bootstrapping (requires A6), but design work
+  and implementation can begin before A6 on the current v1-bootstrapped compiler
+- C1-C4 are fully independent — can proceed in parallel with A and B
+- B4 (transport dissolution) benefits from C2 (transport facts live in extdeps)
+
+---
+
+## Track A: Pipeline validation → bootstrap → self-hosting
+
+### A1: Gist compilation
 
 Feed gist.dag + 11 transitive dependencies through the v2 pipeline. Verify
 emitted code compiles in each target language.
@@ -38,7 +64,7 @@ emitted code compiles in each target language.
 - [ ] `v2_compile_gist_rust` — v2 compiles gist → Rust → `cargo check`
 - [ ] `v2_compile_gist_python` — v2 compiles gist → Python → `py_compile`
 
-### 1b: Runtime bridge
+### A2: Runtime bridge
 
 Generate entry point and runtime dependencies so the compiled gist executes.
 
@@ -47,30 +73,23 @@ Generate entry point and runtime dependencies so the compiled gist executes.
 - [ ] `cargo run -- gist --dry-run` produces correct dry-run output
 - [ ] Python equivalent produces same dry-run output
 
-### 1c: End-to-end execution
+### A3: Gist end-to-end execution
 
 **Acceptance:**
 - [ ] Compiled Rust gist creates a real GitHub gist (manual gate, requires token)
 - [ ] Compiled Python gist creates a real GitHub gist (manual gate)
 
----
+### A4: Full self-compile pipeline
 
-## Stage 2: Full self-compile pipeline
-
-Extend the existing `self_compile_all_modules` test from stages 1-3
-(tokenize → parse → resolve) to stages 1-5 (+ typecheck + emit). S85
-SCC fix may have unblocked the OOM that previously prevented this.
+Extend `self_compile_all_modules` from stages 1-3 (tokenize → parse → resolve)
+to stages 1-5 (+ typecheck + emit). S85 SCC fix may have unblocked the OOM.
 
 **Acceptance:**
 - [ ] v2 crate processes its own .dag source through full pipeline
 - [ ] Emitted Rust files compile (`cargo check`)
 - [ ] No OOM, no stack overflow on any .dag file up to 4000 lines
 
----
-
-## Stage 3: Bootstrap
-
-### 3a: Stage 0→1
+### A5: Bootstrap stage 0→1
 
 ```
 v1 compiles v2 .dag → Rust → rustc → v2-stage0  (what we have today)
@@ -81,7 +100,7 @@ v2-stage0 compiles v2 .dag → Rust → rustc → v2-stage1  (the new thing)
 - [ ] v2-stage1 builds successfully
 - [ ] v2-stage1 passes the same test suite as v2-stage0
 
-### 3b: Fixed point
+### A6: Fixed point
 
 ```
 v2-stage1 compiles v2 .dag → Rust → rustc → v2-stage2
@@ -90,7 +109,7 @@ v2-stage1 compiles v2 .dag → Rust → rustc → v2-stage2
 **Acceptance:**
 - [ ] stage1 output == stage2 output (compiler reproduces itself)
 
-### 3c: v1 retirement
+### A7: v1 retirement
 
 Once the fixed point holds, v1 is bootstrap scaffolding — no longer needed.
 
@@ -101,14 +120,16 @@ Once the fixed point holds, v1 is bootstrap scaffolding — no longer needed.
 
 ---
 
-## Stage 4: Node convergence
+## Track B: Node convergence
 
 Structural unification — one type (Node) flows through the entire pipeline.
-Each step is validated by re-bootstrapping: modify .dag source, self-compile,
-verify fixed point holds. 13 design decisions are made (see memory doc
-`project_typeexpr_node_convergence.md`).
+After A6, each step is validated by re-bootstrapping (fixed point holds).
+Before A6, implementation proceeds on the v1-bootstrapped compiler and is
+validated by the existing test suite (89+ tests).
 
-### 4a: TypeExpr → Node
+13 design decisions are documented in `project_typeexpr_node_convergence.md`.
+
+### B1: TypeExpr → Node
 
 Dissolve TypeExpr (8 variants) into Node patterns. The typechecker walks
 Nodes via connective + children instead of pattern-matching TypeExpr variants.
@@ -127,18 +148,17 @@ Key design decisions:
 - [ ] TypeExpr type deleted from 00_core.dag
 - [ ] Field, Variant types deleted (replaced by child Nodes)
 - [ ] Typechecker works on Nodes, not TypeExpr
-- [ ] Fixed point holds after migration
+- [ ] 89+ tests pass / fixed point holds (whichever gate is available)
 
-### 4b: Rename typecheck → infer
+### B2: Rename typecheck → infer
 
 After convergence, the phase completes a Node graph (fills in return_types),
 not checks a separate type system.
 
 **Acceptance:**
 - [ ] `04_typecheck.dag` → `04_infer.dag`
-- [ ] Fixed point holds
 
-### 4c: Expr → Node
+### B3: Expr → Node
 
 Dissolve Expr (17 variants) into Node patterns. Expressions become Nodes
 whose body/children carry computation structure.
@@ -155,9 +175,8 @@ Inference is `List<Node> → List<Node>` — same Nodes, return_types completed.
 - [ ] Typed* family deleted (TypedNode, TypedExpr, etc.)
 - [ ] `typed_expr_to_expr` conversion deleted
 - [ ] Pipeline is `Node → Node → Node → TextFile`
-- [ ] Fixed point holds
 
-### 4d: Transport dissolution
+### B4: Transport dissolution
 
 `transport: Node?` — the field stays (structural awareness: no smuggling I/O),
 but TransportBinding (the hardcoded 4-variant enum) dissolves. Transport value
@@ -173,14 +192,14 @@ Types that dissolve: TransportBinding, ServiceConfig, AuthConfig, HeaderDef, Env
 - [ ] TransportBinding enum deleted
 - [ ] Emitters derive transport behavior from Node structure
 - [ ] `transport != none` is the only hardcoded transport knowledge
-- [ ] Fixed point holds
 
 ---
 
-## Stage 5: Language emission as extdeps
+## Track C: Language emission as extdeps
 
 Languages are external systems with specifications. They belong in extdeps,
-modeled the same way GitHub and Git are modeled.
+modeled the same way GitHub and Git are modeled. Fully independent of
+tracks A and B — can proceed in parallel.
 
 ### Architecture
 
@@ -194,8 +213,8 @@ Three layers, separated:
 2. **Language extdeps (spec-derived):** Each language fills in the interface
    from its real specification. Evolves independently of the compiler.
 
-3. **Wiring (compiler-owned):** Connects `--target` CLI flag to the
-   appropriate language extdep. Trivial for now, eventually dynamic.
+3. **Wiring (compiler-owned for now):** Connects `--target` CLI flag to the
+   appropriate language extdep. Trivial, eventually dynamic.
 
 ```
 dsl/extdeps/languages/
@@ -205,27 +224,44 @@ dsl/extdeps/languages/
   go/         — ...
 ```
 
-### Kernel runtime resolves naturally
+### C1: Define LanguageSpec interface
 
-"How do you concat strings in Rust?" is a fact about Rust, captured in
-`dsl/extdeps/languages/rust/runtime.dag`. The current `v2_rt.rs` runtime
-shim dissolves into the Rust language extdep.
+The compiler defines the contract: what facts does the emitter need?
 
-### Per-language emitters shrink
+**Acceptance:**
+- [ ] LanguageSpec type defined in .dag
+- [ ] Covers: type mappings, naming, syntax patterns, runtime ops,
+      error model, async model, import system
 
-The 1000+ line emitter monoliths (`05_emit_rust.dag`, etc.) shrink to thin
-semantic renderers handling irreducible differences (Rust ownership, Python
-exceptions, Go multi-return). Surface knowledge (spelling, naming, type
-mappings) comes from the language extdep.
+### C2: Rust and Python language extdeps
+
+Model Rust and Python from their real specifications, implementing the
+LanguageSpec interface.
+
+Kernel runtime resolves here: "how do you concat strings in Rust?" is a
+fact in `dsl/extdeps/languages/rust/runtime.dag`. The current `v2_rt.rs`
+dissolves into the Rust language extdep.
 
 **Acceptance:**
 - [ ] Language extdeps in `dsl/extdeps/languages/` for Rust, Python
-- [ ] Compiler defines LanguageSpec interface
+- [ ] Runtime ops captured (string, list, map operations per language)
+
+### C3: Emitters consult extdeps
+
+The 1000+ line emitter monoliths shrink to thin semantic renderers handling
+irreducible differences (Rust ownership, Python exceptions). Surface
+knowledge comes from the language extdep.
+
+**Acceptance:**
 - [ ] Emitters consult extdeps — no hardcoded type/naming maps
-- [ ] `--target` CLI flag (default: Rust)
 - [ ] Adding a new target = writing a language extdep (no compiler changes)
 - [ ] Emitted code identical for all existing test cases
-- [ ] Fixed point holds
+
+### C4: CLI target selection
+
+**Acceptance:**
+- [ ] `--target` CLI flag (default: Rust, supports Python, TypeScript, Go)
+- [ ] Target selection loads appropriate language extdep
 
 ---
 
