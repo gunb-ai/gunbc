@@ -765,34 +765,6 @@ fn parse_local_response(
             }
             out.ok()
         }
-        // Backward compat: accept Shell responses from the old echo-based carrier.
-        Some(Value::Response(TransportResponse::Shell(shell))) => {
-            // Empty stdout (common in DryRun mocks): treat as Skipped.
-            if shell.stdout.trim().is_empty() {
-                let mut out = OutputMap::new();
-                for field in &spec.output_fields {
-                    out = out.value(&field.name, Value::Skipped);
-                }
-                return out.ok();
-            }
-            let parsed: serde_json::Value =
-                serde_json::from_str(shell.stdout.trim()).map_err(|e| {
-                    ExecError::new(format!(
-                        "GenericLocalParse: failed to parse shell stdout as JSON: {e}"
-                    ))
-                })?;
-            let mut out = OutputMap::new();
-            for field in &spec.output_fields {
-                let val = parsed.get(&field.name);
-                out = match val {
-                    Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
-                    Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
-                    Some(other) => out.str(&field.name, other.to_string()),
-                    None => out.value(&field.name, Value::Unit),
-                };
-            }
-            out.ok()
-        }
         Some(Value::Skipped) | None => {
             let mut out = OutputMap::new();
             for field in &spec.output_fields {
@@ -801,7 +773,7 @@ fn parse_local_response(
             out.ok()
         }
         Some(other) => Err(ExecError::new(format!(
-            "GenericLocalParse: expected Local or Shell response, got {:?}",
+            "GenericLocalParse: expected Local response, got {:?}",
             std::mem::discriminant(other)
         ))),
     }
