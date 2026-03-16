@@ -945,6 +945,26 @@ pub enum SemanticCarrierKind {
     UnknownSemantic,
 }
 
+impl SemanticCarrierKind {
+    /// Whether this carrier kind indicates effectful (I/O or environment) computation.
+    ///
+    /// Types classified as effectful must not appear on `NodeKind::Pure` nodes.
+    /// This is the single authority for the effectful/pure type boundary —
+    /// consumers should call this method instead of matching on type name strings.
+    pub fn is_effectful(&self) -> bool {
+        matches!(
+            self,
+            SemanticCarrierKind::TransportRequest
+                | SemanticCarrierKind::FilesystemHandle
+                | SemanticCarrierKind::NetworkHandle
+                | SemanticCarrierKind::ToolHandle
+                | SemanticCarrierKind::Platform
+                | SemanticCarrierKind::Timestamp
+                | SemanticCarrierKind::Credential
+        )
+    }
+}
+
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -953,6 +973,15 @@ impl TypeId {
     /// Get the underlying string representation.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Classify this type's semantic carrier kind.
+    ///
+    /// Delegates to the single-authority classification in
+    /// `semantic_carrier_kind_for_type_name`. Use this instead of
+    /// matching on `self.0` strings directly.
+    pub fn semantic_kind(&self) -> SemanticCarrierKind {
+        semantic_carrier_kind_for_type_name(&self.0)
     }
 
     // ── Typed constructors (CP-17) ──────────────────────────────────
@@ -2071,6 +2100,38 @@ mod tests {
             semantic_carrier_kind_for_type_name("FilesystemHandle"),
             SemanticCarrierKind::FilesystemHandle
         );
+    }
+
+    #[test]
+    fn test_effectful_type_classification() {
+        // Effectful types — must not appear on Pure nodes
+        assert!(SemanticCarrierKind::TransportRequest.is_effectful());
+        assert!(SemanticCarrierKind::FilesystemHandle.is_effectful());
+        assert!(SemanticCarrierKind::NetworkHandle.is_effectful());
+        assert!(SemanticCarrierKind::ToolHandle.is_effectful());
+        assert!(SemanticCarrierKind::Platform.is_effectful());
+        assert!(SemanticCarrierKind::Timestamp.is_effectful());
+        assert!(SemanticCarrierKind::Credential.is_effectful());
+
+        // Non-effectful types — safe on Pure nodes
+        assert!(!SemanticCarrierKind::Structural.is_effectful());
+        assert!(!SemanticCarrierKind::TransportResponse.is_effectful());
+        assert!(!SemanticCarrierKind::Secret.is_effectful());
+        assert!(!SemanticCarrierKind::UnknownSemantic.is_effectful());
+    }
+
+    #[test]
+    fn test_type_id_semantic_kind() {
+        assert_eq!(
+            TypeId::new("FilesystemHandle").semantic_kind(),
+            SemanticCarrierKind::FilesystemHandle
+        );
+        assert_eq!(
+            TypeId::new("String").semantic_kind(),
+            SemanticCarrierKind::Structural
+        );
+        assert!(TypeId::new("ToolHandle").semantic_kind().is_effectful());
+        assert!(!TypeId::new("String").semantic_kind().is_effectful());
     }
 
     #[test]

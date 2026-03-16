@@ -2218,12 +2218,12 @@ fn validate_node_kinds_rejects_kindless_transport_node() {
     assert!(err.is_err());
     let msg = err.unwrap_err().to_string();
     assert!(
-        msg.contains("transport"),
-        "expected transport mention: {msg}"
+        msg.contains("effectful input") && msg.contains("TransportRequest"),
+        "expected effectful TransportRequest input mention: {msg}"
     );
     assert!(
         msg.contains("kind: Pure"),
-        "expected kind: None mention: {msg}"
+        "expected kind: Pure mention: {msg}"
     );
 }
 
@@ -2238,7 +2238,11 @@ fn validate_node_kinds_rejects_kindless_tool_consumer() {
     ));
     let err = validate_node_kinds_for_interception(&dag);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("ToolHandle input"));
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("effectful input") && msg.contains("ToolHandle"),
+        "expected effectful ToolHandle input mention: {msg}"
+    );
 }
 
 #[test]
@@ -2252,7 +2256,11 @@ fn validate_node_kinds_rejects_kindless_tool_environment() {
     ));
     let err = validate_node_kinds_for_interception(&dag);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("ToolHandle output"));
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("effectful output") && msg.contains("ToolHandle"),
+        "expected effectful ToolHandle output mention: {msg}"
+    );
 }
 
 #[test]
@@ -2266,10 +2274,11 @@ fn validate_node_kinds_rejects_kindless_resource_environment() {
     ));
     let err = validate_node_kinds_for_interception(&dag);
     assert!(err.is_err());
-    assert!(err
-        .unwrap_err()
-        .to_string()
-        .contains("resource-environment"));
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("effectful output") && msg.contains("FilesystemHandle"),
+        "expected effectful FilesystemHandle output mention: {msg}"
+    );
 }
 
 #[test]

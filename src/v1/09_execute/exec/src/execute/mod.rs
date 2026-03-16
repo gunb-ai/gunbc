@@ -4,9 +4,9 @@
 //!
 //! DryRun mode intercepts **transport execution nodes** (nodes that consume
 //! `TransportRequest` values), **environment nodes** (nodes that emit
-//! resource outputs like `ToolHandle`, `FilesystemHandle`, `NetworkHandle`, `Timestamp`,
-//! `Credential`, or `Platform`), **tool consumer nodes** (nodes that
-//! consume `ToolHandle`), and **nodes with explicit mocks for all outputs**.
+//! types classified as effectful by `SemanticCarrierKind::is_effectful()`),
+//! **tool consumer nodes** (nodes that consume `ToolHandle`), and
+//! **nodes with explicit mocks for all outputs**.
 //! Intercepted nodes require **explicit mocks for every output port** — there
 //! is no default fallback.
 //!
@@ -1862,10 +1862,10 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
                 if !existing.has_mock(&node.id, &port.name) {
                     // Choose a type-appropriate default based on resource inputs:
                     // nodes with FilesystemHandle inputs are file transports.
-                    let is_file_transport = node
-                        .inputs
-                        .iter()
-                        .any(|p| p.type_id.0 == "FilesystemHandle");
+                    let is_file_transport = node.inputs.iter().any(|p| {
+                        p.type_id.semantic_kind()
+                            == gunbc_ir::SemanticCarrierKind::FilesystemHandle
+                    });
                     let default_response = if is_file_transport {
                         Value::Response(TransportResponse::File(FileResponse {
                             path: String::new(),
@@ -2096,24 +2096,20 @@ fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
 
 /// Pre-flight check: error if any `Pure` node has effectful port patterns.
 ///
-/// `looks_effectful_without_kind()` helper was removed (C18); keep the checks
-/// inlined here so accidental `kind: Pure` regressions still fail closed.
+/// Uses `SemanticCarrierKind::is_effectful()` as the single authority for
+/// which types indicate I/O or environment access. Adding a new resource
+/// type only requires updating `semantic_carrier_kind_for_type_name` in the
+/// IR crate — this function adapts automatically.
 fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
     for node in &dag.nodes {
         if node.kind != NodeKind::Pure {
             continue;
         }
         for port in &node.inputs {
-            if port.type_id.0 == "TransportRequest" {
+            if port.type_id.semantic_kind().is_effectful() {
                 return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has TransportRequest input",
-                    node.id.0
-                )));
-            }
-            if port.type_id.0 == "ToolHandle" {
-                return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has ToolHandle input",
-                    node.id.0
+                    "node '{}' has kind: Pure but has effectful input '{}' (type: {})",
+                    node.id.0, port.name.0, port.type_id.0
                 )));
             }
             if port.name.is_resource() {
@@ -2124,19 +2120,10 @@ fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError
             }
         }
         for port in &node.outputs {
-            if port.type_id.0 == "ToolHandle" {
+            if port.type_id.semantic_kind().is_effectful() {
                 return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has ToolHandle output",
-                    node.id.0
-                )));
-            }
-            if matches!(
-                port.type_id.0.as_str(),
-                "FilesystemHandle" | "NetworkHandle" | "Timestamp" | "Credential" | "Platform"
-            ) {
-                return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has resource-environment output '{}'",
-                    node.id.0, port.type_id.0
+                    "node '{}' has kind: Pure but has effectful output '{}' (type: {})",
+                    node.id.0, port.name.0, port.type_id.0
                 )));
             }
         }
