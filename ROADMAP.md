@@ -1,930 +1,308 @@
 # gunbc Roadmap
 
-Two parallel streams. Stream 1 is the product milestone. Stream 2 is housekeeping
-that can happen independently.
+**Goal:** Self-hosted v2 compiler. The compiler is written in .dag, compiles
+itself, and produces identical output when compiling itself again (fixed point).
+
+**Thesis:** Explicit cause-and-effect relationships with basic primitives
+(truth-valued structure, Conj/Disj, composition) are sufficient to express
+any information concept. Named types are aliases for compositions — the
+compiler can always see through a name to the structure underneath.
 
 ---
 
-## Stream 1: Gist on v2
+## Completed work
 
-**Goal:** `gist`, `gist_diff`, and `gist_recent` compile through the v2 compiler
-and execute against real GitHub/Git APIs, in both Rust and Python targets.
-
-### Current state (2026-03-15)
-
-The v2 compiler pipeline (tokenize -> parse -> resolve -> typecheck -> emit) is
-fully implemented. Self-compile through resolve is proven on all 10 v2 modules
-with zero errors. Typecheck and emit have full handler coverage for all item
-types including `func`, `service`, `resource`, and `extern func` in both Rust
-and Python renderers.
-
-gist.dag is purely compositional: 4 pure functions, 3 workflow functions
-(`func`), service calls (Git, GitHub), and resource usage (Network). No new type
-definitions, no extern funcs. It has 11 transitive dependencies (including
-`std/types.dag`).
-
-### Gap analysis
-
-#### P0: Recursive type support (S85) — current gist pipeline blocker
-
-The gist pipeline OOMs on `std.types` (item 55 of 101: `CredentialFlow`).
-Root cause: recursive sum type triggers infinite recursion in the resolver
-due to dropped cycle-detection state (S85). This is not an algorithmic
-scaling issue — it is a missing language feature.
-
-**Required work:**
-1. Thread `resolving` through `resolve_field`, `resolve_variant`,
-   `resolve_param` and their callers (signature changes) — smallest safe fix
-2. Add a recursive-type test case through the full pipeline:
-   `type Node = Leaf | Branch { children: List<Node> }`
-3. Terminal: SCC analysis on the type dependency graph during resolve,
-   producing cycle metadata carried structurally on `TypeBinding`
-
-**Acceptance gate:** v2 compiler resolves `std.types` (101 type definitions
-including recursive types) without OOM. Full pipeline completes for gist's
-11 transitive dependencies.
-
-#### Separate concern: lookup complexity (partially addressed)
-
-The v2 typechecker previously used list-based environments for all name
-lookups — O(n) per lookup, O(n*m*k) for cross-module resolution. This was
-a real scaling bottleneck but is now **partially addressed**: type cache,
-item registry, and module index all use `Map<K,V>` with O(1) lookups
-(documented in SUSTAINABILITY.md gap analysis). Further optimization may
-be needed as the module count grows, but this is not the current blocker.
-
-#### P1: TCO pass for emitted code (S84)
-
-The v2 emitter has no tail-call optimization. v1's `fn_codegen.rs` has a TCO
-pass; v2's `05_emit_rust.dag` does not. When the v2 compiler compiles gist's
-recursive functions, the generated Rust will stack-overflow on deep inputs
-without either TCO or stacker wrapping.
-
-**Required work:**
-1. Add TCO analysis to the v2 emit pipeline: detect tail-position self-calls
-2. Emit `loop` + reassignment for tail-recursive functions (same transform as v1)
-3. For non-tail recursion: stacker wrapping is already in the generated crate
-
-**Acceptance gate:** Generated Rust for recursive .dag functions uses iterative
-loops for tail calls. No stack overflow on inputs up to 10K lines.
-
-#### P2: Gist compilation test
-
-Feed gist.dag + its 11 transitive dependencies through the v2 pipeline and
-verify the output compiles.
-
-**Required work:**
-1. Assemble gist's dependency chain: `std/types.dag`, `std/resources.dag`,
-   `std/errors.dag`, `extdeps/cloud/cloud.dag`, `extdeps/cloud/gcp/gcp.dag`,
-   `extdeps/github/github.dag`, `gunbc/auth/credentials.dag`, `extdeps/git.dag`,
-   `extdeps/github/auth.dag`, `extdeps/github/gists.dag`, `gunbc/tools/gist.dag`
-2. Add test: v2 compile all 11 files -> Rust target -> `cargo check` passes
-3. Add test: v2 compile all 11 files -> Python target -> `python -m py_compile`
-   passes
-
-**Acceptance gate:** Emitted Rust and Python both pass syntax/type checking by
-their respective compilers.
-
-#### P3: Runtime bridge
-
-The emitted code needs to perform I/O (HTTP calls, git commands, file reads).
-The v2 emitter generates Rust with `reqwest`/`tokio` for services and shell
-calls for git. This needs a runtime entry point.
-
-**Required work:**
-1. Generate a `main.rs` that wires CLI args -> compiled pipeline entry points
-   (reuse v1's `tool_discovery.rs` pattern or write a v2-native equivalent)
-2. Generate `Cargo.toml` with runtime dependencies (`reqwest`, `tokio`,
-   `serde_json`, `clap`)
-3. Dry-run support: intercept I/O at service boundaries (same pattern as v1's
-   `DryRun` mode)
-
-**Acceptance gate:** `cargo run -- gist --dry-run` on the v2-compiled gist
-produces the same dry-run output as v1's `make gist-dry`.
-
-#### P4: End-to-end execution
-
-**Required work:**
-1. Real execution: `cargo run -- gist` creates a GitHub gist (with valid token)
-2. Verify all three variants: `gist`, `gist_diff`, `gist_recent`
-3. Python target: `python gist.py` produces equivalent output
-
-#### P1.5: Language specifications and emitter layering
-
-The current v2 emitters (`05_emit_rust.dag`, `05_emit_python.dag`) are 1000+
-line monoliths with hardcoded language knowledge. Much of this knowledge —
-naming conventions, keywords, literal spellings, comment syntax, import
-syntax, type mappings — is surface spelling that belongs in language
-specifications, not in code.
-
-The codebase already has this insight: `dsl/std/languages.dag` models
-languages as compositional facts. The fix is to **separate spelling from
-semantics** and **shrink the per-backend emitters**, not to replace them
-with a single template-driven renderer.
-
-A fully template-driven single emitter would recreate heuristics inside
-the templates, because ownership, borrowing, async strategy, TCO lowering,
-operator precedence, destructuring, and error propagation are not just
-syntax — they are irreducible semantic differences between target languages.
-
-**The layered approach:**
-
-1. **Language specs in `languages.dag`** for spelling and idiom metadata:
-   naming conventions, keywords, type name mappings, comment syntax, import
-   syntax, literal format strings. This is data derivable from language
-   reference docs — model it the same way extdeps models API endpoints.
-
-2. **Structural typed/code IR for semantics.** The typed graph from
-   typecheck carries the semantic facts. Per-backend lowerers consume
-   these facts, not raw AST.
-
-3. **Thin per-backend lowerers** for irreducible semantic differences:
-   Rust ownership/borrowing and `Result<T,E>` error propagation, Python's
-   `__init__` pattern and exception handling, Go's multi-return error
-   handling. These stay as code in per-backend modules — but they should
-   be small (consulting the language spec for spelling) rather than
-   1000-line monoliths that mix spelling with semantics.
-
-**Required work:**
-
-1. Extend `languages.dag` to cover statement syntax templates, expression
-   syntax patterns, and module system conventions — all derivable from
-   real language reference docs.
-
-2. Refactor per-backend emitters to consult language specs for spelling
-   decisions (type names, naming conventions, comment format, import
-   syntax) instead of hardcoding them.
-
-3. Extract shared emission logic (structural dispatch, scope management,
-   tree walking) into `05_emit.dag` — this is already partially done.
-
-4. Validate: emitted Rust still passes `cargo check`, emitted Python
-   still passes `py_compile`.
-
-**What this does NOT do:** Delete per-backend emitters or aim for a single
-renderer. Adding Go means writing a thin Go lowerer that handles Go-specific
-semantics (multi-return errors, goroutine patterns, interface satisfaction)
-and consults `languages.dag` for Go spelling. The lowerer should be small
-because the language spec carries most of the surface knowledge.
-
-**Acceptance gate:** Per-backend emitters consult `languages.dag` for
-spelling; shared structural logic lives in `05_emit.dag`; no hardcoded
-type name mappings or naming conventions in per-backend code.
-
-### Target languages
-
-| Target | Spec | Runtime deps | Status |
-|--------|------|-------------|--------|
-| **Rust** | `dsl/std/languages.dag` `rust_language` | reqwest, tokio, clap | Current emitter works, refactor in P1.5 |
-| **Python** | `dsl/std/languages.dag` `python_language` | aiohttp, argparse | Current emitter works, refactor in P1.5 |
-| **Go** | `dsl/std/languages.dag` `go_language` | net/http, flag | Add thin lowerer + language spec in P1.5 |
-
-### Acceptance criteria (ship gate)
-
-All of the following must pass in CI:
-
-- [ ] `v2_compile_gist_rust` -- v2 compiles gist (11 files) -> Rust -> `cargo check`
-- [ ] `v2_compile_gist_python` -- v2 compiles gist (11 files) -> Python -> `py_compile`
-- [ ] `v2_compile_gist_go` -- v2 compiles gist (11 files) -> Go -> `go build`
-- [ ] `v2_gist_dry_run_rust` -- compiled Rust gist produces correct dry-run output
-- [ ] `v2_gist_dry_run_python` -- compiled Python gist produces correct dry-run output
-- [ ] `v2_gist_dry_run_go` -- compiled Go gist produces correct dry-run output
-- [ ] `v2_gist_real_rust` -- compiled Rust gist creates a real GitHub gist (manual gate)
-- [ ] `v2_gist_real_python` -- compiled Python gist creates a real GitHub gist (manual gate)
-- [ ] `v2_gist_real_go` -- compiled Go gist creates a real GitHub gist (manual gate)
-- [ ] v2 self-compile full pipeline completes without OOM (P0 prerequisite)
-- [ ] No stack overflow on any .dag file up to 4000 lines (P1 prerequisite)
-- [ ] Per-backend emitters consult `languages.dag` for spelling — no hardcoded type/naming maps (P1.5)
-- [ ] Go target via thin lowerer + language spec, not a 1000-line monolith (P1.5)
+- **Stream 2 (sustainability cleanup):** All stale docs deleted. SUSTAINABILITY.md
+  updated. S83 fixed (stacker), S84 closed (TCO verified), S85 terminal fix (SCC),
+  S76-S81 marked terminal (die with v1).
+- **Stream 3 phases A-E:** PortContract dissolved. Shape dissolved via
+  `Connective = Conj | Disj`. Dead code deleted (TypeBody, bridge helpers, old
+  emit functions). All dissolution comments cleaned.
+- **P0 (S85):** Recursive types — SCC cycle detection on type dependency graph.
+- **P1 (S84):** TCO pass — verified working in v2 emitter.
+- **P1 (S83):** Stack overflow — stacker wrapping at re-entrant call sites.
+- **Test baseline:** 89 pass, 0 fail, 9 ignored (gated on stages below).
 
 ---
 
-## Stream 3: Fractal Node — dissolving structure into composition
+## Stage 1: Gist end-to-end
 
-**Goal:** Reduce the Node type's special-purpose fields into
-`children` + `connective`. The foundational philosophy (logic as
-single primitive, four-layer model, why types are logic) is in
-`MODELING.md`. This stream is the operational plan.
+Validate the full pipeline on a real workload before attempting self-hosting.
 
-### Design philosophy
+### 1a: Gist compilation
 
-See `MODELING.md` — "Foundational primitive: truth-valued structure."
+Feed gist.dag + 11 transitive dependencies through the v2 pipeline. Verify
+emitted code compiles in each target language.
 
-Summary: the compiler's four layers are surface sugar → composition
-layer (Node) → semantic kernel (types, effects, contracts) → foundation
-(classical logic). The composition layer says how things connect. The
-semantic kernel says what flows through. The foundation says why it's
-sound. Node is the composition layer — it should know about connectives
-and edges, not about domain-specific metadata.
+**Acceptance:**
+- [ ] `v2_compile_gist_rust` — v2 compiles gist → Rust → `cargo check`
+- [ ] `v2_compile_gist_python` — v2 compiles gist → Python → `py_compile`
 
-### Current state (2026-03-16)
+### 1b: Runtime bridge
 
-W10-W13 completed the first fractal step: `operations` and
-`capabilities` dissolved into child Nodes carrying `PortContract`
-metadata. Four fields became `children` + `port_contract`.
+Generate entry point and runtime dependencies so the compiled gist executes.
 
-The emit dispatch is still a 6-deep if/else chain inferring node kind
-from field combinations — this is the heuristic that dissolves as more
-structure moves into children + connective.
+**Acceptance:**
+- [ ] Generated `main.rs` + `Cargo.toml` with runtime deps
+- [ ] `cargo run -- gist --dry-run` produces correct dry-run output
+- [ ] Python equivalent produces same dry-run output
 
-### Incremental path
+### 1c: End-to-end execution
 
-**Phase A — Response mappings → type structure + dispatch data**
+**Acceptance:**
+- [ ] Compiled Rust gist creates a real GitHub gist (manual gate, requires token)
+- [ ] Compiled Python gist creates a real GitHub gist (manual gate)
 
-Operation return types become conditional coproducts that the type
-system already understands:
+---
+
+## Stage 2: Full self-compile pipeline
+
+Extend the existing `self_compile_all_modules` test from stages 1-3
+(tokenize → parse → resolve) to stages 1-5 (+ typecheck + emit). S85
+SCC fix may have unblocked the OOM that previously prevented this.
+
+**Acceptance:**
+- [ ] v2 crate processes its own .dag source through full pipeline
+- [ ] Emitted Rust files compile (`cargo check`)
+- [ ] No OOM, no stack overflow on any .dag file up to 4000 lines
+
+---
+
+## Stage 3: Bootstrap
+
+### 3a: Stage 0→1
+
 ```
-Ok { value: UserProfile } | NotFound { msg: String } | ServerError { detail: String }
+v1 compiles v2 .dag → Rust → rustc → v2-stage0  (what we have today)
+v2-stage0 compiles v2 .dag → Rust → rustc → v2-stage1  (the new thing)
 ```
 
-The type part (coproduct of outcomes) goes into `return_type`. The
-dispatch part (status 200 → Ok variant) is runtime data that moves
-to the rendering layer. This eliminates `response` and `exit_mappings`
-from PortContract.
+**Acceptance:**
+- [ ] v2-stage1 builds successfully
+- [ ] v2-stage1 passes the same test suite as v2-stage0
 
-Note: response mappings have `status: Expr` — a runtime value, not
-a type. The conditional `status=200 IMPLIES UserProfile` is dependent
-typing. The decomposition separates the type structure (coproduct of
-outcomes — logic) from the runtime dispatch (which outcome based on
-status code — computation).
+### 3b: Fixed point
 
-**Phase B — Modifiers → node-level assertions**
+```
+v2-stage1 compiles v2 .dag → Rust → rustc → v2-stage2
+```
 
-`Idempotent`, `Readonly`, `Hermetic` are behavioral propositions —
-assertions about the computation, not data shape. They need a home
-that isn't PortContract but also isn't `Refined` (which constrains
-data, not behavior). Likely extends `Predicate` or adds an
-`assertions` field. Design work needed.
+**Acceptance:**
+- [ ] stage1 output == stage2 output (compiler reproduces itself)
 
-**Phase C — Mock responses → test companion**
+### 3c: v1 retirement
 
-Mocks are example inhabitants of the return type — test witnesses,
-not type metadata. They separate from PortContract into a test layer
-(possibly as child Nodes whose body is a literal witness — fractal).
+Once the fixed point holds, v1 is bootstrap scaffolding — no longer needed.
 
-**Phase D — PortContract dissolves**
+**Acceptance:**
+- [ ] v2 builds and tests without v1 in the dependency chain
+- [ ] S76-S81 heuristics in `v2_crate_emit.rs` are dead code
+- [ ] Interpreter (`daglang-eval`) is optional (dev/REPL, not required)
 
-After A/B/C, PortContract has only `outputs: List<Field>`. Outputs
-merge into `return_type` (the Ok variant's fields). PortContract is
-deleted. An "operation" is now just a child Node with params and a
-conditional return_type — the same structure as any other node.
+---
 
-Detection: parent has `transport` → children are operations. No
-PortContract field needed.
+## Stage 4: Node convergence
 
-**Phase E — shape dissolves via connective (W14-W17)**
+Structural unification — one type (Node) flows through the entire pipeline.
+Each step is validated by re-bootstrapping: modify .dag source, self-compile,
+verify fixed point holds. 13 design decisions are made (see memory doc
+`project_typeexpr_node_convergence.md`).
 
-`shape: TypeBody?` dissolves into `children` + `connective: Connective?`.
-Record fields become child Nodes (connective: And). Sum variants become
-child Nodes (connective: Or). Same proven pattern as W10-W13.
-Detailed sketch follows.
+### 4a: TypeExpr → Node
 
-**Phase F — Primitive dissolves**
+Dissolve TypeExpr (8 variants) into Node patterns. The typechecker walks
+Nodes via connective + children instead of pattern-matching TypeExpr variants.
 
-Type definitions in .dag files define String, Int, etc. as compositions.
-`Primitive` TypeExpr variant becomes a backend rendering hint. Requires
-P1.5 language specs (backend recognition table). See `MODELING.md` for
-why Int and String are too wide as primitives.
+Types that dissolve: TypeExpr, Field, Variant, TypeBinding, ResolveResult,
+ContainerKind, Predicate, FuncSig, FuncEnv.
 
-### Concrete sketch: the connective field
+Key design decisions:
+- Type variables are Params on the parent Node (same mechanism as value params)
+- Containers/Optional/Map are Nodes with type-level params, defined in std
+- Instantiation (`List<String>`) is composition — filling a param
+- Refined types are Conj(base, predicate)
+- Primitives dissolve — String, Int, Bool are kernel Nodes
 
-The connective is the single bit that gives a node's children logical
-meaning. Without it, children are just a list. With it, they're a
-proposition.
+**Acceptance:**
+- [ ] TypeExpr type deleted from 00_core.dag
+- [ ] Field, Variant types deleted (replaced by child Nodes)
+- [ ] Typechecker works on Nodes, not TypeExpr
+- [ ] Fixed point holds after migration
+
+### 4b: Rename typecheck → infer
+
+After convergence, the phase completes a Node graph (fills in return_types),
+not checks a separate type system.
+
+**Acceptance:**
+- [ ] `04_typecheck.dag` → `04_infer.dag`
+- [ ] Fixed point holds
+
+### 4c: Expr → Node
+
+Dissolve Expr (17 variants) into Node patterns. Expressions become Nodes
+whose body/children carry computation structure.
+
+Types that dissolve: Expr, TypedExpr, TypedNode, TypedNamedArg, TypedMatchArm,
+TypedFieldInit, TypedStringPart, MatchPattern, FieldBinding, LiteralValue,
+BinOpKind, UnaryOpKind, StringPart, NamedArg, FieldInit, MatchArm.
+
+After this, "typed" just means "return_type is filled in." One type: Node.
+Inference is `List<Node> → List<Node>` — same Nodes, return_types completed.
+
+**Acceptance:**
+- [ ] Expr type deleted from 00_core.dag
+- [ ] Typed* family deleted (TypedNode, TypedExpr, etc.)
+- [ ] `typed_expr_to_expr` conversion deleted
+- [ ] Pipeline is `Node → Node → Node → TextFile`
+- [ ] Fixed point holds
+
+### 4d: Transport dissolution
+
+`transport: Node?` — the field stays (structural awareness: no smuggling I/O),
+but TransportBinding (the hardcoded 4-variant enum) dissolves. Transport value
+becomes a composed Node whose children carry transport facts.
+
+The emitter derives behavior from structure (has `base_url`? → HTTP client;
+has `argv`? → subprocess), not from matching a variant tag. New transports
+don't require compiler changes.
+
+Types that dissolve: TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef.
+
+**Acceptance:**
+- [ ] TransportBinding enum deleted
+- [ ] Emitters derive transport behavior from Node structure
+- [ ] `transport != none` is the only hardcoded transport knowledge
+- [ ] Fixed point holds
+
+---
+
+## Stage 5: Language emission as extdeps
+
+Languages are external systems with specifications. They belong in extdeps,
+modeled the same way GitHub and Git are modeled.
+
+### Architecture
+
+Three layers, separated:
+
+1. **Interface (compiler-owned):** The compiler defines what facts it needs
+   from any target language — type mappings, syntax patterns, naming
+   conventions, runtime ops, error model, async model, import system.
+   Stable contract, defined as .dag types.
+
+2. **Language extdeps (spec-derived):** Each language fills in the interface
+   from its real specification. Evolves independently of the compiler.
+
+3. **Wiring (compiler-owned):** Connects `--target` CLI flag to the
+   appropriate language extdep. Trivial for now, eventually dynamic.
+
+```
+dsl/extdeps/languages/
+  rust/       — types, syntax, runtime, naming, imports, errors, async
+  python/     — types, syntax, runtime, naming, imports, errors, async
+  typescript/ — ...
+  go/         — ...
+```
+
+### Kernel runtime resolves naturally
+
+"How do you concat strings in Rust?" is a fact about Rust, captured in
+`dsl/extdeps/languages/rust/runtime.dag`. The current `v2_rt.rs` runtime
+shim dissolves into the Rust language extdep.
+
+### Per-language emitters shrink
+
+The 1000+ line emitter monoliths (`05_emit_rust.dag`, etc.) shrink to thin
+semantic renderers handling irreducible differences (Rust ownership, Python
+exceptions, Go multi-return). Surface knowledge (spelling, naming, type
+mappings) comes from the language extdep.
+
+**Acceptance:**
+- [ ] Language extdeps in `dsl/extdeps/languages/` for Rust, Python
+- [ ] Compiler defines LanguageSpec interface
+- [ ] Emitters consult extdeps — no hardcoded type/naming maps
+- [ ] `--target` CLI flag (default: Rust)
+- [ ] Adding a new target = writing a language extdep (no compiler changes)
+- [ ] Emitted code identical for all existing test cases
+- [ ] Fixed point holds
+
+---
+
+## The fully converged Node
+
+After stages 4 and 5 complete:
 
 ```dag
-type Connective = And | Or
+type Connective = Conj | Disj
 
-type Node {
-  name: String
-  span: SourceSpan
-  children: List<Node>
-  connective: Connective?   // ← the new field
-  params: List<Param>
-  return_type: TypeExpr?
-  uses: List<ResourceUse>
-  body: Expr?
-  // shape: TypeBody?        ← DISSOLVES (replaced by children + connective)
-  transport: TransportBinding?
-  properties: List<FieldInit>
-  type_annotation: TypeExpr?
-  config: ServiceConfig?
-  port_contract: PortContract?
-}
-```
-
-Two values. That's the primitive manifested as a field.
-
-- `And` — all children hold simultaneously (record fields, service
-  operations, resource capabilities)
-- `Or` — exactly one child holds (sum variants, optional)
-- `none` — this node has no structural children (leaf, function,
-  extern)
-
-#### Example: record type
-
-```
-// Source: type Person { name: String, age: Int }
-
-// Today:
-Node {
-  name: "Person"
-  shape: Some { value: Record { fields: [
-    Field { name: "name", type_expr: Named("String"), optional: false },
-    Field { name: "age", type_expr: Named("Int"), optional: false }
-  ] } }
-  children: []
-}
-
-// With connective:
-Node {
-  name: "Person"
-  connective: Some { value: And }
-  children: [
-    Node { name: "name", return_type: Named("String") },
-    Node { name: "age", return_type: Named("Int") }
-  ]
-}
-```
-
-The `shape` field is gone. The record's structure IS its children.
-The `And` connective says: all children must hold. This is what
-"record" means — conjunction.
-
-#### Example: sum type
-
-```
-// Source: type Result = Ok { value: Int } | Err { message: String }
-
-// Today:
-Node {
-  name: "Result"
-  shape: Some { value: Sum { variants: [
-    Variant { name: "Ok", fields: [Field { name: "value", ... }] },
-    Variant { name: "Err", fields: [Field { name: "message", ... }] }
-  ] } }
-  children: []
-}
-
-// With connective:
-Node {
-  name: "Result"
-  connective: Some { value: Or }
-  children: [
-    Node {
-      name: "Ok"
-      connective: Some { value: And }
-      children: [
-        Node { name: "value", return_type: Named("Int") }
-      ]
-    },
-    Node {
-      name: "Err"
-      connective: Some { value: And }
-      children: [
-        Node { name: "message", return_type: Named("String") }
-      ]
-    }
-  ]
-}
-```
-
-A sum type is `Or` at the top — exactly one variant holds. Each
-variant is `And` — all its fields must hold. Same structure as
-today's `Sum { variants: [Variant { fields }] }`, but expressed
-as Node composition instead of a separate TypeBody representation.
-
-#### Example: type alias
-
-```
-// Source: type Name = String
-
-// Today:
-Node {
-  name: "Name"
-  shape: Some { value: Alias { base: Named("String") } }
-}
-
-// With connective:
-Node {
-  name: "Name"
-  connective: none          // no structural children
-  return_type: Named("String")  // the aliased type
-}
-```
-
-An alias has no children and no connective — it's a name that
-points to another proposition. The `return_type` carries the
-reference. This is the same as how functions use `return_type`
-today.
-
-#### Example: optional field
-
-```
-// Source: type Config { name: String, debug: Bool? }
-
-// With connective:
-Node {
-  name: "Config"
-  connective: Some { value: And }
-  children: [
-    Node { name: "name", return_type: Named("String") },
-    Node { name: "debug", return_type: Optional { inner: Named("Bool") } }
-  ]
-}
-```
-
-The `optional: Bool` flag on `Field` dissolves into the type system.
-An optional field is a child whose `return_type` is `Optional { inner: T }`
-— which is `OR(T, Unit)` in logic. The optionality is in the type,
-not in a separate boolean.
-
-#### Example: default values
-
-```
-// Source: type Config { retries: Int = 3 }
-
-// With connective:
-Node {
-  name: "Config"
-  connective: Some { value: And }
-  children: [
-    Node {
-      name: "retries"
-      return_type: Named("Int")
-      body: Some { value: Literal { value: LitInt { value: 3 } } }
-    }
-  ]
-}
-```
-
-A default value is a child whose `body` is a proof witness. "This
-field is Int, and here is a default witness: 3." The `default_value`
-field on `Field` dissolves — it's just `body` on the child Node.
-
-#### Example: service (already fractal from W10-W13)
-
-```
-Node {
-  name: "git.Core"
-  connective: Some { value: And }    // all operations available
-  transport: Some { value: ShellBinding { ... } }
-  children: [
-    Node {
-      name: "CurrentBranch"
-      params: []
-      return_type: Named("String")
-      port_contract: Some { value: OperationContract { ... } }
-    }
-  ]
-}
-```
-
-Services already have children from W10-W13. Adding `connective: And`
-just makes explicit what was implicit: all operations are available
-simultaneously.
-
-#### What dissolves
-
-| Old structure | Replaced by | Logic |
-|---|---|---|
-| `shape: TypeBody?` | `children` + `connective` | structure IS children |
-| `TypeBody = Record \| Sum \| Alias` | `And` / `Or` / `none` | connective replaces tag |
-| `Field` (in type structure) | child Node | a field is a sub-proposition |
-| `Variant` | child Node with its own children | a variant is a sub-node |
-| `Field.optional: Bool` | `return_type: Optional { ... }` | optionality is in the type |
-| `Field.default_value` | `body` on the child Node | default is a proof witness |
-| `Field.from_key` | `properties` on the child Node | serialization is metadata |
-
-#### What stays (for now)
-
-| Structure | Why it stays |
-|---|---|
-| `TypeExpr` | Type references remain a separate representation until TypeExpr→Node convergence (later phase) |
-| `Param` | Function params are ports (preconditions), not structural children. Param might merge into Node later but it's a different relationship than connective children. |
-| `Expr` | Computation stays separate until Expr→Node convergence (later phase) |
-| `PortContract` | Dissolves separately per Phase A/B/C/D above |
-
-#### Migration shape (same pattern as W10-W13)
-
-This follows the proven 4-step pattern:
-
-**W14: Additive.** Add `connective: Connective?` to Node and TypedNode.
-All existing constructions get `connective: none`. No behavior change.
-
-**W15: Parser dual-writes.** `parse_type_def` builds children from
-fields/variants AND keeps `shape`. Record fields become child Nodes
-with `return_type`. Sum variants become child Nodes with their own
-children. Set `connective: And` or `Or`.
-
-**W16: Migrate consumers.** Typecheck, resolve, and emit read from
-`children` + `connective` instead of `shape`. The emit dispatch for
-types becomes: `connective == And` → emit struct, `connective == Or`
-→ emit enum, alias → emit type alias.
-
-**W17: Delete shape.** Remove `shape: TypeBody?` from Node/TypedNode.
-Delete `TypeBody`, `Field`-as-type-structure, `Variant`. The types
-that remain are `Connective`, `Param`, and whatever `Field` usages
-survive outside type definitions (like PortContract outputs, which
-dissolve in their own phase).
-
-#### The emit dispatch after W17
-
-Today's 6-arm if/else chain simplifies because type dispatch
-no longer uses `shape`:
-
-```
-// Today:
-if item.shape != none { ... }                        // type
-else if item.body != none && item.type_annotation == none { ... } // fn/func
-else if item.body != none && item.type_annotation != none { ... } // data
-else if item.transport != none && item.children > 0 { ... }      // service
-else if item.transport == none && item.children > 0 { ... }      // resource
-else if item.params > 0 && item.body == none { ... }             // extern
-
-// After W17:
-if item.connective != none && item.transport == none { ... }     // type def
-else if item.body != none && item.type_annotation == none { ... } // fn/func
-else if item.body != none && item.type_annotation != none { ... } // data
-else if item.transport != none { ... }                            // service
-else if item.connective == none && item.children > 0 { ... }     // resource
-else if item.params > 0 && item.body == none { ... }             // extern
-```
-
-Not fewer arms yet — but the type arm is now structural
-(`connective != none`) rather than representational (`shape != none`).
-The real simplification comes when PortContract dissolves and
-service/resource detection becomes purely connective + transport.
-
-#### After all phases converge
-
-When both `shape` and `port_contract` have dissolved, the Node
-fields are:
-
-```dag
-type Node {
-  name: String
-  span: SourceSpan
-  children: List<Node>
-  connective: Connective?    // AND/OR — the logical primitive
-  params: List<Param>        // preconditions (ports in)
-  return_type: TypeExpr?     // postcondition (port out)
-  uses: List<ResourceUse>    // resource dependencies
-  body: Expr?                // proof / computation
-  transport: TransportBinding?  // grounding in external reality
-  properties: List<FieldInit>   // metadata
-  type_annotation: TypeExpr?    // explicit type assertion
-  config: ServiceConfig?        // service configuration
-}
-```
-
-Compared to today: `shape`, `port_contract`, `operations`,
-`capabilities` are all gone. Four fields dissolved into
-`children` + `connective`. The logical structure is the
-composition.
-
-The remaining emit dispatch becomes:
-
-| connective | transport | body | What it is |
-|---|---|---|---|
-| `And` or `Or` | none | none | type definition |
-| none | none | some | fn/func/data |
-| `And` | some | none | service (children are operations) |
-| none or `And` | none | none, children > 0 | resource |
-| none | none | none, params > 0 | extern |
-
-Five patterns. All structural. No field-combination guessing —
-the connective and transport together determine the logical role.
-
-### Non-goals
-
-- Deleting keywords from the surface syntax. Keywords are good parse
-  sugar and good for readability. `service` and `fn` are ergonomic
-  ways to say "build me a proposition with these structural properties."
-
-- Expanding String to bits at compile time. The logical decomposition
-  is the *model* — the backend renders efficiently. Just like math
-  defines reals as Dedekind cuts but nobody computes with cuts.
-
-- Purity for its own sake. If a pragmatic escape hatch (like the
-  current PortContract) is needed to ship, keep it. The incremental
-  path replaces scaffolding as the logical foundation matures, not
-  before.
-
-### Acceptance criteria: before/after sign-off
-
-#### BEFORE state (current, after W10-W13)
-
-Node type (13 fields):
-
-```dag
-type Node {
-  name: String
-  span: SourceSpan
-  children: List<Node>          // ← carries operations/capabilities (W10-W13)
-  params: List<Param>
-  return_type: TypeExpr?
-  uses: List<ResourceUse>
-  body: Expr?
-  shape: TypeBody?              // ← type structure (Record/Sum/Alias)
-  transport: TransportBinding?
-  properties: List<FieldInit>
-  type_annotation: TypeExpr?
-  config: ServiceConfig?
-  port_contract: PortContract?  // ← operation/capability metadata
-}
-```
-
-Supporting types still alive:
-
-```
-TypeBody = Record { fields: List<Field> }
-         | Sum { variants: List<Variant> }
-         | Alias { base: TypeExpr }
-
-Field { name, type_expr, optional, default_value, from_key, span }
-Variant { name, fields: List<Field>, span }
-
-PortContract
-  = OperationContract { outputs, response, mock_response, exit_mappings, modifiers }
-  | CapabilityContract { outputs }
-
-ResponseMapping { status: Expr, type_expr: TypeExpr }
-MockResponseDef { status: Expr, body: Expr, description: String? }
-ExitMapping { code: Expr, type_expr: TypeExpr, description: String? }
-OperationModifier = Idempotent | Readonly | Hermetic
-
-OperationDef { name, inputs, outputs, response, mock_response, exit_mappings,
-               modifiers, transport, span }
-CapabilityDef { name, inputs, outputs, span }
-```
-
-Emit dispatch (6-arm heuristic):
-
-```
-if shape != none                                    → type
-else if body != none && type_annotation == none      → fn/func
-else if body != none && type_annotation != none      → data
-else if transport != none && children > 0            → service
-else if transport == none && children > 0            → resource
-else if params > 0 && body == none                   → extern
-```
-
-Test baseline: 129 tests (98 daglang-syntax + 31 v2-compiler-tests).
-
-#### AFTER state (W14-W17 complete: shape dissolved)
-
-Node type (13 fields — same count, different fields):
-
-```dag
-type Connective = And | Or
-
-type Node {
-  name: String
-  span: SourceSpan
-  children: List<Node>
-  connective: Connective?       // ← NEW: AND/OR logical primitive
-  params: List<Param>
-  return_type: TypeExpr?
-  uses: List<ResourceUse>
-  body: Expr?
-  // shape: GONE
-  transport: TransportBinding?
-  properties: List<FieldInit>
-  type_annotation: TypeExpr?
-  config: ServiceConfig?
-  port_contract: PortContract?
-}
-```
-
-Types deleted:
-
-```
-DELETED: TypeBody (Record | Sum | Alias)
-DELETED: Variant
-DELETED: Field as type structure
-         (Field still exists in PortContract.outputs — dissolved in Phase A-D)
-```
-
-How current constructs map:
-
-```
-type Person { name: String, age: Int }
-  BEFORE: shape: Record { fields: [Field("name", String), Field("age", Int)] }
-  AFTER:  connective: And, children: [Node("name", ret: String), Node("age", ret: Int)]
-
-type Result = Ok { v: Int } | Err { e: String }
-  BEFORE: shape: Sum { variants: [Variant("Ok", [Field("v", Int)]), ...] }
-  AFTER:  connective: Or, children: [
-            Node("Ok", connective: And, children: [Node("v", ret: Int)]),
-            Node("Err", connective: And, children: [Node("e", ret: String)])]
-
-type Name = String
-  BEFORE: shape: Alias { base: Named("String") }
-  AFTER:  connective: none, return_type: Named("String")
-
-{ name: String, debug: Bool? }
-  BEFORE: Field { name: "debug", optional: true, type_expr: Bool }
-  AFTER:  Node { name: "debug", return_type: Optional { inner: Bool } }
-
-{ retries: Int = 3 }
-  BEFORE: Field { name: "retries", default_value: LitInt(3) }
-  AFTER:  Node { name: "retries", return_type: Int, body: LitInt(3) }
-```
-
-Emit dispatch (uses connective for type arm):
-
-```
-if connective != none && transport == none           → type (And=struct, Or=enum)
-else if body != none && type_annotation == none      → fn/func
-else if body != none && type_annotation != none      → data
-else if transport != none                            → service
-else if connective == none && children > 0           → resource
-else if params > 0 && body == none                   → extern
-```
-
-#### AFTER state (Phases A-D complete: PortContract dissolved)
-
-Node type (11 fields):
-
-```dag
 type Node {
   name: String
   span: SourceSpan
   children: List<Node>
   connective: Connective?
-  params: List<Param>
-  return_type: TypeExpr?        // ← operation outputs live here now
-  uses: List<ResourceUse>
-  body: Expr?
-  transport: TransportBinding?
-  properties: List<FieldInit>   // ← modifiers live here as assertions
-  config: ServiceConfig?
-  // type_annotation: MERGED into return_type or properties
+  params: List<Node>
+  return_type: Node?
+  body: Node?
+  transport: Node?
+  properties: List<Node>
 }
 ```
 
-Types deleted (cumulative):
+### Why each field is irreducible
+
+| Field | Logical role | Why separate |
+|-------|-------------|-------------|
+| `children` + `connective` | Composition (AND/OR of sub-propositions) | The core primitive |
+| `params` | Obligations — what must be supplied (IMPLIES antecedent) | Consumed, not composed |
+| `return_type` | Guarantee — what is produced (IMPLIES consequent) | Flows out, not in |
+| `body` | Proof — computation connecting params to return_type | HOW, not WHAT |
+| `transport` | I/O grounding — where this node touches external reality | Must be structural (no smuggling) |
+| `properties` | Extensible metadata | Domain facts |
+
+### The irreducible kernel
+
+Only three things can't be Nodes:
+1. **Node** — the universal container (circular if self-defined)
+2. **Connective = Conj | Disj** — the logical primitive
+3. **Kernel primitives** (String, Int, Bool, List, Map) — engineering atoms
+
+Everything else is composition. Named types are aliases. The `type` keyword
+is surface sugar that produces a Node.
+
+### Pipeline
 
 ```
-DELETED: TypeBody, Variant, Field-as-structure (W14-W17)
-DELETED: PortContract, OperationContract, CapabilityContract (Phase D)
-DELETED: ResponseMapping, ExitMapping (Phase A — became return_type coproduct)
-DELETED: MockResponseDef (Phase C — became test companion)
-DELETED: OperationModifier (Phase B — became node assertions/predicates)
+source → parse → resolve → infer → emit
+           ↓        ↓        ↓       ↓
+         Nodes    Nodes    Nodes   TextFiles
+         (raw)  (imports  (types
+                 linked)  filled)
 ```
 
-How an operation looks:
-
-```
-// BEFORE (current):
-Node {
-  name: "CurrentBranch"
-  port_contract: Some { value: OperationContract {
-    outputs: [Field { name: "branch", type_expr: String }]
-    response: []
-    exit_mappings: [ExitMapping { code: 0, type_expr: Unit }, ...]
-    modifiers: [Readonly]
-    mock_response: [MockResponseDef { status: 0, body: ... }]
-  } }
-}
-
-// AFTER:
-Node {
-  name: "CurrentBranch"
-  return_type: Ok { branch: String } | GitError { message: String }
-  properties: [{ name: "readonly", value: true }]
-  // mock data in test companion, not on the node
-  // no port_contract field at all
-}
-```
-
-Emit dispatch (final — 5 structural patterns):
-
-```
-if connective != none && transport == none           → type
-else if body != none                                 → fn/func/data
-else if transport != none                            → service
-else if children > 0                                 → resource
-else if params > 0                                   → extern
-```
-
-#### Structural checks (pass/fail gates)
-
-W14-W17 (shape dissolution):
-
-- [ ] `Connective = And | Or` type exists in 00_core.dag
-- [ ] `connective: Connective?` field on Node and TypedNode
-- [ ] `shape: TypeBody?` field REMOVED from Node and TypedNode
-- [ ] `TypeBody` type DELETED from 00_core.dag
-- [ ] `Variant` type DELETED from 00_core.dag
-- [ ] No `shape` references in 04_typecheck.dag
-- [ ] No `shape` references in 05_emit_rust.dag or 05_emit_python.dag
-- [ ] Record type `{ name: String }` → Node with `connective: And`, child Node with `return_type: String`
-- [ ] Sum type `A | B` → Node with `connective: Or`, children for each variant
-- [ ] Alias type `Name = String` → Node with `connective: none`, `return_type: Named("String")`
-- [ ] Optional field `x: T?` → child Node with `return_type: Optional { inner: T }`
-- [ ] Default value `x: T = v` → child Node with `body: v`
-- [ ] 129+ tests pass (no regression)
-- [ ] Emitted Rust character-identical for all existing test cases
-- [ ] Emitted Python character-identical for all existing test cases
-
-Phases A-D (PortContract dissolution):
-
-- [ ] `PortContract` type DELETED from 00_core.dag
-- [ ] `port_contract` field REMOVED from Node and TypedNode
-- [ ] `ResponseMapping` type DELETED (absorbed into return_type coproduct)
-- [ ] `ExitMapping` type DELETED (absorbed into return_type coproduct)
-- [ ] `MockResponseDef` type DELETED from Node (moved to test layer)
-- [ ] `OperationModifier` usage moved to properties or assertions
-- [ ] Operation return types are conditional coproducts (Ok | ErrorA | ErrorB)
-- [ ] Service detection: `transport != none` (no field-combination guessing)
-- [ ] Resource detection: `children > 0 && transport == none`
-- [ ] 129+ tests pass (no regression)
-
-#### Net type count
-
-```
-                    BEFORE    After W14-17   After A-D   Net change
-                    ──────    ───────────    ─────────   ──────────
-Node fields         13        13             11          -2
-Supporting types    10+       7              2           -8+
-  TypeBody          1         DELETED        -
-  Field (struct)    1         DELETED        -
-  Variant           1         DELETED        -
-  PortContract      1         1              DELETED
-  OperationContract 1         1              DELETED
-  CapabilityContract 1        1              DELETED
-  ResponseMapping   1         1              DELETED
-  ExitMapping       1         1              DELETED
-  MockResponseDef   1         1              DELETED
-  OperationModifier 1         1              absorbed
-New types added     0         1 (Connective) 0           +1
-```
-
-The system gets simpler: 2 fewer Node fields, 8+ fewer supporting
-types, 1 new type (Connective — two values). The information isn't
-lost — it moves into children, return_type, and properties, which
-already exist.
+One type flows through the entire pipeline. Each phase enriches the same
+Nodes rather than converting between representations.
 
 ---
 
-## Stream 2: Sustainability cleanup
+## The end state
 
-**Goal:** Close out the sustainability ledger. Delete stale documentation that
-was written during v2 development and is now superseded by working code.
+- **Self-hosted:** written in .dag, compiled by itself
+- **Structurally unified:** one type (Node) through the entire pipeline
+- **Compositional:** everything is Conj/Disj + kernel primitives
+- **Target-polymorphic:** Rust, Python, TypeScript, Go from same source
+- **Bootstrap-free:** no v1 dependency, no interpreter dependency
+- **Verified by fixed point:** compiler reproduces itself
+- **Extensible without compiler changes:** new transports, new languages,
+  new domain models — all .dag compositions
 
-### Docs to delete
+---
 
-These documents were planning/design artifacts for work that is now implemented.
-The code is the source of truth.
+## Non-goals
 
-| File | Reason |
-|------|--------|
-| `DESIGN-v2-compiler.md` | v2 design is implemented; architecture in `src/v2/DESIGN.md` |
-| `WORKBOARD.md` | Superseded by this roadmap |
-| `src/v2/WORKBOARD.md` | Superseded by this roadmap |
-| `src/v2/DESIGN-typed-ast.md` | Typed AST is implemented |
-| `src/v2/DESIGN-parse-split.md` | Parser/tokenizer split is implemented |
-| `src/v2/POSTMORTEM.md` | Issues are fixed; findings migrated to SUSTAINABILITY.md |
-| `src/v2/PERFORMANCE.md` | Audit completed; findings acted on |
-| `src/v2/workstreams/WS-B-parser-tokenizer.md` | Implemented |
-| `src/v2/workstreams/WS-C-typecheck-resolve.md` | Implemented |
-| `src/v2/workstreams/WS-D-emitter.md` | Implemented |
-| `src/v2/workstreams/WS-E-pipeline-core.md` | Implemented |
-| `src/v2/workstreams/WS-F-rust-codegen.md` | Implemented |
-| `src/v2/workstreams/WS-G-runtime-shims.md` | Implemented |
-
-### Docs to keep
-
-| File | Reason |
-|------|--------|
-| `CLAUDE.md` | Live project instructions |
-| `README.md` | Repo overview |
-| `MODELING.md` | Domain modeling guidelines (evergreen) |
-| `ROADMAP.md` | This file |
-| `src/v1/ARCHITECTURE.md` | v1 architecture reference (needed while v1 exists) |
-| `src/v1/README.md` | v1 invariants |
-| `src/v1/SUSTAINABILITY.md` | Violation ledger (update, don't delete) |
-| `src/v2/DESIGN.md` | v2 architecture reference (evergreen) |
-| `dsl/extdeps/extdeps.md` | Extdeps modeling guidelines |
-
-### SUSTAINABILITY.md cleanup
-
-Open findings to resolve:
-
-| Finding | Status | Action |
-|---------|--------|--------|
-| **S83** (evaluator stack overflow) | **Fixed** this session | Mark fixed -- stacker wrapping on eval_expr, eval_expr_s, eval_non_sibling_call_raw |
-| **S84** (v2 emitter no TCO) | Open | Stream 1 P1 -- implement TCO pass |
-| **S82** (namespace collision) | Fixed | Already marked -- rename to `lookup_func_sig_in_scope` |
-| **S76-S81** (type-unaware codegen) | Terminal | Die with self-hosting -- mark as terminal, no action |
-| **S52** (parser mutual recursion) | Bounded | Stacker handles this now -- mark as mitigated |
-
-### Acceptance criteria
-
-- [ ] All files in "delete" table removed from repo
-- [ ] `src/v2/workstreams/` directory deleted
-- [ ] SUSTAINABILITY.md updated: S83 marked fixed, S52 updated, S76-S81 marked terminal
-- [ ] `cargo test --workspace --exclude gunbc-dag-tests` still passes
-- [ ] `cargo clippy --all-targets -- -D warnings` clean
+- Deleting keywords from surface syntax. Keywords are good parse sugar.
+- Expanding String to bits at compile time. The logical decomposition is
+  the model; backends render efficiently.
+- A single template-driven renderer. Irreducible semantic differences
+  between languages (ownership, exceptions, multi-return) stay as thin
+  per-language modules.
