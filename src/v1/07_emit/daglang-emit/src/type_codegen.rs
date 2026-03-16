@@ -104,6 +104,16 @@ fn collect_synthesized_anonymous_record_types(
         .collect()
 }
 
+fn collect_expr_ir_types(
+    metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
+) -> std::collections::HashMap<daglang_syntax::ast_utils::ExprIdentity, gunbc_ir::code_ir::IrType> {
+    metadata
+        .into_iter()
+        .flat_map(|metadata| metadata.expr_ir_types())
+        .map(|(expr_identity, ir_type)| (expr_identity, ir_type.clone()))
+        .collect()
+}
+
 fn collect_data_ir_types<'a>(
     data_defs: impl IntoIterator<Item = &'a DataDef>,
 ) -> std::collections::HashMap<String, gunbc_ir::code_ir::IrType> {
@@ -1160,6 +1170,7 @@ pub fn generate_types_for_modules(
             synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
                 module.callable_body_metadata(fd.name.as_str()),
             ),
+            expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fd.name.as_str())),
             expr_identities: std::collections::HashMap::new(),
             expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
         };
@@ -1617,6 +1628,27 @@ mod tests {
         ModuleGraph { modules }
     }
 
+    fn annotate_expr_ir_type(
+        ctx: &mut fn_codegen::CompileContext,
+        body: &FnBody,
+        target: &Expr,
+        ir_type: gunbc_ir::code_ir::IrType,
+    ) {
+        let mut expr_identity = None;
+        daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+            &body.stmts,
+            &mut |identity, candidate| {
+                if std::ptr::eq(candidate, target) {
+                    expr_identity = Some(identity);
+                }
+            },
+        );
+        ctx.expr_ir_types.insert(
+            expr_identity.expect("expected walked expression identity"),
+            ir_type,
+        );
+    }
+
     fn compile_context_from_typechecked_metadata(
         source: &str,
         fn_name: &str,
@@ -1697,6 +1729,7 @@ mod tests {
                 synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
                     module.callable_body_metadata(fn_name),
                 ),
+                expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fn_name)),
                 expr_identities: HashMap::new(),
                 expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
             },
@@ -2057,6 +2090,14 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types;
         ctx.fn_param_types = fn_param_types;
+        if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &fd.body,
+                &args[0].1,
+                gunbc_ir::code_ir::IrType::Named("ConfigB".to_string()),
+            );
+        }
 
         let items = fndef_to_code_ir(&fd, &ctx);
         let function = items
@@ -2137,6 +2178,30 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types;
         ctx.fn_param_types = fn_param_types;
+        if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
+            annotate_expr_ir_type(
+                &mut ctx,
+                &fd.body,
+                &args[0].1,
+                gunbc_ir::code_ir::IrType::Named("State".to_string()),
+            );
+            let mut expr_identity = None;
+            daglang_syntax::ast_utils::walk_stmts_with_expr_identities(
+                &fd.body.stmts,
+                &mut |identity, candidate| {
+                    if std::ptr::eq(candidate, &args[1].1) {
+                        expr_identity = Some(identity);
+                    }
+                },
+            );
+            let expr_identity = expr_identity.expect("expected walked expression identity");
+            ctx.anonymous_record_targets
+                .insert(expr_identity, "State".to_string());
+            ctx.expr_ir_types.insert(
+                expr_identity,
+                gunbc_ir::code_ir::IrType::Named("State".to_string()),
+            );
+        }
 
         let items = fndef_to_code_ir(&fd, &ctx);
         let function = items
@@ -2221,6 +2286,12 @@ mod tests {
                 expr_identity.expect("expected walked expression identity"),
                 "ConfigB".to_string(),
             );
+            annotate_expr_ir_type(
+                &mut ctx,
+                &fd.body,
+                expr,
+                gunbc_ir::code_ir::IrType::Named("ConfigB".to_string()),
+            );
         }
         ctx.fn_return_types = fn_return_types;
         ctx.fn_param_types = fn_param_types;
@@ -2229,9 +2300,13 @@ mod tests {
         match &items[0] {
             code_ir::Item::Fn(f) => match &f.body[0] {
                 code_ir::Stmt::Let {
+                    ir_type: Some(gunbc_ir::code_ir::IrType::Named(ir_type)),
                     expr: code_ir::Expr::Struct { name, .. },
                     ..
-                } => assert_eq!(name, "ConfigB"),
+                } => {
+                    assert_eq!(name, "ConfigB");
+                    assert_eq!(ir_type, "ConfigB");
+                }
                 other => panic!("expected let-bound ConfigB struct, got: {other:?}"),
             },
             other => panic!("expected Fn, got: {other:?}"),
@@ -2292,14 +2367,31 @@ fn collect_text(spans: List<Span>) -> List<String> {
         );
 
         let items = fndef_to_code_ir(&fd, &ctx);
-        assert!(
-            items.iter().any(|item| matches!(
-                item,
+        let synthesized_name = items
+            .iter()
+            .find_map(|item| match item {
                 code_ir::Item::Struct(code_ir::StructDef { name, .. })
-                    if name.starts_with("__CollecttextState")
-            )),
-            "expected synthesized accumulator type to be emitted from typecheck metadata",
-        );
+                    if name.starts_with("__CollecttextState") =>
+                {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .expect("expected synthesized accumulator type to be emitted from typecheck metadata");
+        let function = items
+            .iter()
+            .find_map(|item| match item {
+                code_ir::Item::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected Fn item");
+        match &function.body[0] {
+            code_ir::Stmt::Let {
+                ir_type: Some(gunbc_ir::code_ir::IrType::Named(ir_type)),
+                ..
+            } => assert_eq!(ir_type, &synthesized_name),
+            other => panic!("expected synthesized accumulator let type, got: {other:?}"),
+        }
     }
 
     #[test]

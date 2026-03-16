@@ -480,6 +480,7 @@ fn emit_module(
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
+        expr_ir_types: std::collections::HashMap::new(),
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
     };
