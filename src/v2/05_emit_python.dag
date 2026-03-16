@@ -338,10 +338,12 @@ fn emit_py_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body
   let params_str = emit_py_params(params: params)
   let ret_str = emit_py_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  // Tail-call optimization: if the function body contains self-recursive
-  // calls and all are in tail position, emit a while True loop.
-  let use_tco = expr_has_self_call(expr: body, fn_name: name)
-    && has_non_tail_self_call(expr: body, fn_name: name, in_tail: true) == false
+  // Tail-call optimization: use cached analysis from item registry.
+  let use_tco = match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
+    None => expr_has_self_call(expr: body, fn_name: name)
+      && has_non_tail_self_call(expr: body, fn_name: name, in_tail: true) == false
+  }
   if use_tco {
     let body_str = emit_py_tco_body(expr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
     concat("def ", py_ident(name: name), "(", params_str, ")", ret_str, ":\n",
@@ -366,7 +368,10 @@ fn emit_py_func_def(
   registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
-  let service_names = unique_strings(items: collect_service_calls(expr: body))
+  let service_names = match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.service_names
+    None => unique_strings(items: collect_service_calls(expr: body))
+  }
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_py_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
@@ -393,18 +398,18 @@ fn emit_py_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferSc
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, pair) {
+          |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
             let line = emit_py_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
             let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
-            BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+            let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+            BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
         let last_str = match last_stmt {
           Some { value: s } => concat("return ", emit_py_expr_in_scope(expr: s, registry: registry, scope: init_state.scope))
           None => "return None"
         }
-        let all_lines = concat(init_state.lines, [last_str])
-        all_lines |> join(separator: "\n")
+        if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
       }
     }
     _ => concat("return ", emit_py_expr_in_scope(expr: body, registry: registry, scope: scope))
@@ -511,18 +516,18 @@ fn emit_py_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: 
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, pair) {
+          |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
             let line = emit_py_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
             let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
-            BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+            let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+            BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_str = match ss |> last {
           Some { value: last_expr } =>
             emit_py_tco_expr(expr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope)
           None => "return None"
         }
-        let all_lines = concat(init_state.lines, [last_str])
-        all_lines |> join(separator: "\n")
+        if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
       }
     // Any other expression in tail position: not a self-call, so return.
     _ =>
@@ -940,12 +945,13 @@ fn py_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: I
 // =========================================================================
 
 fn emit_py_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let state = stmts |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, stmt) {
+  let state = stmts |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, stmt) {
     let line = emit_py_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
     let next_scope = scope_after_expr(expr: stmt, scope: acc.scope)
-    BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+    let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+    BlockEmitState { text: new_text, scope: next_scope }
   })
-  state.lines |> join(separator: "\n")
+  state.text
 }
 
 // =========================================================================
