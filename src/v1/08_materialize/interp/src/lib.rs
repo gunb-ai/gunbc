@@ -253,14 +253,49 @@ fn execute_collection(
     kind: &gunbc_ir::patterns::CollectionKind,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let items = inputs
-        .get("items")
-        .and_then(|v| match v {
-            Value::List(items) => Some(items.clone()),
-            _ => None,
-        })
-        .unwrap_or_default();
+    let items = match inputs.get("items") {
+        Some(Value::List(items)) => items.clone(),
+        Some(Value::Skipped) => {
+            return Ok([("value".to_string(), Value::Skipped)].into_iter().collect());
+        }
+        Some(value) => vec![value.clone()],
+        None => Vec::new(),
+    };
     let result = eval::evaluate_collection(kind, items, &inputs)
         .map_err(|e| ExecError::new(e.to_string()))?;
     Ok([("value".to_string(), result)].into_iter().collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::execute_collection;
+    use std::collections::HashMap;
+
+    use gunbc_ir::patterns::CollectionKind;
+    use gunbc_ir::Value;
+
+    #[test]
+    fn collection_skipped_items_stays_skipped() {
+        let outputs = execute_collection(
+            &CollectionKind::Map,
+            HashMap::from([("items".to_string(), Value::Skipped)]),
+        )
+        .expect("skipped collection input should not error");
+
+        assert_eq!(outputs.get("value"), Some(&Value::Skipped));
+    }
+
+    #[test]
+    fn collection_scalar_items_becomes_singleton_list() {
+        let outputs = execute_collection(
+            &CollectionKind::Map,
+            HashMap::from([("items".to_string(), Value::Int(7))]),
+        )
+        .expect("scalar collection input should not error");
+
+        assert_eq!(
+            outputs.get("value"),
+            Some(&Value::List(vec![Value::Int(7)]))
+        );
+    }
 }
