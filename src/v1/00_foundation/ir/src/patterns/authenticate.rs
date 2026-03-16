@@ -18,18 +18,53 @@ pub enum AuthenticatePhase {
 }
 
 /// A concrete node binding for a canonical authenticate phase.
+///
+/// `node_id` is enforced non-empty at construction — callers cannot create
+/// a binding with a blank node reference. The invariant is also enforced
+/// on the deserialization boundary via `try_from`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "AuthenticatePhaseBindingRaw")]
 pub struct AuthenticatePhaseBinding {
     pub phase: AuthenticatePhase,
-    pub node_id: String,
+    node_id: String,
+}
+
+/// Raw deserialization target — allows serde to populate fields before
+/// the non-empty `node_id` invariant is checked via `TryFrom`.
+#[derive(Deserialize)]
+struct AuthenticatePhaseBindingRaw {
+    phase: AuthenticatePhase,
+    node_id: String,
+}
+
+impl TryFrom<AuthenticatePhaseBindingRaw> for AuthenticatePhaseBinding {
+    type Error = String;
+
+    fn try_from(raw: AuthenticatePhaseBindingRaw) -> Result<Self, Self::Error> {
+        Self::new(raw.phase, raw.node_id)
+    }
 }
 
 impl AuthenticatePhaseBinding {
-    pub fn new(phase: AuthenticatePhase, node_id: impl Into<String>) -> Self {
-        Self {
-            phase,
-            node_id: node_id.into(),
+    /// Create a new binding.
+    ///
+    /// Returns `Err` if `node_id` is empty or whitespace-only, enforcing
+    /// the non-empty invariant at construction rather than via a separate
+    /// validation pass.
+    pub fn new(phase: AuthenticatePhase, node_id: impl Into<String>) -> Result<Self, String> {
+        let node_id = node_id.into();
+        if node_id.trim().is_empty() {
+            return Err(format!(
+                "authenticate binding for phase {:?} requires a non-empty node_id",
+                phase
+            ));
         }
+        Ok(Self { phase, node_id })
+    }
+
+    /// The bound node identifier (guaranteed non-empty).
+    pub fn node_id(&self) -> &str {
+        &self.node_id
     }
 }
 
@@ -67,23 +102,12 @@ pub fn validate_authenticate_chain(phases: &[AuthenticatePhase]) -> Result<(), S
 
 /// Validate canonical authenticate phase bindings.
 ///
-/// Ensures:
-/// - phase order matches the canonical authenticate chain
-/// - all bound node IDs are non-empty
+/// Ensures phase order matches the canonical authenticate chain.
+/// Node-ID non-emptiness is enforced at construction by
+/// [`AuthenticatePhaseBinding::new`].
 pub fn validate_authenticate_bindings(bindings: &[AuthenticatePhaseBinding]) -> Result<(), String> {
     let phases = bindings.iter().map(|b| b.phase).collect::<Vec<_>>();
-    validate_authenticate_chain(&phases)?;
-
-    for binding in bindings {
-        if binding.node_id.trim().is_empty() {
-            return Err(format!(
-                "authenticate binding for phase {:?} has empty node_id",
-                binding.phase
-            ));
-        }
-    }
-
-    Ok(())
+    validate_authenticate_chain(&phases)
 }
 
 #[cfg(test)]
@@ -140,31 +164,54 @@ mod tests {
     #[test]
     fn validate_authenticate_bindings_accepts_canonical_bindings() {
         let bindings = vec![
-            AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env").unwrap(),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth").unwrap(),
             AuthenticatePhaseBinding::new(
                 AuthenticatePhase::AcquireBaseIdentity,
                 "cloud_credential",
-            ),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "cloud_credential"),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::MaybeImpersonate, "cloud_credential"),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "scope_preflight"),
+            )
+            .unwrap(),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "cloud_credential")
+                .unwrap(),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::MaybeImpersonate, "cloud_credential")
+                .unwrap(),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "scope_preflight")
+                .unwrap(),
         ];
         assert!(validate_authenticate_bindings(&bindings).is_ok());
     }
 
     #[test]
-    fn validate_authenticate_bindings_rejects_empty_node_id() {
-        let bindings = vec![
-            AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
-            AuthenticatePhaseBinding::new(
-                AuthenticatePhase::AcquireBaseIdentity,
-                "cloud_credential",
-            ),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "exchange"),
-            AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, ""),
-        ];
-        assert!(validate_authenticate_bindings(&bindings).is_err());
+    fn new_rejects_empty_node_id() {
+        assert!(AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "").is_err());
+    }
+
+    #[test]
+    fn new_rejects_whitespace_only_node_id() {
+        assert!(
+            AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "  ").is_err()
+        );
+    }
+
+    #[test]
+    fn deserialize_rejects_empty_node_id() {
+        let json = r#"{"phase":"FinalizeCredential","node_id":""}"#;
+        let result: Result<AuthenticatePhaseBinding, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_rejects_whitespace_only_node_id() {
+        let json = r#"{"phase":"FinalizeCredential","node_id":"  "}"#;
+        let result: Result<AuthenticatePhaseBinding, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_accepts_valid_binding() {
+        let json = r#"{"phase":"FinalizeCredential","node_id":"scope_preflight"}"#;
+        let binding: AuthenticatePhaseBinding = serde_json::from_str(json).unwrap();
+        assert_eq!(binding.node_id(), "scope_preflight");
+        assert_eq!(binding.phase, AuthenticatePhase::FinalizeCredential);
     }
 }

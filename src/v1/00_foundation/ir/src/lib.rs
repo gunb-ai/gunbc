@@ -205,11 +205,11 @@ pub use typed_io::{
 pub use types::{
     boundary_label, normalize_optional_type_id, optional_inner_type_id, parse_map_type_id,
     parse_unary_generic_type_id, value_backing_for_type_id, value_compatible_with_type_id,
-    value_compatible_with_type_id_in_registry,
-    value_kind_name, BuiltinType, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy,
-    InputProvenance, NodeId, OperationKey, PortCategory, PortName, ResolvedScalar, ResolvedType,
-    SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId,
-    ValueBacking, BUILTIN_TYPES,
+    value_compatible_with_type_id_in_registry, value_kind_name, BuiltinType, Cardinality,
+    CardinalityMismatch, CardinalitySamplingStrategy, InputProvenance, NodeId, OperationKey,
+    PortCategory, PortName, ResolvedScalar, ResolvedType, SeedPlaceholderPolicy,
+    SemanticCarrierClass, SemanticCarrierKind, StaticFingerprint, TypeId, ValueBacking,
+    BUILTIN_TYPES,
 };
 pub use validate::{
     validate_cardinality_compatibility, validate_cardinality_compatibility_with_registry,

@@ -206,6 +206,10 @@ mod tests {
                 "mtime not supported",
             )))
         }
+
+        fn canonicalize_path(&self, path: &Path) -> Result<std::path::PathBuf, ResourceError> {
+            Ok(path.to_path_buf())
+        }
     }
 
     #[test]

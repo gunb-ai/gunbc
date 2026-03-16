@@ -210,6 +210,19 @@ pub fn parse_int_flag(flag: &str, value: &str) -> Result<i64, ParseError> {
     })
 }
 
+/// Parse a bool value for a CLI flag using canonical error semantics.
+pub fn parse_bool_value(flag: &str, value: Option<&str>) -> Result<bool, ParseError> {
+    match value {
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(v) => Err(ParseError::InvalidValue {
+            flag: flag.to_string(),
+            value: v.to_string(),
+        }),
+        None => Ok(true),
+    }
+}
+
 /// Parse CLI arguments against a schema.
 ///
 /// Implements the same while-loop logic that `cli_gen.rs` generates inline:
@@ -274,17 +287,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                 if let Some(&idx) = flag_map.get(flag) {
                     let param = &schema[idx];
                     if param.type_id == ParamType::Bool && !param.is_repeatable() {
-                        let bool_value = match inline_value {
-                            Some("true") => "true",
-                            Some("false") => "false",
-                            Some(v) => {
-                                return Err(ParseError::InvalidValue {
-                                    flag: flag.to_string(),
-                                    value: v.to_string(),
-                                });
-                            }
-                            None => "true",
-                        };
+                        let bool_value = parse_bool_value(flag, inline_value)?;
                         scalars.insert(idx, Some(bool_value.to_string()));
                     } else if param.is_map() {
                         // Map param: consume KEY=VALUE pair.
@@ -348,7 +351,8 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                     if let Some(&idx) = port_name_map.get(key) {
                         let param = &schema[idx];
                         if param.type_id == ParamType::Bool {
-                            scalars.insert(idx, Some(val.to_string()));
+                            let bool_value = parse_bool_value(key, Some(val))?;
+                            scalars.insert(idx, Some(bool_value.to_string()));
                         } else if param.is_map() {
                             // Nested KEY=VALUE inside a positional — treat val as K=V.
                             if let Some((inner_k, inner_v)) = val.split_once('=') {
@@ -392,7 +396,9 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
             match scalars.get(&idx) {
                 Some(Some(val)) => {
                     let value = match param.type_id {
-                        ParamType::Bool => Value::Bool(val == "true"),
+                        ParamType::Bool => {
+                            Value::Bool(parse_bool_value(&param.flag_name(), Some(val))?)
+                        }
                         ParamType::Int => Value::Int(parse_int_flag(&param.flag_name(), val)?),
                         ParamType::Str => Value::Str(val.clone()),
                         ParamType::Map => unreachable!("Map handled above"),
@@ -696,6 +702,14 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_parse_bool_value_error() {
+        assert!(matches!(
+            parse_bool_value("public", Some("maybe")),
+            Err(ParseError::InvalidValue { .. })
+        ));
+    }
+
     // ========================================================================
     // Map (KEY=VALUE) parameter tests (C21)
     // ========================================================================
@@ -846,6 +860,13 @@ mod tests {
             Value::Bool(true),
             "positional KEY=VALUE should set Bool param"
         );
+    }
+
+    #[test]
+    fn test_positional_key_value_bool_invalid_value_errors() {
+        let schema = vec![CliParam::new("execute", ParamType::Bool)];
+        let result = parse(&argv(&["prog", "EXECUTE=maybe"]), &schema);
+        assert!(matches!(result, Err(ParseError::InvalidValue { .. })));
     }
 
     #[test]

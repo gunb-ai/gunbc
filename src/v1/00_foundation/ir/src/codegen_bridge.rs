@@ -50,6 +50,7 @@
 
 use crate::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt, StructDef};
 use crate::render_ir::{CodeRenderer, TextMedium};
+use crate::types::{normalize_optional_type_id, optional_inner_type_id};
 
 /// A module from the-gunbai's codegen IR, ready for conversion to SourceFile.
 ///
@@ -165,14 +166,7 @@ impl BridgeModule {
             let fields: Vec<(String, String, bool)> = s
                 .fields
                 .iter()
-                .map(|f| {
-                    let ty = if f.optional {
-                        format!("Optional<{}>", f.type_name)
-                    } else {
-                        f.type_name.clone()
-                    };
-                    (f.name.clone(), ty, true)
-                })
+                .map(|f| (f.name.clone(), bridge_field_type_name(f), true))
                 .collect();
             items.push(Item::Struct(StructDef {
                 name: s.name.clone(),
@@ -253,6 +247,14 @@ impl BridgeModule {
     pub fn render_with<M: TextMedium>(&self, renderer: &impl CodeRenderer<M>) -> M::Output {
         let sf = self.to_source_file();
         renderer.render_source_file(&sf)
+    }
+}
+
+fn bridge_field_type_name(field: &BridgeField) -> String {
+    match (field.optional, optional_inner_type_id(&field.type_name)) {
+        (true, Some(_)) | (false, Some(_)) => normalize_optional_type_id(&field.type_name),
+        (true, None) => format!("Optional<{}>", field.type_name),
+        (false, None) => field.type_name.clone(),
     }
 }
 
@@ -424,6 +426,36 @@ mod tests {
 
         let opt_field = BridgeField::optional("tag", "String");
         assert!(opt_field.optional);
+    }
+
+    #[test]
+    fn optional_field_does_not_double_wrap_optional_type_names() {
+        let module = BridgeModule {
+            name: "git_io".into(),
+            structs: vec![BridgeStruct {
+                name: "GitSpec".into(),
+                doc: None,
+                fields: vec![
+                    BridgeField::optional("branch", "Optional<String>"),
+                    BridgeField {
+                        name: "tag".into(),
+                        type_name: "String?".into(),
+                        optional: false,
+                        doc: None,
+                    },
+                ],
+                derives: vec![],
+            }],
+            ..Default::default()
+        };
+
+        let sf = module.to_source_file();
+        let Item::Struct(def) = &sf.items[0] else {
+            panic!("expected struct");
+        };
+
+        assert_eq!(def.fields[0].1, "Optional<String>");
+        assert_eq!(def.fields[1].1, "Optional<String>");
     }
 
     #[test]

@@ -11,7 +11,7 @@
 //! - `optional_wrapper`: String - How to wrap optional types (e.g., "Option<{0}>")
 
 use crate::dag::{Dag, Port};
-use crate::language::LanguageOp;
+use crate::language::{language_metadata_for, LanguageOp};
 use crate::node::Node;
 
 /// Type mappings for a specific language.
@@ -24,46 +24,11 @@ pub struct TypeMapping {
     pub float: &'static str,
     pub bool: &'static str,
     pub bytes: &'static str,
+    pub json: &'static str,
     pub list_template: &'static str,
     pub optional_template: &'static str,
     pub map_template: &'static str,
 }
-
-/// Rust type mappings.
-pub const RUST_TYPES: TypeMapping = TypeMapping {
-    string: "String",
-    int: "i64",
-    float: "f64",
-    bool: "bool",
-    bytes: "Vec<u8>",
-    list_template: "Vec<{0}>",
-    optional_template: "Option<{0}>",
-    map_template: "HashMap<{0}, {1}>",
-};
-
-/// Python type mappings.
-pub const PYTHON_TYPES: TypeMapping = TypeMapping {
-    string: "str",
-    int: "int",
-    float: "float",
-    bool: "bool",
-    bytes: "bytes",
-    list_template: "list[{0}]",
-    optional_template: "{0} | None",
-    map_template: "dict[{0}, {1}]",
-};
-
-/// TypeScript type mappings.
-pub const TYPESCRIPT_TYPES: TypeMapping = TypeMapping {
-    string: "string",
-    int: "number",
-    float: "number",
-    bool: "boolean",
-    bytes: "Uint8Array",
-    list_template: "{0}[]",
-    optional_template: "{0} | undefined",
-    map_template: "Record<{0}, {1}>",
-};
 
 /// Build the TypeSystemMapping SubDag node.
 ///
@@ -101,12 +66,7 @@ pub fn build_type_system_mapping_subdag() -> Node<LanguageOp> {
 
 /// Map an abstract type to a language-specific type.
 pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
-    let mapping = match language {
-        "rust" => &RUST_TYPES,
-        "python" => &PYTHON_TYPES,
-        "typescript" | "javascript" => &TYPESCRIPT_TYPES,
-        _ => return None,
-    };
+    let mapping = language_metadata_for(language).and_then(|m| m.type_mapping)?;
 
     let result = match abstract_type {
         "String" => mapping.string.to_string(),
@@ -114,6 +74,7 @@ pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
         "Float" => mapping.float.to_string(),
         "Bool" => mapping.bool.to_string(),
         "Bytes" => mapping.bytes.to_string(),
+        "Json" => mapping.json.to_string(),
         _ if abstract_type.starts_with("List<") => {
             let inner = &abstract_type[5..abstract_type.len() - 1];
             let inner_type = map_type(inner, language)?;
@@ -147,12 +108,9 @@ pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
 
 /// Get the optional wrapper template for a language.
 pub fn optional_wrapper(language: &str) -> Option<&'static str> {
-    match language {
-        "rust" => Some(RUST_TYPES.optional_template),
-        "python" => Some(PYTHON_TYPES.optional_template),
-        "typescript" | "javascript" => Some(TYPESCRIPT_TYPES.optional_template),
-        _ => None,
-    }
+    language_metadata_for(language)
+        .and_then(|m| m.type_mapping)
+        .map(|m| m.optional_template)
 }
 
 #[cfg(test)]

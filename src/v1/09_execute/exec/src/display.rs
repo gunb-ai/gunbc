@@ -818,6 +818,9 @@ impl ProgressObserver for NonTtyProgressObserver {
                 ErrorLayer::File(f) => {
                     eprintln!("  │ File:      {} ({})", f.path, f.operation);
                 }
+                ErrorLayer::TransportFailure(t) => {
+                    eprintln!("  │ Failure:   {}", t.kind);
+                }
                 ErrorLayer::NodeTrace(t) => {
                     let role_str = match t.role {
                         NodeRole::TransportExecutor => "transport",
@@ -1296,6 +1299,9 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) ->
                 }
                 ErrorLayer::File(f) => {
                     content_lines.push(format!("File:      {} ({})", f.path, f.operation));
+                }
+                ErrorLayer::TransportFailure(t) => {
+                    content_lines.push(format!("Failure:   {}", t.kind));
                 }
                 ErrorLayer::NodeTrace(t) => {
                     let role_str = match t.role {

@@ -15,6 +15,9 @@
 //! - Naming: snake_case functions, PascalCase types
 
 use crate::dag::{Dag, Port};
+use crate::language::traits::naming::LanguageNaming;
+use crate::language::traits::type_system::TypeMapping;
+use crate::language::NamingCase;
 use crate::language::LanguageOp;
 use crate::node::Node;
 
@@ -24,6 +27,8 @@ pub struct RustConfig {
     pub name: &'static str,
     pub file_extensions: &'static [&'static str],
     pub comment_prefix: &'static str,
+    pub block_comment_open: &'static str,
+    pub block_comment_close: &'static str,
     pub doc_comment_prefix: &'static str,
     pub statement_terminator: &'static str,
     pub block_open: &'static str,
@@ -36,10 +41,34 @@ pub const RUST: RustConfig = RustConfig {
     name: "Rust",
     file_extensions: &[".rs"],
     comment_prefix: "//",
+    block_comment_open: "/*",
+    block_comment_close: "*/",
     doc_comment_prefix: "///",
     statement_terminator: ";",
     block_open: "{",
     block_close: "}",
+};
+
+/// Rust type mappings.
+pub const RUST_TYPES: TypeMapping = TypeMapping {
+    string: "String",
+    int: "i64",
+    float: "f64",
+    bool: "bool",
+    bytes: "Vec<u8>",
+    json: "serde_json::Value",
+    list_template: "Vec<{0}>",
+    optional_template: "Option<{0}>",
+    map_template: "HashMap<{0}, {1}>",
+};
+
+/// Rust naming conventions.
+pub const RUST_NAMING: LanguageNaming = LanguageNaming {
+    type_case: NamingCase::PascalCase,
+    function_case: NamingCase::SnakeCase,
+    variable_case: NamingCase::SnakeCase,
+    constant_case: NamingCase::ScreamingSnakeCase,
+    module_case: NamingCase::SnakeCase,
 };
 
 /// Build the Rust language SubDag node.
@@ -57,6 +86,8 @@ pub const RUST: RustConfig = RustConfig {
 /// Outputs:
 /// - `id`: String - Language ID ("rust")
 /// - `extensions`: List - File extensions ([".rs"])
+/// - `block_comment_open`: String - Block comment start ("/*")
+/// - `block_comment_close`: String - Block comment end ("*/")
 /// - `concrete_type`: String (optional) - Mapped type
 /// - `converted_name`: String (optional) - Converted name
 pub fn build_rust_subdag() -> Node<LanguageOp> {
@@ -71,6 +102,8 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
             Port::scalar("name", "String"),
             Port::list("extensions", "List<String>"),
             Port::scalar("comment_prefix", "String"),
+            Port::scalar("block_comment_open", "String"),
+            Port::scalar("block_comment_close", "String"),
             Port::scalar("doc_comment_prefix", "String"),
         ],
         LanguageOp::RustConfig,
@@ -92,35 +125,11 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
 }
 
 /// Map an abstract type to Rust type.
+///
+/// Delegates to `map_type(_, "rust")` which reads from `RUST_TYPES`.
 pub fn rust_type(abstract_type: &str) -> String {
-    match abstract_type {
-        "String" => "String".to_string(),
-        "Int" => "i64".to_string(),
-        "Float" => "f64".to_string(),
-        "Bool" => "bool".to_string(),
-        "Bytes" => "Vec<u8>".to_string(),
-        "Json" => "serde_json::Value".to_string(),
-        _ if abstract_type.starts_with("List<") => {
-            let inner = &abstract_type[5..abstract_type.len() - 1];
-            format!("Vec<{}>", rust_type(inner))
-        }
-        _ if abstract_type.starts_with("Optional<") => {
-            let inner = &abstract_type[9..abstract_type.len() - 1];
-            format!("Option<{}>", rust_type(inner))
-        }
-        _ if abstract_type.starts_with("Map<") => {
-            // Map<K, V> -> HashMap<K, V>
-            let inner = &abstract_type[4..abstract_type.len() - 1];
-            if let Some(comma_pos) = inner.find(',') {
-                let k = inner[..comma_pos].trim();
-                let v = inner[comma_pos + 1..].trim();
-                format!("HashMap<{}, {}>", rust_type(k), rust_type(v))
-            } else {
-                abstract_type.to_string()
-            }
-        }
-        _ => abstract_type.to_string(), // Pass through unknown types
-    }
+    crate::language::map_type(abstract_type, "rust")
+        .unwrap_or_else(|| abstract_type.to_string())
 }
 
 #[cfg(test)]
@@ -146,6 +155,14 @@ mod tests {
         assert!(node.outputs.iter().any(|p| p.name.0 == "id"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "extensions"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "comment_prefix"));
+        assert!(node
+            .outputs
+            .iter()
+            .any(|p| p.name.0 == "block_comment_open"));
+        assert!(node
+            .outputs
+            .iter()
+            .any(|p| p.name.0 == "block_comment_close"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "concrete_type"));
     }
 
@@ -172,6 +189,7 @@ mod tests {
         assert_eq!(rust_type("Float"), "f64");
         assert_eq!(rust_type("Bool"), "bool");
         assert_eq!(rust_type("Bytes"), "Vec<u8>");
+        assert_eq!(rust_type("Json"), "serde_json::Value");
     }
 
     #[test]
@@ -187,5 +205,7 @@ mod tests {
         assert_eq!(RUST.id, "rust");
         assert_eq!(RUST.file_extensions, &[".rs"]);
         assert_eq!(RUST.comment_prefix, "//");
+        assert_eq!(RUST.block_comment_open, "/*");
+        assert_eq!(RUST.block_comment_close, "*/");
     }
 }

@@ -35,7 +35,7 @@ mod pipeline;
 mod prepare;
 mod receipt;
 
-use daglang_contract::Diagnostics;
+use daglang_contract::{Diagnostics, FileId, LocatedSpan};
 use daglang_derive::{derive_artifacts, DeriveError, DerivedArtifacts};
 use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
@@ -49,8 +49,7 @@ use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef
 use daglang_syntax::parser;
 pub use daglang_typecheck::PipelineParam;
 use daglang_typecheck::{
-    typecheck_module_graph_located, typecheck_module_graph_with_options, SpannedTypeError,
-    TypeError, TypecheckOptions, TypedProject,
+    typecheck_module_graph_located, SpannedTypeError, TypeError, TypecheckOptions, TypedProject,
 };
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry, VerifiedDag};
 use serde::{Deserialize, Serialize};
@@ -267,8 +266,8 @@ impl From<Vec<TypeError>> for CompileError {
 }
 
 // Note: SpannedTypeError → CompileError conversion now requires the module graph
-// for source-text resolution. Use typecheck_diagnostics_located() directly at
-// call sites instead of From.
+// for source-text resolution and stable per-file IDs. Use
+// typecheck_with_user_diagnostics() at user-facing call sites instead of From.
 
 impl From<LowerError> for CompileError {
     fn from(error: LowerError) -> Self {
@@ -306,6 +305,10 @@ impl From<&str> for CompileError {
     }
 }
 
+fn compile_file_id(index: usize) -> FileId {
+    FileId(u32::try_from(index).expect("module graph index should fit in u32"))
+}
+
 fn typecheck_diagnostics(errors: Vec<TypeError>) -> Diagnostics {
     Diagnostics {
         errors: errors
@@ -338,6 +341,14 @@ fn typecheck_diagnostics_located(
     }
 }
 
+fn typecheck_with_user_diagnostics<'a>(
+    graph: &'a ModuleGraph,
+    options: TypecheckOptions,
+) -> Result<TypedProject<'a>, CompileError> {
+    typecheck_module_graph_located(graph, options)
+        .map_err(|errors| CompileError::Diagnostics(typecheck_diagnostics_located(errors, graph)))
+}
+
 fn lower_diagnostics(error: LowerError) -> Diagnostics {
     Diagnostics::single(error.to_diagnostic())
 }
@@ -360,24 +371,61 @@ fn verification_diagnostics_with_sources(
     Diagnostics {
         errors: errors
             .into_iter()
-            .map(|error| {
-                let mut diag = error.to_diagnostic();
-                // Look up source text by file path to resolve line:col + snippet
-                if let Some(diag_file) = &diag.file {
-                    let diag_file_str = diag_file.display().to_string();
-                    if let Some(source) = graph
-                        .modules
-                        .iter()
-                        .find(|m| m.path.display().to_string() == diag_file_str)
-                        .map(|m| m.source.as_str())
-                    {
-                        diag.resolve_source(source);
-                    }
-                }
-                diag
-            })
+            .map(|error| verification_diagnostic_with_source(error, graph))
             .collect(),
     }
+}
+
+fn verification_diagnostic_with_source(
+    error: gunbc_ir::VerifyError,
+    graph: &ModuleGraph,
+) -> daglang_contract::Diagnostic {
+    if let gunbc_ir::VerifyError::UnwiredInput(unwired) = &error {
+        if let (Some(file), Some(start), Some(end)) = (
+            unwired.origin.file(),
+            unwired.origin.span_start(),
+            unwired.origin.span_end(),
+        ) {
+            let file_path = Path::new(file);
+            if let Some((file_id, source)) = graph
+                .modules
+                .iter()
+                .enumerate()
+                .find(|(_, module)| module.path == file_path)
+                .map(|(index, module)| (compile_file_id(index), module.source.as_str()))
+            {
+                let mut diagnostic = error
+                    .to_located_diagnostic(LocatedSpan {
+                        file: file_id,
+                        span: daglang_contract::Span::new(start, end),
+                        label: "here".to_string(),
+                    })
+                    .with_file(file_path.to_path_buf());
+                diagnostic.resolve_source(source);
+                return diagnostic;
+            }
+        }
+    }
+
+    fallback_verification_diagnostic(error, graph)
+}
+
+fn fallback_verification_diagnostic(
+    error: gunbc_ir::VerifyError,
+    graph: &ModuleGraph,
+) -> daglang_contract::Diagnostic {
+    let mut diagnostic = error.to_diagnostic();
+    if let Some(diag_file) = &diagnostic.file {
+        if let Some(source) = graph
+            .modules
+            .iter()
+            .find(|module| module.path == *diag_file)
+            .map(|module| module.source.as_str())
+        {
+            diagnostic.resolve_source(source);
+        }
+    }
+    diagnostic
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -522,13 +570,12 @@ pub fn compile_data_from_sources_permissive(
     }
 
     let module_graph = ModuleGraph { modules: resolved };
-    let typed = typecheck_module_graph_with_options(
+    let typed = typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
-    )
-    .map_err(CompileError::from)?;
+    )?;
     let mut fns = HashMap::new();
     let lower_output = daglang_lower::lower_to_output_with_config(
         &typed,
@@ -574,13 +621,12 @@ pub fn compile_data_from_module_permissive(
         target_file: Some(target_file),
     };
     let module_graph = discover_module_graph_for_context(&context)?;
-    let typed = typecheck_module_graph_with_options(
+    let typed = typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
-    )
-    .map_err(CompileError::from)?;
+    )?;
     let mut fns = HashMap::new();
     // Derive the module dotted path from the file path for entry_module scoping.
     // This prevents lowering unrelated callables from transitively imported modules
@@ -754,14 +800,12 @@ pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, Compil
 
 pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput, CompileError> {
     let parsed_files = module_graph.modules.len();
-    if let Err(errors) = typecheck_module_graph_with_options(
+    typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
-    ) {
-        return Err(CompileError::from(errors));
-    }
+    )?;
     Ok(CheckOutput { parsed_files })
 }
 
@@ -778,13 +822,12 @@ pub fn load_pipeline_params_permissive(
     context: &DriverContext,
 ) -> Result<Vec<PipelineParam>, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
-    let typed = typecheck_module_graph_with_options(
+    let typed = typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
-    )
-    .map_err(CompileError::from)?;
+    )?;
     Ok(typed.pipeline_params().to_vec())
 }
 
@@ -803,13 +846,12 @@ pub fn generate_types_from_context_permissive(
 ) -> Result<String, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     // Type generation only needs structural defs, not service bindings.
-    let typed = typecheck_module_graph_with_options(
+    let typed = typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: true,
         },
-    )
-    .map_err(CompileError::from)?;
+    )?;
     Ok(daglang_emit::type_codegen::generate_types_for_modules(
         &typed,
         module_filter,
@@ -835,13 +877,12 @@ pub fn lint_report_coverage_from_context(
     context: &DriverContext,
 ) -> Result<Vec<ReportCoverageIssue>, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
-    let typed = typecheck_module_graph_with_options(
+    let typed = typecheck_with_user_diagnostics(
         &module_graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
-    )
-    .map_err(CompileError::from)?;
+    )?;
     Ok(lint_report_coverage(&typed))
 }
 
@@ -1757,7 +1798,7 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
         .ast
         .items
         .iter()
-        .any(|item| item.node.as_callable().is_some() || matches!(item.node, Item::PipelineDef(_)))
+        .any(|item| item.node.produces_executable_dag())
 }
 
 /// Merge two sorted path lists into one sorted, deduplicated list.
@@ -2758,6 +2799,54 @@ fn run() -> Bool {
         assert!(
             errors.is_empty(),
             "conditional without else input port should pass, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn verification_diagnostics_with_sources_build_located_contract_diagnostics() {
+        use gunbc_ir::node::NodeOrigin;
+
+        let graph = ModuleGraph {
+            modules: vec![ResolvedModule {
+                path: PathBuf::from("sample/main.dag"),
+                ast: daglang_syntax::parser::parse("module sample.main\nfn run() -> Unit {}\n")
+                    .expect("test source should parse"),
+                module_path: ModulePath::new(vec!["sample".to_string(), "main".to_string()]),
+                dependencies: Vec::new(),
+                source: "module sample.main\nfn run() -> Unit {}\n".to_string(),
+            }],
+        };
+        let diagnostics = verification_diagnostics_with_sources(
+            vec![gunbc_ir::VerifyError::UnwiredInput(
+                gunbc_ir::UnwiredInputError {
+                    node_id: "run".to_string(),
+                    node_name: "run".to_string(),
+                    port_name: "input".to_string(),
+                    origin: NodeOrigin::UserCode {
+                        file: "sample/main.dag".to_string(),
+                        module: "sample.main".to_string(),
+                        item: "run".to_string(),
+                        span_start: 19,
+                        span_end: 22,
+                    },
+                },
+            )],
+            &graph,
+        );
+
+        let diagnostic = &diagnostics.errors[0];
+        assert_eq!(diagnostic.file_id, Some(FileId(0)));
+        assert_eq!(
+            diagnostic.file.as_deref(),
+            Some(Path::new("sample/main.dag"))
+        );
+        assert!(
+            diagnostic.span.is_some(),
+            "verification diagnostic must carry a span"
+        );
+        assert!(
+            diagnostic.snippet.is_some(),
+            "verification diagnostic should resolve source"
         );
     }
 

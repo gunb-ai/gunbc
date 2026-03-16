@@ -14,7 +14,10 @@ fn canonical_source_path(path: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::canonicalize(path).map_err(|e| {
         std::io::Error::new(
             e.kind(),
-            format!("cannot canonicalize {} for source digest: {e}", path.display()),
+            format!(
+                "cannot canonicalize {} for source digest: {e}",
+                path.display()
+            ),
         )
     })
 }

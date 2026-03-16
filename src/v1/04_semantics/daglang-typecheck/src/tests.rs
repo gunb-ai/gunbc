@@ -1,4 +1,6 @@
 use super::*;
+use daglang_contract::FileId;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
@@ -19,7 +21,21 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
                 source: source.to_string(),
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let module_lookup = modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
+    let mut modules = modules;
+    for module in &mut modules {
+        module.dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .collect::<Vec<_>>();
+    }
     ModuleGraph { modules }
 }
 
@@ -90,7 +106,7 @@ fn located_signature_errors_carry_item_span() {
         TypeError::DuplicateParameter { item, param } if item == "bad" && param == "a"
     )));
     assert!(
-        errors.iter().any(|error| error.span.is_some()),
+        errors.iter().any(|error| error.span.end > error.span.start),
         "signature validation errors should carry the enclosing item span"
     );
 }
@@ -148,7 +164,7 @@ type Config {
             if ty == "MissingType" && context == "type Config.field"
     )));
     assert!(
-        errors.iter().any(|error| error.span.is_some()),
+        errors.iter().any(|error| error.span.end > error.span.start),
         "type registry errors should carry the enclosing item span"
     );
 }
@@ -189,8 +205,34 @@ fn located_callable_body_errors_carry_item_span() {
             if caller == "run" && callee == "missing"
     )));
     assert!(
-        errors.iter().any(|error| error.span.is_some()),
+        errors.iter().any(|error| error.span.end > error.span.start),
         "callable body errors should carry the enclosing item span"
+    );
+}
+
+#[test]
+fn located_typecheck_diagnostics_use_contract_located_construction() {
+    let graph = module_graph_from_sources(&[(
+        "sample/invalid.dag",
+        "module sample.invalid\nfn run() -> String { return 42 }",
+    )]);
+    let errors = typecheck_module_graph_located(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("type mismatch should fail");
+
+    let diagnostic = errors[0].to_diagnostic();
+    assert_eq!(diagnostic.file_id, Some(FileId(0)));
+    assert_eq!(
+        diagnostic.file.as_deref(),
+        Some(std::path::Path::new("sample/invalid.dag"))
+    );
+    assert!(
+        diagnostic.span.is_some(),
+        "located diagnostics must carry a span"
     );
 }
 

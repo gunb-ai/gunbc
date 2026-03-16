@@ -487,6 +487,10 @@ impl CargoCommand {
     /// Use `BinaryArgs::codegen()` for codegen subcommands or
     /// `BinaryArgs::with_mode()` for binaries that take --mode.
     pub fn args(mut self, args: BinaryArgs) -> Self {
+        assert!(
+            matches!(&self.subcommand, Subcommand::Run(_)) || args.is_empty(),
+            "binary arguments require Subcommand::Run"
+        );
         self.binary_args = args;
         self
     }
@@ -497,24 +501,16 @@ impl CargoCommand {
     /// appended to the trailing args (after `--`). For compilation subcommands,
     /// the warning policy is expressed via `env()` instead.
     pub fn to_args(&self) -> Vec<String> {
+        assert!(
+            matches!(&self.subcommand, Subcommand::Run(_)) || self.binary_args.is_empty(),
+            "binary arguments require Subcommand::Run"
+        );
+
         let mut args = vec!["cargo".to_string()];
 
         match &self.subcommand {
             Subcommand::Run(inv) => {
-                args.push("run".to_string());
-                match &inv.package {
-                    Some(pkg) => {
-                        args.extend([
-                            "-p".to_string(),
-                            pkg.clone(),
-                            "--bin".to_string(),
-                            inv.binary.clone(),
-                        ]);
-                    }
-                    None => {
-                        args.extend(["-p".to_string(), inv.binary.clone()]);
-                    }
-                }
+                args.extend(inv.command_parts().into_iter().skip(1));
             }
             sub => args.push(sub.as_str().to_string()),
         }
@@ -553,7 +549,10 @@ impl CargoCommand {
         // Build trailing args:
         // - For Run: binary_args.to_args()
         // - For Clippy with Deny: append -D warnings
-        let mut trailing = self.binary_args.to_args();
+        let mut trailing = match &self.subcommand {
+            Subcommand::Run(_) => self.binary_args.to_args(),
+            _ => Vec::new(),
+        };
         if self.with_warnings == Warnings::Deny && self.subcommand == Subcommand::Clippy {
             trailing.extend(["-D".to_string(), "warnings".to_string()]);
         }
@@ -568,7 +567,7 @@ impl CargoCommand {
 
     /// Environment variables required by this command's configuration.
     ///
-    /// For compilation subcommands (`build`, `test`, `check`) with
+    /// For compilation subcommands (`build`, `test`, `check`, `run`) with
     /// `Warnings::Deny`, returns `RUSTFLAGS="-D warnings"`.
     /// Clippy handles warnings via trailing args instead.
     pub fn env(&self) -> Vec<(String, String)> {
@@ -827,6 +826,12 @@ mod tests {
             cmd.to_shell_with_env(),
             "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-codegen --bin gunbc-ci -q --release"
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "binary arguments require Subcommand::Run")]
+    fn test_non_run_args_panic() {
+        let _ = CargoCommand::new(Subcommand::Build).args(BinaryArgs::with_mode(ExecMode::Verify));
     }
 
     #[test]

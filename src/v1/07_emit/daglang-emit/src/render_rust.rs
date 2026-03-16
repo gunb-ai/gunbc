@@ -295,7 +295,11 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
                     let rust_type = render_ir_type(ty);
                     return format!(
                         "{}let {}{}: {} = {};\n",
-                        pad, mut_kw, name, rust_type, render_expr(expr)
+                        pad,
+                        mut_kw,
+                        name,
+                        rust_type,
+                        render_expr(expr)
                     );
                 }
             }
@@ -411,7 +415,11 @@ fn render_rust_bind_target(target: &BindTarget) -> String {
 fn needs_grouping_in_operator(expr: &Expr) -> bool {
     matches!(
         expr,
-        Expr::If { .. } | Expr::Match { .. } | Expr::Block(_) | Expr::Closure { .. } | Expr::Struct { .. }
+        Expr::If { .. }
+            | Expr::Match { .. }
+            | Expr::Block(_)
+            | Expr::Closure { .. }
+            | Expr::Struct { .. }
     )
 }
 
@@ -454,7 +462,9 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
         Expr::RefMut(expr) => format!("&mut {}", render_expr(expr)),
         Expr::Path(segments) => segments.join("::"),
-        Expr::Struct { name, fields, rest, .. } => {
+        Expr::Struct {
+            name, fields, rest, ..
+        } => {
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(k, v)| {

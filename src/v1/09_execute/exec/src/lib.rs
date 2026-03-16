@@ -63,7 +63,7 @@ pub use error::{
     classify_layers, decorate_service_failure, AcquisitionErrorLayer, AuthContext, ErrorClass,
     ErrorLayer, ExecError, FailureDetail, FileErrorLayer, HttpErrorLayer, IntoExecResult, NodeRole,
     NodeTraceLayer, RestErrorLayer, ResultExt, ServiceCallMetadata, ServiceErrorLayer,
-    ShellErrorLayer, TransportContext,
+    ShellErrorLayer, TransportContext, TransportFailureKind, TransportFailureLayer,
 };
 pub use execute::{
     execute_dag, execute_single_node, DryRunStrictness, ExecuteConfig, ExecutionLog, ExecutionMode,

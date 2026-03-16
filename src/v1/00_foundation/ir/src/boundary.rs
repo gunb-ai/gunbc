@@ -66,11 +66,11 @@ impl BoundaryInfo {
 /// ```
 pub fn detect_boundaries<T>(dag: &Dag<T>) -> BoundaryInfo {
     // Collect all (from_node, from_port) pairs that are sources of edges
-    let connected: HashSet<(NodeId, PortName)> = dag
+    let connected: HashSet<(&str, &str)> = dag
         .edges
         .iter()
         .filter(|e| e.kind.carries_data())
-        .map(|e| (e.from_node.clone(), e.from_port.clone()))
+        .map(|e| (e.from_node.0.as_str(), e.from_port.0.as_str()))
         .collect();
 
     // Find all output ports that are NOT connected
@@ -81,18 +81,20 @@ pub fn detect_boundaries<T>(dag: &Dag<T>) -> BoundaryInfo {
             n.outputs
                 .iter()
                 .map(|p| (n.id.clone(), p.name.clone()))
-                .filter(|port| !connected.contains(port))
+                .filter(|(node_id, port_name)| {
+                    !connected.contains(&(node_id.0.as_str(), port_name.0.as_str()))
+                })
         })
         .collect();
 
     // Derive unique boundary nodes
-    let mut boundary_nodes: Vec<NodeId> = boundary_ports
+    let mut boundary_node_names: Vec<&str> = boundary_ports
         .iter()
-        .map(|(n, _)| n.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
+        .map(|(node_id, _)| node_id.0.as_str())
         .collect();
-    boundary_nodes.sort_by(|a, b| a.0.cmp(&b.0));
+    boundary_node_names.sort_unstable();
+    boundary_node_names.dedup();
+    let boundary_nodes = boundary_node_names.into_iter().map(NodeId::from).collect();
 
     BoundaryInfo {
         boundary_nodes,
