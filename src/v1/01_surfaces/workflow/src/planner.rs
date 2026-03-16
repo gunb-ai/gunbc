@@ -164,6 +164,13 @@ pub fn plan_workflow_with_mode(
     let order = topo_sort(&spec.dag);
 
     let ordered_edges = canonical_edge_order(&spec.dag.edges);
+    let mut edges_by_target: BTreeMap<&NodeId, Vec<&gunbc_ir::Edge>> = BTreeMap::new();
+    for &edge in &ordered_edges {
+        edges_by_target
+            .entry(&edge.to_node)
+            .or_default()
+            .push(edge);
+    }
     for node_id in order {
         let node = spec
             .dag
@@ -206,7 +213,11 @@ pub fn plan_workflow_with_mode(
 
         let node_inputs = planner_inputs.get(&node_id).cloned().unwrap_or_default();
         let input_hashes = hash_input_map(&node_inputs)?;
-        let upstream_keys = collect_upstream_keys(&node_id, &keys_by_node, &ordered_edges);
+        let incoming = edges_by_target
+            .get(&node_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        let upstream_keys = collect_upstream_keys(&keys_by_node, incoming);
 
         let key = MaterializationKey::new(
             work_id.clone(),
@@ -253,19 +264,19 @@ fn validate_strict_dry_run_inputs(
     spec: &WorkflowSpec,
     planner_inputs: &PlannerInputs,
 ) -> Result<(), WorkflowPlannerError> {
-    for node in &spec.dag.nodes {
-        let incoming_data_ports = spec
-            .dag
-            .edges
-            .iter()
-            .filter(|edge| edge.to_node == node.id && edge.kind.carries_data())
-            .map(|edge| edge.to_port.clone())
-            .collect::<BTreeSet<_>>();
+    let mut incoming_data_ports: BTreeMap<&NodeId, BTreeSet<&PortName>> = BTreeMap::new();
+    for edge in &spec.dag.edges {
+        if edge.kind.carries_data() {
+            incoming_data_ports
+                .entry(&edge.to_node)
+                .or_default()
+                .insert(&edge.to_port);
+        }
+    }
 
-        let provided = planner_inputs
-            .get(&node.id)
-            .map(|ports| ports.keys().cloned().collect::<BTreeSet<_>>())
-            .unwrap_or_default();
+    for node in &spec.dag.nodes {
+        let node_data_ports = incoming_data_ports.get(&node.id);
+        let provided = planner_inputs.get(&node.id);
 
         for input in &node.inputs {
             if input.name.0 == PORT_AFTER || input.name.is_resource() {
@@ -275,7 +286,11 @@ fn validate_strict_dry_run_inputs(
                 continue;
             }
 
-            if !incoming_data_ports.contains(&input.name) && !provided.contains(&input.name) {
+            let has_incoming =
+                node_data_ports.is_some_and(|ports| ports.contains(&input.name));
+            let has_provided = provided.is_some_and(|ports| ports.contains_key(&input.name));
+
+            if !has_incoming && !has_provided {
                 return Err(WorkflowPlannerError::StrictDryRunMissingInput {
                     node_id: node.id.clone(),
                     port: input.name.clone(),
@@ -324,15 +339,11 @@ fn hash_value(value: &Value) -> Result<String, WorkflowPlannerError> {
 }
 
 fn collect_upstream_keys(
-    node_id: &NodeId,
     keys_by_node: &BTreeMap<NodeId, MaterializationKey>,
-    ordered_edges: &[&gunbc_ir::Edge],
+    incoming_edges: &[&gunbc_ir::Edge],
 ) -> BTreeMap<PortName, Vec<MaterializationDigest>> {
     let mut upstream: BTreeMap<PortName, Vec<MaterializationDigest>> = BTreeMap::new();
-    for edge in ordered_edges {
-        if &edge.to_node != node_id {
-            continue;
-        }
+    for edge in incoming_edges {
         let Some(upstream_key) = keys_by_node.get(&edge.from_node) else {
             continue;
         };
