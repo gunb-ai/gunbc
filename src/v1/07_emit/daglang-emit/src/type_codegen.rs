@@ -16,7 +16,6 @@
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
 use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
-use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
 
 use crate::fn_codegen;
@@ -1024,88 +1023,6 @@ pub fn impl_from_data_table(
     );
 
     Some(code_ir::Item::Raw(impl_block))
-}
-
-/// Collect all `TypeDef` items from a parsed DSL AST source file and
-/// convert them to a Rust `SourceFile` ready for rendering.
-pub fn typedefs_to_source_file(
-    items: &[Spanned<daglang_syntax::ast::Item>],
-    module_doc: &str,
-) -> SourceFile {
-    let mut data_names = std::collections::HashSet::new();
-    let mut optional_fields = std::collections::HashMap::new();
-    let mut variant_to_enum = std::collections::HashMap::new();
-    let mut ambiguous = std::collections::HashSet::new();
-    let mut struct_field_types = std::collections::HashMap::new();
-    let mut struct_field_ir_types = std::collections::HashMap::new();
-    let mut enum_variants = std::collections::HashMap::new();
-    for item in items {
-        match &item.node {
-            daglang_syntax::ast::Item::DataDef(dd) => {
-                data_names.insert(dd.name.clone());
-            }
-            daglang_syntax::ast::Item::TypeDef(td) => {
-                collect_optional_fields(td, &mut optional_fields);
-                collect_variant_to_enum(td, &mut variant_to_enum, &mut ambiguous);
-                collect_struct_field_types(td, &mut struct_field_types);
-                collect_struct_field_ir_types(td, &mut struct_field_ir_types);
-                collect_enum_variants(td, &mut enum_variants);
-            }
-            _ => {}
-        }
-    }
-    let ctx = fn_codegen::CompileContext {
-        data_names,
-        data_ir_types: items
-            .iter()
-            .filter_map(|item| match &item.node {
-                daglang_syntax::ast::Item::DataDef(dd) => {
-                    Some((dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
-                }
-                _ => None,
-            })
-            .collect(),
-        data_map_names: std::collections::HashSet::new(),
-        optional_fields,
-        variant_to_enum,
-        struct_field_types,
-        enum_variants,
-        boxed_fields: std::collections::HashSet::new(),
-        fn_return_types: std::collections::HashMap::new(),
-        fn_param_types: std::collections::HashMap::new(),
-        optional_params: std::collections::HashSet::new(),
-        param_types: std::collections::HashMap::new(),
-        current_return_type: None,
-        current_return_ir_type: None,
-        ir_scope: std::collections::HashMap::new(),
-        struct_field_ir_types,
-        use_counts: std::collections::HashMap::new(),
-        anonymous_record_targets: std::collections::HashMap::new(),
-        typecheck_anonymous_record_field_types: std::collections::HashMap::new(),
-    };
-    let mut code_items = Vec::new();
-    for item in items {
-        match &item.node {
-            daglang_syntax::ast::Item::TypeDef(td) => {
-                code_items.extend(typedef_to_code_ir(td));
-            }
-            daglang_syntax::ast::Item::DataDef(dd) => {
-                code_items.extend(datadef_to_code_ir(dd));
-            }
-            daglang_syntax::ast::Item::FnDef(fd) => {
-                code_items.extend(fndef_to_code_ir(fd, &ctx));
-            }
-            _ => {}
-        }
-    }
-    SourceFile {
-        doc: if module_doc.is_empty() {
-            vec![]
-        } else {
-            vec![module_doc.to_string()]
-        },
-        items: code_items,
-    }
 }
 
 /// Extract TypeDefs from a `TypedProject` and produce a rendered Rust source
