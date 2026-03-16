@@ -17,8 +17,8 @@
 use crate::dag::{Dag, Port};
 use crate::language::traits::naming::LanguageNaming;
 use crate::language::traits::type_system::TypeMapping;
-use crate::language::NamingCase;
 use crate::language::LanguageOp;
+use crate::language::NamingCase;
 use crate::node::Node;
 
 /// Rust language static configuration.
@@ -128,8 +128,7 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
 ///
 /// Delegates to `map_type(_, "rust")` which reads from `RUST_TYPES`.
 pub fn rust_type(abstract_type: &str) -> String {
-    crate::language::map_type(abstract_type, "rust")
-        .unwrap_or_else(|| abstract_type.to_string())
+    crate::language::map_type(abstract_type, "rust").unwrap_or_else(|| abstract_type.to_string())
 }
 
 #[cfg(test)]

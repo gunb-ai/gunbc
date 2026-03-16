@@ -5344,14 +5344,8 @@ service rest.T {
                         assert_eq!(
                             *node_ref,
                             TestNodeRef::Qualified {
-                                module: ModulePath::new(vec![
-                                    "tools".into(),
-                                    "shared".into()
-                                ]),
-                                node_segments: vec![
-                                    "shared_node".into(),
-                                    "execute".into()
-                                ],
+                                module: ModulePath::new(vec!["tools".into(), "shared".into()]),
+                                node_segments: vec!["shared_node".into(), "execute".into()],
                             }
                         );
                         assert_eq!(port, "done");

@@ -683,6 +683,60 @@ fn result() -> StageResult {
 }
 
 #[test]
+fn typecheck_tracks_let_bound_anonymous_record_constructor_targets() {
+    let graph = module_graph_from_sources(&[(
+        "sample/records.dag",
+        r#"module sample.records
+type ConfigA {
+  value: String
+}
+type ConfigB {
+  value: String
+}
+fn consume(cfg: ConfigB) -> String {
+  cfg.value
+}
+fn make() -> String {
+  cfg = { value: "ok" }
+  consume(cfg)
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("let-bound record should inherit the typed call target");
+
+    let module = typed.module(0).expect("typed module should exist");
+    let make = module
+        .ast
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            daglang_syntax::ast::Item::FnDef(def) if def.name == "make" => Some(def),
+            _ => None,
+        })
+        .expect("make fn should be present");
+    let record_expr = match &make.body.stmts[0] {
+        daglang_syntax::ast::Stmt::Let(_, expr) | daglang_syntax::ast::Stmt::Assign(_, expr) => {
+            expr
+        }
+        other => panic!("expected first stmt to bind the record, got {other:?}"),
+    };
+    let metadata = module
+        .callable_body_metadata("make")
+        .expect("make should carry callable body metadata");
+    assert_eq!(
+        metadata
+            .anonymous_record_target(record_expr)
+            .map(|target| target.0.as_str()),
+        Some("ConfigB")
+    );
+}
+
+#[test]
 fn strict_mode_accepts_resource_config_named_type_returns() {
     let graph = module_graph_from_sources(&[(
         "sample/resources.dag",

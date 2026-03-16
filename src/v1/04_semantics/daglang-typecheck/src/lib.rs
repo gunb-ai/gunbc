@@ -57,6 +57,7 @@ pub struct TypecheckOptions {
 pub struct TypedModule {
     pub graph_index: usize,
     pub signatures: Vec<TypedItemSignature>,
+    callable_body_metadata: HashMap<String, TypedCallableBodyMetadata>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub struct TypedModuleRef<'project, 'graph> {
     resolved: &'project ResolvedModule,
     pub graph_index: usize,
     pub signatures: &'project [TypedItemSignature],
+    callable_body_metadata: &'project HashMap<String, TypedCallableBodyMetadata>,
     _graph: std::marker::PhantomData<&'graph ModuleGraph>,
 }
 
@@ -109,6 +111,7 @@ impl<'a> TypedProject<'a> {
             resolved: &self.graph().modules[typed.graph_index],
             graph_index: typed.graph_index,
             signatures: &typed.signatures,
+            callable_body_metadata: &typed.callable_body_metadata,
             _graph: std::marker::PhantomData,
         })
     }
@@ -118,6 +121,7 @@ impl<'a> TypedProject<'a> {
             resolved: &self.graph().modules[typed.graph_index],
             graph_index: typed.graph_index,
             signatures: &typed.signatures,
+            callable_body_metadata: &typed.callable_body_metadata,
             _graph: std::marker::PhantomData,
         })
     }
@@ -130,6 +134,10 @@ impl<'project, 'graph> TypedModuleRef<'project, 'graph> {
             .imports
             .iter()
             .map(|import| &import.node.path)
+    }
+
+    pub fn callable_body_metadata(&self, name: &str) -> Option<&TypedCallableBodyMetadata> {
+        self.callable_body_metadata.get(name)
     }
 }
 
@@ -175,6 +183,51 @@ pub struct TypedCallableSignature {
     pub name: String,
     pub params: Vec<TypedBinding>,
     pub outputs: Vec<TypedBinding>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TypedCallableBodyMetadata {
+    anonymous_record_targets: HashMap<usize, gunbc_ir::types::TypeId>,
+    conflicted_anonymous_records: HashSet<usize>,
+}
+
+impl TypedCallableBodyMetadata {
+    pub fn anonymous_record_target(&self, expr: &Expr) -> Option<&gunbc_ir::types::TypeId> {
+        if self
+            .conflicted_anonymous_records
+            .contains(&expr_identity(expr))
+        {
+            return None;
+        }
+        self.anonymous_record_targets.get(&expr_identity(expr))
+    }
+
+    pub fn anonymous_record_targets(
+        &self,
+    ) -> impl Iterator<Item = (usize, &gunbc_ir::types::TypeId)> + '_ {
+        self.anonymous_record_targets
+            .iter()
+            .filter(|(expr_id, _)| !self.conflicted_anonymous_records.contains(expr_id))
+            .map(|(expr_id, target)| (*expr_id, target))
+    }
+
+    fn annotate_anonymous_record_target(&mut self, expr: &Expr, target: &str) {
+        let expr_id = expr_identity(expr);
+        let target = gunbc_ir::types::TypeId::from(target);
+        if self.conflicted_anonymous_records.contains(&expr_id) {
+            return;
+        }
+        match self.anonymous_record_targets.get(&expr_id) {
+            Some(existing) if existing != &target => {
+                self.anonymous_record_targets.remove(&expr_id);
+                self.conflicted_anonymous_records.insert(expr_id);
+            }
+            Some(_) => {}
+            None => {
+                self.anonymous_record_targets.insert(expr_id, target);
+            }
+        }
+    }
 }
 
 /// A single typed binding in a callable signature.
@@ -994,12 +1047,13 @@ fn typecheck_graph_modules_spanned(
                 }
             }
         }
-        let (signatures, sig_errors) =
+        let (signatures, callable_body_metadata, sig_errors) =
             collect_signatures(module, module_file_id, &context, &module_name);
         errors.extend(sig_errors);
         typed_modules.push(TypedModule {
             graph_index,
             signatures,
+            callable_body_metadata,
         });
     }
 
@@ -1597,7 +1651,11 @@ fn collect_signatures(
     file_id: FileId,
     context: &TypecheckContext<'_>,
     module_name: &str,
-) -> (Vec<TypedItemSignature>, Vec<SpannedTypeError>) {
+) -> (
+    Vec<TypedItemSignature>,
+    HashMap<String, TypedCallableBodyMetadata>,
+    Vec<SpannedTypeError>,
+) {
     let mut errors = Vec::new();
     let mut module_known_types = context.known_types.clone();
     for import in &module.ast.imports {
@@ -1610,6 +1668,7 @@ fn collect_signatures(
 
     let mut seen_items = HashSet::new();
     let mut signatures = Vec::new();
+    let mut callable_body_metadata = HashMap::new();
     let body_context = BodyInferenceContext {
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
@@ -1691,7 +1750,7 @@ fn collect_signatures(
                         )
                     }
                 };
-                item_errors.extend(validate_callable_body(
+                let body_analysis = analyze_callable_body(
                     &def.name,
                     &def.params,
                     return_contract,
@@ -1700,7 +1759,16 @@ fn collect_signatures(
                         stmts: &def.body.stmts,
                     },
                     &body_context,
-                ));
+                );
+                item_errors.extend(body_analysis.errors);
+                if !body_analysis.metadata.anonymous_record_targets.is_empty()
+                    || !body_analysis
+                        .metadata
+                        .conflicted_anonymous_records
+                        .is_empty()
+                {
+                    callable_body_metadata.insert(def.name.clone(), body_analysis.metadata);
+                }
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -1750,7 +1818,7 @@ fn collect_signatures(
                     &def.uses,
                     &def.provides,
                 ));
-                item_errors.extend(validate_callable_body(
+                let body_analysis = analyze_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
@@ -1759,7 +1827,16 @@ fn collect_signatures(
                         stmts: &def.body.stmts,
                     },
                     &body_context,
-                ));
+                );
+                item_errors.extend(body_analysis.errors);
+                if !body_analysis.metadata.anonymous_record_targets.is_empty()
+                    || !body_analysis
+                        .metadata
+                        .conflicted_anonymous_records
+                        .is_empty()
+                {
+                    callable_body_metadata.insert(def.name.clone(), body_analysis.metadata);
+                }
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -1805,7 +1882,7 @@ fn collect_signatures(
                     context.resource_type_registry,
                     context.allow_unresolved_references,
                 ));
-                item_errors.extend(validate_callable_body(
+                let body_analysis = analyze_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
@@ -1814,7 +1891,16 @@ fn collect_signatures(
                         stmts: &def.body.stmts,
                     },
                     &body_context,
-                ));
+                );
+                item_errors.extend(body_analysis.errors);
+                if !body_analysis.metadata.anonymous_record_targets.is_empty()
+                    || !body_analysis
+                        .metadata
+                        .conflicted_anonymous_records
+                        .is_empty()
+                {
+                    callable_body_metadata.insert(def.name.clone(), body_analysis.metadata);
+                }
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -1952,7 +2038,7 @@ fn collect_signatures(
         );
     }
 
-    (signatures, errors)
+    (signatures, callable_body_metadata, errors)
 }
 
 fn file_id_for_graph_index(graph_index: usize) -> FileId {
@@ -2222,6 +2308,8 @@ fn collect_sum_type_variants(modules: &[ResolvedModule]) -> HashMap<String, Hash
 struct CallableContract {
     arity: usize,
     params: HashSet<String>,
+    param_order: Vec<String>,
+    param_types: HashMap<String, String>,
     output: ValueType,
 }
 
@@ -2271,6 +2359,12 @@ fn collect_unique_callables(
                     CallableContract {
                         arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
+                        param_order: def.params.iter().map(|param| param.name.clone()).collect(),
+                        param_types: def
+                            .params
+                            .iter()
+                            .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                            .collect(),
                         output: ValueType::Named(type_expr_to_string(&def.return_type)),
                     },
                 ),
@@ -2280,6 +2374,12 @@ fn collect_unique_callables(
                     CallableContract {
                         arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
+                        param_order: def.params.iter().map(|param| param.name.clone()).collect(),
+                        param_types: def
+                            .params
+                            .iter()
+                            .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                            .collect(),
                         output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
                             ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
                         } else {
@@ -2293,6 +2393,12 @@ fn collect_unique_callables(
                     CallableContract {
                         arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
+                        param_order: def.params.iter().map(|param| param.name.clone()).collect(),
+                        param_types: def
+                            .params
+                            .iter()
+                            .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                            .collect(),
                         output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
                             ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
                         } else {
@@ -2312,6 +2418,18 @@ fn collect_unique_callables(
                                         .fields
                                         .iter()
                                         .map(|field| field.name.clone())
+                                        .collect(),
+                                    param_order: variant
+                                        .fields
+                                        .iter()
+                                        .map(|field| field.name.clone())
+                                        .collect(),
+                                    param_types: variant
+                                        .fields
+                                        .iter()
+                                        .map(|field| {
+                                            (field.name.clone(), type_expr_to_string(&field.ty))
+                                        })
                                         .collect(),
                                     output: ValueType::Named(def.name.clone()),
                                 },
@@ -2389,6 +2507,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 CallableContract {
                     arity: bc.arity,
                     params: bc.params.iter().map(|s| s.to_string()).collect(),
+                    param_order: bc.params.iter().map(|s| s.to_string()).collect(),
+                    param_types: HashMap::new(),
                     output: ValueType::Named(bc.output_type.to_string()),
                 },
             )
@@ -2417,6 +2537,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["snapshot".to_string()]),
+                param_order: vec!["snapshot".to_string()],
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2425,6 +2547,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["snapshot".to_string()]),
+                param_order: vec!["snapshot".to_string()],
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2433,6 +2557,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["sources".to_string()]),
+                param_order: vec!["sources".to_string()],
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2441,6 +2567,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["sources".to_string()]),
+                param_order: vec!["sources".to_string()],
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2449,6 +2577,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["sources".to_string()]),
+                param_order: vec!["sources".to_string()],
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2457,6 +2587,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 0,
                 params: HashSet::new(),
+                param_order: Vec::new(),
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2465,6 +2597,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 0,
                 params: HashSet::new(),
+                param_order: Vec::new(),
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2473,6 +2607,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 2,
                 params: HashSet::from(["current".to_string(), "base".to_string()]),
+                param_order: vec!["current".to_string(), "base".to_string()],
+                param_types: HashMap::new(),
                 output: ValueType::Named("DagDiff".to_string()),
             },
         ),
@@ -2485,6 +2621,12 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                     "topology".to_string(),
                     "title".to_string(),
                 ]),
+                param_order: vec![
+                    "diff".to_string(),
+                    "topology".to_string(),
+                    "title".to_string(),
+                ],
+                param_types: HashMap::new(),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -2493,6 +2635,8 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 0,
                 params: HashSet::new(),
+                param_order: Vec::new(),
+                param_types: HashMap::new(),
                 output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
@@ -2601,6 +2745,12 @@ enum ReturnContract {
     Record { fields: HashMap<String, String> },
 }
 
+#[derive(Debug, Default)]
+struct CallableBodyAnalysis {
+    errors: Vec<TypeError>,
+    metadata: TypedCallableBodyMetadata,
+}
+
 impl ReturnContract {
     fn single(ty: String) -> Self {
         Self::Single { ty }
@@ -2609,6 +2759,19 @@ impl ReturnContract {
     fn record(fields: HashMap<String, String>) -> Self {
         Self::Record { fields }
     }
+}
+
+fn expr_identity(expr: &Expr) -> usize {
+    expr as *const Expr as usize
+}
+
+fn strip_optional_type(ty: &str) -> &str {
+    ty.strip_suffix('?').unwrap_or(ty)
+}
+
+fn record_target_type<'a>(ty: &'a str, registry: &RecordTypeRegistry) -> Option<&'a str> {
+    let stripped = strip_optional_type(ty);
+    resolve_record_fields(stripped, registry).map(|_| stripped)
 }
 
 #[derive(Clone, Copy)]
@@ -2966,6 +3129,8 @@ fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContra
     Some(CallableContract {
         arity: parse_function_type_arity(args),
         params: HashSet::new(),
+        param_order: Vec::new(),
+        param_types: HashMap::new(),
         output: ValueType::Named(output),
     })
 }
@@ -3019,15 +3184,647 @@ fn parse_function_type_arity(args: &str) -> usize {
     arity
 }
 
-fn validate_callable_body(
+fn call_arg_expected_record_type<'a>(
+    contract: &'a CallableContract,
+    arg_index: usize,
+    arg_name: Option<&str>,
+    record_type_registry: &RecordTypeRegistry,
+) -> Option<&'a str> {
+    let ty = arg_name
+        .and_then(|name| contract.param_types.get(name).map(String::as_str))
+        .or_else(|| {
+            contract
+                .param_order
+                .get(arg_index)
+                .and_then(|name| contract.param_types.get(name).map(String::as_str))
+        })?;
+    record_target_type(ty, record_type_registry)
+}
+
+fn collect_constructor_targets_from_stmts<'a>(
+    stmts: &'a [Stmt],
+    local_bindings: &HashMap<String, ValueType>,
+    binding_exprs: &HashMap<String, &'a Expr>,
+    infer_context: &ExprInferenceContext<'_>,
+    metadata: &mut TypedCallableBodyMetadata,
+) {
+    let mut scope_types = local_bindings.clone();
+    let mut scope_exprs = binding_exprs.clone();
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                collect_constructor_targets_from_expr(
+                    expr,
+                    &scope_types,
+                    &scope_exprs,
+                    infer_context,
+                    metadata,
+                );
+                let (inferred, _) = infer_expr_type(expr, &scope_types, infer_context);
+                scope_types.insert(name.clone(), inferred);
+                scope_exprs.insert(name.clone(), expr);
+            }
+            Stmt::Node(node_stmt) => {
+                collect_constructor_targets_from_expr(
+                    &node_stmt.expr,
+                    &scope_types,
+                    &scope_exprs,
+                    infer_context,
+                    metadata,
+                );
+                let (inferred, _) = infer_expr_type(&node_stmt.expr, &scope_types, infer_context);
+                scope_types.insert(node_stmt.name.clone(), inferred);
+                scope_exprs.insert(node_stmt.name.clone(), &node_stmt.expr);
+            }
+            Stmt::Expr(expr) => collect_constructor_targets_from_expr(
+                expr,
+                &scope_types,
+                &scope_exprs,
+                infer_context,
+                metadata,
+            ),
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_constructor_targets_from_expr(
+                        expr,
+                        &scope_types,
+                        &scope_exprs,
+                        infer_context,
+                        metadata,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn annotate_expr_with_expected_record<'a>(
+    expr: &'a Expr,
+    expected_type: &str,
+    local_bindings: &HashMap<String, ValueType>,
+    binding_exprs: &HashMap<String, &'a Expr>,
+    infer_context: &ExprInferenceContext<'_>,
+    metadata: &mut TypedCallableBodyMetadata,
+    visiting: &mut HashSet<usize>,
+) {
+    let Some(expected_type) = record_target_type(expected_type, infer_context.record_type_registry)
+    else {
+        return;
+    };
+    let expr_id = expr_identity(expr);
+    if !visiting.insert(expr_id) {
+        return;
+    }
+
+    match expr {
+        Expr::Record(None, fields) => {
+            metadata.annotate_anonymous_record_target(expr, expected_type);
+            if let Some(expected_fields) =
+                resolve_record_fields(expected_type, infer_context.record_type_registry)
+            {
+                for (field_name, field_expr) in fields {
+                    if let Some(field_ty) = expected_fields.get(field_name) {
+                        annotate_expr_with_expected_record(
+                            field_expr,
+                            field_ty,
+                            local_bindings,
+                            binding_exprs,
+                            infer_context,
+                            metadata,
+                            visiting,
+                        );
+                    }
+                }
+            }
+        }
+        Expr::Record(Some(record_name), fields) => {
+            if let Some(expected_fields) =
+                resolve_record_fields(record_name, infer_context.record_type_registry)
+            {
+                for (field_name, field_expr) in fields {
+                    if let Some(field_ty) = expected_fields.get(field_name) {
+                        annotate_expr_with_expected_record(
+                            field_expr,
+                            field_ty,
+                            local_bindings,
+                            binding_exprs,
+                            infer_context,
+                            metadata,
+                            visiting,
+                        );
+                    }
+                }
+            }
+        }
+        Expr::Ident(name) => {
+            if let Some(bound_expr) = binding_exprs.get(name) {
+                annotate_expr_with_expected_record(
+                    bound_expr,
+                    expected_type,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                    visiting,
+                );
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_constructor_targets_from_expr(
+                cond,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            annotate_expr_with_expected_record(
+                then_expr,
+                expected_type,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+                visiting,
+            );
+            if let Some(otherwise) = else_expr {
+                annotate_expr_with_expected_record(
+                    otherwise,
+                    expected_type,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                    visiting,
+                );
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_constructor_targets_from_expr(
+                scrutinee,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_constructor_targets_from_expr(
+                        guard,
+                        local_bindings,
+                        binding_exprs,
+                        infer_context,
+                        metadata,
+                    );
+                }
+                annotate_expr_with_expected_record(
+                    &arm.body,
+                    expected_type,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                    visiting,
+                );
+            }
+        }
+        Expr::Block(stmts) => {
+            let mut scope_types = local_bindings.clone();
+            let mut scope_exprs = binding_exprs.clone();
+            let mut trailing_expr = None;
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                        collect_constructor_targets_from_expr(
+                            expr,
+                            &scope_types,
+                            &scope_exprs,
+                            infer_context,
+                            metadata,
+                        );
+                        let (inferred, _) = infer_expr_type(expr, &scope_types, infer_context);
+                        scope_types.insert(name.clone(), inferred);
+                        scope_exprs.insert(name.clone(), expr);
+                        trailing_expr = None;
+                    }
+                    Stmt::Node(node_stmt) => {
+                        collect_constructor_targets_from_expr(
+                            &node_stmt.expr,
+                            &scope_types,
+                            &scope_exprs,
+                            infer_context,
+                            metadata,
+                        );
+                        let (inferred, _) =
+                            infer_expr_type(&node_stmt.expr, &scope_types, infer_context);
+                        scope_types.insert(node_stmt.name.clone(), inferred);
+                        scope_exprs.insert(node_stmt.name.clone(), &node_stmt.expr);
+                        trailing_expr = None;
+                    }
+                    Stmt::Expr(inner) => {
+                        collect_constructor_targets_from_expr(
+                            inner,
+                            &scope_types,
+                            &scope_exprs,
+                            infer_context,
+                            metadata,
+                        );
+                        trailing_expr = Some(inner);
+                    }
+                    Stmt::Return(fields) => {
+                        for (_, inner) in fields {
+                            annotate_expr_with_expected_record(
+                                inner,
+                                expected_type,
+                                &scope_types,
+                                &scope_exprs,
+                                infer_context,
+                                metadata,
+                                visiting,
+                            );
+                            collect_constructor_targets_from_expr(
+                                inner,
+                                &scope_types,
+                                &scope_exprs,
+                                infer_context,
+                                metadata,
+                            );
+                        }
+                        trailing_expr = None;
+                    }
+                }
+            }
+            if let Some(trailing_expr) = trailing_expr {
+                annotate_expr_with_expected_record(
+                    trailing_expr,
+                    expected_type,
+                    &scope_types,
+                    &scope_exprs,
+                    infer_context,
+                    metadata,
+                    visiting,
+                );
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_constructor_targets_from_expr(
+                guard,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            annotate_expr_with_expected_record(
+                inner,
+                expected_type,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+                visiting,
+            );
+        }
+        Expr::After(inner, _) => {
+            annotate_expr_with_expected_record(
+                inner,
+                expected_type,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+                visiting,
+            );
+        }
+        _ => {}
+    }
+
+    visiting.remove(&expr_id);
+}
+
+fn collect_constructor_targets_from_expr<'a>(
+    expr: &'a Expr,
+    local_bindings: &HashMap<String, ValueType>,
+    binding_exprs: &HashMap<String, &'a Expr>,
+    infer_context: &ExprInferenceContext<'_>,
+    metadata: &mut TypedCallableBodyMetadata,
+) {
+    match expr {
+        Expr::Literal(_) | Expr::Ident(_) => {}
+        Expr::FieldAccess(base, _) | Expr::UnaryOp(_, base) => {
+            collect_constructor_targets_from_expr(
+                base,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+        }
+        Expr::Call(name, args) => {
+            if name == "with" && args.len() == 2 {
+                let (base_ty, _) = infer_expr_type(&args[0].1, local_bindings, infer_context);
+                if let ValueType::Named(base_ty) = base_ty {
+                    annotate_expr_with_expected_record(
+                        &args[1].1,
+                        &base_ty,
+                        local_bindings,
+                        binding_exprs,
+                        infer_context,
+                        metadata,
+                        &mut HashSet::new(),
+                    );
+                }
+            } else {
+                let contract = infer_context
+                    .param_callable_contracts
+                    .get(name)
+                    .or_else(|| {
+                        infer_context
+                            .callable_registry
+                            .get(name)
+                            .and_then(|entry| entry.as_ref())
+                    });
+                if let Some(contract) = contract {
+                    for (arg_index, (arg_name, arg_expr)) in args.iter().enumerate() {
+                        if let Some(expected_ty) = call_arg_expected_record_type(
+                            contract,
+                            arg_index,
+                            arg_name.as_deref(),
+                            infer_context.record_type_registry,
+                        ) {
+                            annotate_expr_with_expected_record(
+                                arg_expr,
+                                expected_ty,
+                                local_bindings,
+                                binding_exprs,
+                                infer_context,
+                                metadata,
+                                &mut HashSet::new(),
+                            );
+                        }
+                    }
+                }
+            }
+            for (_, arg_expr) in args {
+                collect_constructor_targets_from_expr(
+                    arg_expr,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::ServiceCall(_, args) => {
+            for (_, arg_expr) in args {
+                collect_constructor_targets_from_expr(
+                    arg_expr,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_constructor_targets_from_expr(
+                lhs,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            collect_constructor_targets_from_expr(
+                rhs,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_constructor_targets_from_expr(
+                        inner,
+                        local_bindings,
+                        binding_exprs,
+                        infer_context,
+                        metadata,
+                    );
+                }
+            }
+        }
+        Expr::Record(type_name, fields) => {
+            let record_fields = type_name
+                .as_deref()
+                .and_then(|name| resolve_record_fields(name, infer_context.record_type_registry));
+            for (field_name, field_expr) in fields {
+                if let Some(expected_fields) = &record_fields {
+                    if let Some(field_ty) = expected_fields.get(field_name) {
+                        annotate_expr_with_expected_record(
+                            field_expr,
+                            field_ty,
+                            local_bindings,
+                            binding_exprs,
+                            infer_context,
+                            metadata,
+                            &mut HashSet::new(),
+                        );
+                    }
+                }
+                collect_constructor_targets_from_expr(
+                    field_expr,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_constructor_targets_from_expr(
+                scrutinee,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_constructor_targets_from_expr(
+                        guard,
+                        local_bindings,
+                        binding_exprs,
+                        infer_context,
+                        metadata,
+                    );
+                }
+                collect_constructor_targets_from_expr(
+                    &arm.body,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_constructor_targets_from_expr(
+                cond,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            collect_constructor_targets_from_expr(
+                then_expr,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            if let Some(otherwise) = else_expr {
+                collect_constructor_targets_from_expr(
+                    otherwise,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::For(binding, iterable, passthrough, body) => {
+            collect_constructor_targets_from_expr(
+                iterable,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            let mut loop_scope_types = local_bindings.clone();
+            let mut loop_scope_exprs = binding_exprs.clone();
+            loop_scope_types.insert(binding.clone(), ValueType::Inferred);
+            loop_scope_exprs.remove(binding);
+            for name in passthrough {
+                let passthrough_ty = local_bindings
+                    .get(name)
+                    .cloned()
+                    .unwrap_or(ValueType::Inferred);
+                loop_scope_types.insert(name.clone(), passthrough_ty);
+            }
+            match body {
+                ForBody::Expr(body_expr) => collect_constructor_targets_from_expr(
+                    body_expr,
+                    &loop_scope_types,
+                    &loop_scope_exprs,
+                    infer_context,
+                    metadata,
+                ),
+                ForBody::Block(stmts) => collect_constructor_targets_from_stmts(
+                    stmts,
+                    &loop_scope_types,
+                    &loop_scope_exprs,
+                    infer_context,
+                    metadata,
+                ),
+            }
+        }
+        Expr::Lambda(params, body) => {
+            let mut lambda_scope_types = local_bindings.clone();
+            let mut lambda_scope_exprs = binding_exprs.clone();
+            for param in params {
+                lambda_scope_types.insert(param.clone(), ValueType::Inferred);
+                lambda_scope_exprs.remove(param);
+            }
+            collect_constructor_targets_from_expr(
+                body,
+                &lambda_scope_types,
+                &lambda_scope_exprs,
+                infer_context,
+                metadata,
+            );
+        }
+        Expr::List(items) => {
+            for item in items {
+                collect_constructor_targets_from_expr(
+                    item,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_constructor_targets_from_expr(
+                    key,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+                collect_constructor_targets_from_expr(
+                    value,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_constructor_targets_from_expr(
+                inner,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+            collect_constructor_targets_from_expr(
+                guard,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+            );
+        }
+        Expr::After(inner, _) => collect_constructor_targets_from_expr(
+            inner,
+            local_bindings,
+            binding_exprs,
+            infer_context,
+            metadata,
+        ),
+        Expr::Return(fields) => {
+            for (_, field_expr) in fields {
+                collect_constructor_targets_from_expr(
+                    field_expr,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                );
+            }
+        }
+        Expr::Block(stmts) => collect_constructor_targets_from_stmts(
+            stmts,
+            local_bindings,
+            binding_exprs,
+            infer_context,
+            metadata,
+        ),
+    }
+}
+
+fn analyze_callable_body(
     caller: &str,
     params: &[Param],
     return_contract: ReturnContract,
     uses: &[UsesClause],
     body: CallableBodyRef<'_>,
     body_context: &BodyInferenceContext<'_>,
-) -> Vec<TypeError> {
-    let mut errors = Vec::new();
+) -> CallableBodyAnalysis {
+    let mut analysis = CallableBodyAnalysis::default();
     let bound_service_registry = build_bound_service_call_registry(uses, body_context);
     let param_callable_contracts = collect_param_callable_contracts(params);
     let infer_context = ExprInferenceContext {
@@ -3047,7 +3844,7 @@ fn validate_callable_body(
                 Some(Some(contract)) => contract,
                 Some(None) => {
                     if !body_context.allow_unresolved_references {
-                        errors.push(TypeError::AmbiguousCallTarget {
+                        analysis.errors.push(TypeError::AmbiguousCallTarget {
                             caller: caller.to_string(),
                             callee: call.callee.clone(),
                         });
@@ -3056,7 +3853,7 @@ fn validate_callable_body(
                 }
                 None => {
                     if !body_context.allow_unresolved_references {
-                        errors.push(TypeError::UnresolvedCallTarget {
+                        analysis.errors.push(TypeError::UnresolvedCallTarget {
                             caller: caller.to_string(),
                             callee: call.callee.clone(),
                         });
@@ -3074,7 +3871,7 @@ fn validate_callable_body(
                 } else {
                     max_arity
                 };
-                errors.push(TypeError::CallArityMismatch {
+                analysis.errors.push(TypeError::CallArityMismatch {
                     caller: caller.to_string(),
                     callee: call.callee.clone(),
                     expected,
@@ -3085,7 +3882,7 @@ fn validate_callable_body(
         let mut seen_named = HashSet::new();
         for named in call.named_args {
             if !seen_named.insert(named.clone()) {
-                errors.push(TypeError::DuplicateCallArgument {
+                analysis.errors.push(TypeError::DuplicateCallArgument {
                     caller: caller.to_string(),
                     callee: call.callee.clone(),
                     argument: named,
@@ -3093,7 +3890,7 @@ fn validate_callable_body(
                 continue;
             }
             if !is_pattern_callable && !contract.params.contains(&named) {
-                errors.push(TypeError::UnknownCallArgument {
+                analysis.errors.push(TypeError::UnknownCallArgument {
                     caller: caller.to_string(),
                     callee: call.callee.clone(),
                     argument: named,
@@ -3111,7 +3908,7 @@ fn validate_callable_body(
                 ServiceCallResolution::Resolved(contract) => Some(contract),
                 ServiceCallResolution::Ambiguous => {
                     if !body_context.allow_unresolved_references {
-                        errors.push(TypeError::AmbiguousServiceCall {
+                        analysis.errors.push(TypeError::AmbiguousServiceCall {
                             caller: caller.to_string(),
                             service_call: service_call_name.clone(),
                         });
@@ -3124,7 +3921,7 @@ fn validate_callable_body(
                         BoundServiceCallResolution::MissingCapability
                         | BoundServiceCallResolution::NotBound => {
                             if !body_context.allow_unresolved_references {
-                                errors.push(TypeError::UnresolvedServiceCall {
+                                analysis.errors.push(TypeError::UnresolvedServiceCall {
                                     caller: caller.to_string(),
                                     service_call: service_call_name.clone(),
                                 });
@@ -3145,7 +3942,7 @@ fn validate_callable_body(
             } else {
                 max_arity
             };
-            errors.push(TypeError::ServiceCallArityMismatch {
+            analysis.errors.push(TypeError::ServiceCallArityMismatch {
                 caller: caller.to_string(),
                 service_call: service_call_name.clone(),
                 expected,
@@ -3155,15 +3952,17 @@ fn validate_callable_body(
         let mut seen_named = HashSet::new();
         for named in call.named_args {
             if !seen_named.insert(named.clone()) {
-                errors.push(TypeError::DuplicateServiceCallArgument {
-                    caller: caller.to_string(),
-                    service_call: service_call_name.clone(),
-                    argument: named,
-                });
+                analysis
+                    .errors
+                    .push(TypeError::DuplicateServiceCallArgument {
+                        caller: caller.to_string(),
+                        service_call: service_call_name.clone(),
+                        argument: named,
+                    });
                 continue;
             }
             if !contract.params.contains(&named) {
-                errors.push(TypeError::UnknownServiceCallArgument {
+                analysis.errors.push(TypeError::UnknownServiceCallArgument {
                     caller: caller.to_string(),
                     service_call: service_call_name.clone(),
                     argument: named,
@@ -3181,50 +3980,87 @@ fn validate_callable_body(
             )
         })
         .collect::<HashMap<_, _>>();
+    let mut binding_exprs = HashMap::new();
     let mut saw_explicit_return = false;
     let mut trailing_expr_type = None;
     let mut trailing_expr = None;
     for stmt in body.stmts {
         match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                collect_constructor_targets_from_expr(
+                    expr,
+                    &local_bindings,
+                    &binding_exprs,
+                    &infer_context,
+                    &mut analysis.metadata,
+                );
                 let (inferred, infer_errors) =
                     infer_expr_type(expr, &local_bindings, &infer_context);
-                errors.extend(infer_errors);
+                analysis.errors.extend(infer_errors);
                 local_bindings.insert(name.clone(), inferred);
+                binding_exprs.insert(name.clone(), expr);
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
             Stmt::Node(ns) => {
+                collect_constructor_targets_from_expr(
+                    &ns.expr,
+                    &local_bindings,
+                    &binding_exprs,
+                    &infer_context,
+                    &mut analysis.metadata,
+                );
                 let (inferred, infer_errors) =
                     infer_expr_type(&ns.expr, &local_bindings, &infer_context);
-                errors.extend(infer_errors);
+                analysis.errors.extend(infer_errors);
                 local_bindings.insert(ns.name.clone(), inferred);
+                binding_exprs.insert(ns.name.clone(), &ns.expr);
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
             Stmt::Expr(expr) => {
+                collect_constructor_targets_from_expr(
+                    expr,
+                    &local_bindings,
+                    &binding_exprs,
+                    &infer_context,
+                    &mut analysis.metadata,
+                );
                 trailing_expr = Some(expr);
                 let (inferred, infer_errors) =
                     infer_expr_type(expr, &local_bindings, &infer_context);
-                errors.extend(infer_errors);
+                analysis.errors.extend(infer_errors);
                 trailing_expr_type = Some(inferred);
             }
             Stmt::Return(fields) => {
                 saw_explicit_return = true;
                 trailing_expr_type = None;
                 trailing_expr = None;
-                errors.extend(validate_return_stmt(
+                analysis.errors.extend(validate_return_stmt(
                     caller,
                     &return_contract,
                     fields,
                     &local_bindings,
+                    &binding_exprs,
                     &infer_context,
+                    &mut analysis.metadata,
                 ));
             }
         }
     }
     if !saw_explicit_return {
         if let ReturnContract::Single { ty } = &return_contract {
+            if let Some(expr) = trailing_expr {
+                annotate_expr_with_expected_record(
+                    expr,
+                    ty,
+                    &local_bindings,
+                    &binding_exprs,
+                    &infer_context,
+                    &mut analysis.metadata,
+                    &mut HashSet::new(),
+                );
+            }
             let inferred = match trailing_expr {
                 Some(expr) => {
                     let (val, infer_errors) = infer_expr_type_for_expected_named_record(
@@ -3233,7 +4069,7 @@ fn validate_callable_body(
                         &local_bindings,
                         &infer_context,
                     );
-                    errors.extend(infer_errors);
+                    analysis.errors.extend(infer_errors);
                     val
                 }
                 None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
@@ -3244,10 +4080,10 @@ fn validate_callable_body(
                 infer_context.variant_parents,
                 infer_context.record_type_registry,
             );
-            errors.extend(mismatches);
+            analysis.errors.extend(mismatches);
         }
     }
-    errors
+    analysis
 }
 
 fn validate_return_stmt(
@@ -3255,7 +4091,9 @@ fn validate_return_stmt(
     return_contract: &ReturnContract,
     fields: &[(String, Expr)],
     local_bindings: &HashMap<String, ValueType>,
+    binding_exprs: &HashMap<String, &Expr>,
     infer_context: &ExprInferenceContext<'_>,
+    metadata: &mut TypedCallableBodyMetadata,
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
     match return_contract {
@@ -3267,6 +4105,15 @@ fn validate_return_stmt(
                 });
                 return errors;
             }
+            annotate_expr_with_expected_record(
+                &fields[0].1,
+                ty,
+                local_bindings,
+                binding_exprs,
+                infer_context,
+                metadata,
+                &mut HashSet::new(),
+            );
             let (inferred, infer_errors) = infer_expr_type_for_expected_named_record(
                 &fields[0].1,
                 ty,
@@ -3291,6 +4138,15 @@ fn validate_return_stmt(
                     });
                     continue;
                 };
+                annotate_expr_with_expected_record(
+                    expr,
+                    expected_ty,
+                    local_bindings,
+                    binding_exprs,
+                    infer_context,
+                    metadata,
+                    &mut HashSet::new(),
+                );
                 let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
                 let mismatches = push_type_mismatch_if_needed(

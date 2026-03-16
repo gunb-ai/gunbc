@@ -41,8 +41,7 @@ fn collect_callable_type_maps_from_signatures<'a>(
     signatures: impl IntoIterator<Item = &'a daglang_typecheck::TypedItemSignature>,
 ) -> (CallableReturnTypes, CallableParamTypes) {
     let mut return_types = std::collections::HashMap::<String, Option<String>>::new();
-    let mut param_types =
-        std::collections::HashMap::<String, Option<Vec<(String, String)>>>::new();
+    let mut param_types = std::collections::HashMap::<String, Option<Vec<(String, String)>>>::new();
 
     for signature in signatures {
         let callable = match signature {
@@ -81,6 +80,16 @@ fn collect_callable_type_maps_from_signatures<'a>(
             .filter_map(|(name, params)| params.map(|params| (name, params)))
             .collect(),
     )
+}
+
+fn collect_anonymous_record_targets(
+    metadata: Option<&daglang_typecheck::TypedCallableBodyMetadata>,
+) -> std::collections::HashMap<usize, String> {
+    metadata
+        .into_iter()
+        .flat_map(|metadata| metadata.anonymous_record_targets())
+        .map(|(expr_id, target)| (expr_id, target.0.clone()))
+        .collect()
 }
 
 /// Convert a DSL `TypeExpr` to a Rust type string.
@@ -666,8 +675,10 @@ fn to_screaming_snake(name: &str) -> String {
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
 pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
     // Pre-pass: synthesize struct definitions for anonymous records (fold inits).
-    let (synth_items, _name_map, new_field_types) =
+    let (synth_items, name_map, new_field_types) =
         fn_codegen::synthesize_anonymous_structs(&fd.name, &fd.body, &ctx.struct_field_types);
+    let synthesized_targets =
+        fn_codegen::annotate_synthesized_anonymous_record_targets(&fd.body, &name_map);
 
     // Collect optional parameters (T? → Option<T>)
     let optional_params: std::collections::HashSet<String> = fd
@@ -721,6 +732,9 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         augmented.current_return_type = return_type_name;
         augmented.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
         augmented.ir_scope = ir_scope;
+        augmented
+            .anonymous_record_targets
+            .extend(synthesized_targets);
         std::borrow::Cow::Owned(augmented)
     };
 
@@ -1032,6 +1046,7 @@ pub fn typedefs_to_source_file(
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types,
         use_counts: std::collections::HashMap::new(),
+        anonymous_record_targets: std::collections::HashMap::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1076,7 +1091,7 @@ pub fn generate_types_for_modules(
     // for cross-pass reference storage, so we clone the needed items.
     let mut type_defs: Vec<TypeDef> = Vec::new();
     let mut data_defs: Vec<DataDef> = Vec::new();
-    let mut fn_defs: Vec<FnDef> = Vec::new();
+    let mut fn_defs: Vec<(usize, usize)> = Vec::new();
     let mut static_struct_types: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 
@@ -1085,7 +1100,7 @@ pub fn generate_types_for_modules(
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
             continue;
         }
-        for item in &module.ast.items {
+        for (item_index, item) in module.ast.items.iter().enumerate() {
             match &item.node {
                 daglang_syntax::ast::Item::TypeDef(td) => {
                     type_defs.push(td.clone());
@@ -1103,8 +1118,8 @@ pub fn generate_types_for_modules(
                     }
                     data_defs.push(dd.clone());
                 }
-                daglang_syntax::ast::Item::FnDef(fd) => {
-                    fn_defs.push(fd.clone());
+                daglang_syntax::ast::Item::FnDef(_) => {
+                    fn_defs.push((module.graph_index, item_index));
                 }
                 _ => {}
             }
@@ -1127,7 +1142,18 @@ pub fn generate_types_for_modules(
         all_items.extend(datadef_to_code_ir_with(dd, &type_def_refs));
     }
 
-    for fd in &fn_defs {
+    for (module_index, item_index) in &fn_defs {
+        let module = typed
+            .module(*module_index)
+            .expect("typed module should exist for collected fn");
+        let item = module
+            .ast
+            .items
+            .get(*item_index)
+            .expect("collected fn item index should remain valid");
+        let daglang_syntax::ast::Item::FnDef(fd) = &item.node else {
+            panic!("collected fn item should still be a function");
+        };
         let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         for dd in &data_defs {
             fn_data_names.insert(dd.name.clone());
@@ -1162,6 +1188,9 @@ pub fn generate_types_for_modules(
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: sfit,
             use_counts: std::collections::HashMap::new(),
+            anonymous_record_targets: collect_anonymous_record_targets(
+                module.callable_body_metadata(fd.name.as_str()),
+            ),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1571,8 +1600,8 @@ fn format_variant_boxed(
 mod tests {
     use super::*;
     use daglang_syntax::ast::{
-        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, Refinement, Stmt, TypeBody,
-        TypeDef, TypeExpr, Variant,
+        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, Refinement, Stmt, TypeBody, TypeDef,
+        TypeExpr, Variant,
     };
     use daglang_typecheck::{TypedBinding, TypedCallableSignature, TypedItemSignature};
 
@@ -2015,6 +2044,80 @@ mod tests {
                     assert!(rest.is_some(), "expected struct update rest");
                 }
                 other => panic!("expected struct update tail expr, got: {other:?}"),
+            },
+            other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn explicit_anonymous_record_targets_drive_let_bound_codegen() {
+        let signatures = vec![TypedItemSignature::Fn(TypedCallableSignature {
+            name: "consume".to_string(),
+            params: vec![TypedBinding {
+                name: "cfg".to_string(),
+                ty: gunbc_ir::types::TypeId::from("ConfigB"),
+            }],
+            outputs: vec![TypedBinding {
+                name: "return".to_string(),
+                ty: gunbc_ir::types::TypeId::from("String"),
+            }],
+        })];
+        let (fn_return_types, fn_param_types) =
+            collect_callable_type_maps_from_signatures(signatures.iter());
+        let fd = FnDef {
+            name: "make".to_string(),
+            type_params: vec![],
+            params: vec![],
+            return_type: TypeExpr::Named("String".to_string()),
+            body: FnBody {
+                stmts: vec![
+                    Stmt::Let(
+                        "cfg".to_string(),
+                        Expr::Record(
+                            None,
+                            vec![(
+                                "value".to_string(),
+                                Expr::Literal(Literal::String("ok".to_string())),
+                            )],
+                        ),
+                    ),
+                    Stmt::Expr(Expr::Call(
+                        "consume".to_string(),
+                        vec![(None, Expr::Ident("cfg".to_string()))],
+                    )),
+                ],
+            },
+        };
+        let mut ctx = fn_codegen::CompileContext::new();
+        ctx.struct_field_types.insert(
+            "ConfigA".to_string(),
+            [("value".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ConfigB".to_string(),
+            [("value".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        if let Stmt::Let(_, expr) = &fd.body.stmts[0] {
+            ctx.anonymous_record_targets.insert(
+                expr as *const daglang_syntax::ast::Expr as usize,
+                "ConfigB".to_string(),
+            );
+        }
+        ctx.fn_return_types = fn_return_types;
+        ctx.fn_param_types = fn_param_types;
+
+        let items = fndef_to_code_ir(&fd, &ctx);
+        match &items[0] {
+            code_ir::Item::Fn(f) => match &f.body[0] {
+                code_ir::Stmt::Let {
+                    expr: code_ir::Expr::Struct { name, .. },
+                    ..
+                } => assert_eq!(name, "ConfigB"),
+                other => panic!("expected let-bound ConfigB struct, got: {other:?}"),
             },
             other => panic!("expected Fn, got: {other:?}"),
         }

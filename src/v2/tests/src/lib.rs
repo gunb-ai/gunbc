@@ -197,9 +197,7 @@ mod tests {
 
         let mut parsed_files = Vec::new();
         for (path, source) in &sources {
-            if let Ok(ast) =
-                daglang_syntax::parser::parse_with_file_diagnostics(path, source)
-            {
+            if let Ok(ast) = daglang_syntax::parser::parse_with_file_diagnostics(path, source) {
                 parsed_files.push(ast);
             }
         }
@@ -3139,8 +3137,15 @@ fn example(items: List<String>) -> Int {
             if let Some(gunbc_ir::Value::List(items)) = tm.get("items") {
                 for item in items {
                     if let gunbc_ir::Value::Map(item_map) = item {
-                        let variant = item_map.get("_variant")
-                            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+                        let variant = item_map
+                            .get("_variant")
+                            .and_then(|v| {
+                                if let gunbc_ir::Value::Str(s) = v {
+                                    Some(s.as_str())
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or("");
 
                         match variant {
@@ -3162,22 +3167,40 @@ fn example(items: List<String>) -> Int {
         lines.join("\n")
     }
 
-    fn render_python_type_def(item_map: &std::collections::BTreeMap<String, gunbc_ir::Value>, lines: &mut Vec<String>) {
-        let name = item_map.get("name")
-            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+    fn render_python_type_def(
+        item_map: &std::collections::BTreeMap<String, gunbc_ir::Value>,
+        lines: &mut Vec<String>,
+    ) {
+        let name = item_map
+            .get("name")
+            .and_then(|v| {
+                if let gunbc_ir::Value::Str(s) = v {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .unwrap_or("Unknown");
         let body = item_map.get("body");
 
         // Determine if product (struct) or sum (enum)
-        let is_sum = body.map(|b| {
-            if let gunbc_ir::Value::Map(m) = b {
-                m.get("_variant")
-                    .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str() == "Sum") } else { None })
-                    .unwrap_or(false)
-            } else {
-                false
-            }
-        }).unwrap_or(false);
+        let is_sum = body
+            .map(|b| {
+                if let gunbc_ir::Value::Map(m) = b {
+                    m.get("_variant")
+                        .and_then(|v| {
+                            if let gunbc_ir::Value::Str(s) = v {
+                                Some(s.as_str() == "Sum")
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            })
+            .unwrap_or(false);
 
         if is_sum {
             // Sum type -> Python enum-like class hierarchy
@@ -3186,15 +3209,23 @@ fn example(items: List<String>) -> Int {
             lines.push(String::new());
 
             if let Some(gunbc_ir::Value::Map(body_map)) = body {
-                if let Some(gunbc_ir::Value::List(variants)) = body_map.get("variants")
-                    .or_else(|| body_map.get("value"))
+                if let Some(gunbc_ir::Value::List(variants)) =
+                    body_map.get("variants").or_else(|| body_map.get("value"))
                 {
                     for variant in variants {
                         if let gunbc_ir::Value::Map(vm) = variant {
-                            let vname = vm.get("name")
-                                .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+                            let vname = vm
+                                .get("name")
+                                .and_then(|v| {
+                                    if let gunbc_ir::Value::Str(s) = v {
+                                        Some(s.as_str())
+                                    } else {
+                                        None
+                                    }
+                                })
                                 .unwrap_or("Variant");
-                            let has_fields = vm.get("fields")
+                            let has_fields = vm
+                                .get("fields")
                                 .map(|f| matches!(f, gunbc_ir::Value::List(l) if !l.is_empty()))
                                 .unwrap_or(false);
                             if has_fields {
@@ -3220,8 +3251,8 @@ fn example(items: List<String>) -> Int {
             lines.push(format!("class {}:", name));
             let mut has_fields = false;
             if let Some(gunbc_ir::Value::Map(body_map)) = body {
-                if let Some(gunbc_ir::Value::List(fields)) = body_map.get("fields")
-                    .or_else(|| body_map.get("value"))
+                if let Some(gunbc_ir::Value::List(fields)) =
+                    body_map.get("fields").or_else(|| body_map.get("value"))
                 {
                     for field in fields {
                         render_python_field(field, lines);
@@ -3238,8 +3269,15 @@ fn example(items: List<String>) -> Int {
 
     fn render_python_field(field: &gunbc_ir::Value, lines: &mut Vec<String>) {
         if let gunbc_ir::Value::Map(fm) = field {
-            let fname = fm.get("name")
-                .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+            let fname = fm
+                .get("name")
+                .and_then(|v| {
+                    if let gunbc_ir::Value::Str(s) = v {
+                        Some(s.as_str())
+                    } else {
+                        None
+                    }
+                })
                 .unwrap_or("field");
             let ftype = render_python_type_hint(fm.get("type_expr").or_else(|| fm.get("type")));
             lines.push(format!("    {}: {}", to_snake_case(fname), ftype));
@@ -3249,14 +3287,28 @@ fn example(items: List<String>) -> Int {
     fn render_python_type_hint(type_expr: Option<&gunbc_ir::Value>) -> String {
         match type_expr {
             Some(gunbc_ir::Value::Map(m)) => {
-                let variant = m.get("_variant")
-                    .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+                let variant = m
+                    .get("_variant")
+                    .and_then(|v| {
+                        if let gunbc_ir::Value::Str(s) = v {
+                            Some(s.as_str())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or("");
                 match variant {
                     // Primitive types: Int, String, Bool, Float, etc.
                     "Primitive" | "Named" => {
-                        let name = m.get("name")
-                            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+                        let name = m
+                            .get("name")
+                            .and_then(|v| {
+                                if let gunbc_ir::Value::Str(s) = v {
+                                    Some(s.as_str())
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or("Any");
                         primitive_to_python(name)
                     }
@@ -3265,15 +3317,22 @@ fn example(items: List<String>) -> Int {
                         format!("List[{}]", element)
                     }
                     "Optional" => {
-                        let inner = render_python_type_hint(m.get("inner").or_else(|| m.get("base")));
+                        let inner =
+                            render_python_type_hint(m.get("inner").or_else(|| m.get("base")));
                         format!("Optional[{}]", inner)
                     }
                     "Product" => {
-                        let name = m.get("name")
+                        let name = m
+                            .get("name")
                             .and_then(|v| match v {
                                 gunbc_ir::Value::Str(s) => Some(s.as_str()),
-                                gunbc_ir::Value::Map(om) => om.get("value")
-                                    .and_then(|v2| if let gunbc_ir::Value::Str(s) = v2 { Some(s.as_str()) } else { None }),
+                                gunbc_ir::Value::Map(om) => om.get("value").and_then(|v2| {
+                                    if let gunbc_ir::Value::Str(s) = v2 {
+                                        Some(s.as_str())
+                                    } else {
+                                        None
+                                    }
+                                }),
                                 _ => None,
                             })
                             .unwrap_or("dict");
@@ -3299,45 +3358,91 @@ fn example(items: List<String>) -> Int {
         }
     }
 
-    fn render_python_fn_def(item_map: &std::collections::BTreeMap<String, gunbc_ir::Value>, lines: &mut Vec<String>) {
-        let name = item_map.get("name")
-            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+    fn render_python_fn_def(
+        item_map: &std::collections::BTreeMap<String, gunbc_ir::Value>,
+        lines: &mut Vec<String>,
+    ) {
+        let name = item_map
+            .get("name")
+            .and_then(|v| {
+                if let gunbc_ir::Value::Str(s) = v {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .unwrap_or("unknown");
 
         let mut params = Vec::new();
-        if let Some(gunbc_ir::Value::Map(body_map)) = item_map.get("body")
-            .or_else(|| item_map.get("value"))
+        if let Some(gunbc_ir::Value::Map(body_map)) =
+            item_map.get("body").or_else(|| item_map.get("value"))
         {
             if let Some(gunbc_ir::Value::List(param_list)) = body_map.get("params") {
                 for p in param_list {
                     if let gunbc_ir::Value::Map(pm) = p {
-                        let pname = pm.get("name")
-                            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+                        let pname = pm
+                            .get("name")
+                            .and_then(|v| {
+                                if let gunbc_ir::Value::Str(s) = v {
+                                    Some(s.as_str())
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or("arg");
-                        let ptype = render_python_type_hint(pm.get("type_expr").or_else(|| pm.get("type")));
+                        let ptype =
+                            render_python_type_hint(pm.get("type_expr").or_else(|| pm.get("type")));
                         params.push(format!("{}: {}", to_snake_case(pname), ptype));
                     }
                 }
             }
         }
 
-        let return_type = item_map.get("return_type")
+        let return_type = item_map
+            .get("return_type")
             .or_else(|| {
-                item_map.get("body").and_then(|b| if let gunbc_ir::Value::Map(m) = b { m.get("return_type") } else { None })
+                item_map.get("body").and_then(|b| {
+                    if let gunbc_ir::Value::Map(m) = b {
+                        m.get("return_type")
+                    } else {
+                        None
+                    }
+                })
             })
             .or_else(|| {
-                item_map.get("value").and_then(|b| if let gunbc_ir::Value::Map(m) = b { m.get("return_type") } else { None })
+                item_map.get("value").and_then(|b| {
+                    if let gunbc_ir::Value::Map(m) = b {
+                        m.get("return_type")
+                    } else {
+                        None
+                    }
+                })
             });
         let ret_hint = render_python_type_hint(return_type);
 
-        lines.push(format!("def {}({}) -> {}:", to_snake_case(name), params.join(", "), ret_hint));
+        lines.push(format!(
+            "def {}({}) -> {}:",
+            to_snake_case(name),
+            params.join(", "),
+            ret_hint
+        ));
         lines.push("    pass".to_string());
         lines.push(String::new());
     }
 
-    fn render_python_data_def(item_map: &std::collections::BTreeMap<String, gunbc_ir::Value>, lines: &mut Vec<String>) {
-        let name = item_map.get("name")
-            .and_then(|v| if let gunbc_ir::Value::Str(s) = v { Some(s.as_str()) } else { None })
+    fn render_python_data_def(
+        item_map: &std::collections::BTreeMap<String, gunbc_ir::Value>,
+        lines: &mut Vec<String>,
+    ) {
+        let name = item_map
+            .get("name")
+            .and_then(|v| {
+                if let gunbc_ir::Value::Str(s) = v {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .unwrap_or("unknown");
         lines.push(format!("{} = None  # data constant", to_snake_case(name)));
         lines.push(String::new());
@@ -3357,7 +3462,9 @@ fn example(items: List<String>) -> Int {
 
     fn is_snake_case(name: &str) -> bool {
         !name.is_empty()
-            && name.chars().all(|c| c.is_lowercase() || c.is_ascii_digit() || c == '_')
+            && name
+                .chars()
+                .all(|c| c.is_lowercase() || c.is_ascii_digit() || c == '_')
             && !name.starts_with('_')
     }
 
@@ -3389,17 +3496,18 @@ fn example(items: List<String>) -> Int {
         resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
         let resolve_result =
             call_fn(output, "resolve_modules", resolve_inputs).expect("resolve should succeed");
-        let graph = resolve_result.get("return").cloned().unwrap_or_else(|| {
-            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-        });
+        let graph = resolve_result
+            .get("return")
+            .cloned()
+            .unwrap_or_else(|| gunbc_ir::Value::Map(resolve_result.into_iter().collect()));
 
         let mut tc_inputs = HashMap::new();
         tc_inputs.insert("graph".to_string(), graph);
-        let tc_result =
-            call_fn(output, "typecheck", tc_inputs).expect("typecheck should succeed");
-        let typed_graph = tc_result.get("return").cloned().unwrap_or_else(|| {
-            gunbc_ir::Value::Map(tc_result.into_iter().collect())
-        });
+        let tc_result = call_fn(output, "typecheck", tc_inputs).expect("typecheck should succeed");
+        let typed_graph = tc_result
+            .get("return")
+            .cloned()
+            .unwrap_or_else(|| gunbc_ir::Value::Map(tc_result.into_iter().collect()));
 
         if let gunbc_ir::Value::Map(ref m) = typed_graph {
             if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
@@ -3414,10 +3522,14 @@ fn example(items: List<String>) -> Int {
     #[test]
     fn phase4_python_emit_produces_valid_syntax() {
         let output = compile_all_modules().expect("compilation should succeed");
-        let source = "module test\ntype Foo { x: Int, y: String }\nfn add(a: Int, b: Int) -> Int { a }\n";
+        let source =
+            "module test\ntype Foo { x: Int, y: String }\nfn add(a: Int, b: Int) -> Int { a }\n";
         let typed_modules = run_pipeline_to_typed_modules(&output, source);
 
-        assert!(!typed_modules.is_empty(), "should have at least one typed module");
+        assert!(
+            !typed_modules.is_empty(),
+            "should have at least one typed module"
+        );
         let python_code = render_typed_module_as_python(&typed_modules[0]);
         assert!(
             !python_code.trim().is_empty(),
@@ -3427,7 +3539,10 @@ fn example(items: List<String>) -> Int {
         // Validate with Python's own parser
         let py_check = std::process::Command::new("python3")
             .arg("-c")
-            .arg(format!("import ast; ast.parse('''{}''')", python_code.replace('\\', "\\\\").replace('\'', "\\'")))
+            .arg(format!(
+                "import ast; ast.parse('''{}''')",
+                python_code.replace('\\', "\\\\").replace('\'', "\\'")
+            ))
             .output()
             .expect("failed to run python3");
 
@@ -3460,7 +3575,9 @@ fn example(items: List<String>) -> Int {
             python_code
         );
         assert!(
-            python_code.contains(": int") || python_code.contains(": str") || python_code.contains(": bool"),
+            python_code.contains(": int")
+                || python_code.contains(": str")
+                || python_code.contains(": bool"),
             "Python output should include type hints:\n{}",
             python_code
         );

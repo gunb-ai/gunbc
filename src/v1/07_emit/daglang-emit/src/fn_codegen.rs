@@ -24,10 +24,6 @@
 //!   as arguments or struct fields. Prevents use-after-move. Proper fix: the
 //!   v2 compiler should track ownership.
 //!
-//! - `infer_struct_name()`: Matches field names against known struct definitions
-//!   to guess which struct an anonymous record constructs. Needed because the
-//!   DSL doesn't always name its records.
-//!
 //! - `escape_rust_keyword()`: Prefixes Rust keywords with `r#`. Needed because
 //!   the DSL allows keywords as variable names.
 //!
@@ -129,6 +125,8 @@ pub struct CompileContext {
     /// Variable name → number of `Ident` references in the current function body.
     /// Used to elide `.clone()` when a variable is referenced only once (move suffices).
     pub use_counts: HashMap<String, usize>,
+    /// Typecheck-produced anonymous-record constructor targets keyed by AST expression identity.
+    pub anonymous_record_targets: HashMap<usize, String>,
 }
 
 impl Default for CompileContext {
@@ -156,7 +154,14 @@ impl CompileContext {
             ir_scope: HashMap::new(),
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
+            anonymous_record_targets: HashMap::new(),
         }
+    }
+
+    fn anonymous_record_target(&self, expr: &ast::Expr) -> Option<&str> {
+        self.anonymous_record_targets
+            .get(&(expr as *const ast::Expr as usize))
+            .map(String::as_str)
     }
 }
 
@@ -500,8 +505,9 @@ fn compile_return_fields(
         compile_expr(&fields[0].1, ctx, counter)
     } else {
         let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+        let return_expr = ast::Expr::Record(None, fields.to_vec());
         let Some(struct_name) =
-            resolve_record_struct_name(&field_names, ctx.current_return_type.as_deref(), ctx)
+            resolve_record_struct_name(&return_expr, ctx.current_return_type.as_deref(), ctx)
         else {
             return unresolved_anonymous_record_error(&field_names);
         };
@@ -621,38 +627,15 @@ fn explicit_record_struct_name(
         .map(str::to_owned)
 }
 
-fn infer_struct_name(field_names: &HashSet<&str>, ctx: &CompileContext) -> Option<String> {
-    let candidates: Vec<(&String, usize)> = ctx
-        .struct_field_types
-        .iter()
-        .filter(|(_, ft)| field_names.iter().all(|f| ft.contains_key(*f)))
-        .map(|(sn, ft)| (sn, ft.len()))
-        .collect();
-    if candidates.len() == 1 {
-        Some(candidates[0].0.clone())
-    } else if candidates.len() > 1 {
-        let n = field_names.len();
-        let mut sorted = candidates;
-        sorted.sort_by(|(name_a, count_a), (name_b, count_b)| {
-            let diff_a = (*count_a as isize - n as isize).unsigned_abs();
-            let exact_a = if *count_a == n { 0usize } else { 1 };
-            let diff_b = (*count_b as isize - n as isize).unsigned_abs();
-            let exact_b = if *count_b == n { 0usize } else { 1 };
-            (exact_a, diff_a, name_a).cmp(&(exact_b, diff_b, name_b))
-        });
-        Some(sorted[0].0.clone())
-    } else {
-        None
-    }
-}
-
 fn resolve_record_struct_name(
-    field_names: &HashSet<&str>,
+    expr: &ast::Expr,
     preferred_struct: Option<&str>,
     ctx: &CompileContext,
 ) -> Option<String> {
-    explicit_record_struct_name(preferred_struct, ctx)
-        .or_else(|| infer_struct_name(field_names, ctx))
+    explicit_record_struct_name(preferred_struct, ctx).or_else(|| {
+        ctx.anonymous_record_target(expr)
+            .and_then(|target| explicit_record_struct_name(Some(target), ctx))
+    })
 }
 
 fn unresolved_anonymous_record_error(field_names: &HashSet<&str>) -> code_ir::Expr {
@@ -772,7 +755,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 compile_resolved_record_expr(struct_name, fields, None, ctx, counter)
             } else {
                 let field_names: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
-                let Some(struct_name) = resolve_record_struct_name(&field_names, None, ctx) else {
+                let Some(struct_name) = resolve_record_struct_name(expr, None, ctx) else {
                     return unresolved_anonymous_record_error(&field_names);
                 };
                 compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
@@ -914,8 +897,7 @@ fn compile_expr_typed(
         }
         ast::Expr::Record(None, fields) => {
             let field_names: HashSet<&str> = fields.iter().map(|(name, _)| name.as_str()).collect();
-            let Some(struct_name) = resolve_record_struct_name(&field_names, expected_type, ctx)
-            else {
+            let Some(struct_name) = resolve_record_struct_name(expr, expected_type, ctx) else {
                 return unresolved_anonymous_record_error(&field_names);
             };
             compile_resolved_record_expr(&struct_name, fields, None, ctx, counter)
@@ -1280,7 +1262,7 @@ fn compile_intrinsic_call(
                         let field_names: HashSet<&str> =
                             fields.iter().map(|(n, _)| n.as_str()).collect();
                         let Some(struct_name) = resolve_record_struct_name(
-                            &field_names,
+                            &args[1].1,
                             base_struct_name.as_deref(),
                             ctx,
                         ) else {
@@ -3051,6 +3033,9 @@ fn infer_ast_expr_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType>
             None
         }
         ast::Expr::Record(Some(name), _) if name == "Some" || name == "None" => None,
+        ast::Expr::Record(None, _) => ctx
+            .anonymous_record_target(expr)
+            .map(|name| IrType::Named(name.to_string())),
         ast::Expr::Record(Some(name), _) => Some(IrType::Named(name.clone())),
         ast::Expr::Call(name, _) if name == "Some" => None,
         ast::Expr::Call(name, _) if name == "parse_int" => {
@@ -3311,9 +3296,8 @@ pub fn synthesize_anonymous_structs(
     for (idx, shape) in shapes.iter().enumerate() {
         // Check if any known struct contains all these fields.
         // If exactly one matches, skip synthesis. If multiple match,
-        // disambiguate by picking the one with the closest field count
-        // (same logic as infer_struct_name). Only synthesize when no
-        // known struct matches at all.
+        // disambiguate by preferring the closest field count. Only
+        // synthesize when no known struct matches at all.
         let matching: Vec<(&String, usize)> = known_structs
             .iter()
             .filter(|(_, ft)| shape.iter().all(|f| ft.contains_key(f)))
@@ -3375,6 +3359,135 @@ pub fn synthesize_anonymous_structs(
         name_map.insert(shape.clone(), struct_name);
     }
     (items, name_map, new_field_types)
+}
+
+pub fn annotate_synthesized_anonymous_record_targets(
+    body: &ast::FnBody,
+    shape_targets: &HashMap<Vec<String>, String>,
+) -> HashMap<usize, String> {
+    let mut targets = HashMap::new();
+    for stmt in &body.stmts {
+        collect_synthesized_targets_in_stmt(stmt, shape_targets, &mut targets);
+    }
+    targets
+}
+
+fn collect_synthesized_targets_in_stmt(
+    stmt: &ast::Stmt,
+    shape_targets: &HashMap<Vec<String>, String>,
+    targets: &mut HashMap<usize, String>,
+) {
+    match stmt {
+        ast::Stmt::Let(_, value) | ast::Stmt::Assign(_, value) | ast::Stmt::Expr(value) => {
+            collect_synthesized_targets_in_expr(value, shape_targets, targets);
+        }
+        ast::Stmt::Return(fields) => {
+            for (_, expr) in fields {
+                collect_synthesized_targets_in_expr(expr, shape_targets, targets);
+            }
+        }
+        ast::Stmt::Node(node_stmt) => {
+            collect_synthesized_targets_in_expr(&node_stmt.expr, shape_targets, targets);
+        }
+    }
+}
+
+fn collect_synthesized_targets_in_expr(
+    expr: &ast::Expr,
+    shape_targets: &HashMap<Vec<String>, String>,
+    targets: &mut HashMap<usize, String>,
+) {
+    match expr {
+        ast::Expr::Record(None, fields) => {
+            let mut shape: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+            shape.sort();
+            if let Some(target) = shape_targets.get(&shape) {
+                targets.insert(expr as *const ast::Expr as usize, target.clone());
+            }
+            for (_, value) in fields {
+                collect_synthesized_targets_in_expr(value, shape_targets, targets);
+            }
+        }
+        ast::Expr::Record(Some(_), fields) | ast::Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_synthesized_targets_in_expr(value, shape_targets, targets);
+            }
+        }
+        ast::Expr::Call(_, args) | ast::Expr::ServiceCall(_, args) => {
+            for (_, value) in args {
+                collect_synthesized_targets_in_expr(value, shape_targets, targets);
+            }
+        }
+        ast::Expr::Lambda(_, body) => {
+            collect_synthesized_targets_in_expr(body, shape_targets, targets);
+        }
+        ast::Expr::If(cond, then_expr, else_expr) => {
+            collect_synthesized_targets_in_expr(cond, shape_targets, targets);
+            collect_synthesized_targets_in_expr(then_expr, shape_targets, targets);
+            if let Some(otherwise) = else_expr {
+                collect_synthesized_targets_in_expr(otherwise, shape_targets, targets);
+            }
+        }
+        ast::Expr::BinOp(lhs, _, rhs) => {
+            collect_synthesized_targets_in_expr(lhs, shape_targets, targets);
+            collect_synthesized_targets_in_expr(rhs, shape_targets, targets);
+        }
+        ast::Expr::UnaryOp(_, inner)
+        | ast::Expr::FieldAccess(inner, _)
+        | ast::Expr::After(inner, _) => {
+            collect_synthesized_targets_in_expr(inner, shape_targets, targets);
+        }
+        ast::Expr::Guarded(inner, guard) => {
+            collect_synthesized_targets_in_expr(inner, shape_targets, targets);
+            collect_synthesized_targets_in_expr(guard, shape_targets, targets);
+        }
+        ast::Expr::Match(scrutinee, arms) => {
+            collect_synthesized_targets_in_expr(scrutinee, shape_targets, targets);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_synthesized_targets_in_expr(guard, shape_targets, targets);
+                }
+                collect_synthesized_targets_in_expr(&arm.body, shape_targets, targets);
+            }
+        }
+        ast::Expr::List(items) => {
+            for item in items {
+                collect_synthesized_targets_in_expr(item, shape_targets, targets);
+            }
+        }
+        ast::Expr::Block(stmts) => {
+            for stmt in stmts {
+                collect_synthesized_targets_in_stmt(stmt, shape_targets, targets);
+            }
+        }
+        ast::Expr::For(_, iter_expr, _, body) => {
+            collect_synthesized_targets_in_expr(iter_expr, shape_targets, targets);
+            match body {
+                ast::ForBody::Expr(expr) => {
+                    collect_synthesized_targets_in_expr(expr, shape_targets, targets);
+                }
+                ast::ForBody::Block(stmts) => {
+                    for stmt in stmts {
+                        collect_synthesized_targets_in_stmt(stmt, shape_targets, targets);
+                    }
+                }
+            }
+        }
+        ast::Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_synthesized_targets_in_expr(key, shape_targets, targets);
+                collect_synthesized_targets_in_expr(value, shape_targets, targets);
+            }
+        }
+        ast::Expr::StringInterp(parts) => {
+            for part in parts {
+                if let ast::StringPart::Expr(expr) = part {
+                    collect_synthesized_targets_in_expr(expr, shape_targets, targets);
+                }
+            }
+        }
+        ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
+    }
 }
 
 fn capitalize_first_char(s: &str) -> String {
@@ -5016,6 +5129,7 @@ mod tests {
     #[test]
     fn return_record_rejects_optional_value_for_required_field() {
         let mut ctx = CompileContext::new();
+        ctx.current_return_type = Some("Target".to_string());
         ctx.struct_field_types.insert(
             "Target".to_string(),
             [("required".to_string(), "String".to_string())]

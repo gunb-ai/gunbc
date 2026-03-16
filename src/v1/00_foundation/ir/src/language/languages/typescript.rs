@@ -16,8 +16,8 @@
 use crate::dag::{Dag, Port};
 use crate::language::traits::naming::LanguageNaming;
 use crate::language::traits::type_system::TypeMapping;
-use crate::language::NamingCase;
 use crate::language::LanguageOp;
+use crate::language::NamingCase;
 use crate::node::Node;
 
 /// TypeScript language static configuration.

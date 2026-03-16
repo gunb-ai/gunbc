@@ -1031,7 +1031,10 @@ mod tests {
         };
         let rendered = render_stmt(&loop_stmt, 0);
         assert!(rendered.contains("loop {"), "should render loop keyword");
-        assert!(rendered.contains("break result;"), "should render break with value");
+        assert!(
+            rendered.contains("break result;"),
+            "should render break with value"
+        );
         assert!(rendered.contains("continue;"), "should render continue");
     }
 
@@ -1039,6 +1042,10 @@ mod tests {
     fn render_break_unit_omits_value() {
         let stmt = Stmt::Break(Expr::Tuple(vec![]));
         let rendered = render_stmt(&stmt, 0);
-        assert_eq!(rendered.trim(), "break;", "break () should render as bare break");
+        assert_eq!(
+            rendered.trim(),
+            "break;",
+            "break () should render as bare break"
+        );
     }
 }
