@@ -70,9 +70,10 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
 /// Render a fenced code block.
 pub fn render_code_block(code: &str, language: Option<&str>) -> String {
     let lang = language.unwrap_or("");
+    let fence = code_fence_for(code);
     format!(
         "{}{}\n{}\n{}",
-        MARKDOWN.code_fence, lang, code, MARKDOWN.code_fence
+        fence, lang, code, fence
     )
 }
 
@@ -82,6 +83,24 @@ pub fn markdown_comment(text: &str) -> String {
         "{}{}{}",
         MARKDOWN.comment_open, text, MARKDOWN.comment_close
     )
+}
+
+fn code_fence_for(code: &str) -> String {
+    let base_len = MARKDOWN.code_fence.len();
+    let longest_backtick_run = code
+        .chars()
+        .fold((0usize, 0usize), |(max_run, current_run), ch| {
+            if ch == '`' {
+                let next_run = current_run + 1;
+                (max_run.max(next_run), next_run)
+            } else {
+                (max_run, 0)
+            }
+        })
+        .0;
+    let fence_len = base_len.max(longest_backtick_run + 1);
+
+    "`".repeat(fence_len)
 }
 
 #[cfg(test)]
@@ -127,5 +146,11 @@ mod tests {
     fn test_render_code_block_no_language() {
         let block = render_code_block("hello", None);
         assert_eq!(block, "```\nhello\n```");
+    }
+
+    #[test]
+    fn test_render_code_block_with_embedded_backticks() {
+        let block = render_code_block("before\n```\nafter", Some("markdown"));
+        assert_eq!(block, "````markdown\nbefore\n```\nafter\n````");
     }
 }
