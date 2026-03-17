@@ -363,10 +363,7 @@ mod tests {
             "_variant".to_string(),
             gunbc_ir::Value::Str("Primitive".to_string()),
         );
-        map.insert(
-            "name".to_string(),
-            gunbc_ir::Value::Str("String".to_string()),
-        );
+        map.insert("name".to_string(), gunbc_ir::Value::Str("String".to_string()));
         map.insert("span".to_string(), zero_span_value());
         gunbc_ir::Value::Map(map)
     }
@@ -453,6 +450,10 @@ mod tests {
             gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         gunbc_ir::Value::Map(map)
+    }
+
+    fn empty_registry_value() -> gunbc_ir::Value {
+        gunbc_ir::Value::Map(std::collections::BTreeMap::new())
     }
 
     fn infer_scope_value(
@@ -1624,10 +1625,7 @@ fn foo(item: String) -> String {
         assert!(!typed_modules.is_empty());
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert(
-            "registry".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
+        emit_inputs.insert("registry".to_string(), empty_registry_value());
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1700,10 +1698,7 @@ fn foo(item: String) -> String {
         };
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert(
-            "registry".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
+        emit_inputs.insert("registry".to_string(), empty_registry_value());
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -2593,10 +2588,7 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert(
-            "registry".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
+        inputs.insert("registry".to_string(), empty_registry_value());
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -2677,10 +2669,7 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert(
-            "registry".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
+        inputs.insert("registry".to_string(), empty_registry_value());
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -3164,10 +3153,7 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert(
-                "registry".to_string(),
-                gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-            );
+            emit_inputs.insert("registry".to_string(), empty_registry_value());
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()

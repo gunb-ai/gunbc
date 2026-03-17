@@ -1356,6 +1356,11 @@ mod tests {
     use gunbc_ir::resource::AccessMode;
     use gunbc_ir::{build::*, Dag, Node, NodeKind, Port, ResourceId};
 
+    fn clippy_tool_port() -> Port {
+        Port::scalar("tool:clippy", "ToolHandle")
+            .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)
+    }
+
     #[test]
     fn test_collect_basic_obligations() {
         let mut dag: Dag<()> = Dag::new();
@@ -1503,8 +1508,7 @@ mod tests {
             Node::opaque(
                 "env",
                 vec![],
-                vec![Port::scalar("tool:clippy", "ToolHandle")
-                    .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
+                vec![clippy_tool_port()],
                 (),
             )
             .with_kind(NodeKind::ToolEnvironment),
@@ -1512,8 +1516,7 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "lint",
-                vec![Port::scalar("tool:clippy", "ToolHandle")
-                    .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
+                vec![clippy_tool_port()],
                 vec![Port::scalar("result", "String")],
                 (),
             )
@@ -1547,8 +1550,7 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "lint",
-                vec![Port::scalar("tool:clippy", "ToolHandle")
-                    .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
+                vec![clippy_tool_port()],
                 vec![Port::scalar("result", "String")],
                 (),
             )

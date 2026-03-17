@@ -560,15 +560,30 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
 /// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
 /// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
 pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
-    let output = std::process::Command::new("cargo")
-        .arg("generate-lockfile")
-        .current_dir(crate_dir)
-        .output()?;
-    if !output.status.success() {
+    fn run_generate_lockfile(
+        crate_dir: &Path,
+        offline: bool,
+    ) -> std::io::Result<std::process::Output> {
+        let mut command = std::process::Command::new("cargo");
+        command.arg("generate-lockfile");
+        if offline {
+            command.arg("--offline");
+        }
+        command.current_dir(crate_dir).output()
+    }
+
+    let output = run_generate_lockfile(crate_dir, false)?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let offline_output = run_generate_lockfile(crate_dir, true)?;
+    if !offline_output.status.success() {
         return Err(std::io::Error::other(format!(
-            "cargo generate-lockfile failed in {}:\n{}",
+            "cargo generate-lockfile failed in {}:\n{}\nretry with --offline also failed:\n{}",
             crate_dir.display(),
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&offline_output.stderr)
         )));
     }
     Ok(())
