@@ -1793,6 +1793,18 @@ fn eval_intrinsic_inner(
                 _ => Err(EvalError::new("ends_with requires string and suffix")),
             }
         }
+        "string_contains" => {
+            let needle = rest
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("substring"))
+                .or_else(|| rest.first());
+            match (receiver, needle) {
+                (Value::Str(s), Some((_, e))) => Ok(Value::Bool(
+                    s.contains(&value_to_string(&eval_expr(e, env, ctx)?)),
+                )),
+                _ => Err(EvalError::new("string_contains requires string and substring")),
+            }
+        }
         "split" => {
             let delim = rest
                 .iter()

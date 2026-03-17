@@ -513,7 +513,7 @@ fn emit_py_func_def(
 ) -> String {
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => unique_strings(items: collect_typed_service_calls(texpr: body))
+    None => collect_typed_service_calls(texpr: body)
   }
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_py_return_type(return_type: return_type)

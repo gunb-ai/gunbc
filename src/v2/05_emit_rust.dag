@@ -56,7 +56,7 @@ import v2.compiler.emit {
   is_service_call_receiver, extract_service_name,
   collect_service_calls, collect_service_calls_from_args, unique_strings,
   collect_typed_service_calls,
-  has_nested_records, emit_data_value_json, escape_json_string,
+  has_nested_records, has_nested_records_node, emit_data_value_json, escape_json_string,
   module_to_filename,
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
@@ -64,7 +64,7 @@ import v2.compiler.emit {
   expr_has_self_call, has_non_tail_self_call,
   typed_expr_has_self_call, typed_has_non_tail_self_call,
   apply_type_template1, apply_type_template2,
-  is_null_coalesce, is_type_alias_return,
+  is_null_coalesce, is_type_alias_return, is_type_alias_return_node,
   is_service_item, has_service_items,
   missing_emit_type, infer_expr_type, scope_after_plain_expr,
   typed_named_arg_matches, order_typed_call_args,
@@ -284,22 +284,22 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
     emit_type_def_from_connective(item: item)
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
-  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return(return_type: item.return_type) {
+  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: type_expr_to_node(te: item.return_type)) {
     concat("pub type ", item.name, " = ", emit_rust_node_type(n: type_expr_to_node(te: item.return_type)), ";")
   }
   // Function with body: fn or func (distinguished from data by type_annotation)
   else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
       // async func/pattern
-      emit_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_func_def(name: item.name, params: item.params, return_type: type_expr_to_node(te: item.return_type), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       // pure fn (including zero-param functions)
-      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
+      emit_fn_def(name: item.name, params: item.params, return_type: type_expr_to_node(te: item.return_type), body: item.body.value, registry: registry, scope: scope)
     }
   }
   // Data: has body and type_annotation (data constant)
   else if item.body != none && item.type_annotation != none {
-    emit_data_def(name: item.name, type_expr: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
+    emit_data_def(name: item.name, type_node: type_expr_to_node(te: item.type_annotation.value), value: item.body.value, registry: registry, scope: scope)
   }
   // Service: has transport and children (operations as child Nodes)
   else if item.transport != none && item.children |> count > 0 {
@@ -312,7 +312,7 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
   // Extern func: has params but no body
   else if item.params |> count > 0 {
     let params_str = emit_params(params: item.params)
-    let ret_str = emit_return_type(return_type: item.return_type)
+    let ret_str = emit_return_type(return_type: type_expr_to_node(te: item.return_type))
     concat("pub fn ", rust_ident(name: item.name), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   }
   else {
@@ -487,7 +487,7 @@ fn emit_rust_node_type_disj(n: Node) -> String {
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let params_str = emit_params(params: params)
   let ret_str = emit_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
@@ -518,7 +518,7 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: T
 fn emit_func_def(
   name: String,
   params: List<Param>,
-  return_type: TypeExpr,
+  return_type: Node,
   uses: List<ResourceUse>,
   body: TypedExpr,
   registry: Map<String, ItemInfo>,
@@ -526,7 +526,7 @@ fn emit_func_def(
 ) -> String {
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => unique_strings(items: collect_typed_service_calls(texpr: body))
+    None => collect_typed_service_calls(texpr: body)
   }
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_func_return_type(return_type: return_type)
@@ -625,8 +625,8 @@ fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names:
   all_params |> join(separator: ", ")
 }
 
-fn emit_func_return_type(return_type: TypeExpr) -> String {
-  concat(" -> Result<", emit_rust_node_type(n: type_expr_to_node(te: return_type)), ", Box<dyn std::error::Error>>")
+fn emit_func_return_type(return_type: Node) -> String {
+  concat(" -> Result<", emit_rust_node_type(n: return_type), ", Box<dyn std::error::Error>>")
 }
 
 // =========================================================================
@@ -649,8 +649,8 @@ fn emit_param(param: Param) -> String {
   concat(rust_ident(name: param.name), ": ", ref_ty)
 }
 
-fn emit_return_type(return_type: TypeExpr) -> String {
-  concat(" -> ", emit_rust_node_type(n: type_expr_to_node(te: return_type)))
+fn emit_return_type(return_type: Node) -> String {
+  concat(" -> ", emit_rust_node_type(n: return_type))
 }
 
 // Determine if a type should be passed by reference (Node-based).
@@ -833,6 +833,8 @@ fn emit_method_call(receiver: Expr, method: String, args: List<NamedArg>, regist
       concat(recv_str, ".iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()")
     } else if method == "chars" {
       concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+    } else if method == "string_contains" {
+      concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
     } else {
       // Generic method call
       let arg_strs = args |> map(a => emit_call_arg(arg: a, registry: registry, scope: scope))
@@ -933,13 +935,24 @@ fn emit_let(name: String, value: Expr, body: Expr?, registry: Map<String, ItemIn
 // Record literal emission
 // =========================================================================
 
-fn explicit_record_struct_name(type_name: String?, inferred_type: TypeExpr) -> String? {
-  match normalize_access_type(type_expr: inferred_type) {
-    Named { name: name, span: _ } =>
-      if name == "__EmitTypeCacheMiss" { type_name } else { Some { value: name } }
-    Product { name: name, fields: _, span: _ } =>
-      if name == none { type_name } else { name }
-    _ => type_name
+fn explicit_record_struct_name(type_name: String?, inferred_node: Node) -> String? {
+  // Normalize: unwrap Refined nodes to their base
+  let n = if inferred_node.name == "Refined" && inferred_node.connective != none {
+    match inferred_node.children |> first {
+      Some { value: base } => base
+      None => inferred_node
+    }
+  } else { inferred_node }
+  if n.name == "__EmitTypeCacheMiss" { type_name }
+  else if n.connective != none {
+    match n.connective.value {
+      Conj => if n.name == "" { type_name } else { Some { value: n.name } }
+      _ => type_name
+    }
+  } else if n.children |> count == 0 && n.name != "" {
+    Some { value: n.name }
+  } else {
+    type_name
   }
 }
 
@@ -948,7 +961,7 @@ fn resolve_record_struct_name(type_name: String?, fields: List<FieldInit>, span:
     expr: RecordLit { type_name: type_name, fields: fields, span: span },
     scope: scope
   )
-  explicit_record_struct_name(type_name: type_name, inferred_type: inferred_type)
+  explicit_record_struct_name(type_name: type_name, inferred_node: type_expr_to_node(te: inferred_type))
 }
 
 fn emit_record_lit(type_name: String?, fields: List<FieldInit>, span: SourceSpan, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -1076,9 +1089,10 @@ fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferSc
 // =========================================================================
 
 fn emit_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let target_node = type_expr_to_node(te: target)
   let expr_str = emit_expr_in_scope(expr: expr, registry: registry, scope: scope)
-  let ty_str = emit_rust_node_type(n: type_expr_to_node(te: target))
-  if is_primitive_numeric(type_expr: target) {
+  let ty_str = emit_rust_node_type(n: target_node)
+  if is_primitive_numeric_node(n: target_node) {
     concat(expr_str, " as ", ty_str)
   } else {
     // Non-primitive cast: `as` is only valid for numeric primitives in Rust.
@@ -1087,16 +1101,13 @@ fn emit_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, scop
   }
 }
 
-// Returns true for primitive numeric types where Rust `as` is valid.
-fn is_primitive_numeric(type_expr: TypeExpr) -> Bool {
-  match type_expr {
-    Primitive { name: n, span: _ } =>
-      if n == "Int" { true }
-      else if n == "Float" { true }
-      else if n == "Bool" { true }
-      else { false }
-    _ => false
-  }
+// Returns true for primitive numeric types where Rust `as` is valid (Node-based).
+fn is_primitive_numeric_node(n: Node) -> Bool {
+  if n.connective != none || n.children |> count > 0 { false }
+  else if n.name == "Int" { true }
+  else if n.name == "Float" { true }
+  else if n.name == "Bool" { true }
+  else { false }
 }
 
 // =========================================================================
@@ -1124,7 +1135,7 @@ fn emit_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: Inf
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope)
     TypedRecordLit { type_name: tn, fields: fs, resolved_type: rt, span: _ } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, resolved_type: rt, registry: registry, scope: scope)
+      emit_typed_record_lit(type_name: tn, fields: fs, resolved_type: type_expr_to_node(te: rt), registry: registry, scope: scope)
     TypedListLit { elements: els, resolved_type: _, span: _ } =>
       emit_typed_list_lit(elements: els, registry: registry, scope: scope)
     TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: _ } =>
@@ -1138,7 +1149,7 @@ fn emit_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: Inf
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
       emit_typed_block(stmts: ss, registry: registry, scope: scope)
     TypedCast { expr: e, target: t, resolved_type: _, span: _ } =>
-      emit_typed_cast(expr: e, target: t, registry: registry, scope: scope)
+      emit_typed_cast(expr: e, target: type_expr_to_node(te: t), registry: registry, scope: scope)
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: _ } =>
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope)
     TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
@@ -1242,6 +1253,8 @@ fn emit_typed_method_call(receiver: TypedExpr, method: String, args: List<TypedN
       concat(recv_str, ".iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()")
     } else if method == "chars" {
       concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+    } else if method == "string_contains" {
+      concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
     } else {
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope))
       let args_str = arg_strs |> join(separator: ", ")
@@ -1301,8 +1314,8 @@ fn emit_typed_let(name: String, value: TypedExpr, body: TypedExpr?, registry: Ma
   }
 }
 
-fn emit_typed_record_lit(type_name: String?, fields: List<TypedFieldInit>, resolved_type: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let struct_name = explicit_record_struct_name(type_name: type_name, inferred_type: resolved_type)
+fn emit_typed_record_lit(type_name: String?, fields: List<TypedFieldInit>, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type)
   match struct_name {
     None =>
       "compile_error!(\"cannot resolve anonymous record type in emitter\")"
@@ -1392,10 +1405,10 @@ fn emit_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, sco
   concat("{\n", indent(text: state.text |> join(separator: "\n"), level: 1), "\n}")
 }
 
-fn emit_typed_cast(expr: TypedExpr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_typed_cast(expr: TypedExpr, target: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_typed_expr(texpr: expr, registry: registry, scope: scope)
-  let ty_str = emit_rust_node_type(n: type_expr_to_node(te: target))
-  if is_primitive_numeric(type_expr: target) {
+  let ty_str = emit_rust_node_type(n: target)
+  if is_primitive_numeric_node(n: target) {
     concat(expr_str, " as ", ty_str)
   } else {
     concat("todo!(\"unsupported cast to ", ty_str, "\")")
@@ -1649,7 +1662,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
   }
   let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry)
   let mock_props = extract_mock_props(properties: op_node.properties)
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: op_node.return_type, mock_props: mock_props, registry: registry)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: type_expr_to_node(te: op_node.return_type), mock_props: mock_props, registry: registry)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     indent(text: dry_run_body, level: 1), "\n",
@@ -1664,7 +1677,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
 
 // Emit the dry-run branch for an operation method.
 // If mock data is available, use it. Otherwise, return Default::default().
-fn emit_dry_run_branch_from_props(op_name: String, return_type: TypeExpr, mock_props: List<FieldInit>, registry: Map<String, ItemInfo>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props: List<FieldInit>, registry: Map<String, ItemInfo>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     // Use the first mock property body as the dry-run return value
@@ -1783,13 +1796,13 @@ fn emit_capability_method(cap_node: TypedNode) -> String {
 // lazy_static or a function that returns the value.
 // =========================================================================
 
-fn emit_data_def(name: String, type_expr: TypeExpr, value: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let ty_str = emit_rust_node_type(n: type_expr_to_node(te: type_expr))
+fn emit_data_def(name: String, type_node: Node, value: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let ty_str = emit_rust_node_type(n: type_node)
   let upper_name = to_screaming_snake(name: name)
-  if is_simple_type(type_expr: type_expr) {
+  if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope)
     concat("pub const ", upper_name, ": ", ty_str, " = ", val_str, ";")
-  } else if has_nested_records(type_expr: type_expr) {
+  } else if has_nested_records_node(n: type_node) {
     // Complex data with nested anonymous records -> serde deserialization
     let json_str = emit_data_value_json(value: typed_expr_to_expr(texpr: value))
     concat("pub fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
@@ -1805,15 +1818,12 @@ fn emit_data_def(name: String, type_expr: TypeExpr, value: TypedExpr, registry: 
   }
 }
 
-fn is_simple_type(type_expr: TypeExpr) -> Bool {
-  match type_expr {
-    Primitive { name: n, span: _ } =>
-      if n == "Int" { true }
-      else if n == "Bool" { true }
-      else if n == "Float" { true }
-      else { false }
-    _ => false
-  }
+fn is_simple_type_node(n: Node) -> Bool {
+  if n.connective != none || n.children |> count > 0 { false }
+  else if n.name == "Int" { true }
+  else if n.name == "Bool" { true }
+  else if n.name == "Float" { true }
+  else { false }
 }
 
 // =========================================================================
@@ -2040,7 +2050,7 @@ fn emit_subcommand_variant(wf: WorkflowFunc) -> String {
 // Emit a struct field inside a subcommand variant, with clap attributes.
 fn emit_subcommand_field(param: Param) -> String {
   let field_name = rust_ident(name: param.name)
-  let field_type = emit_cli_param_type(type_expr: param.type_expr)
+  let field_type = emit_cli_param_type_node(n: type_expr_to_node(te: param.type_expr))
   let default_attr = match param.default_value {
     Some { value: dv } => concat("#[arg(long, default_value = \"", emit_cli_default_value(expr: dv), "\")]\n")
     None => "#[arg(long)]\n"
@@ -2051,19 +2061,25 @@ fn emit_subcommand_field(param: Param) -> String {
 // Map DSL types to Rust CLI types.
 // Bool -> bool, String -> String, Int -> i64, etc.
 // Optional types get wrapped in Option<>.
-fn emit_cli_param_type(type_expr: TypeExpr) -> String {
-  match type_expr {
-    Primitive { name: n, span: _ } =>
-      if n == "Bool" { "bool" }
-      else if n == "Int" { "i64" }
-      else if n == "Float" { "f64" }
-      else { "String" }
-    Optional { inner: inn, span: _ } =>
-      concat("Option<", emit_cli_param_type(type_expr: inn), ">")
-    Named { name: n, span: _ } =>
-      // Named types like CommitSha, Url are newtypes over String
-      "String"
-    _ => "String"
+fn emit_cli_param_type_node(n: Node) -> String {
+  if n.connective != none {
+    match n.connective.value {
+      Disj =>
+        if n.name == "Optional" {
+          match n.children |> first {
+            Some { value: inner } => concat("Option<", emit_cli_param_type_node(n: inner), ">")
+            None => "String"
+          }
+        } else { "String" }
+      _ => "String"
+    }
+  } else if n.children |> count == 0 {
+    if n.name == "Bool" { "bool" }
+    else if n.name == "Int" { "i64" }
+    else if n.name == "Float" { "f64" }
+    else { "String" }
+  } else {
+    "String"
   }
 }
 

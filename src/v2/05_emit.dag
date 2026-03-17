@@ -92,7 +92,7 @@ type ItemInfo {
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [] },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
     func_env: FuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
@@ -133,7 +133,7 @@ fn build_item_registry(items: List<TypedNode>) -> Map<String, ItemInfo> {
     if item.body != none && item.uses |> count > 0 {
       // func or pattern (async, has uses)
       ItemInfo { name: item.name, kind: "func",
-        service_names: unique_strings(items: collect_typed_service_calls(texpr: item.body.value)),
+        service_names: collect_typed_service_calls(texpr: item.body.value),
         is_self_recursive: false, has_non_tail_self_call: false }
     } else if item.body != none && item.params |> count > 0 {
       // fn (pure function)
@@ -394,67 +394,75 @@ fn unique_strings(items: List<String>) -> List<String> {
 // =========================================================================
 
 fn collect_typed_service_calls(texpr: TypedExpr) -> List<String> {
+  let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+  result.result
+}
+
+fn collect_typed_service_calls_into(texpr: TypedExpr, acc: UniqueAccum) -> UniqueAccum {
   match texpr {
     TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } => {
-      let self_calls = if is_typed_service_call_receiver(receiver: r) {
+      let acc2 = if is_typed_service_call_receiver(receiver: r) {
         match extract_typed_service_name(receiver: r) {
-          Some { value: service_name } => [service_name]
-          None => []
+          Some { value: service_name } =>
+            if emit_map_has(m: acc.seen, key: service_name) { acc }
+            else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: concat(acc.result, [service_name]) } }
+          None => acc
         }
       } else {
-        collect_typed_service_calls(texpr: r)
+        collect_typed_service_calls_into(texpr: r, acc: acc)
       }
-      let arg_calls = collect_typed_service_calls_from_args(args: a)
-      concat(self_calls, arg_calls)
+      collect_typed_service_calls_from_args_into(args: a, acc: acc2)
     }
     TypedCall { func: _, args: a, resolved_type: _, span: _ } =>
-      collect_typed_service_calls_from_args(args: a)
+      collect_typed_service_calls_from_args_into(args: a, acc: acc)
     TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
-      collect_typed_service_calls(texpr: b)
+      collect_typed_service_calls_into(texpr: b, acc: acc)
     TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } => {
-      let calls = concat(collect_typed_service_calls(texpr: c), collect_typed_service_calls(texpr: t))
+      let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
+      let acc3 = collect_typed_service_calls_into(texpr: t, acc: acc2)
       match e {
-        Some { value: eb } => concat(calls, collect_typed_service_calls(texpr: eb))
-        None => calls
+        Some { value: eb } => collect_typed_service_calls_into(texpr: eb, acc: acc3)
+        None => acc3
       }
     }
     TypedLet { name: _, value: v, body: b, resolved_type: _, span: _ } => {
-      let v_calls = collect_typed_service_calls(texpr: v)
+      let acc2 = collect_typed_service_calls_into(texpr: v, acc: acc)
       match b {
-        Some { value: bd } => concat(v_calls, collect_typed_service_calls(texpr: bd))
-        None => v_calls
+        Some { value: bd } => collect_typed_service_calls_into(texpr: bd, acc: acc2)
+        None => acc2
       }
     }
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
-      ss |> flat_map(s => collect_typed_service_calls(texpr: s))
+      ss |> fold(init: acc, f: (a, s) => collect_typed_service_calls_into(texpr: s, acc: a))
     TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
-      let s_calls = collect_typed_service_calls(texpr: s)
-      let arm_calls = arm_list |> flat_map(arm => collect_typed_service_calls(texpr: arm.body))
-      concat(s_calls, arm_calls)
+      let acc2 = collect_typed_service_calls_into(texpr: s, acc: acc)
+      arm_list |> fold(init: acc2, f: (a, arm) => collect_typed_service_calls_into(texpr: arm.body, acc: a))
     }
-    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
-      concat(collect_typed_service_calls(texpr: l), collect_typed_service_calls(texpr: r))
+    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: l, acc: acc)
+      collect_typed_service_calls_into(texpr: r, acc: acc2)
+    }
     TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
-      collect_typed_service_calls(texpr: e)
+      collect_typed_service_calls_into(texpr: e, acc: acc)
     TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
-      collect_typed_service_calls(texpr: bd)
+      collect_typed_service_calls_into(texpr: bd, acc: acc)
     TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
-      fs |> flat_map(f => collect_typed_service_calls(texpr: f.value))
+      fs |> fold(init: acc, f: (a, f) => collect_typed_service_calls_into(texpr: f.value, acc: a))
     TypedListLit { elements: els, resolved_type: _, span: _ } =>
-      els |> flat_map(e => collect_typed_service_calls(texpr: e))
+      els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
     TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
-      collect_typed_service_calls(texpr: e)
+      collect_typed_service_calls_into(texpr: e, acc: acc)
     TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
-      ps |> flat_map(p => match p {
-        TypedInterpolation { expr: e } => collect_typed_service_calls(texpr: e)
-        _ => []
+      ps |> fold(init: acc, f: (a, p) => match p {
+        TypedInterpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
+        _ => a
       })
-    _ => []
+    _ => acc
   }
 }
 
-fn collect_typed_service_calls_from_args(args: List<TypedNamedArg>) -> List<String> {
-  args |> flat_map(a => collect_typed_service_calls(texpr: a.value))
+fn collect_typed_service_calls_from_args_into(args: List<TypedNamedArg>, acc: UniqueAccum) -> UniqueAccum {
+  args |> fold(init: acc, f: (a, arg) => collect_typed_service_calls_into(texpr: arg.value, acc: a))
 }
 
 // =========================================================================
@@ -475,6 +483,35 @@ fn has_nested_records(type_expr: TypeExpr) -> Bool {
     Optional { inner: inn, span: _ } => has_nested_records(type_expr: inn)
     MapType { key: _, value: v, span: _ } => has_nested_records(type_expr: v)
     _ => false
+  }
+}
+
+// B1 prep: Node-reading version of has_nested_records.
+// Anonymous product = Conj connective with empty name.
+fn has_nested_records_node(n: Node) -> Bool {
+  if n.connective != none {
+    match n.connective.value {
+      Conj => n.name == ""
+      Disj =>
+        if n.name == "Optional" {
+          match n.children |> first {
+            Some { value: inner } => has_nested_records_node(n: inner)
+            None => false
+          }
+        } else { false }
+    }
+  } else if n.name == "Map" && n.children |> count == 2 {
+    match skip(n.children, 1) |> first {
+      Some { value: val_child } => has_nested_records_node(n: val_child)
+      None => false
+    }
+  } else if n.children |> count == 1 {
+    match n.children |> first {
+      Some { value: el } => has_nested_records_node(n: el)
+      None => false
+    }
+  } else {
+    false
   }
 }
 

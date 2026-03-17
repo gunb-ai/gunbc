@@ -798,6 +798,21 @@ pub fn eval_builtin_call(
             }
             _ => Err(EvalError::new("reverse requires a List")),
         },
+        // list_push(list, item) — O(1) amortized append to end of list.
+        "list_push" => {
+            if args.len() >= 2 {
+                match &args[0].1 {
+                    Value::List(list) => {
+                        let mut new_list = list.clone();
+                        new_list.push(args[1].1.clone());
+                        Ok(Value::List(new_list))
+                    }
+                    _ => Err(EvalError::new("list_push requires (List, item)")),
+                }
+            } else {
+                Err(EvalError::new("list_push requires list and item"))
+            }
+        }
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             let mut map = BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(name.to_string()));

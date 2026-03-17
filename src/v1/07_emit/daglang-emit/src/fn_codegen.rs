@@ -1988,6 +1988,18 @@ fn compile_intrinsic_call(
                 obligation: None,
             })
         }
+        "string_contains" if args.len() == 2 => {
+            let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
+            let substring = resolve_named_or_positional(args, "substring", 1, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "string_contains".to_string(),
+                ])),
+                args: vec![s, substring],
+                obligation: None,
+            })
+        }
         "lookup" if args.len() == 2 => {
             let table = resolve_named_or_positional(args, "table", 0, ctx, counter);
             let key = resolve_named_or_positional(args, "key", 1, ctx, counter);
@@ -2393,6 +2405,21 @@ fn compile_intrinsic_call(
                 receiver: Box::new(code_ir::Expr::Var(v.clone())),
                 method: "reverse".to_string(),
                 args: vec![],
+            }));
+            stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
+            Some(code_ir::Expr::Block(stmts))
+        }
+        // list_push(list, item) → { let mut v = Rc::try_unwrap(list)...; v.push(item); Rc::new(v) }
+        // O(1) amortized append — avoids O(n) concat([item], list) + reverse.
+        "list_push" if args.len() == 2 => {
+            let item = compile_call_arg(args, 1, ctx, counter);
+            let list = strip_outer_clone(collection.clone());
+            let v = fresh(counter, "appended");
+            let mut stmts = rc_unwrap_stmts(&v, list, counter);
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(v.clone())),
+                method: "push".to_string(),
+                args: vec![item],
             }));
             stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
             Some(code_ir::Expr::Block(stmts))

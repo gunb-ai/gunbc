@@ -181,6 +181,17 @@ type StringPartInferResult {
   diagnostics: List<Diagnostic>
 }
 
+type ArgInferResult {
+  typed_arg: TypedNamedArg
+  diagnostics: List<Diagnostic>
+}
+
+type FieldInferResult {
+  typed_field: TypedFieldInit
+  infer_result: InferResult
+  diagnostics: List<Diagnostic>
+}
+
 // Internal result type for item-level resolution.
 type ItemResult {
   item: Node
@@ -300,7 +311,7 @@ fn unwrap_return_type(rt: TypeExpr?) -> TypeExpr {
   // .value accessor pattern. Both paths produce the same result.
   let result = resolve_optional_type_expr(
     expr: rt,
-    env: TypeEnv { bindings: empty_map(), recursive_types: [] },
+    env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
     module_name: ""
   )
   result.resolved
@@ -563,13 +574,18 @@ fn normalize_access_type(type_expr: TypeExpr) -> TypeExpr {
 }
 
 fn normalize_type_name(name: String) -> String {
-  let base = match name |> split(delimiter: "<") |> first {
-    Some { value: part } => part
-    None => name
-  }
-  match base |> split(delimiter: ".") |> last {
-    Some { value: short } => short
-    None => base
+  // Fast path: most type names are simple identifiers with no < or .
+  if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
+    name
+  } else {
+    let base = match name |> split(delimiter: "<") |> first {
+      Some { value: part } => part
+      None => name
+    }
+    match base |> split(delimiter: ".") |> last {
+      Some { value: short } => short
+      None => base
+    }
   }
 }
 
@@ -1237,16 +1253,12 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       }
 
     Call { func: func_name, args: call_args, span: span } =>
-      let arg_results = call_args |> map(a => infer_expr(expr: a.value, scope: scope))
-      let typed_args = call_args |> enumerate |> map(pair =>
-        let a = pair.second
-        let ar = match skip(arg_results, pair.first) |> first {
-          Some { value: r } => r
-          None => ok_infer(texpr: TypedLiteral { value: LitNull, resolved_type: unit_type(), span: no_span() })
-        }
-        TypedNamedArg { name: a.name, value: ar.typed }
+      let arg_infer_results = call_args |> map(a =>
+        let ar = infer_expr(expr: a.value, scope: scope)
+        ArgInferResult { typed_arg: TypedNamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
       )
-      let arg_diags = flat_map(arg_results, r => r.diagnostics)
+      let typed_args = arg_infer_results |> map(air => air.typed_arg)
+      let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
       let resolved_type = if sig == none {
         let type_match = lookup_type(env: scope.type_env, name: func_name)
@@ -1269,16 +1281,12 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     MethodCall { receiver: recv, method: method_name, args: mc_args, span: span } =>
       let recv_result = infer_expr(expr: recv, scope: scope)
       let recv_type = recv_result.typed.resolved_type
-      let mc_arg_results = mc_args |> map(a => infer_expr(expr: a.value, scope: scope))
-      let typed_mc_args = mc_args |> enumerate |> map(pair =>
-        let a = pair.second
-        let ar = match skip(mc_arg_results, pair.first) |> first {
-          Some { value: r } => r
-          None => ok_infer(texpr: TypedLiteral { value: LitNull, resolved_type: unit_type(), span: no_span() })
-        }
-        TypedNamedArg { name: a.name, value: ar.typed }
+      let mc_arg_infer_results = mc_args |> map(a =>
+        let ar = infer_expr(expr: a.value, scope: scope)
+        ArgInferResult { typed_arg: TypedNamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
       )
-      let mc_arg_diags = flat_map(mc_arg_results, r => r.diagnostics)
+      let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
+      let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let result_type = match check_service_method_call(receiver_type: recv_type, method: method_name, scope: scope) {
         Some { value: svc_type } => svc_type
         None => infer_method_call_type(receiver_type: recv_type, method: method_name)
@@ -1553,27 +1561,22 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
 // -------------------------------------------------------------------------
 
 fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: SourceSpan, scope: InferScope) -> InferResult {
-  let fi_results = map(field_inits, fi => infer_expr(expr: fi.value, scope: scope))
-  let typed_fields = field_inits |> enumerate |> map(pair =>
-    let fi = pair.second
-    let fi_result = match skip(fi_results, pair.first) |> first {
-      Some { value: p } => p
-      None => ok_infer(texpr: TypedLiteral { value: LitNull, resolved_type: unit_type(), span: no_span() })
+  let fi_infer_results = map(field_inits, fi =>
+    let ar = infer_expr(expr: fi.value, scope: scope)
+    FieldInferResult {
+      typed_field: TypedFieldInit { name: fi.name, value: ar.typed },
+      infer_result: ar,
+      diagnostics: ar.diagnostics
     }
-    TypedFieldInit { name: fi.name, value: fi_result.typed }
   )
-  let fi_diags = flat_map(fi_results, r => r.diagnostics)
+  let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
+  let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
   if type_name == none {
     // Anonymous record — construct Product from field inits
-    let field_types = field_inits |> enumerate |> map(pair =>
-      let fi = pair.second
-      let fi_result = match skip(fi_results, pair.first) |> first {
-        Some { value: p } => p
-        None => ok_infer(texpr: TypedLiteral { value: LitNull, resolved_type: unit_type(), span: no_span() })
-      }
+    let field_types = fi_infer_results |> map(fir =>
       Field {
-        name: fi.name,
-        type_expr: fi_result.typed.resolved_type,
+        name: fir.typed_field.name,
+        type_expr: fir.infer_result.typed.resolved_type,
         optional: false,
         default_value: none,
         from_key: none,
@@ -1739,8 +1742,8 @@ fn lookup_type_node(env: TypeEnv, name: String) -> Node? {
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   // Merge maps in order: later entries overwrite earlier ones (last-writer-wins),
   // matching the import resolution order: kernel < imports < local.
-  fold(envs, init: TypeEnv { bindings: empty_map(), recursive_types: [] }, f: (acc, env) =>
-    TypeEnv { bindings: map_merge(acc.bindings, env.bindings), recursive_types: [] }
+  fold(envs, init: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() }, f: (acc, env) =>
+    TypeEnv { bindings: map_merge(acc.bindings, env.bindings), recursive_types: [], recursive_type_set: empty_map() }
   )
 }
 
@@ -1849,7 +1852,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       } }
     })
   )
-  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [] }
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
   // Collect imported type bindings from parent modules.
   // For type resolution to work on imported types (e.g., FileClassification
@@ -1857,13 +1860,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // not just explicitly named ones. The import list controls what the
   // module author uses directly; resolution needs the transitive picture.
   let import_result = fold(module.resolved_imports, init: BuildTypeEnvResult {
-    env: TypeEnv { bindings: empty_map(), recursive_types: [] },
+    env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
     diagnostics: []
   }, f: (acc, imp) =>
     match map_get(parent_index, imp.module_path) {
       Some { value: typed_parent } =>
         BuildTypeEnvResult {
-          env: TypeEnv { bindings: map_merge(acc.env.bindings, typed_parent.type_env.bindings), recursive_types: [] },
+          env: TypeEnv { bindings: map_merge(acc.env.bindings, typed_parent.type_env.bindings), recursive_types: [], recursive_type_set: empty_map() },
           diagnostics: acc.diagnostics
         }
       None =>
@@ -1921,15 +1924,16 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       acc
     }
   )
-  let local_env = TypeEnv { bindings: local_bindings, recursive_types: [] }
+  let local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
   // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, local_env])
   // Precompute which types participate in cycles. Used by resolve_type_expr
   // to break recursive expansion without threading a growing resolving list.
   let cycle_set = detect_type_cycles(bindings: merged.bindings)
+  let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   BuildTypeEnvResult {
-    env: TypeEnv { bindings: merged.bindings, recursive_types: cycle_set },
+    env: TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map },
     diagnostics: import_result.diagnostics
   }
 }
@@ -2022,7 +2026,7 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       // Cycle detection: if this type participates in a dependency cycle,
       // keep it as Named to break infinite expansion. Sound because the
       // name is guaranteed to be defined in the environment.
-      if env.recursive_types |> any(r => r == name) {
+      if is_recursive_type(env: env, name: name) {
         ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
       } else {
         match lookup_type(env: env, name: name) {
@@ -2729,7 +2733,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let variant_locals = fold(resolved_items, init: variant_locals, f: (acc, item) =>
     match item.connective {
       Some { value: Disj } =>
-        if resolved_env.env.recursive_types |> any(r => r == item.name) {
+        if is_recursive_type(env: resolved_env.env, name: item.name) {
           fold(item.children, init: acc, f: (vacc, child) =>
             map_insert(vacc, child.name, TypeBinding {
               name: child.name,
@@ -2748,7 +2752,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
       match titem.connective {
         Some { value: Disj } =>
-          if resolved_env.env.recursive_types |> any(r => r == titem.name) {
+          if is_recursive_type(env: resolved_env.env, name: titem.name) {
             fold(titem.children, init: inner_acc, f: (vacc, child) =>
               map_insert(vacc, child.name, TypeBinding {
                 name: child.name,
@@ -2828,7 +2832,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   )
   let all_diags = flat_map(results, r => r.diagnostics)
   EnvResolveResult {
-    env: TypeEnv { bindings: resolved_bindings, recursive_types: env.recursive_types },
+    env: TypeEnv { bindings: resolved_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
     diagnostics: all_diags
   }
 }

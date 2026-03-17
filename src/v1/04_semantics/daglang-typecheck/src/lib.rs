@@ -5212,6 +5212,16 @@ fn infer_expr_type(
                 errors.extend(arg_errors);
                 merge_value_types(acc, arg_ty)
             }),
+        // list_push(list, item) → same type as the list argument
+        Expr::Call(name, args) if name == "list_push" && args.len() == 2 => {
+            let (list_ty, list_errors) =
+                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            errors.extend(list_errors);
+            let (_, item_errors) =
+                infer_expr_type(&args[1].1, local_bindings, infer_context);
+            errors.extend(item_errors);
+            list_ty
+        }
         Expr::Call(name, args) if name == "parse_int" && args.len() == 1 => {
             let (_, arg_errors) = infer_expr_type(&args[0].1, local_bindings, infer_context);
             errors.extend(arg_errors);
