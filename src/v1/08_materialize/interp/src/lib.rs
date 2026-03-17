@@ -12,17 +12,18 @@
 //! 2. Dispatch `Primitive` ops to `daglang_eval` pure evaluators
 //! 3. Dispatch `Callable` ops with fn bodies to `evaluate_fn_body`
 //! 4. Dispatch `Collection` ops to `evaluate_collection`
-//! 5. Delegate transport ops to the `gunbc_lib_transport` layer
+//! 5. Reject runtime metadata/transport nodes that should have been
+//!    intercepted earlier in the pipeline
 //!
 //! # Purity
 //!
-//! Pure dispatch — no I/O. Transport ops are pure passthrough in the
-//! interpreter (inputs forwarded to outputs). Actual transport I/O is
-//! performed by the transport layer at execution time, not here.
+//! Pure dispatch — no I/O. Transport and pipeline nodes are not executed
+//! here; reaching the interpreter is a structural runtime error.
 //!
 //! # Failure
 //!
-//! Returns `ExecError` when evaluation or dispatch fails.
+//! Returns `ExecError` when evaluation fails or an invalid lowered node
+//! reaches the interpreter at runtime.
 
 use std::collections::HashMap;
 
@@ -46,9 +47,9 @@ pub fn execute_lowered_op(
         LoweredOp::Callable { fn_body, .. } => {
             execute_callable(fn_body.as_deref(), &inputs, sibling_fns, data_values)
         }
-        LoweredOp::Transport { .. } => {
-            execute_transport_passthrough(inputs)
-        }
+        LoweredOp::Transport { .. } => Err(ExecError::new(
+            "transport node reached interpreter; transport execution must happen before runtime interpretation",
+        )),
         LoweredOp::Collection { kind, .. } => {
             execute_collection(kind, inputs)
         }
@@ -57,10 +58,9 @@ pub fn execute_lowered_op(
             use gunbc_exec::Executable;
             pattern_op.execute(inputs)
         }
-        LoweredOp::Pipeline { .. } => {
-            // Pipeline nodes are compile-time metadata; no runtime execution.
-            Ok(HashMap::new())
-        }
+        LoweredOp::Pipeline { .. } => Err(ExecError::new(
+            "pipeline node reached interpreter; pipeline metadata must not execute at runtime",
+        )),
         LoweredOp::UnsupportedPattern { name } => {
             Err(ExecError::new(format!("unsupported pattern: {name}")))
         }
@@ -155,26 +155,10 @@ fn execute_primitive(
                 .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
-        // I/O and transport primitives are handled by the transport layer,
-        // not by the pure evaluator. These pass through for now.
-        _ => Ok(inputs),
+        _ => Err(ExecError::new(format!(
+            "primitive op {kind:?} is not supported by the interpreter"
+        ))),
     }
-}
-
-/// Transport ops are delegated to the transport layer at execution time.
-/// In the interpreter, they are pure passthrough: output ports mirror inputs.
-fn execute_transport_passthrough(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let mut outputs = HashMap::new();
-    for (key, value) in &inputs {
-        if let Some(output_name) = key.strip_prefix("__out:") {
-            outputs.insert(output_name.to_string(), value.clone());
-        } else if key != "__deps" && key != "_freshness" && !key.starts_with("res:") {
-            outputs.insert(key.clone(), value.clone());
-        }
-    }
-    Ok(outputs)
 }
 
 fn execute_callable(
@@ -184,17 +168,9 @@ fn execute_callable(
     data_values: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let Some(body) = fn_body else {
-        // No fn body — passthrough. Map __out: prefixed inputs to outputs,
-        // filtering internal ports (__deps, _freshness).
-        let mut outputs = HashMap::new();
-        for (key, value) in inputs {
-            if let Some(output_name) = key.strip_prefix("__out:") {
-                outputs.insert(output_name.to_string(), value.clone());
-            } else if key != "__deps" && key != "_freshness" && !key.starts_with("res:") {
-                outputs.insert(key.clone(), value.clone());
-            }
-        }
-        return Ok(outputs);
+        return Err(ExecError::new(
+            "callable node reached interpreter without a fn_body",
+        ));
     };
 
     let eval_inputs: HashMap<String, Value> = inputs
@@ -205,16 +181,7 @@ fn execute_callable(
 
     match eval::evaluate_fn_body_with_data(body, &eval_inputs, sibling_fns, data_values) {
         Ok(results) => Ok(results),
-        Err(eval_err) => {
-            let has_real_inputs = eval_inputs.values().any(|v| !matches!(v, Value::Skipped));
-            if has_real_inputs {
-                Err(ExecError::new(format!(
-                    "FnBody evaluation failed with real inputs: {eval_err}"
-                )))
-            } else {
-                Ok(HashMap::new())
-            }
-        }
+        Err(eval_err) => Err(ExecError::new(format!("FnBody evaluation failed: {eval_err}"))),
     }
 }
 
@@ -222,14 +189,210 @@ fn execute_collection(
     kind: &gunbc_ir::patterns::CollectionKind,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let items = inputs
+    let items_value = inputs
         .get("items")
-        .and_then(|v| match v {
-            Value::List(items) => Some(items.clone()),
-            _ => None,
-        })
-        .unwrap_or_default();
+        .ok_or_else(|| ExecError::new("collection operation missing `items` input"))?;
+    let items = match items_value {
+        Value::List(items) => items.clone(),
+        other => {
+            return Err(ExecError::new(format!(
+                "collection `items` input must be List, got {}",
+                other.kind()
+            )))
+        }
+    };
     let result = eval::evaluate_collection(kind, items, &inputs)
         .map_err(|e| ExecError::new(e.to_string()))?;
     Ok([("value".to_string(), result)].into_iter().collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use daglang_eval::{LoweredExpr, LoweredFnBody, LoweredStmt};
+    use daglang_lower::{
+        CallableKind, CallableObligation, ServiceCallMetadata, ServiceTransportClass,
+        TransportObligation,
+    };
+    use gunbc_ir::patterns::CollectionKind;
+
+    fn empty_sibling_fns() -> HashMap<String, daglang_eval::LoweredFnBody> {
+        HashMap::new()
+    }
+
+    fn empty_data_values() -> HashMap<String, Value> {
+        HashMap::new()
+    }
+
+    #[test]
+    fn unsupported_primitive_errors_instead_of_passthrough() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "fs_env".to_string(),
+            kind: PrimitiveOpKind::FsEnv,
+        };
+        let inputs = [("path".to_string(), Value::Str("HOME".to_string()))]
+            .into_iter()
+            .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("unsupported primitive should fail closed");
+
+        assert_eq!(
+            err.message,
+            "primitive op FsEnv is not supported by the interpreter"
+        );
+    }
+
+    #[test]
+    fn transport_nodes_error_instead_of_passthrough() {
+        let op = LoweredOp::Transport {
+            module: "test".to_string(),
+            kind: CallableKind::Func,
+            name: "transport_call".to_string(),
+            obligation: TransportObligation::Execute,
+            service_metadata: Box::new(ServiceCallMetadata {
+                service: "svc".to_string(),
+                operation: "op".to_string(),
+                transport: ServiceTransportClass::LocalDirect,
+                idempotent: true,
+                readonly: false,
+                spec: None,
+                response_provider: None,
+            }),
+            is_interactive: false,
+            resource_target: None,
+        };
+        let inputs = [
+            ("value".to_string(), Value::Int(7)),
+            ("__out:result".to_string(), Value::Bool(true)),
+        ]
+        .into_iter()
+        .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("transport nodes should fail closed");
+
+        assert_eq!(
+            err.message,
+            "transport node reached interpreter; transport execution must happen before runtime interpretation"
+        );
+    }
+
+    #[test]
+    fn pipeline_nodes_error_instead_of_returning_empty_outputs() {
+        let op = LoweredOp::Pipeline {
+            module: "test".to_string(),
+            name: "pipeline".to_string(),
+            stages: 1,
+            stage_names: vec!["stage".to_string()],
+        };
+
+        let err =
+            execute_lowered_op(&op, HashMap::new(), &empty_sibling_fns(), &empty_data_values())
+                .expect_err("pipeline nodes should fail closed");
+
+        assert_eq!(
+            err.message,
+            "pipeline node reached interpreter; pipeline metadata must not execute at runtime"
+        );
+    }
+
+    #[test]
+    fn missing_fn_body_errors_instead_of_passthrough() {
+        let op = LoweredOp::Callable {
+            module: "test".to_string(),
+            kind: CallableKind::Func,
+            name: "callable".to_string(),
+            obligation: CallableObligation::None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        };
+        let inputs = [("input".to_string(), Value::Int(1))].into_iter().collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("callables without fn_body should fail closed");
+
+        assert_eq!(
+            err.message,
+            "callable node reached interpreter without a fn_body"
+        );
+    }
+
+    #[test]
+    fn skipped_input_fn_body_failures_error_instead_of_returning_empty_outputs() {
+        let op = LoweredOp::Callable {
+            module: "test".to_string(),
+            kind: CallableKind::Fn,
+            name: "callable".to_string(),
+            obligation: CallableObligation::None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: Some(Box::new(LoweredFnBody::from_stmts(vec![
+                LoweredStmt::Let(
+                    "tmp".to_string(),
+                    LoweredExpr::Call {
+                        name: "missing_builtin".to_string(),
+                        args: vec![(
+                            Some("value".to_string()),
+                            LoweredExpr::Ident("record".to_string()),
+                        )],
+                    },
+                ),
+                LoweredStmt::Return(vec![(
+                    "value".to_string(),
+                    LoweredExpr::Ident("tmp".to_string()),
+                )]),
+            ]))),
+        };
+        let inputs = [("record".to_string(), Value::Skipped)]
+            .into_iter()
+            .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("skipped-input fn-body failures should surface");
+
+        assert!(
+            err.message.contains("FnBody evaluation failed:")
+                && err.message.contains("unknown function: missing_builtin"),
+            "unexpected error: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn collection_missing_items_errors_instead_of_defaulting_to_empty() {
+        let op = LoweredOp::Collection {
+            module: "test".to_string(),
+            callable: "count".to_string(),
+            kind: CollectionKind::Count,
+        };
+
+        let err =
+            execute_lowered_op(&op, HashMap::new(), &empty_sibling_fns(), &empty_data_values())
+                .expect_err("missing items input should fail closed");
+
+        assert_eq!(err.message, "collection operation missing `items` input");
+    }
+
+    #[test]
+    fn collection_non_list_items_error_instead_of_defaulting_to_empty() {
+        let op = LoweredOp::Collection {
+            module: "test".to_string(),
+            callable: "count".to_string(),
+            kind: CollectionKind::Count,
+        };
+        let inputs = [("items".to_string(), Value::Str("wrong".to_string()))]
+            .into_iter()
+            .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("non-list items should fail closed");
+
+        assert_eq!(
+            err.message,
+            "collection `items` input must be List, got String"
+        );
+    }
 }
