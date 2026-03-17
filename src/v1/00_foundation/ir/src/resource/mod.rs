@@ -1852,9 +1852,10 @@ mod tests {
         );
     }
 
-    /// Regression (PR #165): completeness and derivation must both reject the
-    /// `resource_access`-without-`resource_id` state. Neither should accept a
-    /// port shape that the other rejects.
+    /// Regression (PR #165, #166): completeness and derivation must both reject
+    /// the `resource_access`-without-`resource_id` state with the same concrete
+    /// malformed-port details. Neither should accept a port shape that the other
+    /// rejects, and both must identify the same `(node_id, port_name)` pair.
     #[test]
     fn test_completeness_and_derivation_agree_on_missing_resource_id() {
         let mut dag: Dag<String> = Dag::new();
@@ -1866,20 +1867,41 @@ mod tests {
                 .with_kind(NodeKind::TransportExecute),
         );
 
-        // Completeness rejects.
+        // Completeness rejects with concrete port details.
         let completeness = validate_resource_completeness(&dag);
-        assert!(
-            completeness.iter().any(|v| matches!(
-                v,
-                ResourceCompletenessViolation::IncompleteResourcePort { .. }
-            )),
-            "completeness must catch missing resource_id"
-        );
+        let (comp_node, comp_port) = completeness
+            .iter()
+            .find_map(|v| match v {
+                ResourceCompletenessViolation::IncompleteResourcePort {
+                    node_id,
+                    port_name,
+                } => Some((node_id.0.as_str(), port_name.as_str())),
+                _ => None,
+            })
+            .expect("completeness must report IncompleteResourcePort");
 
-        // Derivation also rejects.
-        assert!(
-            derive_resource_accesses(&dag).is_err(),
-            "derivation must also reject missing resource_id"
+        // Derivation also rejects with concrete port details.
+        let errors = derive_resource_accesses(&dag)
+            .expect_err("derivation must reject missing resource_id");
+        let (deriv_node, deriv_port) = errors
+            .iter()
+            .find_map(|e| match e {
+                ResourceAccessError::MissingResourceId {
+                    node_id,
+                    port_name,
+                } => Some((node_id.0.as_str(), port_name.as_str())),
+                _ => None,
+            })
+            .expect("derivation must report MissingResourceId");
+
+        // Both functions must identify the same malformed port.
+        assert_eq!(
+            comp_node, deriv_node,
+            "completeness and derivation must agree on node_id"
+        );
+        assert_eq!(
+            comp_port, deriv_port,
+            "completeness and derivation must agree on port_name"
         );
     }
 }

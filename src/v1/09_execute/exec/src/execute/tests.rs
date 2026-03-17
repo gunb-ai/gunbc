@@ -2877,7 +2877,29 @@ fn real_mode_executes_resource_environment_node() {
 fn test_execute_fails_early_on_missing_resource_id() {
     // Regression: a port with resource_access but no resource_id must cause
     // execute_flat_parallel to fail before any node executes.
-    let mut dag: Dag<Produce> = Dag::new();
+
+    #[derive(Debug, Clone)]
+    struct CountingOp {
+        port: String,
+        value: Value,
+        counter: Arc<AtomicUsize>,
+    }
+
+    impl Executable for CountingOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            self.counter.fetch_add(1, Ordering::SeqCst);
+            let mut out = HashMap::new();
+            out.insert(self.port.clone(), self.value.clone());
+            Ok(out)
+        }
+    }
+
+    let counter = Arc::new(AtomicUsize::new(0));
+
+    let mut dag: Dag<CountingOp> = Dag::new();
     let mut broken_port = Port::new("db_conn", "DbHandle");
     broken_port.resource_access = Some(AccessMode::Write);
     // resource_id intentionally left as None.
@@ -2886,13 +2908,21 @@ fn test_execute_fails_early_on_missing_resource_id() {
         "source",
         vec![],
         vec![port("handle", "DbHandle")],
-        TestOp::produce("handle", Value::Unit),
+        CountingOp {
+            port: "handle".to_string(),
+            value: Value::Unit,
+            counter: counter.clone(),
+        },
     ));
     dag.add_node(Node::opaque(
         "writer",
         vec![broken_port],
         vec![port("out", "Int")],
-        TestOp::produce("out", Value::Int(1)),
+        CountingOp {
+            port: "out".to_string(),
+            value: Value::Int(1),
+            counter: counter.clone(),
+        },
     ));
     dag.add_edge(edge("source", "handle", "writer", "db_conn"));
 
@@ -2903,48 +2933,10 @@ fn test_execute_fails_early_on_missing_resource_id() {
         msg.contains("resource_access but no resource_id"),
         "error should name the structural violation, got: {msg}"
     );
-}
-
-#[test]
-fn test_executor_completeness_and_derivation_share_missing_resource_id_contract() {
-    // Regression: the executor, validate_resource_completeness, and
-    // derive_resource_accesses must all reject the same port shape
-    // (resource_access present, resource_id absent).
-    use gunbc_ir::resource::{
-        derive_resource_accesses, validate_resource_completeness, ResourceCompletenessViolation,
-    };
-
-    let mut dag: Dag<Produce> = Dag::new();
-    let mut broken_port = Port::new("db_conn", "DbHandle");
-    broken_port.resource_access = Some(AccessMode::Write);
-    // resource_id intentionally left as None.
-
-    dag.add_node(Node::opaque(
-        "writer",
-        vec![broken_port],
-        vec![port("out", "Int")],
-        TestOp::produce("out", Value::Int(1)),
-    ));
-
-    // 1. Executor rejects.
-    assert!(
-        execute_dag(&dag, ExecuteConfig::default()).is_err(),
-        "executor must reject missing resource_id"
-    );
-
-    // 2. Completeness rejects.
-    let violations = validate_resource_completeness(&dag);
-    assert!(
-        violations.iter().any(|v| matches!(
-            v,
-            ResourceCompletenessViolation::IncompleteResourcePort { .. }
-        )),
-        "completeness must reject missing resource_id"
-    );
-
-    // 3. Conflict derivation rejects.
-    assert!(
-        derive_resource_accesses(&dag).is_err(),
-        "conflict derivation must reject missing resource_id"
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "no nodes should have executed before the resource_id check"
     );
 }
+
