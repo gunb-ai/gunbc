@@ -677,9 +677,16 @@ fn node_to_type_expr_leaf(n: Node) -> TypeExpr {
     node_to_type_expr_map(children: n.children, span: n.span)
   } else if n.children |> count == 1 {
     node_to_type_expr_container(name: n.name, children: n.children, span: n.span)
+  } else if is_primitive_name(name: n.name) {
+    Primitive { name: n.name, span: n.span }
   } else {
     Named { name: n.name, span: n.span }
   }
+}
+
+fn is_primitive_name(name: String) -> Bool {
+  name == "String" || name == "Int" || name == "Bool" || name == "Float"
+    || name == "Secret" || name == "Json" || name == "Unit" || name == "Bytes"
 }
 
 fn node_to_type_expr_map(children: List<Node>, span: SourceSpan) -> TypeExpr {
