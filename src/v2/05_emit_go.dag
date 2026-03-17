@@ -477,13 +477,13 @@ fn emit_go_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body
     }
   }
   if use_tco {
-    let body_str = emit_go_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
+    let body_str = emit_go_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: 1)
     concat("func ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
-      indent(text: body_str, level: 1), "\n}")
+      body_str, "\n}")
   } else {
-    let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope)
+    let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: 0)
     concat("func ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
-      indent(text: concat("return ", body_str), level: 1), "\n}")
+      make_indent(level: 1), "return ", body_str, "\n}")
   }
 }
 
@@ -510,15 +510,15 @@ fn emit_go_func_def(
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
   let ret_type = emit_go_type_expr(type_expr: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope)
+  let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope, depth: 1)
   concat("func ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
-    indent(text: body_str, level: 1), "\n}")
+    body_str, "\n}")
 }
 
 fn emit_go_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match body {
     Let { name: n, value: v, body: inner, span: _ } => {
-      let val_str = emit_go_expr_in_scope(expr: v, registry: registry, scope: scope)
+      let val_str = emit_go_expr_in_scope(expr: v, registry: registry, scope: scope, depth: 0)
       let let_line = concat(go_local_ident(name: n), " := ", val_str)
       let next_scope = extend_scope(scope: scope, name: n, resolved: infer_expr_type(expr: v, scope: scope))
       match inner {
@@ -534,20 +534,20 @@ fn emit_go_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferSc
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
           |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_go_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
+            let line = emit_go_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope, depth: 0)
             let next_scope = scope_after_plain_expr(expr: pair.second, scope: acc.scope)
             let new_text = concat(acc.text, [line])
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
         let last_str = match last_stmt {
-          Some { value: s } => concat("return ", emit_go_expr_in_scope(expr: s, registry: registry, scope: init_state.scope), ", nil")
+          Some { value: s } => concat("return ", emit_go_expr_in_scope(expr: s, registry: registry, scope: init_state.scope, depth: 0), ", nil")
           None => "return struct{}{}, nil"
         }
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    _ => concat("return ", emit_go_expr_in_scope(expr: body, registry: registry, scope: scope), ", nil")
+    _ => concat("return ", emit_go_expr_in_scope(expr: body, registry: registry, scope: scope, depth: 0), ", nil")
   }
 }
 
@@ -593,47 +593,48 @@ fn emit_go_return_type(return_type: TypeExpr) -> String {
 // =========================================================================
 
 fn emit_go_expr(expr: Expr, registry: Map<String, ItemInfo>) -> String {
-  emit_go_expr_in_scope(expr: expr, registry: registry, scope: empty_emit_scope())
+  emit_go_expr_in_scope(expr: expr, registry: registry, scope: empty_emit_scope(), depth: 0)
 }
 
-fn emit_go_expr_in_scope(expr: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_expr_in_scope(expr: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
   match expr {
-    Literal { value: v, span: _ } => go_literal(value: v)
-    Var { name: n, span: _ } => go_local_ident(name: n)
+    Literal { value: v, span: _ } => concat(prefix, go_literal(value: v))
+    Var { name: n, span: _ } => concat(prefix, go_local_ident(name: n))
     FieldAccess { base: b, field: f, span: _ } =>
-      concat(emit_go_expr_in_scope(expr: b, registry: registry, scope: scope), ".", go_export_ident(name: f))
+      concat(prefix, emit_go_expr_in_scope(expr: b, registry: registry, scope: scope, depth: 0), ".", go_export_ident(name: f))
     Call { func: f, args: a, span: _ } =>
-      emit_go_call(func: f, args: a, registry: registry, scope: scope)
+      concat(prefix, emit_go_call(func: f, args: a, registry: registry, scope: scope))
     MethodCall { receiver: r, method: m, args: a, span: _ } =>
-      emit_go_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope)
+      concat(prefix, emit_go_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope))
     Match { scrutinee: s, arms: arm_list, span: _ } =>
-      emit_go_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope)
+      emit_go_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     If { condition: c, then_branch: t, else_branch: e, span: _ } =>
-      emit_go_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope)
+      emit_go_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
     Let { name: n, value: v, body: bd, span: _ } =>
-      emit_go_let(name: n, value: v, body: bd, registry: registry, scope: scope)
+      emit_go_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     RecordLit { type_name: tn, fields: fs, span: _ } =>
-      emit_go_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope)
+      concat(prefix, emit_go_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope))
     ListLit { elements: els, span: _ } =>
-      emit_go_list_lit(elements: els, registry: registry, scope: scope)
+      concat(prefix, emit_go_list_lit(elements: els, registry: registry, scope: scope))
     BinOp { op: o, left: l, right: r, span: _ } =>
-      emit_go_bin_op(op: o, left: l, right: r, registry: registry, scope: scope)
+      concat(prefix, emit_go_bin_op(op: o, left: l, right: r, registry: registry, scope: scope))
     UnaryOp { op: o, operand: e, span: _ } =>
-      emit_go_unary_op(op: o, operand: e, registry: registry, scope: scope)
+      concat(prefix, emit_go_unary_op(op: o, operand: e, registry: registry, scope: scope))
     Lambda { params: ps, body: bd, span: _ } =>
-      emit_go_lambda(params: ps, body: bd, registry: registry, scope: scope)
+      concat(prefix, emit_go_lambda(params: ps, body: bd, registry: registry, scope: scope))
     StringInterp { parts: ps, span: _ } =>
-      emit_go_string_interp(parts: ps, registry: registry, scope: scope)
+      concat(prefix, emit_go_string_interp(parts: ps, registry: registry, scope: scope))
     Block { stmts: ss, span: _ } =>
-      emit_go_block(stmts: ss, registry: registry, scope: scope)
+      emit_go_block(stmts: ss, registry: registry, scope: scope, depth: depth)
     Cast { expr: e, target: t, span: _ } =>
       emit_go_cast(expr: e, target: t, registry: registry, scope: scope)
     ForEach { variable: v, collection: c, body: bd, span: _ } =>
-      emit_go_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope)
+      emit_go_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
     Index { base: b, index: i, span: _ } =>
-      emit_go_index(base: b, index: i, registry: registry, scope: scope)
+      concat(prefix, emit_go_index(base: b, index: i, registry: registry, scope: scope))
     Slice { base: b, start: s, end: e, span: _ } =>
-      emit_go_slice(base: b, start: s, end: e, registry: registry, scope: scope)
+      concat(prefix, emit_go_slice(base: b, start: s, end: e, registry: registry, scope: scope))
   }
 }
 
@@ -665,28 +666,28 @@ fn emit_go_call(func: String, args: List<NamedArg>, registry: Map<String, ItemIn
 }
 
 fn emit_go_call_arg(arg: NamedArg, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  emit_go_expr_in_scope(expr: arg.value, registry: registry, scope: scope)
+  emit_go_expr_in_scope(expr: arg.value, registry: registry, scope: scope, depth: 0)
 }
 
-fn emit_go_for_each(variable: String, collection: Expr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let coll_str = emit_go_expr_in_scope(expr: collection, registry: registry, scope: scope)
+fn emit_go_for_each(variable: String, collection: Expr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let coll_str = emit_go_expr_in_scope(expr: collection, registry: registry, scope: scope, depth: 0)
   let elem_type = for_each_element_type(type_expr: infer_expr_type(expr: collection, scope: scope))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
-  let body_str = emit_go_expr_in_scope(expr: body, registry: registry, scope: body_scope)
-  concat("for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
-    indent(text: body_str, level: 1), "\n}")
+  let body_str = emit_go_expr_in_scope(expr: body, registry: registry, scope: body_scope, depth: depth + 1)
+  concat(make_indent(level: depth), "for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
+    body_str, "\n", make_indent(level: depth), "}")
 }
 
 fn emit_go_index(base: Expr, index: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let base_str = emit_go_expr_in_scope(expr: base, registry: registry, scope: scope)
-  let index_str = emit_go_expr_in_scope(expr: index, registry: registry, scope: scope)
+  let base_str = emit_go_expr_in_scope(expr: base, registry: registry, scope: scope, depth: 0)
+  let index_str = emit_go_expr_in_scope(expr: index, registry: registry, scope: scope, depth: 0)
   concat(base_str, "[", index_str, "]")
 }
 
 fn emit_go_slice(base: Expr, start: Expr, end: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let base_str = emit_go_expr_in_scope(expr: base, registry: registry, scope: scope)
-  let start_str = emit_go_expr_in_scope(expr: start, registry: registry, scope: scope)
-  let end_str = emit_go_expr_in_scope(expr: end, registry: registry, scope: scope)
+  let base_str = emit_go_expr_in_scope(expr: base, registry: registry, scope: scope, depth: 0)
+  let start_str = emit_go_expr_in_scope(expr: start, registry: registry, scope: scope, depth: 0)
+  let end_str = emit_go_expr_in_scope(expr: end, registry: registry, scope: scope, depth: 0)
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
@@ -704,7 +705,7 @@ fn emit_go_method_call(receiver: Expr, method: String, args: List<NamedArg>, reg
         "panic(\"unsupported service receiver\")"
     }
   } else {
-    let recv_str = emit_go_expr_in_scope(expr: receiver, registry: registry, scope: scope)
+    let recv_str = emit_go_expr_in_scope(expr: receiver, registry: registry, scope: scope, depth: 0)
     let first_arg_str = emit_go_first_arg(args: args, registry: registry, scope: scope)
     // Map known DSL pipe methods to Go equivalents
     if method == "count" {
@@ -743,19 +744,19 @@ fn emit_go_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, scop
 // Ref: Go Spec "Switch statements"
 // =========================================================================
 
-fn emit_go_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let scrut_str = emit_go_expr_in_scope(expr: scrutinee, registry: registry, scope: scope)
-  let arm_strs = arms |> map(arm => emit_go_switch_case(arm: arm, registry: registry, scope: scope))
+fn emit_go_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let scrut_str = emit_go_expr_in_scope(expr: scrutinee, registry: registry, scope: scope, depth: 0)
+  let arm_strs = arms |> map(arm => emit_go_switch_case(arm: arm, registry: registry, scope: scope, depth: depth))
   let arms_str = arm_strs |> join(separator: "\n")
   concat("switch ", scrut_str, " {\n", arms_str, "\n}")
 }
 
-fn emit_go_switch_case(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_switch_case(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let pat_str = emit_go_pattern(pattern: arm.pattern)
-  let body_str = emit_go_expr_in_scope(expr: arm.body, registry: registry, scope: scope)
+  let body_str = emit_go_expr_in_scope(expr: arm.body, registry: registry, scope: scope, depth: depth + 1)
   let case_keyword = if pat_str == "_" { "default" } else { concat("case ", pat_str) }
-  concat(case_keyword, ":\n",
-    indent(text: body_str, level: 1))
+  concat(make_indent(level: depth), case_keyword, ":\n",
+    body_str)
 }
 
 fn emit_go_pattern(pattern: MatchPattern) -> String {
@@ -778,19 +779,22 @@ fn emit_go_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> 
 // Go if/else is a statement; for expression context we use a func literal.
 // =========================================================================
 
-fn emit_go_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let cond_str = emit_go_expr_in_scope(expr: condition, registry: registry, scope: scope)
-  let then_str = emit_go_expr_in_scope(expr: then_branch, registry: registry, scope: scope)
+fn emit_go_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  let cond_str = emit_go_expr_in_scope(expr: condition, registry: registry, scope: scope, depth: 0)
   match else_branch {
     Some { value: eb } => {
-      let else_str = emit_go_expr_in_scope(expr: eb, registry: registry, scope: scope)
-      concat("func() interface{} { if ", cond_str, " {\n",
-        indent(text: concat("return ", then_str), level: 1), "\n} else {\n",
-        indent(text: concat("return ", else_str), level: 1), "\n} }()")
+      let then_str = emit_go_expr_in_scope(expr: then_branch, registry: registry, scope: scope, depth: 0)
+      let else_str = emit_go_expr_in_scope(expr: eb, registry: registry, scope: scope, depth: 0)
+      concat(prefix, "func() interface{} { if ", cond_str, " {\n",
+        make_indent(level: depth + 1), "return ", then_str, "\n", prefix, "} else {\n",
+        make_indent(level: depth + 1), "return ", else_str, "\n", prefix, "} }()")
     }
-    None =>
-      concat("if ", cond_str, " {\n",
-        indent(text: then_str, level: 1), "\n}")
+    None => {
+      let then_str = emit_go_expr_in_scope(expr: then_branch, registry: registry, scope: scope, depth: depth + 1)
+      concat(prefix, "if ", cond_str, " {\n",
+        then_str, "\n", prefix, "}")
+    }
   }
 }
 
@@ -799,13 +803,13 @@ fn emit_go_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: 
 // Go: name := value
 // =========================================================================
 
-fn emit_go_let(name: String, value: Expr, body: Expr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let val_str = emit_go_expr_in_scope(expr: value, registry: registry, scope: scope)
-  let let_line = concat(go_local_ident(name: name), " := ", val_str)
+fn emit_go_let(name: String, value: Expr, body: Expr?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let val_str = emit_go_expr_in_scope(expr: value, registry: registry, scope: scope, depth: 0)
+  let let_line = concat(make_indent(level: depth), go_local_ident(name: name), " := ", val_str)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: infer_expr_type(expr: value, scope: scope))
-      concat(let_line, "\n", emit_go_expr_in_scope(expr: bd, registry: registry, scope: next_scope))
+      concat(let_line, "\n", emit_go_expr_in_scope(expr: bd, registry: registry, scope: next_scope, depth: depth))
     None => let_line
   }
 }
@@ -823,7 +827,7 @@ fn emit_go_record_lit(type_name: String?, fields: List<FieldInit>, registry: Map
         "map[string]interface{}{}"
       } else {
         let field_strs = fields |> map(f =>
-          concat("\t\"", f.name, "\": ", emit_go_expr_in_scope(expr: f.value, registry: registry, scope: scope), ",")
+          concat("\t\"", f.name, "\": ", emit_go_expr_in_scope(expr: f.value, registry: registry, scope: scope, depth: 0), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat("map[string]interface{}{\n", fields_str, "\n}")
@@ -834,7 +838,7 @@ fn emit_go_record_lit(type_name: String?, fields: List<FieldInit>, registry: Map
         concat(tn, "{}")
       } else {
         let field_strs = fields |> map(f =>
-          concat(go_export_ident(name: f.name), ": ", emit_go_expr_in_scope(expr: f.value, registry: registry, scope: scope))
+          concat(go_export_ident(name: f.name), ": ", emit_go_expr_in_scope(expr: f.value, registry: registry, scope: scope, depth: 0))
         )
         let fields_str = field_strs |> join(separator: ", ")
         concat(tn, "{", fields_str, "}")
@@ -851,7 +855,7 @@ fn emit_go_list_lit(elements: List<Expr>, registry: Map<String, ItemInfo>, scope
   if elements |> count == 0 {
     "[]interface{}{}"
   } else {
-    let el_strs = elements |> map(e => emit_go_expr_in_scope(expr: e, registry: registry, scope: scope))
+    let el_strs = elements |> map(e => emit_go_expr_in_scope(expr: e, registry: registry, scope: scope, depth: 0))
     let els_str = el_strs |> join(separator: ", ")
     concat("[]interface{}{", els_str, "}")
   }
@@ -862,8 +866,8 @@ fn emit_go_list_lit(elements: List<Expr>, registry: Map<String, ItemInfo>, scope
 // =========================================================================
 
 fn emit_go_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let l_str = emit_go_expr_in_scope(expr: left, registry: registry, scope: scope)
-  let r_str = emit_go_expr_in_scope(expr: right, registry: registry, scope: scope)
+  let l_str = emit_go_expr_in_scope(expr: left, registry: registry, scope: scope, depth: 0)
+  let r_str = emit_go_expr_in_scope(expr: right, registry: registry, scope: scope, depth: 0)
   if is_null_coalesce(op: op) {
     // x ?? y -> Go has no null-coalesce; use a helper func pattern
     concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
@@ -880,7 +884,7 @@ fn emit_go_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: Map<String, 
 // =========================================================================
 
 fn emit_go_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_expr_in_scope(expr: operand, registry: registry, scope: scope)
+  let expr_str = emit_go_expr_in_scope(expr: operand, registry: registry, scope: scope, depth: 0)
   match op {
     Not => concat(go_keyword(key: "not"), expr_str)
     Neg => concat("-", expr_str)
@@ -895,7 +899,7 @@ fn emit_go_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemIn
 fn emit_go_lambda(params: List<String>, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let param_strs = params |> map(p => concat(go_local_ident(name: p), " interface{}"))
   let params_str = param_strs |> join(separator: ", ")
-  let body_str = emit_go_expr_in_scope(expr: body, registry: registry, scope: scope)
+  let body_str = emit_go_expr_in_scope(expr: body, registry: registry, scope: scope, depth: 0)
   concat("func(", params_str, ") interface{} { return ", body_str, " }")
 }
 
@@ -922,7 +926,7 @@ fn go_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: I
   match part {
     Text { value: v } => InterpPart { format_segment: v, arg_expr: "" }
     Interpolation { expr: e } =>
-      InterpPart { format_segment: "%v", arg_expr: emit_go_expr_in_scope(expr: e, registry: registry, scope: scope) }
+      InterpPart { format_segment: "%v", arg_expr: emit_go_expr_in_scope(expr: e, registry: registry, scope: scope, depth: 0) }
   }
 }
 
@@ -930,9 +934,9 @@ fn go_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: I
 // Block emission
 // =========================================================================
 
-fn emit_go_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
-    let line = emit_go_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
+    let line = emit_go_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope, depth: depth)
     let next_scope = scope_after_plain_expr(expr: stmt, scope: acc.scope)
     let new_text = concat(acc.text, [line])
     BlockEmitState { text: new_text, scope: next_scope }
@@ -946,7 +950,7 @@ fn emit_go_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: Infe
 // =========================================================================
 
 fn emit_go_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_expr_in_scope(expr: expr, registry: registry, scope: scope)
+  let expr_str = emit_go_expr_in_scope(expr: expr, registry: registry, scope: scope, depth: 0)
   let ty_str = emit_go_type_expr(type_expr: target)
   concat(ty_str, "(", expr_str, ")")
 }
@@ -959,50 +963,51 @@ fn emit_go_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, s
 // tree clones. The old plain-Expr functions are kept for data/service code.
 // =========================================================================
 
-fn emit_go_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
   match texpr {
-    TypedLiteral { value: v, resolved_type: _, span: _ } => go_literal(value: v)
-    TypedVar { name: n, resolved_type: _, span: _ } => go_local_ident(name: n)
+    TypedLiteral { value: v, resolved_type: _, span: _ } => concat(prefix, go_literal(value: v))
+    TypedVar { name: n, resolved_type: _, span: _ } => concat(prefix, go_local_ident(name: n))
     TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
-      concat(emit_go_typed_expr(texpr: b, registry: registry, scope: scope), ".", go_export_ident(name: f))
+      concat(prefix, emit_go_typed_expr(texpr: b, registry: registry, scope: scope, depth: 0), ".", go_export_ident(name: f))
     TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
-      emit_go_typed_call(func: f, args: a, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_call(func: f, args: a, registry: registry, scope: scope))
     TypedMethodCall { receiver: r, method: m, args: a, resolved_type: _, span: _ } =>
-      emit_go_typed_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope))
     TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
-      emit_go_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope)
+      emit_go_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
-      emit_go_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope)
+      emit_go_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
-      emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope)
+      emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     TypedRecordLit { type_name: tn, fields: fs, resolved_type: _, span: _ } =>
-      emit_go_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope))
     TypedListLit { elements: els, resolved_type: _, span: _ } =>
-      emit_go_typed_list_lit(elements: els, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_list_lit(elements: els, registry: registry, scope: scope))
     TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: _ } =>
-      emit_go_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope))
     TypedUnaryOp { op: o, operand: e, resolved_type: _, span: _ } =>
-      emit_go_typed_unary_op(op: o, operand: e, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_unary_op(op: o, operand: e, registry: registry, scope: scope))
     TypedLambda { params: ps, body: bd, resolved_type: _, span: _ } =>
-      emit_go_typed_lambda(params: ps, body: bd, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_lambda(params: ps, body: bd, registry: registry, scope: scope))
     TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
-      emit_go_typed_string_interp(parts: ps, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_string_interp(parts: ps, registry: registry, scope: scope))
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
-      emit_go_typed_block(stmts: ss, registry: registry, scope: scope)
+      emit_go_typed_block(stmts: ss, registry: registry, scope: scope, depth: depth)
     TypedCast { expr: e, target: t, resolved_type: _, span: _ } =>
       emit_go_typed_cast(expr: e, target: t, registry: registry, scope: scope)
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: _ } =>
-      emit_go_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope)
+      emit_go_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
     TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
-      emit_go_typed_index(base: b, index: i, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_index(base: b, index: i, registry: registry, scope: scope))
     TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
-      emit_go_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope)
+      concat(prefix, emit_go_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope))
   }
 }
 
 fn emit_go_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-  let arg_strs = ordered_args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope))
+  let arg_strs = ordered_args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
@@ -1016,25 +1021,25 @@ fn emit_go_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<Str
   concat(go_export_ident(name: func), "(", args_str, ")")
 }
 
-fn emit_go_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let coll_str = emit_go_typed_expr(texpr: collection, registry: registry, scope: scope)
+fn emit_go_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let coll_str = emit_go_typed_expr(texpr: collection, registry: registry, scope: scope, depth: 0)
   let elem_type = for_each_element_type(type_expr: collection.resolved_type)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
-  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope)
-  concat("for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
-    indent(text: body_str, level: 1), "\n}")
+  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
+  concat(make_indent(level: depth), "for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
+    body_str, "\n", make_indent(level: depth), "}")
 }
 
 fn emit_go_typed_index(base: TypedExpr, index: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope)
-  let index_str = emit_go_typed_expr(texpr: index, registry: registry, scope: scope)
+  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0)
+  let index_str = emit_go_typed_expr(texpr: index, registry: registry, scope: scope, depth: 0)
   concat(base_str, "[", index_str, "]")
 }
 
 fn emit_go_typed_slice(base: TypedExpr, start: TypedExpr, end: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope)
-  let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope)
-  let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope)
+  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0)
+  let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope, depth: 0)
+  let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0)
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
@@ -1044,7 +1049,7 @@ fn emit_go_typed_method_call(receiver: TypedExpr, method: String, args: List<Typ
     match extract_typed_service_name(receiver: receiver) {
       Some { value: svc_name } => {
         let var_name = service_var_name(service_name: svc_name)
-        let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope))
+        let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
         let args_str = arg_strs |> join(separator: ", ")
         concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
       }
@@ -1052,7 +1057,7 @@ fn emit_go_typed_method_call(receiver: TypedExpr, method: String, args: List<Typ
         "panic(\"unsupported service receiver\")"
     }
   } else {
-    let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope)
+    let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
     let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
     // Map known DSL pipe methods to Go equivalents
     if method == "count" {
@@ -1072,7 +1077,7 @@ fn emit_go_typed_method_call(receiver: TypedExpr, method: String, args: List<Typ
       concat("strings.Split(", recv_str, ", \"\")")
     } else {
       // Generic method call
-      let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope))
+      let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
       let args_str = arg_strs |> join(separator: ", ")
       concat(recv_str, ".", go_export_ident(name: method), "(", args_str, ")")
     }
@@ -1081,49 +1086,52 @@ fn emit_go_typed_method_call(receiver: TypedExpr, method: String, args: List<Typ
 
 fn emit_go_typed_first_arg(args: List<TypedNamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match args |> first {
-    Some { value: a } => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope)
+    Some { value: a } => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0)
     None => "panic(\"missing method argument\")"
   }
 }
 
-fn emit_go_typed_match(scrutinee: TypedExpr, arms: List<TypedMatchArm>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let scrut_str = emit_go_typed_expr(texpr: scrutinee, registry: registry, scope: scope)
-  let arm_strs = arms |> map(arm => emit_go_typed_switch_case(arm: arm, registry: registry, scope: scope))
+fn emit_go_typed_match(scrutinee: TypedExpr, arms: List<TypedMatchArm>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let scrut_str = emit_go_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: 0)
+  let arm_strs = arms |> map(arm => emit_go_typed_switch_case(arm: arm, registry: registry, scope: scope, depth: depth))
   let arms_str = arm_strs |> join(separator: "\n")
-  concat("switch ", scrut_str, " {\n", arms_str, "\n}")
+  concat(make_indent(level: depth), "switch ", scrut_str, " {\n", arms_str, "\n", make_indent(level: depth), "}")
 }
 
-fn emit_go_typed_switch_case(arm: TypedMatchArm, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_switch_case(arm: TypedMatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let pat_str = emit_go_pattern(pattern: arm.pattern)
-  let body_str = emit_go_typed_expr(texpr: arm.body, registry: registry, scope: scope)
+  let body_str = emit_go_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth + 1)
   let case_keyword = if pat_str == "_" { "default" } else { concat("case ", pat_str) }
-  concat(case_keyword, ":\n",
-    indent(text: body_str, level: 1))
+  concat(make_indent(level: depth), case_keyword, ":\n",
+    body_str)
 }
 
-fn emit_go_typed_if(condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let cond_str = emit_go_typed_expr(texpr: condition, registry: registry, scope: scope)
-  let then_str = emit_go_typed_expr(texpr: then_branch, registry: registry, scope: scope)
+fn emit_go_typed_if(condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  let cond_str = emit_go_typed_expr(texpr: condition, registry: registry, scope: scope, depth: 0)
   match else_branch {
     Some { value: eb } => {
-      let else_str = emit_go_typed_expr(texpr: eb, registry: registry, scope: scope)
-      concat("func() interface{} { if ", cond_str, " {\n",
-        indent(text: concat("return ", then_str), level: 1), "\n} else {\n",
-        indent(text: concat("return ", else_str), level: 1), "\n} }()")
+      let then_str = emit_go_typed_expr(texpr: then_branch, registry: registry, scope: scope, depth: 0)
+      let else_str = emit_go_typed_expr(texpr: eb, registry: registry, scope: scope, depth: 0)
+      concat(prefix, "func() interface{} { if ", cond_str, " {\n",
+        make_indent(level: depth + 1), "return ", then_str, "\n", prefix, "} else {\n",
+        make_indent(level: depth + 1), "return ", else_str, "\n", prefix, "} }()")
     }
-    None =>
-      concat("if ", cond_str, " {\n",
-        indent(text: then_str, level: 1), "\n}")
+    None => {
+      let then_str = emit_go_typed_expr(texpr: then_branch, registry: registry, scope: scope, depth: depth + 1)
+      concat(prefix, "if ", cond_str, " {\n",
+        then_str, "\n", prefix, "}")
+    }
   }
 }
 
-fn emit_go_typed_let(name: String, value: TypedExpr, body: TypedExpr?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope)
-  let let_line = concat(go_local_ident(name: name), " := ", val_str)
+fn emit_go_typed_let(name: String, value: TypedExpr, body: TypedExpr?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0)
+  let let_line = concat(make_indent(level: depth), go_local_ident(name: name), " := ", val_str)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: value.resolved_type)
-      concat(let_line, "\n", emit_go_typed_expr(texpr: bd, registry: registry, scope: next_scope))
+      concat(let_line, "\n", emit_go_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth))
     None => let_line
   }
 }
@@ -1136,7 +1144,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<TypedFieldInit>, re
         "map[string]interface{}{}"
       } else {
         let field_strs = fields |> map(f =>
-          concat("\t\"", f.name, "\": ", emit_go_typed_expr(texpr: f.value, registry: registry, scope: scope), ",")
+          concat("\t\"", f.name, "\": ", emit_go_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: 0), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat("map[string]interface{}{\n", fields_str, "\n}")
@@ -1147,7 +1155,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<TypedFieldInit>, re
         concat(tn, "{}")
       } else {
         let field_strs = fields |> map(f =>
-          concat(go_export_ident(name: f.name), ": ", emit_go_typed_expr(texpr: f.value, registry: registry, scope: scope))
+          concat(go_export_ident(name: f.name), ": ", emit_go_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: 0))
         )
         let fields_str = field_strs |> join(separator: ", ")
         concat(tn, "{", fields_str, "}")
@@ -1159,15 +1167,15 @@ fn emit_go_typed_list_lit(elements: List<TypedExpr>, registry: Map<String, ItemI
   if elements |> count == 0 {
     "[]interface{}{}"
   } else {
-    let el_strs = elements |> map(e => emit_go_typed_expr(texpr: e, registry: registry, scope: scope))
+    let el_strs = elements |> map(e => emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: 0))
     let els_str = el_strs |> join(separator: ", ")
     concat("[]interface{}{", els_str, "}")
   }
 }
 
 fn emit_go_typed_bin_op(op: BinOpKind, left: TypedExpr, right: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let l_str = emit_go_typed_expr(texpr: left, registry: registry, scope: scope)
-  let r_str = emit_go_typed_expr(texpr: right, registry: registry, scope: scope)
+  let l_str = emit_go_typed_expr(texpr: left, registry: registry, scope: scope, depth: 0)
+  let r_str = emit_go_typed_expr(texpr: right, registry: registry, scope: scope, depth: 0)
   if is_null_coalesce(op: op) {
     // x ?? y -> Go has no null-coalesce; use a helper func pattern
     concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
@@ -1178,7 +1186,7 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: TypedExpr, right: TypedExpr, regist
 }
 
 fn emit_go_typed_unary_op(op: UnaryOpKind, operand: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope)
+  let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope, depth: 0)
   match op {
     Not => concat(go_keyword(key: "not"), expr_str)
     Neg => concat("-", expr_str)
@@ -1188,7 +1196,7 @@ fn emit_go_typed_unary_op(op: UnaryOpKind, operand: TypedExpr, registry: Map<Str
 fn emit_go_typed_lambda(params: List<String>, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let param_strs = params |> map(p => concat(go_local_ident(name: p), " interface{}"))
   let params_str = param_strs |> join(separator: ", ")
-  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope)
+  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0)
   concat("func(", params_str, ") interface{} { return ", body_str, " }")
 }
 
@@ -1210,13 +1218,13 @@ fn go_typed_interp_segment(part: TypedStringPart, registry: Map<String, ItemInfo
   match part {
     TypedText { value: v } => InterpPart { format_segment: v, arg_expr: "" }
     TypedInterpolation { expr: e } =>
-      InterpPart { format_segment: "%v", arg_expr: emit_go_typed_expr(texpr: e, registry: registry, scope: scope) }
+      InterpPart { format_segment: "%v", arg_expr: emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: 0) }
   }
 }
 
-fn emit_go_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
-    let line = emit_go_typed_expr(texpr: stmt, registry: registry, scope: acc.scope)
+    let line = emit_go_typed_expr(texpr: stmt, registry: registry, scope: acc.scope, depth: depth)
     let next_scope = scope_after_expr(texpr: stmt, scope: acc.scope)
     let new_text = concat(acc.text, [line])
     BlockEmitState { text: new_text, scope: next_scope }
@@ -1225,7 +1233,7 @@ fn emit_go_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, 
 }
 
 fn emit_go_typed_cast(expr: TypedExpr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_typed_expr(texpr: expr, registry: registry, scope: scope)
+  let expr_str = emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: 0)
   let ty_str = emit_go_type_expr(type_expr: target)
   concat(ty_str, "(", expr_str, ")")
 }
@@ -1234,39 +1242,40 @@ fn emit_go_typed_cast(expr: TypedExpr, target: TypeExpr, registry: Map<String, I
 // TypedExpr func body — for func (workflow) emission
 // =========================================================================
 
-fn emit_go_typed_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
   match body {
     TypedLet { name: n, value: v, body: inner, resolved_type: _, span: _ } => {
-      let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope)
-      let let_line = concat(go_local_ident(name: n), " := ", val_str)
+      let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
+      let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
       let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
       match inner {
         Some { value: bd } =>
-          concat(let_line, "\n", emit_go_typed_func_body(body: bd, registry: registry, scope: next_scope))
+          concat(let_line, "\n", emit_go_typed_func_body(body: bd, registry: registry, scope: next_scope, depth: depth))
         None => let_line
       }
     }
     TypedBlock { stmts: ss, resolved_type: _, span: _ } => {
       if ss |> count == 0 {
-        "return struct{}{}, nil"
+        concat(prefix, "return struct{}{}, nil")
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
           |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_go_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope)
+            let line = emit_go_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
             let new_text = concat(acc.text, [line])
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
         let last_str = match last_stmt {
-          Some { value: s } => concat("return ", emit_go_typed_expr(texpr: s, registry: registry, scope: init_state.scope), ", nil")
-          None => "return struct{}{}, nil"
+          Some { value: s } => concat(prefix, "return ", emit_go_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: 0), ", nil")
+          None => concat(prefix, "return struct{}{}, nil")
         }
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    _ => concat("return ", emit_go_typed_expr(texpr: body, registry: registry, scope: scope), ", nil")
+    _ => concat(prefix, "return ", emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0), ", nil")
   }
 }
 
@@ -1277,88 +1286,90 @@ fn emit_go_typed_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, sco
 // reading resolved_type from sub-expressions instead of cache lookups.
 // =========================================================================
 
-fn emit_go_typed_tco_body(texpr: TypedExpr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let inner = emit_go_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope)
-  concat("for {\n", indent(text: inner, level: 1), "\n}")
+fn emit_go_typed_tco_body(texpr: TypedExpr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let inner = emit_go_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
+  concat(make_indent(level: depth), "for {\n", inner, "\n", make_indent(level: depth), "}")
 }
 
-fn emit_go_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
   match texpr {
     TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
       if f == fn_name {
-        emit_go_typed_tco_reassign(args: a, params: params, registry: registry, scope: scope)
+        emit_go_typed_tco_reassign(args: a, params: params, registry: registry, scope: scope, depth: depth)
       } else {
         let call_str = emit_go_typed_call(func: f, args: a, registry: registry, scope: scope)
-        concat("return ", call_str)
+        concat(prefix, "return ", call_str)
       }
     TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
-      let cond_str = emit_go_typed_expr(texpr: c, registry: registry, scope: scope)
-      let then_str = emit_go_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: scope)
+      let cond_str = emit_go_typed_expr(texpr: c, registry: registry, scope: scope, depth: 0)
+      let then_str = emit_go_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
       match e {
         Some { value: eb } =>
-          let else_str = emit_go_typed_tco_expr(texpr: eb, fn_name: fn_name, params: params, registry: registry, scope: scope)
-          concat("if ", cond_str, " {\n",
-            indent(text: then_str, level: 1), "\n} else {\n",
-            indent(text: else_str, level: 1), "\n}")
+          let else_str = emit_go_typed_tco_expr(texpr: eb, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
+          concat(prefix, "if ", cond_str, " {\n",
+            then_str, "\n", prefix, "} else {\n",
+            else_str, "\n", prefix, "}")
         None =>
-          concat("if ", cond_str, " {\n",
-            indent(text: then_str, level: 1), "\n}")
+          concat(prefix, "if ", cond_str, " {\n",
+            then_str, "\n", prefix, "}")
       }
     TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
-      let scrut_str = emit_go_typed_expr(texpr: s, registry: registry, scope: scope)
+      let scrut_str = emit_go_typed_expr(texpr: s, registry: registry, scope: scope, depth: 0)
       let arm_strs = arm_list |> map(arm =>
-        emit_go_typed_tco_switch_case(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: scope))
+        emit_go_typed_tco_switch_case(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
       let arms_str = arm_strs |> join(separator: "\n")
-      concat("switch ", scrut_str, " {\n", arms_str, "\n}")
+      concat(prefix, "switch ", scrut_str, " {\n", arms_str, "\n", prefix, "}")
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
-      let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope)
-      let let_line = concat(go_local_ident(name: n), " := ", val_str)
+      let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
+      let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
       let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
       match bd {
         Some { value: b } =>
-          concat(let_line, "\n", emit_go_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope))
+          concat(let_line, "\n", emit_go_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: depth))
         None => let_line
       }
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
       if ss |> count == 0 {
-        "return"
+        concat(prefix, "return")
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
           |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_go_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope)
+            let line = emit_go_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
             let new_text = concat(acc.text, [line])
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_str = match ss |> last {
           Some { value: last_expr } =>
-            emit_go_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope)
-          None => "return"
+            emit_go_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: depth)
+          None => concat(prefix, "return")
         }
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     _ =>
-      let val_str = emit_go_typed_expr(texpr: texpr, registry: registry, scope: scope)
-      concat("return ", val_str)
+      let val_str = emit_go_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: 0)
+      concat(prefix, "return ", val_str)
   }
 }
 
-fn emit_go_typed_tco_switch_case(arm: TypedMatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_tco_switch_case(arm: TypedMatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let pat_str = emit_go_pattern(pattern: arm.pattern)
-  let body_str = emit_go_typed_tco_expr(texpr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope)
-  concat("case ", pat_str, ":\n",
-    indent(text: body_str, level: 1))
+  let body_str = emit_go_typed_tco_expr(texpr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
+  concat(make_indent(level: depth), "case ", pat_str, ":\n",
+    body_str)
 }
 
-fn emit_go_typed_tco_reassign(args: List<TypedNamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let ordered_args = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope))
+fn emit_go_typed_tco_reassign(args: List<TypedNamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  let ordered_args = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
   let param_names = params |> map(p => go_local_ident(name: p.name))
   let temp_lets = ordered_args |> enumerate |> map(pair =>
-    concat("tco", to_string(value: pair.first), " := ", pair.second))
+    concat(prefix, "tco", to_string(value: pair.first), " := ", pair.second))
   let assigns = param_names |> enumerate |> map(pair =>
-    concat(pair.second, " = tco", to_string(value: pair.first)))
-  let all_lines = concat(temp_lets, assigns, ["continue"])
+    concat(prefix, pair.second, " = tco", to_string(value: pair.first))
+  let all_lines = concat(temp_lets, assigns, [concat(prefix, "continue")])
   all_lines |> join(separator: "\n")
 }
 
@@ -1424,40 +1435,41 @@ fn emit_go_operation_method(service_name: String, transport: TransportBinding, o
     Some { value: op_transport } => op_transport
     None => transport
   }
-  let body = emit_go_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry)
+  let body = emit_go_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry, depth: 1)
   concat("func ", receiver, " ", go_export_ident(name: op_node.name),
     "(", params_str, ") (", ret_type, ", error) {\n",
-    indent(text: body, level: 1), "\n}")
+    body, "\n}")
 }
 
-fn emit_go_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>) -> String {
+fn emit_go_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
   match transport {
     RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_go_rest_call(op_name: op_name, auth: a, headers: hs)
+      emit_go_rest_call(op_name: op_name, auth: a, headers: hs, depth: depth)
     ShellBinding { argv: _, env: envs } =>
-      emit_go_shell_call(op_name: op_name, env: envs)
+      emit_go_shell_call(op_name: op_name, env: envs, depth: depth)
     FileBinding { base_path: _ } =>
-      emit_go_file_call(op_name: op_name)
+      emit_go_file_call(op_name: op_name, depth: depth)
     LocalBinding =>
-      emit_go_local_call(op_name: op_name)
+      emit_go_local_call(op_name: op_name, depth: depth)
   }
 }
 
-fn emit_go_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>) -> String {
-  let url_line = concat("url := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BaseURL)")
-  let body_line = "reqBody := bytes.NewBuffer(nil)"
-  let req_line = concat("req, err := http.NewRequest(\"POST\", url, reqBody)\n",
+fn emit_go_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  let url_line = concat(prefix, "url := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BaseURL)")
+  let body_line = concat(prefix, "reqBody := bytes.NewBuffer(nil)")
+  let req_line = concat(prefix, "req, err := http.NewRequest(\"POST\", url, reqBody)\n",
     "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}")
   let auth_line = match auth {
     Some { value: ac } =>
-      concat("req.Header.Set(\"", ac.header, "\", c.AuthToken)")
+      concat(prefix, "req.Header.Set(\"", ac.header, "\", c.AuthToken)")
     None => ""
   }
   let header_lines = headers |> map(h =>
-    concat("req.Header.Set(\"", h.name, "\", \"TODO\")")
+    concat(prefix, "req.Header.Set(\"", h.name, "\", \"TODO\")")
   )
   let send_lines = concat(
-    "resp, err := http.DefaultClient.Do(req)\n",
+    prefix, "resp, err := http.DefaultClient.Do(req)\n",
     "if err != nil {\n\treturn nil, fmt.Errorf(\"sending request: %w\", err)\n}\n",
     "defer resp.Body.Close()\n",
     "body, err := io.ReadAll(resp.Body)\n",
@@ -1473,14 +1485,15 @@ fn emit_go_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef
   all_lines |> join(separator: "\n")
 }
 
-fn emit_go_shell_call(op_name: String, env: List<EnvDef>) -> String {
-  let cmd_line = concat("cmd := exec.Command(\"", to_snake(name: op_name), "\")")
-  let dir_line = "cmd.Dir = c.WorkingDir"
+fn emit_go_shell_call(op_name: String, env: List<EnvDef>, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  let cmd_line = concat(prefix, "cmd := exec.Command(\"", to_snake(name: op_name), "\")")
+  let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
   let env_lines = env |> map(e =>
-    concat("cmd.Env = append(cmd.Env, \"", e.name, "=TODO\")")
+    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=TODO\")")
   )
   let run_lines = concat(
-    "output, err := cmd.Output()\n",
+    prefix, "output, err := cmd.Output()\n",
     "if err != nil {\n\treturn \"\", fmt.Errorf(\"running command: %w\", err)\n}\n",
     "return string(output), nil"
   )
@@ -1488,17 +1501,19 @@ fn emit_go_shell_call(op_name: String, env: List<EnvDef>) -> String {
   all_lines |> join(separator: "\n")
 }
 
-fn emit_go_file_call(op_name: String) -> String {
+fn emit_go_file_call(op_name: String, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
   concat(
-    "path := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BasePath)\n",
+    prefix, "path := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BasePath)\n",
     "data, err := os.ReadFile(path)\n",
     "if err != nil {\n\treturn \"\", fmt.Errorf(\"reading file: %w\", err)\n}\n",
     "return string(data), nil"
   )
 }
 
-fn emit_go_local_call(op_name: String) -> String {
-  concat("// Local binding — direct function call\n",
+fn emit_go_local_call(op_name: String, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  concat(prefix, "// Local binding — direct function call\n",
     "return ", go_export_ident(name: op_name), "(), nil")
 }
 
@@ -1512,20 +1527,20 @@ fn emit_go_local_call(op_name: String) -> String {
 fn emit_go_resource_def(item: TypedNode) -> String {
   // After dissolution, capability children are identified by having params
   let cap_children = item.children |> filter(c => c.params |> count > 0)
-  let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c))
+  let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1))
   let methods_str = methods |> join(separator: "\n")
   concat("type ", item.name, " interface {\n",
-    indent(text: methods_str, level: 1), "\n}")
+    methods_str, "\n}")
 }
 
-fn emit_go_capability_method(cap_node: TypedNode) -> String {
+fn emit_go_capability_method(cap_node: TypedNode, depth: Int) -> String {
   let input_params = cap_node.params |> map(p =>
     concat(go_local_ident(name: p.name), " ", emit_go_type_expr(type_expr: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, return_type on the child node IS the output type
   let ret = emit_go_type_expr(type_expr: cap_node.return_type)
-  concat(go_export_ident(name: cap_node.name), "(", params_str, ") (", ret, ", error)")
+  concat(make_indent(level: depth), go_export_ident(name: cap_node.name), "(", params_str, ") (", ret, ", error)")
 }
 
 // =========================================================================
@@ -1536,7 +1551,7 @@ fn emit_go_capability_method(cap_node: TypedNode) -> String {
 
 fn emit_go_data_def(name: String, type_expr: TypeExpr, value: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let ty_str = emit_go_type_expr(type_expr: type_expr)
-  let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope)
+  let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0)
   concat("var ", go_export_ident(name: name), " ", ty_str, " = ", val_str)
 }
 
