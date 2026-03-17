@@ -3306,16 +3306,49 @@ fn example(items: List<String>) -> Int {
         }
     }
 
+    /// Proves the `port_contract` removal in `02_parse.dag` is a prerequisite
+    /// for this batch: `Node` in `00_core.dag` has no `port_contract` field,
+    /// so any generated Node constructor referencing it would fail `cargo check`.
     #[test]
-    fn v2_generated_parse_module_omits_removed_port_contract_field() {
+    fn v2_port_contract_removal_is_prerequisite_for_cargo_check() {
+        // 1. Verify the Node type definition has no port_contract field.
+        let core_source = read_v2_file("src/v2/00_core.dag");
+        let core_ast = daglang_syntax::parser::parse_to_result(&core_source);
+        let node_td = core_ast
+            .ast
+            .items
+            .iter()
+            .find_map(|item| {
+                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
+                    if td.name == "Node" {
+                        return Some(td);
+                    }
+                }
+                None
+            })
+            .expect("Node type must exist in 00_core.dag");
+
+        let fields = match &node_td.body {
+            daglang_syntax::ast::TypeBody::Record(fields) => fields,
+            other => panic!("Node should be a record type, got: {:?}", other),
+        };
+        assert!(
+            !fields.iter().any(|f| f.name == "port_contract"),
+            "Node must not have a port_contract field (dissolved in Stream 3)"
+        );
+
+        // 2. Verify the generated parse.rs has no port_contract: assignments.
+        //    If 02_parse.dag still had `port_contract: none` in its Node
+        //    constructors, this would appear in the generated code and
+        //    cargo check would fail against the Node struct above.
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-parse-port-contract");
         let parse_rs = std::fs::read_to_string(tmp_dir.join("src/parse.rs"))
             .expect("generated parse.rs should exist");
 
         assert!(
-            !parse_rs.contains("port_contract:"),
-            "generated parser should not construct removed Node.port_contract field:\n{}",
-            parse_rs
+            !parse_rs.contains("port_contract"),
+            "generated parse.rs must not reference port_contract — \
+             Node has no such field, so this would break cargo check"
         );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
