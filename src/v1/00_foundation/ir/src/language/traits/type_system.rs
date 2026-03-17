@@ -13,21 +13,34 @@
 use crate::dag::{Dag, Port};
 use crate::language::{language_metadata_for, LanguageOp};
 use crate::node::Node;
+use crate::types::BuiltinType;
+
+/// A single builtin primitive -> target-language type mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrimitiveTypeMapping {
+    pub builtin_type: &'static str,
+    pub concrete_type: &'static str,
+}
 
 /// Type mappings for a specific language.
 /// Aligned with `gunbai-integrations-contracts::TypeSystemMapping` from
 /// the-gunbai for cross-repo compatibility (F2.3).
 #[derive(Debug, Clone)]
 pub struct TypeMapping {
-    pub string: &'static str,
-    pub int: &'static str,
-    pub float: &'static str,
-    pub bool: &'static str,
-    pub bytes: &'static str,
-    pub json: &'static str,
+    /// Primitive spellings keyed by builtin names from `std.types`.
+    pub primitive_mappings: &'static [PrimitiveTypeMapping],
     pub list_template: &'static str,
     pub optional_template: &'static str,
     pub map_template: &'static str,
+}
+
+impl TypeMapping {
+    fn primitive_mapping(&self, builtin_type: &str) -> Option<&'static str> {
+        self.primitive_mappings
+            .iter()
+            .find(|mapping| mapping.builtin_type == builtin_type)
+            .map(|mapping| mapping.concrete_type)
+    }
 }
 
 /// Build the TypeSystemMapping SubDag node.
@@ -68,13 +81,15 @@ pub fn build_type_system_mapping_subdag() -> Node<LanguageOp> {
 pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
     let mapping = language_metadata_for(language).and_then(|m| m.type_mapping)?;
 
+    if let Some(builtin) = BuiltinType::lookup(abstract_type) {
+        if builtin.supports_target_language_primitive_mapping() {
+            return mapping
+                .primitive_mapping(builtin.name)
+                .map(|concrete_type| concrete_type.to_string());
+        }
+    }
+
     let result = match abstract_type {
-        "String" => mapping.string.to_string(),
-        "Int" => mapping.int.to_string(),
-        "Float" => mapping.float.to_string(),
-        "Bool" => mapping.bool.to_string(),
-        "Bytes" => mapping.bytes.to_string(),
-        "Json" => mapping.json.to_string(),
         _ if abstract_type.starts_with("List<") => {
             let inner = &abstract_type[5..abstract_type.len() - 1];
             let inner_type = map_type(inner, language)?;
@@ -145,6 +160,10 @@ mod tests {
         assert_eq!(map_type("Int", "rust"), Some("i64".to_string()));
         assert_eq!(map_type("Bool", "rust"), Some("bool".to_string()));
         assert_eq!(
+            map_type("Json", "rust"),
+            Some("serde_json::Value".to_string())
+        );
+        assert_eq!(
             map_type("List<String>", "rust"),
             Some("Vec<String>".to_string())
         );
@@ -159,6 +178,7 @@ mod tests {
         assert_eq!(map_type("String", "python"), Some("str".to_string()));
         assert_eq!(map_type("Int", "python"), Some("int".to_string()));
         assert_eq!(map_type("Bool", "python"), Some("bool".to_string()));
+        assert_eq!(map_type("Json", "python"), Some("Any".to_string()));
         assert_eq!(
             map_type("List<String>", "python"),
             Some("list[str]".to_string())
@@ -173,6 +193,7 @@ mod tests {
     fn test_map_type_typescript() {
         assert_eq!(map_type("String", "typescript"), Some("string".to_string()));
         assert_eq!(map_type("Int", "typescript"), Some("number".to_string()));
+        assert_eq!(map_type("Json", "typescript"), Some("unknown".to_string()));
         assert_eq!(
             map_type("List<String>", "typescript"),
             Some("string[]".to_string())
@@ -184,5 +205,30 @@ mod tests {
         assert_eq!(optional_wrapper("rust"), Some("Option<{0}>"));
         assert_eq!(optional_wrapper("python"), Some("{0} | None"));
         assert_eq!(optional_wrapper("typescript"), Some("{0} | undefined"));
+    }
+
+    #[test]
+    fn language_mappings_cover_all_builtin_target_primitives() {
+        let expected: std::collections::BTreeSet<_> = BuiltinType::all()
+            .iter()
+            .filter(|builtin| builtin.supports_target_language_primitive_mapping())
+            .map(|builtin| builtin.name)
+            .collect();
+
+        for (language, mapping) in [
+            ("rust", &crate::language::RUST_TYPES),
+            ("python", &crate::language::PYTHON_TYPES),
+            ("typescript", &crate::language::TYPESCRIPT_TYPES),
+        ] {
+            let actual: std::collections::BTreeSet<_> = mapping
+                .primitive_mappings
+                .iter()
+                .map(|entry| entry.builtin_type)
+                .collect();
+            assert_eq!(
+                actual, expected,
+                "{language} primitive mappings drifted from builtin type authority"
+            );
+        }
     }
 }

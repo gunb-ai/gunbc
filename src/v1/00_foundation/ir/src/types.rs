@@ -1122,6 +1122,17 @@ impl BuiltinType {
         BUILTIN_TYPES.iter().find(|b| b.name == name)
     }
 
+    /// Whether this builtin participates in target-language primitive mappings.
+    ///
+    /// Generic containers (`List`, `Optional`, `Map`) are handled by
+    /// templates, not direct primitive spellings.
+    pub fn supports_target_language_primitive_mapping(&self) -> bool {
+        matches!(
+            self.name,
+            "String" | "Int" | "Float" | "Bool" | "Bytes" | "Json"
+        )
+    }
+
     /// Check whether a type name is a builtin type.
     pub fn is_builtin(name: &str) -> bool {
         BUILTIN_TYPES.iter().any(|b| b.name == name)

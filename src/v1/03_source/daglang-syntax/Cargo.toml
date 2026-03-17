@@ -6,3 +6,6 @@ license.workspace = true
 description = "Lexer and parser for the .dag DSL — produces an unresolved AST"
 
 [dependencies]
+
+[dev-dependencies]
+gunbc-ir = { path = "../../00_foundation/ir" }

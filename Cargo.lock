@@ -249,6 +249,9 @@ dependencies = [
 [[package]]
 name = "daglang-syntax"
 version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+]
 
 [[package]]
 name = "daglang-typecheck"

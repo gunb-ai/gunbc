@@ -15,7 +15,7 @@
 
 use crate::dag::{Dag, Port};
 use crate::language::traits::naming::LanguageNaming;
-use crate::language::traits::type_system::TypeMapping;
+use crate::language::traits::type_system::{PrimitiveTypeMapping, TypeMapping};
 use crate::language::LanguageOp;
 use crate::language::NamingCase;
 use crate::node::Node;
@@ -37,13 +37,35 @@ pub const PYTHON: PythonConfig = PythonConfig {
 };
 
 /// Python type mappings.
+const PYTHON_PRIMITIVE_MAPPINGS: &[PrimitiveTypeMapping] = &[
+    PrimitiveTypeMapping {
+        builtin_type: "String",
+        concrete_type: "str",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Int",
+        concrete_type: "int",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Float",
+        concrete_type: "float",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Bool",
+        concrete_type: "bool",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Bytes",
+        concrete_type: "bytes",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Json",
+        concrete_type: "Any",
+    },
+];
+
 pub const PYTHON_TYPES: TypeMapping = TypeMapping {
-    string: "str",
-    int: "int",
-    float: "float",
-    bool: "bool",
-    bytes: "bytes",
-    json: "Any",
+    primitive_mappings: PYTHON_PRIMITIVE_MAPPINGS,
     list_template: "list[{0}]",
     optional_template: "{0} | None",
     map_template: "dict[{0}, {1}]",

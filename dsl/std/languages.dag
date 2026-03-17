@@ -45,13 +45,18 @@ type NamingConvention {
   module_case: NamingCase
 }
 
+// "What is one primitive target-language spelling?"
+//
+// Builtin names come from std.types / compiler builtins. TypeMapping only
+// carries the concrete spellings, so the primitive set has one authority.
+type PrimitiveTypeMapping {
+  builtin_type: String
+  concrete_type: String
+}
+
 // "What is a type system mapping?" -- abstract -> concrete types.
 type TypeMapping {
-  string: String
-  int: String
-  float: String
-  bool: String
-  bytes: String
+  primitive_mappings: List<PrimitiveTypeMapping>
   list_template: String
   optional_template: String
   map_template: String
@@ -107,11 +112,14 @@ data rust_language: Language = {
     module_case: SnakeCase
   },
   types: {
-    string: "String",
-    int: "i64",
-    float: "f64",
-    bool: "bool",
-    bytes: "Vec<u8>",
+    primitive_mappings: [
+      { builtin_type: "String", concrete_type: "String" },
+      { builtin_type: "Int", concrete_type: "i64" },
+      { builtin_type: "Float", concrete_type: "f64" },
+      { builtin_type: "Bool", concrete_type: "bool" },
+      { builtin_type: "Bytes", concrete_type: "Vec<u8>" },
+      { builtin_type: "Json", concrete_type: "serde_json::Value" }
+    ],
     list_template: "Vec<{0}>",
     optional_template: "Option<{0}>",
     map_template: "HashMap<{0}, {1}>"
@@ -137,11 +145,14 @@ data go_language: Language = {
     module_case: Lowercase
   },
   types: {
-    string: "string",
-    int: "int64",
-    float: "float64",
-    bool: "bool",
-    bytes: "[]byte",
+    primitive_mappings: [
+      { builtin_type: "String", concrete_type: "string" },
+      { builtin_type: "Int", concrete_type: "int64" },
+      { builtin_type: "Float", concrete_type: "float64" },
+      { builtin_type: "Bool", concrete_type: "bool" },
+      { builtin_type: "Bytes", concrete_type: "[]byte" },
+      { builtin_type: "Json", concrete_type: "interface{}" }
+    ],
     list_template: "[]{0}",
     optional_template: "*{0}",
     map_template: "map[{0}]{1}"
@@ -167,11 +178,14 @@ data python_language: Language = {
     module_case: SnakeCase
   },
   types: {
-    string: "str",
-    int: "int",
-    float: "float",
-    bool: "bool",
-    bytes: "bytes",
+    primitive_mappings: [
+      { builtin_type: "String", concrete_type: "str" },
+      { builtin_type: "Int", concrete_type: "int" },
+      { builtin_type: "Float", concrete_type: "float" },
+      { builtin_type: "Bool", concrete_type: "bool" },
+      { builtin_type: "Bytes", concrete_type: "bytes" },
+      { builtin_type: "Json", concrete_type: "Any" }
+    ],
     list_template: "list[{0}]",
     optional_template: "{0} | None",
     map_template: "dict[{0}, {1}]"
@@ -197,11 +211,14 @@ data typescript_language: Language = {
     module_case: CamelCase
   },
   types: {
-    string: "string",
-    int: "number",
-    float: "number",
-    bool: "boolean",
-    bytes: "Uint8Array",
+    primitive_mappings: [
+      { builtin_type: "String", concrete_type: "string" },
+      { builtin_type: "Int", concrete_type: "number" },
+      { builtin_type: "Float", concrete_type: "number" },
+      { builtin_type: "Bool", concrete_type: "boolean" },
+      { builtin_type: "Bytes", concrete_type: "Uint8Array" },
+      { builtin_type: "Json", concrete_type: "unknown" }
+    ],
     list_template: "{0}[]",
     optional_template: "{0} | undefined",
     map_template: "Map<{0}, {1}>"

@@ -15,7 +15,7 @@
 
 use crate::dag::{Dag, Port};
 use crate::language::traits::naming::LanguageNaming;
-use crate::language::traits::type_system::TypeMapping;
+use crate::language::traits::type_system::{PrimitiveTypeMapping, TypeMapping};
 use crate::language::LanguageOp;
 use crate::language::NamingCase;
 use crate::node::Node;
@@ -41,13 +41,35 @@ pub const TYPESCRIPT: TypeScriptConfig = TypeScriptConfig {
 };
 
 /// TypeScript type mappings (shared with JavaScript).
+const TYPESCRIPT_PRIMITIVE_MAPPINGS: &[PrimitiveTypeMapping] = &[
+    PrimitiveTypeMapping {
+        builtin_type: "String",
+        concrete_type: "string",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Int",
+        concrete_type: "number",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Float",
+        concrete_type: "number",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Bool",
+        concrete_type: "boolean",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Bytes",
+        concrete_type: "Uint8Array",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Json",
+        concrete_type: "unknown",
+    },
+];
+
 pub const TYPESCRIPT_TYPES: TypeMapping = TypeMapping {
-    string: "string",
-    int: "number",
-    float: "number",
-    bool: "boolean",
-    bytes: "Uint8Array",
-    json: "unknown",
+    primitive_mappings: TYPESCRIPT_PRIMITIVE_MAPPINGS,
     list_template: "{0}[]",
     optional_template: "{0} | undefined",
     map_template: "Record<{0}, {1}>",

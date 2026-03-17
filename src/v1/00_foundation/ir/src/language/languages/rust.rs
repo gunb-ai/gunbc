@@ -16,7 +16,7 @@
 
 use crate::dag::{Dag, Port};
 use crate::language::traits::naming::LanguageNaming;
-use crate::language::traits::type_system::TypeMapping;
+use crate::language::traits::type_system::{PrimitiveTypeMapping, TypeMapping};
 use crate::language::LanguageOp;
 use crate::language::NamingCase;
 use crate::node::Node;
@@ -50,13 +50,35 @@ pub const RUST: RustConfig = RustConfig {
 };
 
 /// Rust type mappings.
+const RUST_PRIMITIVE_MAPPINGS: &[PrimitiveTypeMapping] = &[
+    PrimitiveTypeMapping {
+        builtin_type: "String",
+        concrete_type: "String",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Int",
+        concrete_type: "i64",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Float",
+        concrete_type: "f64",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Bool",
+        concrete_type: "bool",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Bytes",
+        concrete_type: "Vec<u8>",
+    },
+    PrimitiveTypeMapping {
+        builtin_type: "Json",
+        concrete_type: "serde_json::Value",
+    },
+];
+
 pub const RUST_TYPES: TypeMapping = TypeMapping {
-    string: "String",
-    int: "i64",
-    float: "f64",
-    bool: "bool",
-    bytes: "Vec<u8>",
-    json: "serde_json::Value",
+    primitive_mappings: RUST_PRIMITIVE_MAPPINGS,
     list_template: "Vec<{0}>",
     optional_template: "Option<{0}>",
     map_template: "HashMap<{0}, {1}>",
