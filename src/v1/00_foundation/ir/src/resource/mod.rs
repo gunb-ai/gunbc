@@ -710,10 +710,7 @@ pub enum ResourceCompletenessViolation {
     MissingDeclaration(MissingResourceDeclaration),
     /// Port has `resource_access` set but no `resource_id` — the same state
     /// that `derive_resource_accesses()` and `execute_flat_parallel()` reject.
-    IncompleteResourcePort {
-        node_id: NodeId,
-        port_name: String,
-    },
+    IncompleteResourcePort { node_id: NodeId, port_name: String },
 }
 
 impl std::fmt::Display for ResourceCompletenessViolation {
@@ -770,9 +767,7 @@ fn has_resource_port<T>(node: &Node<T>) -> bool {
 ///
 /// SubDag wrapper nodes are skipped — their resource ports are auto-inferred from
 /// inner DAGs. Validation recurses into SubDags to check inner nodes.
-pub fn validate_resource_completeness<T>(
-    dag: &Dag<T>,
-) -> Vec<ResourceCompletenessViolation> {
+pub fn validate_resource_completeness<T>(dag: &Dag<T>) -> Vec<ResourceCompletenessViolation> {
     let mut violations = Vec::new();
     validate_resource_completeness_impl(dag, &mut violations);
     violations
@@ -804,14 +799,12 @@ fn validate_resource_completeness_impl<T>(
             NodeBody::Opaque(_) => {
                 if let Some(effect_kind) = classify_effect(node) {
                     if !has_resource_port(node) {
-                        violations.push(
-                            ResourceCompletenessViolation::MissingDeclaration(
-                                MissingResourceDeclaration {
-                                    node_id: node.id.clone(),
-                                    effect_kind,
-                                },
-                            ),
-                        );
+                        violations.push(ResourceCompletenessViolation::MissingDeclaration(
+                            MissingResourceDeclaration {
+                                node_id: node.id.clone(),
+                                effect_kind,
+                            },
+                        ));
                     }
                 }
             }
@@ -1166,8 +1159,7 @@ mod tests {
             "op_a".to_string(),
         ));
 
-        let errors =
-            derive_resource_accesses(&dag).expect_err("missing resource_id should error");
+        let errors = derive_resource_accesses(&dag).expect_err("missing resource_id should error");
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].node_id.0, "node_a");
         assert_eq!(errors[0].port_name, "db_conn");

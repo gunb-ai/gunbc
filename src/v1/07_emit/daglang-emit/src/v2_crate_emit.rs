@@ -27,13 +27,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
-use daglang_syntax::ast_utils::type_expr_to_string;
-use gunbc_ir::code_ir;
 use crate::fn_codegen;
 use crate::render_rust;
 use crate::type_codegen;
 use crate::v2_runtime_shim;
+use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
+use daglang_syntax::ast_utils::type_expr_to_string;
+use gunbc_ir::code_ir;
 
 /// A generated file with its path relative to the crate root and content.
 #[derive(Debug)]

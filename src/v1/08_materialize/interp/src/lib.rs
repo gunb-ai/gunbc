@@ -257,10 +257,7 @@ mod tests {
         let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
             .expect_err("GetField with missing input port should fail closed");
 
-        assert_eq!(
-            err.message,
-            "GetField `name`: missing input port `record`"
-        );
+        assert_eq!(err.message, "GetField `name`: missing input port `record`");
     }
 
     #[test]

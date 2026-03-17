@@ -398,9 +398,8 @@ impl Executable for PurePrimitiveOp {
         let result = match &self.kind {
             PrimitiveOpKind::GetField { field, input_port } => {
                 let value = require_input_port(&inputs, input_port, "GetField")?;
-                daglang_lower::eval::eval_get_field(value, field).map_err(|e| {
-                    ExecError::new(format!("on port `{input_port}`: {e}"))
-                })?
+                daglang_lower::eval::eval_get_field(value, field)
+                    .map_err(|e| ExecError::new(format!("on port `{input_port}`: {e}")))?
             }
             PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
                 let values: Vec<Value> = input_ports
@@ -2826,9 +2825,8 @@ mod tests {
                 },
             },
         );
-        let err = resolve_node(&node).expect_err(
-            "GetField with no declared inputs must fail at resolve time",
-        );
+        let err = resolve_node(&node)
+            .expect_err("GetField with no declared inputs must fail at resolve time");
         assert!(
             err.reason.contains("input_port `record` not found"),
             "error should mention missing port: {}",
