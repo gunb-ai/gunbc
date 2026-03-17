@@ -2,15 +2,17 @@
 //!
 //! Walks a parsed `SourceFile` AST structurally (no text scanning) and
 //! reports import bindings that are never referenced in the module body.
-//! Module-level imports (no explicit bindings) are checked by their
-//! terminal segment or alias.
+//! Module-level imports (no explicit bindings) can also be checked
+//! against an export index derived from the resolved module graph.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use daglang_syntax::ast::{
     CapabilityDef, Expr, Field, ForBody, Item, MatchArm, OperationDef, Pattern, SourceFile, Stmt,
     TransportBinding, TypeBody, TypeExpr, UsesClause,
 };
+
+use crate::ResolvedModule;
 
 /// A single unused import binding or module-level import.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +23,9 @@ pub struct UnusedImport {
     pub binding: Option<String>,
 }
 
+/// Exported-name lookup keyed by dotted module path.
+pub type ModuleExportIndex = HashMap<String, HashSet<String>>;
+
 /// Find all unused imports in a parsed source file.
 ///
 /// An import binding is "unused" if its name never appears in any type
@@ -28,6 +33,42 @@ pub struct UnusedImport {
 /// Module-level imports (without explicit bindings) are checked against
 /// their terminal path segment or alias.
 pub fn find_unused_imports(source: &SourceFile) -> Vec<UnusedImport> {
+    find_unused_imports_inner(source, None)
+}
+
+/// Build a one-pass index of names exported by each resolved module.
+///
+/// This lets module-level unused-import analysis match imports against the
+/// names the imported module actually exports, including dotted service
+/// namespaces like `gcp.STS` and `github.Gist`.
+pub fn build_module_export_index(modules: &[ResolvedModule]) -> ModuleExportIndex {
+    modules
+        .iter()
+        .map(|module| {
+            (
+                module.module_path.as_dotted(),
+                collect_exported_names(&module.ast),
+            )
+        })
+        .collect()
+}
+
+/// Find all unused imports using a precomputed module export index.
+///
+/// When the current module uses a module-level import through an exported
+/// service or type namespace whose name differs from the module path, the
+/// export index keeps that import from being reported as unused.
+pub fn find_unused_imports_with_export_index(
+    source: &SourceFile,
+    export_index: &ModuleExportIndex,
+) -> Vec<UnusedImport> {
+    find_unused_imports_inner(source, Some(export_index))
+}
+
+fn find_unused_imports_inner(
+    source: &SourceFile,
+    export_index: Option<&ModuleExportIndex>,
+) -> Vec<UnusedImport> {
     let mut referenced = HashSet::new();
     collect_all_referenced_names(source, &mut referenced);
 
@@ -52,7 +93,11 @@ pub fn find_unused_imports(source: &SourceFile) -> Vec<UnusedImport> {
                     .as_deref()
                     .or_else(|| import.node.path.segments.last().map(|s| s.as_str()))
                     .unwrap_or("");
-                if !referenced.contains(module_name) {
+                let path_str = import.node.path.as_dotted();
+                let export_used = export_index
+                    .and_then(|index| index.get(&path_str))
+                    .is_some_and(|exports| exports.iter().any(|name| referenced.contains(name)));
+                if !(export_used || referenced.contains(module_name)) {
                     unused.push(UnusedImport {
                         module_path: path_str,
                         binding: None,
@@ -62,6 +107,86 @@ pub fn find_unused_imports(source: &SourceFile) -> Vec<UnusedImport> {
         }
     }
     unused
+}
+
+fn collect_exported_names(source: &SourceFile) -> HashSet<String> {
+    let mut exported = HashSet::new();
+    for item in &source.items {
+        collect_exported_item_names(&item.node, &mut exported);
+    }
+    for import in &source.imports {
+        if let Some(bindings) = &import.node.bindings {
+            exported.extend(bindings.iter().cloned());
+        }
+    }
+    exported
+}
+
+fn collect_exported_item_names(item: &Item, names: &mut HashSet<String>) {
+    match item {
+        Item::TypeDef(def) => {
+            names.insert(def.name.clone());
+            collect_variant_exports(&def.body, names);
+        }
+        Item::FnDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::FuncDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::PatternDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ServiceDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ResourceDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::InterfaceDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::PipelineDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ProfileDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ProjectDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::FeatureDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::TaskDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::DesignDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ComponentDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::EnvironmentDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ParamDecl(decl) => {
+            names.insert(decl.name.clone());
+        }
+        Item::DataDef(def) => {
+            names.insert(def.name.clone());
+        }
+        Item::ExternAssetDecl(decl) => {
+            names.insert(decl.name.clone());
+        }
+        Item::TestDef(_) | Item::FixtureDef(_) => {}
+    }
+}
+
+fn collect_variant_exports(body: &TypeBody, names: &mut HashSet<String>) {
+    if let TypeBody::Sum(variants) = body {
+        names.extend(variants.iter().map(|variant| variant.name.clone()));
+    }
 }
 
 // ── Name collection ──────────────────────────────────────────────────

@@ -1,7 +1,9 @@
 // Test infrastructure: filesystem access for test fixtures
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
-use daglang_resolve::unused_imports::find_unused_imports;
+use daglang_resolve::unused_imports::{
+    build_module_export_index, find_unused_imports_with_export_index,
+};
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::HashMap;
@@ -1251,14 +1253,126 @@ fn dependency_counts_match_import_structure() {
 }
 
 #[test]
+fn module_import_used_via_exported_service_namespaces_is_not_reported() {
+    let root = unique_temp_dir("unused_import_exported_service_namespaces");
+
+    write_file(
+        &root.join("extdeps/cloud/gcp/sts.dag"),
+        r#"
+        module extdeps.cloud.gcp.sts
+
+        service gcp.STS {
+            operation Exchange {
+                input {}
+                output {}
+                transport shell { argv: ["echo", "sts"] }
+            }
+        }
+
+        service github.OIDC {
+            operation GetToken {
+                input {}
+                output {}
+                transport shell { argv: ["echo", "oidc"] }
+            }
+        }
+        "#,
+    );
+
+    write_file(
+        &root.join("gunbc/auth/patterns.dag"),
+        r#"
+        module gunbc.auth.patterns
+
+        import extdeps.cloud.gcp.sts
+
+        func credential_chain() -> { ok: Bool } {
+            sts = gcp.STS.Exchange()
+            oidc = github.OIDC.GetToken()
+            return { ok: true }
+        }
+        "#,
+    );
+
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
+    let module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "gunbc.auth.patterns")
+        .expect("expected importer module to be present");
+
+    let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
+    assert!(
+        unused.is_empty(),
+        "expected exported service namespaces to mark import as used, got: {unused:?}"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn module_import_used_via_exported_github_service_namespace_is_not_reported() {
+    let root = unique_temp_dir("unused_import_exported_github_namespace");
+
+    write_file(
+        &root.join("extdeps/github/gists.dag"),
+        r#"
+        module extdeps.github.gists
+
+        service github.Gist {
+            operation Create {
+                input {}
+                output {}
+                transport rest { method: POST, path: "/gists" }
+            }
+        }
+        "#,
+    );
+
+    write_file(
+        &root.join("gunbc/tools/gist.dag"),
+        r#"
+        module gunbc.tools.gist
+
+        import extdeps.github.gists
+
+        func gist() -> { ok: Bool } {
+            created = github.Gist.Create()
+            return { ok: true }
+        }
+        "#,
+    );
+
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
+    let module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "gunbc.tools.gist")
+        .expect("expected importer module to be present");
+
+    let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
+    assert!(
+        unused.is_empty(),
+        "expected exported github service namespace to mark import as used, got: {unused:?}"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn real_corpus_has_no_unused_imports() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
     let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
         .expect("expected real dsl graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
 
     let mut violations = Vec::new();
     for module in &graph.modules {
-        let unused = find_unused_imports(&module.ast);
+        let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
         for u in unused {
             let binding_desc = match &u.binding {
                 Some(name) => format!("binding `{name}` from `{}`", u.module_path),
