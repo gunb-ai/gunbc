@@ -3,20 +3,6 @@ use daglang_contract::FileId;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(4)
-        .expect("could not find workspace root")
-        .to_path_buf()
-}
-
-fn read_workspace_file(relative_path: &str) -> String {
-    let path = workspace_root().join(relative_path);
-    std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
-}
-
 fn expr_identity(
     stmts: &[daglang_syntax::ast::Stmt],
     target: &daglang_syntax::ast::Expr,
@@ -792,12 +778,58 @@ fn gcp_dev_storage() -> GcsBucket.Config {
 }
 
 #[test]
-fn strict_mode_typechecks_std_resources_module() {
-    let std_types = read_workspace_file("dsl/std/types.dag");
-    let std_resources = read_workspace_file("dsl/std/resources.dag");
+fn strict_mode_typechecks_resource_module_with_imported_types() {
+    // Hermetic two-module fixture exercising the same contract as std.resources:
+    // a resource module that imports record/refinement types from a sibling module
+    // and uses them in capability input/output positions must typecheck in strict mode.
     let graph = module_graph_from_sources(&[
-        ("dsl/std/types.dag", std_types.as_str()),
-        ("dsl/std/resources.dag", std_resources.as_str()),
+        (
+            "dsl/test/types.dag",
+            r#"module test.types
+
+type FilePath = String where non_empty
+type TextFilePath = FilePath where content(Text)
+type Timestamp = String where pattern("^\\d{4}-\\d{2}-\\d{2}")
+type FileClassification {
+  path: FilePath
+  size: Int
+}"#,
+        ),
+        (
+            "dsl/test/resources.dag",
+            r#"module test.resources
+
+import test.types { FilePath, TextFilePath, Timestamp, FileClassification }
+
+resource Filesystem {
+  kind: Capability
+  mode: ReadWrite
+  acquire {}
+  release {}
+
+  capability probe {
+    input { path: FilePath }
+    output { classification: FileClassification }
+  }
+
+  capability read {
+    input { path: TextFilePath }
+    output { content: String }
+  }
+}
+
+resource Clock {
+  kind: Observation
+  mode: Read
+  acquire { hermetic }
+  release {}
+
+  capability now {
+    input {}
+    output { timestamp: Timestamp }
+  }
+}"#,
+        ),
     ]);
 
     let typed = typecheck_module_graph_with_options(
@@ -806,16 +838,16 @@ fn strict_mode_typechecks_std_resources_module() {
             allow_unresolved_imports: false,
         },
     )
-    .expect("std/resources.dag should type-resolve in strict mode");
+    .expect("resource module with imported types should type-resolve in strict mode");
 
     assert_eq!(typed.module_count(), 2);
     assert!(
         (0..typed.module_count()).any(|index| {
             typed
                 .module(index)
-                .is_some_and(|module| module.module_path.as_dotted() == "std.resources")
+                .is_some_and(|module| module.module_path.as_dotted() == "test.resources")
         }),
-        "typed graph should include std.resources"
+        "typed graph should include test.resources"
     );
 }
 
