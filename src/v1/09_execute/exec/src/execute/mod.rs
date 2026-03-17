@@ -31,7 +31,7 @@ use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
-    canonical_edge_order, detect_boundaries, detect_entrypoints, normalize_resource_id, AccessMode,
+    canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode,
     AppliedCoercion, BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId,
     NodeKind, PortName, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
@@ -956,26 +956,25 @@ fn active_lock_allows_mode(lock: &ActiveResourceLock, mode: AccessMode) -> bool 
 
 fn derive_node_resource_requirements<T>(
     dag: &Dag<T>,
-) -> HashMap<NodeId, Vec<(String, AccessMode)>> {
-    dag.nodes
-        .iter()
-        .map(|node| {
-            let requirements = node
-                .inputs
-                .iter()
-                .filter_map(|port| {
-                    port.resource_access.map(|mode| {
-                        let id = match &port.resource_id {
-                            Some(rid) => rid.0.clone(),
-                            None => normalize_resource_id(&port.name.0),
-                        };
-                        (id, mode)
-                    })
-                })
-                .collect::<Vec<_>>();
-            (node.id.clone(), requirements)
-        })
-        .collect()
+) -> Result<HashMap<NodeId, Vec<(String, AccessMode)>>, ExecError> {
+    let mut result = HashMap::new();
+    for node in &dag.nodes {
+        let mut requirements = Vec::new();
+        for port in &node.inputs {
+            if let Some(mode) = port.resource_access {
+                let id = port.resource_id.as_ref().ok_or_else(|| {
+                    ExecError::new(format!(
+                        "port '{}' on node '{}' has resource_access but no resource_id; \
+                         use Port::resource() or Port::with_resource_access()",
+                        port.name.0, node.id.0,
+                    ))
+                })?;
+                requirements.push((id.0.clone(), mode));
+            }
+        }
+        result.insert(node.id.clone(), requirements);
+    }
+    Ok(result)
 }
 
 fn node_requirements_can_acquire(
@@ -1572,7 +1571,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
 
     let max_concurrency = execution_max_concurrency();
     let file_guard_enabled = runtime_file_guard_enabled();
-    let node_resource_requirements = derive_node_resource_requirements(dag);
+    let node_resource_requirements = derive_node_resource_requirements(dag)?;
     let mut active_resource_locks: HashMap<String, ActiveResourceLock> = HashMap::new();
     let mut in_flight = 0usize;
     let mut obs = observer;

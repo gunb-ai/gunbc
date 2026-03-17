@@ -596,14 +596,18 @@ pub fn validate_resource_ordering<T>(
     }
 }
 
-fn declared_resource_access(port: &Port) -> Option<(ResourceId, AccessMode)> {
-    port.resource_access.map(|mode| {
-        let id = match &port.resource_id {
-            Some(id) => id.clone(),
-            None => ResourceId::new(normalize_resource_id(&port.name.0)),
-        };
-        (id, mode)
-    })
+/// Extract declared resource access from a port.
+///
+/// Returns `Ok(Some(...))` when the port has both `resource_access` and
+/// `resource_id`, `Ok(None)` when neither is set, and `Err(())` when
+/// `resource_access` is present but `resource_id` is missing — a structural
+/// invariant violation that the caller must surface as an error.
+fn declared_resource_access(port: &Port) -> Result<Option<(ResourceId, AccessMode)>, ()> {
+    match (port.resource_access, &port.resource_id) {
+        (Some(mode), Some(id)) => Ok(Some((id.clone(), mode))),
+        (Some(_), None) => Err(()),
+        (None, _) => Ok(None),
+    }
 }
 
 /// Derive resource accesses from declared resource input ports in a DAG.
@@ -618,15 +622,30 @@ pub fn derive_resource_accesses<T>(
     let mut errors = Vec::new();
     for node in &dag.nodes {
         for port in &node.inputs {
-            if let Some((resource_id, mode)) = declared_resource_access(port) {
-                accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode));
-            } else if port.name.0.starts_with(RESOURCE_PORT_PREFIX) {
-                let resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
-                errors.push(ResourceAccessError {
-                    node_id: node.id.clone(),
-                    port_name: port.name.0.clone(),
-                    resource_id,
-                });
+            match declared_resource_access(port) {
+                Ok(Some((resource_id, mode))) => {
+                    accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode));
+                }
+                Ok(None) if port.name.0.starts_with(RESOURCE_PORT_PREFIX) => {
+                    let resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
+                    errors.push(ResourceAccessError {
+                        node_id: node.id.clone(),
+                        port_name: port.name.0.clone(),
+                        resource_id,
+                    });
+                }
+                Ok(None) => {}
+                Err(()) => {
+                    // resource_access present but resource_id missing — invariant violation.
+                    errors.push(ResourceAccessError {
+                        node_id: node.id.clone(),
+                        port_name: port.name.0.clone(),
+                        resource_id: ResourceId::new(format!(
+                            "<missing resource_id for port '{}'>",
+                            port.name.0
+                        )),
+                    });
+                }
             }
         }
     }
@@ -705,9 +724,7 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
 
 /// Check whether a node declares at least one resource input port.
 fn has_resource_port<T>(node: &Node<T>) -> bool {
-    node.inputs
-        .iter()
-        .any(|p| declared_resource_access(p).is_some())
+    node.inputs.iter().any(|p| p.resource_access.is_some())
 }
 
 /// Validate that all effectful nodes declare resource ports.
@@ -1081,6 +1098,27 @@ mod tests {
         assert_eq!(errors[0].node_id.0, "node_a");
         assert_eq!(errors[0].port_name, "res:platform");
         assert_eq!(errors[0].resource_id.0, "platform");
+    }
+
+    #[test]
+    fn test_derive_resource_accesses_missing_resource_id_errors() {
+        // Port with resource_access set but resource_id missing — invariant violation.
+        let mut dag: Dag<String> = Dag::new();
+        let mut port = Port::scalar("db_conn", "DbHandle");
+        port.resource_access = Some(AccessMode::Write);
+        // resource_id intentionally left as None
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![port],
+            vec![],
+            "op_a".to_string(),
+        ));
+
+        let errors =
+            derive_resource_accesses(&dag).expect_err("missing resource_id should error");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].node_id.0, "node_a");
+        assert_eq!(errors[0].port_name, "db_conn");
     }
 
     #[test]
