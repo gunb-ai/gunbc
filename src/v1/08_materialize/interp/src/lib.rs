@@ -67,26 +67,37 @@ pub fn execute_lowered_op(
     }
 }
 
+fn require_input_port<'a>(
+    inputs: &'a HashMap<String, Value>,
+    port: &str,
+    op_name: &str,
+) -> Result<&'a Value, ExecError> {
+    inputs.get(port).ok_or_else(|| {
+        let mut available: Vec<&str> = inputs.keys().map(String::as_str).collect();
+        available.sort_unstable();
+        ExecError::new(format!(
+            "{op_name}: missing required input port `{port}`; available inputs: [{}]",
+            available.join(", ")
+        ))
+    })
+}
+
 fn execute_primitive(
     kind: &PrimitiveOpKind,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match kind {
         PrimitiveOpKind::GetField { field, input_port } => {
-            let value = inputs.get(input_port).cloned().ok_or_else(|| {
-                ExecError::new(format!(
-                    "GetField `{field}`: missing input port `{input_port}`"
-                ))
-            })?;
+            let value = require_input_port(&inputs, input_port, "GetField")?;
             let result =
-                eval::eval_get_field(&value, field).map_err(|e| ExecError::new(e.to_string()))?;
+                eval::eval_get_field(value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
             let values: Vec<Value> = input_ports
                 .iter()
-                .map(|port| inputs.get(port).cloned().unwrap_or(Value::Skipped))
-                .collect();
+                .map(|port| require_input_port(&inputs, port, "StringInterpolate").cloned())
+                .collect::<Result<_, _>>()?;
             let result = eval::eval_string_interpolate(parts, &values)
                 .map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
@@ -257,7 +268,37 @@ mod tests {
         let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
             .expect_err("GetField with missing input port should fail closed");
 
-        assert_eq!(err.message, "GetField `name`: missing input port `record`");
+        assert_eq!(
+            err.message,
+            "GetField: missing required input port `record`; available inputs: [other]"
+        );
+    }
+
+    #[test]
+    fn string_interpolate_missing_input_port_errors() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "string_interpolate".to_string(),
+            kind: PrimitiveOpKind::StringInterpolate {
+                parts: vec![
+                    "hello ".to_string(),
+                    ", you have ".to_string(),
+                    " items".to_string(),
+                ],
+                input_ports: vec!["name".to_string(), "count".to_string()],
+            },
+        };
+        let inputs = [("name".to_string(), Value::Str("Alice".to_string()))]
+            .into_iter()
+            .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("StringInterpolate with missing input port should fail closed");
+
+        assert_eq!(
+            err.message,
+            "StringInterpolate: missing required input port `count`; available inputs: [name]"
+        );
     }
 
     #[test]

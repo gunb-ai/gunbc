@@ -81,6 +81,28 @@ fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
         .collect()
 }
 
+fn missing_declared_input_ports<'a>(
+    referenced_ports: impl IntoIterator<Item = &'a str>,
+    inputs: &[Port],
+) -> Vec<&'a str> {
+    let mut missing = referenced_ports
+        .into_iter()
+        .filter(|port| !inputs.iter().any(|input| input.name.0 == *port))
+        .collect::<Vec<_>>();
+    missing.sort_unstable();
+    missing.dedup();
+    missing
+}
+
+fn declared_input_port_names(inputs: &[Port]) -> Vec<&str> {
+    let mut declared = inputs
+        .iter()
+        .map(|port| port.name.0.as_str())
+        .collect::<Vec<_>>();
+    declared.sort_unstable();
+    declared
+}
+
 fn require_input_port<'a>(
     inputs: &'a HashMap<String, Value>,
     port: &str,
@@ -959,9 +981,10 @@ fn resolve_primitive(
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
         PrimitiveOpKind::GetField { field, input_port } => {
-            if !inputs.iter().any(|p| p.name.0 == *input_port) {
-                let mut declared: Vec<&str> = inputs.iter().map(|p| p.name.0.as_str()).collect();
-                declared.sort_unstable();
+            let missing =
+                missing_declared_input_ports(std::iter::once(input_port.as_str()), inputs);
+            if !missing.is_empty() {
+                let declared = declared_input_port_names(inputs);
                 return Err(ResolveError {
                     node_id: String::new(),
                     reason: format!(
@@ -986,6 +1009,26 @@ fn resolve_primitive(
                 has_else: false,
             }))
         }
+        PrimitiveOpKind::StringInterpolate { input_ports, .. } => {
+            let missing =
+                missing_declared_input_ports(input_ports.iter().map(String::as_str), inputs);
+            if !missing.is_empty() {
+                let declared = declared_input_port_names(inputs);
+                return Err(ResolveError {
+                    node_id: String::new(),
+                    reason: format!(
+                        "StringInterpolate: input_ports [{}] not found in declared inputs [{}] (compiler bug)",
+                        missing.join(", "),
+                        declared.join(", ")
+                    ),
+                });
+            }
+            Ok(DynOp::new(PurePrimitiveOp {
+                kind: kind.clone(),
+                output_port: default_output_port(outputs),
+                has_else: false,
+            }))
+        }
         PrimitiveOpKind::Conditional => {
             let output_port = default_output_port(outputs);
             let has_else = inputs.iter().any(|port| port.name.0 == "else");
@@ -995,8 +1038,7 @@ fn resolve_primitive(
                 has_else,
             }))
         }
-        PrimitiveOpKind::StringInterpolate { .. }
-        | PrimitiveOpKind::BinaryOp { .. }
+        PrimitiveOpKind::BinaryOp { .. }
         | PrimitiveOpKind::UnaryOp { .. }
         | PrimitiveOpKind::MatchDispatch { .. }
         | PrimitiveOpKind::RecordConstruct { .. }
@@ -2398,6 +2440,37 @@ mod tests {
         assert_eq!(
             outputs.get("result").and_then(Value::as_str),
             Some("hello Alice, you have 42 items")
+        );
+    }
+
+    #[test]
+    fn resolve_string_interpolate_rejects_missing_declared_input_ports() {
+        let node = Node::opaque(
+            "interp",
+            vec![Port::new("name", "String")],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "string_interpolate".to_string(),
+                kind: PrimitiveOpKind::StringInterpolate {
+                    parts: vec![
+                        "hello ".to_string(),
+                        ", you have ".to_string(),
+                        " items".to_string(),
+                    ],
+                    input_ports: vec!["name".to_string(), "count".to_string()],
+                },
+            },
+        );
+
+        let err = resolve_node(&node).expect_err(
+            "StringInterpolate with input_ports not matching declared inputs must fail at resolve time",
+        );
+        assert!(
+            err.reason
+                .contains("input_ports [count] not found in declared inputs [name]"),
+            "error should identify the missing declared input port: {}",
+            err.reason
         );
     }
 
