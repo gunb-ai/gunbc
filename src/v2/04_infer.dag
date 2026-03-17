@@ -1060,17 +1060,65 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
   }
 }
 
+// Look up the resolved definition of a type by name in the type environment.
+// Returns the TypeExpr if found, or a Named fallback otherwise.
+fn resolve_scrutinee_type(env: TypeEnv, te: TypeExpr) -> TypeExpr {
+  match te {
+    Named { name: n, span: _ } =>
+      match lookup_type(env: env, name: n) {
+        Some { value: resolved } => resolved
+        None => te
+      }
+    _ => te
+  }
+}
+
+// Find a variant by name in a Coproduct type.
+fn find_variant_in_type(te: TypeExpr, variant_name: String) -> List<Field> {
+  match te {
+    Coproduct { name: _, variants: vs, span: _ } =>
+      let matches = filter(vs, v => v.name == variant_name)
+      if count(matches) > 0 {
+        match first(matches) {
+          Some { value: v } => v.fields
+          None => []
+        }
+      } else {
+        []
+      }
+    _ => []
+  }
+}
+
+// Find a field's type by name in a list of fields.
+fn find_field_type(fields: List<Field>, field_name: String) -> TypeExpr {
+  let matches = filter(fields, f => f.name == field_name)
+  if count(matches) > 0 {
+    match first(matches) {
+      Some { value: f } => f.type_expr
+      None => Named { name: "_inferred", span: no_span() }
+    }
+  } else {
+    Named { name: "_inferred", span: no_span() }
+  }
+}
+
 // Extend scope with match pattern bindings.
+// For VariantPattern, looks up the variant definition in the scrutinee type
+// to assign correct field types instead of _inferred.
 fn extend_scope_with_pattern(scope: InferScope, pattern: MatchPattern, scrutinee_type: TypeExpr) -> InferScope {
   match pattern {
     Bind { name: n } => extend_scope(scope: scope, name: n, resolved: scrutinee_type)
     Wildcard => scope
     LitPattern { value: _ } => scope
-    VariantPattern { name: _, field_bindings: bindings } =>
+    VariantPattern { name: vname, field_bindings: bindings } =>
+      let resolved_scrut = resolve_scrutinee_type(env: scope.type_env, te: scrutinee_type)
+      let variant_fields = find_variant_in_type(te: resolved_scrut, variant_name: vname)
       fold(bindings, init: scope, f: (acc, fb) =>
+        let field_type = find_field_type(fields: variant_fields, field_name: fb.field_name)
         match fb.binding {
-          Bind { name: n } => extend_scope(scope: acc, name: n, resolved: Named { name: "_inferred", span: no_span() })
-          _ => extend_scope_with_pattern(scope: acc, pattern: fb.binding, scrutinee_type: Named { name: "_inferred", span: no_span() })
+          Bind { name: n } => extend_scope(scope: acc, name: n, resolved: field_type)
+          _ => extend_scope_with_pattern(scope: acc, pattern: fb.binding, scrutinee_type: field_type)
         }
       )
   }
