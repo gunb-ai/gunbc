@@ -57,7 +57,8 @@ pub fn build_module_export_index(modules: &[ResolvedModule]) -> ModuleExportInde
 ///
 /// When the current module uses a module-level import through an exported
 /// service or type namespace whose name differs from the module path, the
-/// export index keeps that import from being reported as unused.
+/// export index keeps a non-aliased module import from being reported as
+/// unused.
 pub fn find_unused_imports_with_export_index(
     source: &SourceFile,
     export_index: &ModuleExportIndex,
@@ -94,7 +95,8 @@ fn find_unused_imports_inner(
                     .or_else(|| import.node.path.segments.last().map(|s| s.as_str()))
                     .unwrap_or("");
                 let path_str = import.node.path.as_dotted();
-                let export_used = export_index
+                let export_used = import.node.alias.is_none()
+                    && export_index
                     .and_then(|index| index.get(&path_str))
                     .is_some_and(|exports| exports.iter().any(|name| referenced.contains(name)));
                 if !(export_used || referenced.contains(module_name)) {
@@ -113,11 +115,6 @@ fn collect_exported_names(source: &SourceFile) -> HashSet<String> {
     let mut exported = HashSet::new();
     for item in &source.items {
         collect_exported_item_names(&item.node, &mut exported);
-    }
-    for import in &source.imports {
-        if let Some(bindings) = &import.node.bindings {
-            exported.extend(bindings.iter().cloned());
-        }
     }
     exported
 }

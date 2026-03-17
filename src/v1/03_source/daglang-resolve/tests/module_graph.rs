@@ -2,7 +2,7 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_resolve::unused_imports::{
-    build_module_export_index, find_unused_imports_with_export_index,
+    build_module_export_index, find_unused_imports_with_export_index, UnusedImport,
 };
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
@@ -1358,6 +1358,118 @@ fn module_import_used_via_exported_github_service_namespace_is_not_reported() {
     assert!(
         unused.is_empty(),
         "expected exported github service namespace to mark import as used, got: {unused:?}"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn aliased_module_import_used_via_original_exported_namespace_is_reported_unused() {
+    let root = unique_temp_dir("unused_import_aliased_exported_namespace");
+
+    write_file(
+        &root.join("extdeps/cloud/gcp/sts.dag"),
+        r#"
+        module extdeps.cloud.gcp.sts
+
+        service gcp.STS {
+            operation Exchange {
+                input {}
+                output {}
+                transport shell { argv: ["echo", "sts"] }
+            }
+        }
+        "#,
+    );
+
+    write_file(
+        &root.join("gunbc/auth/patterns.dag"),
+        r#"
+        module gunbc.auth.patterns
+
+        import extdeps.cloud.gcp.sts as provider
+
+        func credential_chain() -> { ok: Bool } {
+            sts = gcp.STS.Exchange()
+            return { ok: true }
+        }
+        "#,
+    );
+
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
+    let module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "gunbc.auth.patterns")
+        .expect("expected importer module to be present");
+
+    let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
+    assert_eq!(
+        unused,
+        vec![UnusedImport {
+            module_path: "extdeps.cloud.gcp.sts".into(),
+            binding: None,
+        }]
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn imported_bindings_do_not_make_downstream_module_imports_used() {
+    let root = unique_temp_dir("unused_import_non_reexported_binding");
+
+    write_file(
+        &root.join("dep/base.dag"),
+        r#"
+        module dep.base
+
+        type Summary {
+            value: String
+        }
+        "#,
+    );
+
+    write_file(
+        &root.join("dep/mid.dag"),
+        r#"
+        module dep.mid
+
+        import dep.base { Summary }
+
+        fn mid_fn() -> Unit {}
+        "#,
+    );
+
+    write_file(
+        &root.join("dep/top.dag"),
+        r#"
+        module dep.top
+
+        import dep.mid
+
+        fn top(summary: Summary) -> Unit {}
+        "#,
+    );
+
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
+    let module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "dep.top")
+        .expect("expected importer module to be present");
+
+    let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
+    assert_eq!(
+        unused,
+        vec![UnusedImport {
+            module_path: "dep.mid".into(),
+            binding: None,
+        }]
     );
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
