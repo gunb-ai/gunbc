@@ -20,27 +20,27 @@ data string_literal_prefix: String = ""
 
 // "How does Python do string interpolation?"
 // Ref: PEP 498 "Literal String Interpolation" (f-strings, Python 3.6+)
-data fstring_template: String = "f\"{content}\""
-data fstring_expr_template: String = "{{{expr}}}"
+data fstring_template: String = "f\"\{content\}\""
+data fstring_expr_template: String = "\{\{\{expr\}\}\}"
 
 // "How does Python index into a string?"
 // Direct indexing is supported: s[i] returns a single character as str.
-data string_index_template: String = "{base}[{index}]"
+data string_index_template: String = "\{base\}[\{index\}]"
 
 // "How does Python slice a string?"
 // Slice syntax: s[start:end] (end exclusive).
-data string_slice_template: String = "{base}[{start}:{end}]"
+data string_slice_template: String = "\{base\}[\{start\}:\{end\}]"
 
 // "How does Python split a string?"
-data string_split_template: String = "{recv}.split({delim})"
+data string_split_template: String = "\{recv\}.split(\{delim\})"
 
 // "How does Python join strings?"
 // join is a method on the separator string, not the list.
-data string_join_template: String = "{sep}.join({recv})"
+data string_join_template: String = "\{sep\}.join(\{recv\})"
 
 // "How does Python get characters from a string?"
 // list(s) converts a string to a list of single-character strings.
-data string_chars_template: String = "list({recv})"
+data string_chars_template: String = "list(\{recv\})"
 
 // ── Collection operations ───────────────────────────────────────────
 // Ref: list, tuple, set (docs.python.org/3/library/stdtypes.html)
@@ -52,38 +52,38 @@ type MethodTranslation {
 }
 
 data collection_method_translations: List<MethodTranslation> = [
-  { dag_method: "count",     python_template: "len({recv})" },
-  { dag_method: "join",      python_template: "{arg0}.join({recv})" },
-  { dag_method: "split",     python_template: "{recv}.split({arg0})" },
-  { dag_method: "last",      python_template: "{recv}[-1] if {recv} else None" },
-  { dag_method: "first",     python_template: "{recv}[0] if {recv} else None" },
-  { dag_method: "enumerate", python_template: "list(enumerate({recv}))" },
-  { dag_method: "chars",     python_template: "list({recv})" }
+  { dag_method: "count",     python_template: "len(\{recv\})" },
+  { dag_method: "join",      python_template: "\{arg0\}.join(\{recv\})" },
+  { dag_method: "split",     python_template: "\{recv\}.split(\{arg0\})" },
+  { dag_method: "last",      python_template: "\{recv\}[-1] if \{recv\} else None" },
+  { dag_method: "first",     python_template: "\{recv\}[0] if \{recv\} else None" },
+  { dag_method: "enumerate", python_template: "list(enumerate(\{recv\}))" },
+  { dag_method: "chars",     python_template: "list(\{recv\})" }
 ]
 
 // "How does Python iterate?"
-data for_each_template: String = "for {var} in {collection}:\n    {body}"
+data for_each_template: String = "for \{var\} in \{collection\}:\n    \{body\}"
 
 // ── List comprehensions ─────────────────────────────────────────────
 // Ref: Python Reference 6.2.4 "Displays for lists, sets and dictionaries"
 
-data list_comp_template: String = "[{expr} for {var} in {iter}]"
-data list_comp_filter_template: String = "[{expr} for {var} in {iter} if {cond}]"
-data dict_comp_template: String = "{{{key}: {value} for {var} in {iter}}}"
+data list_comp_template: String = "[\{expr\} for \{var\} in \{iter\}]"
+data list_comp_filter_template: String = "[\{expr\} for \{var\} in \{iter\} if \{cond\}]"
+data dict_comp_template: String = "\{\{\{key\}: \{value\} for \{var\} in \{iter\}\}\}"
 
 // ── Dict operations ─────────────────────────────────────────────────
 // Ref: dict (docs.python.org/3/library/stdtypes.html#mapping-types-dict)
 
-data dict_get_template: String = "{dict}.get({key})"
-data dict_set_template: String = "{dict}[{key}] = {value}"
-data dict_contains_template: String = "{key} in {dict}"
-data dict_literal_template: String = "{{{entries}}}"
+data dict_get_template: String = "\{dict\}.get(\{key\})"
+data dict_set_template: String = "\{dict\}[\{key\}] = \{value\}"
+data dict_contains_template: String = "\{key\} in \{dict\}"
+data dict_literal_template: String = "\{\{\{entries\}\}\}"
 
 // ── Null coalescing ─────────────────────────────────────────────────
 // Python has no ?? operator. Use ternary expression.
 
 // DAG ?? operator -> Python conditional expression.
-data null_coalesce_template: String = "{lhs} if {lhs} is not None else {rhs}"
+data null_coalesce_template: String = "\{lhs\} if \{lhs\} is not None else \{rhs\}"
 
 // ── Truthiness ──────────────────────────────────────────────────────
 // Ref: Python Reference 5.10 "Boolean operations"
@@ -109,11 +109,11 @@ data isinstance_function: String = "isinstance"
 // Ref: json module (docs.python.org/3/library/json.html)
 
 data json_import: String = "import json"
-data json_dumps_template: String = "json.dumps({value}, indent=2)"
-data json_loads_template: String = "json.loads({text})"
+data json_dumps_template: String = "json.dumps(\{value\}, indent=2)"
+data json_loads_template: String = "json.loads(\{text\})"
 
 // ── Numeric casting ─────────────────────────────────────────────────
 // Python uses constructor functions, not cast operators.
-data int_cast_template: String = "int({expr})"
-data float_cast_template: String = "float({expr})"
-data str_cast_template: String = "str({expr})"
+data int_cast_template: String = "int(\{expr\})"
+data float_cast_template: String = "float(\{expr\})"
+data str_cast_template: String = "str(\{expr\})"

@@ -63,45 +63,45 @@ data dataclass_decorator: String = "@dataclass"
 data dataclass_import: String = "from dataclasses import dataclass, field"
 
 // Dataclass field with default value.
-data field_default_template: String = "field(default={value})"
-data field_default_factory_template: String = "field(default_factory={factory})"
+data field_default_template: String = "field(default=\{value\})"
+data field_default_factory_template: String = "field(default_factory=\{factory\})"
 
 // ── Enum model ──────────────────────────────────────────────────────
 // Ref: Python enum module (docs.python.org/3/library/enum.html)
 
 data enum_import: String = "from enum import Enum, auto"
-data enum_class_template: String = "class {name}(Enum):\n{variants}"
+data enum_class_template: String = "class \{name\}(Enum):\n\{variants\}"
 data enum_auto_value: String = "auto()"
 
 // ── Union / Optional types ──────────────────────────────────────────
 // Ref: PEP 604 "Allow writing union types as X | Y" (Python 3.10+)
 
 // Python 3.10+ union syntax: X | Y instead of Union[X, Y].
-data union_syntax: String = "{a} | {b}"
-data optional_syntax: String = "{type} | None"
+data union_syntax: String = "\{a\} | \{b\}"
+data optional_syntax: String = "\{type\} | None"
 
 // Pre-3.10 syntax (typing module).
-data typing_optional: String = "Optional[{type}]"
-data typing_union: String = "Union[{types}]"
+data typing_optional: String = "Optional[\{type\}]"
+data typing_union: String = "Union[\{types\}]"
 data typing_import: String = "from typing import Optional, Union"
 
 // ── Type alias ──────────────────────────────────────────────────────
 // Ref: PEP 613 "TypeAlias" (Python 3.10+)
 
-data type_alias_template: String = "{name} = {type}"
+data type_alias_template: String = "\{name\} = \{type\}"
 
 // ── Generic types ───────────────────────────────────────────────────
 // Ref: PEP 484, typing module
 
-data generic_param_template: String = "[{params}]"
+data generic_param_template: String = "[\{params\}]"
 data typing_generic_import: String = "from typing import Generic, TypeVar"
 
 // ── None handling ───────────────────────────────────────────────────
 // Ref: Python Reference 3 "Data model"
 
 data none_literal: String = "None"
-data none_check_template: String = "{expr} is None"
-data none_not_check_template: String = "{expr} is not None"
+data none_check_template: String = "\{expr\} is None"
+data none_not_check_template: String = "\{expr\} is not None"
 
 // ── Pass statement ──────────────────────────────────────────────────
 // Ref: Python Reference 7.4 "The pass statement"

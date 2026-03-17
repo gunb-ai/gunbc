@@ -16,13 +16,13 @@ module extdeps.languages.rust.errors
 // Ref: std::result::Result<T, E>
 
 // "How does Rust represent fallible operations?"
-data result_type_template: String = "Result<{ok}, {err}>"
-data ok_constructor: String = "Ok({value})"
-data err_constructor: String = "Err({value})"
+data result_type_template: String = "Result<\{ok\}, \{err\}>"
+data ok_constructor: String = "Ok(\{value\})"
+data err_constructor: String = "Err(\{value\})"
 
 // "How does Rust propagate errors?"
 // The ? operator: early return on Err, unwrap on Ok.
-data try_operator_template: String = "{expr}?"
+data try_operator_template: String = "\{expr\}?"
 
 // ── Error types ─────────────────────────────────────────────────────
 // Ref: std::error::Error trait
@@ -32,35 +32,35 @@ data try_operator_template: String = "{expr}?"
 data dynamic_error_type: String = "Box<dyn std::error::Error>"
 
 // "How does a func's return type look in Rust?"
-data func_return_template: String = "Result<{ok}, Box<dyn std::error::Error>>"
+data func_return_template: String = "Result<\{ok\}, Box<dyn std::error::Error>>"
 
 // ── Option type ─────────────────────────────────────────────────────
 // Ref: std::option::Option<T>
 
-data option_type_template: String = "Option<{inner}>"
-data some_constructor: String = "Some({value})"
+data option_type_template: String = "Option<\{inner\}>"
+data some_constructor: String = "Some(\{value\})"
 data none_literal: String = "None"
 
 // ── Conversion patterns ─────────────────────────────────────────────
 // Ref: std::convert::From, std::convert::Into
 
 // From impl for error type conversion (used by ? operator).
-data from_impl_template: String = "impl From<{source}> for {target} {\n    fn from(err: {source}) -> Self {\n        {body}\n    }\n}"
+data from_impl_template: String = "impl From<\{source\}> for \{target\} \{\n    fn from(err: \{source\}) -> Self \{\n        \{body\}\n    \}\n\}"
 
 // map_err for explicit error conversion.
-data map_err_template: String = "{expr}.map_err(|e| {conversion})"
+data map_err_template: String = "\{expr\}.map_err(|e| \{conversion\})"
 
 // ── Panic and unreachable ───────────────────────────────────────────
 // Ref: std::panic!, std::unreachable!, std::todo!
 
 // Compiler-generated fallback for unimplemented paths.
-data todo_macro: String = "todo!(\"{message}\")"
-data unreachable_macro: String = "unreachable!(\"{message}\")"
-data panic_macro: String = "panic!(\"{message}\")"
-data compile_error_macro: String = "compile_error!(\"{message}\")"
+data todo_macro: String = "todo!(\"\{message\}\")"
+data unreachable_macro: String = "unreachable!(\"\{message\}\")"
+data panic_macro: String = "panic!(\"\{message\}\")"
+data compile_error_macro: String = "compile_error!(\"\{message\}\")"
 
 // ── Unwrap patterns ─────────────────────────────────────────────────
 // Ref: Option::unwrap_or, Option::unwrap_or_else, Result::unwrap_or
 
-data unwrap_or_template: String = "{expr}.unwrap_or({default})"
-data unwrap_or_else_template: String = "{expr}.unwrap_or_else(|| {fallback})"
+data unwrap_or_template: String = "\{expr\}.unwrap_or(\{default\})"
+data unwrap_or_else_template: String = "\{expr\}.unwrap_or_else(|| \{fallback\})"

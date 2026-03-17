@@ -23,8 +23,8 @@ data error_method: String = "Error() string"
 // ── Error construction ──────────────────────────────────────────────
 // Ref: pkg.go.dev/errors#New, pkg.go.dev/fmt#Errorf
 
-data errors_new_template: String = "errors.New(\"{msg}\")"
-data fmt_errorf_template: String = "fmt.Errorf(\"{fmt}\", {args})"
+data errors_new_template: String = "errors.New(\"\{msg\}\")"
+data fmt_errorf_template: String = "fmt.Errorf(\"\{fmt\}\", \{args\})"
 
 // ── Multi-return pattern ────────────────────────────────────────────
 // Ref: Go Spec "Return statements", Effective Go "Multiple return values"
@@ -32,23 +32,23 @@ data fmt_errorf_template: String = "fmt.Errorf(\"{fmt}\", {args})"
 // Go functions that can fail return (result, error). The caller checks
 // error before using the result.
 
-data error_return_template: String = "return {zero}, {err}"
-data success_return_template: String = "return {value}, nil"
-data error_check_template: String = "if {name} != nil {\n\treturn {zero}, {name}\n}"
+data error_return_template: String = "return \{zero\}, \{err\}"
+data success_return_template: String = "return \{value\}, nil"
+data error_check_template: String = "if \{name\} != nil \{\n\treturn \{zero\}, \{name\}\n\}"
 
 // ── Error wrapping (Go 1.13+) ──────────────────────────────────────
 // Ref: pkg.go.dev/errors#Is, pkg.go.dev/errors#As
 //      pkg.go.dev/fmt#Errorf (%w verb)
 
-data errorf_wrap_template: String = "fmt.Errorf(\"{msg}: %w\", {err})"
-data errors_is_template: String = "errors.Is({err}, {target})"
-data errors_as_template: String = "errors.As({err}, &{target})"
+data errorf_wrap_template: String = "fmt.Errorf(\"\{msg\}: %w\", \{err\})"
+data errors_is_template: String = "errors.Is(\{err\}, \{target\})"
+data errors_as_template: String = "errors.As(\{err\}, &\{target\})"
 
 // ── Panic / recover ────────────────────────────────────────────────
 // Ref: Go Spec "Handling panics"
 //
 // panic/recover are for truly exceptional situations, not normal errors.
 
-data panic_template: String = "panic(\"{msg}\")"
+data panic_template: String = "panic(\"\{msg\}\")"
 data recover_template: String = "recover()"
-data defer_recover_template: String = "defer func() {\n\tif r := recover(); r != nil {\n\t\t{handler}\n\t}\n}()"
+data defer_recover_template: String = "defer func() \{\n\tif r := recover(); r != nil \{\n\t\t\{handler\}\n\t\}\n\}()"

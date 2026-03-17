@@ -18,7 +18,7 @@ import v2.std.core {
   Import, ImportAll, ImportSpecific,
   Node, TypedNode,
   Connective, Conj, Disj,
-  TypeExpr, Param, Expr, LiteralValue,
+  Param, Expr, LiteralValue,
   MatchPattern, FieldBinding, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
@@ -32,7 +32,6 @@ import v2.std.core {
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
-  type_expr_to_node, node_to_type_expr_full,
   typed_expr_has_self_call, typed_has_non_tail_self_call
 }
 
@@ -40,7 +39,7 @@ import v2.compiler.infer {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  normalize_access_type, for_each_element_type,
+  normalize_access_type_node, for_each_element_type_node,
   expr_span
 }
 

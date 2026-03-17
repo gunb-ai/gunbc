@@ -16,11 +16,11 @@ module extdeps.languages.python.imports
 // Ref: Python Reference 7.11 "The import statement"
 
 // "How does Python import a module?"
-data import_template: String = "import {module}"
-data from_import_template: String = "from {module} import {names}"
-data from_import_star_template: String = "from {module} import *"
-data import_alias_template: String = "import {module} as {alias}"
-data from_import_alias_template: String = "from {module} import {name} as {alias}"
+data import_template: String = "import \{module\}"
+data from_import_template: String = "from \{module\} import \{names\}"
+data from_import_star_template: String = "from \{module\} import *"
+data import_alias_template: String = "import \{module\} as \{alias\}"
+data from_import_alias_template: String = "from \{module\} import \{name\} as \{alias\}"
 
 // ── Package structure ───────────────────────────────────────────────
 // Ref: Python Tutorial 6.4 "Packages"
@@ -36,9 +36,9 @@ data path_separator: String = "."
 // ── Relative imports ────────────────────────────────────────────────
 // Ref: PEP 328 "Imports: Multi-Line and Absolute/Relative"
 
-data relative_import_current: String = "from . import {name}"
-data relative_import_parent: String = "from .. import {name}"
-data relative_from_template: String = "from .{module} import {names}"
+data relative_import_current: String = "from . import \{name\}"
+data relative_import_parent: String = "from .. import \{name\}"
+data relative_from_template: String = "from .\{module\} import \{names\}"
 
 // ── Visibility convention ───────────────────────────────────────────
 // Ref: PEP 8 "Naming Conventions"

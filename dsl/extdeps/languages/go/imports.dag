@@ -17,21 +17,21 @@ module extdeps.languages.go.imports
 // Every Go source file begins with a package clause. The package name
 // is the last element of the import path, by convention.
 
-data package_clause_template: String = "package {name}"
+data package_clause_template: String = "package \{name\}"
 data main_package: String = "package main"
 
 // ── Import syntax ───────────────────────────────────────────────────
 // Ref: Go Spec "Import declarations"
 
-data import_single_template: String = "import \"{path}\""
-data import_group_template: String = "import (\n{imports}\n)"
-data import_alias_template: String = "{alias} \"{path}\""
+data import_single_template: String = "import \"\{path\}\""
+data import_group_template: String = "import (\n\{imports\}\n)"
+data import_alias_template: String = "\{alias\} \"\{path\}\""
 
 // ── Module system ───────────────────────────────────────────────────
 // Ref: Go Modules Reference "go.mod file"
 
-data go_mod_template: String = "module {module}\n\ngo {version}\n"
-data go_mod_require_template: String = "require {path} {version}"
+data go_mod_template: String = "module \{module\}\n\ngo \{version\}\n"
+data go_mod_require_template: String = "require \{path\} \{version\}"
 data minimum_go_version: String = "1.21"
 
 // ── File layout ─────────────────────────────────────────────────────

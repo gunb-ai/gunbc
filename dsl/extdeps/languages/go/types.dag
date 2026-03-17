@@ -46,7 +46,7 @@ data go_primitives: List<GoZeroValue> = [
 // large structs. A nil pointer represents an absent value.
 
 data pointer_template: String = "*{0}"
-data address_of_template: String = "&{value}"
+data address_of_template: String = "&\{value\}"
 data nil_literal: String = "nil"
 
 // ── Visibility ──────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ data visibility_by_case: Bool = true
 // field with no explicit name; the embedded type's methods and fields
 // are promoted.
 
-data embedded_field_syntax: String = "{type}"
+data embedded_field_syntax: String = "\{type\}"
 
 // ── Interface types ─────────────────────────────────────────────────
 // Ref: Go Spec "Interface types"
@@ -74,7 +74,7 @@ data embedded_field_syntax: String = "{type}"
 
 data empty_interface: String = "interface{}"
 data any_type: String = "any"          // Go 1.18+ alias for interface{}
-data interface_def_template: String = "type {name} interface {\n{methods}\n}"
+data interface_def_template: String = "type \{name\} interface \{\n\{methods\}\n\}"
 
 // ── Numeric types ───────────────────────────────────────────────────
 // Ref: Go Spec "Numeric types"
@@ -92,4 +92,4 @@ data float_types: List<String> = ["float32", "float64"]
 // Go has no implicit type conversions. All conversions are explicit
 // with function-call syntax: Type(expr).
 
-data type_conversion_template: String = "{type}({expr})"
+data type_conversion_template: String = "\{type\}(\{expr\})"

@@ -18,28 +18,28 @@ module extdeps.languages.go.async
 //
 // A goroutine is a lightweight thread managed by the Go runtime.
 
-data go_statement_template: String = "go {call}"
-data goroutine_func_template: String = "go func() {\n\t{body}\n}()"
+data go_statement_template: String = "go \{call\}"
+data goroutine_func_template: String = "go func() \{\n\t\{body\}\n\}()"
 
 // ── Channels ────────────────────────────────────────────────────────
 // Ref: Go Spec "Channel types"
 //
 // Channels are typed conduits for goroutine communication.
 
-data chan_type_template: String = "chan {type}"
-data send_chan_template: String = "chan<- {type}"
-data recv_chan_template: String = "<-chan {type}"
-data make_chan_template: String = "make(chan {type})"
-data make_buffered_chan_template: String = "make(chan {type}, {size})"
-data chan_send_template: String = "{chan} <- {value}"
-data chan_recv_template: String = "<-{chan}"
+data chan_type_template: String = "chan \{type\}"
+data send_chan_template: String = "chan<- \{type\}"
+data recv_chan_template: String = "<-chan \{type\}"
+data make_chan_template: String = "make(chan \{type\})"
+data make_buffered_chan_template: String = "make(chan \{type\}, \{size\})"
+data chan_send_template: String = "\{chan\} <- \{value\}"
+data chan_recv_template: String = "<-\{chan\}"
 
 // ── Select ──────────────────────────────────────────────────────────
 // Ref: Go Spec "Select statements"
 
-data select_template: String = "select {\n{cases}\n}"
-data select_case_template: String = "case {assignment}:\n\t{body}"
-data select_default_template: String = "default:\n\t{body}"
+data select_template: String = "select \{\n\{cases\}\n\}"
+data select_case_template: String = "case \{assignment\}:\n\t\{body\}"
+data select_default_template: String = "default:\n\t\{body\}"
 
 // ── Synchronization ─────────────────────────────────────────────────
 // Ref: pkg.go.dev/sync
@@ -48,12 +48,12 @@ data mutex_type: String = "sync.Mutex"
 data rwmutex_type: String = "sync.RWMutex"
 data waitgroup_type: String = "sync.WaitGroup"
 data once_type: String = "sync.Once"
-data mutex_lock_template: String = "{mu}.Lock()"
-data mutex_unlock_template: String = "{mu}.Unlock()"
-data defer_unlock_template: String = "defer {mu}.Unlock()"
-data waitgroup_add_template: String = "{wg}.Add({n})"
-data waitgroup_done_template: String = "{wg}.Done()"
-data waitgroup_wait_template: String = "{wg}.Wait()"
+data mutex_lock_template: String = "\{mu\}.Lock()"
+data mutex_unlock_template: String = "\{mu\}.Unlock()"
+data defer_unlock_template: String = "defer \{mu\}.Unlock()"
+data waitgroup_add_template: String = "\{wg\}.Add(\{n\})"
+data waitgroup_done_template: String = "\{wg\}.Done()"
+data waitgroup_wait_template: String = "\{wg\}.Wait()"
 
 // ── Context ─────────────────────────────────────────────────────────
 // Ref: pkg.go.dev/context
@@ -64,8 +64,8 @@ data waitgroup_wait_template: String = "{wg}.Wait()"
 data context_type: String = "context.Context"
 data context_background: String = "context.Background()"
 data context_todo: String = "context.TODO()"
-data context_with_cancel_template: String = "context.WithCancel({parent})"
-data context_with_timeout_template: String = "context.WithTimeout({parent}, {duration})"
+data context_with_cancel_template: String = "context.WithCancel(\{parent\})"
+data context_with_timeout_template: String = "context.WithTimeout(\{parent\}, \{duration\})"
 
 // ── HTTP client ─────────────────────────────────────────────────────
 // Ref: pkg.go.dev/net/http
@@ -73,5 +73,5 @@ data context_with_timeout_template: String = "context.WithTimeout({parent}, {dur
 // Go's standard library HTTP client is used for service calls.
 
 data http_client_type: String = "*http.Client"
-data http_do_template: String = "{client}.Do({req})"
-data http_new_request_template: String = "http.NewRequestWithContext({ctx}, \"{method}\", {url}, {body})"
+data http_do_template: String = "\{client\}.Do(\{req\})"
+data http_new_request_template: String = "http.NewRequestWithContext(\{ctx\}, \"\{method\}\", \{url\}, \{body\})"

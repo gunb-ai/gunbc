@@ -16,8 +16,8 @@ module extdeps.languages.rust.imports
 // Ref: Rust Reference 6.5 "Modules"
 
 // "How does Rust declare a module?"
-data mod_declaration_template: String = "mod {name};"
-data pub_mod_declaration_template: String = "pub mod {name};"
+data mod_declaration_template: String = "mod \{name\};"
+data pub_mod_declaration_template: String = "pub mod \{name\};"
 
 // "How does Rust organize module files?"
 // Each module maps to either {name}.rs or {name}/mod.rs.
@@ -28,15 +28,15 @@ data module_dir_entry: String = "mod.rs"
 // Ref: Rust Reference 6.3 "Use declarations"
 
 // "How does Rust import items?"
-data use_single_template: String = "use {path};"
-data use_glob_template: String = "use {path}::*;"
-data use_specific_template: String = "use {module}::{names};"
-data use_alias_template: String = "use {path} as {alias};"
-data use_nested_template: String = "use {prefix}::{items};"
+data use_single_template: String = "use \{path\};"
+data use_glob_template: String = "use \{path\}::*;"
+data use_specific_template: String = "use \{module\}::\{names\};"
+data use_alias_template: String = "use \{path\} as \{alias\};"
+data use_nested_template: String = "use \{prefix\}::\{items\};"
 
 // "How does Rust reference crate-local items?"
 data crate_prefix: String = "crate"
-data crate_use_template: String = "use crate::{module}::{names};"
+data crate_use_template: String = "use crate::\{module\}::\{names\};"
 
 // ── Visibility ──────────────────────────────────────────────────────
 // Ref: Rust Reference 6.7 "Visibility and privacy"
@@ -68,7 +68,7 @@ data bin_entry: String = "src/main.rs"
 // ── Cargo.toml templates ────────────────────────────────────────────
 // Ref: Cargo Reference "The Manifest Format"
 
-data cargo_package_template: String = "[package]\nname = \"{name}\"\nversion = \"{version}\"\nedition = \"{edition}\"\n"
+data cargo_package_template: String = "[package]\nname = \"\{name\}\"\nversion = \"\{version\}\"\nedition = \"\{edition\}\"\n"
 data cargo_deps_header: String = "\n[dependencies]\n"
 data default_edition: String = "2021"
 

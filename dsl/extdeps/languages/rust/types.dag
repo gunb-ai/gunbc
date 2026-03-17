@@ -80,7 +80,7 @@ data service_derives: List<String> = ["Debug", "Clone"]
 data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
 
 // Field renaming attribute template.
-data serde_rename_template: String = "#[serde(rename = \"{key}\")]"
+data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"
 
 // ── Smart pointer types ─────────────────────────────────────────────
 // Ref: Rust Reference 11 "Special types and traits"
@@ -107,8 +107,8 @@ data common_trait_bounds: List<String> = [
 ]
 
 // Generic constraint syntax: where clauses.
-data where_clause_template: String = "where\n    {constraints}"
-data trait_bound_template: String = "{type}: {bound}"
+data where_clause_template: String = "where\n    \{constraints\}"
+data trait_bound_template: String = "\{type\}: \{bound\}"
 
 // ── Numeric types ───────────────────────────────────────────────────
 // Ref: Rust Reference 8.2.1 "Literal expressions"
@@ -122,4 +122,4 @@ data float_types: List<String> = ["f32", "f64"]
 
 // Cast syntax: valid only between numeric primitives.
 // Ref: Rust Reference 8.2.13 "Type cast expressions"
-data numeric_cast_template: String = "{expr} as {type}"
+data numeric_cast_template: String = "\{expr\} as \{type\}"

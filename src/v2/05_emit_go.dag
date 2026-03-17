@@ -25,10 +25,10 @@ import v2.std.core {
   Import, ImportAll, ImportSpecific,
   Node, TypedNode,
   Connective, Conj, Disj,
-  TypeExpr, Field, Variant, Param, Expr, MatchArm,
+  Field, Variant, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
-  ContainerKind, ResourceUse,
+  ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
@@ -41,8 +41,6 @@ import v2.std.core {
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
-  type_expr_to_node,
-  node_to_type_expr_full,
   typed_expr_has_self_call, typed_has_non_tail_self_call
 }
 
@@ -50,7 +48,7 @@ import v2.compiler.infer {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  for_each_element_type,
+  for_each_element_type_node,
   expr_span
 }
 
@@ -561,7 +559,7 @@ fn emit_go_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<Str
 
 fn emit_go_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let coll_str = emit_go_typed_expr(texpr: collection, registry: registry, scope: scope, depth: 0)
-  let elem_type = for_each_element_type(type_expr: node_to_type_expr_full(n: collection.resolved_type))
+  let elem_type = for_each_element_type_node(n: collection.resolved_type)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat(make_indent(level: depth), "for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",

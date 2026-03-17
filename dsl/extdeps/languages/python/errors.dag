@@ -15,20 +15,20 @@ module extdeps.languages.python.errors
 // Ref: Python Reference 8.4 "The try statement"
 
 // "How does Python handle errors?"
-data try_template: String = "try:\n    {body}"
-data except_template: String = "except {type} as {name}:\n    {handler}"
-data except_bare_template: String = "except:\n    {handler}"
-data finally_template: String = "finally:\n    {body}"
-data else_template: String = "else:\n    {body}"
+data try_template: String = "try:\n    \{body\}"
+data except_template: String = "except \{type\} as \{name\}:\n    \{handler\}"
+data except_bare_template: String = "except:\n    \{handler\}"
+data finally_template: String = "finally:\n    \{body\}"
+data else_template: String = "else:\n    \{body\}"
 
 // Full try/except/else/finally block.
-data try_except_full_template: String = "try:\n    {body}\nexcept {type} as {name}:\n    {handler}\nfinally:\n    {cleanup}"
+data try_except_full_template: String = "try:\n    \{body\}\nexcept \{type\} as \{name\}:\n    \{handler\}\nfinally:\n    \{cleanup\}"
 
 // ── Raise syntax ────────────────────────────────────────────────────
 // Ref: Python Reference 7.8 "The raise statement"
 
-data raise_template: String = "raise {exception}"
-data raise_from_template: String = "raise {exception} from {cause}"
+data raise_template: String = "raise \{exception\}"
+data raise_from_template: String = "raise \{exception\} from \{cause\}"
 data reraise_template: String = "raise"
 
 // ── Exception hierarchy ─────────────────────────────────────────────
@@ -65,10 +65,10 @@ data http_exceptions: List<String> = [
 // ── Custom exception pattern ────────────────────────────────────────
 // Ref: Python Tutorial 8.5 "User-defined Exceptions"
 
-data custom_exception_template: String = "class {name}(Exception):\n    def __init__(self, message: str):\n        super().__init__(message)\n        self.message = message"
+data custom_exception_template: String = "class \{name\}(Exception):\n    def __init__(self, message: str):\n        super().__init__(message)\n        self.message = message"
 
 // Service error wrapping: each service gets a custom exception class.
-data service_error_template: String = "class {service}Error(Exception):\n    pass"
+data service_error_template: String = "class \{service\}Error(Exception):\n    pass"
 
 // ── Return semantics ────────────────────────────────────────────────
 // Python functions return None implicitly if no return statement.
@@ -80,4 +80,4 @@ data implicit_return: String = "None"
 // Ref: subprocess module (docs.python.org/3/library/subprocess.html)
 
 data subprocess_error: String = "subprocess.CalledProcessError"
-data subprocess_check_template: String = "subprocess.run({args}, check=True, capture_output=True, text=True)"
+data subprocess_check_template: String = "subprocess.run(\{args\}, check=True, capture_output=True, text=True)"
