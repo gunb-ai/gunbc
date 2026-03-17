@@ -415,22 +415,43 @@ impl ResourceAccess {
 
 /// Error for missing or invalid resource access metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResourceAccessError {
-    /// Node that declares the resource port.
-    pub node_id: NodeId,
-    /// Port name that is missing access metadata.
-    pub port_name: String,
-    /// Resource id derived from the port name.
-    pub resource_id: ResourceId,
+pub enum ResourceAccessError {
+    /// A legacy `res:*` port is missing its explicit access mode.
+    MissingAccessMode {
+        /// Node that declares the resource port.
+        node_id: NodeId,
+        /// Port name that is missing access metadata.
+        port_name: String,
+        /// Canonical resource id derived from the legacy `res:*` port name.
+        resource_id: ResourceId,
+    },
+    /// A port declares `resource_access` but omits the matching `resource_id`.
+    MissingResourceId {
+        /// Node that declares the invalid port.
+        node_id: NodeId,
+        /// Port name with incomplete resource metadata.
+        port_name: String,
+    },
 }
 
 impl std::fmt::Display for ResourceAccessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "resource access mode missing for {}.{} ({})",
-            self.node_id, self.port_name, self.resource_id
-        )
+        match self {
+            ResourceAccessError::MissingAccessMode {
+                node_id,
+                port_name,
+                resource_id,
+            } => write!(
+                f,
+                "resource access mode missing for {}.{} ({})",
+                node_id, port_name, resource_id
+            ),
+            ResourceAccessError::MissingResourceId { node_id, port_name } => write!(
+                f,
+                "port '{}' on node '{}' has resource_access but no resource_id",
+                port_name, node_id.0
+            ),
+        }
     }
 }
 
@@ -614,7 +635,9 @@ fn declared_resource_access(port: &Port) -> Result<Option<(ResourceId, AccessMod
 ///
 /// Walks all nodes in the DAG and extracts `ResourceAccess` entries from
 /// input ports with explicit `resource_access` metadata. Legacy `res:*` ports
-/// that are missing `resource_access` remain a hard error.
+/// that are missing `resource_access` remain a hard error, and ports with
+/// `resource_access` but no `resource_id` are reported as an explicit
+/// [`ResourceAccessError::MissingResourceId`] invariant violation.
 pub fn derive_resource_accesses<T>(
     dag: &Dag<T>,
 ) -> Result<Vec<ResourceAccess>, Vec<ResourceAccessError>> {
@@ -628,7 +651,7 @@ pub fn derive_resource_accesses<T>(
                 }
                 Ok(None) if port.name.0.starts_with(RESOURCE_PORT_PREFIX) => {
                     let resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
-                    errors.push(ResourceAccessError {
+                    errors.push(ResourceAccessError::MissingAccessMode {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),
                         resource_id,
@@ -637,13 +660,9 @@ pub fn derive_resource_accesses<T>(
                 Ok(None) => {}
                 Err(()) => {
                     // resource_access present but resource_id missing — invariant violation.
-                    errors.push(ResourceAccessError {
+                    errors.push(ResourceAccessError::MissingResourceId {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),
-                        resource_id: ResourceId::new(format!(
-                            "<missing resource_id for port '{}'>",
-                            port.name.0
-                        )),
                     });
                 }
             }
@@ -1140,9 +1159,18 @@ mod tests {
         let errors =
             derive_resource_accesses(&dag).expect_err("missing resource_access should error");
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].node_id.0, "node_a");
-        assert_eq!(errors[0].port_name, "res:platform");
-        assert_eq!(errors[0].resource_id.0, "platform");
+        match &errors[0] {
+            ResourceAccessError::MissingAccessMode {
+                node_id,
+                port_name,
+                resource_id,
+            } => {
+                assert_eq!(node_id.0, "node_a");
+                assert_eq!(port_name, "res:platform");
+                assert_eq!(resource_id.0, "platform");
+            }
+            other => panic!("expected MissingAccessMode, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1161,8 +1189,17 @@ mod tests {
 
         let errors = derive_resource_accesses(&dag).expect_err("missing resource_id should error");
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].node_id.0, "node_a");
-        assert_eq!(errors[0].port_name, "db_conn");
+        match &errors[0] {
+            ResourceAccessError::MissingResourceId { node_id, port_name } => {
+                assert_eq!(node_id.0, "node_a");
+                assert_eq!(port_name, "db_conn");
+                assert_eq!(
+                    errors[0].to_string(),
+                    "port 'db_conn' on node 'node_a' has resource_access but no resource_id"
+                );
+            }
+            other => panic!("expected MissingResourceId, got {other:?}"),
+        }
     }
 
     #[test]

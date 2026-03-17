@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceId};
+use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceAccessError, ResourceId};
 
 use crate::errors::WorkflowAdmissionError;
 use crate::process_registry::{ClaimId, ProcessUnitRegistry, UnitClaim};
@@ -149,13 +149,7 @@ pub fn validate_conflicting_claims(spec: &WorkflowSpec) -> Vec<WorkflowAdmission
     let accesses = match derive_resource_accesses(&spec.dag) {
         Ok(accesses) => accesses,
         Err(resource_errors) => {
-            errors.extend(resource_errors.into_iter().map(|error| {
-                WorkflowAdmissionError::ResourceAccessMetadataInvalid {
-                    node_id: error.node_id,
-                    port_name: error.port_name,
-                    claim_id: ClaimId::new(error.resource_id.0),
-                }
-            }));
+            errors.extend(resource_errors.into_iter().map(workflow_resource_access_error));
             return errors;
         }
     };
@@ -204,13 +198,7 @@ fn derive_declared_claims(
     let accesses = derive_resource_accesses(&spec.dag).map_err(|resource_errors| {
         resource_errors
             .into_iter()
-            .map(
-                |error| WorkflowAdmissionError::ResourceAccessMetadataInvalid {
-                    node_id: error.node_id,
-                    port_name: error.port_name,
-                    claim_id: ClaimId::new(error.resource_id.0),
-                },
-            )
+            .map(workflow_resource_access_error)
             .collect::<Vec<_>>()
     })?;
 
@@ -230,6 +218,27 @@ fn derive_declared_claims(
         claims.dedup();
     }
     Ok(claims_by_node)
+}
+
+fn workflow_resource_access_error(error: ResourceAccessError) -> WorkflowAdmissionError {
+    match error {
+        ResourceAccessError::MissingAccessMode {
+            node_id,
+            port_name,
+            resource_id,
+        } => WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+            node_id,
+            port_name,
+            claim_id: Some(ClaimId::new(resource_id.0)),
+        },
+        ResourceAccessError::MissingResourceId { node_id, port_name } => {
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                node_id,
+                port_name,
+                claim_id: None,
+            }
+        }
+    }
 }
 
 fn mode_rank(mode: gunbc_ir::AccessMode) -> u8 {
@@ -517,5 +526,41 @@ mod tests {
             &ResourceId::new("tool:cargo"),
             &ResourceId::new("tool:cargo")
         ));
+    }
+
+    #[test]
+    fn missing_resource_id_metadata_is_reported_without_fabricated_claim_id() {
+        let mut inputs = required_input_contract();
+        let mut claim = Port::scalar("db_conn", "ResourceHandle");
+        claim.resource_access = Some(AccessMode::Write);
+        inputs.push(claim);
+
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "wf.a",
+            inputs,
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new("wf", "a"))),
+        ));
+
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let errors = validate_conflicting_claims(&spec);
+        assert_eq!(errors.len(), 1);
+        match &errors[0] {
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                node_id,
+                port_name,
+                claim_id,
+            } => {
+                assert_eq!(node_id.0, "wf.a");
+                assert_eq!(port_name, "db_conn");
+                assert_eq!(claim_id, &None);
+                assert_eq!(
+                    errors[0].to_string(),
+                    "node 'wf.a': resource input 'db_conn' has resource_access but no resource_id"
+                );
+            }
+            other => panic!("expected ResourceAccessMetadataInvalid, got {other:?}"),
+        }
     }
 }
