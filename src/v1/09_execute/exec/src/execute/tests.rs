@@ -2872,3 +2872,79 @@ fn real_mode_executes_resource_environment_node() {
         std::env::remove_var(var_name);
     }
 }
+
+#[test]
+fn test_execute_fails_early_on_missing_resource_id() {
+    // Regression: a port with resource_access but no resource_id must cause
+    // execute_flat_parallel to fail before any node executes.
+    let mut dag: Dag<Produce> = Dag::new();
+    let mut broken_port = Port::new("db_conn", "DbHandle");
+    broken_port.resource_access = Some(AccessMode::Write);
+    // resource_id intentionally left as None.
+
+    dag.add_node(Node::opaque(
+        "source",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        TestOp::produce("handle", Value::Unit),
+    ));
+    dag.add_node(Node::opaque(
+        "writer",
+        vec![broken_port],
+        vec![port("out", "Int")],
+        TestOp::produce("out", Value::Int(1)),
+    ));
+    dag.add_edge(edge("source", "handle", "writer", "db_conn"));
+
+    let err = execute_dag(&dag, ExecuteConfig::default())
+        .expect_err("missing resource_id must fail execution");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("resource_access but no resource_id"),
+        "error should name the structural violation, got: {msg}"
+    );
+}
+
+#[test]
+fn test_executor_completeness_and_derivation_share_missing_resource_id_contract() {
+    // Regression: the executor, validate_resource_completeness, and
+    // derive_resource_accesses must all reject the same port shape
+    // (resource_access present, resource_id absent).
+    use gunbc_ir::resource::{
+        derive_resource_accesses, validate_resource_completeness, ResourceCompletenessViolation,
+    };
+
+    let mut dag: Dag<Produce> = Dag::new();
+    let mut broken_port = Port::new("db_conn", "DbHandle");
+    broken_port.resource_access = Some(AccessMode::Write);
+    // resource_id intentionally left as None.
+
+    dag.add_node(Node::opaque(
+        "writer",
+        vec![broken_port],
+        vec![port("out", "Int")],
+        TestOp::produce("out", Value::Int(1)),
+    ));
+
+    // 1. Executor rejects.
+    assert!(
+        execute_dag(&dag, ExecuteConfig::default()).is_err(),
+        "executor must reject missing resource_id"
+    );
+
+    // 2. Completeness rejects.
+    let violations = validate_resource_completeness(&dag);
+    assert!(
+        violations.iter().any(|v| matches!(
+            v,
+            ResourceCompletenessViolation::IncompleteResourcePort { .. }
+        )),
+        "completeness must reject missing resource_id"
+    );
+
+    // 3. Conflict derivation rejects.
+    assert!(
+        derive_resource_accesses(&dag).is_err(),
+        "conflict derivation must reject missing resource_id"
+    );
+}
