@@ -9,7 +9,6 @@
 
 module extdeps.cloud.gcp.sts
 
-import extdeps.cloud.cloud { CloudAuthScheme }
 import std.types { Url }
 import std.errors { GcpErrorShape, GitHubErrorShape }
 

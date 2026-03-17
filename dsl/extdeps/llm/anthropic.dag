@@ -8,7 +8,6 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { Role, StopReason, TokenUsage }
 import std.errors { AnthropicErrorShape }
 
 // ── Models ────────────────────────────────────────────────────────

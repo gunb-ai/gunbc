@@ -24,6 +24,8 @@
 //! Returns `ResolveError` (I/O errors, unresolved imports, cycles,
 //! duplicate modules, invalid extensions).
 
+pub mod unused_imports;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};

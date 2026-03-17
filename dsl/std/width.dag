@@ -5,8 +5,7 @@
 
 module std.width
 
-import std.unicode { string_display_width, char_width }
-import std.types { Char }
+import std.unicode { char_width }
 
 fn truncate_text(text: String, max_width: Int) -> String {
   let char_list = chars(text)

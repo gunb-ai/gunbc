@@ -12,7 +12,6 @@ import std.resources { Filesystem }
 import config.gitignore { categories }
 import extdeps.gitignore {
   GitignoreCategory,
-  GitignoreFile,
   filter_categories
 }
 import extdeps.gitignore_render { render_gitignore_file }

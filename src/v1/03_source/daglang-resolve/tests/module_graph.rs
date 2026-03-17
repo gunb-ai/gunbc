@@ -1,6 +1,7 @@
 // Test infrastructure: filesystem access for test fixtures
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+use daglang_resolve::unused_imports::find_unused_imports;
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::HashMap;
@@ -1247,4 +1248,32 @@ fn dependency_counts_match_import_structure() {
     assert_eq!(counts["dep.leaf"], 1, "leaf imports mid");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn real_corpus_has_no_unused_imports() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+
+    let mut violations = Vec::new();
+    for module in &graph.modules {
+        let unused = find_unused_imports(&module.ast);
+        for u in unused {
+            let binding_desc = match &u.binding {
+                Some(name) => format!("binding `{name}` from `{}`", u.module_path),
+                None => format!("module `{}`", u.module_path),
+            };
+            violations.push(format!(
+                "{}: unused import {}",
+                module.module_path.as_dotted(),
+                binding_desc,
+            ));
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "found unused imports in dsl corpus:\n  {}",
+        violations.join("\n  ")
+    );
 }

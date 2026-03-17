@@ -8,7 +8,6 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { Role, StopReason, TokenUsage }
 import std.errors { OpenAiErrorShape }
 
 // ── Models ────────────────────────────────────────────────────────

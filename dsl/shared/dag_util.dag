@@ -13,11 +13,8 @@ import std.types {
   Document,
   DocumentLine,
   DocumentSection,
-  RenderedTextFile,
   StageResult,
-  Summary,
-  TextFile,
-  TextFilePath
+  Summary
 }
 // --- Result aggregation -----------------------------------------------
 

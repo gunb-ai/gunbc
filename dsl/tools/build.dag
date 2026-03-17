@@ -10,7 +10,7 @@
 
 module tools.build
 
-import std.types { Summary, StageResult }
+import std.types { Summary }
 import extdeps.cargo
 import shared.dag_util { aggregate_results, format_report, stage_from_output }
 
