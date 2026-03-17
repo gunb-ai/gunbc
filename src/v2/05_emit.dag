@@ -36,8 +36,7 @@ import v2.std.core {
   TypedStringInterp, TypedBlock, TypedCast, TypedForEach,
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
-  TypedStringPart, TypedText, TypedInterpolation,
-  typed_expr_to_expr
+  TypedStringPart, TypedText, TypedInterpolation
 }
 
 import v2.compiler.infer {
