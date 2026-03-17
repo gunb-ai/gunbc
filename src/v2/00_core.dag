@@ -711,23 +711,57 @@ fn node_to_type_expr_container(name: String, children: List<Node>, span: SourceS
 }
 
 fn node_child_to_field(child: Node) -> Field {
-  if child.return_type == none {
+  let from_key = node_from_key(props: child.properties)
+  let annotated_optional = node_child_optional_annotation(child: child)
+  if annotated_optional != none {
+    Field {
+      name: child.name,
+      type_expr: annotated_optional.value,
+      optional: true,
+      default_value: child.body,
+      from_key: from_key,
+      span: child.span
+    }
+  } else if child.return_type == none {
     Field {
       name: child.name,
       type_expr: Named { name: child.name, span: child.span },
       optional: false,
       default_value: child.body,
-      from_key: none,
+      from_key: from_key,
       span: child.span
     }
   } else {
-    Field {
-      name: child.name,
-      type_expr: child.return_type.value,
-      optional: false,
-      default_value: child.body,
-      from_key: node_from_key(props: child.properties),
-      span: child.span
+    match child.return_type.value {
+      Optional { inner: inner, span: _ } =>
+        Field {
+          name: child.name,
+          type_expr: inner,
+          optional: true,
+          default_value: child.body,
+          from_key: from_key,
+          span: child.span
+        }
+      _ =>
+        Field {
+          name: child.name,
+          type_expr: child.return_type.value,
+          optional: false,
+          default_value: child.body,
+          from_key: from_key,
+          span: child.span
+        }
+    }
+  }
+}
+
+fn node_child_optional_annotation(child: Node) -> TypeExpr? {
+  if child.type_annotation == none {
+    none
+  } else {
+    match child.type_annotation.value {
+      Optional { inner: inner, span: _ } => Some { value: inner }
+      _ => none
     }
   }
 }
@@ -752,4 +786,3 @@ fn node_child_to_variant(child: Node) -> Variant {
     span: child.span
   }
 }
-
