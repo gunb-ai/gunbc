@@ -2717,11 +2717,27 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     )
   )
 
+  // Register variant constructors from Coproduct types so enum variant names
+  // (LitNull, None, Conj, Error, etc.) are resolvable as variables.
+  let variant_locals = fold(map_values(resolved_env.env.bindings), init: service_locals, f: (acc, binding) =>
+    match binding.resolved {
+      Coproduct { name: _, variants: variants, span: _ } =>
+        fold(variants, init: acc, f: (vacc, v) =>
+          map_insert(vacc, v.name, TypeBinding {
+            name: v.name,
+            resolved: Named { name: binding.name, span: no_span() },
+            resolved_node: none
+          })
+        )
+      _ => acc
+    }
+  )
+
   // Build the InferScope and infer all items to produce TypedNodes.
   let infer_scope = InferScope {
     type_env: resolved_env.env,
     func_env: func_env,
-    locals: service_locals,
+    locals: variant_locals,
     module_name: resolved.module.name,
     type_cache: empty_map(),
     service_registry: service_registry
