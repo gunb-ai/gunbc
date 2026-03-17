@@ -19,20 +19,19 @@ module v2.compiler.emit
 
 import v2.std.core {
   Import,
-  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
-  MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
+  Node, TypedNode,
+  Connective, Conj, Disj,
+  TypeExpr, Field, Variant, Param, Expr, MatchArm,
+  MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
-  CapabilityDef,
   ContainerKind, ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
   FuncSig,
-  TypedItem,
-  TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
+  TypedExpr, TypedLet,
+  typed_expr_to_expr
 }
 
 import v2.compiler.typecheck {
@@ -52,7 +51,7 @@ type EmitResult {
 }
 
 type BlockEmitState {
-  lines: List<String>
+  text: String
   scope: InferScope
 }
 
@@ -85,8 +84,13 @@ fn empty_emit_scope() -> InferScope {
     func_env: FuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
-    type_cache: empty_map()
+    type_cache: empty_map(),
+    service_registry: empty_map()
   }
+}
+
+fn span_key(start: Int, end: Int) -> String {
+  concat(to_string(value: start), ":", to_string(value: end))
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
@@ -98,40 +102,18 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
-    type_cache: cache_map
+    type_cache: cache_map,
+    service_registry: empty_map()
   }
 }
 
-// Note: is_wildcard_import_names, normalize_access_type, for_each_element_type
-// are defined in their origin modules (resolve.dag, typecheck.dag) and available
-// through the typecheck import. infer_expr_type reads from the type cache built
-// during typecheck — no re-inference at emit time.
-
-fn span_key(start: Int, end: Int) -> String {
-  concat(to_string(value: start), ":", to_string(value: end))
-}
-
-fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
-  map_get(cache, span_key(start: start, end: end))
-}
-
-fn missing_emit_type(span: SourceSpan) -> TypeExpr {
-  Named { name: "__EmitTypeCacheMiss", span: span }
-}
-
-fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
-  let s = expr_span(expr: expr)
-  match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
-    Some { value: t } => t
-    None => missing_emit_type(span: s)
-  }
-}
-
-fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
-  match expr {
-    Let { name: name, value: value, body: body, span: _ } =>
+// scope_after_expr: extend scope with let-binding type for bodyless lets.
+// With TypedExpr, the resolved type is read directly from the sub-expression.
+fn scope_after_expr(texpr: TypedExpr, scope: InferScope) -> InferScope {
+  match texpr {
+    TypedLet { name: name, value: value, body: body, resolved_type: _, span: _ } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: infer_expr_type(expr: value, scope: scope))
+        extend_scope(scope: scope, name: name, resolved: value.resolved_type)
       } else {
         scope
       }
@@ -143,21 +125,24 @@ fn scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 // Item registry
 // =========================================================================
 
-fn build_item_registry(items: List<TypedItem>) -> Map<String, ItemInfo> {
-  let info_list = items |> map(item => match item {
-    TypedFuncDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+fn build_item_registry(items: List<TypedNode>) -> Map<String, ItemInfo> {
+  let info_list = items |> map(item =>
+    if item.body != none && item.uses |> count > 0 {
+      // func or pattern (async, has uses)
+      let body_expr = typed_expr_to_expr(texpr: item.body.value)
+      ItemInfo { name: item.name, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: body_expr)),
         is_self_recursive: false, has_non_tail_self_call: false }
-    TypedPatternDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: b.expr)),
+    } else if item.body != none && item.params |> count > 0 {
+      // fn (pure function)
+      let body_expr = typed_expr_to_expr(texpr: item.body.value)
+      ItemInfo { name: item.name, kind: "fn", service_names: [],
+        is_self_recursive: expr_has_self_call(expr: body_expr, fn_name: item.name),
+        has_non_tail_self_call: has_non_tail_self_call(expr: body_expr, fn_name: item.name, in_tail: true) }
+    } else {
+      ItemInfo { name: item.name, kind: "other", service_names: [],
         is_self_recursive: false, has_non_tail_self_call: false }
-    TypedFnDef { name: n, body: b } =>
-      ItemInfo { name: n, kind: "fn", service_names: [],
-        is_self_recursive: expr_has_self_call(expr: b.expr, fn_name: n),
-        has_non_tail_self_call: has_non_tail_self_call(expr: b.expr, fn_name: n, in_tail: true) }
-    _ => ItemInfo { name: "", kind: "other", service_names: [],
-        is_self_recursive: false, has_non_tail_self_call: false }
-  })
+    }
+  )
   info_list |> fold(init: empty_map(), f: (acc, i) =>
     map_insert(acc, i.name, i)
   )

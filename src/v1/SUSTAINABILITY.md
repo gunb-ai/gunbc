@@ -404,18 +404,12 @@ typechecker exceeds the default 8MB thread stack.
 **Fix:** `stacker::maybe_grow` added to re-entrant call sites, growing the
 stack on demand. No manual stack size tuning needed.
 
-**S84: v2 emitter TCO — RESOLVED (2026-03-16).**
-Track C added tail-call optimization to v1's `fn_codegen.rs` (Stmt::Loop +
-parameter reassignment). The v2 emitter (`05_emit_rust.dag`) ALSO implements
-this transformation via `expr_has_self_call()`, `has_non_tail_self_call()`,
-`emit_tco_body()`, `emit_tco_expr()`, and `emit_tco_reassign()`. Verified in
-generated code: tail-recursive functions emit as `loop { ... continue; ...
-break; }` patterns (confirmed for `find_dot_index`, `normalize_access_type`).
-**Required:** Add a TCO analysis + transformation pass to the v2 emission
-pipeline, analogous to what Track C added to v1. The v2 version should operate
-on the typed IR (between typecheck and emit), detecting self-tail-recursive
-functions and rewriting them to use a loop construct that the per-target
-renderers can emit (`loop {}` for Rust, `while True:` for Python).
+**S84: v2 emitter TCO — CLOSED (2026-03-16).**
+The v2 emitter has working TCO: `expr_has_self_call()`, `has_non_tail_self_call()`
+classify functions; `emit_tco_body()` / `emit_tco_expr()` render iterative loops.
+Verified in generated code: tail-recursive functions emit as `loop { ... continue;
+... break; }` patterns (confirmed for `find_dot_index`, `normalize_access_type`).
+Both Rust (`loop {}`) and Python (`while True:`) renderers handle TCO correctly.
 
 **v1 implementation note (2026-03-15):** Track C now uses a `TcoPlan`
 intermediate in `fn_codegen.rs` rather than the earlier classify-then-rewrite
