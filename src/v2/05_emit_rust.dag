@@ -34,7 +34,8 @@ import v2.std.core {
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
-  typed_expr_to_expr
+  typed_expr_to_expr,
+  type_expr_to_node
 }
 
 import v2.compiler.infer {
@@ -284,7 +285,7 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
   else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return(return_type: item.return_type) {
-    concat("pub type ", item.name, " = ", emit_type_expr(type_expr: item.return_type), ";")
+    concat("pub type ", item.name, " = ", emit_rust_node_type(n: type_expr_to_node(te: item.return_type)), ";")
   }
   // Function with body: fn or func (distinguished from data by type_annotation)
   else if item.body != none && item.type_annotation == none {
@@ -349,7 +350,7 @@ fn emit_struct_from_children(name: String, children: List<TypedNode>) -> String 
 }
 
 fn emit_struct_field_from_child(child: TypedNode) -> String {
-  let ty = emit_type_expr(type_expr: child.return_type)
+  let ty = emit_rust_node_type(n: type_expr_to_node(te: child.return_type))
   // Check for from_key in child properties
   let rename_attr = match child.properties |> filter(p => p.name == "from_key") |> first {
     Some { value: prop } => match prop.value {
@@ -362,13 +363,6 @@ fn emit_struct_field_from_child(child: TypedNode) -> String {
     None => ""
   }
   concat(rename_attr, "    pub ", rust_ident(name: child.name), ": ", ty, ",")
-}
-
-fn is_optional_type(type_expr: TypeExpr) -> Bool {
-  match type_expr {
-    Optional { inner: _, span: _ } => true
-    _ => false
-  }
 }
 
 fn emit_enum_from_children(name: String, children: List<TypedNode>) -> String {
@@ -386,7 +380,7 @@ fn emit_variant_from_child(child: TypedNode) -> String {
   } else {
     // Fielded variant — child's children are the variant's fields
     let field_lines = child.children |> map(f =>
-      concat("        ", rust_ident(name: f.name), ": ", emit_type_expr(type_expr: f.return_type), ",")
+      concat("        ", rust_ident(name: f.name), ": ", emit_rust_node_type(n: type_expr_to_node(te: f.return_type)), ",")
     )
     let fields_str = field_lines |> join(separator: "\n")
     concat("    ", child.name, " {\n", fields_str, "\n    },")
@@ -394,90 +388,11 @@ fn emit_variant_from_child(child: TypedNode) -> String {
 }
 
 // =========================================================================
-// Type expression emission
-// =========================================================================
-
-fn emit_type_expr(type_expr: TypeExpr) -> String {
-  match type_expr {
-    Primitive { name: n, span: _ } => rust_primitive_type(name: n)
-    Named { name: n, span: _ } => n
-    Container { kind: k, element: el, span: _ } =>
-      emit_container_type(kind: k, element: el)
-    Optional { inner: inn, span: _ } =>
-      rust_container(kind: "optional", inner: emit_type_expr(type_expr: inn))
-    MapType { key: k, value: v, span: _ } =>
-      apply_type_template2(
-        template: rust_map_template(),
-        arg0: emit_type_expr(type_expr: k),
-        arg1: emit_type_expr(type_expr: v)
-      )
-    Product { name: pn, fields: fs, span: _ } =>
-      emit_product_type_expr(name: pn, fields: fs)
-    Coproduct { name: cn, variants: vs, span: _ } =>
-      emit_coproduct_type_expr(name: cn, variants: vs)
-    Refined { base: b, predicates: _, span: _ } =>
-      // Refinements are erased at the Rust level — just emit the base type
-      emit_type_expr(type_expr: b)
-  }
-}
-
-// emit_primitive_type is now shared — imported from v2.compiler.emit
-
-fn emit_container_type(kind: ContainerKind, element: TypeExpr) -> String {
-  let inner = emit_type_expr(type_expr: element)
-  match kind {
-    List => rust_container(kind: "list", inner: inner)
-    Set => rust_container(kind: "set", inner: inner)
-    // NonEmpty wrappers are compiler-specific constructs, not language-level types
-    NonEmptyList => concat("NonEmptyVec<", inner, ">")
-    NonEmptySet => concat("NonEmptyBTreeSet<", inner, ">")
-  }
-}
-
-fn emit_product_type_expr(name: String?, fields: List<Field>) -> String {
-  match name {
-    Some { value: n } => n
-    None => {
-      // Anonymous product — no named Rust type exists.
-      if fields |> count == 1 {
-        // Single-field anonymous record -> emit as the field type directly
-        match fields |> first {
-          Some { value: f } => emit_type_expr(type_expr: f.type_expr)
-          // Unreachable: count == 1 guarantees first succeeds.
-          // Emit compile_error! so Rust rejects instead of silently fabricating.
-          None => "compile_error!(\"anonymous product with count==1 but no first field — type system bug\")"
-        }
-      } else {
-        // Multi-field anonymous record without a name means the type system
-        // failed to name this product upstream. Emit compile_error! so the
-        // generated Rust rejects rather than silently using a bag type.
-        "compile_error!(\"anonymous multi-field product reached emitter — type system must name all multi-field records\")"
-      }
-    }
-  }
-}
-
-fn emit_coproduct_type_expr(name: String?, variants: List<Variant>) -> String {
-  match name {
-    Some { value: n } => n
-    None => {
-      // Anonymous coproduct without a name means the type system failed to
-      // name this coproduct upstream. Emit compile_error! so the generated
-      // Rust rejects rather than silently using a bag type.
-      "compile_error!(\"anonymous coproduct reached emitter — type system must name all coproducts\")"
-    }
-  }
-}
-
-// =========================================================================
-// B1 prep: Node-reading type emission
+// Node-based type emission (migrated from TypeExpr)
 //
 // These functions dispatch on Node structure (connective + name + children)
-// instead of matching TypeExpr variants. They produce identical output to
-// emit_type_expr when given a Node produced by type_expr_to_node().
-//
-// During dual-write, these coexist with emit_type_expr().
-// After B1 migration completes, emit_type_expr() is deleted.
+// instead of matching TypeExpr variants. All call sites use
+// emit_rust_node_type via type_expr_to_node.
 // =========================================================================
 
 fn emit_rust_node_type(n: Node) -> String {
@@ -542,10 +457,8 @@ fn emit_rust_node_type_conj(n: Node) -> String {
     if n.children |> count == 1 {
       match n.children |> first {
         Some { value: field_node } =>
-          // B1 dual-write bridge: field type is in return_type (still TypeExpr).
-          // After return_type becomes Node, this becomes emit_rust_node_type.
           match field_node.return_type {
-            Some { value: te } => emit_type_expr(type_expr: te)
+            Some { value: te } => emit_rust_node_type(n: type_expr_to_node(te: te))
             None => "compile_error!(\"anonymous product field missing return_type\")"
           }
         None => "compile_error!(\"anonymous product reached Node emitter\")"
@@ -690,8 +603,9 @@ fn emit_tco_params(params: List<Param>) -> String {
 }
 
 fn emit_tco_param(param: Param) -> String {
-  let ty = emit_type_expr(type_expr: param.type_expr)
-  let ref_ty = if needs_reference(type_expr: param.type_expr) {
+  let n = type_expr_to_node(te: param.type_expr)
+  let ty = emit_rust_node_type(n: n)
+  let ref_ty = if needs_reference_node(n: n) {
     concat("&", ty)
   } else {
     ty
@@ -702,7 +616,7 @@ fn emit_tco_param(param: Param) -> String {
 fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(rust_ident(name: u.name), ": &", emit_type_expr(type_expr: u.resource))
+    concat(rust_ident(name: u.name), ": &", emit_rust_node_type(n: type_expr_to_node(te: u.resource)))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
@@ -712,7 +626,7 @@ fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names:
 }
 
 fn emit_func_return_type(return_type: TypeExpr) -> String {
-  concat(" -> Result<", emit_type_expr(type_expr: return_type), ", Box<dyn std::error::Error>>")
+  concat(" -> Result<", emit_rust_node_type(n: type_expr_to_node(te: return_type)), ", Box<dyn std::error::Error>>")
 }
 
 // =========================================================================
@@ -725,8 +639,9 @@ fn emit_params(params: List<Param>) -> String {
 }
 
 fn emit_param(param: Param) -> String {
-  let ty = emit_type_expr(type_expr: param.type_expr)
-  let ref_ty = if needs_reference(type_expr: param.type_expr) {
+  let n = type_expr_to_node(te: param.type_expr)
+  let ty = emit_rust_node_type(n: n)
+  let ref_ty = if needs_reference_node(n: n) {
     concat("&", ty)
   } else {
     ty
@@ -735,21 +650,23 @@ fn emit_param(param: Param) -> String {
 }
 
 fn emit_return_type(return_type: TypeExpr) -> String {
-  concat(" -> ", emit_type_expr(type_expr: return_type))
+  concat(" -> ", emit_rust_node_type(n: type_expr_to_node(te: return_type)))
 }
 
-// Determine if a type should be passed by reference.
+// Determine if a type should be passed by reference (Node-based).
 // Primitives like i64, bool, f64, () are Copy — pass by value.
 // Everything else (String, Vec, BTreeMap, structs) — pass by reference.
-fn needs_reference(type_expr: TypeExpr) -> Bool {
-  match type_expr {
-    Primitive { name: n, span: _ } =>
-      if n == "Int" { false }
-      else if n == "Bool" { false }
-      else if n == "Float" { false }
-      else if n == "Unit" { false }
-      else { true }
-    _ => true
+// A leaf Node with no connective and no children whose name is a
+// primitive maps to a Copy type; everything else is by-reference.
+fn needs_reference_node(n: Node) -> Bool {
+  if n.connective != none || n.children |> count > 0 {
+    true
+  } else {
+    if n.name == "Int" { false }
+    else if n.name == "Bool" { false }
+    else if n.name == "Float" { false }
+    else if n.name == "Unit" { false }
+    else { true }
   }
 }
 
@@ -1160,7 +1077,7 @@ fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_cast(expr: Expr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_expr_in_scope(expr: expr, registry: registry, scope: scope)
-  let ty_str = emit_type_expr(type_expr: target)
+  let ty_str = emit_rust_node_type(n: type_expr_to_node(te: target))
   if is_primitive_numeric(type_expr: target) {
     concat(expr_str, " as ", ty_str)
   } else {
@@ -1477,7 +1394,7 @@ fn emit_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, sco
 
 fn emit_typed_cast(expr: TypedExpr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_typed_expr(texpr: expr, registry: registry, scope: scope)
-  let ty_str = emit_type_expr(type_expr: target)
+  let ty_str = emit_rust_node_type(n: type_expr_to_node(te: target))
   if is_primitive_numeric(type_expr: target) {
     concat(expr_str, " as ", ty_str)
   } else {
@@ -1716,7 +1633,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: TransportBinding, op_node: TypedNode, registry: Map<String, ItemInfo>) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(rust_ident(name: p.name), ": ", emit_type_expr(type_expr: p.type_expr))
+    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: type_expr_to_node(te: p.type_expr)))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1724,7 +1641,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_type_expr(type_expr: op_node.return_type)
+  let ret_type = emit_rust_node_type(n: type_expr_to_node(te: op_node.return_type))
   // Use per-operation transport override if present, otherwise service-level transport.
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
@@ -1845,7 +1762,7 @@ fn emit_resource_def(item: TypedNode) -> String {
 
 fn emit_capability_method(cap_node: TypedNode) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(rust_ident(name: p.name), ": ", emit_type_expr(type_expr: p.type_expr))
+    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: type_expr_to_node(te: p.type_expr)))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1853,7 +1770,7 @@ fn emit_capability_method(cap_node: TypedNode) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_type_expr(type_expr: cap_node.return_type)
+  let ret = emit_rust_node_type(n: type_expr_to_node(te: cap_node.return_type))
   concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
@@ -1867,7 +1784,7 @@ fn emit_capability_method(cap_node: TypedNode) -> String {
 // =========================================================================
 
 fn emit_data_def(name: String, type_expr: TypeExpr, value: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let ty_str = emit_type_expr(type_expr: type_expr)
+  let ty_str = emit_rust_node_type(n: type_expr_to_node(te: type_expr))
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type(type_expr: type_expr) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope)
@@ -2225,7 +2142,7 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
     let arg_name = rust_ident(name: p.name)
-    if needs_reference(type_expr: p.type_expr) {
+    if needs_reference_node(n: type_expr_to_node(te: p.type_expr)) {
       concat("&", arg_name)
     } else {
       arg_name

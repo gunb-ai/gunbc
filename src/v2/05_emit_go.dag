@@ -69,7 +69,6 @@ import v2.compiler.emit {
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
   typed_expr_has_self_call, typed_has_non_tail_self_call,
-  span_key,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return,
   is_service_item,

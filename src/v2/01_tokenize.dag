@@ -85,8 +85,7 @@ fn tokenize(source: String) -> List<Token> {
   let initial = TokenizerState { source: source, pos: 0, tokens: [], interp_depth: [] }
   let final_state = tokenize_loop(state: initial)
   let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
-  let reversed = reverse(final_state.tokens)
-  concat(reversed, [Token { kind: Eof, span: eof_span }])
+  list_push(final_state.tokens, Token { kind: Eof, span: eof_span })
 }
 
 // === Main loop ===
@@ -102,7 +101,7 @@ fn tokenize_loop(state: TokenizerState) -> TokenizerState {
   if ch == "\n" {
     let tok = Token { kind: Newline, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
     return tokenize_loop(state: TokenizerState {
-      source: s.source, pos: s.pos + 1, tokens: concat([tok], s.tokens), interp_depth: s.interp_depth
+      source: s.source, pos: s.pos + 1, tokens: list_push(s.tokens, tok), interp_depth: s.interp_depth
     })
   }
 
@@ -123,7 +122,7 @@ fn tokenize_loop(state: TokenizerState) -> TokenizerState {
       let new_depth = replace_last(stack: s.interp_depth, value: top - 1)
       let tok = Token { kind: RBrace, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
       return tokenize_loop(state: TokenizerState {
-        source: s.source, pos: s.pos + 1, tokens: concat([tok], s.tokens), interp_depth: new_depth
+        source: s.source, pos: s.pos + 1, tokens: list_push(s.tokens, tok), interp_depth: new_depth
       })
     }
   }
@@ -174,7 +173,7 @@ fn scan_token(state: TokenizerState, ch: String) -> TokenizerState {
     }
     let tok = Token { kind: LBrace, span: SourceSpan { start: state.pos, end: state.pos + 1 } }
     return TokenizerState {
-      source: state.source, pos: state.pos + 1, tokens: concat([tok], state.tokens), interp_depth: new_depth
+      source: state.source, pos: state.pos + 1, tokens: list_push(state.tokens, tok), interp_depth: new_depth
     }
   }
 
@@ -183,7 +182,7 @@ fn scan_token(state: TokenizerState, ch: String) -> TokenizerState {
     // This is a normal RBrace.
     let tok = Token { kind: RBrace, span: SourceSpan { start: state.pos, end: state.pos + 1 } }
     return TokenizerState {
-      source: state.source, pos: state.pos + 1, tokens: concat([tok], state.tokens), interp_depth: state.interp_depth
+      source: state.source, pos: state.pos + 1, tokens: list_push(state.tokens, tok), interp_depth: state.interp_depth
     }
   }
 
@@ -204,7 +203,7 @@ fn emit(state: TokenizerState, kind: TokenKind, len: Int) -> TokenizerState {
   TokenizerState {
     source: state.source,
     pos: state.pos + len,
-    tokens: concat([token], state.tokens),
+    tokens: list_push(state.tokens, token),
     interp_depth: state.interp_depth
   }
 }
@@ -217,7 +216,7 @@ fn scan_ident(state: TokenizerState) -> TokenizerState {
     None => Ident { name: text }
   }
   let token = Token { kind: kind, span: SourceSpan { start: state.pos, end: end } }
-  TokenizerState { source: state.source, pos: end, tokens: concat([token], state.tokens), interp_depth: state.interp_depth }
+  TokenizerState { source: state.source, pos: end, tokens: list_push(state.tokens, token), interp_depth: state.interp_depth }
 }
 
 fn scan_number(state: TokenizerState) -> TokenizerState {
@@ -230,7 +229,7 @@ fn scan_number(state: TokenizerState) -> TokenizerState {
       kind: LitFloat { value: text },
       span: SourceSpan { start: state.pos, end: frac_end }
     }
-    return TokenizerState { source: state.source, pos: frac_end, tokens: concat([token], state.tokens), interp_depth: state.interp_depth }
+    return TokenizerState { source: state.source, pos: frac_end, tokens: list_push(state.tokens, token), interp_depth: state.interp_depth }
   }
   let text = substring(s: state.source, start: state.pos, end: int_end)
   let parsed = parse_int(s: text)
@@ -242,7 +241,7 @@ fn scan_number(state: TokenizerState) -> TokenizerState {
     kind: kind,
     span: SourceSpan { start: state.pos, end: int_end }
   }
-  TokenizerState { source: state.source, pos: int_end, tokens: concat([token], state.tokens), interp_depth: state.interp_depth }
+  TokenizerState { source: state.source, pos: int_end, tokens: list_push(state.tokens, token), interp_depth: state.interp_depth }
 }
 
 // === String scanning ===
@@ -273,7 +272,7 @@ fn scan_string(state: TokenizerState) -> TokenizerState {
         span: SourceSpan { start: span_start, end: end_pos + 1 }
       }
       TokenizerState {
-        source: state.source, pos: end_pos + 1, tokens: concat([token], state.tokens),
+        source: state.source, pos: end_pos + 1, tokens: list_push(state.tokens, token),
         interp_depth: state.interp_depth
       }
     }
@@ -285,7 +284,7 @@ fn scan_string(state: TokenizerState) -> TokenizerState {
       }
       TokenizerState {
         source: state.source, pos: end_pos + 1,
-        tokens: concat([token], state.tokens),
+        tokens: list_push(state.tokens, token),
         interp_depth: state.interp_depth |> append(items: 0)
       }
     }
@@ -296,7 +295,7 @@ fn scan_string(state: TokenizerState) -> TokenizerState {
         span: SourceSpan { start: span_start, end: end_pos }
       }
       TokenizerState {
-        source: state.source, pos: end_pos, tokens: concat([token], state.tokens),
+        source: state.source, pos: end_pos, tokens: list_push(state.tokens, token),
         interp_depth: state.interp_depth
       }
     }
@@ -316,7 +315,7 @@ fn scan_str_cont(state: TokenizerState, span_start: Int) -> TokenizerState {
         span: SourceSpan { start: span_start, end: end_pos + 1 }
       }
       TokenizerState {
-        source: state.source, pos: end_pos + 1, tokens: concat([token], state.tokens),
+        source: state.source, pos: end_pos + 1, tokens: list_push(state.tokens, token),
         interp_depth: state.interp_depth
       }
     }
@@ -328,7 +327,7 @@ fn scan_str_cont(state: TokenizerState, span_start: Int) -> TokenizerState {
       }
       TokenizerState {
         source: state.source, pos: end_pos + 1,
-        tokens: concat([token], state.tokens),
+        tokens: list_push(state.tokens, token),
         interp_depth: state.interp_depth |> append(items: 0)
       }
     }
@@ -339,7 +338,7 @@ fn scan_str_cont(state: TokenizerState, span_start: Int) -> TokenizerState {
         span: SourceSpan { start: span_start, end: end_pos }
       }
       TokenizerState {
-        source: state.source, pos: end_pos, tokens: concat([token], state.tokens),
+        source: state.source, pos: end_pos, tokens: list_push(state.tokens, token),
         interp_depth: state.interp_depth
       }
     }
