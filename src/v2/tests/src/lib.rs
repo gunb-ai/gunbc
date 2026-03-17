@@ -1257,10 +1257,10 @@ fn foo(item: String) -> String {
         ]);
 
         let mut state = std::collections::BTreeMap::new();
-        state.insert("tokens".to_string(), tokens);
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
 
         let mut inputs = HashMap::new();
+        inputs.insert("tokens".to_string(), tokens);
         inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
         match call_fn(&output, "expect_ident", inputs) {
@@ -1289,8 +1289,8 @@ fn foo(item: String) -> String {
         // Step 2: Test peek_kind
         let mut peek_inputs = HashMap::new();
         let mut state = std::collections::BTreeMap::new();
-        state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
+        peek_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
         peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
         match call_fn(&output, "peek_kind", peek_inputs) {
@@ -1865,15 +1865,15 @@ fn foo(item: String) -> String {
             "emit_python.dag should emit continue for tail self-calls in Python"
         );
 
-        // Verify the shared classification functions exist in 05_emit.dag
-        let emit_source = read_v2_file("src/v2/05_emit.dag");
+        // Verify the shared classification functions exist in 00_core.dag
+        let core_source = read_v2_file("src/v2/00_core.dag");
         assert!(
-            emit_source.contains("fn typed_expr_has_self_call"),
-            "emit.dag should contain typed_expr_has_self_call for typed TCO classification"
+            core_source.contains("fn typed_expr_has_self_call"),
+            "core.dag should contain typed_expr_has_self_call for typed TCO classification"
         );
         assert!(
-            emit_source.contains("fn typed_has_non_tail_self_call"),
-            "emit.dag should contain typed_has_non_tail_self_call for typed TCO classification"
+            core_source.contains("fn typed_has_non_tail_self_call"),
+            "core.dag should contain typed_has_non_tail_self_call for typed TCO classification"
         );
     }
 

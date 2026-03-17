@@ -33,7 +33,8 @@ import v2.std.core {
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
   type_expr_to_node,
-  node_to_type_expr_full
+  node_to_type_expr_full,
+  typed_expr_has_self_call, typed_has_non_tail_self_call
 }
 
 import v2.compiler.infer {
@@ -63,7 +64,6 @@ import v2.compiler.emit {
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
-  typed_expr_has_self_call, typed_has_non_tail_self_call,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return, is_type_alias_return_node,
   is_service_item, has_service_items,

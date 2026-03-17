@@ -35,7 +35,8 @@ import v2.std.core {
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
   typed_expr_to_expr,
-  type_expr_to_node, node_to_type_expr_full
+  type_expr_to_node, node_to_type_expr_full,
+  typed_expr_has_self_call, typed_has_non_tail_self_call
 }
 
 import v2.compiler.infer {
@@ -58,11 +59,10 @@ import v2.compiler.emit {
   collect_typed_service_calls,
   has_nested_records, has_nested_records_node, emit_data_value_json, escape_json_string,
   module_to_filename,
-  indent, make_indent, to_string, to_string_helper,
+  make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
-  typed_expr_has_self_call, typed_has_non_tail_self_call,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return, is_type_alias_return_node,
   is_service_item, has_service_items,
@@ -504,11 +504,11 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Typed
     let tco_params_str = emit_tco_params(params: params)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1)
     concat("pub fn ", rust_ident(name: name), "(", tco_params_str, ")", ret_str, " {\n",
-      make_indent(level: depth + 1) ++ body_str, "\n}")
+      make_indent(level: depth + 1),body_str, "\n}")
   } else {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
     concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
-      make_indent(level: depth + 1) ++ body_str, "\n}")
+      make_indent(level: depth + 1),body_str, "\n}")
   }
 }
 
@@ -536,7 +536,7 @@ fn emit_func_def(
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("pub async fn ", rust_ident(name: name),
     "(", params_str, ")", ret_str, " {\n",
-    make_indent(level: depth + 1) ++ body_str, "\n}")
+    make_indent(level: depth + 1),body_str, "\n}")
 }
 
 // Emit a func body, wrapping the tail expression in Ok(...).
@@ -760,7 +760,7 @@ fn emit_for_each(variable: String, collection: Expr, body: Expr, registry: Map<S
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_expr_in_scope(expr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("for ", rust_ident(name: variable), " in ", coll_str, ".into_iter() {\n",
-    make_indent(level: depth + 1) ++ body_str, ";\n}")
+    make_indent(level: depth + 1),body_str, ";\n}")
 }
 
 // Emit Index expression using the inferred base type.
@@ -909,12 +909,12 @@ fn emit_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Map
     Some { value: eb } => {
       let else_str = emit_expr_in_scope(expr: eb, registry: registry, scope: scope, depth: depth + 1)
       concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1) ++ then_str, "\n} else {\n",
-        make_indent(level: depth + 1) ++ else_str, "\n}")
+        make_indent(level: depth + 1),then_str, "\n} else {\n",
+        make_indent(level: depth + 1),else_str, "\n}")
     }
     None =>
       concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1) ++ then_str, "\n}")
+        make_indent(level: depth + 1),then_str, "\n}")
   }
 }
 
@@ -1083,7 +1083,7 @@ fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferSc
     let new_text = concat(acc.text, [line])
     BlockEmitState { text: new_text, scope: next_scope }
   })
-  concat("{\n", make_indent(level: depth + 1) ++ (state.text |> join(separator: "\n")), "\n}")
+  concat("{\n", make_indent(level: depth + 1),(state.text |> join(separator: "\n")), "\n}")
 }
 
 // =========================================================================
@@ -1188,7 +1188,7 @@ fn emit_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr,
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("for ", rust_ident(name: variable), " in ", coll_str, ".into_iter() {\n",
-    make_indent(level: depth + 1) ++ body_str, ";\n}")
+    make_indent(level: depth + 1),body_str, ";\n}")
 }
 
 fn emit_typed_index(base: TypedExpr, index: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -1296,12 +1296,12 @@ fn emit_typed_if(condition: TypedExpr, then_branch: TypedExpr, else_branch: Type
     Some { value: eb } => {
       let else_str = emit_typed_expr(texpr: eb, registry: registry, scope: scope, depth: depth + 1)
       concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1) ++ then_str, "\n} else {\n",
-        make_indent(level: depth + 1) ++ else_str, "\n}")
+        make_indent(level: depth + 1),then_str, "\n} else {\n",
+        make_indent(level: depth + 1),else_str, "\n}")
     }
     None =>
       concat("if ", cond_str, " {\n",
-        make_indent(level: depth + 1) ++ then_str, "\n}")
+        make_indent(level: depth + 1),then_str, "\n}")
   }
 }
 
@@ -1404,7 +1404,7 @@ fn emit_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, sco
     let new_text = concat(acc.text, [line])
     BlockEmitState { text: new_text, scope: next_scope }
   })
-  concat("{\n", make_indent(level: depth + 1) ++ (state.text |> join(separator: "\n")), "\n}")
+  concat("{\n", make_indent(level: depth + 1),(state.text |> join(separator: "\n")), "\n}")
 }
 
 fn emit_typed_cast(expr: TypedExpr, target: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -1426,7 +1426,7 @@ fn emit_typed_cast(expr: TypedExpr, target: Node, registry: Map<String, ItemInfo
 
 fn emit_typed_tco_body(texpr: TypedExpr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
-  concat("loop {\n", make_indent(level: depth + 1) ++ inner, "\n}")
+  concat("loop {\n", make_indent(level: depth + 1),inner, "\n}")
 }
 
 fn emit_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -1445,11 +1445,11 @@ fn emit_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, r
         Some { value: eb } =>
           let else_str = emit_typed_tco_expr(texpr: eb, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
           concat("if ", cond_str, " {\n",
-            make_indent(level: depth + 1) ++ then_str, "\n} else {\n",
-            make_indent(level: depth + 1) ++ else_str, "\n}")
+            make_indent(level: depth + 1),then_str, "\n} else {\n",
+            make_indent(level: depth + 1),else_str, "\n}")
         None =>
           concat("if ", cond_str, " {\n",
-            make_indent(level: depth + 1) ++ then_str, "\n}")
+            make_indent(level: depth + 1),then_str, "\n}")
       }
     TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: scope, depth: depth)
@@ -1509,7 +1509,7 @@ fn emit_typed_tco_reassign(args: List<TypedNamedArg>, params: List<Param>, regis
   let assigns = param_names |> enumerate |> map(pair =>
     concat(pair.second, " = __tco_", to_string(value: pair.first), ";"))
   let all_lines = concat(temp_lets, assigns, ["continue;"])
-  concat("{\n", make_indent(level: depth + 1) ++ (all_lines |> join(separator: "\n")), "\n}")
+  concat("{\n", make_indent(level: depth + 1),(all_lines |> join(separator: "\n")), "\n}")
 }
 
 // =========================================================================
@@ -1567,7 +1567,7 @@ fn emit_service_impl(name: String, transport: TransportBinding, op_children: Lis
   )
   let all_methods = concat([new_method], method_strs)
   let methods_str = all_methods |> join(separator: "\n\n")
-  concat("impl ", name, " {\n", make_indent(level: depth + 1) ++ methods_str, "\n}")
+  concat("impl ", name, " {\n", make_indent(level: depth + 1),methods_str, "\n}")
 }
 
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
@@ -1668,14 +1668,14 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: op_node.return_type, mock_props: mock_props, registry: registry)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
-    make_indent(level: depth + 2) ++ dry_run_body, "\n",
+    make_indent(level: depth + 2),dry_run_body, "\n",
     "} else {\n",
-    make_indent(level: depth + 2) ++ real_body, "\n",
+    make_indent(level: depth + 2),real_body, "\n",
     "}")
   let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
   concat(modifier_doc, "pub async fn ", rust_ident(name: op_node.name),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
-    make_indent(level: depth + 1) ++ body, "\n}")
+    make_indent(level: depth + 1),body, "\n}")
 }
 
 // Emit the dry-run branch for an operation method.
@@ -1774,7 +1774,7 @@ fn emit_resource_def(item: TypedNode) -> String {
   let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c))
   let methods_str = cap_methods |> join(separator: "\n\n")
   concat("#[async_trait::async_trait]\npub trait ", item.name, " {\n",
-    make_indent(level: depth + 1) ++ methods_str, "\n}")
+    make_indent(level: depth + 1),methods_str, "\n}")
 }
 
 fn emit_capability_method(cap_node: TypedNode) -> String {
@@ -1853,7 +1853,7 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
       "// Source module: ", m.name, "\n\n",
       "#[cfg(test)]\nmod tests {\n",
       "    use super::*;\n\n",
-      make_indent(level: depth + 1) ++ tests_str, "\n",
+      make_indent(level: depth + 1),tests_str, "\n",
       "}\n")
     TextFile { path: concat("tests/", filename, "_test.rs"), content: content }
   }
@@ -1881,8 +1881,8 @@ fn emit_operation_test(service_name: String, op_node: TypedNode, registry: Map<S
   )
   let mock_str = mock_setup |> join(separator: "\n")
   concat("#[tokio::test]\nasync fn ", test_name, "() {\n",
-    make_indent(level: depth + 1) ++ mock_str, "\n",
-    make_indent(level: depth + 1) ++ "// Mock-based test: verifies operation contract with fixture data.", "\n",
+    make_indent(level: depth + 1),mock_str, "\n",
+    make_indent(level: depth + 1),"// Mock-based test: verifies operation contract with fixture data.", "\n",
     "}")
 }
 
@@ -2019,12 +2019,13 @@ fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>) -> String {
 
 // Emit the Commands enum with one variant per workflow function.
 fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>) -> String {
-  let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf))
+  let depth = 0
+  let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf, depth: depth + 1))
   let variants_str = variants |> join(separator: "\n")
   concat(
     "#[derive(Subcommand)]\n",
     "enum Commands {\n",
-    indent(text: variants_str, level: 1), "\n",
+    make_indent(level: depth + 1),variants_str, "\n",
     "}"
   )
 }
@@ -2038,7 +2039,7 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>) -> String {
 //     public: bool,
 // },
 // ```
-fn emit_subcommand_variant(wf: WorkflowFunc) -> String {
+fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
   let variant_name = capitalize_first(s: wf.name)
   let doc_line = concat("/// Run the ", wf.name, " workflow")
   if wf.params |> count == 0 {
@@ -2047,7 +2048,7 @@ fn emit_subcommand_variant(wf: WorkflowFunc) -> String {
     let fields = wf.params |> map(p => emit_subcommand_field(param: p))
     let fields_str = fields |> join(separator: "\n")
     concat(doc_line, "\n", variant_name, " {\n",
-      indent(text: fields_str, level: 1), "\n",
+      make_indent(level: depth + 1),fields_str, "\n",
       "},")
   }
 }
@@ -2104,6 +2105,7 @@ fn emit_cli_default_value(expr: Expr) -> String {
 
 // Emit the main function body.
 fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool) -> String {
+  let depth = 0
   let async_attr = if has_services { "#[tokio::main]\nasync fn main() " } else { "fn main() " }
   let parse_line = "let cli = Cli::parse();"
   let dry_run_line = if has_services {
@@ -2113,7 +2115,7 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool) -> Strin
   }
   let match_arms = workflow_funcs |> map(wf => emit_main_match_arm(wf: wf, has_services: has_services))
   let arms_str = match_arms |> join(separator: "\n")
-  let match_block = concat("match cli.command {\n", indent(text: arms_str, level: 2), "\n    }")
+  let match_block = concat("match cli.command {\n", make_indent(level: depth + 2),arms_str, "\n    }")
   let result_handling = if has_services {
     concat(
       "let result = ", match_block, ";\n",
@@ -2136,7 +2138,7 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool) -> Strin
   } else {
     concat(parse_line, "\n", dry_run_line, "\n", result_handling)
   }
-  concat(async_attr, "{\n", indent(text: body_lines, level: 1), "\n}")
+  concat(async_attr, "{\n", make_indent(level: depth + 1),body_lines, "\n}")
 }
 
 // Emit one match arm in the main function for a workflow function.

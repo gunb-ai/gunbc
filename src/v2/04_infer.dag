@@ -2743,6 +2743,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     span: resolved.module.span
   }
 
+  // env is already fully resolved (build_type_env resolves bindings in-place).
+  // Wrap in the result type expected by downstream code.
+  let resolved_env = EnvResolveResult { env: env, diagnostics: [] }
+
   // Build func_env from the resolved items (return types resolved by now).
   let func_env = build_func_env(items: resolved_items)
 
@@ -2799,7 +2803,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   // Register variant constructors from Coproduct types so enum variant names
   // (LitNull, None, Conj, Error, etc.) are resolvable as variables.
-  let variant_locals = fold(map_values(env.bindings), init: service_locals, f: (acc, binding) =>
+  let variant_locals = fold(map_values(resolved_env.env.bindings), init: service_locals, f: (acc, binding) =>
     match binding.resolved {
       Coproduct { name: _, variants: variants, span: _ } =>
         fold(variants, init: acc, f: (vacc, v) =>
@@ -2819,7 +2823,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let variant_locals = fold(resolved_items, init: variant_locals, f: (acc, item) =>
     match item.connective {
       Some { value: Disj } =>
-        if is_recursive_type(env: env, name: item.name) {
+        if is_recursive_type(env: resolved_env.env, name: item.name) {
           fold(item.children, init: acc, f: (vacc, child) =>
             map_insert(vacc, child.name, TypeBinding {
               name: child.name,
@@ -2838,7 +2842,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
       match titem.connective {
         Some { value: Disj } =>
-          if is_recursive_type(env: env, name: titem.name) {
+          if is_recursive_type(env: resolved_env.env, name: titem.name) {
             fold(titem.children, init: inner_acc, f: (vacc, child) =>
               map_insert(vacc, child.name, TypeBinding {
                 name: child.name,
@@ -2866,7 +2870,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   // Build the InferScope and infer all items to produce TypedNodes.
   let infer_scope = InferScope {
-    type_env: env,
+    type_env: resolved_env.env,
     func_env: func_env,
     locals: optional_locals,
     module_name: resolved.module.name,
@@ -2880,10 +2884,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     typed: TypedModule {
       module: typed_module,
       items: typed_items,
-      type_env: env,
+      type_env: resolved_env.env,
       func_env: func_env
     },
-    diagnostics: concat(env_result.diagnostics, item_diags, infer_diags)
+    diagnostics: concat(env_result.diagnostics, item_diags, resolved_env.diagnostics, infer_diags)
   }
 }
 
