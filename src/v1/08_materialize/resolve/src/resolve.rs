@@ -959,7 +959,18 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
-        PrimitiveOpKind::GetField { field, .. } => {
+        PrimitiveOpKind::GetField { field, input_port } => {
+            if !inputs.iter().any(|p| p.name.0 == *input_port) {
+                let mut declared: Vec<&str> = inputs.iter().map(|p| p.name.0.as_str()).collect();
+                declared.sort_unstable();
+                return Err(ResolveError {
+                    node_id: String::new(),
+                    reason: format!(
+                        "GetField `{field}`: input_port `{input_port}` not found in declared inputs [{}] (compiler bug)",
+                        declared.join(", ")
+                    ),
+                });
+            }
             let output_port =
                 outputs
                     .first()
@@ -2770,6 +2781,91 @@ mod tests {
             outputs.get("items"),
             Some(&Value::Skipped),
             "Skipped input should propagate as Skipped, not empty list"
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_rejects_mismatched_input_port() {
+        // GetField.input_port says "record" but the node declares input "data".
+        let node = Node::opaque(
+            "extract_field",
+            vec![Port::scalar("data", "Json")],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::data::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                    input_port: "record".into(),
+                },
+            },
+        );
+        let err = resolve_node(&node).expect_err(
+            "GetField with input_port not matching declared inputs must fail at resolve time",
+        );
+        let msg = err.reason;
+        assert!(
+            msg.contains("input_port `record` not found in declared inputs"),
+            "error should identify the mismatched port: {msg}"
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_rejects_no_declared_inputs() {
+        // GetField.input_port says "record" but the node has zero declared inputs.
+        let node = Node::opaque(
+            "extract_field",
+            vec![],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::empty::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                    input_port: "record".into(),
+                },
+            },
+        );
+        let err = resolve_node(&node).expect_err(
+            "GetField with no declared inputs must fail at resolve time",
+        );
+        assert!(
+            err.reason.contains("input_port `record` not found"),
+            "error should mention missing port: {}",
+            err.reason
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_succeeds_with_matching_input_port() {
+        let node = Node::opaque(
+            "extract_field",
+            vec![Port::scalar("record", "Json")],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::record::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                    input_port: "record".into(),
+                },
+            },
+        );
+        let op = resolve_node(&node).expect("GetField with matching input_port should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "record".to_string(),
+            Value::Map(
+                [("name".to_string(), Value::Str("alice".to_string()))]
+                    .into_iter()
+                    .collect(),
+            ),
+        );
+        let outputs = op.execute(inputs).expect("GetField should execute");
+        assert_eq!(
+            outputs.get("value").and_then(Value::as_str),
+            Some("alice"),
+            "GetField should extract the named field from the input map"
         );
     }
 }
