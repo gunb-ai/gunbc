@@ -32,7 +32,8 @@ import v2.std.core {
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
-  type_expr_to_node
+  type_expr_to_node,
+  node_to_type_expr_full
 }
 
 import v2.compiler.infer {
@@ -58,7 +59,7 @@ import v2.compiler.emit {
   has_nested_records, has_nested_records_node,
   emit_data_value_json, escape_json_string,
   module_to_filename,
-  indent, make_indent, to_string, to_string_helper,
+  make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
@@ -198,18 +199,18 @@ fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: I
     emit_py_type_def_from_connective(item: item)
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
-  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: type_expr_to_node(te: item.return_type)) {
-    concat(item.name, " = ", emit_py_type_expr(type_expr: item.return_type))
+  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
+    concat(item.name, " = ", emit_py_type_expr(type_expr: node_to_type_expr_full(n: item.return_type)))
   }
   else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
-      emit_py_func_def(name: item.name, params: item.params, return_type: type_expr_to_node(te: item.return_type), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_py_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_py_fn_def(name: item.name, params: item.params, return_type: type_expr_to_node(te: item.return_type), body: item.body.value, registry: registry, scope: scope)
+      emit_py_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
     }
   }
   else if item.body != none && item.type_annotation != none {
-    emit_py_data_def(name: item.name, type_node: type_expr_to_node(te: item.type_annotation.value), value: item.body.value, registry: registry, scope: scope)
+    emit_py_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   }
   else if item.transport != none && item.children |> count > 0 {
     emit_py_service_def(item: item, registry: registry)
@@ -219,7 +220,7 @@ fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: I
   }
   else if item.params |> count > 0 {
     let params_str = emit_py_params(params: item.params)
-    let ret_str = emit_py_return_type(return_type: type_expr_to_node(te: item.return_type))
+    let ret_str = emit_py_return_type(return_type: item.return_type)
     concat("def ", py_ident(name: item.name), "(", params_str, ")", ret_str, ":\n",
       "    raise NotImplementedError(\"extern func\")")
   }
@@ -257,8 +258,8 @@ fn emit_py_dataclass_from_children(name: String, children: List<TypedNode>) -> S
 }
 
 fn emit_py_dataclass_field_from_child(child: TypedNode) -> String {
-  let ty = emit_py_type_expr(type_expr: child.return_type)
-  let is_optional = is_py_optional_type(type_expr: child.return_type)
+  let ty = emit_py_type_expr(type_expr: node_to_type_expr_full(n: child.return_type))
+  let is_optional = is_py_optional_type(type_expr: node_to_type_expr_full(n: child.return_type))
   let default_str = if is_optional {
     " = None"
   } else {
@@ -466,6 +467,7 @@ fn emit_py_node_type_disj(n: Node) -> String {
 // =========================================================================
 
 fn emit_py_fn_def(name: String, params: List<Param>, return_type: Node, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let depth = 0
   let params_str = emit_py_params(params: params)
   let ret_str = emit_py_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
@@ -478,13 +480,13 @@ fn emit_py_fn_def(name: String, params: List<Param>, return_type: Node, body: Ty
     }
   }
   if use_tco {
-    let body_str = emit_py_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
+    let body_str = emit_py_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1)
     concat("def ", py_ident(name: name), "(", params_str, ")", ret_str, ":\n",
-      indent(text: body_str, level: 1))
+      make_indent(level: depth + 1), body_str)
   } else {
-    let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: body_scope)
+    let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
     concat("def ", py_ident(name: name), "(", params_str, ")", ret_str, ":\n",
-      indent(text: concat("return ", body_str), level: 1))
+      make_indent(level: depth + 1), "return ", body_str)
   }
 }
 
@@ -501,6 +503,7 @@ fn emit_py_func_def(
   registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
+  let depth = 0
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
     None => collect_typed_service_calls(texpr: body)
@@ -508,9 +511,9 @@ fn emit_py_func_def(
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_py_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let body_str = emit_py_typed_func_body(body: body, registry: registry, scope: body_scope)
+  let body_str = emit_py_typed_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("async def ", py_ident(name: name), "(", params_str, ")", ret_str, ":\n",
-    indent(text: body_str, level: 1))
+    make_indent(level: depth + 1), body_str)
 }
 
 fn emit_py_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
@@ -564,50 +567,50 @@ fn emit_py_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> 
     concat(name, "(", bindings_str, ")")
   }
 }
-fn emit_py_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_py_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match texpr {
     TypedLiteral { value: v, resolved_type: _, span: _ } => python_literal(value: v)
     TypedVar { name: n, resolved_type: _, span: _ } => py_ident(name: n)
     TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
-      concat(emit_py_typed_expr(texpr: b, registry: registry, scope: scope), ".", py_ident(name: f))
+      concat(emit_py_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth), ".", py_ident(name: f))
     TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
-      emit_py_typed_call(func: f, args: a, registry: registry, scope: scope)
+      emit_py_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth)
     TypedMethodCall { receiver: r, method: m, args: a, resolved_type: _, span: _ } =>
-      emit_py_typed_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope)
+      emit_py_typed_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope, depth: depth)
     TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
-      emit_py_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope)
+      emit_py_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
-      emit_py_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope)
+      emit_py_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
-      emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope)
+      emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     TypedRecordLit { type_name: tn, fields: fs, resolved_type: _, span: _ } =>
-      emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope)
+      emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
     TypedListLit { elements: els, resolved_type: _, span: _ } =>
-      emit_py_typed_list_lit(elements: els, registry: registry, scope: scope)
+      emit_py_typed_list_lit(elements: els, registry: registry, scope: scope, depth: depth)
     TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: _ } =>
-      emit_py_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope)
+      emit_py_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope, depth: depth)
     TypedUnaryOp { op: o, operand: e, resolved_type: _, span: _ } =>
-      emit_py_typed_unary_op(op: o, operand: e, registry: registry, scope: scope)
+      emit_py_typed_unary_op(op: o, operand: e, registry: registry, scope: scope, depth: depth)
     TypedLambda { params: ps, body: bd, resolved_type: _, span: _ } =>
-      emit_py_typed_lambda(params: ps, body: bd, registry: registry, scope: scope)
+      emit_py_typed_lambda(params: ps, body: bd, registry: registry, scope: scope, depth: depth)
     TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
-      emit_py_typed_string_interp(parts: ps, registry: registry, scope: scope)
+      emit_py_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth)
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
-      emit_py_typed_block(stmts: ss, registry: registry, scope: scope)
+      emit_py_typed_block(stmts: ss, registry: registry, scope: scope, depth: depth)
     TypedCast { expr: e, target: t, resolved_type: _, span: _ } =>
-      emit_py_typed_cast(expr: e, target: type_expr_to_node(te: t), registry: registry, scope: scope)
+      emit_py_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth)
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: _ } =>
-      emit_py_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope)
+      emit_py_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
     TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
-      emit_py_typed_index(base: b, index: i, registry: registry, scope: scope)
+      emit_py_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth)
     TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
-      emit_py_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope)
+      emit_py_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth)
   }
 }
 
-fn emit_py_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_py_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-  let arg_strs = ordered_args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope))
+  let arg_strs = ordered_args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
@@ -626,25 +629,25 @@ fn emit_py_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<Str
   }
 }
 
-fn emit_py_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let coll_str = emit_py_typed_expr(texpr: collection, registry: registry, scope: scope)
-  let elem_type = for_each_element_type(type_expr: collection.resolved_type)
+fn emit_py_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let coll_str = emit_py_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth)
+  let elem_type = for_each_element_type(type_expr: node_to_type_expr_full(n: collection.resolved_type))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
-  let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: body_scope)
+  let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("for ", py_ident(name: variable), " in ", coll_str, ":\n",
-    indent(text: body_str, level: 1))
+    make_indent(level: depth + 1), body_str)
 }
 
-fn emit_py_typed_index(base: TypedExpr, index: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope)
-  let index_str = emit_py_typed_expr(texpr: index, registry: registry, scope: scope)
+fn emit_py_typed_index(base: TypedExpr, index: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth)
+  let index_str = emit_py_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth)
   concat(base_str, "[", index_str, "]")
 }
 
-fn emit_py_typed_slice(base: TypedExpr, start: TypedExpr, end: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope)
-  let start_str = emit_py_typed_expr(texpr: start, registry: registry, scope: scope)
-  let end_str = emit_py_typed_expr(texpr: end, registry: registry, scope: scope)
+fn emit_py_typed_slice(base: TypedExpr, start: TypedExpr, end: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth)
+  let start_str = emit_py_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth)
+  let end_str = emit_py_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth)
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
@@ -729,7 +732,7 @@ fn emit_py_typed_let(name: String, value: TypedExpr, body: TypedExpr?, registry:
   let let_line = concat(py_ident(name: name), " = ", val_str)
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: value.resolved_type)
+      let next_scope = extend_scope(scope: scope, name: name, resolved: node_to_type_expr_full(n: value.resolved_type))
       concat(let_line, "\n", emit_py_typed_expr(texpr: bd, registry: registry, scope: next_scope))
     None => let_line
   }
@@ -838,7 +841,7 @@ fn emit_py_typed_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, sco
     TypedLet { name: n, value: v, body: inner, resolved_type: _, span: _ } => {
       let val_str = emit_py_typed_expr(texpr: v, registry: registry, scope: scope)
       let let_line = concat(py_ident(name: n), " = ", val_str)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: node_to_type_expr_full(n: v.resolved_type))
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_py_typed_func_body(body: bd, registry: registry, scope: next_scope))
@@ -912,7 +915,7 @@ fn emit_py_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
       let val_str = emit_py_typed_expr(texpr: v, registry: registry, scope: scope)
       let let_line = concat(py_ident(name: n), " = ", val_str)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: node_to_type_expr_full(n: v.resolved_type))
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_py_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope))
@@ -1026,7 +1029,7 @@ fn emit_py_operation_method(service_name: String, transport: TransportBinding, o
   } else {
     concat("self, ", params_str)
   }
-  let ret_type = emit_py_node_type(n: type_expr_to_node(te: op_node.return_type))
+  let ret_type = emit_py_node_type(n: op_node.return_type)
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
     None => transport
@@ -1135,7 +1138,7 @@ fn emit_py_capability_method(cap_node: TypedNode) -> String {
   } else {
     concat("self, ", params_str)
   }
-  let ret = emit_py_node_type(n: type_expr_to_node(te: cap_node.return_type))
+  let ret = emit_py_node_type(n: cap_node.return_type)
   concat("@abstractmethod\n",
     "async def ", py_ident(name: cap_node.name), "(", all_params, ") -> ", ret, ":\n",
     "    ...")

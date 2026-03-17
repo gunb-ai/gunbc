@@ -35,7 +35,7 @@ import v2.std.core {
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
   typed_expr_to_expr,
-  type_expr_to_node
+  type_expr_to_node, node_to_type_expr_full
 }
 
 import v2.compiler.infer {
@@ -284,22 +284,22 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
     emit_type_def_from_connective(item: item)
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
-  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: type_expr_to_node(te: item.return_type)) {
-    concat("pub type ", item.name, " = ", emit_rust_node_type(n: type_expr_to_node(te: item.return_type)), ";")
+  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
+    concat("pub type ", item.name, " = ", emit_rust_node_type(n: item.return_type), ";")
   }
   // Function with body: fn or func (distinguished from data by type_annotation)
   else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
       // async func/pattern
-      emit_func_def(name: item.name, params: item.params, return_type: type_expr_to_node(te: item.return_type), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       // pure fn (including zero-param functions)
-      emit_fn_def(name: item.name, params: item.params, return_type: type_expr_to_node(te: item.return_type), body: item.body.value, registry: registry, scope: scope)
+      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
     }
   }
   // Data: has body and type_annotation (data constant)
   else if item.body != none && item.type_annotation != none {
-    emit_data_def(name: item.name, type_node: type_expr_to_node(te: item.type_annotation.value), value: item.body.value, registry: registry, scope: scope)
+    emit_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   }
   // Service: has transport and children (operations as child Nodes)
   else if item.transport != none && item.children |> count > 0 {
@@ -312,7 +312,7 @@ fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: Infe
   // Extern func: has params but no body
   else if item.params |> count > 0 {
     let params_str = emit_params(params: item.params)
-    let ret_str = emit_return_type(return_type: type_expr_to_node(te: item.return_type))
+    let ret_str = emit_return_type(return_type: item.return_type)
     concat("pub fn ", rust_ident(name: item.name), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   }
   else {
@@ -350,7 +350,7 @@ fn emit_struct_from_children(name: String, children: List<TypedNode>) -> String 
 }
 
 fn emit_struct_field_from_child(child: TypedNode) -> String {
-  let ty = emit_rust_node_type(n: type_expr_to_node(te: child.return_type))
+  let ty = emit_rust_node_type(n: child.return_type)
   // Check for from_key in child properties
   let rename_attr = match child.properties |> filter(p => p.name == "from_key") |> first {
     Some { value: prop } => match prop.value {
@@ -380,7 +380,7 @@ fn emit_variant_from_child(child: TypedNode) -> String {
   } else {
     // Fielded variant — child's children are the variant's fields
     let field_lines = child.children |> map(f =>
-      concat("        ", rust_ident(name: f.name), ": ", emit_rust_node_type(n: type_expr_to_node(te: f.return_type)), ",")
+      concat("        ", rust_ident(name: f.name), ": ", emit_rust_node_type(n: f.return_type), ",")
     )
     let fields_str = field_lines |> join(separator: "\n")
     concat("    ", child.name, " {\n", fields_str, "\n    },")
@@ -491,6 +491,7 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Typed
   let params_str = emit_params(params: params)
   let ret_str = emit_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let depth = 0
   // Tail-call optimization: use cached analysis from item registry.
   let use_tco = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
@@ -501,13 +502,13 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Typed
   }
   if use_tco {
     let tco_params_str = emit_tco_params(params: params)
-    let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
+    let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1)
     concat("pub fn ", rust_ident(name: name), "(", tco_params_str, ")", ret_str, " {\n",
-      indent(text: body_str, level: 1), "\n}")
+      make_indent(level: depth + 1) ++ body_str, "\n}")
   } else {
-    let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope)
+    let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
     concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
-      indent(text: body_str, level: 1), "\n}")
+      make_indent(level: depth + 1) ++ body_str, "\n}")
   }
 }
 
@@ -524,6 +525,7 @@ fn emit_func_def(
   registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
+  let depth = 0
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
     None => collect_typed_service_calls(texpr: body)
@@ -531,24 +533,24 @@ fn emit_func_def(
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_func_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let body_str = emit_func_body(body: body, registry: registry, scope: body_scope)
+  let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("pub async fn ", rust_ident(name: name),
     "(", params_str, ")", ret_str, " {\n",
-    indent(text: body_str, level: 1), "\n}")
+    make_indent(level: depth + 1) ++ body_str, "\n}")
 }
 
 // Emit a func body, wrapping the tail expression in Ok(...).
 // For let-chains the leading bindings are emitted as statements,
 // and only the final expression is wrapped.
-fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match body {
     TypedLet { name: n, value: v, body: inner, resolved_type: _, span: _ } => {
-      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope)
+      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth)
       let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: node_to_type_expr_full(n: v.resolved_type))
       match inner {
         Some { value: bd } =>
-          concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope))
+          concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope, depth: depth))
         None => let_line
       }
     }
@@ -559,20 +561,20 @@ fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: Infer
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
           |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope)
+            let line = emit_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
             let new_text = concat(acc.text, [line])
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
         let last_str = match last_stmt {
-          Some { value: s } => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope), ")")
+          Some { value: s } => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: depth), ")")
           None => "Ok(())"
         }
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    _ => concat("Ok(", emit_typed_expr(texpr: body, registry: registry, scope: scope), ")")
+    _ => concat("Ok(", emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth), ")")
   }
 }
 
@@ -674,48 +676,48 @@ fn needs_reference_node(n: Node) -> Bool {
 // Expression emission
 // =========================================================================
 
-fn emit_expr(expr: Expr, registry: Map<String, ItemInfo>) -> String {
-  emit_expr_in_scope(expr: expr, registry: registry, scope: empty_emit_scope())
+fn emit_expr(expr: Expr, registry: Map<String, ItemInfo>, depth: Int) -> String {
+  emit_expr_in_scope(expr: expr, registry: registry, scope: empty_emit_scope(), depth: depth)
 }
 
-fn emit_expr_in_scope(expr: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_expr_in_scope(expr: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr {
     Literal { value: v, span: _ } => rust_literal(value: v)
     Var { name: n, span: _ } => rust_ident(name: n)
     FieldAccess { base: b, field: f, span: _ } =>
-      concat(emit_expr_in_scope(expr: b, registry: registry, scope: scope), ".", rust_ident(name: f))
+      concat(emit_expr_in_scope(expr: b, registry: registry, scope: scope, depth: depth), ".", rust_ident(name: f))
     Call { func: f, args: a, span: _ } =>
-      emit_call(func: f, args: a, registry: registry, scope: scope)
+      emit_call(func: f, args: a, registry: registry, scope: scope, depth: depth)
     MethodCall { receiver: r, method: m, args: a, span: _ } =>
-      emit_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope)
+      emit_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope, depth: depth)
     Match { scrutinee: s, arms: arm_list, span: _ } =>
-      emit_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope)
+      emit_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     If { condition: c, then_branch: t, else_branch: e, span: _ } =>
-      emit_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope)
+      emit_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
     Let { name: n, value: v, body: bd, span: _ } =>
-      emit_let(name: n, value: v, body: bd, registry: registry, scope: scope)
+      emit_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     RecordLit { type_name: tn, fields: fs, span: span } =>
-      emit_record_lit(type_name: tn, fields: fs, span: span, registry: registry, scope: scope)
+      emit_record_lit(type_name: tn, fields: fs, span: span, registry: registry, scope: scope, depth: depth)
     ListLit { elements: els, span: _ } =>
-      emit_list_lit(elements: els, registry: registry, scope: scope)
+      emit_list_lit(elements: els, registry: registry, scope: scope, depth: depth)
     BinOp { op: o, left: l, right: r, span: _ } =>
-      emit_bin_op(op: o, left: l, right: r, registry: registry, scope: scope)
+      emit_bin_op(op: o, left: l, right: r, registry: registry, scope: scope, depth: depth)
     UnaryOp { op: o, operand: e, span: _ } =>
-      emit_unary_op(op: o, operand: e, registry: registry, scope: scope)
+      emit_unary_op(op: o, operand: e, registry: registry, scope: scope, depth: depth)
     Lambda { params: ps, body: bd, span: _ } =>
-      emit_lambda(params: ps, body: bd, registry: registry, scope: scope)
+      emit_lambda(params: ps, body: bd, registry: registry, scope: scope, depth: depth)
     StringInterp { parts: ps, span: _ } =>
-      emit_string_interp(parts: ps, registry: registry, scope: scope)
+      emit_string_interp(parts: ps, registry: registry, scope: scope, depth: depth)
     Block { stmts: ss, span: _ } =>
-      emit_block(stmts: ss, registry: registry, scope: scope)
+      emit_block(stmts: ss, registry: registry, scope: scope, depth: depth)
     Cast { expr: e, target: t, span: _ } =>
-      emit_cast(expr: e, target: t, registry: registry, scope: scope)
+      emit_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth)
     ForEach { variable: v, collection: c, body: bd, span: _ } =>
-      emit_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope)
+      emit_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
     Index { base: b, index: i, span: _ } =>
-      emit_index(base: b, index: i, registry: registry, scope: scope)
+      emit_index(base: b, index: i, registry: registry, scope: scope, depth: depth)
     Slice { base: b, start: s, end: e, span: _ } =>
-      emit_slice(base: b, start: s, end: e, registry: registry, scope: scope)
+      emit_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth)
   }
 }
 
@@ -1135,7 +1137,7 @@ fn emit_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: Inf
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope)
     TypedRecordLit { type_name: tn, fields: fs, resolved_type: rt, span: _ } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, resolved_type: type_expr_to_node(te: rt), registry: registry, scope: scope)
+      emit_typed_record_lit(type_name: tn, fields: fs, resolved_type: rt, registry: registry, scope: scope)
     TypedListLit { elements: els, resolved_type: _, span: _ } =>
       emit_typed_list_lit(elements: els, registry: registry, scope: scope)
     TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: _ } =>
@@ -1149,7 +1151,7 @@ fn emit_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: Inf
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
       emit_typed_block(stmts: ss, registry: registry, scope: scope)
     TypedCast { expr: e, target: t, resolved_type: _, span: _ } =>
-      emit_typed_cast(expr: e, target: type_expr_to_node(te: t), registry: registry, scope: scope)
+      emit_typed_cast(expr: e, target: t, registry: registry, scope: scope)
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: _ } =>
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope)
     TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
@@ -1182,7 +1184,7 @@ fn emit_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<String
 
 fn emit_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope)
-  let elem_type = for_each_element_type(type_expr: collection.resolved_type)
+  let elem_type = for_each_element_type(type_expr: node_to_type_expr_full(n: collection.resolved_type))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope)
   concat("for ", rust_ident(name: variable), " in ", coll_str, ".into_iter() {\n",
@@ -1192,7 +1194,7 @@ fn emit_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr,
 fn emit_typed_index(base: TypedExpr, index: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope)
-  let base_type = normalize_access_type(type_expr: base.resolved_type)
+  let base_type = normalize_access_type(type_expr: node_to_type_expr_full(n: base.resolved_type))
   match base_type {
     Primitive { name: name, span: _ } =>
       if name == "String" {
@@ -1211,7 +1213,7 @@ fn emit_typed_slice(base: TypedExpr, start: TypedExpr, end: TypedExpr, registry:
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope)
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope)
-  let base_type = normalize_access_type(type_expr: base.resolved_type)
+  let base_type = normalize_access_type(type_expr: node_to_type_expr_full(n: base.resolved_type))
   match base_type {
     Primitive { name: name, span: _ } =>
       if name == "String" {
@@ -1308,7 +1310,7 @@ fn emit_typed_let(name: String, value: TypedExpr, body: TypedExpr?, registry: Ma
   let let_line = concat("let ", rust_ident(name: name), " = ", val_str, ";")
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: value.resolved_type)
+      let next_scope = extend_scope(scope: scope, name: name, resolved: node_to_type_expr_full(n: value.resolved_type))
       concat(let_line, "\n", emit_typed_expr(texpr: bd, registry: registry, scope: next_scope))
     None => let_line
   }
@@ -1458,7 +1460,7 @@ fn emit_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, r
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope)
       let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: node_to_type_expr_full(n: v.resolved_type))
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope))
@@ -1654,7 +1656,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_rust_node_type(n: type_expr_to_node(te: op_node.return_type))
+  let ret_type = emit_rust_node_type(n: op_node.return_type)
   // Use per-operation transport override if present, otherwise service-level transport.
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
@@ -1662,7 +1664,7 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
   }
   let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry)
   let mock_props = extract_mock_props(properties: op_node.properties)
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: type_expr_to_node(te: op_node.return_type), mock_props: mock_props, registry: registry)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: op_node.return_type, mock_props: mock_props, registry: registry)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     indent(text: dry_run_body, level: 1), "\n",
@@ -1783,7 +1785,7 @@ fn emit_capability_method(cap_node: TypedNode) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_rust_node_type(n: type_expr_to_node(te: cap_node.return_type))
+  let ret = emit_rust_node_type(n: cap_node.return_type)
   concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 

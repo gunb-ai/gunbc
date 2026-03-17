@@ -332,25 +332,25 @@ type Severity = Error | Warning
 // =========================================================================
 
 type TypedExpr
-  = TypedLiteral { value: LiteralValue, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedVar { name: String, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedFieldAccess { base: TypedExpr, field: String, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedCall { func: String, args: List<TypedNamedArg>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedMethodCall { receiver: TypedExpr, method: String, args: List<TypedNamedArg>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedMatch { scrutinee: TypedExpr, arms: List<TypedMatchArm>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedIf { condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedLet { name: String, value: TypedExpr, body: TypedExpr?, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedRecordLit { type_name: String?, fields: List<TypedFieldInit>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedListLit { elements: List<TypedExpr>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedBinOp { op: BinOpKind, left: TypedExpr, right: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedUnaryOp { op: UnaryOpKind, operand: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedLambda { params: List<String>, body: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedStringInterp { parts: List<TypedStringPart>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedBlock { stmts: List<TypedExpr>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedCast { expr: TypedExpr, target: TypeExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedForEach { variable: String, collection: TypedExpr, body: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedIndex { base: TypedExpr, index: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedSlice { base: TypedExpr, start: TypedExpr, end: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  = TypedLiteral { value: LiteralValue, resolved_type: Node, span: SourceSpan }
+  | TypedVar { name: String, resolved_type: Node, span: SourceSpan }
+  | TypedFieldAccess { base: TypedExpr, field: String, resolved_type: Node, span: SourceSpan }
+  | TypedCall { func: String, args: List<TypedNamedArg>, resolved_type: Node, span: SourceSpan }
+  | TypedMethodCall { receiver: TypedExpr, method: String, args: List<TypedNamedArg>, resolved_type: Node, span: SourceSpan }
+  | TypedMatch { scrutinee: TypedExpr, arms: List<TypedMatchArm>, resolved_type: Node, span: SourceSpan }
+  | TypedIf { condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, resolved_type: Node, span: SourceSpan }
+  | TypedLet { name: String, value: TypedExpr, body: TypedExpr?, resolved_type: Node, span: SourceSpan }
+  | TypedRecordLit { type_name: String?, fields: List<TypedFieldInit>, resolved_type: Node, span: SourceSpan }
+  | TypedListLit { elements: List<TypedExpr>, resolved_type: Node, span: SourceSpan }
+  | TypedBinOp { op: BinOpKind, left: TypedExpr, right: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedUnaryOp { op: UnaryOpKind, operand: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedLambda { params: List<String>, body: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedStringInterp { parts: List<TypedStringPart>, resolved_type: Node, span: SourceSpan }
+  | TypedBlock { stmts: List<TypedExpr>, resolved_type: Node, span: SourceSpan }
+  | TypedCast { expr: TypedExpr, target: Node, resolved_type: Node, span: SourceSpan }
+  | TypedForEach { variable: String, collection: TypedExpr, body: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedIndex { base: TypedExpr, index: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedSlice { base: TypedExpr, start: TypedExpr, end: TypedExpr, resolved_type: Node, span: SourceSpan }
 
 type TypedNamedArg { name: String?, value: TypedExpr }
 type TypedMatchArm { pattern: MatchPattern, guard: TypedExpr?, body: TypedExpr }
@@ -375,7 +375,7 @@ fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
     TypedLambda { params: ps, body: bd, resolved_type: _, span: s } => Lambda { params: ps, body: typed_expr_to_expr(texpr: bd), span: s }
     TypedStringInterp { parts: ps, resolved_type: _, span: s } => StringInterp { parts: ps |> map(p => match p { TypedText { value: v } => Text { value: v }, TypedInterpolation { expr: e } => Interpolation { expr: typed_expr_to_expr(texpr: e) } }), span: s }
     TypedBlock { stmts: ss, resolved_type: _, span: s } => Block { stmts: ss |> map(st => typed_expr_to_expr(texpr: st)), span: s }
-    TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: t, span: s }
+    TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: node_to_type_expr_full(n: t), span: s }
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: s } => ForEach { variable: v, collection: typed_expr_to_expr(texpr: c), body: typed_expr_to_expr(texpr: bd), span: s }
     TypedIndex { base: b, index: i, resolved_type: _, span: s } => Index { base: typed_expr_to_expr(texpr: b), index: typed_expr_to_expr(texpr: i), span: s }
     TypedSlice { base: b, start: st, end: e, resolved_type: _, span: s } => Slice { base: typed_expr_to_expr(texpr: b), start: typed_expr_to_expr(texpr: st), end: typed_expr_to_expr(texpr: e), span: s }
@@ -385,7 +385,7 @@ fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
 type FuncSig {
   name: String
   params: List<Param>
-  return_type: TypeExpr
+  return_type: Node
   is_async: Bool
 }
 
@@ -433,13 +433,15 @@ type TypedNode {
   children: List<TypedNode>
   connective: Connective?
   params: List<Param>
-  return_type: TypeExpr
+  return_type: Node
   uses: List<ResourceUse>
   body: TypedExpr?
   transport: TransportBinding?
   properties: List<FieldInit>
-  type_annotation: TypeExpr?
+  type_annotation: Node?
   config: ServiceConfig?
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
 }
 
 // =========================================================================

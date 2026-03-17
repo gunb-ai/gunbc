@@ -36,7 +36,8 @@ import v2.std.core {
   TypedStringInterp, TypedBlock, TypedCast, TypedForEach,
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
-  TypedStringPart, TypedText, TypedInterpolation
+  TypedStringPart, TypedText, TypedInterpolation,
+  node_to_type_expr_full
 }
 
 import v2.compiler.infer {
@@ -115,7 +116,7 @@ fn scope_after_expr(texpr: TypedExpr, scope: InferScope) -> InferScope {
   match texpr {
     TypedLet { name: name, value: value, body: body, resolved_type: _, span: _ } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: value.resolved_type)
+        extend_scope(scope: scope, name: name, resolved: node_to_type_expr_full(n: value.resolved_type))
       } else {
         scope
       }
