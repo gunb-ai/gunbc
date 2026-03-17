@@ -464,24 +464,49 @@ fn lookup_in_scope(scope: InferScope, name: String) -> TypeExpr? {
 // by name and return its type. Returns None if not found or not a Product.
 // -------------------------------------------------------------------------
 
+// Find a field by name in a list of fields.
+fn find_field_in_list(fields: List<Field>, field_name: String) -> TypeExpr? {
+  let matches = filter(fields, f => f.name == field_name)
+  if count(matches) > 0 {
+    match first(matches) {
+      Some { value: f } =>
+        if f.optional {
+          Some { value: Optional { inner: f.type_expr, span: no_span() } }
+        } else {
+          Some { value: f.type_expr }
+        }
+      None => None
+    }
+  } else {
+    None
+  }
+}
+
+// Find a field that appears in ALL variants of a Coproduct (common field).
+fn lookup_coproduct_common_field(variants: List<Variant>, field_name: String) -> TypeExpr? {
+  if count(variants) == 0 { None }
+  else {
+    // Check first variant for the field
+    match first(variants) {
+      Some { value: first_v } =>
+        match find_field_in_list(fields: first_v.fields, field_name: field_name) {
+          Some { value: field_type } =>
+            // Check all other variants have this field too
+            let all_have = all(variants, v => any(v.fields, f => f.name == field_name))
+            if all_have { Some { value: field_type } } else { None }
+          None => None
+        }
+      None => None
+    }
+  }
+}
+
 fn lookup_field_type(type_expr: TypeExpr, field_name: String) -> TypeExpr? {
   match type_expr {
     Product { name: _, fields: fields, span: _ } =>
-      let matches = filter(fields, f => f.name == field_name)
-      if count(matches) > 0 {
-        let found = first(matches)
-        match found {
-          Some { value: f } =>
-            if f.optional {
-              Some { value: Optional { inner: f.type_expr, span: no_span() } }
-            } else {
-              Some { value: f.type_expr }
-            }
-          None => None
-        }
-      } else {
-        None
-      }
+      find_field_in_list(fields: fields, field_name: field_name)
+    Coproduct { name: _, variants: variants, span: _ } =>
+      lookup_coproduct_common_field(variants: variants, field_name: field_name)
     // For Optional types, unwrap and look up in inner
     Optional { inner: inner, span: _ } =>
       match lookup_field_type(type_expr: inner, field_name: field_name) {
@@ -1182,7 +1207,10 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     FieldAccess { base: base_expr, field: field_name, span: span } =>
       let base_result = infer_expr(expr: base_expr, scope: scope)
       let base_type = base_result.typed.resolved_type
-      match lookup_field_type(type_expr: base_type, field_name: field_name) {
+      // Resolve Named references through the type environment so field
+      // lookup sees the structural Product/Coproduct definition.
+      let resolved_base = resolve_scrutinee_type(env: scope.type_env, te: base_type)
+      match lookup_field_type(type_expr: resolved_base, field_name: field_name) {
         Some { value: field_type } =>
           let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: field_type, span: span }
           InferResult {
