@@ -35,15 +35,12 @@ pub fn validate_effectful_claim_declarations(
     spec: &WorkflowSpec,
     registry: &ProcessUnitRegistry,
 ) -> Vec<WorkflowAdmissionError> {
-    let mut errors = Vec::new();
     let declared_claims = match derive_declared_claims(spec) {
         Ok(claims) => claims,
-        Err(mut claim_errors) => {
-            errors.append(&mut claim_errors);
-            BTreeMap::new()
-        }
+        Err(claim_errors) => return claim_errors,
     };
 
+    let mut errors = Vec::new();
     for node in &spec.dag.nodes {
         let NodeBody::Opaque(WorkflowUnit { op }) = &node.body else {
             continue;
@@ -92,15 +89,12 @@ pub fn validate_required_claims(
     spec: &WorkflowSpec,
     registry: &ProcessUnitRegistry,
 ) -> Vec<WorkflowAdmissionError> {
-    let mut errors = Vec::new();
     let declared_claims = match derive_declared_claims(spec) {
         Ok(claims) => claims,
-        Err(mut claim_errors) => {
-            errors.append(&mut claim_errors);
-            BTreeMap::new()
-        }
+        Err(claim_errors) => return claim_errors,
     };
 
+    let mut errors = Vec::new();
     for node in &spec.dag.nodes {
         let NodeBody::Opaque(WorkflowUnit { op }) = &node.body else {
             continue;
@@ -226,16 +220,15 @@ fn workflow_resource_access_error(error: ResourceAccessError) -> WorkflowAdmissi
             node_id,
             port_name,
             resource_id,
-        } => WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+        } => WorkflowAdmissionError::MissingResourceAccessMode {
             node_id,
             port_name,
-            claim_id: Some(ClaimId::new(resource_id.0)),
+            resource_id: ClaimId::new(resource_id.0),
         },
         ResourceAccessError::MissingResourceId { node_id, port_name } => {
-            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+            WorkflowAdmissionError::MissingResourceId {
                 node_id,
                 port_name,
-                claim_id: None,
             }
         }
     }
@@ -547,20 +540,67 @@ mod tests {
         let errors = validate_conflicting_claims(&spec);
         assert_eq!(errors.len(), 1);
         match &errors[0] {
-            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+            WorkflowAdmissionError::MissingResourceId {
                 node_id,
                 port_name,
-                claim_id,
             } => {
                 assert_eq!(node_id.0, "wf.a");
                 assert_eq!(port_name, "db_conn");
-                assert_eq!(claim_id, &None);
                 assert_eq!(
                     errors[0].to_string(),
                     "node 'wf.a': resource input 'db_conn' has resource_access but no resource_id"
                 );
             }
-            other => panic!("expected ResourceAccessMetadataInvalid, got {other:?}"),
+            other => panic!("expected MissingResourceId, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn admission_fails_fast_on_missing_resource_id_without_cascade() {
+        // A port with resource_access but no resource_id should cause
+        // validate_workflow_admission to report only the metadata failure,
+        // not cascade into MissingRequiredClaims or UndeclaredEffectfulIo.
+        let mut inputs = required_input_contract();
+        let mut claim = Port::scalar("db_conn", "ResourceHandle");
+        claim.resource_access = Some(AccessMode::Write);
+        inputs.push(claim);
+
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "wf.a",
+            inputs,
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new("wf", "a"))),
+        ));
+
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let registry = {
+            let mut r = ProcessUnitRegistry::new();
+            r.register(ProcessUnitSpec::new(
+                ProcessUnitRef::new("wf", "a"),
+                1,
+                vec![UnitClaim::write("db_conn")],
+            ));
+            r
+        };
+
+        let errors = validate_workflow_admission(&spec, &registry)
+            .expect_err("admission should fail for missing resource_id");
+
+        // Only metadata errors — no MissingRequiredClaims or UndeclaredEffectfulIo noise.
+        for error in &errors {
+            assert!(
+                matches!(
+                    error,
+                    WorkflowAdmissionError::MissingResourceId { .. }
+                        | WorkflowAdmissionError::MissingResourceAccessMode { .. }
+                ),
+                "expected only resource metadata errors, got: {error:?}"
+            );
+        }
+        assert!(errors.iter().any(|e| matches!(
+            e,
+            WorkflowAdmissionError::MissingResourceId { node_id, .. } if node_id.0 == "wf.a"
+        )));
     }
 }
