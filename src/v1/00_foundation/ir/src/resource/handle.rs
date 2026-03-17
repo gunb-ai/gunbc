@@ -413,9 +413,6 @@ mod tests {
         });
 
         let result: Result<ResourceHandle<TestResource>, _> = serde_json::from_value(json);
-        assert!(
-            result.is_err(),
-            "serde input without cap should be rejected"
-        );
+        assert!(result.is_err(), "serde input without cap should be rejected");
     }
 }

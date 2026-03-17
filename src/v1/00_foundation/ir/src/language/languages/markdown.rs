@@ -71,7 +71,10 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
 pub fn render_code_block(code: &str, language: Option<&str>) -> String {
     let lang = language.unwrap_or("");
     let fence = code_fence_for(code);
-    format!("{}{}\n{}\n{}", fence, lang, code, fence)
+    format!(
+        "{}{}\n{}\n{}",
+        fence, lang, code, fence
+    )
 }
 
 /// Generate Markdown comment.

@@ -758,18 +758,12 @@ mod tests {
         let rendered = render_stmt(&stmt, 0);
         assert!(rendered.contains("for {"), "loop header");
         assert!(rendered.contains("if done {"), "if condition");
-        assert!(
-            rendered.contains("return result"),
-            "break should return the loop value"
-        );
+        assert!(rendered.contains("return result"), "break should return the loop value");
         assert!(
             !rendered.contains("_ = result // break"),
             "break should not degrade to a no-op assignment"
         );
-        assert!(
-            rendered.contains("continue"),
-            "recursive path should still continue"
-        );
+        assert!(rendered.contains("continue"), "recursive path should still continue");
     }
 
     // -- C2.8: Integration test --
