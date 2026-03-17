@@ -885,17 +885,15 @@ fn node_type_shape(n: Node) -> String {
         if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
     }
   } else if node_is_container(n: n) {
-    let elem_shape = if n.return_type != none {
-      type_expr_shape(type_expr: n.return_type.value)
-    } else {
-      "?"
+    let elem_shape = match n.children |> first {
+      Some { value: el } => node_type_shape(n: el)
+      None => "?"
     }
     concat("Container(", n.name, ",", elem_shape, ")")
   } else if node_is_optional(n: n) {
-    let inner_shape = if n.return_type != none {
-      type_expr_shape(type_expr: n.return_type.value)
-    } else {
-      "?"
+    let inner_shape = match n.children |> first {
+      Some { value: inner } => node_type_shape(n: inner)
+      None => "?"
     }
     concat("Optional(", inner_shape, ")")
   } else if node_is_map(n: n) {
@@ -976,16 +974,13 @@ fn node_type_deps(n: Node) -> List<String> {
     // Product or Coproduct: collect deps from children's return_types
     flat_map(n.children, child =>
       if child.return_type != none {
-        type_expr_deps(expr: child.return_type.value)
+        node_type_deps(n: child.return_type.value)
       } else {
         []
       }
     )
-  } else if n.return_type != none {
-    // Container, Optional, Refined: deps from the element/inner type
-    type_expr_deps(expr: n.return_type.value)
   } else {
-    // Map or other: collect from children
+    // Container, Map, or other: collect from children
     flat_map(n.children, child => node_type_deps(n: child))
   }
 }
@@ -2422,7 +2417,12 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
     } else {
       match lookup_type(env: env, name: n.name) {
         Some { value: resolved } =>
-          resolve_node(n: resolved, env: env, module_name: module_name)
+          // Guard: if resolved is a leaf with the same name, stop recursing
+          if resolved.children |> count == 0 && resolved.connective == none && resolved.name == n.name {
+            NodeResolveResult { resolved: resolved, diagnostics: [] }
+          } else {
+            resolve_node(n: resolved, env: env, module_name: module_name)
+          }
         None =>
           if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float" || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes" {
             NodeResolveResult { resolved: n, diagnostics: [] }
