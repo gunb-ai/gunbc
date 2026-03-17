@@ -501,13 +501,44 @@ fn lookup_coproduct_common_field(variants: List<Variant>, field_name: String) ->
   }
 }
 
+fn lookup_field_type_in_env(type_expr: TypeExpr, field_name: String, env: TypeEnv) -> TypeExpr? {
+  match type_expr {
+    Product { name: _, fields: fields, span: _ } =>
+      find_field_in_list(fields: fields, field_name: field_name)
+    Coproduct { name: _, variants: variants, span: _ } =>
+      lookup_coproduct_common_field(variants: variants, field_name: field_name)
+    // For Named types, resolve through the type environment (one level)
+    Named { name: n, span: _ } =>
+      match lookup_type(env: env, name: n) {
+        Some { value: resolved } =>
+          // Avoid infinite recursion: only resolve if result is structural
+          match resolved {
+            Product { name: _, fields: _, span: _ } =>
+              lookup_field_type_in_env(type_expr: resolved, field_name: field_name, env: env)
+            Coproduct { name: _, variants: _, span: _ } =>
+              lookup_field_type_in_env(type_expr: resolved, field_name: field_name, env: env)
+            _ => None
+          }
+        None => None
+      }
+    // For Optional types, unwrap and look up in inner
+    Optional { inner: inner, span: _ } =>
+      match lookup_field_type_in_env(type_expr: inner, field_name: field_name, env: env) {
+        Some { value: inner_result } =>
+          Some { value: Optional { inner: inner_result, span: no_span() } }
+        None => None
+      }
+    _ => None
+  }
+}
+
+// Backward-compatible wrapper (used by existing code that doesn't pass env)
 fn lookup_field_type(type_expr: TypeExpr, field_name: String) -> TypeExpr? {
   match type_expr {
     Product { name: _, fields: fields, span: _ } =>
       find_field_in_list(fields: fields, field_name: field_name)
     Coproduct { name: _, variants: variants, span: _ } =>
       lookup_coproduct_common_field(variants: variants, field_name: field_name)
-    // For Optional types, unwrap and look up in inner
     Optional { inner: inner, span: _ } =>
       match lookup_field_type(type_expr: inner, field_name: field_name) {
         Some { value: inner_result } =>
@@ -1207,10 +1238,9 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     FieldAccess { base: base_expr, field: field_name, span: span } =>
       let base_result = infer_expr(expr: base_expr, scope: scope)
       let base_type = base_result.typed.resolved_type
-      // Resolve Named references through the type environment so field
-      // lookup sees the structural Product/Coproduct definition.
-      let resolved_base = resolve_scrutinee_type(env: scope.type_env, te: base_type)
-      match lookup_field_type(type_expr: resolved_base, field_name: field_name) {
+      // Use env-aware lookup that resolves Named references through the
+      // type environment so field lookup sees structural definitions.
+      match lookup_field_type_in_env(type_expr: base_type, field_name: field_name, env: scope.type_env) {
         Some { value: field_type } =>
           let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: field_type, span: span }
           InferResult {
