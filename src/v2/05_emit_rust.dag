@@ -32,7 +32,6 @@ import v2.std.core {
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
-  typed_expr_to_expr,
   type_expr_to_node, node_to_type_expr_full,
   typed_expr_has_self_call, typed_has_non_tail_self_call
 }
@@ -54,7 +53,7 @@ import v2.compiler.emit {
   build_item_registry, lookup_item,
   unique_strings,
   collect_typed_service_calls,
-  has_nested_records, has_nested_records_node, emit_data_value_json, escape_json_string,
+  has_nested_records, has_nested_records_node, emit_data_value_json, emit_typed_data_value_json, escape_json_string,
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
@@ -713,7 +712,6 @@ fn emit_simple_string_interp(parts: List<StringPart>) -> String {
 // =========================================================================
 // Pattern emission — shared by TypedExpr match arms
 // =========================================================================
-}
 
 fn emit_pattern(pattern: MatchPattern) -> String {
   match pattern {
@@ -1381,13 +1379,13 @@ fn emit_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, 
   let auth_line = match auth {
     Some { value: ac } =>
       concat("let request = client.post(&url)\n    .header(\"",
-        ac.header, "\", ", emit_expr(expr: ac.token_expr, registry: registry, depth: depth), ");")
+        ac.header, "\", ", emit_simple_expr(expr: ac.token_expr, registry: registry, depth: depth), ");")
     None =>
       "let request = client.post(&url);"
   }
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
-      emit_expr(expr: h.value, registry: registry, depth: depth), ");")
+      emit_simple_expr(expr: h.value, registry: registry, depth: depth), ");")
   )
   let send_line = "let response = request.send().await?;"
   let parse_line = "let result = response.json().await?;"
@@ -1401,7 +1399,7 @@ fn emit_shell_call(op_name: String, env: List<EnvDef>, registry: Map<String, Ite
   let cmd_line = concat("let output = std::process::Command::new(\"",
     rust_ident(name: op_name), "\")")
   let env_lines = env |> map(e =>
-    concat("    .env(\"", e.name, "\", ", emit_expr(expr: e.value, registry: registry, depth: depth), ")")
+    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value, registry: registry, depth: depth), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"
@@ -1469,7 +1467,7 @@ fn emit_data_def(name: String, type_node: Node, value: TypedExpr, registry: Map<
     concat("pub const ", upper_name, ": ", ty_str, " = ", val_str, ";")
   } else if has_nested_records_node(n: type_node) {
     // Complex data with nested anonymous records -> serde deserialization
-    let json_str = emit_data_value_json(value: typed_expr_to_expr(texpr: value))
+    let json_str = emit_typed_data_value_json(value: value)
     concat("pub fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
@@ -1548,7 +1546,7 @@ fn emit_operation_test(service_name: String, op_node: TypedNode, registry: Map<S
 }
 
 fn emit_mock_prop_setup(mock_prop: FieldInit, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  let body_str = emit_expr(expr: mock_prop.value, registry: registry, depth: depth)
+  let body_str = emit_simple_expr(expr: mock_prop.value, registry: registry, depth: depth)
   concat("let ", mock_prop.name, " = ", body_str, ";")
 }
 
@@ -1598,14 +1596,13 @@ type WorkflowFunc {
   name: String
   module_name: String
   params: List<Param>
-  return_type: TypeExpr
+  return_type: Node
   uses: List<ResourceUse>
   service_names: List<String>
 }
 
 fn to_workflow_func(item: TypedNode, module_name: String) -> WorkflowFunc {
-  let body_expr = typed_expr_to_expr(texpr: item.body.value)
-  let svc_names = unique_strings(items: collect_service_calls(expr: body_expr))
+  let svc_names = collect_typed_service_calls(texpr: item.body.value)
   WorkflowFunc {
     name: item.name,
     module_name: module_name,

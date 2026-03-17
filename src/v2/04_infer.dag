@@ -1562,13 +1562,12 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           )
           BlockInferState {
             scope: next_scope,
-            diag_chunks: concat(acc.diag_chunks, [stmt_result.diagnostics]),
+            diag_chunks: list_push(acc.diag_chunks, stmt_result.diagnostics),
             last_type: stmt_result.typed.resolved_type
-            typed_stmts: concat([stmt_result.typed], acc.typed_stmts)
+            typed_stmts: list_push(acc.typed_stmts, stmt_result.typed)
           }
         )
-        let block_stmts_typed = reverse(state.typed_stmts)
-        let texpr = TypedBlock { stmts: block_stmts_typed, resolved_type: state.last_type, span: span }
+        let texpr = TypedBlock { stmts: state.typed_stmts, resolved_type: state.last_type, span: span }
         InferResult {
           typed: texpr,
           diagnostics: flat_map(state.diag_chunks, c => c)

@@ -1801,8 +1801,8 @@ fn foo(item: String) -> String {
     fn phase4_emit_handles_for_loop() {
         let source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
-            source.contains("emit_for_each"),
-            "emit_rust.dag should contain emit_for_each function"
+            source.contains("emit_typed_for_each"),
+            "emit_rust.dag should contain emit_typed_for_each function"
         );
         assert!(
             source.contains("into_iter"),

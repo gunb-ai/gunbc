@@ -543,6 +543,31 @@ fn emit_data_value_json(value: Expr) -> String {
   }
 }
 
+// Typed variant — operates on TypedExpr directly, no typed_expr_to_expr needed.
+fn emit_typed_data_value_json(value: TypedExpr) -> String {
+  match value {
+    TypedLiteral { value: v, resolved_type: _, span: _ } => match v {
+      LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
+      LitInt { value: i } => to_string(value: i)
+      LitFloat { value: f } => f
+      LitBool { value: b } => if b { "true" } else { "false" }
+      LitNull => "null"
+    }
+    TypedListLit { elements: els, resolved_type: _, span: _ } => {
+      let el_strs = els |> map(e => emit_typed_data_value_json(value: e))
+      concat("[", el_strs |> join(separator: ", "), "]")
+    }
+    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } => {
+      let field_strs = fs |> map(f =>
+        concat("\"", escape_json_string(s: f.name), "\": ", emit_typed_data_value_json(value: f.value))
+      )
+      concat("{", field_strs |> join(separator: ", "), "}")
+    }
+    TypedVar { name: n, resolved_type: _, span: _ } => concat("\"", escape_json_string(s: n), "\"")
+    _ => "null"
+  }
+}
+
 // Escape a string for JSON output: backslashes, quotes, newlines, tabs.
 fn escape_json_string(s: String) -> String {
   s |> split(delimiter: "\\") |> join(separator: "\\\\")
