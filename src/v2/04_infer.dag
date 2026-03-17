@@ -2000,7 +2000,7 @@ fn reaches_self_with_map(root: String, current: String, bindings: Map<String, Ty
   } else {
     match map_get(bindings, current) {
       Some { value: binding } =>
-        let deps = type_expr_deps(expr: binding.resolved)
+        let deps = node_type_deps(n: binding.resolved)
         let next_visited = map_insert(visited, current, true)
         any(deps, d =>
           if d == root { true }
@@ -2987,10 +2987,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Optional is a built-in type, not a user-defined coproduct, so
   // these are not in the type environment's bindings.
   let optional_locals = map_insert(variant_locals, "Some", TypeBinding {
-    name: "Some", resolved: Named { name: "Optional", span: no_span() }, resolved: none
+    name: "Some", resolved: leaf_node(name: "Optional")
   })
   let optional_locals = map_insert(optional_locals, "None", TypeBinding {
-    name: "None", resolved: Named { name: "Optional", span: no_span() }, resolved: none
+    name: "None", resolved: leaf_node(name: "Optional")
   })
 
   // Build the InferScope and infer all items to produce TypedNodes.
@@ -3038,9 +3038,9 @@ type BindingResult {
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   let results = map(map_values(env.bindings), b =>
-    let result = resolve_type_expr(expr: b.resolved, env: env, module_name: module_name)
-    // Preserve the resolved_node from the original binding
-    BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved, resolved: b.resolved_node }, diagnostics: result.diagnostics }
+    let te = node_to_type_expr_full(n: b.resolved)
+    let result = resolve_type_expr(expr: te, env: env, module_name: module_name)
+    BindingResult { binding: TypeBinding { name: b.name, resolved: type_expr_to_node(te: result.resolved) }, diagnostics: result.diagnostics }
   )
   let resolved_bindings = map(results, r => r.binding) |> fold(init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)

@@ -116,7 +116,7 @@ fn scope_after_expr(texpr: TypedExpr, scope: InferScope) -> InferScope {
   match texpr {
     TypedLet { name: name, value: value, body: body, resolved_type: _, span: _ } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: node_to_type_expr_full(n: value.resolved_type))
+        extend_scope(scope: scope, name: name, resolved: value.resolved_type)
       } else {
         scope
       }
