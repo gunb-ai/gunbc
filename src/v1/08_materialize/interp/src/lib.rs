@@ -72,8 +72,12 @@ fn execute_primitive(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match kind {
-        PrimitiveOpKind::GetField { field } => {
-            let value = inputs.values().next().cloned().unwrap_or(Value::Skipped);
+        PrimitiveOpKind::GetField { field, input_port } => {
+            let value = inputs.get(input_port).cloned().ok_or_else(|| {
+                ExecError::new(format!(
+                    "GetField `{field}`: missing input port `{input_port}`"
+                ))
+            })?;
             let result =
                 eval::eval_get_field(&value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())

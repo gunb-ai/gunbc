@@ -380,8 +380,6 @@ impl Executable for LiteralSourceOp {
 struct PurePrimitiveOp {
     kind: PrimitiveOpKind,
     output_port: String,
-    /// Only used for GetField variant — the input port name to read from.
-    get_field_input_port: String,
     /// Only used for Conditional variant — whether an `else` branch exists.
     has_else: bool,
 }
@@ -398,10 +396,10 @@ impl std::fmt::Debug for PurePrimitiveOp {
 impl Executable for PurePrimitiveOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let result = match &self.kind {
-            PrimitiveOpKind::GetField { field } => {
-                let value = require_input_port(&inputs, &self.get_field_input_port, "GetField")?;
+            PrimitiveOpKind::GetField { field, input_port } => {
+                let value = require_input_port(&inputs, input_port, "GetField")?;
                 daglang_lower::eval::eval_get_field(value, field).map_err(|e| {
-                    ExecError::new(format!("on port `{}`: {e}", self.get_field_input_port))
+                    ExecError::new(format!("on port `{input_port}`: {e}"))
                 })?
             }
             PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
@@ -961,17 +959,7 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
-        PrimitiveOpKind::GetField { field } => {
-            let input_port =
-                inputs
-                    .first()
-                    .map(|p| p.name.0.clone())
-                    .ok_or_else(|| ResolveError {
-                        node_id: String::new(),
-                        reason: format!(
-                            "GetField `{field}`: node has no input port (compiler bug)"
-                        ),
-                    })?;
+        PrimitiveOpKind::GetField { field, .. } => {
             let output_port =
                 outputs
                     .first()
@@ -985,7 +973,6 @@ fn resolve_primitive(
             Ok(DynOp::new(PurePrimitiveOp {
                 kind: kind.clone(),
                 output_port,
-                get_field_input_port: input_port,
                 has_else: false,
             }))
         }
@@ -995,7 +982,6 @@ fn resolve_primitive(
             Ok(DynOp::new(PurePrimitiveOp {
                 kind: kind.clone(),
                 output_port,
-                get_field_input_port: String::new(),
                 has_else,
             }))
         }
@@ -1009,7 +995,6 @@ fn resolve_primitive(
         | PrimitiveOpKind::ListConstruct { .. } => Ok(DynOp::new(PurePrimitiveOp {
             kind: kind.clone(),
             output_port: default_output_port(outputs),
-            get_field_input_port: String::new(),
             has_else: false,
         })),
     }
@@ -2694,7 +2679,7 @@ mod tests {
         let op = PurePrimitiveOp {
             kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: false,
         };
         let mut inputs = HashMap::new();
@@ -2713,7 +2698,7 @@ mod tests {
         let op = PurePrimitiveOp {
             kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: true,
         };
         let mut inputs = HashMap::new();
@@ -2736,7 +2721,7 @@ mod tests {
                 op: daglang_lower::expr::LoweredBinOp::Add,
             },
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: false,
         };
         let mut inputs = HashMap::new();
@@ -2758,7 +2743,7 @@ mod tests {
                 fields: vec!["x".to_string(), "y".to_string()],
             },
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: false,
         };
         let mut inputs = HashMap::new();

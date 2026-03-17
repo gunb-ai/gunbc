@@ -233,6 +233,8 @@ pub enum PrimitiveOpKind {
     /// C24: Extract a named field from a Map/Record/JSON input.
     GetField {
         field: String,
+        /// The declared input port name carrying the base value.
+        input_port: String,
     },
     /// C24: String interpolation — `"hello {name}, you have {count} items"`.
     /// Inputs: one port per interpolated expression. Output: concatenated string.
@@ -10996,6 +10998,7 @@ fn synthesize_get_field(
             name: format!("get_field::{}::{}::{}", ctx.item_name, base_param, field),
             kind: PrimitiveOpKind::GetField {
                 field: field.to_string(),
+                input_port: base_param.to_string(),
             },
         },
     ));
@@ -11993,6 +11996,7 @@ fn synthesize_get_field_on_resolved(
             name: format!("get_field::{}::{}::{}", ctx.item_name, output_name, field),
             kind: PrimitiveOpKind::GetField {
                 field: field.to_string(),
+                input_port: input_port_name.to_string(),
             },
         },
     ));
