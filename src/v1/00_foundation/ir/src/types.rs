@@ -945,6 +945,27 @@ pub enum SemanticCarrierKind {
     UnknownSemantic,
 }
 
+impl SemanticCarrierKind {
+    /// Whether this carrier kind indicates effectful (I/O or environment) computation.
+    ///
+    /// Callers must resolve a `TypeId` to a `SemanticCarrierKind` first.
+    /// When a `TypeRegistry` is available, prefer
+    /// `TypeRegistry::semantic_carrier_kind()` over raw-name helpers so
+    /// container wrappers and registered type DAGs stay visible here.
+    pub fn is_effectful(&self) -> bool {
+        matches!(
+            self,
+            SemanticCarrierKind::TransportRequest
+                | SemanticCarrierKind::FilesystemHandle
+                | SemanticCarrierKind::NetworkHandle
+                | SemanticCarrierKind::ToolHandle
+                | SemanticCarrierKind::Platform
+                | SemanticCarrierKind::Timestamp
+                | SemanticCarrierKind::Credential
+        )
+    }
+}
+
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -1548,10 +1569,10 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
 
 /// Classify a type name into a semantic carrier kind.
 ///
-/// Delegates to the [`BUILTIN_TYPES`] registry for known types.
-/// Unknown names return `UnknownSemantic` (fail-closed). The caller
-/// (typically `TypeRegistry::semantic_carrier_kind`) handles container
-/// unwrapping and DAG-based resolution before reaching here.
+/// This is the raw-name builtin classifier used by `TypeRegistry` after any
+/// container unwrapping or DAG-based resolution has already happened.
+/// Callers with a `TypeId` should prefer `TypeRegistry::semantic_carrier_kind`
+/// instead of calling this naming-layer helper directly.
 pub(crate) fn semantic_carrier_kind_for_type_name(type_name: &str) -> SemanticCarrierKind {
     match type_name {
         "String"
@@ -2082,6 +2103,24 @@ mod tests {
             semantic_carrier_kind_for_type_name("FilesystemHandle"),
             SemanticCarrierKind::FilesystemHandle
         );
+    }
+
+    #[test]
+    fn test_effectful_type_classification() {
+        // Effectful types — must not appear on Pure nodes
+        assert!(SemanticCarrierKind::TransportRequest.is_effectful());
+        assert!(SemanticCarrierKind::FilesystemHandle.is_effectful());
+        assert!(SemanticCarrierKind::NetworkHandle.is_effectful());
+        assert!(SemanticCarrierKind::ToolHandle.is_effectful());
+        assert!(SemanticCarrierKind::Platform.is_effectful());
+        assert!(SemanticCarrierKind::Timestamp.is_effectful());
+        assert!(SemanticCarrierKind::Credential.is_effectful());
+
+        // Non-effectful types — safe on Pure nodes
+        assert!(!SemanticCarrierKind::Structural.is_effectful());
+        assert!(!SemanticCarrierKind::TransportResponse.is_effectful());
+        assert!(!SemanticCarrierKind::Secret.is_effectful());
+        assert!(!SemanticCarrierKind::UnknownSemantic.is_effectful());
     }
 
     #[test]

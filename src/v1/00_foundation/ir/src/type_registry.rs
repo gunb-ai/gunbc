@@ -951,7 +951,8 @@ impl TypeRegistry {
     ///
     /// Checks the type name first (handles branded types like Secret that
     /// structurally wrap String but carry semantic meaning), then falls back
-    /// to base type extraction from the DAG.
+    /// to structural DAG inspection so container wrappers keep branded inner
+    /// semantic carriers visible.
     pub fn semantic_carrier_kind(&self, type_id: &TypeId) -> crate::types::SemanticCarrierKind {
         // Check the outer type name first — branded types like Secret
         // have semantic meaning that shouldn't be lost by resolving to
@@ -962,11 +963,8 @@ impl TypeRegistry {
         }
 
         if let Some(dag) = self.resolve_type(type_id) {
-            if let Some(base) = contract::base_type(&dag) {
-                let kind = crate::types::semantic_carrier_kind_for_type_name(&base);
-                if kind != crate::types::SemanticCarrierKind::UnknownSemantic {
-                    return kind;
-                }
+            if let Ok(shape) = crate::type_shape::type_shape(&dag) {
+                return semantic_carrier_kind_from_shape(&shape);
             }
             return crate::types::SemanticCarrierKind::Structural;
         }
@@ -1054,6 +1052,36 @@ fn shape_declared_name(shape: &crate::type_shape::TypeShape) -> Option<&str> {
         crate::type_shape::TypeShape::Coproduct(Some(n), _) => Some(n.as_str()),
         crate::type_shape::TypeShape::Brand(n, _) => Some(n.as_str()),
         _ => None,
+    }
+}
+
+fn semantic_carrier_kind_from_shape(
+    shape: &crate::type_shape::TypeShape,
+) -> crate::types::SemanticCarrierKind {
+    use crate::type_shape::{ContainerShape, TypeShape};
+    use crate::types::SemanticCarrierKind;
+
+    if let Some(name) = shape_declared_name(shape) {
+        let kind = crate::types::semantic_carrier_kind_for_type_name(name);
+        if kind != SemanticCarrierKind::UnknownSemantic {
+            return kind;
+        }
+    }
+
+    match shape {
+        TypeShape::Brand(_, inner)
+        | TypeShape::Container(ContainerShape::Optional(inner))
+        | TypeShape::Container(ContainerShape::List(inner))
+        | TypeShape::Container(ContainerShape::Set(inner)) => {
+            semantic_carrier_kind_from_shape(inner)
+        }
+        TypeShape::Container(ContainerShape::Map(_, value)) => {
+            semantic_carrier_kind_from_shape(value)
+        }
+        TypeShape::Platform(_)
+        | TypeShape::Coproduct(..)
+        | TypeShape::Product(..)
+        | TypeShape::Opaque(..) => SemanticCarrierKind::Structural,
     }
 }
 
@@ -1665,6 +1693,30 @@ mod tests {
         assert_eq!(
             registry.semantic_carrier_kind(&TypeId::from("TransportRequest")),
             SemanticCarrierKind::TransportRequest
+        );
+    }
+
+    #[test]
+    fn test_semantic_carrier_kind_resolves_core_container_wrappers() {
+        use crate::types::SemanticCarrierKind;
+        let registry = TypeRegistry::with_core_types();
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("Optional<FilesystemHandle>")),
+            SemanticCarrierKind::FilesystemHandle
+        );
+    }
+
+    #[test]
+    fn test_semantic_carrier_kind_resolves_registered_wrapper_aliases() {
+        use crate::types::SemanticCarrierKind;
+        let mut registry = TypeRegistry::with_core_types();
+        registry.register(
+            "MaybeFilesystemHandle",
+            type_lib::optional(type_lib::branded("FilesystemHandle", type_lib::file_path())),
+        );
+        assert_eq!(
+            registry.semantic_carrier_kind(&TypeId::from("MaybeFilesystemHandle")),
+            SemanticCarrierKind::FilesystemHandle
         );
     }
 

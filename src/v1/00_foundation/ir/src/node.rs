@@ -37,6 +37,8 @@ pub enum NodeKind {
     ParamSource,
     /// Collection operation: element-wise transform over a list (map, filter, etc.).
     Collection,
+    /// Embeds a data declaration value as a literal source node.
+    DataDeclaration,
     /// Pure computation (no I/O boundary).
     #[default]
     Pure,
@@ -244,9 +246,9 @@ pub struct Node<T> {
     pub transport_class: Option<ServiceTransportClass>,
     /// Response provider classification for this node's service (S45).
     ///
-    /// Stamped by the lowerer from `ServiceCallMetadata` on transport triplet
-    /// nodes. When set from DSL `config { response_provider: X }`, this avoids
-    /// substring inference from service names. `None` for non-transport nodes.
+    /// Derived by `stamp_node_kinds` from the single-authority
+    /// `ResponseClassification` in `RestOperationSpec.middleware`.
+    /// `None` for non-REST and non-transport nodes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_provider: Option<crate::transport::middleware::ResponseProvider>,
     /// Static fingerprint for compile-time redundancy detection (C22).

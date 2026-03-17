@@ -36,7 +36,7 @@ use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
     walk_stmts_with_expr_identities, ExprIdentity,
 };
-use gunbc_ir::{TypeRegistry, BUILTIN_TYPES};
+use gunbc_ir::{transport::middleware::ResponseProvider, TypeRegistry, BUILTIN_TYPES};
 
 /// A typechecked project snapshot over a resolved module graph.
 #[derive(Debug)]
@@ -506,6 +506,10 @@ pub enum TypeError {
     },
     /// Service config declares an unrecognized auth scheme.
     InvalidAuthScheme { service: String, scheme: String },
+    /// Service config declares an unknown response provider annotation.
+    InvalidResponseProvider { service: String, provider: String },
+    /// Service config declares `error_shape` without an explicit response provider.
+    ErrorShapeRequiresResponseProvider { service: String },
     /// if/else branches produce incompatible types.
     BranchTypeMismatch {
         then_type: String,
@@ -631,6 +635,8 @@ impl TypeError {
             Self::MatchArmTypeMismatch { .. } => "TC039",
             Self::NonExhaustiveMatch { .. } => "TC040",
             Self::UnresolvableType { .. } => "TC041",
+            Self::InvalidResponseProvider { .. } => "TC042",
+            Self::ErrorShapeRequiresResponseProvider { .. } => "TC043",
         }
     }
 
@@ -676,6 +682,13 @@ impl TypeError {
             Self::InvalidAuthScheme { scheme, .. } => Some(format!(
                 "change `{scheme}` to one of: BearerToken, Basic, ApiKey, Header(\"...\"), None"
             )),
+            Self::InvalidResponseProvider { provider, .. } => Some(format!(
+                "change `{provider}` to one of: Generic, GitHub, Gcp, Anthropic, OpenAi"
+            )),
+            Self::ErrorShapeRequiresResponseProvider { .. } => Some(
+                "add `response_provider: Generic|GitHub|Gcp|Anthropic|OpenAi` to the service config"
+                    .to_string(),
+            ),
             Self::UnresolvedServiceCall { service_call, .. } => Some(format!(
                 "`{service_call}` not found — check service import and operation name"
             )),
@@ -989,6 +1002,15 @@ impl std::fmt::Display for TypeError {
                 f,
                 "service `{service}` declares unknown auth scheme `{scheme}` \
                  (valid: BearerToken, Basic, ApiKey, Header(\"...\"), None)"
+            ),
+            Self::InvalidResponseProvider { service, provider } => write!(
+                f,
+                "service `{service}` declares unknown response_provider `{provider}` \
+                 (valid: Generic, GitHub, Gcp, Anthropic, OpenAi)"
+            ),
+            Self::ErrorShapeRequiresResponseProvider { service } => write!(
+                f,
+                "service `{service}` declares `error_shape` but no explicit `response_provider`"
             ),
             Self::BranchTypeMismatch {
                 then_type,
@@ -2053,6 +2075,7 @@ fn collect_signatures(
                         });
                     }
                 }
+                item_errors.extend(validate_service_response_provider(def));
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
@@ -5863,6 +5886,24 @@ fn validate_signature_map(
 /// Check whether an auth scheme string is in the recognized set.
 fn is_valid_auth_scheme(scheme: &str) -> bool {
     matches!(scheme, "BearerToken" | "Basic" | "ApiKey" | "None") || scheme.starts_with("Header(")
+}
+
+fn validate_service_response_provider(service: &daglang_syntax::ast::ServiceDef) -> Vec<TypeError> {
+    let mut errors = Vec::new();
+    if let Some(provider) = service.config.response_provider.as_deref() {
+        if provider.parse::<ResponseProvider>().is_err() {
+            errors.push(TypeError::InvalidResponseProvider {
+                service: service.name.clone(),
+                provider: provider.to_string(),
+            });
+        }
+    }
+    if !service.config.error_shapes.is_empty() && service.config.response_provider.is_none() {
+        errors.push(TypeError::ErrorShapeRequiresResponseProvider {
+            service: service.name.clone(),
+        });
+    }
+    errors
 }
 
 fn validate_service_interface_conformance(

@@ -294,7 +294,6 @@ mod tests {
                 idempotent: true,
                 readonly: false,
                 spec: None,
-                response_provider: None,
             }),
             is_interactive: false,
             resource_target: None,

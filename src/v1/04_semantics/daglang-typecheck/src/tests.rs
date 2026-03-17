@@ -1449,6 +1449,57 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn service_error_shape_requires_explicit_response_provider_during_typecheck() {
+    let graph = module_graph_from_sources(&[(
+        "sample/service.dag",
+        r#"module sample.service
+service custom.Api {
+  config {
+    endpoint: "https://api.example.com"
+    error_shape: { status: 400, error_type_path: "$.error.type", message_path: "$.error.message", retryable: false }
+  }
+  operation Fetch {
+    input { item_id: String }
+    output { ok: Bool }
+    transport rest { method: GET, path: "/v1/items/\{item_id\}" }
+  }
+}
+"#,
+    )]);
+    let errors = typecheck_module_graph(&graph).expect_err("missing response_provider should fail");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::ErrorShapeRequiresResponseProvider { service } if service == "custom.Api"
+    )));
+}
+
+#[test]
+fn service_response_provider_must_be_a_known_variant() {
+    let graph = module_graph_from_sources(&[(
+        "sample/service.dag",
+        r#"module sample.service
+service custom.Api {
+  config {
+    endpoint: "https://api.example.com"
+    response_provider: UnknownProvider
+  }
+  operation Fetch {
+    input { item_id: String }
+    output { ok: Bool }
+    transport rest { method: GET, path: "/v1/items/\{item_id\}" }
+  }
+}
+"#,
+    )]);
+    let errors = typecheck_module_graph(&graph).expect_err("unknown response_provider should fail");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::InvalidResponseProvider { service, provider }
+            if service == "custom.Api" && provider == "UnknownProvider"
+    )));
+}
+
+#[test]
 fn relaxed_mode_allows_unresolved_service_call() {
     let graph = module_graph_from_sources(&[(
         "service_unresolved_call_relaxed.dag",

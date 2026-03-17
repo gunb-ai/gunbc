@@ -377,11 +377,6 @@ pub struct ServiceCallMetadata {
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
-    /// Response provider classification (S45). Stamped from DSL
-    /// `config { response_provider: X }` when present, else inferred from
-    /// service name substrings. Propagated to `Node.response_provider`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_provider: Option<ResponseProvider>,
 }
 
 impl LoweredOp {
@@ -474,6 +469,12 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
         gunbc_ir::NodeBody::SubDag(..) => return NodeKind::Pure,
     };
 
+    // DataDeclaration nodes are pre-stamped by embed_data_declaration_nodes;
+    // they have no obligation category and should not be reclassified.
+    if node.kind == NodeKind::DataDeclaration {
+        return NodeKind::DataDeclaration;
+    }
+
     // Collection nodes are stamped before obligation dispatch — they
     // always map to `NodeKind::Collection` regardless of obligation.
     if matches!(op, LoweredOp::Collection { .. }) {
@@ -516,14 +517,21 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
     for node in &mut dag.nodes {
         node.kind = obligation_to_node_kind(node);
-        // Stamp transport class and response provider from ServiceCallMetadata
-        // so consumers can read them directly from the Node without
-        // Any-downcasting LoweredOp (S45/S46).
+        // Stamp transport class from ServiceCallMetadata so consumers can
+        // read it directly from the Node without Any-downcasting LoweredOp.
+        // S45: response_provider is derived from the spec's single-authority
+        // ResponseClassification, not a separate metadata field.
         if let gunbc_ir::NodeBody::Opaque(ref op) = node.body {
             if let Some(meta) = op.service_call_metadata() {
                 node.transport_class = Some(meta.transport);
-                if let Some(rp) = meta.response_provider {
-                    node.response_provider = Some(rp);
+                if let Some(ServiceOperationSpec::Rest(ref rest)) = meta.spec {
+                    if let Some(rc) = rest
+                        .middleware
+                        .as_ref()
+                        .and_then(|m| m.response_classification.as_ref())
+                    {
+                        node.response_provider = Some(rc.provider);
+                    }
                 }
             }
         }
@@ -1431,7 +1439,6 @@ fn derive_interface_stub_transport_triplets(
                         interface: interface.name.clone(),
                         capability: capability.name.clone(),
                     }),
-                    response_provider: None,
                 };
 
                 let suffix = sanitize_identifier(&format!(
@@ -6188,7 +6195,14 @@ fn derive_service_call_metadata(
         None => ServiceTransportClass::Unknown,
     };
 
-    let spec = derive_operation_spec(service, operation, transport, data_registry)?;
+    let response_classification = derive_response_classification(service, operation)?;
+    let spec = derive_operation_spec(
+        service,
+        operation,
+        transport,
+        response_classification,
+        data_registry,
+    )?;
 
     // Auto-derive readonly from HTTP method: GET and HEAD are read-only by definition.
     let readonly = operation.readonly
@@ -6198,20 +6212,6 @@ fn derive_service_call_metadata(
                 if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
         );
 
-    // S45: Explicit annotation is authoritative; unknown values fail fast.
-    // Falls back to service-name inference only when no annotation is present.
-    let response_provider =
-        match service.config.response_provider.as_deref() {
-            Some(name) => Some(name.parse::<ResponseProvider>().map_err(|e| {
-                LowerError::InvalidAnnotation {
-                    service: service.name.clone(),
-                    annotation: "response_provider".to_string(),
-                    detail: e,
-                }
-            })?),
-            None => infer_response_provider(&service.name),
-        };
-
     Ok(ServiceCallMetadata {
         service: service.name.clone(),
         operation: operation.name.clone(),
@@ -6219,8 +6219,22 @@ fn derive_service_call_metadata(
         idempotent: operation.idempotent,
         readonly,
         spec,
-        response_provider,
     })
+}
+
+fn configured_response_provider_for_service(
+    service: &ServiceDef,
+) -> Result<Option<ResponseProvider>, LowerError> {
+    match service.config.response_provider.as_deref() {
+        Some(name) => Ok(Some(name.parse::<ResponseProvider>().map_err(|e| {
+            LowerError::InvalidAnnotation {
+                service: service.name.clone(),
+                annotation: "response_provider".to_string(),
+                detail: e,
+            }
+        })?)),
+        None => Ok(None),
+    }
 }
 
 // ============================================================================
@@ -6385,12 +6399,15 @@ fn derive_operation_spec(
     service: &ServiceDef,
     operation: &OperationDef,
     transport: ServiceTransportClass,
+    response_classification: Option<ResponseClassification>,
     data_registry: &DataRegistry<'_>,
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation)
-                .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
+            Ok(
+                derive_rest_spec(service, operation, response_classification)?
+                    .map(|s| ServiceOperationSpec::Rest(Box::new(s))),
+            )
         }
         ServiceTransportClass::ShellLocal => {
             Ok(derive_shell_spec(service, operation, data_registry)?
@@ -6443,14 +6460,9 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
 /// Derive transport middleware config from service config blocks (TL-12).
 fn derive_middleware_config(
     service: &ServiceDef,
-    _operation: &OperationDef,
-) -> Option<TransportMiddlewareConfig> {
+    response_classification: Option<ResponseClassification>,
+) -> Result<Option<TransportMiddlewareConfig>, LowerError> {
     let config = &service.config;
-
-    // Only produce middleware config if at least one block is defined.
-    if config.rate_limits.is_empty() && config.retry.is_none() {
-        return None;
-    }
 
     let rate_limit = config.rate_limits.first().map(|rl| {
         // Store raw requests and window — let the runtime do precise math.
@@ -6494,9 +6506,22 @@ fn derive_middleware_config(
         }
     });
 
-    // Derive error shape extraction from error_shape {} blocks (TL-16).
-    // When explicit error_shape is declared, the transport layer uses JSON-path
-    // extraction instead of hardcoded provider parsing.
+    if rate_limit.is_none() && retry.is_none() && response_classification.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(TransportMiddlewareConfig {
+        rate_limit,
+        retry,
+        credential: None, // Credential config is wired separately via auth_scheme.
+        response_classification,
+    }))
+}
+
+fn derive_response_classification(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> Result<Option<ResponseClassification>, LowerError> {
     let error_shape = service.config.error_shapes.first().map(|es| {
         gunbc_ir::transport::middleware::ErrorShapeExtraction {
             message_path: es
@@ -6507,44 +6532,21 @@ fn derive_middleware_config(
             details_path: None,
         }
     });
-
-    // TL-15: parse_provider_error_shapes is always false — the transport layer
-    // uses only error_shape JSON-path extraction.
-    let response_classification =
-        infer_response_provider(&service.name).map(|provider| ResponseClassification {
-            provider,
-            prioritize_auth_errors: true,
-            parse_provider_error_shapes: false,
-            error_shape: error_shape.clone(),
-            output_shape: None, // Per-operation output shapes are on RestOperationSpec.
+    let response_provider = configured_response_provider_for_service(service)?;
+    if error_shape.is_some() && response_provider.is_none() {
+        return Err(LowerError::InvalidTransportSpec {
+            service: service.name.clone(),
+            operation: operation.name.clone(),
+            detail: "service config declares `error_shape` but no authoritative `response_provider` is available; add `response_provider: Generic|GitHub|Gcp|Anthropic|OpenAi`".to_string(),
         });
-
-    Some(TransportMiddlewareConfig {
-        rate_limit,
-        retry,
-        credential: None, // Credential config is wired separately via auth_scheme.
-        response_classification,
-    })
-}
-
-// S45: `parse_response_provider` removed — use `ResponseProvider::from_str`
-// (in ir/src/transport/middleware.rs) which is the single authority and returns
-// `Err` on unknown values instead of silently falling back to inference.
-
-/// Infer the response provider from service name patterns.
-fn infer_response_provider(service_name: &str) -> Option<ResponseProvider> {
-    let lower = service_name.to_lowercase();
-    if lower.starts_with("github.") || lower.contains("gist") {
-        Some(ResponseProvider::GitHub)
-    } else if lower.starts_with("gcp.") || lower.starts_with("google.") {
-        Some(ResponseProvider::Gcp)
-    } else if lower.contains("anthropic") || lower.starts_with("llm.anthropic") {
-        Some(ResponseProvider::Anthropic)
-    } else if lower.contains("openai") || lower.starts_with("llm.openai") {
-        Some(ResponseProvider::OpenAi)
-    } else {
-        None
     }
+    Ok(response_provider.map(|provider| ResponseClassification {
+        provider,
+        prioritize_auth_errors: true,
+        parse_provider_error_shapes: false,
+        error_shape,
+        output_shape: None, // Per-operation output shapes are on RestOperationSpec.
+    }))
 }
 
 /// Convert AST status pattern to spec status pattern.
@@ -6592,11 +6594,15 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
         .collect()
 }
 
-fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
+fn derive_rest_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    response_classification: Option<ResponseClassification>,
+) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
         Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
-        _ => return None,
+        _ => return Ok(None),
     };
 
     let headers = match &operation.transport {
@@ -6624,7 +6630,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     });
 
     // Derive middleware config from rate_limit/retry blocks (TL-12).
-    let middleware = derive_middleware_config(service, operation);
+    let middleware = derive_middleware_config(service, response_classification)?;
 
     // Derive response mapping from response {} blocks (SL-9).
     let response_mapping = derive_response_mapping(&operation.response);
@@ -6663,7 +6669,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         })
     };
 
-    Some(RestOperationSpec {
+    Ok(Some(RestOperationSpec {
         endpoint,
         method,
         path_template,
@@ -6677,7 +6683,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         response_mapping,
         output_shape,
         mock_responses,
-    })
+    }))
 }
 
 /// Convert a list of argv expressions from `shell(["cmd", "{param}"])` to ArgvSegments.
@@ -9904,8 +9910,8 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
 
 /// Prefix for data declaration node IDs embedded in the DAG.
 ///
-/// The resolver scans for nodes with this prefix to reconstruct data_values
-/// without requiring a sidecar through the compilation pipeline.
+/// Used for node ID uniqueness only. Name extraction reads the output port
+/// name structurally via [`NodeKind::DataDeclaration`], not this prefix.
 pub const DATA_DECL_NODE_PREFIX: &str = "__data_decl::";
 
 /// Embed data declaration values as `CallLiteralSource` nodes in the DAG.
@@ -9919,40 +9925,52 @@ fn embed_data_declaration_nodes(
 ) {
     for (name, json_val) in data_values {
         let node_id = format!("{DATA_DECL_NODE_PREFIX}{name}");
-        builder.add_node(Node::opaque(
-            node_id,
-            vec![],
-            vec![Port::scalar(name.as_str(), "Json")],
-            LoweredOp::Primitive {
-                module: "__data".to_string(),
-                name: format!("data_decl::{name}"),
-                kind: PrimitiveOpKind::CallLiteralSource {
-                    literal: PrimitiveLiteral::Json(json_val.clone()),
+        builder.add_node(
+            Node::opaque(
+                node_id,
+                vec![],
+                vec![Port::scalar(name.as_str(), "Json")],
+                LoweredOp::Primitive {
+                    module: "__data".to_string(),
+                    name: format!("data_decl::{name}"),
+                    kind: PrimitiveOpKind::CallLiteralSource {
+                        literal: PrimitiveLiteral::Json(json_val.clone()),
+                    },
                 },
-            },
-        ));
+            )
+            .with_kind(NodeKind::DataDeclaration),
+        );
     }
 }
 
 /// Extract data declaration values from embedded DAG nodes.
 ///
-/// Scans for nodes with IDs prefixed by [`DATA_DECL_NODE_PREFIX`] and extracts
-/// their `PrimitiveLiteral::Json` payloads, converting to `Value` at the point
-/// of extraction to avoid JSON round-trip lossy conversion (S53 fix).
+/// Identifies data declaration nodes by [`NodeKind::DataDeclaration`], then
+/// reads the declaration name from the node's first output port (which is set
+/// to the declaration name by [`embed_data_declaration_nodes`]).
+/// Payloads are converted to `Value` at extraction to avoid JSON round-trip
+/// lossy conversion (S53 fix).
 pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, gunbc_ir::Value> {
     let mut data_values = HashMap::new();
     for node in &dag.nodes {
-        if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
-            if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
-                kind:
-                    PrimitiveOpKind::CallLiteralSource {
-                        literal: PrimitiveLiteral::Json(json),
-                    },
-                ..
-            }) = &node.body
-            {
-                data_values.insert(name.to_string(), json_to_value(json));
-            }
+        if node.kind != NodeKind::DataDeclaration {
+            continue;
+        }
+        // The declaration name is structural: it lives in the output port,
+        // not in the node ID prefix convention.
+        let name = match node.outputs.first() {
+            Some(port) => port.name.0.clone(),
+            None => continue,
+        };
+        if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+            kind:
+                PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Json(json),
+                },
+            ..
+        }) = &node.body
+        {
+            data_values.insert(name, json_to_value(json));
         }
     }
     data_values

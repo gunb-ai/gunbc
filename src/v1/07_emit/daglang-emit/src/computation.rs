@@ -339,10 +339,13 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
         }
 
         // Remaining node kinds are all pure computations with varying bodies.
+        // DataDeclaration nodes are metadata-only and filtered before emit,
+        // but the match must be exhaustive.
         NodeKind::ResourceRelease
         | NodeKind::ParamSource
         | NodeKind::ToolEnvironment
         | NodeKind::ToolConsumer
+        | NodeKind::DataDeclaration
         | NodeKind::Pure => classify_pure_body(op, inputs, outputs),
     }
 }
@@ -1375,7 +1378,6 @@ mod tests {
             idempotent: true,
             readonly: false,
             spec: None,
-            response_provider: None,
         };
         let node = make_node(
             "execute_cmd",
@@ -1414,7 +1416,6 @@ mod tests {
             idempotent: true,
             readonly: true,
             spec: None,
-            response_provider: None,
         };
         let node = make_node(
             "execute_list_repos",
@@ -1450,7 +1451,6 @@ mod tests {
             idempotent: true,
             readonly: true,
             spec: None,
-            response_provider: None,
         };
         let node = make_node(
             "prepare_list_repos",

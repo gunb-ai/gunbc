@@ -4,9 +4,9 @@
 //!
 //! DryRun mode intercepts **transport execution nodes** (nodes that consume
 //! `TransportRequest` values), **environment nodes** (nodes that emit
-//! resource outputs like `ToolHandle`, `FilesystemHandle`, `NetworkHandle`, `Timestamp`,
-//! `Credential`, or `Platform`), **tool consumer nodes** (nodes that
-//! consume `ToolHandle`), and **nodes with explicit mocks for all outputs**.
+//! types classified as effectful by `SemanticCarrierKind::is_effectful()`),
+//! **tool consumer nodes** (nodes that consume `ToolHandle`), and
+//! **nodes with explicit mocks for all outputs**.
 //! Intercepted nodes require **explicit mocks for every output port** — there
 //! is no default fallback.
 //!
@@ -22,6 +22,9 @@
 //!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
+//! The pre-flight validator only reuses the core `TypeRegistry` to classify
+//! builtin and container-wrapped core types while checking for `kind: Pure`
+//! misclassifications.
 
 use crate::error::{ErrorLayer, ExecError, IntoExecResult, NodeRole, NodeTraceLayer};
 use crate::intercept::BoundaryMocks;
@@ -33,11 +36,11 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, AppliedCoercion,
     BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId, NodeKind, PortName,
-    Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    TypeId, TypeRegistry, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::sync::mpsc;
+use std::sync::{mpsc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -1865,10 +1868,10 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
                 if !existing.has_mock(&node.id, &port.name) {
                     // Choose a type-appropriate default based on resource inputs:
                     // nodes with FilesystemHandle inputs are file transports.
-                    let is_file_transport = node
-                        .inputs
-                        .iter()
-                        .any(|p| p.type_id.0 == "FilesystemHandle");
+                    let is_file_transport = node.inputs.iter().any(|p| {
+                        semantic_carrier_kind(&p.type_id)
+                            == gunbc_ir::SemanticCarrierKind::FilesystemHandle
+                    });
                     let default_response = if is_file_transport {
                         Value::Response(TransportResponse::File(FileResponse {
                             path: String::new(),
@@ -2097,26 +2100,29 @@ fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
     )
 }
 
+fn semantic_carrier_kind(type_id: &TypeId) -> gunbc_ir::SemanticCarrierKind {
+    static CORE_TYPES: OnceLock<TypeRegistry> = OnceLock::new();
+    CORE_TYPES
+        .get_or_init(TypeRegistry::with_core_types)
+        .semantic_carrier_kind(type_id)
+}
+
 /// Pre-flight check: error if any `Pure` node has effectful port patterns.
 ///
-/// `looks_effectful_without_kind()` helper was removed (C18); keep the checks
-/// inlined here so accidental `kind: Pure` regressions still fail closed.
+/// This is only a guardrail for nodes left at `kind: Pure`; DryRun
+/// interception itself is still driven by `NodeKind`. Semantic carrier
+/// classification here goes through the core `TypeRegistry` so
+/// container-wrapped core types resolve before checking `is_effectful()`.
 fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
     for node in &dag.nodes {
         if node.kind != NodeKind::Pure {
             continue;
         }
         for port in &node.inputs {
-            if port.type_id.0 == "TransportRequest" {
+            if semantic_carrier_kind(&port.type_id).is_effectful() {
                 return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has TransportRequest input",
-                    node.id.0
-                )));
-            }
-            if port.type_id.0 == "ToolHandle" {
-                return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has ToolHandle input",
-                    node.id.0
+                    "node '{}' has kind: Pure but has effectful input '{}' (type: {})",
+                    node.id.0, port.name.0, port.type_id.0
                 )));
             }
             if port.name.is_resource() || port.resource_access.is_some() {
@@ -2127,19 +2133,10 @@ fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError
             }
         }
         for port in &node.outputs {
-            if port.type_id.0 == "ToolHandle" {
+            if semantic_carrier_kind(&port.type_id).is_effectful() {
                 return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has ToolHandle output",
-                    node.id.0
-                )));
-            }
-            if matches!(
-                port.type_id.0.as_str(),
-                "FilesystemHandle" | "NetworkHandle" | "Timestamp" | "Credential" | "Platform"
-            ) {
-                return Err(ExecError::new(format!(
-                    "node '{}' has kind: Pure but has resource-environment output '{}'",
-                    node.id.0, port.type_id.0
+                    "node '{}' has kind: Pure but has effectful output '{}' (type: {})",
+                    node.id.0, port.name.0, port.type_id.0
                 )));
             }
         }

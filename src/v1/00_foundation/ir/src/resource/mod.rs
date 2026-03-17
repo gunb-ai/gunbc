@@ -712,6 +712,7 @@ impl std::fmt::Display for MissingResourceDeclaration {
             NodeKind::ResourceRelease => "resource release",
             NodeKind::ParamSource => "param source",
             NodeKind::Collection => "collection",
+            NodeKind::DataDeclaration => "data declaration",
             NodeKind::Pure => "pure",
         };
         write!(

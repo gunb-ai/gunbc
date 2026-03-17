@@ -10,7 +10,7 @@
 use daglang_derive::CallableProperties;
 use daglang_lower::InferredEntrypoint;
 use gunbc_exec::DynOp;
-use gunbc_ir::{BuilderError, Dag};
+use gunbc_ir::{BuilderError, Dag, NodeKind};
 use std::collections::{BTreeMap, HashSet};
 
 // ============================================================================
@@ -197,7 +197,7 @@ fn slice_dag_from_entry_preserving_fn_bodies(
 
     // Preserve data declaration embed nodes (used by resolver to extract data_values).
     for node in &dag.nodes {
-        if node.id.0.starts_with(daglang_lower::DATA_DECL_NODE_PREFIX) {
+        if node.kind == NodeKind::DataDeclaration {
             include.insert(node.id.0.clone());
         }
     }
@@ -235,7 +235,10 @@ mod compile_internals {
 
     /// Bump when cache format changes. Stale caches with a different version are
     /// discarded on load.
-    const DAGBIN_CACHE_VERSION: u32 = 7;
+    ///
+    /// v8: NodeKind::DataDeclaration added — stale v7 caches serialized data
+    /// declaration nodes as Pure, which breaks structural extraction.
+    const DAGBIN_CACHE_VERSION: u32 = 8;
 
     /// Serializable bundle of compilation artifacts stored in the dagbin cache.
     #[derive(Serialize, Deserialize)]
