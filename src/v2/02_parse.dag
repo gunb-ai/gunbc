@@ -652,7 +652,7 @@ fn field_to_child_node(field: Field) -> Node {
   Node {
     name: field.name, span: field.span,
     children: [], connective: none,
-    params: [], return_type: Some { value: ret_type },
+    params: [], return_type: Some { value: type_expr_to_node(te: ret_type) },
     uses: [], body: field.default_value,
     transport: none, properties: props,
     type_annotation: none, config: none  }
@@ -720,7 +720,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
       parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span)
     } else {
       // Bare type declaration — primitive type with no structural expansion
-      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: Primitive { name: name, span: start_span } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
+      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: type_expr_to_node(te: Primitive { name: name, span: start_span }) }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       ItemResult { item: item, state: s, err: none }
     }
   }
@@ -756,7 +756,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       // Check for where clause: type Name = BaseType where predicate(...)
       let wr = try_where_clause(tokens: tokens, state: r.state, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
-      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: wr.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
+      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: type_expr_to_node(te: wr.type_expr) }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: wr.state), err: none }
     }
   } else {
@@ -766,7 +766,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
     // Check for where clause
     let wr = try_where_clause(tokens: tokens, state: r.state, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
-    let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: wr.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
+    let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: type_expr_to_node(te: wr.type_expr) }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: wr.state), err: none }
   }
 }
@@ -1115,13 +1115,13 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, state: r4.state, err: r4.err } }
     let f = Field {
-      name: name, type_expr: te, optional: false,
+      name: name, type_expr: type_expr_to_node(te: te), optional: false,
       default_value: Some { value: r4.expr }, from_key: from_key, span: start_span
     }
     FieldResult { field: f, state: r4.state, err: none }
   } else {
     let f = Field {
-      name: name, type_expr: te, optional: false,
+      name: name, type_expr: type_expr_to_node(te: te), optional: false,
       default_value: none, from_key: from_key, span: start_span
     }
     FieldResult { field: f, state: s, err: none }
@@ -1277,7 +1277,7 @@ fn parse_uses_list_acc(tokens: List<Token>, state: ParserState, acc: List<Resour
 
 fn parse_uses_entry(tokens: List<Token>, state: ParserState) -> ResUseResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy = ResourceUse { name: "", resource: Named { name: "", span: start_span }, span: start_span }
+  let dummy = ResourceUse { name: "", resource: type_expr_to_node(te: Named { name: "", span: start_span }), span: start_span }
   let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ResUseResult { resource_use: dummy, state: r.state, err: r.err } }
   let name = r.name
@@ -1287,7 +1287,7 @@ fn parse_uses_entry(tokens: List<Token>, state: ParserState) -> ResUseResult {
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return ResUseResult { resource_use: dummy, state: r3.state, err: r3.err } }
-  let ru = ResourceUse { name: name, resource: r3.type_expr, span: start_span }
+  let ru = ResourceUse { name: name, resource: type_expr_to_node(te: r3.type_expr), span: start_span }
   ResUseResult { resource_use: ru, state: r3.state, err: none }
 }
 
@@ -1296,7 +1296,7 @@ fn parse_optional_return_type(tokens: List<Token>, state: ParserState) -> OptRet
   if e.consumed {
     let r = parse_type_expr(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return OptRetResult { return_type: none, state: r.state, err: r.err } }
-    OptRetResult { return_type: Some { value: r.type_expr }, state: r.state, err: none }
+    OptRetResult { return_type: Some { value: type_expr_to_node(te: r.type_expr) }, state: r.state, err: none }
   } else {
     OptRetResult { return_type: none, state: state, err: none }
   }
@@ -1623,7 +1623,7 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
   let s = ret.state
   let outputs = match ret.return_type {
     Some { value: Product { name: _, fields: fs, span: _ } } => fs
-    Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: Named { name: n, span: sp }, optional: false, default_value: none, from_key: none, span: sp }]
+    Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: type_expr_to_node(te: Named { name: n, span: sp }), optional: false, default_value: none, from_key: none, span: sp }]
     _ => []
   }
   let s = skip_newlines(tokens: tokens, state: s)
@@ -2205,7 +2205,7 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, state: ret.state, err: ret.err } }
     let outputs = match ret.return_type {
       Some { value: Product { name: _, fields: fs, span: _ } } => fs
-      Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: Named { name: n, span: sp }, optional: false, default_value: none, from_key: none, span: sp }]
+      Some { value: Named { name: n, span: sp } } => [Field { name: "value", type_expr: type_expr_to_node(te: Named { name: n, span: sp }), optional: false, default_value: none, from_key: none, span: sp }]
       _ => []
     }
     let cap = CapabilityDef { name: name, inputs: inputs, outputs: outputs, span: start_span }
@@ -2287,7 +2287,7 @@ fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
     name: name, span: start_span, children: [], params: [],
     return_type: none, uses: [],
     body: Some { value: r.expr }, connective: none, transport: none,
-    properties: [], type_annotation: Some { value: te },
+    properties: [], type_annotation: Some { value: type_expr_to_node(te: te) },
     config: none  }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
@@ -2393,7 +2393,7 @@ fn parse_param_list_acc(tokens: List<Token>, state: ParserState, acc: List<Param
 
 fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_param = Param { name: "", type_expr: Named { name: "", span: start_span }, default_value: none, span: start_span }
+  let dummy_param = Param { name: "", type_expr: type_expr_to_node(te: Named { name: "", span: start_span }), default_value: none, span: start_span }
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return ParamResult { param: dummy_param, state: r.state, err: r.err } }
   let name = r.name
@@ -2411,13 +2411,13 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return ParamResult { param: dummy_param, state: r4.state, err: r4.err } }
     let p = Param {
-      name: name, type_expr: r3.type_expr,
+      name: name, type_expr: type_expr_to_node(te: r3.type_expr),
       default_value: Some { value: r4.expr }, span: start_span
     }
     ParamResult { param: p, state: r4.state, err: none }
   } else {
     let p = Param {
-      name: name, type_expr: r3.type_expr,
+      name: name, type_expr: type_expr_to_node(te: r3.type_expr),
       default_value: none, span: start_span
     }
     ParamResult { param: p, state: s, err: none }

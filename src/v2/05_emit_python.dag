@@ -16,10 +16,10 @@ import v2.std.core {
   Import, ImportAll, ImportSpecific,
   Node, TypedNode,
   Connective, Conj, Disj,
-  TypeExpr, Field, Variant, Param, Expr, MatchArm,
+  Field, Param, Expr, MatchArm,
   MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
-  ContainerKind, ResourceUse,
+  ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
@@ -32,8 +32,6 @@ import v2.std.core {
   TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit,
   TypedStringPart, TypedText, TypedInterpolation,
-  type_expr_to_node,
-  node_to_type_expr_full,
   typed_expr_has_self_call, typed_has_non_tail_self_call
 }
 
@@ -41,7 +39,7 @@ import v2.compiler.infer {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  for_each_element_type,
+  for_each_element_type_node,
   expr_span
 }
 
@@ -52,22 +50,19 @@ import v2.compiler.emit {
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   build_item_registry, lookup_item, named_arg_matches, order_call_args,
-  is_service_call_receiver, extract_service_name,
   typed_named_arg_matches, order_typed_call_args,
   is_typed_service_call_receiver, extract_typed_service_name,
-  collect_service_calls, collect_service_calls_from_args, unique_strings,
+  unique_strings,
   collect_typed_service_calls,
-  has_nested_records, has_nested_records_node,
-  emit_data_value_json, escape_json_string,
+  has_nested_records_node,
+  escape_json_string,
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
-  expr_has_self_call, has_non_tail_self_call,
   apply_type_template1, apply_type_template2,
-  is_null_coalesce, is_type_alias_return, is_type_alias_return_node,
-  is_service_item, has_service_items,
-  infer_expr_type, scope_after_plain_expr
+  is_null_coalesce, is_type_alias_return_node,
+  is_service_item, has_service_items
 }
 
 // When cross-module data imports are supported in the v1 bootstrap, enable:
@@ -200,7 +195,7 @@ fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: I
   }
   // Type alias: no connective, no body, no params, no transport, no children, but has return_type
   else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
-    concat(item.name, " = ", emit_py_type_expr(type_expr: node_to_type_expr_full(n: item.return_type)))
+    concat(item.name, " = ", emit_py_node_type(n: item.return_type))
   }
   else if item.body != none && item.type_annotation == none {
     if item.uses |> count > 0 {
@@ -245,7 +240,7 @@ fn emit_py_type_def_from_connective(item: TypedNode) -> String {
   }
 }
 
-// is_type_alias_return is now shared — imported from v2.compiler.emit
+// is_type_alias_return_node is shared — imported from v2.compiler.emit
 
 fn emit_py_dataclass_from_children(name: String, children: List<TypedNode>) -> String {
   if children |> count == 0 {
@@ -258,21 +253,14 @@ fn emit_py_dataclass_from_children(name: String, children: List<TypedNode>) -> S
 }
 
 fn emit_py_dataclass_field_from_child(child: TypedNode) -> String {
-  let ty = emit_py_type_expr(type_expr: node_to_type_expr_full(n: child.return_type))
-  let is_optional = is_py_optional_type(type_expr: node_to_type_expr_full(n: child.return_type))
+  let ty = emit_py_node_type(n: child.return_type)
+  let is_optional = child.return_type.name == "Optional" && child.return_type.connective != none
   let default_str = if is_optional {
     " = None"
   } else {
     ""
   }
   concat("    ", py_ident(name: child.name), ": ", ty, default_str)
-}
-
-fn is_py_optional_type(type_expr: TypeExpr) -> Bool {
-  match type_expr {
-    Optional { inner: _, span: _ } => true
-    _ => false
-  }
 }
 
 fn emit_py_enum_from_children(name: String, children: List<TypedNode>) -> String {
@@ -306,75 +294,9 @@ fn emit_py_variant_class_from_child(parent_name: String, child: TypedNode) -> St
 }
 
 // =========================================================================
-// Type expression emission
-// =========================================================================
-
-fn emit_py_type_expr(type_expr: TypeExpr) -> String {
-  match type_expr {
-    Primitive { name: n, span: _ } => python_primitive_type(name: n)
-    Named { name: n, span: _ } => n
-    Container { kind: k, element: el, span: _ } =>
-      emit_py_container_type(kind: k, element: el)
-    Optional { inner: inn, span: _ } =>
-      python_container(kind: "optional", inner: emit_py_type_expr(type_expr: inn))
-    MapType { key: k, value: v, span: _ } =>
-      apply_type_template2(
-        template: python_map_template(),
-        arg0: emit_py_type_expr(type_expr: k),
-        arg1: emit_py_type_expr(type_expr: v)
-      )
-    Product { name: pn, fields: fs, span: _ } =>
-      emit_py_product_type_expr(name: pn, fields: fs)
-    Coproduct { name: cn, variants: vs, span: _ } =>
-      emit_py_coproduct_type_expr(name: cn, variants: vs)
-    Refined { base: b, predicates: _, span: _ } =>
-      // Refinements are erased at the Python level — just emit the base type
-      emit_py_type_expr(type_expr: b)
-  }
-}
-
-// emit_py_primitive_type is now shared — imported from v2.compiler.emit
-
-fn emit_py_container_type(kind: ContainerKind, element: TypeExpr) -> String {
-  let inner = emit_py_type_expr(type_expr: element)
-  match kind {
-    List => python_container(kind: "list", inner: inner)
-    Set => python_container(kind: "set", inner: inner)
-    // Python has no NonEmpty wrapper types — use same container template
-    NonEmptyList => python_container(kind: "list", inner: inner)
-    NonEmptySet => python_container(kind: "set", inner: inner)
-  }
-}
-
-fn emit_py_product_type_expr(name: String?, fields: List<Field>) -> String {
-  match name {
-    Some { value: n } => n
-    None => {
-      if fields |> count == 1 {
-        match fields |> first {
-          Some { value: f } => emit_py_type_expr(type_expr: f.type_expr)
-          None => "dict"
-        }
-      } else {
-        "dict"
-      }
-    }
-  }
-}
-
-fn emit_py_coproduct_type_expr(name: String?, variants: List<Variant>) -> String {
-  match name {
-    Some { value: n } => n
-    None => "dict"
-  }
-}
-
-// =========================================================================
-// B1 prep: Node-reading type emission
+// Node-reading type emission
 //
 // Dispatch on Node structure instead of TypeExpr variants.
-// Produces identical output to emit_py_type_expr.
-// After B1 migration, replaces emit_py_type_expr.
 // =========================================================================
 
 fn emit_py_node_type(n: Node) -> String {
@@ -435,9 +357,8 @@ fn emit_py_node_type_conj(n: Node) -> String {
     if n.children |> count == 1 {
       match n.children |> first {
         Some { value: field_node } =>
-          // B1 dual-write bridge: field type in return_type (TypeExpr).
           match field_node.return_type {
-            Some { value: te } => emit_py_type_expr(type_expr: te)
+            Some { value: rt } => emit_py_node_type(n: rt)
             None => "dict"
           }
         None => "dict"
@@ -519,7 +440,7 @@ fn emit_py_func_def(
 fn emit_py_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_py_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(py_ident(name: u.name), ": ", emit_py_node_type(n: type_expr_to_node(te: u.resource)))
+    concat(py_ident(name: u.name), ": ", emit_py_node_type(n: u.resource))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": ", sanitize_service_name(name: sn))
@@ -538,7 +459,7 @@ fn emit_py_params(params: List<Param>) -> String {
 }
 
 fn emit_py_param(param: Param) -> String {
-  let ty = emit_py_node_type(n: type_expr_to_node(te: param.type_expr))
+  let ty = emit_py_node_type(n: param.type_expr)
   concat(py_ident(name: param.name), ": ", ty)
 }
 
@@ -631,7 +552,7 @@ fn emit_py_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<Str
 
 fn emit_py_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let coll_str = emit_py_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth)
-  let elem_type = for_each_element_type(type_expr: node_to_type_expr_full(n: collection.resolved_type))
+  let elem_type = for_each_element_type_node(n: collection.resolved_type)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("for ", py_ident(name: variable), " in ", coll_str, ":\n",
@@ -1022,7 +943,7 @@ fn emit_py_service_init(transport: TransportBinding, config: ServiceConfig?) -> 
 
 fn emit_py_operation_method(service_name: String, transport: TransportBinding, op_node: TypedNode, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(py_ident(name: p.name), ": ", emit_py_node_type(n: type_expr_to_node(te: p.type_expr)))
+    concat(py_ident(name: p.name), ": ", emit_py_node_type(n: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1132,7 +1053,7 @@ fn emit_py_resource_def(item: TypedNode) -> String {
 
 fn emit_py_capability_method(cap_node: TypedNode) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(py_ident(name: p.name), ": ", emit_py_node_type(n: type_expr_to_node(te: p.type_expr)))
+    concat(py_ident(name: p.name), ": ", emit_py_node_type(n: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {

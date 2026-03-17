@@ -325,8 +325,8 @@ fn build_func_env(items: List<Node>) -> FuncEnv {
   let sigs = fold(items, init: empty_map(), f: (acc, item) =>
     if item.params |> count > 0 {
       let is_async = item.uses |> count > 0
-      let rt = unwrap_return_type(rt: item.return_type)
-      map_insert(acc, item.name, FuncSig { name: item.name, params: item.params, return_type: type_expr_to_node(te: rt), is_async: is_async })
+      let rt_node = if item.return_type == none { leaf_node(name: "Unit") } else { item.return_type.value }
+      map_insert(acc, item.name, FuncSig { name: item.name, params: item.params, return_type: rt_node, is_async: is_async })
     } else {
       acc
     }
@@ -1830,13 +1830,13 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
 // -------------------------------------------------------------------------
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
-  let typed_anno = if item.type_annotation != none { Some { value: type_expr_to_node(te: item.type_annotation.value) } } else { none }
+  let typed_anno = item.type_annotation
   // Type definition: has connective (record/sum) and is not a transport binding
   if item.connective != none && item.transport == none {
     TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        return_type: type_expr_to_node(te: unit_type()), uses: item.uses, body: none,
+        return_type: leaf_node(name: "Unit"), uses: item.uses, body: none,
         connective: item.connective, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
@@ -1852,7 +1852,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let resolved_ret = if item.return_type == none {
       body_result.typed.resolved_type
     } else {
-      type_expr_to_node(te: item.return_type.value)
+      item.return_type.value
     }
     TypedItemResult {
       item: TypedNode {
@@ -1870,7 +1870,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Data definition: has body but no params, has type_annotation
   else if item.body != none && item.params |> count == 0 {
     let val_result = infer_expr(expr: item.body.value, scope: scope)
-    let resolved_ret = if item.type_annotation == none { val_result.typed.resolved_type } else { type_expr_to_node(te: item.type_annotation.value) }
+    let resolved_ret = if item.type_annotation == none { val_result.typed.resolved_type } else { item.type_annotation.value }
     TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: [], params: [],
@@ -1885,7 +1885,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Extern func: has params but no body
   else if item.params |> count > 0 && item.body == none {
-    let resolved_ret = if item.return_type == none { type_expr_to_node(te: unit_type()) } else { type_expr_to_node(te: item.return_type.value) }
+    let resolved_ret = if item.return_type == none { leaf_node(name: "Unit") } else { item.return_type.value }
     TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -1900,7 +1900,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Service/Resource/other: pass through
   else {
-    let resolved_ret = if item.return_type == none { type_expr_to_node(te: unit_type()) } else { type_expr_to_node(te: item.return_type.value) }
+    let resolved_ret = if item.return_type == none { leaf_node(name: "Unit") } else { item.return_type.value }
     TypedItemResult {
       item: TypedNode {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,

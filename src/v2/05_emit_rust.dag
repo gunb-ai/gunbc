@@ -53,13 +53,13 @@ import v2.compiler.emit {
   build_item_registry, lookup_item,
   unique_strings,
   collect_typed_service_calls,
-  has_nested_records, has_nested_records_node, emit_data_value_json, emit_typed_data_value_json, escape_json_string,
+  has_nested_records_node, emit_data_value_json, emit_typed_data_value_json, escape_json_string,
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   apply_type_template1, apply_type_template2,
-  is_null_coalesce, is_type_alias_return, is_type_alias_return_node,
+  is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
   is_typed_service_call_receiver, extract_typed_service_name
@@ -329,7 +329,7 @@ fn emit_type_def_from_connective(item: TypedNode) -> String {
   }
 }
 
-// is_type_alias_return is now shared — imported from v2.compiler.emit
+// is_type_alias_return_node is shared — imported from v2.compiler.emit
 
 fn emit_struct_from_children(name: String, children: List<TypedNode>) -> String {
   let derives = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
@@ -451,7 +451,7 @@ fn emit_rust_node_type_conj(n: Node) -> String {
       match n.children |> first {
         Some { value: field_node } =>
           match field_node.return_type {
-            Some { value: te } => emit_rust_node_type(n: type_expr_to_node(te: te))
+            Some { value: te } => emit_rust_node_type(n: te)
             None => "compile_error!(\"anonymous product field missing return_type\")"
           }
         None => "compile_error!(\"anonymous product reached Node emitter\")"
@@ -598,7 +598,7 @@ fn emit_tco_params(params: List<Param>) -> String {
 }
 
 fn emit_tco_param(param: Param) -> String {
-  let n = type_expr_to_node(te: param.type_expr)
+  let n = param.type_expr
   let ty = emit_rust_node_type(n: n)
   let ref_ty = if needs_reference_node(n: n) {
     concat("&", ty)
@@ -611,7 +611,7 @@ fn emit_tco_param(param: Param) -> String {
 fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(rust_ident(name: u.name), ": &", emit_rust_node_type(n: type_expr_to_node(te: u.resource)))
+    concat(rust_ident(name: u.name), ": &", emit_rust_node_type(n: u.resource))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
@@ -634,7 +634,7 @@ fn emit_params(params: List<Param>) -> String {
 }
 
 fn emit_param(param: Param) -> String {
-  let n = type_expr_to_node(te: param.type_expr)
+  let n = param.type_expr
   let ty = emit_rust_node_type(n: n)
   let ref_ty = if needs_reference_node(n: n) {
     concat("&", ty)
@@ -843,7 +843,7 @@ fn emit_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<String
 
 fn emit_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth)
-  let elem_type = for_each_element_type(type_expr: node_to_type_expr_full(n: collection.resolved_type))
+  let elem_type = for_each_element_type_node(n: collection.resolved_type)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("for ", rust_ident(name: variable), " in ", coll_str, ".into_iter() {\n",
@@ -853,18 +853,13 @@ fn emit_typed_for_each(variable: String, collection: TypedExpr, body: TypedExpr,
 fn emit_typed_index(base: TypedExpr, index: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth)
-  let base_type = normalize_access_type(type_expr: node_to_type_expr_full(n: base.resolved_type))
-  match base_type {
-    Primitive { name: name, span: _ } =>
-      if name == "String" {
-        concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
-      } else {
-        "panic!(\"internal error: unsupported index base in emitter\")"
-      }
-    MapType { key: _, value: _, span: _ } =>
-      concat("(", base_str, ").get(&", index_str, ").cloned()")
-    _ =>
-      "panic!(\"internal error: unsupported index base in emitter\")"
+  let base_node = normalize_access_type_node(n: base.resolved_type)
+  if base_node.name == "String" && base_node.connective == none && base_node.children |> count == 0 {
+    concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
+  } else if base_node.name == "Map" && base_node.connective == none && base_node.children |> count == 2 {
+    concat("(", base_str, ").get(&", index_str, ").cloned()")
+  } else {
+    "panic!(\"internal error: unsupported index base in emitter\")"
   }
 }
 
@@ -872,16 +867,11 @@ fn emit_typed_slice(base: TypedExpr, start: TypedExpr, end: TypedExpr, registry:
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth)
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth)
-  let base_type = normalize_access_type(type_expr: node_to_type_expr_full(n: base.resolved_type))
-  match base_type {
-    Primitive { name: name, span: _ } =>
-      if name == "String" {
-        concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
-      } else {
-        "panic!(\"internal error: unsupported slice base in emitter\")"
-      }
-    _ =>
-      "panic!(\"internal error: unsupported slice base in emitter\")"
+  let base_node = normalize_access_type_node(n: base.resolved_type)
+  if base_node.name == "String" && base_node.connective == none && base_node.children |> count == 0 {
+    concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
+  } else {
+    "panic!(\"internal error: unsupported slice base in emitter\")"
   }
 }
 
@@ -1308,7 +1298,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: TransportBinding, op_node: TypedNode, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: type_expr_to_node(te: p.type_expr)))
+    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1438,7 +1428,7 @@ fn emit_resource_def(item: TypedNode) -> String {
 
 fn emit_capability_method(cap_node: TypedNode) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: type_expr_to_node(te: p.type_expr)))
+    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1714,7 +1704,7 @@ fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
 // Emit a struct field inside a subcommand variant, with clap attributes.
 fn emit_subcommand_field(param: Param) -> String {
   let field_name = rust_ident(name: param.name)
-  let field_type = emit_cli_param_type_node(n: type_expr_to_node(te: param.type_expr))
+  let field_type = emit_cli_param_type_node(n: param.type_expr)
   let default_attr = match param.default_value {
     Some { value: dv } => concat("#[arg(long, default_value = \"", emit_cli_default_value(expr: dv), "\")]\n")
     None => "#[arg(long)]\n"
@@ -1823,7 +1813,7 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
     let arg_name = rust_ident(name: p.name)
-    if needs_reference_node(n: type_expr_to_node(te: p.type_expr)) {
+    if needs_reference_node(n: p.type_expr) {
       concat("&", arg_name)
     } else {
       arg_name

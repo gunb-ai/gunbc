@@ -61,20 +61,17 @@ import v2.compiler.emit {
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   build_item_registry, lookup_item, named_arg_matches, order_call_args,
-  is_service_call_receiver, extract_service_name,
-  collect_service_calls, collect_service_calls_from_args, unique_strings,
+  unique_strings,
   collect_typed_service_calls,
-  has_nested_records, emit_data_value_json, escape_json_string,
+  escape_json_string,
   module_to_filename,
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
-  expr_has_self_call, has_non_tail_self_call,
   apply_type_template1, apply_type_template2,
-  is_null_coalesce, is_type_alias_return, is_type_alias_return_node,
+  is_null_coalesce, is_type_alias_return_node,
   has_nested_records_node,
   is_service_item,
-  infer_expr_type, scope_after_plain_expr,
   typed_named_arg_matches, order_typed_call_args,
   is_typed_service_call_receiver, extract_typed_service_name
 }
@@ -250,7 +247,7 @@ fn emit_go_type_def_from_connective(item: TypedNode) -> String {
   }
 }
 
-// is_type_alias_return is now shared — imported from v2.compiler.emit
+// is_type_alias_return_node is shared — imported from v2.compiler.emit
 
 // Go struct from Conj children
 fn emit_go_struct_from_children(name: String, children: List<TypedNode>) -> String {
@@ -458,7 +455,7 @@ fn emit_go_func_def(
 fn emit_go_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_go_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(go_local_ident(name: u.name), " ", emit_go_node_type(n: type_expr_to_node(te: u.resource)))
+    concat(go_local_ident(name: u.name), " ", emit_go_node_type(n: u.resource))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), " *", sanitize_service_name(name: sn))
@@ -478,7 +475,7 @@ fn emit_go_params(params: List<Param>) -> String {
 }
 
 fn emit_go_param(param: Param) -> String {
-  let ty = emit_go_node_type(n: type_expr_to_node(te: param.type_expr))
+  let ty = emit_go_node_type(n: param.type_expr)
   concat(go_local_ident(name: param.name), " ", ty)
 }
 
@@ -966,7 +963,7 @@ fn emit_go_service_struct(name: String, transport: TransportBinding) -> String {
 
 fn emit_go_operation_method(service_name: String, transport: TransportBinding, op_node: TypedNode, registry: Map<String, ItemInfo>) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: type_expr_to_node(te: p.type_expr)))
+    concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
@@ -1076,7 +1073,7 @@ fn emit_go_resource_def(item: TypedNode) -> String {
 
 fn emit_go_capability_method(cap_node: TypedNode, depth: Int) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: type_expr_to_node(te: p.type_expr)))
+    concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, return_type on the child node IS the output type
