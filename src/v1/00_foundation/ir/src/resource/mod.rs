@@ -1627,4 +1627,58 @@ mod tests {
         .with_kind(NodeKind::TransportExecute);
         assert_eq!(classify_effect(&node), Some(NodeKind::TransportExecute));
     }
+
+    /// Regression: an effectful node that satisfies completeness (has a resource
+    /// port) must also produce a ResourceAccess in derive_resource_accesses.
+    /// Both functions use declared_resource_access() as the single contract;
+    /// this test proves the coupling holds for every effectful NodeKind.
+    #[test]
+    fn test_effectful_node_satisfying_completeness_visible_to_conflict_derivation() {
+        let effectful_kinds = [
+            NodeKind::TransportExecute,
+            NodeKind::TransportPrepare,
+            NodeKind::TransportParse,
+            NodeKind::ToolEnvironment,
+            NodeKind::ToolConsumer,
+            NodeKind::ResourceEnvironment,
+            NodeKind::ResourceAcquire,
+            NodeKind::ResourceRelease,
+            NodeKind::ParamSource,
+        ];
+
+        for kind in &effectful_kinds {
+            // Precondition: this kind is effectful.
+            let probe = Node::opaque("probe", vec![], vec![], "op".to_string()).with_kind(*kind);
+            assert!(
+                classify_effect(&probe).is_some(),
+                "{kind:?} must be classified as effectful"
+            );
+
+            // Build a single-node DAG with one resource port.
+            let mut dag: Dag<String> = Dag::new();
+            dag.add_node(
+                Node::opaque(
+                    "effectful",
+                    vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
+                    vec![],
+                    "op".to_string(),
+                )
+                .with_kind(*kind),
+            );
+
+            // Completeness must pass — the node declares a resource port.
+            let violations = validate_resource_completeness(&dag);
+            assert!(
+                violations.is_empty(),
+                "{kind:?}: node with resource port should satisfy completeness"
+            );
+
+            // Conflict derivation must see the same port — no invisible gap.
+            let accesses = derive_resource_accesses(&dag).expect("should derive");
+            assert!(
+                accesses.iter().any(|a| a.node_id.0 == "effectful"),
+                "{kind:?}: node satisfying completeness must be visible to conflict derivation"
+            );
+        }
+    }
 }
