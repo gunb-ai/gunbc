@@ -35,6 +35,7 @@ import v2.std.core {
   TypedNamedArg, TypedMatchArm, TypedFieldInit, TypedStringPart,
   TypedText, TypedInterpolation,
   typed_expr_to_expr,
+  typed_expr_has_self_call, typed_has_non_tail_self_call,
   type_expr_to_node, node_to_type_expr_full,
   FuncSig, FuncEnv,
   ForEach,
@@ -1696,7 +1697,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         return_type: type_expr_to_node(te: unit_type()), uses: item.uses, body: none,
         connective: item.connective, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
-        config: item.config
+        config: item.config,
+        is_self_recursive: false, has_non_tail_self_call: false
       },
       diagnostics: []
     }
@@ -1716,7 +1718,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         return_type: resolved_ret, uses: item.uses, body: Some { value: body_result.typed },
         connective: none, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
-        config: item.config
+        config: item.config,
+        is_self_recursive: typed_expr_has_self_call(texpr: body_result.typed, fn_name: item.name),
+        has_non_tail_self_call: typed_has_non_tail_self_call(texpr: body_result.typed, fn_name: item.name, in_tail: true)
       },
       diagnostics: body_result.diagnostics
     }
@@ -1731,7 +1735,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         return_type: resolved_ret, uses: [], body: Some { value: val_result.typed },
         connective: none, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
-        config: item.config
+        config: item.config,
+        is_self_recursive: false, has_non_tail_self_call: false
       },
       diagnostics: val_result.diagnostics
     }
@@ -1745,7 +1750,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         return_type: resolved_ret, uses: item.uses, body: none,
         connective: none, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
-        config: item.config
+        config: item.config,
+        is_self_recursive: false, has_non_tail_self_call: false
       },
       diagnostics: []
     }
@@ -1759,7 +1765,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         return_type: resolved_ret, uses: item.uses, body: none,
         connective: item.connective, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
-        config: item.config
+        config: item.config,
+        is_self_recursive: false, has_non_tail_self_call: false
       },
       diagnostics: []
     }
@@ -2012,9 +2019,12 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // to break recursive expansion without threading a growing resolving list.
   let cycle_set = detect_type_cycles(bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map }
+  // Resolve all type bindings in-place so consumers get fully-resolved structural forms.
+  let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name)
   BuildTypeEnvResult {
-    env: TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map },
-    diagnostics: import_result.diagnostics
+    env: resolved.env,
+    diagnostics: concat(import_result.diagnostics, resolved.diagnostics)
   }
 }
 
@@ -2733,10 +2743,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     span: resolved.module.span
   }
 
-  // Also resolve the types in the environment itself, so that all
-  // bindings point to fully-resolved structural forms.
-  let resolved_env = resolve_env_bindings(env: env, module_name: resolved.module.name)
-
   // Build func_env from the resolved items (return types resolved by now).
   let func_env = build_func_env(items: resolved_items)
 
@@ -2793,7 +2799,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   // Register variant constructors from Coproduct types so enum variant names
   // (LitNull, None, Conj, Error, etc.) are resolvable as variables.
-  let variant_locals = fold(map_values(resolved_env.env.bindings), init: service_locals, f: (acc, binding) =>
+  let variant_locals = fold(map_values(env.bindings), init: service_locals, f: (acc, binding) =>
     match binding.resolved {
       Coproduct { name: _, variants: variants, span: _ } =>
         fold(variants, init: acc, f: (vacc, v) =>
@@ -2813,7 +2819,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let variant_locals = fold(resolved_items, init: variant_locals, f: (acc, item) =>
     match item.connective {
       Some { value: Disj } =>
-        if is_recursive_type(env: resolved_env.env, name: item.name) {
+        if is_recursive_type(env: env, name: item.name) {
           fold(item.children, init: acc, f: (vacc, child) =>
             map_insert(vacc, child.name, TypeBinding {
               name: child.name,
@@ -2832,7 +2838,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
       match titem.connective {
         Some { value: Disj } =>
-          if is_recursive_type(env: resolved_env.env, name: titem.name) {
+          if is_recursive_type(env: env, name: titem.name) {
             fold(titem.children, init: inner_acc, f: (vacc, child) =>
               map_insert(vacc, child.name, TypeBinding {
                 name: child.name,
@@ -2860,7 +2866,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   // Build the InferScope and infer all items to produce TypedNodes.
   let infer_scope = InferScope {
-    type_env: resolved_env.env,
+    type_env: env,
     func_env: func_env,
     locals: optional_locals,
     module_name: resolved.module.name,
@@ -2874,10 +2880,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     typed: TypedModule {
       module: typed_module,
       items: typed_items,
-      type_env: resolved_env.env,
+      type_env: env,
       func_env: func_env
     },
-    diagnostics: concat(env_result.diagnostics, item_diags, resolved_env.diagnostics, infer_diags)
+    diagnostics: concat(env_result.diagnostics, item_diags, infer_diags)
   }
 }
 
