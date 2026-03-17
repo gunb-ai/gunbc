@@ -87,28 +87,28 @@ fn execute_primitive(
         PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
             let values: Vec<Value> = input_ports
                 .iter()
-                .map(|port| inputs.get(port).cloned().unwrap_or(Value::Skipped))
-                .collect();
+                .map(|port| require_input(&inputs, "StringInterpolate", port))
+                .collect::<Result<_, _>>()?;
             let result = eval::eval_string_interpolate(parts, &values)
                 .map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::BinaryOp { op } => {
-            let left = inputs.get("left").cloned().unwrap_or(Value::Skipped);
-            let right = inputs.get("right").cloned().unwrap_or(Value::Skipped);
+            let left = require_input(&inputs, "BinaryOp", "left")?;
+            let right = require_input(&inputs, "BinaryOp", "right")?;
             let result =
                 eval::eval_binop(&left, *op, &right).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::UnaryOp { op } => {
-            let val = inputs.get("operand").cloned().unwrap_or(Value::Skipped);
+            let val = require_input(&inputs, "UnaryOp", "operand")?;
             let result =
                 eval::eval_unary_op(*op, &val).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::Conditional => {
-            let condition = inputs.get("condition").cloned().unwrap_or(Value::Skipped);
-            let then_val = inputs.get("then").cloned().unwrap_or(Value::Skipped);
+            let condition = require_input(&inputs, "Conditional", "condition")?;
+            let then_val = require_input(&inputs, "Conditional", "then")?;
             let else_val = inputs.get("else");
             let result = eval::eval_conditional(&condition, &then_val, else_val);
             Ok([("value".to_string(), result)].into_iter().collect())
@@ -116,23 +116,27 @@ fn execute_primitive(
         PrimitiveOpKind::RecordConstruct { fields } => {
             let field_values: Vec<(String, Value)> = fields
                 .iter()
-                .map(|f| (f.clone(), inputs.get(f).cloned().unwrap_or(Value::Skipped)))
-                .collect();
+                .map(|f| {
+                    require_input(&inputs, "RecordConstruct", f).map(|value| (f.clone(), value))
+                })
+                .collect::<Result<_, _>>()?;
             let result = eval::eval_record_construct(&field_values)
                 .map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::NullCoalesce => {
-            let value = inputs.get("value").cloned().unwrap_or(Value::Skipped);
-            let default = inputs.get("default").cloned().unwrap_or(Value::Unit);
+            let value = require_input(&inputs, "NullCoalesce", "value")?;
+            let default = require_input(&inputs, "NullCoalesce", "default")?;
             let result = eval::eval_null_coalesce(&value, &default);
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::VariantConstruct { tag, fields } => {
             let field_values: Vec<(String, Value)> = fields
                 .iter()
-                .map(|f| (f.clone(), inputs.get(f).cloned().unwrap_or(Value::Skipped)))
-                .collect();
+                .map(|f| {
+                    require_input(&inputs, "VariantConstruct", f).map(|value| (f.clone(), value))
+                })
+                .collect::<Result<_, _>>()?;
             let result = eval::eval_variant_construct(tag, &field_values)
                 .map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
@@ -140,18 +144,16 @@ fn execute_primitive(
         PrimitiveOpKind::ListConstruct { count } => {
             let elements: Vec<Value> = (0..*count)
                 .map(|i| {
-                    inputs
-                        .get(&format!("elem_{i}"))
-                        .cloned()
-                        .unwrap_or(Value::Skipped)
+                    let port = format!("elem_{i}");
+                    require_input(&inputs, "ListConstruct", port.as_str())
                 })
-                .collect();
+                .collect::<Result<_, _>>()?;
             let result =
                 eval::eval_list_construct(elements).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::MatchDispatch { arms, sibling_fns } => {
-            let scrutinee = inputs.get("scrutinee").cloned().unwrap_or(Value::Skipped);
+            let scrutinee = require_input(&inputs, "MatchDispatch", "scrutinee")?;
             if matches!(scrutinee, Value::Skipped) {
                 return Ok([("value".to_string(), Value::Skipped)]
                     .into_iter()
@@ -174,6 +176,17 @@ fn execute_primitive(
             "primitive op {kind:?} is not supported by the interpreter"
         ))),
     }
+}
+
+fn require_input(
+    inputs: &HashMap<String, Value>,
+    primitive: &str,
+    port: &str,
+) -> Result<Value, ExecError> {
+    inputs
+        .get(port)
+        .cloned()
+        .ok_or_else(|| ExecError::new(format!("{primitive} missing `{port}` input")))
 }
 
 fn execute_callable(
@@ -239,6 +252,25 @@ mod tests {
 
     fn empty_data_values() -> HashMap<String, Value> {
         HashMap::new()
+    }
+
+    fn primitive_op(name: &str, kind: PrimitiveOpKind) -> LoweredOp {
+        LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: name.to_string(),
+            kind,
+        }
+    }
+
+    fn assert_missing_input_error(
+        op: LoweredOp,
+        inputs: HashMap<String, Value>,
+        expected: &str,
+    ) {
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("missing required primitive inputs should fail closed");
+
+        assert_eq!(err.message, expected);
     }
 
     #[test]
@@ -438,6 +470,126 @@ mod tests {
             "unexpected error: {}",
             err.message
         );
+    }
+
+    #[test]
+    fn primitive_ops_error_on_missing_required_scalar_inputs() {
+        let cases = vec![
+            (
+                primitive_op(
+                    "binary_op",
+                    PrimitiveOpKind::BinaryOp {
+                        op: daglang_lower::expr::LoweredBinOp::Add,
+                    },
+                ),
+                [("left".to_string(), Value::Int(1))].into_iter().collect(),
+                "BinaryOp missing `right` input",
+            ),
+            (
+                primitive_op(
+                    "unary_op",
+                    PrimitiveOpKind::UnaryOp {
+                        op: daglang_lower::expr::LoweredUnaryOp::Not,
+                    },
+                ),
+                HashMap::new(),
+                "UnaryOp missing `operand` input",
+            ),
+            (
+                primitive_op("conditional", PrimitiveOpKind::Conditional),
+                [("then".to_string(), Value::Int(1))].into_iter().collect(),
+                "Conditional missing `condition` input",
+            ),
+            (
+                primitive_op("null_coalesce", PrimitiveOpKind::NullCoalesce),
+                [("value".to_string(), Value::Unit)].into_iter().collect(),
+                "NullCoalesce missing `default` input",
+            ),
+            (
+                primitive_op(
+                    "match_dispatch",
+                    PrimitiveOpKind::MatchDispatch {
+                        arms: vec![],
+                        sibling_fns: std::collections::BTreeMap::new(),
+                    },
+                ),
+                HashMap::new(),
+                "MatchDispatch missing `scrutinee` input",
+            ),
+        ];
+
+        for (op, inputs, expected) in cases {
+            assert_missing_input_error(op, inputs, expected);
+        }
+    }
+
+    #[test]
+    fn primitive_ops_error_on_missing_required_construct_inputs() {
+        let cases = vec![
+            (
+                primitive_op(
+                    "string_interpolate",
+                    PrimitiveOpKind::StringInterpolate {
+                        parts: vec!["hello ".to_string(), String::new()],
+                        input_ports: vec!["name".to_string()],
+                    },
+                ),
+                HashMap::new(),
+                "StringInterpolate missing `name` input",
+            ),
+            (
+                primitive_op(
+                    "record_construct",
+                    PrimitiveOpKind::RecordConstruct {
+                        fields: vec!["field".to_string()],
+                    },
+                ),
+                HashMap::new(),
+                "RecordConstruct missing `field` input",
+            ),
+            (
+                primitive_op(
+                    "variant_construct",
+                    PrimitiveOpKind::VariantConstruct {
+                        tag: "Some".to_string(),
+                        fields: vec!["value".to_string()],
+                    },
+                ),
+                HashMap::new(),
+                "VariantConstruct missing `value` input",
+            ),
+            (
+                primitive_op(
+                    "list_construct",
+                    PrimitiveOpKind::ListConstruct { count: 2 },
+                ),
+                [("elem_0".to_string(), Value::Int(1))].into_iter().collect(),
+                "ListConstruct missing `elem_1` input",
+            ),
+        ];
+
+        for (op, inputs, expected) in cases {
+            assert_missing_input_error(op, inputs, expected);
+        }
+    }
+
+    #[test]
+    fn match_dispatch_keeps_present_skipped_scrutinee_behavior() {
+        let op = primitive_op(
+            "match_dispatch",
+            PrimitiveOpKind::MatchDispatch {
+                arms: vec![],
+                sibling_fns: std::collections::BTreeMap::new(),
+            },
+        );
+        let inputs = [("scrutinee".to_string(), Value::Skipped)]
+            .into_iter()
+            .collect();
+
+        let outputs = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect("present skipped scrutinee should still propagate");
+
+        assert_eq!(outputs.get("value"), Some(&Value::Skipped));
     }
 
     #[test]
