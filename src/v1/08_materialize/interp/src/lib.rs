@@ -240,6 +240,30 @@ mod tests {
     }
 
     #[test]
+    fn getfield_missing_input_port_errors() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "get_field".to_string(),
+            kind: PrimitiveOpKind::GetField {
+                field: "name".to_string(),
+                input_port: "record".to_string(),
+            },
+        };
+        // Provide an input under a different key than the expected input_port
+        let inputs = [("other".to_string(), Value::Str("val".to_string()))]
+            .into_iter()
+            .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("GetField with missing input port should fail closed");
+
+        assert_eq!(
+            err.message,
+            "GetField `name`: missing input port `record`"
+        );
+    }
+
+    #[test]
     fn unsupported_primitive_errors_instead_of_passthrough() {
         let op = LoweredOp::Primitive {
             module: "test".to_string(),
