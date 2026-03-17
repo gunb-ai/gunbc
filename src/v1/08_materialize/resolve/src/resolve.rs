@@ -382,6 +382,9 @@ struct PurePrimitiveOp {
     output_port: String,
     /// Only used for Conditional variant — whether an `else` branch exists.
     has_else: bool,
+    /// Validated input port name from node schema (GetField only).
+    /// Derived at resolve time from the node's declared inputs, not from the IR.
+    input_port: Option<String>,
 }
 
 impl std::fmt::Debug for PurePrimitiveOp {
@@ -396,7 +399,12 @@ impl std::fmt::Debug for PurePrimitiveOp {
 impl Executable for PurePrimitiveOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let result = match &self.kind {
-            PrimitiveOpKind::GetField { field, input_port } => {
+            PrimitiveOpKind::GetField { field } => {
+                let input_port = self.input_port.as_deref().ok_or_else(|| {
+                    ExecError::new(
+                        "GetField: validated input port missing from executable (compiler bug)",
+                    )
+                })?;
                 let value = require_input_port(&inputs, input_port, "GetField")?;
                 daglang_lower::eval::eval_get_field(value, field)
                     .map_err(|e| ExecError::new(format!("on port `{input_port}`: {e}")))?
@@ -958,18 +966,17 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
-        PrimitiveOpKind::GetField { field, input_port } => {
-            if !inputs.iter().any(|p| p.name.0 == *input_port) {
-                let mut declared: Vec<&str> = inputs.iter().map(|p| p.name.0.as_str()).collect();
-                declared.sort_unstable();
+        PrimitiveOpKind::GetField { field } => {
+            if inputs.len() != 1 {
                 return Err(ResolveError {
                     node_id: String::new(),
                     reason: format!(
-                        "GetField `{field}`: input_port `{input_port}` not found in declared inputs [{}] (compiler bug)",
-                        declared.join(", ")
+                        "GetField `{field}`: expected exactly 1 declared input port, found {} (compiler bug)",
+                        inputs.len()
                     ),
                 });
             }
+            let validated_input = inputs[0].name.0.clone();
             let output_port =
                 outputs
                     .first()
@@ -984,6 +991,7 @@ fn resolve_primitive(
                 kind: kind.clone(),
                 output_port,
                 has_else: false,
+                input_port: Some(validated_input),
             }))
         }
         PrimitiveOpKind::Conditional => {
@@ -993,6 +1001,7 @@ fn resolve_primitive(
                 kind: kind.clone(),
                 output_port,
                 has_else,
+                input_port: None,
             }))
         }
         PrimitiveOpKind::StringInterpolate { .. }
@@ -1006,6 +1015,7 @@ fn resolve_primitive(
             kind: kind.clone(),
             output_port: default_output_port(outputs),
             has_else: false,
+            input_port: None,
         })),
     }
 }
@@ -2689,8 +2699,8 @@ mod tests {
         let op = PurePrimitiveOp {
             kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
-
             has_else: false,
+            input_port: None,
         };
         let mut inputs = HashMap::new();
         inputs.insert("condition".to_string(), Value::Bool(false));
@@ -2708,8 +2718,8 @@ mod tests {
         let op = PurePrimitiveOp {
             kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
-
             has_else: true,
+            input_port: None,
         };
         let mut inputs = HashMap::new();
         inputs.insert("then".to_string(), Value::Str("yes".to_string()));
@@ -2731,8 +2741,8 @@ mod tests {
                 op: daglang_lower::expr::LoweredBinOp::Add,
             },
             output_port: "result".to_string(),
-
             has_else: false,
+            input_port: None,
         };
         let mut inputs = HashMap::new();
         inputs.insert("left".to_string(), Value::Int(1));
@@ -2753,8 +2763,8 @@ mod tests {
                 fields: vec!["x".to_string(), "y".to_string()],
             },
             output_port: "result".to_string(),
-
             has_else: false,
+            input_port: None,
         };
         let mut inputs = HashMap::new();
         inputs.insert("x".to_string(), Value::Int(1));
@@ -2784,34 +2794,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_get_field_rejects_mismatched_input_port() {
-        // GetField.input_port says "record" but the node declares input "data".
-        let node = Node::opaque(
-            "extract_field",
-            vec![Port::scalar("data", "Json")],
-            vec![Port::scalar("value", "String")],
-            LoweredOp::Primitive {
-                module: "test".into(),
-                name: "get_field::test::data::name".into(),
-                kind: PrimitiveOpKind::GetField {
-                    field: "name".into(),
-                    input_port: "record".into(),
-                },
-            },
-        );
-        let err = resolve_node(&node).expect_err(
-            "GetField with input_port not matching declared inputs must fail at resolve time",
-        );
-        let msg = err.reason;
-        assert!(
-            msg.contains("input_port `record` not found in declared inputs"),
-            "error should identify the mismatched port: {msg}"
-        );
-    }
-
-    #[test]
     fn resolve_get_field_rejects_no_declared_inputs() {
-        // GetField.input_port says "record" but the node has zero declared inputs.
         let node = Node::opaque(
             "extract_field",
             vec![],
@@ -2821,78 +2804,79 @@ mod tests {
                 name: "get_field::test::empty::name".into(),
                 kind: PrimitiveOpKind::GetField {
                     field: "name".into(),
-                    input_port: "record".into(),
                 },
             },
         );
         let err = resolve_node(&node)
             .expect_err("GetField with no declared inputs must fail at resolve time");
         assert!(
-            err.reason.contains("input_port `record` not found"),
-            "error should mention missing port: {}",
+            err.reason.contains("expected exactly 1 declared input port"),
+            "error should mention input count: {}",
             err.reason
         );
     }
 
     #[test]
-    fn resolve_get_field_uses_declared_input_port_with_multiple_inputs() {
+    fn resolve_get_field_rejects_multiple_declared_inputs() {
         let node = Node::opaque(
             "extract_field",
             vec![
                 Port::scalar("record", "Json"),
                 Port::scalar("other", "Json"),
-                Port::scalar("spare", "Json"),
             ],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::multi::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                },
+            },
+        );
+        let err = resolve_node(&node)
+            .expect_err("GetField with multiple declared inputs must fail at resolve time");
+        assert!(
+            err.reason.contains("expected exactly 1 declared input port"),
+            "error should mention input count: {}",
+            err.reason
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_derives_input_from_schema() {
+        // GetField derives its input port from the node's sole declared input,
+        // not from a duplicated field in PrimitiveOpKind.
+        let node = Node::opaque(
+            "extract_field",
+            vec![Port::scalar("record", "Json")],
             vec![Port::scalar("value", "String")],
             LoweredOp::Primitive {
                 module: "test".into(),
                 name: "get_field::test::record::name".into(),
                 kind: PrimitiveOpKind::GetField {
                     field: "name".into(),
-                    input_port: "record".into(),
                 },
             },
         );
-        let op = resolve_node(&node).expect("GetField with matching input_port should resolve");
+        let op = resolve_node(&node)
+            .expect("GetField with one declared input should resolve");
 
-        for attempt in 0..32 {
-            let mut inputs = HashMap::new();
-            inputs.insert(
-                "other".to_string(),
-                Value::Map(
-                    [(
-                        "name".to_string(),
-                        Value::Str(format!("mallory-{attempt}")),
-                    )]
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "record".to_string(),
+            Value::Map(
+                [("name".to_string(), Value::Str("alice".to_string()))]
                     .into_iter()
                     .collect(),
-                ),
-            );
-            inputs.insert(
-                "spare".to_string(),
-                Value::Map(
-                    [("name".to_string(), Value::Str(format!("trent-{attempt}")))]
-                        .into_iter()
-                        .collect(),
-                ),
-            );
-            inputs.insert(
-                "record".to_string(),
-                Value::Map(
-                    [("name".to_string(), Value::Str("alice".to_string()))]
-                        .into_iter()
-                        .collect(),
-                ),
-            );
+            ),
+        );
 
-            let outputs = op
-                .execute(inputs)
-                .expect("GetField should execute with multiple declared inputs");
-            assert_eq!(
-                outputs.get("value").and_then(Value::as_str),
-                Some("alice"),
-                "attempt {attempt} should read `record`, not another input map"
-            );
-        }
+        let outputs = op
+            .execute(inputs)
+            .expect("GetField should execute using schema-derived input port");
+        assert_eq!(
+            outputs.get("value").and_then(Value::as_str),
+            Some("alice"),
+        );
     }
 }

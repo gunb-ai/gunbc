@@ -72,12 +72,14 @@ fn execute_primitive(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match kind {
-        PrimitiveOpKind::GetField { field, input_port } => {
-            let value = inputs.get(input_port).cloned().ok_or_else(|| {
-                ExecError::new(format!(
-                    "GetField `{field}`: missing input port `{input_port}`"
-                ))
-            })?;
+        PrimitiveOpKind::GetField { field } => {
+            if inputs.len() != 1 {
+                return Err(ExecError::new(format!(
+                    "GetField `{field}`: expected exactly 1 input, got {}",
+                    inputs.len()
+                )));
+            }
+            let (_, value) = inputs.into_iter().next().unwrap();
             let result =
                 eval::eval_get_field(&value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
@@ -240,76 +242,61 @@ mod tests {
     }
 
     #[test]
-    fn getfield_missing_input_port_errors() {
+    fn getfield_zero_inputs_errors() {
         let op = LoweredOp::Primitive {
             module: "test".to_string(),
             name: "get_field".to_string(),
             kind: PrimitiveOpKind::GetField {
                 field: "name".to_string(),
-                input_port: "record".to_string(),
             },
         };
-        // Provide an input under a different key than the expected input_port
-        let inputs = [("other".to_string(), Value::Str("val".to_string()))]
-            .into_iter()
-            .collect();
+        let inputs = HashMap::new();
 
         let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
-            .expect_err("GetField with missing input port should fail closed");
+            .expect_err("GetField with zero inputs should fail closed");
 
-        assert_eq!(err.message, "GetField `name`: missing input port `record`");
+        assert!(
+            err.message.contains("expected exactly 1 input"),
+            "error should mention input count: {}",
+            err.message
+        );
     }
 
     #[test]
-    fn getfield_uses_declared_input_port_with_multiple_inputs() {
+    fn getfield_multiple_inputs_errors() {
         let op = LoweredOp::Primitive {
             module: "test".to_string(),
             name: "get_field".to_string(),
             kind: PrimitiveOpKind::GetField {
                 field: "name".to_string(),
-                input_port: "record".to_string(),
             },
         };
-
-        for attempt in 0..32 {
-            let mut inputs = HashMap::new();
-            inputs.insert(
-                "other".to_string(),
-                Value::Map(
-                    [(
-                        "name".to_string(),
-                        Value::Str(format!("mallory-{attempt}")),
-                    )]
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "record".to_string(),
+            Value::Map(
+                [("name".to_string(), Value::Str("alice".to_string()))]
                     .into_iter()
                     .collect(),
-                ),
-            );
-            inputs.insert(
-                "spare".to_string(),
-                Value::Map(
-                    [("name".to_string(), Value::Str(format!("trent-{attempt}")))]
-                        .into_iter()
-                        .collect(),
-                ),
-            );
-            inputs.insert(
-                "record".to_string(),
-                Value::Map(
-                    [("name".to_string(), Value::Str("alice".to_string()))]
-                        .into_iter()
-                        .collect(),
-                ),
-            );
+            ),
+        );
+        inputs.insert(
+            "other".to_string(),
+            Value::Map(
+                [("name".to_string(), Value::Str("bob".to_string()))]
+                    .into_iter()
+                    .collect(),
+            ),
+        );
 
-            let outputs = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
-                .expect("GetField with multiple inputs should read the declared input_port");
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("GetField with multiple inputs should fail closed");
 
-            assert_eq!(
-                outputs.get("value").and_then(Value::as_str),
-                Some("alice"),
-                "attempt {attempt} should read `record`, not another input map"
-            );
-        }
+        assert!(
+            err.message.contains("expected exactly 1 input"),
+            "error should mention input count: {}",
+            err.message
+        );
     }
 
     #[test]
