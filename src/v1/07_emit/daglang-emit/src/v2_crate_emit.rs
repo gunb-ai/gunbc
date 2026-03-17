@@ -276,12 +276,6 @@ fn collect_embedded_dag_sources() -> Vec<EmbeddedDagSource> {
     sources.into_values().collect()
 }
 
-fn workspace_cargo_lock() -> String {
-    let lock_path = workspace_root_from_manifest_dir().join("Cargo.lock");
-    std::fs::read_to_string(&lock_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {}", lock_path.display(), e))
-}
-
 fn rust_mod_for_module_path(path: &str) -> String {
     let leaf = path.rsplit('.').next().unwrap_or(path);
     match leaf {
@@ -539,16 +533,12 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         content: emit_test_module(&dag_sources),
     });
 
-    // 9. Emit Cargo.toml and Cargo.lock (standalone — not part of any workspace)
+    // 9. Emit Cargo.toml (standalone — not part of any workspace)
     let mut cargo_toml = render_rust::render_cargo_toml("v2-compiler", &[("stacker", "0.1")]);
     cargo_toml.push_str("\n[workspace]\n");
     files.push(GeneratedFile {
         rel_path: "Cargo.toml".to_string(),
         content: cargo_toml,
-    });
-    files.push(GeneratedFile {
-        rel_path: "Cargo.lock".to_string(),
-        content: workspace_cargo_lock(),
     });
 
     files
