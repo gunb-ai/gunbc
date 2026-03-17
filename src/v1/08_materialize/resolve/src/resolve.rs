@@ -2835,10 +2835,14 @@ mod tests {
     }
 
     #[test]
-    fn resolve_get_field_succeeds_with_matching_input_port() {
+    fn resolve_get_field_uses_declared_input_port_with_multiple_inputs() {
         let node = Node::opaque(
             "extract_field",
-            vec![Port::scalar("record", "Json")],
+            vec![
+                Port::scalar("record", "Json"),
+                Port::scalar("other", "Json"),
+                Port::scalar("spare", "Json"),
+            ],
             vec![Port::scalar("value", "String")],
             LoweredOp::Primitive {
                 module: "test".into(),
@@ -2850,20 +2854,45 @@ mod tests {
             },
         );
         let op = resolve_node(&node).expect("GetField with matching input_port should resolve");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "record".to_string(),
-            Value::Map(
-                [("name".to_string(), Value::Str("alice".to_string()))]
+
+        for attempt in 0..32 {
+            let mut inputs = HashMap::new();
+            inputs.insert(
+                "other".to_string(),
+                Value::Map(
+                    [(
+                        "name".to_string(),
+                        Value::Str(format!("mallory-{attempt}")),
+                    )]
                     .into_iter()
                     .collect(),
-            ),
-        );
-        let outputs = op.execute(inputs).expect("GetField should execute");
-        assert_eq!(
-            outputs.get("value").and_then(Value::as_str),
-            Some("alice"),
-            "GetField should extract the named field from the input map"
-        );
+                ),
+            );
+            inputs.insert(
+                "spare".to_string(),
+                Value::Map(
+                    [("name".to_string(), Value::Str(format!("trent-{attempt}")))]
+                        .into_iter()
+                        .collect(),
+                ),
+            );
+            inputs.insert(
+                "record".to_string(),
+                Value::Map(
+                    [("name".to_string(), Value::Str("alice".to_string()))]
+                        .into_iter()
+                        .collect(),
+                ),
+            );
+
+            let outputs = op
+                .execute(inputs)
+                .expect("GetField should execute with multiple declared inputs");
+            assert_eq!(
+                outputs.get("value").and_then(Value::as_str),
+                Some("alice"),
+                "attempt {attempt} should read `record`, not another input map"
+            );
+        }
     }
 }

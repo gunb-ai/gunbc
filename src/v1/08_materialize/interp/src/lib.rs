@@ -261,6 +261,58 @@ mod tests {
     }
 
     #[test]
+    fn getfield_uses_declared_input_port_with_multiple_inputs() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "get_field".to_string(),
+            kind: PrimitiveOpKind::GetField {
+                field: "name".to_string(),
+                input_port: "record".to_string(),
+            },
+        };
+
+        for attempt in 0..32 {
+            let mut inputs = HashMap::new();
+            inputs.insert(
+                "other".to_string(),
+                Value::Map(
+                    [(
+                        "name".to_string(),
+                        Value::Str(format!("mallory-{attempt}")),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            );
+            inputs.insert(
+                "spare".to_string(),
+                Value::Map(
+                    [("name".to_string(), Value::Str(format!("trent-{attempt}")))]
+                        .into_iter()
+                        .collect(),
+                ),
+            );
+            inputs.insert(
+                "record".to_string(),
+                Value::Map(
+                    [("name".to_string(), Value::Str("alice".to_string()))]
+                        .into_iter()
+                        .collect(),
+                ),
+            );
+
+            let outputs = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+                .expect("GetField with multiple inputs should read the declared input_port");
+
+            assert_eq!(
+                outputs.get("value").and_then(Value::as_str),
+                Some("alice"),
+                "attempt {attempt} should read `record`, not another input map"
+            );
+        }
+    }
+
+    #[test]
     fn unsupported_primitive_errors_instead_of_passthrough() {
         let op = LoweredOp::Primitive {
             module: "test".to_string(),
