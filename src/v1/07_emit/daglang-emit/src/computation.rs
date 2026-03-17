@@ -339,10 +339,13 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
         }
 
         // Remaining node kinds are all pure computations with varying bodies.
+        // DataDeclaration nodes are metadata-only and filtered before emit,
+        // but the match must be exhaustive.
         NodeKind::ResourceRelease
         | NodeKind::ParamSource
         | NodeKind::ToolEnvironment
         | NodeKind::ToolConsumer
+        | NodeKind::DataDeclaration
         | NodeKind::Pure => classify_pure_body(op, inputs, outputs),
     }
 }

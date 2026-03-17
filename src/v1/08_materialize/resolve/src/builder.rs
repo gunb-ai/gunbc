@@ -10,7 +10,7 @@
 use daglang_derive::CallableProperties;
 use daglang_lower::InferredEntrypoint;
 use gunbc_exec::DynOp;
-use gunbc_ir::{BuilderError, Dag};
+use gunbc_ir::{BuilderError, Dag, NodeKind};
 use std::collections::{BTreeMap, HashSet};
 
 // ============================================================================
@@ -197,7 +197,7 @@ fn slice_dag_from_entry_preserving_fn_bodies(
 
     // Preserve data declaration embed nodes (used by resolver to extract data_values).
     for node in &dag.nodes {
-        if node.id.0.starts_with(daglang_lower::DATA_DECL_NODE_PREFIX) {
+        if node.kind == NodeKind::DataDeclaration {
             include.insert(node.id.0.clone());
         }
     }

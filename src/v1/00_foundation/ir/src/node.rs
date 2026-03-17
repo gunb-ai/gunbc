@@ -37,6 +37,8 @@ pub enum NodeKind {
     ParamSource,
     /// Collection operation: element-wise transform over a list (map, filter, etc.).
     Collection,
+    /// Embeds a data declaration value as a literal source node.
+    DataDeclaration,
     /// Pure computation (no I/O boundary).
     #[default]
     Pure,

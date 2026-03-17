@@ -466,6 +466,12 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
         gunbc_ir::NodeBody::SubDag(..) => return NodeKind::Pure,
     };
 
+    // DataDeclaration nodes are pre-stamped by embed_data_declaration_nodes;
+    // they have no obligation category and should not be reclassified.
+    if node.kind == NodeKind::DataDeclaration {
+        return NodeKind::DataDeclaration;
+    }
+
     // Collection nodes are stamped before obligation dispatch — they
     // always map to `NodeKind::Collection` regardless of obligation.
     if matches!(op, LoweredOp::Collection { .. }) {
@@ -9916,29 +9922,36 @@ fn embed_data_declaration_nodes(
 ) {
     for (name, json_val) in data_values {
         let node_id = format!("{DATA_DECL_NODE_PREFIX}{name}");
-        builder.add_node(Node::opaque(
-            node_id,
-            vec![],
-            vec![Port::scalar(name.as_str(), "Json")],
-            LoweredOp::Primitive {
-                module: "__data".to_string(),
-                name: format!("data_decl::{name}"),
-                kind: PrimitiveOpKind::CallLiteralSource {
-                    literal: PrimitiveLiteral::Json(json_val.clone()),
+        builder.add_node(
+            Node::opaque(
+                node_id,
+                vec![],
+                vec![Port::scalar(name.as_str(), "Json")],
+                LoweredOp::Primitive {
+                    module: "__data".to_string(),
+                    name: format!("data_decl::{name}"),
+                    kind: PrimitiveOpKind::CallLiteralSource {
+                        literal: PrimitiveLiteral::Json(json_val.clone()),
+                    },
                 },
-            },
-        ));
+            )
+            .with_kind(NodeKind::DataDeclaration),
+        );
     }
 }
 
 /// Extract data declaration values from embedded DAG nodes.
 ///
-/// Scans for nodes with IDs prefixed by [`DATA_DECL_NODE_PREFIX`] and extracts
-/// their `PrimitiveLiteral::Json` payloads, converting to `Value` at the point
-/// of extraction to avoid JSON round-trip lossy conversion (S53 fix).
+/// Identifies data declaration nodes by [`NodeKind::DataDeclaration`], then
+/// strips the [`DATA_DECL_NODE_PREFIX`] to recover the declaration name.
+/// Payloads are converted to `Value` at extraction to avoid JSON round-trip
+/// lossy conversion (S53 fix).
 pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, gunbc_ir::Value> {
     let mut data_values = HashMap::new();
     for node in &dag.nodes {
+        if node.kind != NodeKind::DataDeclaration {
+            continue;
+        }
         if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
             if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
                 kind:

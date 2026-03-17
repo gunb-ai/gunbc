@@ -726,6 +726,13 @@ fn resolve_lowered_dag_impl(
             _ => None,
         })
         .collect();
+    // Collect data declaration node IDs by structural kind (not ID prefix).
+    let data_decl_ids: std::collections::HashSet<&str> = dag
+        .nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::DataDeclaration)
+        .map(|node| node.id.0.as_str())
+        .collect();
 
     let mut resolved = Dag::new();
     for node in &dag.nodes {
@@ -733,7 +740,7 @@ fn resolve_lowered_dag_impl(
             continue;
         }
         // Skip data declaration embed nodes — metadata only, extracted above.
-        if node.id.0.starts_with(daglang_lower::DATA_DECL_NODE_PREFIX) {
+        if node.kind == NodeKind::DataDeclaration {
             continue;
         }
         let mut resolved_node = Node {
@@ -766,14 +773,8 @@ fn resolve_lowered_dag_impl(
         .filter(|edge| {
             !pipeline_ids.contains(edge.from_node.0.as_str())
                 && !pipeline_ids.contains(edge.to_node.0.as_str())
-                && !edge
-                    .from_node
-                    .0
-                    .starts_with(daglang_lower::DATA_DECL_NODE_PREFIX)
-                && !edge
-                    .to_node
-                    .0
-                    .starts_with(daglang_lower::DATA_DECL_NODE_PREFIX)
+                && !data_decl_ids.contains(edge.from_node.0.as_str())
+                && !data_decl_ids.contains(edge.to_node.0.as_str())
         })
         .cloned()
         .collect();
@@ -2703,6 +2704,65 @@ mod tests {
             msg.contains("missing required input port `y`"),
             "diagnostic should mention missing field port: {msg}"
         );
+    }
+
+    #[test]
+    fn resolve_skips_data_declaration_nodes_by_structural_kind() {
+        // Regression: data-decl nodes must be identified by NodeKind::DataDeclaration,
+        // not by the __data_decl:: ID prefix convention. Use a non-prefixed ID to
+        // prove the structural check works independently of naming.
+        let mut dag = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "custom_data_node",
+                vec![],
+                vec![Port::new("config", "Json")],
+                LoweredOp::Primitive {
+                    module: "__data".to_string(),
+                    name: "data_decl::config".to_string(),
+                    kind: PrimitiveOpKind::CallLiteralSource {
+                        literal: PrimitiveLiteral::String("value".to_string()),
+                    },
+                },
+            )
+            .with_kind(NodeKind::DataDeclaration),
+        );
+        dag.add_node(Node::opaque(
+            "compute",
+            vec![Port::new("input", "String")],
+            vec![Port::new("output", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "identity".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        dag.edges.push(Edge::new(
+            "custom_data_node",
+            "config",
+            "compute",
+            "input",
+        ));
+
+        let resolved =
+            resolve_lowered_dag_with(&dag).expect("resolve should succeed with data-decl node");
+        // Data declaration node should be filtered out despite non-standard ID.
+        assert!(
+            resolved.get_node(&"custom_data_node".into()).is_none(),
+            "data declaration node should be skipped by kind, not by ID prefix"
+        );
+        // Its edges should also be filtered.
+        assert!(
+            !resolved
+                .edges
+                .iter()
+                .any(|e| e.from_node.0 == "custom_data_node"),
+            "edges from data declaration nodes should be filtered by kind"
+        );
+        // The compute node should still be present.
+        assert!(resolved.get_node(&"compute".into()).is_some());
     }
 
     #[test]
