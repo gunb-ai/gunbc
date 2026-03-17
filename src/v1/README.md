@@ -47,10 +47,7 @@ failures stay attributable to a single ratchet. Review queue branches
 must also keep each commit strictly scoped to that invariant fix: no
 unrelated helper cleanup, dead-code removal, or opportunistic
 refactoring unless it is directly required for the fix to compile and
-pass tests. CI enforces this with the `queue-scope` job: any single
-commit touching more than 5 `src/v1/` phase directories fails the
-check, and every commit's phase footprint is printed for reviewer
-visibility.
+pass tests.
 
 ### No duplicate representations
 
