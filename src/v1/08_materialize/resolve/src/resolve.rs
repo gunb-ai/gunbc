@@ -1327,6 +1327,7 @@ mod tests {
     use daglang_lower::{
         CallableKind, CallableObligation, PrimitiveLiteral, PrimitiveOpKind, TransportObligation,
     };
+    use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
@@ -1404,6 +1405,68 @@ mod tests {
             resolved.nodes.is_empty(),
             "pipeline nodes should be filtered out, got {} nodes",
             resolved.nodes.len()
+        );
+    }
+
+    #[test]
+    fn resolve_and_execute_transport_and_pipeline_nodes_before_interpreter() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "pipeline_demo",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.demo".to_string(),
+                name: "demo".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        ));
+        dag.add_node(
+            Node::opaque(
+                "execute_transport",
+                vec![],
+                vec![Port::new("response", "TransportResponse")],
+                LoweredOp::Transport {
+                    module: "extdeps.shell".to_string(),
+                    kind: CallableKind::Fn,
+                    name: "service_transport::execute::shell.Codegen::Check".to_string(),
+                    obligation: TransportObligation::Execute,
+                    service_metadata: Box::new(codegen_check_metadata()),
+                    is_interactive: false,
+                    resource_target: None,
+                },
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+
+        let resolved = resolve_lowered_dag_with(&dag).expect("resolve lowered dag");
+        assert!(
+            resolved.get_node(&"pipeline_demo".into()).is_none(),
+            "pipeline metadata should be filtered before execution"
+        );
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value("execute_transport", "response", Value::Skipped);
+
+        let log = execute_dag(
+            &resolved,
+            ExecuteConfig {
+                mode: ExecutionMode::DryRun(mocks),
+                ..Default::default()
+            },
+        )
+        .expect("resolved transport node should be intercepted in dry-run");
+
+        assert!(
+            log.get("pipeline_demo").is_none(),
+            "pipeline metadata should never reach the executor"
+        );
+        assert!(
+            log.get("execute_transport")
+                .expect("transport node should remain executable")
+                .was_intercepted,
+            "transport execute node should be intercepted before any interpreter path"
         );
     }
 
