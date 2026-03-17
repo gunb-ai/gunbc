@@ -597,8 +597,13 @@ pub fn validate_resource_ordering<T>(
 }
 
 fn declared_resource_access(port: &Port) -> Option<(ResourceId, AccessMode)> {
-    port.resource_access
-        .map(|mode| (ResourceId::new(normalize_resource_id(&port.name.0)), mode))
+    port.resource_access.map(|mode| {
+        let id = match &port.resource_id {
+            Some(id) => id.clone(),
+            None => ResourceId::new(normalize_resource_id(&port.name.0)),
+        };
+        (id, mode)
+    })
 }
 
 /// Derive resource accesses from declared resource input ports in a DAG.
@@ -1046,7 +1051,7 @@ mod tests {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(Node::opaque(
             "node_a",
-            vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Read)],
+            vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
             vec![],
             "op_a".to_string(),
         ));
@@ -1450,7 +1455,7 @@ mod tests {
     #[test]
     fn test_validate_resource_completeness_and_conflicts_share_annotated_non_res_contract() {
         let shared_tool_port =
-            Port::scalar("tool:clippy", "ToolHandle").with_resource_access(AccessMode::Exclusive);
+            Port::scalar("tool:clippy", "ToolHandle").with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Exclusive);
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(
             Node::opaque(

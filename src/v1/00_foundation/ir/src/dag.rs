@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::log_detail::LogDetailLevel;
 use crate::node::Node;
-use crate::resource::{normalize_resource_id, AccessMode};
+use crate::resource::{normalize_resource_id, AccessMode, ResourceId};
 use crate::type_op::{Predicate, PredicateValue, TypeOp};
 use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName, PresenceMode, TypeId};
@@ -504,6 +504,13 @@ pub struct Port {
     /// Resource access mode (used by resource accounting and admission control)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_access: Option<AccessMode>,
+    /// Canonical resource identity for admission control and conflict detection.
+    ///
+    /// When present, the executor and IR resource accounting use this ID instead
+    /// of deriving one from `port.name`.  Set automatically by `Port::resource()`
+    /// and `Port::with_resource_access()`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_id: Option<ResourceId>,
     /// Whether this port's type is nullable (`T?` in DSL).
     ///
     /// Structural representation of optionality — replaces the string-suffix
@@ -549,6 +556,7 @@ impl Port {
 
             guard: None,
             resource_access: None,
+            resource_id: None,
             type_optional,
             presence,
             log_detail: None,
@@ -587,6 +595,7 @@ impl Port {
 
             guard: None,
             resource_access: None,
+            resource_id: None,
             type_optional,
             presence,
             log_detail: None,
@@ -646,6 +655,7 @@ impl Port {
 
             guard: None,
             resource_access: Some(mode),
+            resource_id: Some(ResourceId::new(normalized)),
             type_optional,
             presence,
             log_detail: None,
@@ -703,13 +713,18 @@ impl Port {
         Self::with_cardinality(name, type_id, cardinality)
     }
 
-    /// Stamp a resource access mode on this port.
+    /// Stamp a resource access mode and canonical resource identity on this port.
     ///
     /// Use for ports that carry resource semantics (e.g. `tool:*` ports)
     /// but don't use the `Port::resource()` constructor (which adds the
     /// `res:` prefix and normalises the name).
-    pub fn with_resource_access(mut self, mode: AccessMode) -> Self {
+    pub fn with_resource_access(
+        mut self,
+        canonical_id: impl Into<ResourceId>,
+        mode: AccessMode,
+    ) -> Self {
         self.resource_access = Some(mode);
+        self.resource_id = Some(canonical_id.into());
         self
     }
 

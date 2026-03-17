@@ -317,9 +317,10 @@ impl<T> Node<T> {
                             port.type_id.0.as_str(),
                             port.cardinality,
                         );
-                        // Preserve resource_access so SubDag auto-inference
-                        // doesn't lose Write/Exclusive mode information.
+                        // Preserve resource_access and resource_id so SubDag
+                        // auto-inference doesn't lose mode or identity.
                         inferred.resource_access = port.resource_access;
+                        inferred.resource_id = port.resource_id.clone();
                         inputs.push(inferred);
                     }
                 }
@@ -339,6 +340,7 @@ impl<T> Node<T> {
                             port.cardinality,
                         );
                         inferred.resource_access = port.resource_access;
+                        inferred.resource_id = port.resource_id.clone();
                         outputs.push(inferred);
                     }
                 }

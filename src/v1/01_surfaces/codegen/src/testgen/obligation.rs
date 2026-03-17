@@ -1354,7 +1354,7 @@ fn check_predicate_entailment(
 mod tests {
     use super::*;
     use gunbc_ir::resource::AccessMode;
-    use gunbc_ir::{build::*, Dag, Node, NodeKind, Port};
+    use gunbc_ir::{build::*, Dag, Node, NodeKind, Port, ResourceId};
 
     #[test]
     fn test_collect_basic_obligations() {
@@ -1504,7 +1504,7 @@ mod tests {
                 "env",
                 vec![],
                 vec![Port::scalar("tool:clippy", "ToolHandle")
-                    .with_resource_access(AccessMode::Read)],
+                    .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
                 (),
             )
             .with_kind(NodeKind::ToolEnvironment),
@@ -1513,7 +1513,7 @@ mod tests {
             Node::opaque(
                 "lint",
                 vec![Port::scalar("tool:clippy", "ToolHandle")
-                    .with_resource_access(AccessMode::Read)],
+                    .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
                 vec![Port::scalar("result", "String")],
                 (),
             )
@@ -1548,7 +1548,7 @@ mod tests {
             Node::opaque(
                 "lint",
                 vec![Port::scalar("tool:clippy", "ToolHandle")
-                    .with_resource_access(AccessMode::Read)],
+                    .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
                 vec![Port::scalar("result", "String")],
                 (),
             )

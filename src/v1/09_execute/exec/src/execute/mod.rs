@@ -964,8 +964,13 @@ fn derive_node_resource_requirements<T>(
                 .inputs
                 .iter()
                 .filter_map(|port| {
-                    port.resource_access
-                        .map(|mode| (normalize_resource_id(&port.name.0), mode))
+                    port.resource_access.map(|mode| {
+                        let id = match &port.resource_id {
+                            Some(rid) => rid.0.clone(),
+                            None => normalize_resource_id(&port.name.0),
+                        };
+                        (id, mode)
+                    })
                 })
                 .collect::<Vec<_>>();
             (node.id.clone(), requirements)
@@ -2115,7 +2120,7 @@ fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError
                     node.id.0
                 )));
             }
-            if port.name.is_resource() {
+            if port.name.is_resource() || port.resource_access.is_some() {
                 return Err(ExecError::new(format!(
                     "node '{}' has kind: Pure but has resource input '{}'",
                     node.id.0, port.name.0
