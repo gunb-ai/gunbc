@@ -430,6 +430,22 @@ fn unit_type() -> TypeExpr {
 }
 
 // -------------------------------------------------------------------------
+// Node-based constructor helpers (B1 migration)
+// -------------------------------------------------------------------------
+
+fn leaf_node(name: String) -> Node {
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
+}
+
+fn optional_node(inner: Node) -> Node {
+  Node { name: "Optional", span: SourceSpan { start: 0, end: 0 }, children: [inner, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
+}
+
+fn container_node(kind_name: String, element: Node) -> Node {
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
+}
+
+// -------------------------------------------------------------------------
 // Helpers for typed expression inference
 // -------------------------------------------------------------------------
 
@@ -571,6 +587,15 @@ fn normalize_access_type(type_expr: TypeExpr) -> TypeExpr {
       normalize_access_type(type_expr: base)
     _ => type_expr
   }
+}
+
+fn normalize_access_type_node(n: Node) -> Node {
+  if n.name == "Refined" && n.connective != none {
+    match n.children |> first {
+      Some { value: base } => normalize_access_type_node(n: base)
+      None => n
+    }
+  } else { n }
 }
 
 fn normalize_type_name(name: String) -> String {
@@ -854,6 +879,16 @@ fn is_string_type(type_expr: TypeExpr) -> Bool {
   }
 }
 
+fn is_int_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.connective == none && normed.children |> count == 0 && normed.name == "Int"
+}
+
+fn is_string_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.connective == none && normed.children |> count == 0 && normed.name == "String"
+}
+
 fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
   Diagnostic {
     severity: Error,
@@ -986,6 +1021,21 @@ fn infer_binop_type(op: BinOpKind, left_type: TypeExpr) -> TypeExpr {
   }
 }
 
+fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
+  match op {
+    BinEq => leaf_node(name: "Bool")
+    BinNe => leaf_node(name: "Bool")
+    BinLt => leaf_node(name: "Bool")
+    BinGt => leaf_node(name: "Bool")
+    BinLe => leaf_node(name: "Bool")
+    BinGe => leaf_node(name: "Bool")
+    BinAnd => leaf_node(name: "Bool")
+    BinOr => leaf_node(name: "Bool")
+    NullCoalesce => extract_optional_inner_node(n: left_type)
+    _ => left_type
+  }
+}
+
 // -------------------------------------------------------------------------
 // extract_optional_inner: unwrap Optional<T> to T; if not Optional, return as-is
 // -------------------------------------------------------------------------
@@ -995,6 +1045,15 @@ fn extract_optional_inner(type_expr: TypeExpr) -> TypeExpr {
     Optional { inner: inner, span: _ } => inner
     _ => type_expr
   }
+}
+
+fn extract_optional_inner_node(n: Node) -> Node {
+  if n.connective != none && n.name == "Optional" {
+    match n.children |> first {
+      Some { value: inner } => inner
+      None => n
+    }
+  } else { n }
 }
 
 // -------------------------------------------------------------------------
@@ -1088,6 +1147,12 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
     module_name: scope.module_name,
     service_registry: scope.service_registry
   }
+}
+
+fn extend_scope_with_node(scope: InferScope, name: String, resolved: TypeExpr, resolved_node: Node?) -> InferScope {
+  let binding = TypeBinding { name: name, resolved: resolved, resolved_node: resolved_node }
+  let new_locals = scope.locals |> insert(key: name, value: binding)
+  InferScope { type_env: scope.type_env, func_env: scope.func_env, locals: new_locals, module_name: scope.module_name, service_registry: scope.service_registry }
 }
 
 // Extend scope with lambda parameter names.
@@ -1186,6 +1251,20 @@ fn for_each_element_type(type_expr: TypeExpr) -> TypeExpr {
         unit_type()
       }
     _ => unit_type()
+  }
+}
+
+fn for_each_element_type_node(n: Node) -> Node {
+  let normed = normalize_access_type_node(n: n)
+  if normed.connective == none && normed.children |> count == 1 {
+    match normed.children |> first {
+      Some { value: el } => el
+      None => leaf_node(name: "Unit")
+    }
+  } else if normed.connective == none && normed.children |> count == 0 && normed.name == "String" {
+    leaf_node(name: "String")
+  } else {
+    leaf_node(name: "Unit")
   }
 }
 
