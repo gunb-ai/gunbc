@@ -21,7 +21,26 @@ compiler can always see through a name to the structure underneath.
 - **P0 (S85):** Recursive types — SCC cycle detection on type dependency graph.
 - **P1 (S84):** TCO pass — verified working in v2 emitter.
 - **P1 (S83):** Stack overflow — stacker wrapping at re-entrant call sites.
-- **Test baseline:** 89 pass, 0 fail, 9 ignored (gated on stages below).
+- **B2:** Rename `04_typecheck.dag` → `04_infer.dag`. Module declaration updated.
+- **C1:** LanguageSpec interface defined in `dsl/std/languages.dag` with 14 facets
+  (statements, expressions, control_flow, literals, modules, functions, errors,
+  type_defs, patterns, async_model, collection_ops, string_ops, map_ops,
+  null_coalesce). Compositions: `rust_spec`, `go_spec`, `python_spec`.
+- **C2:** Language extdeps modeled for Rust (5 files), Python (5 files), Go (5 files)
+  in `dsl/extdeps/languages/`. Each covers types, runtime, imports, errors, async.
+- **B1 prep:** TypeExpr↔Node conversion infrastructure complete in `00_core.dag`
+  (`type_expr_to_node`, `node_to_type_expr_full`). Dual-write fields
+  (`resolved_node: Node?`) added to TypeBinding/ResolveResult/SpanType.
+  Node-reading type emit functions (`emit_rust_node_type`, `emit_py_node_type`,
+  `emit_go_node_type`) added to all three backends — ready to switch when
+  04_infer.dag populates `resolved_node`.
+- **Perf audit:** Five-pass audit of v2 compiler performance documented in
+  `src/v2/PERF_AUDIT.md`. Identified five repeatable bottleneck patterns:
+  quadratic builders, linear-scan lookups, redundant inference, full-tree cloning,
+  and duplicated block-emission. Priority order: 04_infer > 01_tokenize >
+  03_resolve > 05_emit* > 02_parse/06_pipeline.
+- **Test baseline:** 887 pass, 9 fail (module_graph discovery tests — pre-existing
+  parse failures on template strings in extdep .dag files).
 
 ---
 
@@ -34,13 +53,16 @@ between tracks are noted; within each track, steps are sequential.
 Track A: Pipeline validation        Track B: Node convergence      Track C: Language emission
 (gist → self-compile → bootstrap)   (TypeExpr → Expr → transport)  (extdeps model)
 ─────────────────────────────────   ──────────────────────────────  ─────────────────────────
-A1: Gist compilation                B1: TypeExpr → Node             C1: Define LanguageSpec
-A2: Runtime bridge                  B2: Rename typecheck → infer        interface
-A3: Gist end-to-end                 B3: Expr → Node                 C2: Rust/Python extdeps
-A4: Full self-compile pipeline      B4: Transport dissolution       C3: Emitters consult
-A5: Bootstrap stage 0→1                                                 extdeps
-A6: Fixed point                                                     C4: --target CLI
+A1: Gist compilation                B1: TypeExpr → Node             C1: LanguageSpec ✓
+A2: Runtime bridge                  B2: Rename typecheck → infer ✓  C2: Rust/Python/Go ✓
+A3: Gist end-to-end                 B3: Expr → Node                 C3: Emitters consult
+A4: Full self-compile pipeline      B4: Transport dissolution            extdeps
+A5: Bootstrap stage 0→1                                             C4: --target CLI
+A6: Fixed point
 A7: v1 retirement
+
+BLOCKER: Track A gated on v2 perf fixes (see PERF_AUDIT.md).
+         B1 completion gated on 04_infer.dag perf fixes (same file).
 ```
 
 **Dependencies:**
@@ -54,6 +76,11 @@ A7: v1 retirement
 ---
 
 ## Track A: Pipeline validation → bootstrap → self-hosting
+
+**Blocker:** v2 compiler performance. Five bottleneck patterns documented in
+`src/v2/PERF_AUDIT.md` make self-compile infeasible (quadratic tokenizer,
+repeated inference in 04_infer.dag, O(M^4) resolve, O(B^2) emitters).
+Perf fixes must land before A4 can proceed.
 
 ### A1: Gist compilation
 
@@ -125,7 +152,7 @@ Once the fixed point holds, v1 is bootstrap scaffolding — no longer needed.
 Structural unification — one type (Node) flows through the entire pipeline.
 After A6, each step is validated by re-bootstrapping (fixed point holds).
 Before A6, implementation proceeds on the v1-bootstrapped compiler and is
-validated by the existing test suite (89+ tests).
+validated by the existing test suite (887+ tests).
 
 13 design decisions are documented in `project_typeexpr_node_convergence.md`.
 
@@ -144,19 +171,31 @@ Key design decisions:
 - Refined types are Conj(base, predicate)
 - Primitives dissolve — String, Int, Bool are kernel Nodes
 
+**Current state:** Dual-write infrastructure in place. Conversion functions
+(`type_expr_to_node`, `node_to_type_expr_full`) complete in 00_core.dag.
+Node-reading type emit functions added to all three backends. Remaining:
+04_infer.dag must populate `resolved_node` fields (blocked on perf fixes
+to the same file), then emitter call sites switch from `emit_type_expr` to
+`emit_*_node_type`, then TypeExpr is deleted.
+
 **Acceptance:**
+- [x] Conversion infrastructure (type_expr_to_node / node_to_type_expr_full)
+- [x] Dual-write fields on TypeBinding, ResolveResult, SpanType
+- [x] Node-reading type emit functions (emit_rust/py/go_node_type)
+- [x] is_type_alias_return_node shared helper
+- [ ] 04_infer.dag populates resolved_node (gated on perf fixes)
+- [ ] Emitter call sites switch to Node readers
 - [ ] TypeExpr type deleted from 00_core.dag
 - [ ] Field, Variant types deleted (replaced by child Nodes)
-- [ ] Typechecker works on Nodes, not TypeExpr
-- [ ] 89+ tests pass / fixed point holds (whichever gate is available)
+- [ ] 887+ tests pass / fixed point holds (whichever gate is available)
 
-### B2: Rename typecheck → infer
+### B2: Rename typecheck → infer ✓
 
 After convergence, the phase completes a Node graph (fills in return_types),
 not checks a separate type system.
 
 **Acceptance:**
-- [ ] `04_typecheck.dag` → `04_infer.dag`
+- [x] `04_typecheck.dag` → `04_infer.dag`
 
 ### B3: Expr → Node
 
@@ -224,18 +263,19 @@ dsl/extdeps/languages/
   go/         — ...
 ```
 
-### C1: Define LanguageSpec interface
+### C1: Define LanguageSpec interface ✓
 
 The compiler defines the contract: what facts does the emitter need?
 
 **Acceptance:**
-- [ ] LanguageSpec type defined in .dag
-- [ ] Covers: type mappings, naming, syntax patterns, runtime ops,
+- [x] LanguageSpec type defined in `dsl/std/languages.dag` (14 facets)
+- [x] Covers: type mappings, naming, syntax patterns, runtime ops,
       error model, async model, import system
+- [x] Full compositions: `rust_spec`, `go_spec`, `python_spec`
 
-### C2: Rust and Python language extdeps
+### C2: Rust, Python, and Go language extdeps ✓
 
-Model Rust and Python from their real specifications, implementing the
+Model each language from its real specification, implementing the
 LanguageSpec interface.
 
 Kernel runtime resolves here: "how do you concat strings in Rust?" is a
@@ -243,8 +283,9 @@ fact in `dsl/extdeps/languages/rust/runtime.dag`. The current `v2_rt.rs`
 dissolves into the Rust language extdep.
 
 **Acceptance:**
-- [ ] Language extdeps in `dsl/extdeps/languages/` for Rust, Python
-- [ ] Runtime ops captured (string, list, map operations per language)
+- [x] Language extdeps in `dsl/extdeps/languages/` for Rust, Python, Go
+- [x] Runtime ops captured (string, list, map operations per language)
+- [x] Each language: types.dag, runtime.dag, imports.dag, errors.dag, async.dag
 
 ### C3: Emitters consult extdeps
 
@@ -252,14 +293,26 @@ The 1000+ line emitter monoliths shrink to thin semantic renderers handling
 irreducible differences (Rust ownership, Python exceptions). Surface
 knowledge comes from the language extdep.
 
+**Current state:** Type maps, container templates, and keywords are centralized
+as data declarations in `05_emit.dag` (lines 996-1046). These are the single
+source of truth but are still inline data, not imported from language extdeps.
+The emitters don't yet import from `dsl/extdeps/languages/`. The v1 bootstrap
+cannot pass data-declared Maps as function parameters, so per-language
+functions use direct `lookup()` on local data (05_emit.dag lines 1072-1190).
+
 **Acceptance:**
-- [ ] Emitters consult extdeps — no hardcoded type/naming maps
+- [x] Type/keyword/container data centralized (05_emit.dag data declarations)
+- [ ] Emitters import from language extdeps instead of inline data
 - [ ] Adding a new target = writing a language extdep (no compiler changes)
 - [ ] Emitted code identical for all existing test cases
 
 ### C4: CLI target selection
 
+**Current state:** `RenderTarget = Rust | Python | Go` exists in 00_core.dag.
+Pipeline dispatches on target in 06_pipeline.dag. No CLI flag yet.
+
 **Acceptance:**
+- [x] RenderTarget enum and pipeline dispatch
 - [ ] `--target` CLI flag (default: Rust, supports Python, TypeScript, Go)
 - [ ] Target selection loads appropriate language extdep
 

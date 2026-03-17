@@ -61,12 +61,14 @@ import v2.compiler.emit {
   build_item_registry, lookup_item, named_arg_matches, order_call_args,
   is_service_call_receiver, extract_service_name,
   collect_service_calls, collect_service_calls_from_args, unique_strings,
+  collect_typed_service_calls,
   has_nested_records, emit_data_value_json, escape_json_string,
   module_to_filename,
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
+  typed_expr_has_self_call, typed_has_non_tail_self_call,
   span_key,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return,
@@ -376,6 +378,87 @@ fn emit_go_coproduct_type_expr(name: String?, variants: List<Variant>) -> String
 }
 
 // =========================================================================
+// B1 prep: Node-reading type emission
+//
+// Dispatch on Node structure instead of TypeExpr variants.
+// Produces identical output to emit_go_type_expr.
+// After B1 migration, replaces emit_go_type_expr.
+// =========================================================================
+
+fn emit_go_node_type(n: Node) -> String {
+  emit_go_node_type_dispatch(n: n, conn: n.connective)
+}
+
+fn emit_go_node_type_dispatch(n: Node, conn: Connective?) -> String {
+  if conn == none {
+    emit_go_node_type_leaf(n: n)
+  } else {
+    match conn.value {
+      Conj => emit_go_node_type_conj(n: n)
+      Disj => emit_go_node_type_disj(n: n)
+    }
+  }
+}
+
+fn emit_go_node_type_leaf(n: Node) -> String {
+  if n.children |> count == 0 {
+    go_primitive_type(name: n.name)
+  } else if n.name == "Map" && n.children |> count == 2 {
+    let k = match n.children |> first {
+      Some { value: kn } => emit_go_node_type(n: kn)
+      None => "string"
+    }
+    let v = match skip(n.children, 1) |> first {
+      Some { value: vn } => emit_go_node_type(n: vn)
+      None => "string"
+    }
+    apply_type_template2(template: go_map_template(), arg0: k, arg1: v)
+  } else if n.children |> count == 1 {
+    let inner = match n.children |> first {
+      Some { value: child } => emit_go_node_type(n: child)
+      None => "struct{}"
+    }
+    // Go has no NonEmpty distinction — use same container
+    if n.name == "NonEmptyList" {
+      go_container(kind: "list", inner: inner)
+    } else if n.name == "NonEmptySet" {
+      go_container(kind: "set", inner: inner)
+    } else {
+      go_container(kind: to_snake(name: n.name), inner: inner)
+    }
+  } else {
+    n.name
+  }
+}
+
+fn emit_go_node_type_conj(n: Node) -> String {
+  if n.name == "Refined" {
+    match n.children |> first {
+      Some { value: base } => emit_go_node_type(n: base)
+      None => n.name
+    }
+  } else if n.name != "" {
+    n.name
+  } else {
+    "interface{}"
+  }
+}
+
+fn emit_go_node_type_disj(n: Node) -> String {
+  if n.name == "Optional" {
+    match n.children |> first {
+      Some { value: inner } =>
+        go_container(kind: "optional", inner: emit_go_node_type(n: inner))
+      None => "*struct{}"
+    }
+  } else if n.name != "" {
+    n.name
+  } else {
+    "interface{}"
+  }
+}
+
+// =========================================================================
 // Pure function (fn) emission
 //
 // Go functions: func Name(params) returnType { body }
@@ -390,9 +473,8 @@ fn emit_go_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body
   let use_tco = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
     None => {
-      let body_expr = typed_expr_to_expr(texpr: body)
-      expr_has_self_call(expr: body_expr, fn_name: name)
-        && has_non_tail_self_call(expr: body_expr, fn_name: name, in_tail: true) == false
+      typed_expr_has_self_call(texpr: body, fn_name: name)
+        && typed_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true) == false
     }
   }
   if use_tco {
@@ -424,7 +506,7 @@ fn emit_go_func_def(
 ) -> String {
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => unique_strings(items: collect_service_calls(expr: typed_expr_to_expr(texpr: body)))
+    None => unique_strings(items: collect_typed_service_calls(texpr: body))
   }
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
   let ret_type = emit_go_type_expr(type_expr: return_type)
