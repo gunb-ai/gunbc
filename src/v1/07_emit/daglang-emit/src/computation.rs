@@ -628,7 +628,7 @@ fn classify_primitive(
         }),
         // C24: GetField is an interpreter-only operation resolved at runtime
         // by the resolve layer. It must not reach the emitter.
-        PrimitiveOpKind::GetField { field } => Err(ClassifyError::UnrecognizedOp {
+        PrimitiveOpKind::GetField { field, .. } => Err(ClassifyError::UnrecognizedOp {
             node_id: name.to_string(),
             detail: format!("GetField({field}) is interpreter-only and cannot be emitted"),
         }),

@@ -82,7 +82,7 @@ pub use state::{ExecMode, ResourceState};
 // Original resource.rs content below (conflict detection, Resource trait, etc.)
 // ============================================================================
 
-use crate::dag::Dag;
+use crate::dag::{Dag, Port};
 use crate::node::{Node, NodeBody, NodeKind};
 use crate::types::NodeId;
 use crate::{SecretString, Value};
@@ -596,11 +596,25 @@ pub fn validate_resource_ordering<T>(
     }
 }
 
-/// Derive resource accesses from `res:*` input ports in a DAG.
+/// Extract declared resource access from a port.
+///
+/// Returns `Ok(Some(...))` when the port has both `resource_access` and
+/// `resource_id`, `Ok(None)` when neither is set, and `Err(())` when
+/// `resource_access` is present but `resource_id` is missing — a structural
+/// invariant violation that the caller must surface as an error.
+fn declared_resource_access(port: &Port) -> Result<Option<(ResourceId, AccessMode)>, ()> {
+    match (port.resource_access, &port.resource_id) {
+        (Some(mode), Some(id)) => Ok(Some((id.clone(), mode))),
+        (Some(_), None) => Err(()),
+        (None, _) => Ok(None),
+    }
+}
+
+/// Derive resource accesses from declared resource input ports in a DAG.
 ///
 /// Walks all nodes in the DAG and extracts `ResourceAccess` entries from
-/// input ports whose names start with `res:`. Requires `port.resource_access`
-/// to be explicitly set on all `res:*` ports.
+/// input ports with explicit `resource_access` metadata. Legacy `res:*` ports
+/// that are missing `resource_access` remain a hard error.
 pub fn derive_resource_accesses<T>(
     dag: &Dag<T>,
 ) -> Result<Vec<ResourceAccess>, Vec<ResourceAccessError>> {
@@ -608,17 +622,29 @@ pub fn derive_resource_accesses<T>(
     let mut errors = Vec::new();
     for node in &dag.nodes {
         for port in &node.inputs {
-            if let Some(res_name) = port.name.0.strip_prefix("res:") {
-                let resource_id = ResourceId::new(normalize_resource_id(res_name));
-                match port.resource_access {
-                    Some(mode) => {
-                        accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode))
-                    }
-                    None => errors.push(ResourceAccessError {
+            match declared_resource_access(port) {
+                Ok(Some((resource_id, mode))) => {
+                    accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode));
+                }
+                Ok(None) if port.name.0.starts_with(RESOURCE_PORT_PREFIX) => {
+                    let resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
+                    errors.push(ResourceAccessError {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),
                         resource_id,
-                    }),
+                    });
+                }
+                Ok(None) => {}
+                Err(()) => {
+                    // resource_access present but resource_id missing — invariant violation.
+                    errors.push(ResourceAccessError {
+                        node_id: node.id.clone(),
+                        port_name: port.name.0.clone(),
+                        resource_id: ResourceId::new(format!(
+                            "<missing resource_id for port '{}'>",
+                            port.name.0
+                        )),
+                    });
                 }
             }
         }
@@ -645,7 +671,7 @@ pub fn detect_resource_conflicts<T>(
 // M10: Mandatory Resource Declarations
 // ============================================================================
 
-/// A node that performs side-effects but declares no `res:*` resource port.
+/// A node that performs side-effects but declares no resource-access input port.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingResourceDeclaration {
     /// The offending node.
@@ -678,6 +704,31 @@ impl std::fmt::Display for MissingResourceDeclaration {
     }
 }
 
+/// Violation detected by [`validate_resource_completeness`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResourceCompletenessViolation {
+    /// Effectful node declares no resource port at all.
+    MissingDeclaration(MissingResourceDeclaration),
+    /// Port has `resource_access` set but no `resource_id` — the same state
+    /// that `derive_resource_accesses()` and `execute_flat_parallel()` reject.
+    IncompleteResourcePort { node_id: NodeId, port_name: String },
+}
+
+impl std::fmt::Display for ResourceCompletenessViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceCompletenessViolation::MissingDeclaration(inner) => inner.fmt(f),
+            ResourceCompletenessViolation::IncompleteResourcePort { node_id, port_name } => {
+                write!(
+                    f,
+                    "port '{}' on node '{}' has resource_access but no resource_id",
+                    port_name, node_id.0
+                )
+            }
+        }
+    }
+}
+
 /// Whether resource completeness violations are warnings or hard errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceValidationMode {
@@ -697,21 +748,27 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
     }
 }
 
-/// Check whether a node declares at least one `res:*` input port.
+/// Check whether a node declares at least one resource input port.
 fn has_resource_port<T>(node: &Node<T>) -> bool {
-    node.inputs.iter().any(|p| p.name.is_resource())
+    node.inputs.iter().any(|p| p.resource_access.is_some())
 }
 
-/// Validate that all effectful nodes declare resource ports.
+/// Validate that all effectful nodes declare resource ports and that every
+/// port with `resource_access` also carries a `resource_id`.
 ///
 /// For each node in the DAG, determines if it is effectful (transport executor,
 /// tool environment, resource environment, tool consumer) and checks whether it
-/// declares at least one `res:*` input port. Effectful nodes without resource
-/// ports are returned as violations.
+/// declares at least one input port with explicit `resource_access`. Effectful
+/// nodes without resource ports are returned as violations.
+///
+/// Additionally, any input port that has `resource_access` set but no
+/// `resource_id` is reported as [`ResourceCompletenessViolation::IncompleteResourcePort`].
+/// This closes the contract with [`derive_resource_accesses`] and
+/// `execute_flat_parallel`, which both reject the same port shape.
 ///
 /// SubDag wrapper nodes are skipped — their resource ports are auto-inferred from
 /// inner DAGs. Validation recurses into SubDags to check inner nodes.
-pub fn validate_resource_completeness<T>(dag: &Dag<T>) -> Vec<MissingResourceDeclaration> {
+pub fn validate_resource_completeness<T>(dag: &Dag<T>) -> Vec<ResourceCompletenessViolation> {
     let mut violations = Vec::new();
     validate_resource_completeness_impl(dag, &mut violations);
     violations
@@ -719,9 +776,21 @@ pub fn validate_resource_completeness<T>(dag: &Dag<T>) -> Vec<MissingResourceDec
 
 fn validate_resource_completeness_impl<T>(
     dag: &Dag<T>,
-    violations: &mut Vec<MissingResourceDeclaration>,
+    violations: &mut Vec<ResourceCompletenessViolation>,
 ) {
     for node in &dag.nodes {
+        // Reject ports with resource_access but no resource_id — the same
+        // state that derive_resource_accesses() and derive_node_resource_requirements()
+        // treat as a hard error.
+        for port in &node.inputs {
+            if port.resource_access.is_some() && port.resource_id.is_none() {
+                violations.push(ResourceCompletenessViolation::IncompleteResourcePort {
+                    node_id: node.id.clone(),
+                    port_name: port.name.0.clone(),
+                });
+            }
+        }
+
         match &node.body {
             NodeBody::SubDag(inner, _) => {
                 // SubDag wrappers get resource ports via auto-inference;
@@ -731,10 +800,12 @@ fn validate_resource_completeness_impl<T>(
             NodeBody::Opaque(_) => {
                 if let Some(effect_kind) = classify_effect(node) {
                     if !has_resource_port(node) {
-                        violations.push(MissingResourceDeclaration {
-                            node_id: node.id.clone(),
-                            effect_kind,
-                        });
+                        violations.push(ResourceCompletenessViolation::MissingDeclaration(
+                            MissingResourceDeclaration {
+                                node_id: node.id.clone(),
+                                effect_kind,
+                            },
+                        ));
                     }
                 }
             }
@@ -1039,6 +1110,24 @@ mod tests {
     }
 
     #[test]
+    fn test_derive_resource_accesses_from_annotated_non_res_ports() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![Port::scalar("tool:clippy", "ToolHandle")
+                .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
+            vec![],
+            "op_a".to_string(),
+        ));
+
+        let accesses = derive_resource_accesses(&dag).expect("resource accesses should derive");
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].node_id.0, "node_a");
+        assert_eq!(accesses[0].resource_id.0, "tool:clippy");
+        assert_eq!(accesses[0].mode, AccessMode::Read);
+    }
+
+    #[test]
     fn test_derive_resource_accesses_missing_access_errors() {
         // Port declared with scalar("res:platform", "Platform") — no explicit resource_access
         let mut dag: Dag<String> = Dag::new();
@@ -1055,6 +1144,26 @@ mod tests {
         assert_eq!(errors[0].node_id.0, "node_a");
         assert_eq!(errors[0].port_name, "res:platform");
         assert_eq!(errors[0].resource_id.0, "platform");
+    }
+
+    #[test]
+    fn test_derive_resource_accesses_missing_resource_id_errors() {
+        // Port with resource_access set but resource_id missing — invariant violation.
+        let mut dag: Dag<String> = Dag::new();
+        let mut port = Port::scalar("db_conn", "DbHandle");
+        port.resource_access = Some(AccessMode::Write);
+        // resource_id intentionally left as None
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![port],
+            vec![],
+            "op_a".to_string(),
+        ));
+
+        let errors = derive_resource_accesses(&dag).expect_err("missing resource_id should error");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].node_id.0, "node_a");
+        assert_eq!(errors[0].port_name, "db_conn");
     }
 
     #[test]
@@ -1428,6 +1537,37 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_resource_completeness_and_conflicts_share_annotated_non_res_contract() {
+        let shared_tool_port = Port::scalar("tool:clippy", "ToolHandle")
+            .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Exclusive);
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "tool_a",
+                vec![shared_tool_port.clone()],
+                vec![],
+                "op_a".to_string(),
+            )
+            .with_kind(NodeKind::ToolEnvironment),
+        );
+        dag.add_node(
+            Node::opaque("tool_b", vec![shared_tool_port], vec![], "op_b".to_string())
+                .with_kind(NodeKind::ToolEnvironment),
+        );
+
+        let violations = validate_resource_completeness(&dag);
+        assert!(
+            violations.is_empty(),
+            "resource_access should satisfy completeness even without a res: prefix"
+        );
+
+        let conflicts = detect_resource_conflicts(&dag)
+            .expect("annotated non-res ports should participate in conflict detection");
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].resource_id.0, "tool:clippy");
+    }
+
+    #[test]
     fn test_validate_resource_completeness_fails_for_undeclared() {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(
@@ -1442,8 +1582,13 @@ mod tests {
 
         let violations = validate_resource_completeness(&dag);
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].node_id.0, "transport_no_res");
-        assert_eq!(violations[0].effect_kind, NodeKind::TransportExecute);
+        match &violations[0] {
+            ResourceCompletenessViolation::MissingDeclaration(decl) => {
+                assert_eq!(decl.node_id.0, "transport_no_res");
+                assert_eq!(decl.effect_kind, NodeKind::TransportExecute);
+            }
+            other => panic!("expected MissingDeclaration, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1485,7 +1630,12 @@ mod tests {
 
         let violations = validate_resource_completeness(&outer);
         assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].node_id.0, "inner_transport");
+        match &violations[0] {
+            ResourceCompletenessViolation::MissingDeclaration(decl) => {
+                assert_eq!(decl.node_id.0, "inner_transport");
+            }
+            other => panic!("expected MissingDeclaration, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1521,7 +1671,13 @@ mod tests {
 
         let violations = validate_resource_completeness(&dag);
         assert_eq!(violations.len(), 2);
-        let ids: Vec<&str> = violations.iter().map(|v| v.node_id.0.as_str()).collect();
+        let ids: Vec<&str> = violations
+            .iter()
+            .filter_map(|v| match v {
+                ResourceCompletenessViolation::MissingDeclaration(d) => Some(d.node_id.0.as_str()),
+                _ => None,
+            })
+            .collect();
         assert!(ids.contains(&"transport_no_res"));
         assert!(ids.contains(&"tool_env_no_res"));
     }
@@ -1575,5 +1731,119 @@ mod tests {
         )
         .with_kind(NodeKind::TransportExecute);
         assert_eq!(classify_effect(&node), Some(NodeKind::TransportExecute));
+    }
+
+    /// Regression: an effectful node that satisfies completeness (has a resource
+    /// port) must also produce a ResourceAccess in derive_resource_accesses.
+    /// Both functions use declared_resource_access() as the single contract;
+    /// this test proves the coupling holds for every effectful NodeKind.
+    #[test]
+    fn test_effectful_node_satisfying_completeness_visible_to_conflict_derivation() {
+        let effectful_kinds = [
+            NodeKind::TransportExecute,
+            NodeKind::TransportPrepare,
+            NodeKind::TransportParse,
+            NodeKind::ToolEnvironment,
+            NodeKind::ToolConsumer,
+            NodeKind::ResourceEnvironment,
+            NodeKind::ResourceAcquire,
+            NodeKind::ResourceRelease,
+            NodeKind::ParamSource,
+        ];
+
+        for kind in &effectful_kinds {
+            // Precondition: this kind is effectful.
+            let probe = Node::opaque("probe", vec![], vec![], "op".to_string()).with_kind(*kind);
+            assert!(
+                classify_effect(&probe).is_some(),
+                "{kind:?} must be classified as effectful"
+            );
+
+            // Build a single-node DAG with one resource port.
+            let mut dag: Dag<String> = Dag::new();
+            dag.add_node(
+                Node::opaque(
+                    "effectful",
+                    vec![Port::resource(
+                        "file",
+                        "FilesystemHandle",
+                        AccessMode::Write,
+                    )],
+                    vec![],
+                    "op".to_string(),
+                )
+                .with_kind(*kind),
+            );
+
+            // Completeness must pass — the node declares a resource port.
+            let violations = validate_resource_completeness(&dag);
+            assert!(
+                violations.is_empty(),
+                "{kind:?}: node with resource port should satisfy completeness"
+            );
+
+            // Conflict derivation must see the same port — no invisible gap.
+            let accesses = derive_resource_accesses(&dag).expect("should derive");
+            assert!(
+                accesses.iter().any(|a| a.node_id.0 == "effectful"),
+                "{kind:?}: node satisfying completeness must be visible to conflict derivation"
+            );
+        }
+    }
+
+    /// Regression (PR #165): a port with `resource_access` but no `resource_id`
+    /// must be rejected by completeness — closing the split contract where
+    /// completeness accepted the state but derive_resource_accesses() rejected it.
+    #[test]
+    fn test_completeness_rejects_resource_access_without_resource_id() {
+        let mut dag: Dag<String> = Dag::new();
+        let mut port = Port::scalar("db_conn", "DbHandle");
+        port.resource_access = Some(AccessMode::Write);
+        // Deliberately omit resource_id to create the split state.
+        dag.add_node(
+            Node::opaque("writer", vec![port], vec![], "op".to_string())
+                .with_kind(NodeKind::TransportExecute),
+        );
+
+        let violations = validate_resource_completeness(&dag);
+        assert!(
+            violations.iter().any(|v| matches!(
+                v,
+                ResourceCompletenessViolation::IncompleteResourcePort { node_id, port_name }
+                if node_id.0 == "writer" && port_name == "db_conn"
+            )),
+            "completeness must reject resource_access without resource_id"
+        );
+    }
+
+    /// Regression (PR #165): completeness and derivation must both reject the
+    /// `resource_access`-without-`resource_id` state. Neither should accept a
+    /// port shape that the other rejects.
+    #[test]
+    fn test_completeness_and_derivation_agree_on_missing_resource_id() {
+        let mut dag: Dag<String> = Dag::new();
+        let mut port = Port::scalar("db_conn", "DbHandle");
+        port.resource_access = Some(AccessMode::Write);
+        // No resource_id — both functions must reject.
+        dag.add_node(
+            Node::opaque("writer", vec![port], vec![], "op".to_string())
+                .with_kind(NodeKind::TransportExecute),
+        );
+
+        // Completeness rejects.
+        let completeness = validate_resource_completeness(&dag);
+        assert!(
+            completeness.iter().any(|v| matches!(
+                v,
+                ResourceCompletenessViolation::IncompleteResourcePort { .. }
+            )),
+            "completeness must catch missing resource_id"
+        );
+
+        // Derivation also rejects.
+        assert!(
+            derive_resource_accesses(&dag).is_err(),
+            "derivation must also reject missing resource_id"
+        );
     }
 }

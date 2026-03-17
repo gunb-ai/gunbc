@@ -1,6 +1,6 @@
 use super::*;
 use gunbc_ir::build::*;
-use gunbc_ir::Edge;
+use gunbc_ir::{Edge, Port, ResourceId};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -555,6 +555,321 @@ fn test_execute_resource_distinct_file_writes_can_run_in_parallel() {
     assert!(
         peak.load(Ordering::SeqCst) >= 2,
         "distinct specific file writes should run in parallel"
+    );
+}
+
+#[test]
+fn test_execute_annotated_non_res_ports_serialize_on_conflict() {
+    // Ports with `resource_access` annotation but without `res:*` prefix must
+    // still participate in executor admission control.
+    if execution_max_concurrency() == 1 {
+        return;
+    }
+
+    #[derive(Debug, Clone)]
+    struct BlockingOp {
+        port: String,
+        value: Value,
+        sleep_ms: u64,
+        active: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+    }
+
+    impl BlockingOp {
+        fn new(
+            port: &str,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        ) -> Self {
+            Self {
+                port: port.to_string(),
+                value,
+                sleep_ms,
+                active,
+                peak,
+            }
+        }
+    }
+
+    impl Executable for BlockingOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            loop {
+                let observed = self.peak.load(Ordering::SeqCst);
+                if current <= observed {
+                    break;
+                }
+                if self
+                    .peak
+                    .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(self.sleep_ms));
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let mut out = HashMap::new();
+            out.insert(self.port.clone(), self.value.clone());
+            Ok(out)
+        }
+    }
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+
+    // Build ports with resource_access annotation but NO `res:` prefix.
+    let db_input_a = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db"), AccessMode::Write);
+
+    let db_input_b = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db"), AccessMode::Write);
+
+    let mut dag: Dag<BlockingOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "db_env",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp::new("handle", Value::Unit, 0, active.clone(), peak.clone()),
+    ));
+    dag.add_node(Node::opaque(
+        "writer_a",
+        vec![db_input_a],
+        vec![port("a", "Int")],
+        BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+    ));
+    dag.add_node(Node::opaque(
+        "writer_b",
+        vec![db_input_b],
+        vec![port("b", "Int")],
+        BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+    ));
+    dag.add_edge(edge("db_env", "handle", "writer_a", "db_conn"));
+    dag.add_edge(edge("db_env", "handle", "writer_b", "db_conn"));
+
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
+    assert_eq!(
+        peak.load(Ordering::SeqCst),
+        1,
+        "annotated non-res:* ports with conflicting writes should be serialized"
+    );
+}
+
+#[test]
+fn test_different_port_names_same_resource_id_still_conflict() {
+    // Regression: two nodes with different local input names but the same
+    // canonical resource_id must still acquire the same lock and serialize.
+    use std::time::Duration;
+
+    #[derive(Debug, Clone)]
+    struct BlockingOp {
+        port: String,
+        value: Value,
+        sleep_ms: u64,
+        active: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+    }
+
+    impl Executable for BlockingOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            loop {
+                let observed = self.peak.load(Ordering::SeqCst);
+                if current <= observed
+                    || self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(self.sleep_ms));
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let mut out = HashMap::new();
+            out.insert(self.port.clone(), self.value.clone());
+            Ok(out)
+        }
+    }
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+
+    // Different local port names, same canonical resource_id.
+    let input_a = Port::new("my_db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db"), AccessMode::Write);
+    let input_b = Port::new("database", "DbHandle")
+        .with_resource_access(ResourceId::new("db"), AccessMode::Write);
+
+    let mut dag: Dag<BlockingOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "db_env",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp {
+            port: "handle".into(),
+            value: Value::Unit,
+            sleep_ms: 0,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "writer_a",
+        vec![input_a],
+        vec![port("a", "Int")],
+        BlockingOp {
+            port: "a".into(),
+            value: Value::Int(1),
+            sleep_ms: 50,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "writer_b",
+        vec![input_b],
+        vec![port("b", "Int")],
+        BlockingOp {
+            port: "b".into(),
+            value: Value::Int(2),
+            sleep_ms: 50,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_edge(edge("db_env", "handle", "writer_a", "my_db_conn"));
+    dag.add_edge(edge("db_env", "handle", "writer_b", "database"));
+
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
+    assert_eq!(
+        peak.load(Ordering::SeqCst),
+        1,
+        "different local port names with same resource_id must still conflict"
+    );
+}
+
+#[test]
+fn test_same_port_name_different_resource_id_run_in_parallel() {
+    // Regression: two nodes sharing a local input alias but backed by distinct
+    // canonical resource_ids must NOT block each other — admission control
+    // keys on the resource_id, not the port name.
+    use std::time::Duration;
+
+    #[derive(Debug, Clone)]
+    struct BlockingOp {
+        port: String,
+        value: Value,
+        sleep_ms: u64,
+        active: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+    }
+
+    impl Executable for BlockingOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            loop {
+                let observed = self.peak.load(Ordering::SeqCst);
+                if current <= observed
+                    || self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(self.sleep_ms));
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let mut out = HashMap::new();
+            out.insert(self.port.clone(), self.value.clone());
+            Ok(out)
+        }
+    }
+
+    if execution_max_concurrency() == 1 {
+        return;
+    }
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+
+    // Same local port name "db_conn", but distinct resource_ids.
+    let input_a = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db:primary"), AccessMode::Write);
+    let input_b = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db:replica"), AccessMode::Write);
+
+    let mut dag: Dag<BlockingOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "source_a",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp {
+            port: "handle".into(),
+            value: Value::Unit,
+            sleep_ms: 0,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "source_b",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp {
+            port: "handle".into(),
+            value: Value::Unit,
+            sleep_ms: 0,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "writer_a",
+        vec![input_a],
+        vec![port("a", "Int")],
+        BlockingOp {
+            port: "a".into(),
+            value: Value::Int(1),
+            sleep_ms: 50,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "writer_b",
+        vec![input_b],
+        vec![port("b", "Int")],
+        BlockingOp {
+            port: "b".into(),
+            value: Value::Int(2),
+            sleep_ms: 50,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_edge(edge("source_a", "handle", "writer_a", "db_conn"));
+    dag.add_edge(edge("source_b", "handle", "writer_b", "db_conn"));
+
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
+    assert!(
+        peak.load(Ordering::SeqCst) >= 2,
+        "same port name with different resource_ids must not conflict"
     );
 }
 
@@ -2328,6 +2643,32 @@ fn validate_node_kinds_accepts_classified_transport_node() {
     );
     let result = validate_node_kinds_for_interception(&dag);
     assert!(result.is_ok());
+}
+
+#[test]
+fn validate_node_kinds_rejects_pure_node_with_resource_access() {
+    // A node with kind: Pure but a non-`res:*` input annotated via
+    // `with_resource_access()` is effectful and must be rejected.
+    let annotated_input = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db"), AccessMode::Write);
+    let mut dag: Dag<Produce> = Dag::new();
+    dag.add_node(Node::opaque(
+        "writer",
+        vec![annotated_input],
+        vec![port("result", "String")],
+        Produce::produce("result", Value::Str("ok".into())),
+    ));
+    let err = validate_node_kinds_for_interception(&dag);
+    assert!(err.is_err());
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("kind: Pure"),
+        "expected kind: Pure mention: {msg}"
+    );
+    assert!(
+        msg.contains("resource input"),
+        "expected resource input mention: {msg}"
+    );
 }
 
 #[test]

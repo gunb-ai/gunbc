@@ -45,6 +45,7 @@ use daglang_syntax::span::Span as SyntaxSpan;
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
+use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
     RetryConfig, TransportMiddlewareConfig,
@@ -232,6 +233,8 @@ pub enum PrimitiveOpKind {
     /// C24: Extract a named field from a Map/Record/JSON input.
     GetField {
         field: String,
+        /// The declared input port name carrying the base value.
+        input_port: String,
     },
     /// C24: String interpolation — `"hello {name}, you have {count} items"`.
     /// Inputs: one port per interpolated expression. Output: concatenated string.
@@ -3322,7 +3325,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -3347,7 +3350,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -3382,7 +3385,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -3412,7 +3415,7 @@ mod parity {
                 vec![
                     Port::scalar("request", "TransportRequest"),
                     Port::scalar("skip", "Bool"),
-                    Port::scalar("res:api:network", "NetworkHandle"),
+                    Port::resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
             ),
@@ -11008,6 +11011,7 @@ fn synthesize_get_field(
             name: format!("get_field::{}::{}::{}", ctx.item_name, base_param, field),
             kind: PrimitiveOpKind::GetField {
                 field: field.to_string(),
+                input_port: base_param.to_string(),
             },
         },
     ));
@@ -12005,6 +12009,7 @@ fn synthesize_get_field_on_resolved(
             name: format!("get_field::{}::{}::{}", ctx.item_name, output_name, field),
             kind: PrimitiveOpKind::GetField {
                 field: field.to_string(),
+                input_port: input_port_name.to_string(),
             },
         },
     ));

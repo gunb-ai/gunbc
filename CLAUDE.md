@@ -109,6 +109,9 @@ When draining review feedback on an automation queue branch:
 - choose one primary invariant theme from `src/v1/README.md` and record it
 - resolve at most one review-feedback item on that branch/PR
 - stop after that item instead of stacking another review-feedback fix on the same branch
+- keep each commit strictly scoped to the invariant fix — no unrelated helper cleanup,
+  dead-code removal, or opportunistic refactoring unless it is directly required for
+  the fix to compile and pass tests
 
 ## When in Doubt
 

@@ -770,11 +770,6 @@ fn foo(item: String) -> String {
         assert_parses_strict("src/v2/06_pipeline.dag");
     }
 
-    #[test]
-    fn phase0_shared_behavioral_parses_strict() {
-        assert_parses_strict("dsl/shared/behavioral.dag");
-    }
-
     // ═════════════════════════════════════════════════════════════════════
     // Phase 1: Compilation gate — v1 compiler can compile each v2 module
     // ═════════════════════════════════════════════════════════════════════
@@ -3288,7 +3283,8 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        // Should produce: 7 module files + lib.rs + v2_rt.rs + Cargo.toml = 10 files
+        // Should produce: module files plus lib.rs, v2_rt.rs, and Cargo.toml.
+        // Cargo.lock is generated separately by `generate_lockfile` after write_crate.
         let file_names: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         assert!(
             file_names.contains(&"Cargo.toml"),
@@ -3315,6 +3311,54 @@ fn example(items: List<String>) -> Int {
         for f in &files {
             assert!(!f.content.is_empty(), "{} is empty", f.rel_path);
         }
+    }
+
+    /// Proves the `port_contract` removal in `02_parse.dag` is a prerequisite
+    /// for this batch: `Node` in `00_core.dag` has no `port_contract` field,
+    /// so any generated Node constructor referencing it would fail `cargo check`.
+    #[test]
+    fn v2_port_contract_removal_is_prerequisite_for_cargo_check() {
+        // 1. Verify the Node type definition has no port_contract field.
+        let core_source = read_v2_file("src/v2/00_core.dag");
+        let core_ast = daglang_syntax::parser::parse_to_result(&core_source);
+        let node_td = core_ast
+            .ast
+            .items
+            .iter()
+            .find_map(|item| {
+                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
+                    if td.name == "Node" {
+                        return Some(td);
+                    }
+                }
+                None
+            })
+            .expect("Node type must exist in 00_core.dag");
+
+        let fields = match &node_td.body {
+            daglang_syntax::ast::TypeBody::Record(fields) => fields,
+            other => panic!("Node should be a record type, got: {:?}", other),
+        };
+        assert!(
+            !fields.iter().any(|f| f.name == "port_contract"),
+            "Node must not have a port_contract field (dissolved in Stream 3)"
+        );
+
+        // 2. Verify the generated parse.rs has no port_contract: assignments.
+        //    If 02_parse.dag still had `port_contract: none` in its Node
+        //    constructors, this would appear in the generated code and
+        //    cargo check would fail against the Node struct above.
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-parse-port-contract");
+        let parse_rs = std::fs::read_to_string(tmp_dir.join("src/parse.rs"))
+            .expect("generated parse.rs should exist");
+
+        assert!(
+            !parse_rs.contains("port_contract"),
+            "generated parse.rs must not reference port_contract — \
+             Node has no such field, so this would break cargo check"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
     /// The recursive type detection should identify Expr and TypeExpr as needing Box<>.
@@ -3413,6 +3457,8 @@ fn example(items: List<String>) -> Int {
         let tmp_dir = std::env::temp_dir().join(dir_name);
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
+            .expect("failed to generate lockfile");
         tmp_dir
     }
 
@@ -3433,6 +3479,8 @@ fn example(items: List<String>) -> Int {
 
         let output = cargo_command(&tmp_dir)
             .arg("check")
+            .arg("--locked")
+            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
 
@@ -3653,6 +3701,8 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&out_dir)
+            .expect("failed to generate lockfile");
     }
 
     // ═════════════════════════════════════════════════════════════════════

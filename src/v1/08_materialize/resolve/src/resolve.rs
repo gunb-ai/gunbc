@@ -380,8 +380,6 @@ impl Executable for LiteralSourceOp {
 struct PurePrimitiveOp {
     kind: PrimitiveOpKind,
     output_port: String,
-    /// Only used for GetField variant — the input port name to read from.
-    get_field_input_port: String,
     /// Only used for Conditional variant — whether an `else` branch exists.
     has_else: bool,
 }
@@ -398,11 +396,10 @@ impl std::fmt::Debug for PurePrimitiveOp {
 impl Executable for PurePrimitiveOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let result = match &self.kind {
-            PrimitiveOpKind::GetField { field } => {
-                let value = require_input_port(&inputs, &self.get_field_input_port, "GetField")?;
-                daglang_lower::eval::eval_get_field(value, field).map_err(|e| {
-                    ExecError::new(format!("on port `{}`: {e}", self.get_field_input_port))
-                })?
+            PrimitiveOpKind::GetField { field, input_port } => {
+                let value = require_input_port(&inputs, input_port, "GetField")?;
+                daglang_lower::eval::eval_get_field(value, field)
+                    .map_err(|e| ExecError::new(format!("on port `{input_port}`: {e}")))?
             }
             PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
                 let values: Vec<Value> = input_ports
@@ -962,17 +959,18 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
-        PrimitiveOpKind::GetField { field } => {
-            let input_port =
-                inputs
-                    .first()
-                    .map(|p| p.name.0.clone())
-                    .ok_or_else(|| ResolveError {
-                        node_id: String::new(),
-                        reason: format!(
-                            "GetField `{field}`: node has no input port (compiler bug)"
-                        ),
-                    })?;
+        PrimitiveOpKind::GetField { field, input_port } => {
+            if !inputs.iter().any(|p| p.name.0 == *input_port) {
+                let mut declared: Vec<&str> = inputs.iter().map(|p| p.name.0.as_str()).collect();
+                declared.sort_unstable();
+                return Err(ResolveError {
+                    node_id: String::new(),
+                    reason: format!(
+                        "GetField `{field}`: input_port `{input_port}` not found in declared inputs [{}] (compiler bug)",
+                        declared.join(", ")
+                    ),
+                });
+            }
             let output_port =
                 outputs
                     .first()
@@ -986,7 +984,6 @@ fn resolve_primitive(
             Ok(DynOp::new(PurePrimitiveOp {
                 kind: kind.clone(),
                 output_port,
-                get_field_input_port: input_port,
                 has_else: false,
             }))
         }
@@ -996,7 +993,6 @@ fn resolve_primitive(
             Ok(DynOp::new(PurePrimitiveOp {
                 kind: kind.clone(),
                 output_port,
-                get_field_input_port: String::new(),
                 has_else,
             }))
         }
@@ -1010,7 +1006,6 @@ fn resolve_primitive(
         | PrimitiveOpKind::ListConstruct { .. } => Ok(DynOp::new(PurePrimitiveOp {
             kind: kind.clone(),
             output_port: default_output_port(outputs),
-            get_field_input_port: String::new(),
             has_else: false,
         })),
     }
@@ -1328,6 +1323,7 @@ mod tests {
     use daglang_lower::{
         CallableKind, CallableObligation, PrimitiveLiteral, PrimitiveOpKind, TransportObligation,
     };
+    use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
@@ -1405,6 +1401,68 @@ mod tests {
             resolved.nodes.is_empty(),
             "pipeline nodes should be filtered out, got {} nodes",
             resolved.nodes.len()
+        );
+    }
+
+    #[test]
+    fn resolve_and_execute_transport_and_pipeline_nodes_before_interpreter() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "pipeline_demo",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.demo".to_string(),
+                name: "demo".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        ));
+        dag.add_node(
+            Node::opaque(
+                "execute_transport",
+                vec![],
+                vec![Port::new("response", "TransportResponse")],
+                LoweredOp::Transport {
+                    module: "extdeps.shell".to_string(),
+                    kind: CallableKind::Fn,
+                    name: "service_transport::execute::shell.Codegen::Check".to_string(),
+                    obligation: TransportObligation::Execute,
+                    service_metadata: Box::new(codegen_check_metadata()),
+                    is_interactive: false,
+                    resource_target: None,
+                },
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+
+        let resolved = resolve_lowered_dag_with(&dag).expect("resolve lowered dag");
+        assert!(
+            resolved.get_node(&"pipeline_demo".into()).is_none(),
+            "pipeline metadata should be filtered before execution"
+        );
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value("execute_transport", "response", Value::Skipped);
+
+        let log = execute_dag(
+            &resolved,
+            ExecuteConfig {
+                mode: ExecutionMode::DryRun(mocks),
+                ..Default::default()
+            },
+        )
+        .expect("resolved transport node should be intercepted in dry-run");
+
+        assert!(
+            log.get("pipeline_demo").is_none(),
+            "pipeline metadata should never reach the executor"
+        );
+        assert!(
+            log.get("execute_transport")
+                .expect("transport node should remain executable")
+                .was_intercepted,
+            "transport execute node should be intercepted before any interpreter path"
         );
     }
 
@@ -2627,7 +2685,7 @@ mod tests {
         let op = PurePrimitiveOp {
             kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: false,
         };
         let mut inputs = HashMap::new();
@@ -2646,7 +2704,7 @@ mod tests {
         let op = PurePrimitiveOp {
             kind: PrimitiveOpKind::Conditional,
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: true,
         };
         let mut inputs = HashMap::new();
@@ -2669,7 +2727,7 @@ mod tests {
                 op: daglang_lower::expr::LoweredBinOp::Add,
             },
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: false,
         };
         let mut inputs = HashMap::new();
@@ -2691,7 +2749,7 @@ mod tests {
                 fields: vec!["x".to_string(), "y".to_string()],
             },
             output_port: "result".to_string(),
-            get_field_input_port: String::new(),
+
             has_else: false,
         };
         let mut inputs = HashMap::new();
@@ -2777,6 +2835,90 @@ mod tests {
             outputs.get("items"),
             Some(&Value::Skipped),
             "Skipped input should propagate as Skipped, not empty list"
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_rejects_mismatched_input_port() {
+        // GetField.input_port says "record" but the node declares input "data".
+        let node = Node::opaque(
+            "extract_field",
+            vec![Port::scalar("data", "Json")],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::data::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                    input_port: "record".into(),
+                },
+            },
+        );
+        let err = resolve_node(&node).expect_err(
+            "GetField with input_port not matching declared inputs must fail at resolve time",
+        );
+        let msg = err.reason;
+        assert!(
+            msg.contains("input_port `record` not found in declared inputs"),
+            "error should identify the mismatched port: {msg}"
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_rejects_no_declared_inputs() {
+        // GetField.input_port says "record" but the node has zero declared inputs.
+        let node = Node::opaque(
+            "extract_field",
+            vec![],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::empty::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                    input_port: "record".into(),
+                },
+            },
+        );
+        let err = resolve_node(&node)
+            .expect_err("GetField with no declared inputs must fail at resolve time");
+        assert!(
+            err.reason.contains("input_port `record` not found"),
+            "error should mention missing port: {}",
+            err.reason
+        );
+    }
+
+    #[test]
+    fn resolve_get_field_succeeds_with_matching_input_port() {
+        let node = Node::opaque(
+            "extract_field",
+            vec![Port::scalar("record", "Json")],
+            vec![Port::scalar("value", "String")],
+            LoweredOp::Primitive {
+                module: "test".into(),
+                name: "get_field::test::record::name".into(),
+                kind: PrimitiveOpKind::GetField {
+                    field: "name".into(),
+                    input_port: "record".into(),
+                },
+            },
+        );
+        let op = resolve_node(&node).expect("GetField with matching input_port should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "record".to_string(),
+            Value::Map(
+                [("name".to_string(), Value::Str("alice".to_string()))]
+                    .into_iter()
+                    .collect(),
+            ),
+        );
+        let outputs = op.execute(inputs).expect("GetField should execute");
+        assert_eq!(
+            outputs.get("value").and_then(Value::as_str),
+            Some("alice"),
+            "GetField should extract the named field from the input map"
         );
     }
 }
