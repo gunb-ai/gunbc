@@ -2551,7 +2551,7 @@ fn example(items: List<String>) -> Int {
         let files = result
             .get("files")
             .expect("compile_sources should return files");
-        let main_rs = emitted_file_content(files, "src/main.rs");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
         assert!(
             main_rs.contains("use crate::dep::*;"),
             "bare import should emit a Rust wildcard import:\n{}",
@@ -2772,7 +2772,7 @@ fn example(items: List<String>) -> Int {
         let files = result
             .get("files")
             .expect("compile_sources should return files");
-        let main_rs = emitted_file_content(files, "src/main.rs");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
         assert!(
             !main_rs.contains("use crate::dep::*;") && !main_rs.contains("use crate::dep::{"),
             "empty import block should not emit a Rust import:\n{}",
@@ -2804,7 +2804,7 @@ fn example(items: List<String>) -> Int {
         let files = result
             .get("files")
             .expect("compile_sources should return files");
-        let main_rs = emitted_file_content(files, "src/main.rs");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
         assert!(
             main_rs.contains(".get(&\"x\".to_string()).cloned()"),
             "map index should emit Rust map lookup semantics:\n{}",
@@ -2836,7 +2836,7 @@ fn example(items: List<String>) -> Int {
         let files = result
             .get("files")
             .expect("compile_sources should return files");
-        let main_rs = emitted_file_content(files, "src/main.rs");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
         assert!(
             main_rs.contains("v2_rt::char_at(&s, 0)")
                 && main_rs.contains("v2_rt::substring(&s, 0, 1)"),
@@ -3065,7 +3065,7 @@ fn example(items: List<String>) -> Int {
         let files = result
             .get("files")
             .expect("compile_sources should return files");
-        let main_rs = emitted_file_content(files, "src/main.rs");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
         assert!(
             main_rs.contains("impl<'de, T> Deserialize<'de> for NonEmptyVec<T>")
                 && main_rs.contains("NonEmptyVec::new(items).map_err(serde::de::Error::custom)")
@@ -3416,7 +3416,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("check")
-            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
@@ -3441,7 +3440,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("build")
-            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo build");
@@ -3473,7 +3471,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
-            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
@@ -3509,7 +3506,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
-            .arg("--offline")
             .arg("--")
             .arg("self_compile_all_modules")
             .current_dir(&tmp_dir)
@@ -3547,7 +3543,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
-            .arg("--offline")
             .arg("--")
             .arg("gist_resolve_all_modules")
             .current_dir(&tmp_dir)
@@ -3584,7 +3579,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
-            .arg("--offline")
             .arg("--")
             .arg("gist_compile_all_modules")
             .current_dir(&tmp_dir)
@@ -3791,6 +3785,271 @@ fn example(items: List<String>) -> Int {
                 name
             );
         }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Gist compilation tests — compile the gist dependency chain through
+    // the v2 pipeline and verify emitted output with external toolchains.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// The 11-file gist transitive dependency chain in topological order.
+    fn gist_dag_files() -> Vec<&'static str> {
+        vec![
+            "dsl/std/types.dag",
+            "dsl/std/resources.dag",
+            "dsl/std/errors.dag",
+            "dsl/extdeps/cloud/cloud.dag",
+            "dsl/extdeps/cloud/gcp/gcp.dag",
+            "dsl/extdeps/github/github.dag",
+            "dsl/gunbc/auth/credentials.dag",
+            "dsl/extdeps/git.dag",
+            "dsl/extdeps/github/auth.dag",
+            "dsl/extdeps/github/gists.dag",
+            "dsl/gunbc/tools/gist.dag",
+        ]
+    }
+
+    /// Read the gist dependency chain as (path, content) pairs suitable for
+    /// `compile_sources_with_target`.
+    fn read_gist_sources() -> Vec<(String, String)> {
+        let root = workspace_root();
+        gist_dag_files()
+            .into_iter()
+            .map(|rel| {
+                let full = root.join(rel);
+                let content = std::fs::read_to_string(&full)
+                    .unwrap_or_else(|e| panic!("failed to read {}: {}", rel, e));
+                (rel.to_string(), content)
+            })
+            .collect()
+    }
+
+    /// Compile gist's 11-file dependency chain through the v2 pipeline
+    /// targeting Rust, then verify the output compiles with `cargo check`.
+    #[test]
+    #[ignore] // Requires cargo toolchain; run with --ignored
+    fn v2_compile_gist_rust() {
+        let compiler = compile_all_modules().expect("v2 compiler modules should compile");
+        let gist_sources = read_gist_sources();
+        let source_refs: Vec<(&str, &str)> = gist_sources
+            .iter()
+            .map(|(p, c)| (p.as_str(), c.as_str()))
+            .collect();
+
+        let result = compile_sources_with_target(&compiler, &source_refs, "Rust");
+
+        // Check diagnostics — the pipeline should not produce errors.
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        let errors: Vec<&String> = messages
+            .iter()
+            .filter(|m| !m.is_empty())
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "gist Rust compilation should produce no diagnostics: {:?}",
+            errors
+        );
+
+        // Extract emitted files.
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_list = match files {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected files list, got: {other:?}"),
+        };
+        assert!(
+            !file_list.is_empty(),
+            "gist Rust compilation should emit at least one file"
+        );
+
+        // Write emitted files to a temp directory and verify with cargo check.
+        let tmp_dir = std::env::temp_dir().join("v2-gist-rust-check");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        let src_dir = tmp_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("failed to create src dir");
+
+        // Collect emitted file paths and contents.
+        let mut mod_names = Vec::new();
+        for file_val in file_list {
+            if let gunbc_ir::Value::Map(map) = file_val {
+                let path = match map.get("path") {
+                    Some(gunbc_ir::Value::Str(p)) => p.clone(),
+                    _ => continue,
+                };
+                let content = match map.get("content") {
+                    Some(gunbc_ir::Value::Str(c)) => c.clone(),
+                    _ => continue,
+                };
+                let file_path = tmp_dir.join(&path);
+                if let Some(parent) = file_path.parent() {
+                    std::fs::create_dir_all(parent).expect("failed to create parent dir");
+                }
+                std::fs::write(&file_path, &content)
+                    .unwrap_or_else(|e| panic!("failed to write {}: {}", path, e));
+
+                // Track module names for lib.rs (files under src/ ending in .rs, not lib.rs).
+                if path.starts_with("src/") && path.ends_with(".rs") && path != "src/lib.rs" {
+                    let stem = path
+                        .strip_prefix("src/")
+                        .unwrap()
+                        .strip_suffix(".rs")
+                        .unwrap();
+                    mod_names.push(stem.to_string());
+                }
+            }
+        }
+
+        // If no lib.rs was emitted, generate one that declares all modules.
+        let lib_path = src_dir.join("lib.rs");
+        if !lib_path.exists() {
+            let lib_content: String = mod_names
+                .iter()
+                .map(|m| format!("#[allow(dead_code, unused_imports, unused_variables)]\nmod {};", m))
+                .collect::<Vec<_>>()
+                .join("\n");
+            std::fs::write(&lib_path, lib_content).expect("failed to write lib.rs");
+        }
+
+        // Generate a Cargo.toml if one was not emitted.
+        let cargo_toml_path = tmp_dir.join("Cargo.toml");
+        if !cargo_toml_path.exists() {
+            let cargo_toml = r#"[package]
+name = "v2-gist-rust-check"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+"#;
+            std::fs::write(&cargo_toml_path, cargo_toml).expect("failed to write Cargo.toml");
+        }
+
+        let output = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo check");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            // List emitted files for debugging.
+            let file_listing: Vec<String> = mod_names
+                .iter()
+                .map(|m| format!("  src/{}.rs", m))
+                .collect();
+            panic!(
+                "cargo check failed for gist Rust output (crate at {}):\nEmitted files:\n{}\nstderr:\n{}",
+                tmp_dir.display(),
+                file_listing.join("\n"),
+                stderr
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    /// Compile gist's 11-file dependency chain through the v2 pipeline
+    /// targeting Python, then verify each emitted .py file with
+    /// `python -m py_compile`.
+    #[test]
+    #[ignore] // Requires python3 toolchain; run with --ignored
+    fn v2_compile_gist_python() {
+        let compiler = compile_all_modules().expect("v2 compiler modules should compile");
+        let gist_sources = read_gist_sources();
+        let source_refs: Vec<(&str, &str)> = gist_sources
+            .iter()
+            .map(|(p, c)| (p.as_str(), c.as_str()))
+            .collect();
+
+        let result = compile_sources_with_target(&compiler, &source_refs, "Python");
+
+        // Check diagnostics — the pipeline should not produce errors.
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        let errors: Vec<&String> = messages
+            .iter()
+            .filter(|m| !m.is_empty())
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "gist Python compilation should produce no diagnostics: {:?}",
+            errors
+        );
+
+        // Extract emitted files.
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_list = match files {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected files list, got: {other:?}"),
+        };
+        assert!(
+            !file_list.is_empty(),
+            "gist Python compilation should emit at least one file"
+        );
+
+        // Write emitted .py files to a temp directory and verify each one.
+        let tmp_dir = std::env::temp_dir().join("v2-gist-python-check");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).expect("failed to create temp dir");
+
+        let mut py_files = Vec::new();
+        for file_val in file_list {
+            if let gunbc_ir::Value::Map(map) = file_val {
+                let path = match map.get("path") {
+                    Some(gunbc_ir::Value::Str(p)) => p.clone(),
+                    _ => continue,
+                };
+                let content = match map.get("content") {
+                    Some(gunbc_ir::Value::Str(c)) => c.clone(),
+                    _ => continue,
+                };
+                let file_path = tmp_dir.join(&path);
+                if let Some(parent) = file_path.parent() {
+                    std::fs::create_dir_all(parent).expect("failed to create parent dir");
+                }
+                std::fs::write(&file_path, &content)
+                    .unwrap_or_else(|e| panic!("failed to write {}: {}", path, e));
+                if path.ends_with(".py") {
+                    py_files.push(file_path);
+                }
+            }
+        }
+
+        assert!(
+            !py_files.is_empty(),
+            "gist Python compilation should emit at least one .py file"
+        );
+
+        // Verify each .py file with python -m py_compile.
+        for py_file in &py_files {
+            let output = std::process::Command::new("python3")
+                .arg("-m")
+                .arg("py_compile")
+                .arg(py_file)
+                .output()
+                .expect("failed to run python3 -m py_compile");
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let content = std::fs::read_to_string(py_file).unwrap_or_default();
+                panic!(
+                    "python3 -m py_compile failed for {}:\n--- stderr ---\n{}\n--- content ---\n{}",
+                    py_file.display(),
+                    stderr,
+                    content
+                );
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
     // ═════════════════════════════════════════════════════════════════════

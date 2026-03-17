@@ -619,6 +619,19 @@ pub fn eval_builtin_call(
                 Err(EvalError::new("'map_merge' requires two maps"))
             }
         },
+        "map_contains_key" => {
+            if args.len() >= 2 {
+                match &args[0].1 {
+                    Value::Map(map) => {
+                        let key = value_to_string(&args[1].1);
+                        Ok(Value::Bool(map.contains_key(&key)))
+                    }
+                    _ => Err(EvalError::new("'map_contains_key' requires a map and key")),
+                }
+            } else {
+                Err(EvalError::new("'map_contains_key' requires map and key"))
+            }
+        }
         "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
         "code_point" => {
             let val = require_builtin_arg("c", 0, args);

@@ -16,33 +16,33 @@ module v2.compiler.emit_rust
 
 import v2.std.core {
   Import, ImportAll, ImportSpecific,
-  TypeExpr, TypeBody, Field, Variant, Param, Expr, MatchArm,
-  MatchPattern, FieldBinding, LiteralValue, TransportBinding, OperationDef,
+  Node, TypedNode,
+  Connective, Conj, Disj,
+  TypeExpr, Field, Variant, Param, Expr, MatchArm,
+  MatchPattern, FieldBinding, LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
-  CapabilityDef,
   ContainerKind, ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  MockResponseDef, OperationModifier,
   ForEach, Index, Slice,
   FuncSig,
-  TypedItem,
-  TypedTypeDef, TypedFnDef, TypedFuncDef, TypedServiceDef,
-  TypedResourceDef, TypedDataDef, TypedExternFuncDecl, TypedPatternDef
+  TypedExpr, TypedLet, TypedBlock,
+  typed_expr_to_expr
 }
 
 import v2.compiler.typecheck {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  normalize_access_type, for_each_element_type
+  normalize_access_type, for_each_element_type,
+  expr_span
 }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, ItemInfo, InterpPart,
   empty_emit_scope, module_emit_scope,
-  infer_expr_type, scope_after_expr,
+  scope_after_expr,
   build_item_registry, lookup_item, named_arg_matches, order_call_args,
   is_service_call_receiver, extract_service_name,
   collect_service_calls, collect_service_calls_from_args, unique_strings,
@@ -51,7 +51,47 @@ import v2.compiler.emit {
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
-  expr_has_self_call, has_non_tail_self_call
+  expr_has_self_call, has_non_tail_self_call,
+  span_key
+}
+
+// =========================================================================
+// Bridge helpers — span-based type lookup for emit_expr_in_scope sub-tree
+//
+// These replicate the old infer_expr_type / scope_after_expr behaviour for
+// functions that still receive plain Expr (everything called from
+// emit_expr_in_scope).  Once emit_expr_in_scope itself is migrated to
+// TypedExpr these helpers can be deleted.
+// =========================================================================
+
+fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
+  map_get(cache, span_key(start: start, end: end))
+}
+
+fn missing_emit_type(span: SourceSpan) -> TypeExpr {
+  Named { name: "__EmitTypeCacheMiss", span: span }
+}
+
+fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
+  let s = expr_span(expr: expr)
+  match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
+    Some { value: t } => t
+    None => missing_emit_type(span: s)
+  }
+}
+
+// scope_after_expr for plain Expr — used in emit_block and other
+// emit_expr_in_scope helpers that still receive Expr.
+fn scope_after_plain_expr(expr: Expr, scope: InferScope) -> InferScope {
+  match expr {
+    Let { name: name, value: value, body: body, span: _ } =>
+      if body == none {
+        extend_scope(scope: scope, name: name, resolved: infer_expr_type(expr: value, scope: scope))
+      } else {
+        scope
+      }
+    _ => scope
+  }
 }
 
 // =========================================================================
@@ -80,9 +120,17 @@ fn emit_rust(typed: TypedGraph) -> EmitResult {
   let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
     |> filter(f => f.content != "")
-  let lib_file = emit_lib_rs(modules: typed.modules)
-  let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_service_items(typed: typed))
-  let files = concat([cargo, lib_file], module_files, test_files)
+  let has_services = has_service_items(typed: typed)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules)
+  let lib_file = emit_lib_rs(modules: typed.modules, has_services: has_services)
+  let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_services)
+  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services)
+  let dry_run_file = if has_services {
+    [emit_dry_run_module()]
+  } else {
+    []
+  }
+  let files = concat([cargo, lib_file, main_file], dry_run_file, module_files, test_files)
   EmitResult { files: files, diagnostics: [] }
 }
 
@@ -90,12 +138,18 @@ fn emit_rust(typed: TypedGraph) -> EmitResult {
 // lib.rs generation
 // =========================================================================
 
-fn emit_lib_rs(modules: List<TypedModule>) -> TextFile {
+fn emit_lib_rs(modules: List<TypedModule>, has_services: Bool) -> TextFile {
   let mod_decls = modules |> map(tm =>
-    let mod_name = module_to_filename(name: tm.module.name)
+    let raw_name = module_to_filename(name: tm.module.name)
+    let mod_name = if raw_name == "main" { "main_mod" } else { raw_name }
     concat("pub mod ", mod_name, ";")
   )
-  let content = concat("// Generated by v2 compiler — do not edit.\n\n", mod_decls |> join(separator: "\n"))
+  let dry_run_mod = if has_services {
+    "\npub mod dry_run;"
+  } else {
+    ""
+  }
+  let content = concat("// Generated by v2 compiler — do not edit.\n\n", mod_decls |> join(separator: "\n"), dry_run_mod)
   TextFile { path: "src/lib.rs", content: concat(content, "\n") }
 }
 
@@ -112,7 +166,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let items_str = typed_module.items
     |> map(item => emit_typed_item(item: item, registry: registry, scope: scope))
     |> join(separator: "\n\n")
-  let filename = module_to_filename(name: m.name)
+  let raw_filename = module_to_filename(name: m.name)
+  // Avoid collision with the CLI entry point (src/main.rs)
+  let filename = if raw_filename == "main" { "main_mod" } else { raw_filename }
   let content = concat("// Generated by v2 compiler — do not edit.\n",
     "// Source module: ", m.name, "\n\n",
     prelude, imports_section, "\n\n",
@@ -227,100 +283,131 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: TypedItem, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  match item {
-    TypedTypeDef { name: n, body: b, span: _ } =>
-      emit_type_def(name: n, body: b)
-    TypedFnDef { name: n, params: ps, return_type: rt, body: bd, span: _ } =>
-      emit_fn_def(name: n, params: ps, return_type: rt, body: bd.expr, registry: registry, scope: scope)
-    TypedFuncDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
-      emit_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
-    TypedServiceDef { name: n, transport: t, config: c, operations: ops, span: _ } =>
-      emit_service_def(name: n, transport: t, config: c, operations: ops, registry: registry)
-    TypedResourceDef { name: n, capabilities: caps, span: _ } =>
-      emit_resource_def(name: n, capabilities: caps)
-    TypedDataDef { name: n, type_expr: te, value: v, span: _ } =>
-      emit_data_def(name: n, type_expr: te, value: v.expr, registry: registry, scope: scope)
-    TypedExternFuncDecl { name: n, params: ps, return_type: rt, span: _ } =>
-      // Extern func declarations emit as function signatures with no body
-      let params_str = emit_params(params: ps)
-      let ret_str = emit_return_type(return_type: rt)
-      concat("pub fn ", rust_ident(name: n), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
-    TypedPatternDef { name: n, params: ps, return_type: rt, uses: us, body: bd, span: _ } =>
-      emit_func_def(name: n, params: ps, return_type: rt, uses: us, body: bd.expr, registry: registry, scope: scope)
+fn emit_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  // Type definition: has connective (record=Conj, sum=Disj)
+  if item.connective != none && item.transport == none {
+    emit_type_def_from_connective(item: item)
+  }
+  // Type alias: no connective, no body, no params, no transport, no children, but has return_type
+  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return(return_type: item.return_type) {
+    concat("pub type ", item.name, " = ", emit_type_expr(type_expr: item.return_type), ";")
+  }
+  // Function with body: fn or func (distinguished from data by type_annotation)
+  else if item.body != none && item.type_annotation == none {
+    if item.uses |> count > 0 {
+      // async func/pattern
+      emit_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+    } else {
+      // pure fn (including zero-param functions)
+      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
+    }
+  }
+  // Data: has body and type_annotation (data constant)
+  else if item.body != none && item.type_annotation != none {
+    emit_data_def(name: item.name, type_expr: item.type_annotation.value, value: typed_expr_to_expr(texpr: item.body.value), registry: registry, scope: scope)
+  }
+  // Service: has transport and children (operations as child Nodes)
+  else if item.transport != none && item.children |> count > 0 {
+    emit_service_def(item: item, registry: registry)
+  }
+  // Resource: has children but no transport
+  else if item.transport == none && item.children |> count > 0 {
+    emit_resource_def(item: item)
+  }
+  // Extern func: has params but no body
+  else if item.params |> count > 0 {
+    let params_str = emit_params(params: item.params)
+    let ret_str = emit_return_type(return_type: item.return_type)
+    concat("pub fn ", rust_ident(name: item.name), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
+  }
+  else {
+    concat("// unhandled node: ", item.name)
   }
 }
 
 // =========================================================================
-// Type definitions
+// Connective-based type emission — dispatches on TypedNode children
+//
+// Type structure is encoded as:
+//   Records: connective=Conj, children = one TypedNode per field
+//   Sums:    connective=Disj, children = one TypedNode per variant
+//   Aliases: connective=none, return_type carries the aliased type
 // =========================================================================
 
-fn emit_type_def(name: String, body: TypeBody) -> String {
-  match body {
-    Record { fields: fs } => emit_struct_def(name: name, fields: fs)
-    Sum { variants: vs } => emit_enum_def(name: name, variants: vs)
-    Alias { base: te } => emit_type_alias(name: name, base: te)
+fn emit_type_def_from_connective(item: TypedNode) -> String {
+  match item.connective.value {
+    Conj => emit_struct_from_children(name: item.name, children: item.children)
+    Disj => emit_enum_from_children(name: item.name, children: item.children)
   }
 }
 
-fn emit_struct_def(name: String, fields: List<Field>) -> String {
+fn is_type_alias_return(return_type: TypeExpr) -> Bool {
+  match return_type {
+    Primitive { name: n, span: _ } => n != "Unit"
+    Named { name: _, span: _ } => true
+    Container { kind: _, element: _, span: _ } => true
+    Optional { inner: _, span: _ } => true
+    MapType { key: _, value: _, span: _ } => true
+    Product { name: _, fields: _, span: _ } => true
+    Coproduct { name: _, variants: _, span: _ } => true
+    Refined { base: _, predicates: _, span: _ } => true
+  }
+}
+
+fn emit_struct_from_children(name: String, children: List<TypedNode>) -> String {
   let derives = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
-  let field_lines = fields |> map(f => emit_struct_field(field: f))
-  let fields_str = field_lines |> join(separator: "\n")
-  if fields |> count == 0 {
+  if children |> count == 0 {
     concat(derives, "\npub struct ", name, ";")
   } else {
+    let field_lines = children |> map(child => emit_struct_field_from_child(child: child))
+    let fields_str = field_lines |> join(separator: "\n")
     concat(derives, "\npub struct ", name, " {\n", fields_str, "\n}")
   }
 }
 
-fn emit_struct_field(field: Field) -> String {
-  let ty = if field.optional {
-    concat("Option<", emit_type_expr(type_expr: field.type_expr), ">")
-  } else {
-    emit_type_expr(type_expr: field.type_expr)
-  }
-  let rename_attr = match field.from_key {
-    Some { value: key } => concat("    #[serde(rename = \"", key, "\")]\n")
+fn emit_struct_field_from_child(child: TypedNode) -> String {
+  let ty = emit_type_expr(type_expr: child.return_type)
+  // Check for from_key in child properties
+  let rename_attr = match child.properties |> filter(p => p.name == "from_key") |> first {
+    Some { value: prop } => match prop.value {
+      Literal { value: lv, span: _ } => match lv {
+        LitStr { value: key } => concat("    #[serde(rename = \"", key, "\")]\n")
+        _ => ""
+      }
+      _ => ""
+    }
     None => ""
   }
-  let default_doc = match field.default_value {
-    Some { value: expr } => concat("    /// Default: ", emit_expr(expr: expr, registry: empty_map()), "\n")
-    None => ""
-  }
-  concat(rename_attr, default_doc, "    pub ", rust_ident(name: field.name), ": ", ty, ",")
+  concat(rename_attr, "    pub ", rust_ident(name: child.name), ": ", ty, ",")
 }
 
-fn emit_enum_def(name: String, variants: List<Variant>) -> String {
+fn is_optional_type(type_expr: TypeExpr) -> Bool {
+  match type_expr {
+    Optional { inner: _, span: _ } => true
+    _ => false
+  }
+}
+
+fn emit_enum_from_children(name: String, children: List<TypedNode>) -> String {
   let derives = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
   let serde_tag = "#[serde(tag = \"_variant\")]"
-  let variant_lines = variants |> map(v => emit_variant(variant: v))
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child))
   let variants_str = variant_lines |> join(separator: "\n")
   concat(derives, "\n", serde_tag, "\npub enum ", name, " {\n", variants_str, "\n}")
 }
 
-fn emit_variant(variant: Variant) -> String {
-  if variant.fields |> count == 0 {
-    concat("    ", variant.name, ",")
+fn emit_variant_from_child(child: TypedNode) -> String {
+  if child.children |> count == 0 {
+    // Unit variant — no fields
+    concat("    ", child.name, ",")
   } else {
-    let field_lines = variant.fields |> map(f =>
-      concat("        ", rust_ident(name: f.name), ": ", emit_field_type(field: f), ",")
+    // Fielded variant — child's children are the variant's fields
+    let field_lines = child.children |> map(f =>
+      concat("        ", rust_ident(name: f.name), ": ", emit_type_expr(type_expr: f.return_type), ",")
     )
     let fields_str = field_lines |> join(separator: "\n")
-    concat("    ", variant.name, " {\n", fields_str, "\n    },")
+    concat("    ", child.name, " {\n", fields_str, "\n    },")
   }
-}
-
-fn emit_field_type(field: Field) -> String {
-  if field.optional {
-    concat("Option<", emit_type_expr(type_expr: field.type_expr), ">")
-  } else {
-    emit_type_expr(type_expr: field.type_expr)
-  }
-}
-
-fn emit_type_alias(name: String, base: TypeExpr) -> String {
-  concat("pub type ", name, " = ", emit_type_expr(type_expr: base), ";")
 }
 
 // =========================================================================
@@ -408,21 +495,24 @@ fn emit_coproduct_type_expr(name: String?, variants: List<Variant>) -> String {
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_fn_def(name: String, params: List<Param>, return_type: TypeExpr, body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let params_str = emit_params(params: params)
   let ret_str = emit_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  // Tail-call optimization: if the function body contains self-recursive
-  // calls and all are in tail position, emit a loop+reassignment form.
-  let use_tco = expr_has_self_call(expr: body, fn_name: name)
-    && has_non_tail_self_call(expr: body, fn_name: name, in_tail: true) == false
+  let body_expr = typed_expr_to_expr(texpr: body)
+  // Tail-call optimization: use cached analysis from item registry.
+  let use_tco = match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
+    None => expr_has_self_call(expr: body_expr, fn_name: name)
+      && has_non_tail_self_call(expr: body_expr, fn_name: name, in_tail: true) == false
+  }
   if use_tco {
     let tco_params_str = emit_tco_params(params: params)
-    let body_str = emit_tco_body(expr: body, fn_name: name, params: params, registry: registry, scope: body_scope)
+    let body_str = emit_tco_body(expr: body_expr, fn_name: name, params: params, registry: registry, scope: body_scope)
     concat("pub fn ", rust_ident(name: name), "(", tco_params_str, ")", ret_str, " {\n",
       indent(text: body_str, level: 1), "\n}")
   } else {
-    let body_str = emit_expr_in_scope(expr: body, registry: registry, scope: body_scope)
+    let body_str = emit_expr_in_scope(expr: body_expr, registry: registry, scope: body_scope)
     concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
       indent(text: body_str, level: 1), "\n}")
   }
@@ -437,11 +527,15 @@ fn emit_func_def(
   params: List<Param>,
   return_type: TypeExpr,
   uses: List<ResourceUse>,
-  body: Expr,
+  body: TypedExpr,
   registry: Map<String, ItemInfo>,
   scope: InferScope
 ) -> String {
-  let service_names = unique_strings(items: collect_service_calls(expr: body))
+  let body_expr = typed_expr_to_expr(texpr: body)
+  let service_names = match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.service_names
+    None => unique_strings(items: collect_service_calls(expr: body_expr))
+  }
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_func_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
@@ -454,39 +548,39 @@ fn emit_func_def(
 // Emit a func body, wrapping the tail expression in Ok(...).
 // For let-chains the leading bindings are emitted as statements,
 // and only the final expression is wrapped.
-fn emit_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   match body {
-    Let { name: n, value: v, body: inner, span: _ } => {
-      let val_str = emit_expr_in_scope(expr: v, registry: registry, scope: scope)
+    TypedLet { name: n, value: v, body: inner, resolved_type: _, span: _ } => {
+      let val_str = emit_expr_in_scope(expr: typed_expr_to_expr(texpr: v), registry: registry, scope: scope)
       let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
-      let next_scope = extend_scope(scope: scope, name: n, resolved: infer_expr_type(expr: v, scope: scope))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope))
         None => let_line
       }
     }
-    Block { stmts: ss, span: _ } => {
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } => {
       if ss |> count == 0 {
         "Ok(())"
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
-            let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
-            BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+          |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
+            let line = emit_expr_in_scope(expr: typed_expr_to_expr(texpr: pair.second), registry: registry, scope: acc.scope)
+            let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
+            let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+            BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
         let last_str = match last_stmt {
-          Some { value: s } => concat("Ok(", emit_expr_in_scope(expr: s, registry: registry, scope: init_state.scope), ")")
+          Some { value: s } => concat("Ok(", emit_expr_in_scope(expr: typed_expr_to_expr(texpr: s), registry: registry, scope: init_state.scope), ")")
           None => "Ok(())"
         }
-        let all_lines = concat(init_state.lines, [last_str])
-        all_lines |> join(separator: "\n")
+        if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
       }
     }
-    _ => concat("Ok(", emit_expr_in_scope(expr: body, registry: registry, scope: scope), ")")
+    _ => concat("Ok(", emit_expr_in_scope(expr: typed_expr_to_expr(texpr: body), registry: registry, scope: scope), ")")
   }
 }
 
@@ -579,18 +673,18 @@ fn emit_tco_expr(expr: Expr, fn_name: String, params: List<Param>, registry: Map
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, pair) {
+          |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
             let line = emit_expr_in_scope(expr: pair.second, registry: registry, scope: acc.scope)
-            let next_scope = scope_after_expr(expr: pair.second, scope: acc.scope)
-            BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+            let next_scope = scope_after_plain_expr(expr: pair.second, scope: acc.scope)
+            let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+            BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_str = match ss |> last {
           Some { value: last_expr } =>
             emit_tco_expr(expr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope)
           None => "break;"
         }
-        let all_lines = concat(init_state.lines, [last_str])
-        all_lines |> join(separator: "\n")
+        if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
       }
     // Any other expression in tail position: not a self-call, so break.
     _ =>
@@ -1108,13 +1202,13 @@ fn interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: 
 // =========================================================================
 
 fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let state = stmts |> fold(init: BlockEmitState { lines: [], scope: scope }, f: fn(acc, stmt) {
+  let state = stmts |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, stmt) {
     let line = emit_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
-    let next_scope = scope_after_expr(expr: stmt, scope: acc.scope)
-    BlockEmitState { lines: concat(acc.lines, [line]), scope: next_scope }
+    let next_scope = scope_after_plain_expr(expr: stmt, scope: acc.scope)
+    let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+    BlockEmitState { text: new_text, scope: next_scope }
   })
-  let body = state.lines |> join(separator: "\n")
-  concat("{\n", indent(text: body, level: 1), "\n}")
+  concat("{\n", indent(text: state.text, level: 1), "\n}")
 }
 
 // =========================================================================
@@ -1155,22 +1249,22 @@ fn is_primitive_numeric(type_expr: TypeExpr) -> Bool {
 // =========================================================================
 
 fn emit_service_def(
-  name: String,
-  transport: TransportBinding,
-  config: ServiceConfig?,
-  operations: List<OperationDef>,
+  item: TypedNode,
   registry: Map<String, ItemInfo>
 ) -> String {
-  let safe_name = sanitize_service_name(name: name)
-  let struct_def = emit_service_struct(name: safe_name, transport: transport, config: config)
-  let impl_block = emit_service_impl(name: safe_name, transport: transport, operations: operations, registry: registry)
+  let safe_name = sanitize_service_name(name: item.name)
+  let transport = if item.transport == none { LocalBinding } else { item.transport.value }
+  let struct_def = emit_service_struct(name: safe_name, transport: transport, config: item.config)
+  let op_children = item.children
+  let impl_block = emit_service_impl(name: safe_name, transport: transport, op_children: op_children, registry: registry)
   concat(struct_def, "\n\n", impl_block)
 }
 
 fn emit_service_struct(name: String, transport: TransportBinding, config: ServiceConfig?) -> String {
   let derives = "#[derive(Debug, Clone)]"
   let config_fields = emit_service_config_fields(transport: transport, config: config)
-  concat(derives, "\npub struct ", name, " {\n", config_fields, "\n}")
+  let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
+  concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
 fn emit_service_config_fields(transport: TransportBinding, config: ServiceConfig?) -> String {
@@ -1192,34 +1286,104 @@ fn emit_service_config_fields(transport: TransportBinding, config: ServiceConfig
   }
 }
 
-fn emit_service_impl(name: String, transport: TransportBinding, operations: List<OperationDef>, registry: Map<String, ItemInfo>) -> String {
-  let method_strs = operations |> map(op =>
-    emit_operation_method(service_name: name, transport: transport, operation: op, registry: registry)
+fn emit_service_impl(name: String, transport: TransportBinding, op_children: List<TypedNode>, registry: Map<String, ItemInfo>) -> String {
+  let new_method = emit_service_new_method(name: name, transport: transport)
+  let method_strs = op_children |> map(op_node =>
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry)
   )
-  let methods_str = method_strs |> join(separator: "\n\n")
+  let all_methods = concat([new_method], method_strs)
+  let methods_str = all_methods |> join(separator: "\n\n")
   concat("impl ", name, " {\n", indent(text: methods_str, level: 1), "\n}")
 }
 
-fn emit_modifier_name(modifier: OperationModifier) -> String {
-  match modifier {
-    Idempotent => "idempotent"
-    Readonly => "readonly"
-    Hermetic => "hermetic"
+// Emit a `new` constructor for a service struct that accepts DryRunMode.
+// For REST services, also accepts base_url; for Shell, working_dir; etc.
+fn emit_service_new_method(name: String, transport: TransportBinding) -> String {
+  match transport {
+    RestBinding { base_url: bu, auth: a, headers: _ } => {
+      let base_url_default = match bu {
+        Literal { value: LitStr { value: s }, span: _ } => s
+        _ => "http://localhost"
+      }
+      let auth_param = match a {
+        Some { value: _ } => ", auth_token: String"
+        None => ""
+      }
+      let auth_field = match a {
+        Some { value: _ } => "\n            auth_token,"
+        None => ""
+      }
+      concat(
+        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+        "    ", name, " {\n",
+        "        base_url: \"", base_url_default, "\".to_string(),", auth_field, "\n",
+        "        dry_run,\n",
+        "    }\n",
+        "}")
+    }
+    ShellBinding { argv: _, env: _ } =>
+      concat(
+        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+        "    ", name, " {\n",
+        "        working_dir: None,\n",
+        "        dry_run,\n",
+        "    }\n",
+        "}")
+    FileBinding { base_path: _ } =>
+      concat(
+        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+        "    ", name, " {\n",
+        "        base_path: \".\".to_string(),\n",
+        "        dry_run,\n",
+        "    }\n",
+        "}")
+    LocalBinding =>
+      concat(
+        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+        "    ", name, " {\n",
+        "        dry_run,\n",
+        "    }\n",
+        "}")
   }
 }
 
-fn emit_modifier_doc(modifiers: List<OperationModifier>) -> String {
-  if modifiers |> count == 0 {
+// Extract modifier names from properties.
+fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
+  properties |> filter(p => p.name == "idempotent" || p.name == "readonly" || p.name == "hermetic")
+    |> map(p => p.name)
+}
+
+// Extract mock properties from properties.
+fn extract_mock_props(properties: List<FieldInit>) -> List<FieldInit> {
+  properties |> filter(p => starts_with_prefix(s: p.name, prefix: "mock_"))
+}
+
+fn starts_with_prefix(s: String, prefix: String) -> Bool {
+  let prefix_chars = prefix |> chars
+  let s_chars = s |> chars
+  if prefix_chars |> count > s_chars |> count { false }
+  else {
+    prefix_chars |> enumerate |> all(pair =>
+      match s_chars |> enumerate |> filter(sp => sp.first == pair.first) |> first {
+        Some { value: sp } => sp.second == pair.second
+        None => false
+      }
+    )
+  }
+}
+
+fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
+  let names = extract_modifier_names(properties: properties)
+  if names |> count == 0 {
     ""
   } else {
-    let names = modifiers |> map(m => emit_modifier_name(modifier: m))
     concat("/// Modifiers: ", names |> join(separator: ", "), "\n")
   }
 }
 
-fn emit_operation_method(service_name: String, transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
-  let input_params = operation.inputs |> map(f =>
-    concat(rust_ident(name: f.name), ": ", emit_field_type(field: f))
+fn emit_operation_method(service_name: String, transport: TransportBinding, op_node: TypedNode, registry: Map<String, ItemInfo>) -> String {
+  let input_params = op_node.params |> map(p =>
+    concat(rust_ident(name: p.name), ": ", emit_type_expr(type_expr: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1227,52 +1391,66 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, oper
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_operation_return_type(outputs: operation.outputs)
+  let ret_type = emit_type_expr(type_expr: op_node.return_type)
   // Use per-operation transport override if present, otherwise service-level transport.
-  let effective_transport = match operation.transport {
+  let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
     None => transport
   }
-  let body = emit_transport_call(transport: effective_transport, operation: operation, registry: registry)
-  let modifier_doc = emit_modifier_doc(modifiers: operation.modifiers)
-  concat(modifier_doc, "pub async fn ", rust_ident(name: operation.name),
+  let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry)
+  let mock_props = extract_mock_props(properties: op_node.properties)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: op_node.return_type, mock_props: mock_props, registry: registry)
+  let body = concat(
+    "if self.dry_run.is_dry_run() {\n",
+    indent(text: dry_run_body, level: 1), "\n",
+    "} else {\n",
+    indent(text: real_body, level: 1), "\n",
+    "}")
+  let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
+  concat(modifier_doc, "pub async fn ", rust_ident(name: op_node.name),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
     indent(text: body, level: 1), "\n}")
 }
 
-fn emit_operation_return_type(outputs: List<Field>) -> String {
-  if outputs |> count == 0 {
-    "()"
-  } else if outputs |> count == 1 {
-    let f = outputs |> first
-    match f {
-      Some { value: field } => emit_field_type(field: field)
-      None => "()"
+// Emit the dry-run branch for an operation method.
+// If mock data is available, use it. Otherwise, return Default::default().
+fn emit_dry_run_branch_from_props(op_name: String, return_type: TypeExpr, mock_props: List<FieldInit>, registry: Map<String, ItemInfo>) -> String {
+  let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
+  if mock_props |> count > 0 {
+    // Use the first mock property body as the dry-run return value
+    let first_mock = mock_props |> first
+    match first_mock {
+      Some { value: mp } => {
+        let mock_json = emit_data_value_json(value: mp.value)
+        concat(log_line, "\n",
+          "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
+          "Ok(serde_json::from_value(mock_value)?)")
+      }
+      None => concat(log_line, "\nOk(Default::default())")
     }
   } else {
-    // Multiple outputs -> return a tuple
-    let tys = outputs |> map(f => emit_field_type(field: f))
-    concat("(", tys |> join(separator: ", "), ")")
+    // No mock data available — return a serde default
+    concat(log_line, "\nOk(serde_json::from_value(serde_json::Value::Object(Default::default()))?)")
   }
 }
 
-fn emit_transport_call(transport: TransportBinding, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
+fn emit_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>) -> String {
   match transport {
     RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_rest_call(operation: operation, auth: a, headers: hs, registry: registry)
+      emit_rest_call(op_name: op_name, auth: a, headers: hs, registry: registry)
     ShellBinding { argv: _, env: envs } =>
-      emit_shell_call(operation: operation, env: envs, registry: registry)
+      emit_shell_call(op_name: op_name, env: envs, registry: registry)
     FileBinding { base_path: _ } =>
-      emit_file_call(operation: operation)
+      emit_file_call(op_name: op_name)
     LocalBinding =>
-      emit_local_call(operation: operation)
+      emit_local_call(op_name: op_name)
   }
 }
 
-fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<HeaderDef>, registry: Map<String, ItemInfo>) -> String {
+fn emit_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, registry: Map<String, ItemInfo>) -> String {
   let client_init = "let client = reqwest::Client::new();"
   let url_line = concat("let url = format!(\"{}/{}\", self.base_url, \"",
-    rust_ident(name: operation.name), "\");")
+    rust_ident(name: op_name), "\");")
   let auth_line = match auth {
     Some { value: ac } =>
       concat("let request = client.post(&url)\n    .header(\"",
@@ -1292,9 +1470,9 @@ fn emit_rest_call(operation: OperationDef, auth: AuthConfig?, headers: List<Head
   all_lines |> join(separator: "\n")
 }
 
-fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: Map<String, ItemInfo>) -> String {
+fn emit_shell_call(op_name: String, env: List<EnvDef>, registry: Map<String, ItemInfo>) -> String {
   let cmd_line = concat("let output = std::process::Command::new(\"",
-    rust_ident(name: operation.name), "\")")
+    rust_ident(name: op_name), "\")")
   let env_lines = env |> map(e =>
     concat("    .env(\"", e.name, "\", ", emit_expr(expr: e.value, registry: registry), ")")
   )
@@ -1306,16 +1484,16 @@ fn emit_shell_call(operation: OperationDef, env: List<EnvDef>, registry: Map<Str
   all_lines |> join(separator: "\n")
 }
 
-fn emit_file_call(operation: OperationDef) -> String {
+fn emit_file_call(op_name: String) -> String {
   concat("let path = format!(\"{}/{}\", self.base_path, \"",
-    rust_ident(name: operation.name), "\");\n",
+    rust_ident(name: op_name), "\");\n",
     "let content = std::fs::read_to_string(&path)?;\n",
     "Ok(content)")
 }
 
-fn emit_local_call(operation: OperationDef) -> String {
+fn emit_local_call(op_name: String) -> String {
   concat("// Local binding — direct function call\n",
-    "Ok(", rust_ident(name: operation.name), "())")
+    "Ok(", rust_ident(name: op_name), "())")
 }
 
 // =========================================================================
@@ -1324,16 +1502,17 @@ fn emit_local_call(operation: OperationDef) -> String {
 // Resources become a trait with capability methods.
 // =========================================================================
 
-fn emit_resource_def(name: String, capabilities: List<CapabilityDef>) -> String {
-  let cap_methods = capabilities |> map(c => emit_capability_method(cap: c))
+fn emit_resource_def(item: TypedNode) -> String {
+  let cap_children = item.children
+  let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c))
   let methods_str = cap_methods |> join(separator: "\n\n")
-  concat("#[async_trait::async_trait]\npub trait ", name, " {\n",
+  concat("#[async_trait::async_trait]\npub trait ", item.name, " {\n",
     indent(text: methods_str, level: 1), "\n}")
 }
 
-fn emit_capability_method(cap: CapabilityDef) -> String {
-  let input_params = cap.inputs |> map(f =>
-    concat(rust_ident(name: f.name), ": ", emit_field_type(field: f))
+fn emit_capability_method(cap_node: TypedNode) -> String {
+  let input_params = cap_node.params |> map(p =>
+    concat(rust_ident(name: p.name), ": ", emit_type_expr(type_expr: p.type_expr))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1341,23 +1520,8 @@ fn emit_capability_method(cap: CapabilityDef) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_capability_return_type(outputs: cap.outputs)
-  concat("async fn ", rust_ident(name: cap.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
-}
-
-fn emit_capability_return_type(outputs: List<Field>) -> String {
-  if outputs |> count == 0 {
-    "()"
-  } else if outputs |> count == 1 {
-    let f = outputs |> first
-    match f {
-      Some { value: field } => emit_field_type(field: field)
-      None => "()"
-    }
-  } else {
-    let tys = outputs |> map(f => emit_field_type(field: f))
-    concat("(", tys |> join(separator: ", "), ")")
-  }
+  let ret = emit_type_expr(type_expr: cap_node.return_type)
+  concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
 // =========================================================================
@@ -1430,29 +1594,27 @@ fn emit_test_file(typed_module: TypedModule) -> TextFile {
   }
 }
 
-fn is_typed_service_item(item: TypedItem) -> Bool {
-  match item {
-    TypedServiceDef { name: _ } => true
-    _ => false
+fn is_typed_service_item(item: TypedNode) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
+fn emit_typed_service_tests(item: TypedNode, registry: Map<String, ItemInfo>) -> List<String> {
+  if item.children |> count > 0 {
+    let safe_name = sanitize_service_name(name: item.name)
+    // Mock data lives in properties with "mock_" prefix
+    item.children
+      |> filter(c => extract_mock_props(properties: c.properties) |> count > 0)
+      |> map(c => emit_operation_test(service_name: safe_name, op_node: c, registry: registry))
+  } else {
+    []
   }
 }
 
-fn emit_typed_service_tests(item: TypedItem, registry: Map<String, ItemInfo>) -> List<String> {
-  match item {
-    TypedServiceDef { name: sn, transport: _, config: _, operations: ops, span: _ } => {
-      let safe_name = sanitize_service_name(name: sn)
-      ops
-        |> filter(op => op.mock_response |> count > 0)
-        |> map(op => emit_operation_test(service_name: safe_name, operation: op, registry: registry))
-    }
-    _ => []
-  }
-}
-
-fn emit_operation_test(service_name: String, operation: OperationDef, registry: Map<String, ItemInfo>) -> String {
-  let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: operation.name))
-  let mock_setup = operation.mock_response |> map(mr =>
-    emit_mock_response_setup(mock: mr, registry: registry)
+fn emit_operation_test(service_name: String, op_node: TypedNode, registry: Map<String, ItemInfo>) -> String {
+  let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: op_node.name))
+  let mock_props = extract_mock_props(properties: op_node.properties)
+  let mock_setup = mock_props |> map(mp =>
+    emit_mock_prop_setup(mock_prop: mp, registry: registry)
   )
   let mock_str = mock_setup |> join(separator: "\n")
   concat("#[tokio::test]\nasync fn ", test_name, "() {\n",
@@ -1461,15 +1623,9 @@ fn emit_operation_test(service_name: String, operation: OperationDef, registry: 
     "}")
 }
 
-fn emit_mock_response_setup(mock: MockResponseDef, registry: Map<String, ItemInfo>) -> String {
-  let status_str = emit_expr(expr: mock.status, registry: registry)
-  let body_str = emit_expr(expr: mock.body, registry: registry)
-  let desc = match mock.description {
-    Some { value: d } => concat("// ", d, "\n")
-    None => ""
-  }
-  concat(desc, "let mock_status = ", status_str, ";\n",
-    "let mock_body = ", body_str, ";")
+fn emit_mock_prop_setup(mock_prop: FieldInit, registry: Map<String, ItemInfo>) -> String {
+  let body_str = emit_expr(expr: mock_prop.value, registry: registry)
+  concat("let ", mock_prop.name, " = ", body_str, ";")
 }
 
 // =========================================================================
@@ -1495,13 +1651,14 @@ fn rust_ident(name: String) -> String {
 fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
   let header = concat("[package]\nname = \"", crate_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
   let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\n"
+  let cli_dep = "clap = { version = \"4\", features = [\"derive\"] }\n"
   let async_deps = if has_services {
     "tokio = { version = \"1\", features = [\"full\"] }\nreqwest = { version = \"0.12\", features = [\"json\"] }\nasync-trait = \"0.1\"\n"
   } else {
     ""
   }
   let lazy_dep = "lazy_static = \"1\"\n"
-  TextFile { path: "Cargo.toml", content: concat(header, deps, async_deps, lazy_dep) }
+  TextFile { path: "Cargo.toml", content: concat(header, deps, cli_dep, async_deps, lazy_dep) }
 }
 
 // Check if a typed graph has any service definitions (for Cargo.toml generation).
@@ -1509,4 +1666,300 @@ fn has_service_items(typed: TypedGraph) -> Bool {
   typed.modules |> any(tm =>
     tm.items |> any(item => is_typed_service_item(item: item))
   )
+}
+
+// =========================================================================
+// Workflow function collection
+//
+// A "workflow function" is a `func` item (has body, has `uses`).
+// These become CLI subcommands in main.rs.
+// =========================================================================
+
+type WorkflowFunc {
+  name: String
+  module_name: String
+  params: List<Param>
+  return_type: TypeExpr
+  uses: List<ResourceUse>
+  service_names: List<String>
+}
+
+fn to_workflow_func(item: TypedNode, module_name: String) -> WorkflowFunc {
+  let body_expr = typed_expr_to_expr(texpr: item.body.value)
+  let svc_names = unique_strings(items: collect_service_calls(expr: body_expr))
+  WorkflowFunc {
+    name: item.name,
+    module_name: module_name,
+    params: item.params,
+    return_type: item.return_type,
+    uses: item.uses,
+    service_names: svc_names
+  }
+}
+
+fn collect_workflow_funcs(modules: List<TypedModule>) -> List<WorkflowFunc> {
+  modules |> flat_map(tm =>
+    tm.items
+      |> filter(item => item.body != none && item.uses |> count > 0)
+      |> map(item => to_workflow_func(item: item, module_name: tm.module.name))
+  )
+}
+
+// =========================================================================
+// main.rs generation
+//
+// Generates a CLI entry point using clap with one subcommand per workflow
+// function. Each subcommand accepts the function's params as CLI args
+// plus a --dry-run flag that replaces service calls with mock responses.
+// =========================================================================
+
+fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool) -> TextFile {
+  let header = concat(
+    "// Generated by v2 compiler — do not edit.\n\n",
+    concat("use clap::", ":", "{", "Parser, Subcommand", "}", ";\n")
+  )
+  let crate_use = if has_services {
+    "use v2_compiled::dry_run::DryRunMode;\n"
+  } else {
+    ""
+  }
+  let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs)
+  let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs)
+  let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs)
+  let main_fn = emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services)
+  let content = concat(
+    header, crate_use, mod_uses, "\n",
+    cli_struct, "\n\n",
+    subcommand_enum, "\n\n",
+    main_fn, "\n"
+  )
+  TextFile { path: "src/main.rs", content: content }
+}
+
+// Emit `use crate::module_name;` for each module that contains a workflow function.
+fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>) -> String {
+  let mod_names = workflow_funcs |> map(wf => module_to_filename(name: wf.module_name))
+  let unique_mods = unique_strings(items: mod_names)
+  let use_lines = unique_mods |> map(m => concat("use v2_compiled::", m, ";"))
+  use_lines |> join(separator: "\n")
+}
+
+// Emit the top-level CLI struct with clap derives.
+fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>) -> String {
+  concat(
+    "#[derive(Parser)]\n",
+    "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n",
+    "struct Cli {\n",
+    "    #[command(subcommand)]\n",
+    "    command: Commands,\n",
+    "    /// Run in dry-run mode (mock all service calls)\n",
+    "    #[arg(long, global = true)]\n",
+    "    dry_run: bool,\n",
+    "}"
+  )
+}
+
+// Emit the Commands enum with one variant per workflow function.
+fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>) -> String {
+  let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf))
+  let variants_str = variants |> join(separator: "\n")
+  concat(
+    "#[derive(Subcommand)]\n",
+    "enum Commands {\n",
+    indent(text: variants_str, level: 1), "\n",
+    "}"
+  )
+}
+
+// Emit one enum variant for a workflow function.
+// `func gist(public: Bool = false)` becomes:
+// ```
+// /// Run the gist workflow
+// Gist {
+//     #[arg(long)]
+//     public: bool,
+// },
+// ```
+fn emit_subcommand_variant(wf: WorkflowFunc) -> String {
+  let variant_name = capitalize_first(s: wf.name)
+  let doc_line = concat("/// Run the ", wf.name, " workflow")
+  if wf.params |> count == 0 {
+    concat(doc_line, "\n", variant_name, ",")
+  } else {
+    let fields = wf.params |> map(p => emit_subcommand_field(param: p))
+    let fields_str = fields |> join(separator: "\n")
+    concat(doc_line, "\n", variant_name, " {\n",
+      indent(text: fields_str, level: 1), "\n",
+      "},")
+  }
+}
+
+// Emit a struct field inside a subcommand variant, with clap attributes.
+fn emit_subcommand_field(param: Param) -> String {
+  let field_name = rust_ident(name: param.name)
+  let field_type = emit_cli_param_type(type_expr: param.type_expr)
+  let default_attr = match param.default_value {
+    Some { value: dv } => concat("#[arg(long, default_value = \"", emit_cli_default_value(expr: dv), "\")]\n")
+    None => "#[arg(long)]\n"
+  }
+  concat(default_attr, field_name, ": ", field_type, ",")
+}
+
+// Map DSL types to Rust CLI types.
+// Bool -> bool, String -> String, Int -> i64, etc.
+// Optional types get wrapped in Option<>.
+fn emit_cli_param_type(type_expr: TypeExpr) -> String {
+  match type_expr {
+    Primitive { name: n, span: _ } =>
+      if n == "Bool" { "bool" }
+      else if n == "Int" { "i64" }
+      else if n == "Float" { "f64" }
+      else { "String" }
+    Optional { inner: inn, span: _ } =>
+      concat("Option<", emit_cli_param_type(type_expr: inn), ">")
+    Named { name: n, span: _ } =>
+      // Named types like CommitSha, Url are newtypes over String
+      "String"
+    _ => "String"
+  }
+}
+
+// Render a default value expression for clap's default_value string.
+fn emit_cli_default_value(expr: Expr) -> String {
+  match expr {
+    Literal { value: v, span: _ } => match v {
+      LitStr { value: s } => s
+      LitInt { value: i } => to_string(value: i)
+      LitFloat { value: f } => f
+      LitBool { value: b } => if b { "true" } else { "false" }
+      LitNull => ""
+    }
+    _ => ""
+  }
+}
+
+// Emit the main function body.
+fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool) -> String {
+  let async_attr = if has_services { "#[tokio::main]\nasync fn main() " } else { "fn main() " }
+  let parse_line = "let cli = Cli::parse();"
+  let dry_run_line = if has_services {
+    "let dry_run = DryRunMode(cli.dry_run);"
+  } else {
+    ""
+  }
+  let match_arms = workflow_funcs |> map(wf => emit_main_match_arm(wf: wf, has_services: has_services))
+  let arms_str = match_arms |> join(separator: "\n")
+  let match_block = concat("match cli.command {\n", indent(text: arms_str, level: 2), "\n    }")
+  let result_handling = if has_services {
+    concat(
+      "let result = ", match_block, ";\n",
+      "match result {\n",
+      "    Ok(value) => {\n",
+      "        let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n",
+      "        println!(\"{}\", json);\n",
+      "    }\n",
+      "    Err(e) => {\n",
+      "        eprintln!(\"Error: {}\", e);\n",
+      "        std::process::exit(1);\n",
+      "    }\n",
+      "}"
+    )
+  } else {
+    concat("let _result = ", match_block, ";")
+  }
+  let body_lines = if dry_run_line == "" {
+    concat(parse_line, "\n", result_handling)
+  } else {
+    concat(parse_line, "\n", dry_run_line, "\n", result_handling)
+  }
+  concat(async_attr, "{\n", indent(text: body_lines, level: 1), "\n}")
+}
+
+// Emit one match arm in the main function for a workflow function.
+fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
+  let variant_name = capitalize_first(s: wf.name)
+  let mod_name = module_to_filename(name: wf.module_name)
+  let fn_name = rust_ident(name: wf.name)
+  let await_suffix = if has_services { ".await" } else { "" }
+  if wf.params |> count == 0 {
+    let service_args = emit_main_service_args(wf: wf, has_services: has_services)
+    concat("Commands::", variant_name, " => ",
+      mod_name, "::", fn_name, "(", service_args, ")", await_suffix, ",")
+  } else {
+    let field_binds = wf.params |> map(p => rust_ident(name: p.name))
+    let binds_str = field_binds |> join(separator: ", ")
+    let call_args = emit_main_call_args(wf: wf, has_services: has_services)
+    concat("Commands::", variant_name, " { ", binds_str, " } => ",
+      mod_name, "::", fn_name, "(", call_args, ")", await_suffix, ",")
+  }
+}
+
+// Emit the argument list for calling a workflow function from main.
+// Includes the function's params, then service instance args.
+fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
+  let param_args = wf.params |> map(p =>
+    let arg_name = rust_ident(name: p.name)
+    if needs_reference(type_expr: p.type_expr) {
+      concat("&", arg_name)
+    } else {
+      arg_name
+    }
+  )
+  let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
+  let all_args = concat(param_args, service_args)
+  all_args |> join(separator: ", ")
+}
+
+// Emit service args only (no user params) for zero-param workflow functions.
+fn emit_main_service_args(wf: WorkflowFunc, has_services: Bool) -> String {
+  let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
+  service_args |> join(separator: ", ")
+}
+
+// Build the list of service instance arguments for a workflow call.
+// Each service gets constructed with `::new(dry_run.clone())` or `::new()`.
+fn emit_main_service_arg_list(wf: WorkflowFunc, has_services: Bool) -> List<String> {
+  let resource_args = wf.uses |> map(u =>
+    // Resources are passed by reference; construct a default instance
+    concat("&Default::default()")
+  )
+  let svc_args = wf.service_names |> map(sn =>
+    let struct_name = sanitize_service_name(name: sn)
+    if has_services {
+      concat("&", struct_name, "::new(dry_run.clone())")
+    } else {
+      concat("&", struct_name, "::new()")
+    }
+  )
+  concat(resource_args, svc_args)
+}
+
+// =========================================================================
+// Dry-run module emission
+//
+// Generates src/dry_run.rs with the DryRunMode type.
+// Service structs check this flag to decide whether to perform real I/O
+// or return mock data.
+// =========================================================================
+
+fn emit_dry_run_module() -> TextFile {
+  let content = concat(
+    "// Generated by v2 compiler — do not edit.\n",
+    "//\n",
+    "// Dry-run support: when DryRunMode(true), service methods return\n",
+    "// mock data instead of performing real I/O.\n\n",
+    "#[derive(Debug, Clone)]\n",
+    "pub struct DryRunMode(pub bool);\n\n",
+    "impl DryRunMode {\n",
+    "    pub fn is_dry_run(&self) -> bool {\n",
+    "        self.0\n",
+    "    }\n",
+    "}\n\n",
+    "impl Default for DryRunMode {\n",
+    "    fn default() -> Self {\n",
+    "        DryRunMode(false)\n",
+    "    }\n",
+    "}\n"
+  )
+  TextFile { path: "src/dry_run.rs", content: content }
 }

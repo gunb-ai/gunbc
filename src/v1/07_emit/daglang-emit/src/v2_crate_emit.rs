@@ -370,6 +370,23 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    // 4d. Build set of function names that return Optional types (T?)
+    let global_optional_return_fns: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    if matches!(&fd.return_type, daglang_syntax::ast::TypeExpr::Optional(_)) {
+                        Some(crate::type_codegen::to_snake_case(&fd.name))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
     let global_fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType> = modules
         .iter()
         .flat_map(|(_, sf)| {
@@ -401,7 +418,10 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
-    // 4b. Build cross-module enum_variants for context-aware variant resolution
+    // 4b. Build enum accessor fields (common fields across all variants)
+    let enum_accessor_fields = type_codegen::build_enum_accessor_fields(&all_type_defs);
+
+    // 4b2. Build cross-module enum_variants for context-aware variant resolution
     let all_enum_variants: HashMap<String, HashSet<String>> = all_type_defs
         .iter()
         .filter_map(|td| {
@@ -473,6 +493,8 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &global_fn_return_types,
             &global_fn_return_ir_types,
             &global_fn_param_types,
+            &enum_accessor_fields,
+            &global_optional_return_fns,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -641,6 +663,8 @@ fn emit_module(
     global_fn_return_types: &HashMap<String, String>,
     global_fn_return_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
     global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
+    enum_accessor_fields: &HashMap<String, HashSet<String>>,
+    optional_return_fns: &HashSet<String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -699,6 +723,8 @@ fn emit_module(
         struct_field_ir_types: struct_field_ir_types.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
+        enum_accessor_fields: enum_accessor_fields.clone(),
+        optional_return_fns: optional_return_fns.clone(),
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_ir_types: std::collections::HashMap::new(),

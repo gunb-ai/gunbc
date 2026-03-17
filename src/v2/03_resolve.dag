@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Item, Diagnostic, Severity }
+import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Node, Connective, Conj, Disj, Diagnostic, Severity }
 
 // =========================================================================
 // Output types
@@ -254,38 +254,17 @@ fn get_import_specific_names(names: ImportNames) -> List<String> {
 }
 
 // Extract the primary name from an item.
-fn get_item_name(item: Item) -> String {
-  match item {
-    TypeDef { name: n } => n
-    FuncDef { name: n } => n
-    FnDef { name: n } => n
-    ServiceDef { name: n } => n
-    ResourceDef { name: n } => n
-    DataDef { name: n } => n
-    ExternFuncDecl { name: n } => n
-    PatternDef { name: n } => n
-  }
+fn get_item_name(item: Node) -> String {
+  item.name
 }
 
 // Extract variant constructor names from a type definition.
-// For sum types, each variant name is importable. For other items,
-// returns an empty list.
-fn get_variant_names(item: Item) -> List<String> {
-  match item {
-    TypeDef { name: _, body: body } => {
-      match body {
-        Sum { variants: vs } => vs |> map(v => v.name)
-        Record { fields: _ } => []
-        Alias { base: _ } => []
-      }
-    }
-    FuncDef { name: _ } => []
-    FnDef { name: _ } => []
-    ServiceDef { name: _ } => []
-    ResourceDef { name: _ } => []
-    DataDef { name: _ } => []
-    ExternFuncDecl { name: _ } => []
-    PatternDef { name: _ } => []
+// For sum types (disjunction), each child node is a variant whose name
+// is importable. For other items, returns an empty list.
+fn get_variant_names(item: Node) -> List<String> {
+  match item.connective {
+    Some { value: Disj } => item.children |> map(c => c.name)
+    _ => []
   }
 }
 

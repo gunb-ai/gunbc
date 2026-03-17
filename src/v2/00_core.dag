@@ -92,7 +92,7 @@ type TokenKind
 type Module {
   name: String
   imports: List<Import>
-  items: List<Item>
+  items: List<Node>
   span: SourceSpan
 }
 
@@ -105,19 +105,6 @@ type Import {
   names: ImportNames
   span: SourceSpan
 }
-
-type Item
-  = TypeDef { name: String, body: TypeBody, span: SourceSpan }
-  // func: workflow function (may use resources, services, transport)
-  | FuncDef { name: String, params: List<Param>, return_type: TypeExpr?, uses: List<ResourceUse>, body: Expr, span: SourceSpan }
-  // fn: pure function (expression body, no side effects)
-  | FnDef { name: String, params: List<Param>, return_type: TypeExpr?, body: Expr, span: SourceSpan }
-  | ServiceDef { name: String, transport: TransportBinding, config: ServiceConfig?, operations: List<OperationDef>, span: SourceSpan }
-  | ResourceDef { name: String, properties: List<FieldInit>, capabilities: List<CapabilityDef>, span: SourceSpan }
-  | DataDef { name: String, type_expr: TypeExpr, value: Expr, span: SourceSpan }
-  | ExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
-  // pattern: composable workflow (same syntax as func, different semantic role)
-  | PatternDef { name: String, params: List<Param>, return_type: TypeExpr?, uses: List<ResourceUse>, body: Expr, span: SourceSpan }
 
 // =========================================================================
 // Type expressions
@@ -152,10 +139,10 @@ type TypeExpr
 
 type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
-type TypeBody
-  = Record { fields: List<Field> }
-  | Sum { variants: List<Variant> }
-  | Alias { base: TypeExpr }
+// Connective — the logical primitive for type structure.
+// Conj = conjunction: all children hold simultaneously (record fields).
+// Disj = disjunction: exactly one child holds (sum variants).
+type Connective = Conj | Disj
 
 type Field {
   name: String
@@ -275,17 +262,6 @@ type ServiceConfig {
   retry: Expr?
 }
 
-type ResponseMapping {
-  status: Expr
-  type_expr: TypeExpr
-}
-
-type MockResponseDef {
-  status: Expr
-  body: Expr
-  description: String?
-}
-
 type AuthConfig {
   scheme: String
   header: String
@@ -295,22 +271,18 @@ type AuthConfig {
 type HeaderDef { name: String, value: Expr }
 type EnvDef { name: String, value: Expr }
 
+// OperationDef: parse-intermediate type. The parser reads operations using this
+// shape, then dissolves fields into Node properties and return_type.
 type OperationDef {
   name: String
   inputs: List<Field>
   outputs: List<Field>
-  response: List<ResponseMapping>
-  mock_response: List<MockResponseDef>
-  exit_mappings: List<ExitMapping>
-  modifiers: List<OperationModifier>
+  response_props: List<FieldInit>
+  mock_props: List<FieldInit>
+  exit_props: List<FieldInit>
+  modifier_props: List<FieldInit>
   transport: TransportBinding?
   span: SourceSpan
-}
-
-type ExitMapping {
-  code: Expr
-  type_expr: TypeExpr
-  description: String?
 }
 
 type OperationModifier = Idempotent | Readonly | Hermetic
@@ -326,7 +298,7 @@ type CapabilityDef {
 // Render target — which language the emitter produces.
 // =========================================================================
 
-type RenderTarget = Rust | Python
+type RenderTarget = Rust | Python | Go
 
 // =========================================================================
 // Compiler output
@@ -359,20 +331,56 @@ type Severity = Error | Warning
 // Every expression carries its resolved TypeExpr.
 // =========================================================================
 
-type TypedExpr {
-  expr: Expr
-  resolved_type: TypeExpr
-}
+type TypedExpr
+  = TypedLiteral { value: LiteralValue, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedVar { name: String, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedFieldAccess { base: TypedExpr, field: String, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedCall { func: String, args: List<TypedNamedArg>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedMethodCall { receiver: TypedExpr, method: String, args: List<TypedNamedArg>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedMatch { scrutinee: TypedExpr, arms: List<TypedMatchArm>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedIf { condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedLet { name: String, value: TypedExpr, body: TypedExpr?, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedRecordLit { type_name: String?, fields: List<TypedFieldInit>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedListLit { elements: List<TypedExpr>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedBinOp { op: BinOpKind, left: TypedExpr, right: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedUnaryOp { op: UnaryOpKind, operand: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedLambda { params: List<String>, body: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedStringInterp { parts: List<TypedStringPart>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedBlock { stmts: List<TypedExpr>, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedCast { expr: TypedExpr, target: TypeExpr, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedForEach { variable: String, collection: TypedExpr, body: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedIndex { base: TypedExpr, index: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  | TypedSlice { base: TypedExpr, start: TypedExpr, end: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
 
-type TypedItem
-  = TypedTypeDef { name: String, body: TypeBody, span: SourceSpan }
-  | TypedFnDef { name: String, params: List<Param>, return_type: TypeExpr, body: TypedExpr, span: SourceSpan }
-  | TypedFuncDef { name: String, params: List<Param>, return_type: TypeExpr, uses: List<ResourceUse>, body: TypedExpr, span: SourceSpan }
-  | TypedServiceDef { name: String, transport: TransportBinding, config: ServiceConfig?, operations: List<OperationDef>, span: SourceSpan }
-  | TypedResourceDef { name: String, properties: List<FieldInit>, capabilities: List<CapabilityDef>, span: SourceSpan }
-  | TypedDataDef { name: String, type_expr: TypeExpr, value: TypedExpr, span: SourceSpan }
-  | TypedExternFuncDecl { name: String, params: List<Param>, return_type: TypeExpr, span: SourceSpan }
-  | TypedPatternDef { name: String, params: List<Param>, return_type: TypeExpr, uses: List<ResourceUse>, body: TypedExpr, span: SourceSpan }
+type TypedNamedArg { name: String?, value: TypedExpr }
+type TypedMatchArm { pattern: MatchPattern, guard: TypedExpr?, body: TypedExpr }
+type TypedFieldInit { name: String, value: TypedExpr }
+type TypedStringPart = TypedText { value: String } | TypedInterpolation { expr: TypedExpr }
+
+// Utility: strip TypedExpr back to Expr (needed for TCO analysis, service call collection)
+fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
+  match texpr {
+    TypedLiteral { value: v, resolved_type: _, span: s } => Literal { value: v, span: s }
+    TypedVar { name: n, resolved_type: _, span: s } => Var { name: n, span: s }
+    TypedFieldAccess { base: b, field: f, resolved_type: _, span: s } => FieldAccess { base: typed_expr_to_expr(texpr: b), field: f, span: s }
+    TypedCall { func: f, args: a, resolved_type: _, span: s } => Call { func: f, args: a |> map(ta => NamedArg { name: ta.name, value: typed_expr_to_expr(texpr: ta.value) }), span: s }
+    TypedMethodCall { receiver: r, method: m, args: a, resolved_type: _, span: s } => MethodCall { receiver: typed_expr_to_expr(texpr: r), method: m, args: a |> map(ta => NamedArg { name: ta.name, value: typed_expr_to_expr(texpr: ta.value) }), span: s }
+    TypedMatch { scrutinee: sc, arms: arms, resolved_type: _, span: s } => Match { scrutinee: typed_expr_to_expr(texpr: sc), arms: arms |> map(a => MatchArm { pattern: a.pattern, guard: if a.guard != none { Some { value: typed_expr_to_expr(texpr: a.guard.value) } } else { none }, body: typed_expr_to_expr(texpr: a.body) }), span: s }
+    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: s } => If { condition: typed_expr_to_expr(texpr: c), then_branch: typed_expr_to_expr(texpr: t), else_branch: if e != none { Some { value: typed_expr_to_expr(texpr: e.value) } } else { none }, span: s }
+    TypedLet { name: n, value: v, body: b, resolved_type: _, span: s } => Let { name: n, value: typed_expr_to_expr(texpr: v), body: if b != none { Some { value: typed_expr_to_expr(texpr: b.value) } } else { none }, span: s }
+    TypedRecordLit { type_name: tn, fields: fs, resolved_type: _, span: s } => RecordLit { type_name: tn, fields: fs |> map(fi => FieldInit { name: fi.name, value: typed_expr_to_expr(texpr: fi.value) }), span: s }
+    TypedListLit { elements: els, resolved_type: _, span: s } => ListLit { elements: els |> map(e => typed_expr_to_expr(texpr: e)), span: s }
+    TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: s } => BinOp { op: o, left: typed_expr_to_expr(texpr: l), right: typed_expr_to_expr(texpr: r), span: s }
+    TypedUnaryOp { op: o, operand: e, resolved_type: _, span: s } => UnaryOp { op: o, operand: typed_expr_to_expr(texpr: e), span: s }
+    TypedLambda { params: ps, body: bd, resolved_type: _, span: s } => Lambda { params: ps, body: typed_expr_to_expr(texpr: bd), span: s }
+    TypedStringInterp { parts: ps, resolved_type: _, span: s } => StringInterp { parts: ps |> map(p => match p { TypedText { value: v } => Text { value: v }, TypedInterpolation { expr: e } => Interpolation { expr: typed_expr_to_expr(texpr: e) } }), span: s }
+    TypedBlock { stmts: ss, resolved_type: _, span: s } => Block { stmts: ss |> map(st => typed_expr_to_expr(texpr: st)), span: s }
+    TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: t, span: s }
+    TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: s } => ForEach { variable: v, collection: typed_expr_to_expr(texpr: c), body: typed_expr_to_expr(texpr: bd), span: s }
+    TypedIndex { base: b, index: i, resolved_type: _, span: s } => Index { base: typed_expr_to_expr(texpr: b), index: typed_expr_to_expr(texpr: i), span: s }
+    TypedSlice { base: b, start: st, end: e, resolved_type: _, span: s } => Slice { base: typed_expr_to_expr(texpr: b), start: typed_expr_to_expr(texpr: st), end: typed_expr_to_expr(texpr: e), span: s }
+  }
+}
 
 type FuncSig {
   name: String
@@ -384,3 +392,54 @@ type FuncSig {
 type FuncEnv {
   signatures: Map<String, FuncSig>
 }
+
+// =========================================================================
+// Node — unified recursive structure
+//
+// Everything is a node in DAG composition. Keywords (fn, type, service)
+// are parse sugar that tell the parser what fields to expect. After
+// parsing, everything is a Node. The checker validates edge constraints
+// on node properties — never asks "what keyword?"
+//
+// The type is self-referential: children: List<Node>. An operation is a
+// Node with params and return_type. A capability is a Node with
+// input/output ports. OperationDef and CapabilityDef dissolve into Node.
+// =========================================================================
+
+type Node {
+  name: String
+  span: SourceSpan
+  // Fractal composition — operations, capabilities, items are all children
+  children: List<Node>
+  // Logical connective — And (record/all-hold), Or (sum/one-holds), none (leaf)
+  connective: Connective?
+  // Ports — what flows in and out
+  params: List<Param>
+  return_type: TypeExpr?
+  uses: List<ResourceUse>
+  // Computation — how it executes (none = externally provided)
+  body: Expr?
+  // Binding — external execution strategy
+  transport: TransportBinding?
+  // Metadata
+  properties: List<FieldInit>
+  type_annotation: TypeExpr?
+  config: ServiceConfig?
+}
+
+type TypedNode {
+  name: String
+  span: SourceSpan
+  children: List<TypedNode>
+  connective: Connective?
+  params: List<Param>
+  return_type: TypeExpr
+  uses: List<ResourceUse>
+  body: TypedExpr?
+  transport: TransportBinding?
+  properties: List<FieldInit>
+  type_annotation: TypeExpr?
+  config: ServiceConfig?
+}
+
+
