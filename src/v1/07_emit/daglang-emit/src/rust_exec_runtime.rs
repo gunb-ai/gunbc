@@ -1250,7 +1250,6 @@ mod tests {
                 idempotent: true,
                 readonly: false,
                 spec: None,
-
             }),
             is_interactive: false,
             resource_target: None,

@@ -5888,9 +5888,7 @@ fn is_valid_auth_scheme(scheme: &str) -> bool {
     matches!(scheme, "BearerToken" | "Basic" | "ApiKey" | "None") || scheme.starts_with("Header(")
 }
 
-fn validate_service_response_provider(
-    service: &daglang_syntax::ast::ServiceDef,
-) -> Vec<TypeError> {
+fn validate_service_response_provider(service: &daglang_syntax::ast::ServiceDef) -> Vec<TypeError> {
     let mut errors = Vec::new();
     if let Some(provider) = service.config.response_provider.as_deref() {
         if provider.parse::<ResponseProvider>().is_err() {

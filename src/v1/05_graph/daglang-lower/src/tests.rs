@@ -2596,7 +2596,6 @@ fn classify_obligation_uses_structural_lowered_metadata() {
             idempotent: true,
             readonly: true,
             spec: None,
-
         }),
         is_interactive: false,
         resource_target: None,
@@ -2696,7 +2695,6 @@ fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
                 idempotent: true,
                 readonly: true,
                 spec: None,
-    
             }),
             is_interactive: false,
             resource_target: None,
@@ -3574,7 +3572,6 @@ fn make_branch_body_dag_with_transports_has_triplets() {
             idempotent: true,
             readonly: true,
             spec: None,
-
         },
         prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
         parse_output: "result".to_string(),
@@ -3629,7 +3626,6 @@ fn branch_body_dag_with_transports_builds_with_branch_builder() {
             idempotent: true,
             readonly: true,
             spec: None,
-
         },
         prepare_inputs: vec!["bucket".to_string()],
         parse_output: "result".to_string(),

@@ -1417,8 +1417,7 @@ service custom.Api {
 }
 "#,
     )]);
-    let errors =
-        typecheck_module_graph(&graph).expect_err("unknown response_provider should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("unknown response_provider should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::InvalidResponseProvider { service, provider }

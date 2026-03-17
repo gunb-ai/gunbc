@@ -1493,7 +1493,6 @@ mod tests {
                 env: vec![],
                 exit_mapping: vec![],
             })),
-
         }
     }
 
@@ -1547,7 +1546,6 @@ mod tests {
                 env: vec![],
                 exit_mapping: vec![],
             })),
-
         }
     }
 
@@ -1784,7 +1782,6 @@ mod tests {
                 output_shape: None,
                 mock_responses: vec![],
             }))),
-
         }
     }
 
@@ -1851,7 +1848,6 @@ mod tests {
                 output_shape: None,
                 mock_responses: vec![],
             }))),
-
         }
     }
 
@@ -2007,7 +2003,6 @@ mod tests {
                 idempotent: false,
                 readonly: false,
                 spec: None,
-    
             },
         );
         let err = resolve_node(&node).unwrap_err();
@@ -2129,21 +2124,23 @@ mod tests {
     #[test]
     fn normalize_release_resource_inputs_uses_structural_resource_release_kind() {
         let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "release_filesystem",
-            vec![Port::new("resource_handle", "ResourceHandle")],
-            vec![Port::new("released", "Bool")],
-            LoweredOp::Callable {
-                module: "std.resources".to_string(),
-                kind: CallableKind::Pattern,
-                name: "resource_lifecycle::release::Filesystem".to_string(),
-                obligation: CallableObligation::ResourceRelease,
-                is_interactive: false,
-                resource_target: None,
-                fn_body: None,
-            },
-        )
-        .with_kind(NodeKind::ResourceRelease));
+        dag.add_node(
+            Node::opaque(
+                "release_filesystem",
+                vec![Port::new("resource_handle", "ResourceHandle")],
+                vec![Port::new("released", "Bool")],
+                LoweredOp::Callable {
+                    module: "std.resources".to_string(),
+                    kind: CallableKind::Pattern,
+                    name: "resource_lifecycle::release::Filesystem".to_string(),
+                    obligation: CallableObligation::ResourceRelease,
+                    is_interactive: false,
+                    resource_target: None,
+                    fn_body: None,
+                },
+            )
+            .with_kind(NodeKind::ResourceRelease),
+        );
 
         let resolved = resolve_lowered_dag_with(&dag).expect("release node should resolve");
         let release_node = resolved

@@ -2070,7 +2070,9 @@ fn test_remap_mode_inputs_simulate() {
     match result {
         ExecutionMode::Simulate(config) => {
             assert_eq!(
-                config.boundary_mocks.get_input("subdag/inner", "inner_port"),
+                config
+                    .boundary_mocks
+                    .get_input("subdag/inner", "inner_port"),
                 Some(&Value::Int(99)),
                 "Simulate boundary mocks should be remapped"
             );
@@ -2278,6 +2280,24 @@ fn validate_node_kinds_rejects_kindless_resource_environment() {
     assert!(
         msg.contains("effectful output") && msg.contains("FilesystemHandle"),
         "expected effectful FilesystemHandle output mention: {msg}"
+    );
+}
+
+#[test]
+fn validate_node_kinds_rejects_kindless_wrapped_resource_environment() {
+    let mut dag: Dag<Produce> = Dag::new();
+    dag.add_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![optional("handle", "Optional<FilesystemHandle>")],
+        Produce::produce("handle", Value::Str("fs".into())),
+    ));
+    let err = validate_node_kinds_for_interception(&dag);
+    assert!(err.is_err());
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("effectful output") && msg.contains("Optional<FilesystemHandle>"),
+        "expected wrapped FilesystemHandle output mention: {msg}"
     );
 }
 

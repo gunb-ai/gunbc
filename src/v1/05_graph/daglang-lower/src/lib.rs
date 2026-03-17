@@ -6395,8 +6395,10 @@ fn derive_operation_spec(
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation, response_classification)?
-                .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
+            Ok(
+                derive_rest_spec(service, operation, response_classification)?
+                    .map(|s| ServiceOperationSpec::Rest(Box::new(s))),
+            )
         }
         ServiceTransportClass::ShellLocal => {
             Ok(derive_shell_spec(service, operation, data_registry)?

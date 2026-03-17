@@ -1375,7 +1375,6 @@ mod tests {
             idempotent: true,
             readonly: false,
             spec: None,
-
         };
         let node = make_node(
             "execute_cmd",
@@ -1414,7 +1413,6 @@ mod tests {
             idempotent: true,
             readonly: true,
             spec: None,
-
         };
         let node = make_node(
             "execute_list_repos",
@@ -1450,7 +1448,6 @@ mod tests {
             idempotent: true,
             readonly: true,
             spec: None,
-
         };
         let node = make_node(
             "prepare_list_repos",

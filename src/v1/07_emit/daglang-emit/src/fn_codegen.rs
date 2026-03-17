@@ -1151,8 +1151,8 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 };
             }
             // Enum common field access → method call (Rust enums don't support direct field access)
-            if let Some(recv_type) = infer_known_expr_ir_type(receiver, ctx)
-                .and_then(|ty| named_type_from_ir(&ty))
+            if let Some(recv_type) =
+                infer_known_expr_ir_type(receiver, ctx).and_then(|ty| named_type_from_ir(&ty))
             {
                 if let Some(accessor_fields) = ctx.enum_accessor_fields.get(&recv_type) {
                     if accessor_fields.contains(field.as_str()) {
@@ -1667,7 +1667,10 @@ fn compile_intrinsic_call(
     if args.is_empty() {
         return None;
     }
-    let collection = clone_if_needed(compile_expr(&args[0].1, ctx, counter), ctx.fold_accum_name.as_deref());
+    let collection = clone_if_needed(
+        compile_expr(&args[0].1, ctx, counter),
+        ctx.fold_accum_name.as_deref(),
+    );
 
     match name {
         "map" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
@@ -2068,11 +2071,7 @@ fn compile_intrinsic_call(
                             params
                                 .first()
                                 .map(|p| {
-                                    substitute_var(
-                                        &compiled,
-                                        p,
-                                        &code_ir::Expr::Var(elem.clone()),
-                                    )
+                                    substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()))
                                 })
                                 .unwrap_or(compiled)
                         }
@@ -2099,9 +2098,7 @@ fn compile_intrinsic_call(
                                     value: code_ir::Expr::BinOp {
                                         left: Box::new(code_ir::Expr::Var(result.clone())),
                                         op: "+".to_string(),
-                                        right: Box::new(code_ir::Expr::RawCode(
-                                            "1i64".to_string(),
-                                        )),
+                                        right: Box::new(code_ir::Expr::RawCode("1i64".to_string())),
                                     },
                                 }],
                                 else_body: None,
@@ -2133,7 +2130,10 @@ fn compile_intrinsic_call(
             if let ast::Expr::Call(inner_name, inner_args) = &args[0].1 {
                 // first(skip(list, n)) → list.get(n as usize).cloned()
                 if inner_name == "skip" && inner_args.len() == 2 {
-                    let list = clone_if_needed(compile_expr(&inner_args[0].1, ctx, counter), ctx.fold_accum_name.as_deref());
+                    let list = clone_if_needed(
+                        compile_expr(&inner_args[0].1, ctx, counter),
+                        ctx.fold_accum_name.as_deref(),
+                    );
                     let idx = compile_expr(&inner_args[1].1, ctx, counter);
                     return Some(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::MethodCall {
@@ -2159,11 +2159,7 @@ fn compile_intrinsic_call(
                             params
                                 .first()
                                 .map(|p| {
-                                    substitute_var(
-                                        &compiled,
-                                        p,
-                                        &code_ir::Expr::Var(elem.clone()),
-                                    )
+                                    substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()))
                                 })
                                 .unwrap_or(compiled)
                         }
@@ -2189,9 +2185,7 @@ fn compile_intrinsic_call(
                                     code_ir::Stmt::Assign {
                                         dest: code_ir::Expr::Var(result.clone()),
                                         value: code_ir::Expr::Call {
-                                            func: Box::new(code_ir::Expr::Var(
-                                                "Some".to_string(),
-                                            )),
+                                            func: Box::new(code_ir::Expr::Var("Some".to_string())),
                                             args: vec![code_ir::Expr::Var(elem)],
                                             obligation: None,
                                         },
@@ -2464,9 +2458,7 @@ fn compile_intrinsic_call(
                     let compiled = compile_expr(body, ctx, counter);
                     params
                         .first()
-                        .map(|p| {
-                            substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()))
-                        })
+                        .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                         .unwrap_or(compiled)
                 }
                 other => code_ir::Expr::Call {
@@ -2479,9 +2471,7 @@ fn compile_intrinsic_call(
                 code_ir::Stmt::Let {
                     name: result.clone(),
                     mutable: true,
-                    expr: code_ir::Expr::RawCode(
-                        "std::collections::HashMap::new()".to_string(),
-                    ),
+                    expr: code_ir::Expr::RawCode("std::collections::HashMap::new()".to_string()),
                     ir_type: None,
                 },
                 code_ir::Stmt::For {
@@ -2735,9 +2725,10 @@ fn compile_fold_intrinsic(
                     fold_ctx.use_counts.insert(param.clone(), count);
                 }
             }
-            let mut compiled = fold_ctx.with_expr_path(path.child(ExprPathStep::LambdaBody), || {
-                compile_expr(body, &fold_ctx, counter)
-            });
+            let mut compiled = fold_ctx
+                .with_expr_path(path.child(ExprPathStep::LambdaBody), || {
+                    compile_expr(body, &fold_ctx, counter)
+                });
             if let Some(p) = params.first() {
                 compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(acc.clone()));
             }
@@ -3482,10 +3473,7 @@ fn compile_match_arm(
         }
         // Special case: Some { value: binding } → propagate the inner type
         // from the scrutinee's Optional type to the binding.
-        if variant_name == "Some"
-            && fields.len() == 1
-            && fields[0].0 == "value"
-        {
+        if variant_name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
             if let ast::Pattern::Ident(bind_name) = &fields[0].1 {
                 if let Some(IrType::Optional(inner)) = scrutinee_ir_type {
                     ir_type_bindings.push((bind_name.clone(), inner.as_ref().clone()));

@@ -22,6 +22,9 @@
 //!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
+//! The pre-flight validator only reuses the core `TypeRegistry` to classify
+//! builtin and container-wrapped core types while checking for `kind: Pure`
+//! misclassifications.
 
 use crate::error::{ErrorLayer, ExecError, IntoExecResult, NodeRole, NodeTraceLayer};
 use crate::intercept::BoundaryMocks;
@@ -33,11 +36,11 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, normalize_resource_id, AccessMode,
     AppliedCoercion, BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId,
-    NodeKind, PortName, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    NodeKind, PortName, TypeId, TypeRegistry, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::sync::mpsc;
+use std::sync::{mpsc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -1313,7 +1316,8 @@ fn build_node_inputs<T>(
     if let Some(mocks) = input_mocks {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
+                if let Some(mock_value) =
+                    resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
                 {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
@@ -1329,7 +1333,8 @@ fn build_node_inputs<T>(
     {
         for port in &node.inputs {
             if !inputs.contains_key(&port.name.0) {
-                if let Some(mock_value) = resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
+                if let Some(mock_value) =
+                    resolve_mock_input(mocks, &node.id, &port.name, node.input_alias.as_ref())
                 {
                     inputs.insert(port.name.0.clone(), mock_value);
                 }
@@ -1863,7 +1868,7 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
                     // Choose a type-appropriate default based on resource inputs:
                     // nodes with FilesystemHandle inputs are file transports.
                     let is_file_transport = node.inputs.iter().any(|p| {
-                        p.type_id.semantic_kind()
+                        semantic_carrier_kind(&p.type_id)
                             == gunbc_ir::SemanticCarrierKind::FilesystemHandle
                     });
                     let default_response = if is_file_transport {
@@ -2094,19 +2099,26 @@ fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
     )
 }
 
+fn semantic_carrier_kind(type_id: &TypeId) -> gunbc_ir::SemanticCarrierKind {
+    static CORE_TYPES: OnceLock<TypeRegistry> = OnceLock::new();
+    CORE_TYPES
+        .get_or_init(TypeRegistry::with_core_types)
+        .semantic_carrier_kind(type_id)
+}
+
 /// Pre-flight check: error if any `Pure` node has effectful port patterns.
 ///
-/// Uses `SemanticCarrierKind::is_effectful()` as the single authority for
-/// which types indicate I/O or environment access. Adding a new resource
-/// type only requires updating `semantic_carrier_kind_for_type_name` in the
-/// IR crate — this function adapts automatically.
+/// This is only a guardrail for nodes left at `kind: Pure`; DryRun
+/// interception itself is still driven by `NodeKind`. Semantic carrier
+/// classification here goes through the core `TypeRegistry` so
+/// container-wrapped core types resolve before checking `is_effectful()`.
 fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
     for node in &dag.nodes {
         if node.kind != NodeKind::Pure {
             continue;
         }
         for port in &node.inputs {
-            if port.type_id.semantic_kind().is_effectful() {
+            if semantic_carrier_kind(&port.type_id).is_effectful() {
                 return Err(ExecError::new(format!(
                     "node '{}' has kind: Pure but has effectful input '{}' (type: {})",
                     node.id.0, port.name.0, port.type_id.0
@@ -2120,7 +2132,7 @@ fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError
             }
         }
         for port in &node.outputs {
-            if port.type_id.semantic_kind().is_effectful() {
+            if semantic_carrier_kind(&port.type_id).is_effectful() {
                 return Err(ExecError::new(format!(
                     "node '{}' has kind: Pure but has effectful output '{}' (type: {})",
                     node.id.0, port.name.0, port.type_id.0

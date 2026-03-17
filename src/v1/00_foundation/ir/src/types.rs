@@ -948,9 +948,10 @@ pub enum SemanticCarrierKind {
 impl SemanticCarrierKind {
     /// Whether this carrier kind indicates effectful (I/O or environment) computation.
     ///
-    /// Types classified as effectful must not appear on `NodeKind::Pure` nodes.
-    /// This is the single authority for the effectful/pure type boundary —
-    /// consumers should call this method instead of matching on type name strings.
+    /// Callers must resolve a `TypeId` to a `SemanticCarrierKind` first.
+    /// When a `TypeRegistry` is available, prefer
+    /// `TypeRegistry::semantic_carrier_kind()` over raw-name helpers so
+    /// container wrappers and registered type DAGs stay visible here.
     pub fn is_effectful(&self) -> bool {
         matches!(
             self,
@@ -973,15 +974,6 @@ impl TypeId {
     /// Get the underlying string representation.
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-
-    /// Classify this type's semantic carrier kind.
-    ///
-    /// Delegates to the single-authority classification in
-    /// `semantic_carrier_kind_for_type_name`. Use this instead of
-    /// matching on `self.0` strings directly.
-    pub fn semantic_kind(&self) -> SemanticCarrierKind {
-        semantic_carrier_kind_for_type_name(&self.0)
     }
 
     // ── Typed constructors (CP-17) ──────────────────────────────────
@@ -1566,10 +1558,10 @@ pub static BUILTIN_TYPES: &[BuiltinType] = &[
 
 /// Classify a type name into a semantic carrier kind.
 ///
-/// Delegates to the [`BUILTIN_TYPES`] registry for known types.
-/// Unknown names return `UnknownSemantic` (fail-closed). The caller
-/// (typically `TypeRegistry::semantic_carrier_kind`) handles container
-/// unwrapping and DAG-based resolution before reaching here.
+/// This is the raw-name builtin classifier used by `TypeRegistry` after any
+/// container unwrapping or DAG-based resolution has already happened.
+/// Callers with a `TypeId` should prefer `TypeRegistry::semantic_carrier_kind`
+/// instead of calling this naming-layer helper directly.
 pub(crate) fn semantic_carrier_kind_for_type_name(type_name: &str) -> SemanticCarrierKind {
     match type_name {
         "String"
@@ -2118,20 +2110,6 @@ mod tests {
         assert!(!SemanticCarrierKind::TransportResponse.is_effectful());
         assert!(!SemanticCarrierKind::Secret.is_effectful());
         assert!(!SemanticCarrierKind::UnknownSemantic.is_effectful());
-    }
-
-    #[test]
-    fn test_type_id_semantic_kind() {
-        assert_eq!(
-            TypeId::new("FilesystemHandle").semantic_kind(),
-            SemanticCarrierKind::FilesystemHandle
-        );
-        assert_eq!(
-            TypeId::new("String").semantic_kind(),
-            SemanticCarrierKind::Structural
-        );
-        assert!(TypeId::new("ToolHandle").semantic_kind().is_effectful());
-        assert!(!TypeId::new("String").semantic_kind().is_effectful());
     }
 
     #[test]

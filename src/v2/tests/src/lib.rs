@@ -21,6 +21,12 @@ mod tests {
             .to_path_buf()
     }
 
+    fn cargo_command(dir: &std::path::Path) -> std::process::Command {
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.current_dir(dir).env("CARGO_NET_OFFLINE", "true");
+        cmd
+    }
+
     fn value_to_json(val: &gunbc_ir::Value) -> serde_json::Value {
         match val {
             gunbc_ir::Value::Str(s) => serde_json::Value::String(s.clone()),
@@ -363,7 +369,10 @@ mod tests {
             "_variant".to_string(),
             gunbc_ir::Value::Str("Primitive".to_string()),
         );
-        map.insert("name".to_string(), gunbc_ir::Value::Str("String".to_string()));
+        map.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("String".to_string()),
+        );
         map.insert("span".to_string(), zero_span_value());
         gunbc_ir::Value::Map(map)
     }
@@ -379,10 +388,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn product_type_value(
-        name: Option<&str>,
-        fields: Vec<gunbc_ir::Value>,
-    ) -> gunbc_ir::Value {
+    fn product_type_value(name: Option<&str>, fields: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -420,10 +426,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn literal_expr_value(
-        literal: gunbc_ir::Value,
-        span: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
+    fn literal_expr_value(literal: gunbc_ir::Value, span: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -441,11 +444,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn span_type_value(
-        start: i64,
-        end: i64,
-        resolved_type: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
+    fn span_type_value(start: i64, end: i64, resolved_type: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert("start".to_string(), gunbc_ir::Value::Int(start));
         map.insert("end".to_string(), gunbc_ir::Value::Int(end));
@@ -1636,7 +1635,10 @@ fn foo(item: String) -> String {
         assert!(!typed_modules.is_empty());
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1709,7 +1711,10 @@ fn foo(item: String) -> String {
         };
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -2599,7 +2604,10 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -2648,7 +2656,10 @@ fn example(items: List<String>) -> Int {
         ];
         let scope = infer_scope_value(
             type_env_value(vec![
-                type_binding_value("Config", product_type_value(Some("Config"), exact_fields.clone())),
+                type_binding_value(
+                    "Config",
+                    product_type_value(Some("Config"), exact_fields.clone()),
+                ),
                 type_binding_value(
                     "ConfigExpanded",
                     product_type_value(Some("ConfigExpanded"), wider_fields),
@@ -2677,7 +2688,10 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -3161,7 +3175,10 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+            emit_inputs.insert(
+                "registry".to_string(),
+                gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+            );
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()
@@ -3414,9 +3431,8 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_cargo_check() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-check");
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("check")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
 
@@ -3438,9 +3454,8 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_cargo_build() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-build");
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("build")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo build");
 
@@ -3469,9 +3484,8 @@ fn example(items: List<String>) -> Int {
         // The generated crate already contains src/generated_tests.rs and the
         // corresponding `mod generated_tests;` in lib.rs — no injection needed.
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("test")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3504,11 +3518,10 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_self_compile() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-self-compile");
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("test")
             .arg("--")
             .arg("self_compile_all_modules")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3541,11 +3554,10 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_gist_resolve() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-resolve");
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("test")
             .arg("--")
             .arg("gist_resolve_all_modules")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3577,11 +3589,10 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_gist_compile() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-compile");
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("test")
             .arg("--")
             .arg("gist_compile_all_modules")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3843,10 +3854,7 @@ fn example(items: List<String>) -> Int {
             .get("diagnostics")
             .expect("compile_sources should return diagnostics");
         let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages
-            .iter()
-            .filter(|m| !m.is_empty())
-            .collect();
+        let errors: Vec<&String> = messages.iter().filter(|m| !m.is_empty()).collect();
         assert!(
             errors.is_empty(),
             "gist Rust compilation should produce no diagnostics: {:?}",
@@ -3908,7 +3916,12 @@ fn example(items: List<String>) -> Int {
         if !lib_path.exists() {
             let lib_content: String = mod_names
                 .iter()
-                .map(|m| format!("#[allow(dead_code, unused_imports, unused_variables)]\nmod {};", m))
+                .map(|m| {
+                    format!(
+                        "#[allow(dead_code, unused_imports, unused_variables)]\nmod {};",
+                        m
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             std::fs::write(&lib_path, lib_content).expect("failed to write lib.rs");
@@ -3928,9 +3941,8 @@ path = "src/lib.rs"
             std::fs::write(&cargo_toml_path, cargo_toml).expect("failed to write Cargo.toml");
         }
 
-        let output = std::process::Command::new("cargo")
+        let output = cargo_command(&tmp_dir)
             .arg("check")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
 
@@ -3972,10 +3984,7 @@ path = "src/lib.rs"
             .get("diagnostics")
             .expect("compile_sources should return diagnostics");
         let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages
-            .iter()
-            .filter(|m| !m.is_empty())
-            .collect();
+        let errors: Vec<&String> = messages.iter().filter(|m| !m.is_empty()).collect();
         assert!(
             errors.is_empty(),
             "gist Python compilation should produce no diagnostics: {:?}",
