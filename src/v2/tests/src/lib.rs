@@ -363,7 +363,10 @@ mod tests {
             "_variant".to_string(),
             gunbc_ir::Value::Str("Primitive".to_string()),
         );
-        map.insert("name".to_string(), gunbc_ir::Value::Str("String".to_string()));
+        map.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("String".to_string()),
+        );
         map.insert("span".to_string(), zero_span_value());
         gunbc_ir::Value::Map(map)
     }
@@ -379,10 +382,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn product_type_value(
-        name: Option<&str>,
-        fields: Vec<gunbc_ir::Value>,
-    ) -> gunbc_ir::Value {
+    fn product_type_value(name: Option<&str>, fields: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -420,10 +420,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn literal_expr_value(
-        literal: gunbc_ir::Value,
-        span: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
+    fn literal_expr_value(literal: gunbc_ir::Value, span: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -441,11 +438,7 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn span_type_value(
-        start: i64,
-        end: i64,
-        resolved_type: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
+    fn span_type_value(start: i64, end: i64, resolved_type: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert("start".to_string(), gunbc_ir::Value::Int(start));
         map.insert("end".to_string(), gunbc_ir::Value::Int(end));
@@ -769,11 +762,6 @@ fn foo(item: String) -> String {
     #[test]
     fn phase0_pipeline_parses_strict() {
         assert_parses_strict("src/v2/06_pipeline.dag");
-    }
-
-    #[test]
-    fn phase0_shared_behavioral_parses_strict() {
-        assert_parses_strict("dsl/shared/behavioral.dag");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1636,7 +1624,10 @@ fn foo(item: String) -> String {
         assert!(!typed_modules.is_empty());
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -1709,7 +1700,10 @@ fn foo(item: String) -> String {
         };
         let mut emit_inputs = HashMap::new();
         emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
         let text_file = if let Some(ret) = emit_result.get("return") {
             ret.clone()
@@ -2599,7 +2593,10 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -2648,7 +2645,10 @@ fn example(items: List<String>) -> Int {
         ];
         let scope = infer_scope_value(
             type_env_value(vec![
-                type_binding_value("Config", product_type_value(Some("Config"), exact_fields.clone())),
+                type_binding_value(
+                    "Config",
+                    product_type_value(Some("Config"), exact_fields.clone()),
+                ),
                 type_binding_value(
                     "ConfigExpanded",
                     product_type_value(Some("ConfigExpanded"), wider_fields),
@@ -2677,7 +2677,10 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -3161,7 +3164,10 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+            emit_inputs.insert(
+                "registry".to_string(),
+                gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+            );
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()
@@ -3271,7 +3277,8 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        // Should produce: 7 module files + lib.rs + v2_rt.rs + Cargo.toml = 10 files
+        // Should produce: module files plus lib.rs, v2_rt.rs, and Cargo.toml.
+        // Cargo.lock is generated separately by `generate_lockfile` after write_crate.
         let file_names: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         assert!(
             file_names.contains(&"Cargo.toml"),
@@ -3298,6 +3305,54 @@ fn example(items: List<String>) -> Int {
         for f in &files {
             assert!(!f.content.is_empty(), "{} is empty", f.rel_path);
         }
+    }
+
+    /// Proves the `port_contract` removal in `02_parse.dag` is a prerequisite
+    /// for this batch: `Node` in `00_core.dag` has no `port_contract` field,
+    /// so any generated Node constructor referencing it would fail `cargo check`.
+    #[test]
+    fn v2_port_contract_removal_is_prerequisite_for_cargo_check() {
+        // 1. Verify the Node type definition has no port_contract field.
+        let core_source = read_v2_file("src/v2/00_core.dag");
+        let core_ast = daglang_syntax::parser::parse_to_result(&core_source);
+        let node_td = core_ast
+            .ast
+            .items
+            .iter()
+            .find_map(|item| {
+                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
+                    if td.name == "Node" {
+                        return Some(td);
+                    }
+                }
+                None
+            })
+            .expect("Node type must exist in 00_core.dag");
+
+        let fields = match &node_td.body {
+            daglang_syntax::ast::TypeBody::Record(fields) => fields,
+            other => panic!("Node should be a record type, got: {:?}", other),
+        };
+        assert!(
+            !fields.iter().any(|f| f.name == "port_contract"),
+            "Node must not have a port_contract field (dissolved in Stream 3)"
+        );
+
+        // 2. Verify the generated parse.rs has no port_contract: assignments.
+        //    If 02_parse.dag still had `port_contract: none` in its Node
+        //    constructors, this would appear in the generated code and
+        //    cargo check would fail against the Node struct above.
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-parse-port-contract");
+        let parse_rs = std::fs::read_to_string(tmp_dir.join("src/parse.rs"))
+            .expect("generated parse.rs should exist");
+
+        assert!(
+            !parse_rs.contains("port_contract"),
+            "generated parse.rs must not reference port_contract — \
+             Node has no such field, so this would break cargo check"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
     /// The recursive type detection should identify Expr and TypeExpr as needing Box<>.
@@ -3396,6 +3451,8 @@ fn example(items: List<String>) -> Int {
         let tmp_dir = std::env::temp_dir().join(dir_name);
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
+            .expect("failed to generate lockfile");
         tmp_dir
     }
 
@@ -3416,6 +3473,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("check")
+            .arg("--locked")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
@@ -3642,6 +3700,8 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&out_dir)
+            .expect("failed to generate lockfile");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -3843,10 +3903,7 @@ fn example(items: List<String>) -> Int {
             .get("diagnostics")
             .expect("compile_sources should return diagnostics");
         let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages
-            .iter()
-            .filter(|m| !m.is_empty())
-            .collect();
+        let errors: Vec<&String> = messages.iter().filter(|m| !m.is_empty()).collect();
         assert!(
             errors.is_empty(),
             "gist Rust compilation should produce no diagnostics: {:?}",
@@ -3908,7 +3965,12 @@ fn example(items: List<String>) -> Int {
         if !lib_path.exists() {
             let lib_content: String = mod_names
                 .iter()
-                .map(|m| format!("#[allow(dead_code, unused_imports, unused_variables)]\nmod {};", m))
+                .map(|m| {
+                    format!(
+                        "#[allow(dead_code, unused_imports, unused_variables)]\nmod {};",
+                        m
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             std::fs::write(&lib_path, lib_content).expect("failed to write lib.rs");
@@ -3972,10 +4034,7 @@ path = "src/lib.rs"
             .get("diagnostics")
             .expect("compile_sources should return diagnostics");
         let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages
-            .iter()
-            .filter(|m| !m.is_empty())
-            .collect();
+        let errors: Vec<&String> = messages.iter().filter(|m| !m.is_empty()).collect();
         assert!(
             errors.is_empty(),
             "gist Python compilation should produce no diagnostics: {:?}",

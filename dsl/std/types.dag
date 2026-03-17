@@ -32,18 +32,18 @@ module std.types
 
 // --- Primitives (Level 0: Atoms) --------------------------------------
 // Each is a single-node Identity DAG -- no validation, just a base carrier.
-// Bare type declarations: no body, no =. The parser produces
-// Alias { base: Primitive { name } } and the typechecker binds the name
-// directly to its Primitive form.
-
-type String
-type Int
-type Bool
-type Float
-type Secret
-type Json
-type Unit
-type Bytes
+//
+// DAG representation:         Set denotation:
+//   String = Dag{Identity}      ⟦String⟧ = Σ*
+//   Int    = Dag{Identity}      ⟦Int⟧    = ℤ
+//   Bool   = Dag{Identity}      ⟦Bool⟧   = {true, false}
+//   Float  = Dag{Identity}      ⟦Float⟧  = 𝔽₆₄
+//   Bytes  = Dag{Identity}      ⟦Bytes⟧  = {0..255}*
+//   Secret = Dag{Identity}      ⟦Secret⟧ = Σ* (security-policy distinction)
+//   Unit   = Dag{Identity}      ⟦Unit⟧   = {} (bottom, ⊥)
+//   Json   = Dag{Identity}      ⟦Json⟧   = ⟦Bool⟧ ∪ ⟦Int⟧ ∪ ... ∪ {null} (top, ⊤)
+//
+// (built-in to the compiler, listed here for documentation)
 
 // --- Char type (structural primitive) ----------------------------------
 // Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
