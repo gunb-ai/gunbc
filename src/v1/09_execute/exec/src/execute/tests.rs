@@ -760,6 +760,120 @@ fn test_different_port_names_same_resource_id_still_conflict() {
 }
 
 #[test]
+fn test_same_port_name_different_resource_id_run_in_parallel() {
+    // Regression: two nodes sharing a local input alias but backed by distinct
+    // canonical resource_ids must NOT block each other — admission control
+    // keys on the resource_id, not the port name.
+    use std::time::Duration;
+
+    #[derive(Debug, Clone)]
+    struct BlockingOp {
+        port: String,
+        value: Value,
+        sleep_ms: u64,
+        active: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+    }
+
+    impl Executable for BlockingOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            loop {
+                let observed = self.peak.load(Ordering::SeqCst);
+                if current <= observed
+                    || self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(self.sleep_ms));
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let mut out = HashMap::new();
+            out.insert(self.port.clone(), self.value.clone());
+            Ok(out)
+        }
+    }
+
+    if execution_max_concurrency() == 1 {
+        return;
+    }
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+
+    // Same local port name "db_conn", but distinct resource_ids.
+    let input_a = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db:primary"), AccessMode::Write);
+    let input_b = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db:replica"), AccessMode::Write);
+
+    let mut dag: Dag<BlockingOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "source_a",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp {
+            port: "handle".into(),
+            value: Value::Unit,
+            sleep_ms: 0,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "source_b",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp {
+            port: "handle".into(),
+            value: Value::Unit,
+            sleep_ms: 0,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "writer_a",
+        vec![input_a],
+        vec![port("a", "Int")],
+        BlockingOp {
+            port: "a".into(),
+            value: Value::Int(1),
+            sleep_ms: 50,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_node(Node::opaque(
+        "writer_b",
+        vec![input_b],
+        vec![port("b", "Int")],
+        BlockingOp {
+            port: "b".into(),
+            value: Value::Int(2),
+            sleep_ms: 50,
+            active: active.clone(),
+            peak: peak.clone(),
+        },
+    ));
+    dag.add_edge(edge("source_a", "handle", "writer_a", "db_conn"));
+    dag.add_edge(edge("source_b", "handle", "writer_b", "db_conn"));
+
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
+    assert!(
+        peak.load(Ordering::SeqCst) >= 2,
+        "same port name with different resource_ids must not conflict"
+    );
+}
+
+#[test]
 fn test_execute_simple_pipeline() {
     let mut dag: Dag<Produce> = Dag::new();
     dag.add_node(Node::opaque(
