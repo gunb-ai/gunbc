@@ -3456,6 +3456,14 @@ fn example(items: List<String>) -> Int {
         tmp_dir
     }
 
+    fn generated_crate_cargo(crate_dir: &std::path::Path) -> std::process::Command {
+        let mut command = std::process::Command::new("cargo");
+        command
+            .current_dir(crate_dir)
+            .env("CARGO_TARGET_DIR", crate_dir.join("target"));
+        command
+    }
+
     // ── v2 crate compilation gate tests ─────────────────────────────────
     //
     // Evidence summary for the v2 self-hosted compiler:
@@ -3471,10 +3479,9 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_cargo_check() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-check");
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("check")
             .arg("--locked")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
 
@@ -3496,9 +3503,8 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_cargo_build() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-build");
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("build")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo build");
 
@@ -3527,9 +3533,8 @@ fn example(items: List<String>) -> Int {
         // The generated crate already contains src/generated_tests.rs and the
         // corresponding `mod generated_tests;` in lib.rs — no injection needed.
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3562,11 +3567,10 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_self_compile() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-self-compile");
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
             .arg("--")
             .arg("self_compile_all_modules")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3599,11 +3603,10 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_gist_resolve() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-resolve");
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
             .arg("--")
             .arg("gist_resolve_all_modules")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3635,11 +3638,10 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_gist_compile() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-compile");
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
             .arg("--")
             .arg("gist_compile_all_modules")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo test");
 
@@ -3990,9 +3992,8 @@ path = "src/lib.rs"
             std::fs::write(&cargo_toml_path, cargo_toml).expect("failed to write Cargo.toml");
         }
 
-        let output = std::process::Command::new("cargo")
+        let output = generated_crate_cargo(&tmp_dir)
             .arg("check")
-            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
 

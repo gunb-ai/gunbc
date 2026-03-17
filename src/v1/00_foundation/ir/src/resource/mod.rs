@@ -415,22 +415,46 @@ impl ResourceAccess {
 
 /// Error for missing or invalid resource access metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResourceAccessError {
-    /// Node that declares the resource port.
-    pub node_id: NodeId,
-    /// Port name that is missing access metadata.
-    pub port_name: String,
-    /// Resource id derived from the port name.
-    pub resource_id: ResourceId,
+pub enum ResourceAccessError {
+    /// A legacy `res:*` port declared a resource-shaped name but omitted the
+    /// structural `resource_access` annotation. The normalized id is retained
+    /// only as a diagnostic hint for the legacy name-based port.
+    MissingAccessMode {
+        /// Node that declares the resource port.
+        node_id: NodeId,
+        /// Port name that is missing access metadata.
+        port_name: String,
+        /// Resource id inferred from the legacy `res:*` port name.
+        inferred_resource_id: ResourceId,
+    },
+    /// A port declared `resource_access` but omitted the canonical
+    /// `resource_id` field needed by conflict detection and admission control.
+    MissingResourceId {
+        /// Node that declares the resource port.
+        node_id: NodeId,
+        /// Port name that is missing the canonical `resource_id`.
+        port_name: String,
+    },
 }
 
 impl std::fmt::Display for ResourceAccessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "resource access mode missing for {}.{} ({})",
-            self.node_id, self.port_name, self.resource_id
-        )
+        match self {
+            ResourceAccessError::MissingAccessMode {
+                node_id,
+                port_name,
+                inferred_resource_id,
+            } => write!(
+                f,
+                "resource input '{}' on node '{}' is missing resource_access for inferred resource '{}'",
+                port_name, node_id.0, inferred_resource_id.0
+            ),
+            ResourceAccessError::MissingResourceId { node_id, port_name } => write!(
+                f,
+                "resource input '{}' on node '{}' has resource_access but no resource_id",
+                port_name, node_id.0
+            ),
+        }
     }
 }
 
@@ -613,8 +637,12 @@ fn declared_resource_access(port: &Port) -> Result<Option<(ResourceId, AccessMod
 /// Derive resource accesses from declared resource input ports in a DAG.
 ///
 /// Walks all nodes in the DAG and extracts `ResourceAccess` entries from
-/// input ports with explicit `resource_access` metadata. Legacy `res:*` ports
-/// that are missing `resource_access` remain a hard error.
+/// input ports with explicit `resource_access` metadata.
+///
+/// Invalid legacy `res:*` ports that omit `resource_access` surface as
+/// [`ResourceAccessError::MissingAccessMode`]. Ports that set
+/// `resource_access` but omit the canonical `resource_id` surface as
+/// [`ResourceAccessError::MissingResourceId`].
 pub fn derive_resource_accesses<T>(
     dag: &Dag<T>,
 ) -> Result<Vec<ResourceAccess>, Vec<ResourceAccessError>> {
@@ -627,23 +655,18 @@ pub fn derive_resource_accesses<T>(
                     accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode));
                 }
                 Ok(None) if port.name.0.starts_with(RESOURCE_PORT_PREFIX) => {
-                    let resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
-                    errors.push(ResourceAccessError {
+                    let inferred_resource_id = ResourceId::new(normalize_resource_id(&port.name.0));
+                    errors.push(ResourceAccessError::MissingAccessMode {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),
-                        resource_id,
+                        inferred_resource_id,
                     });
                 }
                 Ok(None) => {}
                 Err(()) => {
-                    // resource_access present but resource_id missing — invariant violation.
-                    errors.push(ResourceAccessError {
+                    errors.push(ResourceAccessError::MissingResourceId {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),
-                        resource_id: ResourceId::new(format!(
-                            "<missing resource_id for port '{}'>",
-                            port.name.0
-                        )),
                     });
                 }
             }
@@ -1140,9 +1163,16 @@ mod tests {
         let errors =
             derive_resource_accesses(&dag).expect_err("missing resource_access should error");
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].node_id.0, "node_a");
-        assert_eq!(errors[0].port_name, "res:platform");
-        assert_eq!(errors[0].resource_id.0, "platform");
+        assert!(matches!(
+            &errors[0],
+            ResourceAccessError::MissingAccessMode {
+                node_id,
+                port_name,
+                inferred_resource_id,
+            } if node_id.0 == "node_a"
+                && port_name == "res:platform"
+                && inferred_resource_id.0 == "platform"
+        ));
     }
 
     #[test]
@@ -1161,8 +1191,11 @@ mod tests {
 
         let errors = derive_resource_accesses(&dag).expect_err("missing resource_id should error");
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].node_id.0, "node_a");
-        assert_eq!(errors[0].port_name, "db_conn");
+        assert!(matches!(
+            &errors[0],
+            ResourceAccessError::MissingResourceId { node_id, port_name }
+            if node_id.0 == "node_a" && port_name == "db_conn"
+        ));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Workflow planner admission/schema errors.
 
-use gunbc_ir::{AccessMode, NodeId};
+use gunbc_ir::{AccessMode, NodeId, ResourceAccessError};
 use std::fmt;
 
 use crate::process_registry::{ClaimId, ProcessUnitRef, UnitClaim};
@@ -13,9 +13,7 @@ pub enum WorkflowAdmissionError {
         process_unit: ProcessUnitRef,
     },
     ResourceAccessMetadataInvalid {
-        node_id: NodeId,
-        port_name: String,
-        claim_id: ClaimId,
+        error: ResourceAccessError,
     },
     MissingRequiredClaims {
         node_id: NodeId,
@@ -49,14 +47,8 @@ impl fmt::Display for WorkflowAdmissionError {
                 node_id.0, process_unit.process_id.0, process_unit.unit_id.0
             ),
             WorkflowAdmissionError::ResourceAccessMetadataInvalid {
-                node_id,
-                port_name,
-                claim_id,
-            } => write!(
-                f,
-                "node '{}': resource input '{}' missing access metadata for claim '{}'",
-                node_id.0, port_name, claim_id.0
-            ),
+                error,
+            } => write!(f, "{error}"),
             WorkflowAdmissionError::MissingRequiredClaims {
                 node_id,
                 process_unit,
