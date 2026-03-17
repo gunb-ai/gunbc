@@ -62,20 +62,11 @@ type TypedGraph {
   diagnostics: List<Diagnostic>
 }
 
-type SpanType {
-  start: Int
-  end: Int
-  resolved_type: TypeExpr
-  // B1 migration: Node representation of the resolved type.
-  resolved_type_node: Node?
-}
-
 type TypedModule {
   module: Module
   items: List<TypedNode>
   type_env: TypeEnv
   func_env: FuncEnv
-  type_cache: List<SpanType>
 }
 
 type TypeEnv {
@@ -146,28 +137,24 @@ type InferScope {
   func_env: FuncEnv
   locals: Map<String, TypeBinding>
   module_name: String
-  type_cache: Map<String, TypeExpr>
   service_registry: Map<String, List<OpEntry>>
 }
 
 type InferResult {
   typed: TypedExpr
   diagnostics: List<Diagnostic>
-  type_entries: List<SpanType>
 }
 
 type BlockInferState {
   scope: InferScope
   diag_chunks: List<List<Diagnostic>>
   last_type: TypeExpr
-  entry_chunks: List<List<SpanType>>
   typed_stmts: List<TypedExpr>
 }
 
 type TypedItemResult {
   item: TypedNode
   diagnostics: List<Diagnostic>
-  type_entries: List<SpanType>
 }
 
 type AccessCheckResult {
@@ -178,14 +165,12 @@ type AccessCheckResult {
 type ArmInferResult {
   typed_arm: TypedMatchArm
   diagnostics: List<Diagnostic>
-  type_entries: List<SpanType>
   body_type: TypeExpr
 }
 
 type StringPartInferResult {
   typed_part: TypedStringPart
   diagnostics: List<Diagnostic>
-  type_entries: List<SpanType>
 }
 
 // Internal result type for item-level resolution.
@@ -448,15 +433,10 @@ fn expr_span(expr: Expr) -> SourceSpan {
   }
 }
 
-fn span_entry_typed(texpr: TypedExpr) -> SpanType {
-  SpanType { start: texpr.span.start, end: texpr.span.end, resolved_type: texpr.resolved_type, resolved_type_node: none }
-}
-
 fn ok_infer(texpr: TypedExpr) -> InferResult {
   InferResult {
     typed: texpr,
-    diagnostics: [],
-    type_entries: [span_entry_typed(texpr: texpr)]
+    diagnostics: []
   }
 }
 
@@ -1055,14 +1035,13 @@ fn infer_method_call_type(receiver_type: TypeExpr, method: String) -> TypeExpr {
 
 fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr, resolved_node: none })
+    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr, resolved_node: Some { value: type_expr_to_node(te: p.type_expr) } })
   )
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
     module_name: scope.module_name,
-    type_cache: scope.type_cache,
     service_registry: scope.service_registry
   }
 }
@@ -1075,9 +1054,8 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, resolved_node: none }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, resolved_node: Some { value: type_expr_to_node(te: resolved) } }),
     module_name: scope.module_name,
-    type_cache: scope.type_cache,
     service_registry: scope.service_registry
   }
 }
@@ -1092,7 +1070,6 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     func_env: scope.func_env,
     locals: new_locals,
     module_name: scope.module_name,
-    type_cache: scope.type_cache,
     service_registry: scope.service_registry
   }
 }
@@ -1207,8 +1184,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
               message: concat("undefined variable '", name, "'"),
               span: span,
               module_name: scope.module_name
-            )],
-            type_entries: [span_entry_typed(texpr: texpr)]
+            )]
           }
       }
 
@@ -1223,8 +1199,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: field_type, span: span }
           InferResult {
             typed: texpr,
-            diagnostics: base_result.diagnostics,
-            type_entries: concat(base_result.type_entries, [span_entry_typed(texpr: texpr)])
+            diagnostics: base_result.diagnostics
           }
         None =>
           match check_service_field_access(base_type: base_type, field: field_name, scope: scope) {
@@ -1232,8 +1207,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
               let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: svc_type, span: span }
               InferResult {
                 typed: texpr,
-                diagnostics: base_result.diagnostics,
-                type_entries: concat(base_result.type_entries, [span_entry_typed(texpr: texpr)])
+                diagnostics: base_result.diagnostics
               }
             None =>
               let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: unit_type(), span: span }
@@ -1243,8 +1217,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
                   message: concat("no field '", field_name, "' on type"),
                   span: span,
                   module_name: scope.module_name
-                )]),
-                type_entries: concat(base_result.type_entries, [span_entry_typed(texpr: texpr)])
+                )])
               }
           }
       }
@@ -1260,7 +1233,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         TypedNamedArg { name: a.name, value: ar.typed }
       )
       let arg_diags = flat_map(arg_results, r => r.diagnostics)
-      let arg_entries = flat_map(arg_results, r => r.type_entries)
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
       let resolved_type = if sig == none {
         let type_match = lookup_type(env: scope.type_env, name: func_name)
@@ -1277,8 +1249,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedCall { func: func_name, args: typed_args, resolved_type: resolved_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: arg_diags,
-        type_entries: concat(arg_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: arg_diags
       }
 
     MethodCall { receiver: recv, method: method_name, args: mc_args, span: span } =>
@@ -1294,7 +1265,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         TypedNamedArg { name: a.name, value: ar.typed }
       )
       let mc_arg_diags = flat_map(mc_arg_results, r => r.diagnostics)
-      let mc_arg_entries = flat_map(mc_arg_results, r => r.type_entries)
       let result_type = match check_service_method_call(receiver_type: recv_type, method: method_name, scope: scope) {
         Some { value: svc_type } => svc_type
         None => infer_method_call_type(receiver_type: recv_type, method: method_name)
@@ -1302,8 +1272,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedMethodCall { receiver: recv_result.typed, method: method_name, args: typed_mc_args, resolved_type: result_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(recv_result.diagnostics, mc_arg_diags),
-        type_entries: concat(recv_result.type_entries, mc_arg_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: concat(recv_result.diagnostics, mc_arg_diags)
       }
 
     Match { scrutinee: scrut, arms: arms, span: span } =>
@@ -1318,7 +1287,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         }
         let body_result = infer_expr(expr: arm.body, scope: arm_scope)
         let guard_diags = if guard_result != none { guard_result.value.diagnostics } else { [] }
-        let guard_entries = if guard_result != none { guard_result.value.type_entries } else { [] }
         ArmInferResult {
           typed_arm: TypedMatchArm {
             pattern: arm.pattern,
@@ -1326,13 +1294,11 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             body: body_result.typed
           },
           diagnostics: concat(guard_diags, body_result.diagnostics),
-          type_entries: concat(guard_entries, body_result.type_entries),
           body_type: body_result.typed.resolved_type
         }
       )
       let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
       let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
-      let arm_entries = flat_map(arm_infer_results, ar => ar.type_entries)
       let result_type = match first(arm_infer_results) {
         Some { value: ar } => ar.body_type
         None => unit_type()
@@ -1340,8 +1306,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedMatch { scrutinee: scrut_result.typed, arms: typed_arms, resolved_type: result_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(scrut_result.diagnostics, arm_diags),
-        type_entries: concat(scrut_result.type_entries, arm_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: concat(scrut_result.diagnostics, arm_diags)
       }
 
     If { condition: cond, then_branch: then_expr, else_branch: else_expr, span: span } =>
@@ -1375,15 +1340,13 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           let texpr = TypedIf { condition: cond_result.typed, then_branch: then_result.typed, else_branch: Some { value: else_result.typed }, resolved_type: resolved_type, span: span }
           InferResult {
             typed: texpr,
-            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics, else_result.diagnostics, branch_diags),
-            type_entries: concat(cond_result.type_entries, then_result.type_entries, else_result.type_entries, [span_entry_typed(texpr: texpr)])
+            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics, else_result.diagnostics, branch_diags)
           }
         None =>
           let texpr = TypedIf { condition: cond_result.typed, then_branch: then_result.typed, else_branch: none, resolved_type: unit_type(), span: span }
           InferResult {
             typed: texpr,
-            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics),
-            type_entries: concat(cond_result.type_entries, then_result.type_entries, [span_entry_typed(texpr: texpr)])
+            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics)
           }
       }
 
@@ -1394,8 +1357,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         let texpr = TypedLet { name: let_name, value: val_result.typed, body: none, resolved_type: val_type, span: span }
         InferResult {
           typed: texpr,
-          diagnostics: val_result.diagnostics,
-          type_entries: concat(val_result.type_entries, [span_entry_typed(texpr: texpr)])
+          diagnostics: val_result.diagnostics
         }
       } else {
         let extended = extend_scope(scope: scope, name: let_name, resolved: val_type)
@@ -1403,8 +1365,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         let texpr = TypedLet { name: let_name, value: val_result.typed, body: Some { value: body_result.typed }, resolved_type: body_result.typed.resolved_type, span: span }
         InferResult {
           typed: texpr,
-          diagnostics: concat(val_result.diagnostics, body_result.diagnostics),
-          type_entries: concat(val_result.type_entries, body_result.type_entries, [span_entry_typed(texpr: texpr)])
+          diagnostics: concat(val_result.diagnostics, body_result.diagnostics)
         }
       }
 
@@ -1415,7 +1376,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let elem_results = elements |> map(e => infer_expr(expr: e, scope: scope))
       let typed_elements = elem_results |> map(r => r.typed)
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
-      let elem_entries = flat_map(elem_results, r => r.type_entries)
       let elem_type = if count(elem_results) > 0 {
         match first(elem_results) {
           Some { value: r } => r.typed.resolved_type
@@ -1428,8 +1388,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedListLit { elements: typed_elements, resolved_type: list_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: elem_diags,
-        type_entries: concat(elem_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: elem_diags
       }
 
     BinOp { op: op, left: left_expr, right: right_expr, span: span } =>
@@ -1439,8 +1398,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedBinOp { op: op, left: left_result.typed, right: right_result.typed, resolved_type: result_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(left_result.diagnostics, right_result.diagnostics),
-        type_entries: concat(left_result.type_entries, right_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: concat(left_result.diagnostics, right_result.diagnostics)
       }
 
     UnaryOp { op: op, operand: operand_expr, span: span } =>
@@ -1452,8 +1410,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedUnaryOp { op: op, operand: operand_result.typed, resolved_type: result_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: operand_result.diagnostics,
-        type_entries: concat(operand_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: operand_result.diagnostics
       }
 
     Lambda { params: lam_params, body: lam_body, span: span } =>
@@ -1462,34 +1419,29 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedLambda { params: lam_params, body: body_result.typed, resolved_type: unit_type(), span: span }
       InferResult {
         typed: texpr,
-        diagnostics: body_result.diagnostics,
-        type_entries: concat(body_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: body_result.diagnostics
       }
 
     StringInterp { parts: str_parts, span: span } =>
       let part_results = str_parts |> map(p => match p {
         Text { value: v } => StringPartInferResult {
           typed_part: TypedText { value: v },
-          diagnostics: [],
-          type_entries: []
+          diagnostics: []
         }
         Interpolation { expr: e } =>
           let r = infer_expr(expr: e, scope: scope)
           StringPartInferResult {
             typed_part: TypedInterpolation { expr: r.typed },
-            diagnostics: r.diagnostics,
-            type_entries: r.type_entries
+            diagnostics: r.diagnostics
           }
       })
       let typed_parts = part_results |> map(pr => pr.typed_part)
       let interp_diags = flat_map(part_results, pr => pr.diagnostics)
-      let interp_entries = flat_map(part_results, pr => pr.type_entries)
       let str_type = Primitive { name: "String", span: no_span() }
       let texpr = TypedStringInterp { parts: typed_parts, resolved_type: str_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: interp_diags,
-        type_entries: concat(interp_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: interp_diags
       }
 
     Block { stmts: stmts, span: span } =>
@@ -1498,7 +1450,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           scope: scope,
           diag_chunks: [],
           last_type: unit_type(),
-          entry_chunks: [],
           typed_stmts: []
         }, f: (acc, stmt) =>
           let stmt_result = infer_expr(expr: stmt, scope: acc.scope)
@@ -1511,7 +1462,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             scope: next_scope,
             diag_chunks: concat(acc.diag_chunks, [stmt_result.diagnostics]),
             last_type: stmt_result.typed.resolved_type,
-            entry_chunks: concat(acc.entry_chunks, [stmt_result.type_entries]),
             typed_stmts: concat([stmt_result.typed], acc.typed_stmts)
           }
         )
@@ -1519,8 +1469,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         let texpr = TypedBlock { stmts: block_stmts_typed, resolved_type: state.last_type, span: span }
         InferResult {
           typed: texpr,
-          diagnostics: flat_map(state.diag_chunks, c => c),
-          type_entries: concat(flat_map(state.entry_chunks, c => c), [span_entry_typed(texpr: texpr)])
+          diagnostics: flat_map(state.diag_chunks, c => c)
         }
       } else {
         ok_infer(texpr: TypedBlock { stmts: [], resolved_type: unit_type(), span: span })
@@ -1531,8 +1480,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedCast { expr: inner_result.typed, target: target_type, resolved_type: target_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: inner_result.diagnostics,
-        type_entries: concat(inner_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: inner_result.diagnostics
       }
 
     ForEach { variable: variable, collection: coll, body: body_expr, span: span } =>
@@ -1543,8 +1491,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedForEach { variable: variable, collection: coll_result.typed, body: body_result.typed, resolved_type: unit_type(), span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(coll_result.diagnostics, body_result.diagnostics),
-        type_entries: concat(coll_result.type_entries, body_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: concat(coll_result.diagnostics, body_result.diagnostics)
       }
 
     Index { base: base_expr, index: index_expr, span: span } =>
@@ -1559,8 +1506,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedIndex { base: base_result.typed, index: index_result.typed, resolved_type: index_check.resolved_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(base_result.diagnostics, index_result.diagnostics, index_check.diagnostics),
-        type_entries: concat(base_result.type_entries, index_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: concat(base_result.diagnostics, index_result.diagnostics, index_check.diagnostics)
       }
 
     Slice { base: base_expr, start: start_expr, end: end_expr, span: span } =>
@@ -1577,8 +1523,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let texpr = TypedSlice { base: base_result.typed, start: start_result.typed, end: end_result.typed, resolved_type: slice_check.resolved_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(base_result.diagnostics, start_result.diagnostics, end_result.diagnostics, slice_check.diagnostics),
-        type_entries: concat(base_result.type_entries, start_result.type_entries, end_result.type_entries, [span_entry_typed(texpr: texpr)])
+        diagnostics: concat(base_result.diagnostics, start_result.diagnostics, end_result.diagnostics, slice_check.diagnostics)
       }
 
     // Fallback for any unrecognized variant
@@ -1604,7 +1549,6 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     TypedFieldInit { name: fi.name, value: fi_result.typed }
   )
   let fi_diags = flat_map(fi_results, r => r.diagnostics)
-  let fi_entries = flat_map(fi_results, r => r.type_entries)
   if type_name == none {
     // Anonymous record — construct Product from field inits
     let field_types = field_inits |> enumerate |> map(pair =>
@@ -1626,8 +1570,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     let texpr = TypedRecordLit { type_name: none, fields: typed_fields, resolved_type: anon_type, span: span }
     InferResult {
       typed: texpr,
-      diagnostics: fi_diags,
-      type_entries: concat(fi_entries, [span_entry_typed(texpr: texpr)])
+      diagnostics: fi_diags
     }
   } else {
     // Named record — look up type in env
@@ -1638,8 +1581,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     let texpr = TypedRecordLit { type_name: type_name, fields: typed_fields, resolved_type: resolved_type, span: span }
     InferResult {
       typed: texpr,
-      diagnostics: fi_diags,
-      type_entries: concat(fi_entries, [span_entry_typed(texpr: texpr)])
+      diagnostics: fi_diags
     }
   }
 }
@@ -1659,7 +1601,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: item.type_annotation,
         config: item.config
       },
-      diagnostics: [], type_entries: []
+      diagnostics: []
     }
   }
   // Function with body: infer body, resolve return type
@@ -1679,7 +1621,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: item.type_annotation,
         config: item.config
       },
-      diagnostics: body_result.diagnostics, type_entries: body_result.type_entries
+      diagnostics: body_result.diagnostics
     }
   }
   // Data definition: has body but no params, has type_annotation
@@ -1694,7 +1636,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: item.type_annotation,
         config: item.config
       },
-      diagnostics: val_result.diagnostics, type_entries: val_result.type_entries
+      diagnostics: val_result.diagnostics
     }
   }
   // Extern func: has params but no body
@@ -1708,7 +1650,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: item.type_annotation,
         config: item.config
       },
-      diagnostics: [], type_entries: []
+      diagnostics: []
     }
   }
   // Service/Resource/other: pass through
@@ -1722,7 +1664,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: item.type_annotation,
         config: item.config
       },
-      diagnostics: [], type_entries: []
+      diagnostics: []
     }
   }
 }
@@ -2048,7 +1990,7 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       // keep it as Named to break infinite expansion. Sound because the
       // name is guaranteed to be defined in the environment.
       if env.recursive_types |> any(r => r == name) {
-        ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
+        ResolveResult { resolved: expr, diagnostics: [], resolved_node: Some { value: type_expr_to_node(te: expr) } }
       } else {
         match lookup_type(env: env, name: name) {
           Some { value: resolved } =>
@@ -2068,59 +2010,65 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       }
 
     Primitive { name: _, span: _ } =>
-      ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
+      ResolveResult { resolved: expr, diagnostics: [], resolved_node: Some { value: type_expr_to_node(te: expr) } }
 
     Product { name: prod_name, fields: fields, span: span } =>
       let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field)
       let all_diags = flat_map(field_results, fr => fr.diagnostics)
+      let resolved_product = Product { name: prod_name, fields: resolved_fields, span: span }
       ResolveResult {
-        resolved: Product { name: prod_name, fields: resolved_fields, span: span },
+        resolved: resolved_product,
         diagnostics: all_diags,
-        resolved_node: none
+        resolved_node: Some { value: type_expr_to_node(te: resolved_product) }
       }
 
     Coproduct { name: coprod_name, variants: variants, span: span } =>
       let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
       let resolved_variants = map(variant_results, vr => vr.variant)
       let all_diags = flat_map(variant_results, vr => vr.diagnostics)
+      let resolved_coproduct = Coproduct { name: coprod_name, variants: resolved_variants, span: span }
       ResolveResult {
-        resolved: Coproduct { name: coprod_name, variants: resolved_variants, span: span },
+        resolved: resolved_coproduct,
         diagnostics: all_diags,
-        resolved_node: none
+        resolved_node: Some { value: type_expr_to_node(te: resolved_coproduct) }
       }
 
     Container { kind: kind, element: element, span: span } =>
       let elem_result = resolve_type_expr(expr: element, env: env, module_name: module_name)
+      let resolved_container = Container { kind: kind, element: elem_result.resolved, span: span }
       ResolveResult {
-        resolved: Container { kind: kind, element: elem_result.resolved, span: span },
+        resolved: resolved_container,
         diagnostics: elem_result.diagnostics,
-        resolved_node: none
+        resolved_node: Some { value: type_expr_to_node(te: resolved_container) }
       }
 
     Optional { inner: inner, span: span } =>
       let inner_result = resolve_type_expr(expr: inner, env: env, module_name: module_name)
+      let resolved_optional = Optional { inner: inner_result.resolved, span: span }
       ResolveResult {
-        resolved: Optional { inner: inner_result.resolved, span: span },
+        resolved: resolved_optional,
         diagnostics: inner_result.diagnostics,
-        resolved_node: none
+        resolved_node: Some { value: type_expr_to_node(te: resolved_optional) }
       }
 
     Refined { base: base, predicates: predicates, span: span } =>
       let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
+      let resolved_refined = Refined { base: base_result.resolved, predicates: predicates, span: span }
       ResolveResult {
-        resolved: Refined { base: base_result.resolved, predicates: predicates, span: span },
+        resolved: resolved_refined,
         diagnostics: base_result.diagnostics,
-        resolved_node: none
+        resolved_node: Some { value: type_expr_to_node(te: resolved_refined) }
       }
 
     MapType { key: key, value: value, span: span } =>
       let key_result = resolve_type_expr(expr: key, env: env, module_name: module_name)
       let value_result = resolve_type_expr(expr: value, env: env, module_name: module_name)
+      let resolved_map = MapType { key: key_result.resolved, value: value_result.resolved, span: span }
       ResolveResult {
-        resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
+        resolved: resolved_map,
         diagnostics: concat(key_result.diagnostics, value_result.diagnostics),
-        resolved_node: none
+        resolved_node: Some { value: type_expr_to_node(te: resolved_map) }
       }
   }
 }
@@ -2219,10 +2167,11 @@ fn resolve_optional_type_expr(expr: TypeExpr?, env: TypeEnv, module_name: String
   // so variant pattern matching (Some { value: te }) doesn't work.
   if expr == none {
     let no_span = SourceSpan { start: 0, end: 0 }
+    let unit_te = Primitive { name: "Unit", span: no_span }
     ResolveResult {
-      resolved: Primitive { name: "Unit", span: no_span },
+      resolved: unit_te,
       diagnostics: [],
-      resolved_node: none
+      resolved_node: Some { value: type_expr_to_node(te: unit_te) }
     }
   } else {
     resolve_type_expr(expr: expr.value, env: env, module_name: module_name)
@@ -2593,7 +2542,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    ResolveResult { resolved: unit_type(), diagnostics: [], resolved_node: none }
+    ResolveResult { resolved: unit_type(), diagnostics: [], resolved_node: Some { value: type_expr_to_node(te: unit_type()) } }
   } else {
     resolve_type_expr(expr: item.type_annotation.value, env: env, module_name: module_name)
   }
@@ -2713,7 +2662,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       let span = item.span
       let dot_pos = find_dot_index(name: svc_name, index: 0)
       let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: none })
+      let svc_resolved = Named { name: root, span: span }
+      map_insert(acc, root, TypeBinding { name: root, resolved: svc_resolved, resolved_node: Some { value: type_expr_to_node(te: svc_resolved) } })
     } else {
       acc
     }
@@ -2725,7 +2675,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         let span = titem.span
         let dot_pos = find_dot_index(name: svc_name, index: 0)
         let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: none })
+        let svc_resolved = Named { name: root, span: span }
+        map_insert(inner_acc, root, TypeBinding { name: root, resolved: svc_resolved, resolved_node: Some { value: type_expr_to_node(te: svc_resolved) } })
       } else {
         inner_acc
       }
@@ -2737,11 +2688,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let variant_locals = fold(map_values(resolved_env.env.bindings), init: service_locals, f: (acc, binding) =>
     match binding.resolved {
       Coproduct { name: _, variants: variants, span: _ } =>
+        let variant_te = Named { name: binding.name, span: no_span() }
         fold(variants, init: acc, f: (vacc, v) =>
           map_insert(vacc, v.name, TypeBinding {
             name: v.name,
-            resolved: Named { name: binding.name, span: no_span() },
-            resolved_node: none
+            resolved: variant_te,
+            resolved_node: Some { value: type_expr_to_node(te: variant_te) }
           })
         )
       _ => acc
@@ -2805,21 +2757,18 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     func_env: func_env,
     locals: optional_locals,
     module_name: resolved.module.name,
-    type_cache: empty_map(),
     service_registry: service_registry
   }
   let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
-  let all_type_entries = flat_map(typed_item_results, tir => tir.type_entries)
 
   TypecheckModuleResult {
     typed: TypedModule {
       module: typed_module,
       items: typed_items,
       type_env: resolved_env.env,
-      func_env: func_env,
-      type_cache: all_type_entries
+      func_env: func_env
     },
     diagnostics: concat(env_result.diagnostics, item_diags, resolved_env.diagnostics, infer_diags)
   }

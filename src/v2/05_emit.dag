@@ -43,7 +43,7 @@ import v2.std.core {
 import v2.compiler.infer {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
-  SpanType, expr_span,
+  expr_span,
   build_params_scope, extend_scope
 }
 
@@ -106,15 +106,12 @@ fn span_key(start: Int, end: Int) -> String {
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
-  let cache_map = typed_module.type_cache |> fold(init: empty_map(), f: (acc, entry) =>
-    map_insert(acc, span_key(start: entry.start, end: entry.end), entry.resolved_type)
-  )
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
-    type_cache: cache_map,
+    type_cache: empty_map(),
     service_registry: empty_map()
   }
 }

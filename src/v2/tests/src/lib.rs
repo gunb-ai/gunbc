@@ -441,18 +441,6 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn span_type_value(
-        start: i64,
-        end: i64,
-        resolved_type: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert("start".to_string(), gunbc_ir::Value::Int(start));
-        map.insert("end".to_string(), gunbc_ir::Value::Int(end));
-        map.insert("resolved_type".to_string(), resolved_type);
-        gunbc_ir::Value::Map(map)
-    }
-
     fn func_env_value() -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
@@ -464,25 +452,7 @@ mod tests {
 
     fn infer_scope_value(
         type_env: gunbc_ir::Value,
-        type_cache: Vec<gunbc_ir::Value>,
     ) -> gunbc_ir::Value {
-        // type_cache is now Map<String, TypeExpr> keyed by "start:end"
-        let mut cache_map = std::collections::BTreeMap::new();
-        for entry in &type_cache {
-            if let gunbc_ir::Value::Map(m) = entry {
-                let start = match m.get("start") {
-                    Some(gunbc_ir::Value::Int(i)) => i.to_string(),
-                    _ => continue,
-                };
-                let end = match m.get("end") {
-                    Some(gunbc_ir::Value::Int(i)) => i.to_string(),
-                    _ => continue,
-                };
-                if let Some(resolved) = m.get("resolved_type") {
-                    cache_map.insert(format!("{}:{}", start, end), resolved.clone());
-                }
-            }
-        }
         let mut map = std::collections::BTreeMap::new();
         map.insert("type_env".to_string(), type_env);
         map.insert("func_env".to_string(), func_env_value());
@@ -494,7 +464,7 @@ mod tests {
             "module_name".to_string(),
             gunbc_ir::Value::Str("main".to_string()),
         );
-        map.insert("type_cache".to_string(), gunbc_ir::Value::Map(cache_map));
+        map.insert("type_cache".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         gunbc_ir::Value::Map(map)
     }
 
@@ -1288,10 +1258,10 @@ fn foo(item: String) -> String {
         ]);
 
         let mut state = std::collections::BTreeMap::new();
-        state.insert("tokens".to_string(), tokens);
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
 
         let mut inputs = HashMap::new();
+        inputs.insert("tokens".to_string(), tokens);
         inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
         match call_fn(&output, "expect_ident", inputs) {
@@ -1320,8 +1290,8 @@ fn foo(item: String) -> String {
         // Step 2: Test peek_kind
         let mut peek_inputs = HashMap::new();
         let mut state = std::collections::BTreeMap::new();
-        state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
+        peek_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
         peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
         match call_fn(&output, "peek_kind", peek_inputs) {
@@ -2574,13 +2544,8 @@ fn example(items: List<String>) -> Int {
         let scope = infer_scope_value(
             type_env_value(vec![type_binding_value(
                 "Config",
-                product_type_value(Some("Config"), record_fields.clone()),
+                product_type_value(Some("Config"), record_fields),
             )]),
-            vec![span_type_value(
-                10,
-                20,
-                product_type_value(None, record_fields),
-            )],
         );
 
         let mut inputs = HashMap::new();
@@ -2648,17 +2613,12 @@ fn example(items: List<String>) -> Int {
         ];
         let scope = infer_scope_value(
             type_env_value(vec![
-                type_binding_value("Config", product_type_value(Some("Config"), exact_fields.clone())),
+                type_binding_value("Config", product_type_value(Some("Config"), exact_fields)),
                 type_binding_value(
                     "ConfigExpanded",
                     product_type_value(Some("ConfigExpanded"), wider_fields),
                 ),
             ]),
-            vec![span_type_value(
-                10,
-                20,
-                product_type_value(None, exact_fields),
-            )],
         );
 
         let mut inputs = HashMap::new();
