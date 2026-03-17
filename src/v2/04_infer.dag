@@ -161,6 +161,7 @@ type BlockInferState {
   diag_chunks: List<List<Diagnostic>>
   last_type: TypeExpr
   entry_chunks: List<List<SpanType>>
+  typed_stmts: List<TypedExpr>
 }
 
 type TypedItemResult {
@@ -172,6 +173,19 @@ type TypedItemResult {
 type AccessCheckResult {
   resolved_type: TypeExpr
   diagnostics: List<Diagnostic>
+}
+
+type ArmInferResult {
+  typed_arm: TypedMatchArm
+  diagnostics: List<Diagnostic>
+  type_entries: List<SpanType>
+  body_type: TypeExpr
+}
+
+type StringPartInferResult {
+  typed_part: TypedStringPart
+  diagnostics: List<Diagnostic>
+  type_entries: List<SpanType>
 }
 
 // Internal result type for item-level resolution.
@@ -466,20 +480,18 @@ fn lookup_in_scope(scope: InferScope, name: String) -> TypeExpr? {
 
 // Find a field by name in a list of fields.
 fn find_field_in_list(fields: List<Field>, field_name: String) -> TypeExpr? {
-  let matches = filter(fields, f => f.name == field_name)
-  if count(matches) > 0 {
-    match first(matches) {
-      Some { value: f } =>
-        if f.optional {
-          Some { value: Optional { inner: f.type_expr, span: no_span() } }
-        } else {
-          Some { value: f.type_expr }
-        }
-      None => None
+  fold(fields, init: none, f: (acc, f) =>
+    if acc != none { acc }
+    else if f.name == field_name {
+      if f.optional {
+        Some { value: Optional { inner: f.type_expr, span: no_span() } }
+      } else {
+        Some { value: f.type_expr }
+      }
+    } else {
+      acc
     }
-  } else {
-    None
-  }
+  )
 }
 
 // Find a field that appears in ALL variants of a Coproduct (common field).
@@ -1102,29 +1114,25 @@ fn resolve_scrutinee_type(env: TypeEnv, te: TypeExpr) -> TypeExpr {
 fn find_variant_in_type(te: TypeExpr, variant_name: String) -> List<Field> {
   match te {
     Coproduct { name: _, variants: vs, span: _ } =>
-      let matches = filter(vs, v => v.name == variant_name)
-      if count(matches) > 0 {
-        match first(matches) {
-          Some { value: v } => v.fields
-          None => []
-        }
-      } else {
-        []
-      }
+      fold(vs, init: [], f: (acc, v) =>
+        if count(acc) > 0 { acc }
+        else if v.name == variant_name { v.fields }
+        else { acc }
+      )
     _ => []
   }
 }
 
 // Find a field's type by name in a list of fields.
 fn find_field_type(fields: List<Field>, field_name: String) -> TypeExpr {
-  let matches = filter(fields, f => f.name == field_name)
-  if count(matches) > 0 {
-    match first(matches) {
-      Some { value: f } => f.type_expr
-      None => Named { name: "_inferred", span: no_span() }
-    }
-  } else {
-    Named { name: "_inferred", span: no_span() }
+  let found = fold(fields, init: none, f: (acc, f) =>
+    if acc != none { acc }
+    else if f.name == field_name { Some { value: f.type_expr } }
+    else { acc }
+  )
+  match found {
+    Some { value: te } => te
+    None => Named { name: "_inferred", span: no_span() }
   }
 }
 
@@ -1301,7 +1309,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     Match { scrutinee: scrut, arms: arms, span: span } =>
       let scrut_result = infer_expr(expr: scrut, scope: scope)
       let scrut_type = scrut_result.typed.resolved_type
-      let typed_arms = arms |> map(arm =>
+      let arm_infer_results = arms |> map(arm =>
         let arm_scope = extend_scope_with_pattern(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_type)
         let guard_result = if arm.guard != none {
           Some { value: infer_expr(expr: arm.guard.value, scope: arm_scope) }
@@ -1309,25 +1317,25 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           none
         }
         let body_result = infer_expr(expr: arm.body, scope: arm_scope)
-        TypedMatchArm {
-          pattern: arm.pattern,
-          guard: if guard_result != none { Some { value: guard_result.value.typed } } else { none },
-          body: body_result.typed
+        let guard_diags = if guard_result != none { guard_result.value.diagnostics } else { [] }
+        let guard_entries = if guard_result != none { guard_result.value.type_entries } else { [] }
+        ArmInferResult {
+          typed_arm: TypedMatchArm {
+            pattern: arm.pattern,
+            guard: if guard_result != none { Some { value: guard_result.value.typed } } else { none },
+            body: body_result.typed
+          },
+          diagnostics: concat(guard_diags, body_result.diagnostics),
+          type_entries: concat(guard_entries, body_result.type_entries),
+          body_type: body_result.typed.resolved_type
         }
       )
-      let arm_body_results = arms |> map(arm =>
-        let arm_scope = extend_scope_with_pattern(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_type)
-        infer_expr(expr: arm.body, scope: arm_scope)
-      )
-      let arm_diags = flat_map(arm_body_results, ar => ar.diagnostics)
-      let arm_entries = flat_map(arm_body_results, ar => ar.type_entries)
-      let result_type = if count(arm_body_results) > 0 {
-        match first(arm_body_results) {
-          Some { value: ar } => ar.typed.resolved_type
-          None => unit_type()
-        }
-      } else {
-        unit_type()
+      let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
+      let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
+      let arm_entries = flat_map(arm_infer_results, ar => ar.type_entries)
+      let result_type = match first(arm_infer_results) {
+        Some { value: ar } => ar.body_type
+        None => unit_type()
       }
       let texpr = TypedMatch { scrutinee: scrut_result.typed, arms: typed_arms, resolved_type: result_type, span: span }
       InferResult {
@@ -1459,18 +1467,23 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       }
 
     StringInterp { parts: str_parts, span: span } =>
-      let typed_parts = str_parts |> map(p => match p {
-        Text { value: v } => TypedText { value: v }
+      let part_results = str_parts |> map(p => match p {
+        Text { value: v } => StringPartInferResult {
+          typed_part: TypedText { value: v },
+          diagnostics: [],
+          type_entries: []
+        }
         Interpolation { expr: e } =>
           let r = infer_expr(expr: e, scope: scope)
-          TypedInterpolation { expr: r.typed }
+          StringPartInferResult {
+            typed_part: TypedInterpolation { expr: r.typed },
+            diagnostics: r.diagnostics,
+            type_entries: r.type_entries
+          }
       })
-      let interp_results = str_parts |> flat_map(p => match p {
-        Interpolation { expr: e } => [infer_expr(expr: e, scope: scope)]
-        _ => []
-      })
-      let interp_diags = flat_map(interp_results, r => r.diagnostics)
-      let interp_entries = flat_map(interp_results, r => r.type_entries)
+      let typed_parts = part_results |> map(pr => pr.typed_part)
+      let interp_diags = flat_map(part_results, pr => pr.diagnostics)
+      let interp_entries = flat_map(part_results, pr => pr.type_entries)
       let str_type = Primitive { name: "String", span: no_span() }
       let texpr = TypedStringInterp { parts: typed_parts, resolved_type: str_type, span: span }
       InferResult {
@@ -1485,7 +1498,8 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           scope: scope,
           diag_chunks: [],
           last_type: unit_type(),
-          entry_chunks: []
+          entry_chunks: [],
+          typed_stmts: []
         }, f: (acc, stmt) =>
           let stmt_result = infer_expr(expr: stmt, scope: acc.scope)
           let next_scope = scope_after_stmt(
@@ -1497,10 +1511,11 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             scope: next_scope,
             diag_chunks: concat(acc.diag_chunks, [stmt_result.diagnostics]),
             last_type: stmt_result.typed.resolved_type,
-            entry_chunks: concat(acc.entry_chunks, [stmt_result.type_entries])
+            entry_chunks: concat(acc.entry_chunks, [stmt_result.type_entries]),
+            typed_stmts: concat([stmt_result.typed], acc.typed_stmts)
           }
         )
-        let block_stmts_typed = stmts |> map(s => (infer_expr(expr: s, scope: scope)).typed)
+        let block_stmts_typed = reverse(state.typed_stmts)
         let texpr = TypedBlock { stmts: block_stmts_typed, resolved_type: state.last_type, span: span }
         InferResult {
           typed: texpr,
@@ -3200,11 +3215,10 @@ fn collect_unresolved_in_typed_item(item: TypedNode, module_name: String, define
 }
 
 fn collect_unresolved_in_typed_expr(texpr: TypedExpr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  // Check the resolved_type attached to this TypedExpr node
-  concat(
-    collect_unresolved_in_type_expr(expr: texpr.resolved_type, module_name: module_name, defined_names: defined_names),
-    collect_unresolved_in_expr(expr: typed_expr_to_expr(texpr: texpr), module_name: module_name, defined_names: defined_names)
-  )
+  // Only check the resolved_type attached to this TypedExpr node.
+  // The full tree walk via typed_expr_to_expr is eliminated — resolve_type_expr
+  // already emits diagnostics for unresolved Named during inference.
+  collect_unresolved_in_type_expr(expr: texpr.resolved_type, module_name: module_name, defined_names: defined_names)
 }
 
 // =========================================================================

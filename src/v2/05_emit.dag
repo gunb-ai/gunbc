@@ -57,8 +57,14 @@ type EmitResult {
 }
 
 type BlockEmitState {
-  text: String
+  text: List<String>
   scope: InferScope
+}
+
+// Accumulator for map-based deduplication in unique_strings.
+type UniqueAccum {
+  seen: Map<String, Bool>
+  result: List<String>
 }
 
 // Intermediate type for string interpolation segments
@@ -177,8 +183,14 @@ fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> Lis
   match lookup_func_sig_in_scope(scope: scope, name: func) {
     None => args
     Some { value: sig } => {
+      let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
+        if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
+      )
+      let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
+        map_insert(acc, param.name, true)
+      )
       let ordered = sig.params |> fold(init: [], f: (acc, param) =>
-        match args |> filter(arg => named_arg_matches(arg: arg, name: param.name)) |> first {
+        match map_get(arg_map, param.name) {
           Some { value: arg } => concat(acc, [arg])
           None => acc
         }
@@ -187,7 +199,7 @@ fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> Lis
         if arg.name == none {
           true
         } else {
-          sig.params |> any(param => param.name == arg.name.value) == false
+          emit_map_has(m: param_name_set, key: arg.name.value) == false
         }
       )
       concat(ordered, leftovers)
@@ -211,8 +223,14 @@ fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferSc
   match lookup_func_sig_in_scope(scope: scope, name: func) {
     None => args
     Some { value: sig } => {
+      let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
+        if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
+      )
+      let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
+        map_insert(acc, param.name, true)
+      )
       let ordered = sig.params |> fold(init: [], f: (acc, param) =>
-        match args |> filter(arg => typed_named_arg_matches(arg: arg, name: param.name)) |> first {
+        match map_get(arg_map, param.name) {
           Some { value: arg } => concat(acc, [arg])
           None => acc
         }
@@ -221,7 +239,7 @@ fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferSc
         if arg.name == none {
           true
         } else {
-          sig.params |> any(param => param.name == arg.name.value) == false
+          emit_map_has(m: param_name_set, key: arg.name.value) == false
         }
       )
       concat(ordered, leftovers)
@@ -361,14 +379,20 @@ fn collect_service_calls_from_args(args: List<NamedArg>) -> List<String> {
   args |> flat_map(a => collect_service_calls(expr: a.value))
 }
 
+// Map membership check — returns true if key is present in the map.
+fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
 fn unique_strings(items: List<String>) -> List<String> {
-  items |> fold(init: [], f: fn(acc, item) {
-    if acc |> any(s => s == item) {
-      acc
-    } else {
-      concat(acc, [item])
-    }
+  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
+    if emit_map_has(m: acc.seen, key: item) { acc }
+    else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: concat(acc.result, [item]) } }
   })
+  result.result
 }
 
 // =========================================================================
@@ -546,11 +570,11 @@ fn to_string(value: Int) -> String {
     "0"
   } else {
     let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-    to_string_helper(value: value, acc: "")
+    to_string_helper(value: value, acc: []) |> join(separator: "")
   }
 }
 
-fn to_string_helper(value: Int, acc: String) -> String {
+fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
   if value == 0 {
     acc
   } else {
@@ -561,7 +585,7 @@ fn to_string_helper(value: Int, acc: String) -> String {
       Some { value: p } => p.second
       None => "?"
     }
-    to_string_helper(value: rest, acc: concat(ch, acc))
+    to_string_helper(value: rest, acc: concat([ch], acc))
   }
 }
 
@@ -1205,6 +1229,13 @@ fn is_type_alias_return(return_type: TypeExpr) -> Bool {
     Coproduct { name: _, variants: _, span: _ } => true
     Refined { base: _, predicates: _, span: _ } => true
   }
+}
+
+// B1 prep: Node-reading version of is_type_alias_return.
+// Dispatches on Node name instead of matching 8 TypeExpr variants.
+// After B1 migration, this replaces is_type_alias_return.
+fn is_type_alias_return_node(n: Node) -> Bool {
+  n.name != "Unit"
 }
 
 // Check if a typed node is a service item.

@@ -1796,10 +1796,13 @@ fn status_expr_to_str(expr: Expr) -> String {
 // Simple int-to-string for status codes (non-negative only, sufficient for HTTP status codes).
 fn int_to_string(value: Int) -> String {
   if value == 0 { "0" }
-  else { int_to_string_acc(value: value, acc: "") }
+  else {
+    let digits = int_to_string_acc(value: value, acc: [])
+    join(reverse(digits), separator: "")
+  }
 }
 
-fn int_to_string_acc(value: Int, acc: String) -> String {
+fn int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
   if value == 0 { acc }
   else {
     let digit = value % 10
@@ -1809,7 +1812,7 @@ fn int_to_string_acc(value: Int, acc: String) -> String {
       Some { value: p } => p.second
       None => "?"
     }
-    int_to_string_acc(value: rest, acc: concat(ch, acc))
+    int_to_string_acc(value: rest, acc: concat([ch], acc))
   }
 }
 

@@ -544,10 +544,10 @@ fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: Infer
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
+          |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
             let line = emit_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+            let new_text = concat(acc.text, [line])
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
@@ -555,7 +555,7 @@ fn emit_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, scope: Infer
           Some { value: s } => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope), ")")
           None => "Ok(())"
         }
-        if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
+        if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
     _ => concat("Ok(", emit_typed_expr(texpr: body, registry: registry, scope: scope), ")")
@@ -1043,13 +1043,13 @@ fn interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: 
 // =========================================================================
 
 fn emit_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let state = stmts |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, stmt) {
+  let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
     let line = emit_expr_in_scope(expr: stmt, registry: registry, scope: acc.scope)
     let next_scope = scope_after_plain_expr(expr: stmt, scope: acc.scope)
-    let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+    let new_text = concat(acc.text, [line])
     BlockEmitState { text: new_text, scope: next_scope }
   })
-  concat("{\n", indent(text: state.text, level: 1), "\n}")
+  concat("{\n", indent(text: state.text |> join(separator: "\n"), level: 1), "\n}")
 }
 
 // =========================================================================
@@ -1364,13 +1364,13 @@ fn typed_interp_format_part(part: TypedStringPart, registry: Map<String, ItemInf
 }
 
 fn emit_typed_block(stmts: List<TypedExpr>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let state = stmts |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, stmt) {
+  let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
     let line = emit_typed_expr(texpr: stmt, registry: registry, scope: acc.scope)
     let next_scope = scope_after_expr(texpr: stmt, scope: acc.scope)
-    let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+    let new_text = concat(acc.text, [line])
     BlockEmitState { text: new_text, scope: next_scope }
   })
-  concat("{\n", indent(text: state.text, level: 1), "\n}")
+  concat("{\n", indent(text: state.text |> join(separator: "\n"), level: 1), "\n}")
 }
 
 fn emit_typed_cast(expr: TypedExpr, target: TypeExpr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -1438,10 +1438,10 @@ fn emit_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, r
       } else {
         let init_state = ss |> enumerate
           |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { text: "", scope: scope }, f: fn(acc, pair) {
+          |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
             let line = emit_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = if acc.text == "" { line } else { concat(acc.text, "\n", line) }
+            let new_text = concat(acc.text, [line])
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_str = match ss |> last {
@@ -1449,7 +1449,7 @@ fn emit_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>, r
             emit_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope)
           None => "break;"
         }
-        if init_state.text == "" { last_str } else { concat(init_state.text, "\n", last_str) }
+        if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     _ =>
       let val_str = emit_typed_expr(texpr: texpr, registry: registry, scope: scope)
@@ -1598,17 +1598,9 @@ fn extract_mock_props(properties: List<FieldInit>) -> List<FieldInit> {
 }
 
 fn starts_with_prefix(s: String, prefix: String) -> Bool {
-  let prefix_chars = prefix |> chars
-  let s_chars = s |> chars
-  if prefix_chars |> count > s_chars |> count { false }
-  else {
-    prefix_chars |> enumerate |> all(pair =>
-      match s_chars |> enumerate |> filter(sp => sp.first == pair.first) |> first {
-        Some { value: sp } => sp.second == pair.second
-        None => false
-      }
-    )
-  }
+  let prefix_len = string_length(s: prefix)
+  if string_length(s: s) < prefix_len { false }
+  else { substring(s: s, start: 0, end: prefix_len) == prefix }
 }
 
 fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
