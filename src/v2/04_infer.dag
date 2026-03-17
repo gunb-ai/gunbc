@@ -1237,7 +1237,7 @@ fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, sp
 
 fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: type_expr_to_node(te: p.type_expr) })
+    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr })
   )
   InferScope {
     type_env: scope.type_env,
@@ -1718,8 +1718,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
 
     Cast { expr: cast_inner, target: target_type, span: span } =>
       let inner_result = infer_expr(expr: cast_inner, scope: scope)
-      let target_node = type_expr_to_node(te: target_type)
-      let texpr = TypedCast { expr: inner_result.typed, target: target_node, resolved_type: target_node, span: span }
+      let texpr = TypedCast { expr: inner_result.typed, target: target_type, resolved_type: target_type, span: span }
       InferResult {
         typed: texpr,
         diagnostics: inner_result.diagnostics

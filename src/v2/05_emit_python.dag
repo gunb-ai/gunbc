@@ -732,7 +732,7 @@ fn emit_py_typed_let(name: String, value: TypedExpr, body: TypedExpr?, registry:
   let let_line = concat(py_ident(name: name), " = ", val_str)
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: node_to_type_expr_full(n: value.resolved_type))
+      let next_scope = extend_scope(scope: scope, name: name, resolved: value.resolved_type)
       concat(let_line, "\n", emit_py_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth))
     None => let_line
   }
@@ -841,7 +841,7 @@ fn emit_py_typed_func_body(body: TypedExpr, registry: Map<String, ItemInfo>, sco
     TypedLet { name: n, value: v, body: inner, resolved_type: _, span: _ } => {
       let val_str = emit_py_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth)
       let let_line = concat(py_ident(name: n), " = ", val_str)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: node_to_type_expr_full(n: v.resolved_type))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_py_typed_func_body(body: bd, registry: registry, scope: next_scope, depth: depth))
@@ -915,7 +915,7 @@ fn emit_py_typed_tco_expr(texpr: TypedExpr, fn_name: String, params: List<Param>
     TypedLet { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
       let val_str = emit_py_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth)
       let let_line = concat(py_ident(name: n), " = ", val_str)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: node_to_type_expr_full(n: v.resolved_type))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type)
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_py_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: depth))

@@ -146,7 +146,7 @@ type Connective = Conj | Disj
 
 type Field {
   name: String
-  type_expr: TypeExpr
+  type_expr: Node
   optional: Bool
   default_value: Expr?
   from_key: String?
@@ -161,14 +161,14 @@ type Variant {
 
 type Param {
   name: String
-  type_expr: TypeExpr
+  type_expr: Node
   default_value: Expr?
   span: SourceSpan
 }
 
 type ResourceUse {
   name: String
-  resource: TypeExpr
+  resource: Node
   span: SourceSpan
 }
 
@@ -205,7 +205,7 @@ type Expr
   | Lambda { params: List<String>, body: Expr, span: SourceSpan }
   | StringInterp { parts: List<StringPart>, span: SourceSpan }
   | Block { stmts: List<Expr>, span: SourceSpan }
-  | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
+  | Cast { expr: Expr, target: Node, span: SourceSpan }
   | ForEach { variable: String, collection: Expr, body: Expr, span: SourceSpan }
   | Index { base: Expr, index: Expr, span: SourceSpan }
   | Slice { base: Expr, start: Expr, end: Expr, span: SourceSpan }
@@ -375,7 +375,7 @@ fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
     TypedLambda { params: ps, body: bd, resolved_type: _, span: s } => Lambda { params: ps, body: typed_expr_to_expr(texpr: bd), span: s }
     TypedStringInterp { parts: ps, resolved_type: _, span: s } => StringInterp { parts: ps |> map(p => match p { TypedText { value: v } => Text { value: v }, TypedInterpolation { expr: e } => Interpolation { expr: typed_expr_to_expr(texpr: e) } }), span: s }
     TypedBlock { stmts: ss, resolved_type: _, span: s } => Block { stmts: ss |> map(st => typed_expr_to_expr(texpr: st)), span: s }
-    TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: node_to_type_expr_full(n: t), span: s }
+    TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: t, span: s }
     TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: s } => ForEach { variable: v, collection: typed_expr_to_expr(texpr: c), body: typed_expr_to_expr(texpr: bd), span: s }
     TypedIndex { base: b, index: i, resolved_type: _, span: s } => Index { base: typed_expr_to_expr(texpr: b), index: typed_expr_to_expr(texpr: i), span: s }
     TypedSlice { base: b, start: st, end: e, resolved_type: _, span: s } => Slice { base: typed_expr_to_expr(texpr: b), start: typed_expr_to_expr(texpr: st), end: typed_expr_to_expr(texpr: e), span: s }
@@ -415,7 +415,7 @@ type Node {
   connective: Connective?
   // Ports — what flows in and out
   params: List<Param>
-  return_type: TypeExpr?
+  return_type: Node?
   uses: List<ResourceUse>
   // Computation — how it executes (none = externally provided)
   body: Expr?
@@ -423,7 +423,7 @@ type Node {
   transport: TransportBinding?
   // Metadata
   properties: List<FieldInit>
-  type_annotation: TypeExpr?
+  type_annotation: Node?
   config: ServiceConfig?
 }
 
@@ -572,7 +572,6 @@ fn type_expr_coproduct_to_node(cn: String?, vs: List<Variant>, s: SourceSpan) ->
 }
 
 fn field_to_node(f: Field) -> Node {
-  let type_node = type_expr_to_node(te: f.type_expr)
   Node {
     name: f.name, span: f.span,
     children: [],
@@ -582,7 +581,12 @@ fn field_to_node(f: Field) -> Node {
     properties: if f.from_key != none {
       [FieldInit { name: "from_key", value: Literal { value: LitStr { value: f.from_key.value }, span: f.span } }]
     } else { [] },
-    type_annotation: if f.optional { Some { value: Optional { inner: f.type_expr, span: f.span } } } else { none },
+    type_annotation: if f.optional { Some { value: Node {
+      name: "Optional", span: f.span,
+      children: [f.type_expr, Node { name: "None", span: f.span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }],
+      connective: Some { value: Disj },
+      params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none
+    } } } else { none },
     config: none
   }
 }
@@ -734,44 +738,38 @@ fn node_child_to_field(child: Node) -> Field {
   } else if child.return_type == none {
     Field {
       name: child.name,
-      type_expr: Named { name: child.name, span: child.span },
+      type_expr: type_expr_to_node(te: Named { name: child.name, span: child.span }),
       optional: false,
       default_value: child.body,
       from_key: from_key,
       span: child.span
     }
   } else {
-    match child.return_type.value {
-      Optional { inner: inner, span: _ } =>
-        Field {
-          name: child.name,
-          type_expr: inner,
-          optional: true,
-          default_value: child.body,
-          from_key: from_key,
-          span: child.span
-        }
-      _ =>
-        Field {
-          name: child.name,
-          type_expr: child.return_type.value,
-          optional: false,
-          default_value: child.body,
-          from_key: from_key,
-          span: child.span
-        }
+    let rt = child.return_type.value
+    if rt.name == "Optional" && rt.connective != none {
+      match rt.children |> first {
+        Some { value: inner } =>
+          Field { name: child.name, type_expr: inner, optional: true, default_value: child.body, from_key: from_key, span: child.span }
+        None =>
+          Field { name: child.name, type_expr: rt, optional: false, default_value: child.body, from_key: from_key, span: child.span }
+      }
+    } else {
+      Field { name: child.name, type_expr: rt, optional: false, default_value: child.body, from_key: from_key, span: child.span }
     }
   }
 }
 
-fn node_child_optional_annotation(child: Node) -> TypeExpr? {
+fn node_child_optional_annotation(child: Node) -> Node? {
   if child.type_annotation == none {
     none
   } else {
-    match child.type_annotation.value {
-      Optional { inner: inner, span: _ } => Some { value: inner }
-      _ => none
-    }
+    let anno = child.type_annotation.value
+    if anno.name == "Optional" && anno.connective != none {
+      match anno.children |> first {
+        Some { value: inner } => Some { value: inner }
+        None => none
+      }
+    } else { none }
   }
 }
 

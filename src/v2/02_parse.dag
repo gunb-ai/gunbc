@@ -20,7 +20,7 @@ import v2.std.core {
   Module, Import, ImportNames, ImportAll, ImportSpecific,
   Node,
   TypeExpr, Named, Product, Coproduct, Container, Refined, Optional,
-  MapType, Primitive,
+  MapType, Primitive, type_expr_to_node,
   ContainerKind, List, Set, NonEmptyList, NonEmptySet,
   Connective, Conj, Disj,
   Field, Variant, Param, ResourceUse,
@@ -118,7 +118,7 @@ type ModsResult { modifiers: List<OperationModifier>, state: ParserState, err: D
 type BindingsResult { field_bindings: List<FieldBinding>, state: ParserState, err: Diagnostic? }
 
 // Optional results
-type OptRetResult { return_type: TypeExpr?, state: ParserState, err: Diagnostic? }
+type OptRetResult { return_type: Node?, state: ParserState, err: Diagnostic? }
 type GuardResult { guard: Expr?, state: ParserState, err: Diagnostic? }
 type FromKeyResult { from_key: String?, state: ParserState, err: Diagnostic? }
 
@@ -1091,7 +1091,7 @@ fn parse_field_list_acc(tokens: List<Token>, state: ParserState, acc: List<Field
 
 fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_field = Field { name: "", type_expr: Named { name: "", span: start_span }, optional: false, default_value: none, from_key: none, span: start_span }
+  let dummy_field = Field { name: "", type_expr: type_expr_to_node(te: Named { name: "", span: start_span }), optional: false, default_value: none, from_key: none, span: start_span }
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return FieldResult { field: dummy_field, state: r.state, err: r.err } }
   let name = r.name
