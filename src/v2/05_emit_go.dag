@@ -37,7 +37,7 @@ import v2.std.core {
   TypedExpr, TypedLet, typed_expr_to_expr
 }
 
-import v2.compiler.typecheck {
+import v2.compiler.infer {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,

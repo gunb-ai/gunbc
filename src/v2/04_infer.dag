@@ -15,7 +15,7 @@
 //     -> v2.compiler.typecheck (TypedGraph, resolved types)
 //       -> v2.compiler.emit (target-language files)
 
-module v2.compiler.typecheck
+module v2.compiler.infer
 
 import std.types { SourceSpan }
 import v2.std.core {

@@ -90,7 +90,7 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_typecheck.dag"),
+            root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
@@ -185,7 +185,7 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_typecheck.dag"),
+            root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
@@ -758,7 +758,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_typecheck_parses_strict() {
-        assert_parses_strict("src/v2/04_typecheck.dag");
+        assert_parses_strict("src/v2/04_infer.dag");
     }
 
     #[test]
@@ -1939,7 +1939,7 @@ fn foo(item: String) -> String {
     /// Test that the typecheck.dag has mutual recursion cycle detection.
     #[test]
     fn phase4_typecheck_has_cycle_detection() {
-        let source = read_v2_file("src/v2/04_typecheck.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("detect_type_cycles"),
             "typecheck.dag should contain detect_type_cycles for SCC-based cycle detection"
@@ -1969,7 +1969,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase6_typecheck_resolves_and_validates_expression_tree_types() {
-        let source = read_v2_file("src/v2/04_typecheck.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("fn resolve_expr_types"),
             "typecheck.dag should walk expression trees during type resolution"
@@ -3242,7 +3242,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3370,7 +3370,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3619,7 +3619,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),

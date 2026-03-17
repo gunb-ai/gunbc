@@ -34,7 +34,7 @@ import v2.std.core {
   typed_expr_to_expr
 }
 
-import v2.compiler.typecheck {
+import v2.compiler.infer {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   SpanType, expr_span,
