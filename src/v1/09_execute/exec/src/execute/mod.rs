@@ -36,7 +36,7 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, AppliedCoercion,
     BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId, NodeKind, PortName,
-    Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    TypeId, TypeRegistry, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;

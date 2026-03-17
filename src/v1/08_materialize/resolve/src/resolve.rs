@@ -693,7 +693,7 @@ impl Executable for PrepareFileWriteCompatOp {
 /// Each `LoweredOp` node is replaced with its concrete domain op wrapped
 /// in `DynOp`. Edges and ports are preserved unchanged.
 ///
-/// Data declaration values are extracted from embedded `__data_decl::` nodes
+/// Data declaration values are extracted from embedded `DataDeclaration` nodes
 /// in the DAG itself — no external sidecar needed.
 pub fn resolve_lowered_dag_with(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveError> {
     let data_values = daglang_lower::extract_data_values_from_dag(dag);

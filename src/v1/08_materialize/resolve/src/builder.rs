@@ -235,7 +235,10 @@ mod compile_internals {
 
     /// Bump when cache format changes. Stale caches with a different version are
     /// discarded on load.
-    const DAGBIN_CACHE_VERSION: u32 = 7;
+    ///
+    /// v8: NodeKind::DataDeclaration added — stale v7 caches serialized data
+    /// declaration nodes as Pure, which breaks structural extraction.
+    const DAGBIN_CACHE_VERSION: u32 = 8;
 
     /// Serializable bundle of compilation artifacts stored in the dagbin cache.
     #[derive(Serialize, Deserialize)]

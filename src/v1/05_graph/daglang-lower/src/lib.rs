@@ -9910,8 +9910,8 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
 
 /// Prefix for data declaration node IDs embedded in the DAG.
 ///
-/// The resolver scans for nodes with this prefix to reconstruct data_values
-/// without requiring a sidecar through the compilation pipeline.
+/// Used for node ID uniqueness only. Name extraction reads the output port
+/// name structurally via [`NodeKind::DataDeclaration`], not this prefix.
 pub const DATA_DECL_NODE_PREFIX: &str = "__data_decl::";
 
 /// Embed data declaration values as `CallLiteralSource` nodes in the DAG.
@@ -9946,7 +9946,8 @@ fn embed_data_declaration_nodes(
 /// Extract data declaration values from embedded DAG nodes.
 ///
 /// Identifies data declaration nodes by [`NodeKind::DataDeclaration`], then
-/// strips the [`DATA_DECL_NODE_PREFIX`] to recover the declaration name.
+/// reads the declaration name from the node's first output port (which is set
+/// to the declaration name by [`embed_data_declaration_nodes`]).
 /// Payloads are converted to `Value` at extraction to avoid JSON round-trip
 /// lossy conversion (S53 fix).
 pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, gunbc_ir::Value> {
@@ -9955,17 +9956,21 @@ pub fn extract_data_values_from_dag(dag: &Dag<LoweredOp>) -> HashMap<String, gun
         if node.kind != NodeKind::DataDeclaration {
             continue;
         }
-        if let Some(name) = node.id.0.strip_prefix(DATA_DECL_NODE_PREFIX) {
-            if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
-                kind:
-                    PrimitiveOpKind::CallLiteralSource {
-                        literal: PrimitiveLiteral::Json(json),
-                    },
-                ..
-            }) = &node.body
-            {
-                data_values.insert(name.to_string(), json_to_value(json));
-            }
+        // The declaration name is structural: it lives in the output port,
+        // not in the node ID prefix convention.
+        let name = match node.outputs.first() {
+            Some(port) => port.name.0.clone(),
+            None => continue,
+        };
+        if let gunbc_ir::NodeBody::Opaque(LoweredOp::Primitive {
+            kind:
+                PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Json(json),
+                },
+            ..
+        }) = &node.body
+        {
+            data_values.insert(name, json_to_value(json));
         }
     }
     data_values

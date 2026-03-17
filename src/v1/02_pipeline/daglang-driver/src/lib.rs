@@ -95,8 +95,8 @@ impl CompileOutput {
     /// Extract data declaration values from embedded DAG nodes.
     ///
     /// Data declarations are embedded as `CallLiteralSource` nodes with
-    /// `__data_decl::` prefixed IDs during lowering. This method extracts
-    /// them without requiring a separate sidecar field.
+    /// `NodeKind::DataDeclaration` during lowering. This method extracts
+    /// them by structural kind, reading declaration names from output ports.
     pub fn data_values(&self) -> HashMap<String, gunbc_ir::Value> {
         daglang_lower::extract_data_values_from_dag(self.lowered_dag.as_dag())
     }
