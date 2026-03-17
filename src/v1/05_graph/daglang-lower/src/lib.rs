@@ -45,11 +45,11 @@ use daglang_syntax::span::Span as SyntaxSpan;
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
+use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::middleware::{
     RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
     RetryConfig, TransportMiddlewareConfig,
 };
-use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{
     Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, Node, NodeId, NodeKind,
     NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,

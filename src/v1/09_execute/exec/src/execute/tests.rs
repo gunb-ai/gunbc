@@ -2271,7 +2271,9 @@ fn test_remap_mode_inputs_simulate() {
     match result {
         ExecutionMode::Simulate(config) => {
             assert_eq!(
-                config.boundary_mocks.get_input("subdag/inner", "inner_port"),
+                config
+                    .boundary_mocks
+                    .get_input("subdag/inner", "inner_port"),
                 Some(&Value::Int(99)),
                 "Simulate boundary mocks should be remapped"
             );

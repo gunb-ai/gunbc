@@ -1051,7 +1051,8 @@ mod tests {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(Node::opaque(
             "node_a",
-            vec![Port::scalar("tool:clippy", "ToolHandle").with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
+            vec![Port::scalar("tool:clippy", "ToolHandle")
+                .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Read)],
             vec![],
             "op_a".to_string(),
         ));
@@ -1454,8 +1455,8 @@ mod tests {
 
     #[test]
     fn test_validate_resource_completeness_and_conflicts_share_annotated_non_res_contract() {
-        let shared_tool_port =
-            Port::scalar("tool:clippy", "ToolHandle").with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Exclusive);
+        let shared_tool_port = Port::scalar("tool:clippy", "ToolHandle")
+            .with_resource_access(ResourceId::new("tool:clippy"), AccessMode::Exclusive);
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(
             Node::opaque(
@@ -1664,7 +1665,11 @@ mod tests {
             dag.add_node(
                 Node::opaque(
                     "effectful",
-                    vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
+                    vec![Port::resource(
+                        "file",
+                        "FilesystemHandle",
+                        AccessMode::Write,
+                    )],
                     vec![],
                     "op".to_string(),
                 )

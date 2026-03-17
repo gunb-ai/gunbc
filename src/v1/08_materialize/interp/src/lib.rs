@@ -74,8 +74,8 @@ fn execute_primitive(
     match kind {
         PrimitiveOpKind::GetField { field } => {
             let value = inputs.values().next().cloned().unwrap_or(Value::Skipped);
-            let result = eval::eval_get_field(&value, field)
-                .map_err(|e| ExecError::new(e.to_string()))?;
+            let result =
+                eval::eval_get_field(&value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
@@ -90,14 +90,14 @@ fn execute_primitive(
         PrimitiveOpKind::BinaryOp { op } => {
             let left = inputs.get("left").cloned().unwrap_or(Value::Skipped);
             let right = inputs.get("right").cloned().unwrap_or(Value::Skipped);
-            let result = eval::eval_binop(&left, *op, &right)
-                .map_err(|e| ExecError::new(e.to_string()))?;
+            let result =
+                eval::eval_binop(&left, *op, &right).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::UnaryOp { op } => {
             let val = inputs.get("operand").cloned().unwrap_or(Value::Skipped);
-            let result = eval::eval_unary_op(*op, &val)
-                .map_err(|e| ExecError::new(e.to_string()))?;
+            let result =
+                eval::eval_unary_op(*op, &val).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::Conditional => {
@@ -133,24 +133,33 @@ fn execute_primitive(
         }
         PrimitiveOpKind::ListConstruct { count } => {
             let elements: Vec<Value> = (0..*count)
-                .map(|i| inputs.get(&format!("elem_{i}")).cloned().unwrap_or(Value::Skipped))
+                .map(|i| {
+                    inputs
+                        .get(&format!("elem_{i}"))
+                        .cloned()
+                        .unwrap_or(Value::Skipped)
+                })
                 .collect();
-            let result = eval::eval_list_construct(elements)
-                .map_err(|e| ExecError::new(e.to_string()))?;
+            let result =
+                eval::eval_list_construct(elements).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::MatchDispatch { arms, sibling_fns } => {
             let scrutinee = inputs.get("scrutinee").cloned().unwrap_or(Value::Skipped);
             if matches!(scrutinee, Value::Skipped) {
-                return Ok([("value".to_string(), Value::Skipped)].into_iter().collect());
+                return Ok([("value".to_string(), Value::Skipped)]
+                    .into_iter()
+                    .collect());
             }
             let env: HashMap<String, Value> = inputs
                 .iter()
                 .filter(|(k, _)| k.as_str() != "scrutinee")
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            let sibling_fns_map: HashMap<String, daglang_eval::LoweredFnBody> =
-                sibling_fns.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            let sibling_fns_map: HashMap<String, daglang_eval::LoweredFnBody> = sibling_fns
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
             let result = eval::eval_match(&scrutinee, arms, &env, &sibling_fns_map)
                 .map_err(|e| ExecError::new(format!("MatchDispatch: {e}")))?;
             Ok([("value".to_string(), result)].into_iter().collect())
@@ -181,7 +190,9 @@ fn execute_callable(
 
     match eval::evaluate_fn_body_with_data(body, &eval_inputs, sibling_fns, data_values) {
         Ok(results) => Ok(results),
-        Err(eval_err) => Err(ExecError::new(format!("FnBody evaluation failed: {eval_err}"))),
+        Err(eval_err) => Err(ExecError::new(format!(
+            "FnBody evaluation failed: {eval_err}"
+        ))),
     }
 }
 
@@ -288,9 +299,13 @@ mod tests {
             stage_names: vec!["stage".to_string()],
         };
 
-        let err =
-            execute_lowered_op(&op, HashMap::new(), &empty_sibling_fns(), &empty_data_values())
-                .expect_err("pipeline nodes should fail closed");
+        let err = execute_lowered_op(
+            &op,
+            HashMap::new(),
+            &empty_sibling_fns(),
+            &empty_data_values(),
+        )
+        .expect_err("pipeline nodes should fail closed");
 
         assert_eq!(
             err.message,
@@ -369,9 +384,13 @@ mod tests {
             kind: CollectionKind::Count,
         };
 
-        let err =
-            execute_lowered_op(&op, HashMap::new(), &empty_sibling_fns(), &empty_data_values())
-                .expect_err("missing items input should fail closed");
+        let err = execute_lowered_op(
+            &op,
+            HashMap::new(),
+            &empty_sibling_fns(),
+            &empty_data_values(),
+        )
+        .expect_err("missing items input should fail closed");
 
         assert_eq!(err.message, "collection operation missing `items` input");
     }

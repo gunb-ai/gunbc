@@ -424,7 +424,11 @@ impl<T> Node<T> {
     }
 
     /// Set the mock-resolution input alias for param-source nodes.
-    pub fn with_input_alias(mut self, node_id: impl Into<NodeId>, port: impl Into<PortName>) -> Self {
+    pub fn with_input_alias(
+        mut self,
+        node_id: impl Into<NodeId>,
+        port: impl Into<PortName>,
+    ) -> Self {
         self.input_alias = Some((node_id.into(), port.into()));
         self
     }

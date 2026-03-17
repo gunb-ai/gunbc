@@ -1151,8 +1151,8 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 };
             }
             // Enum common field access → method call (Rust enums don't support direct field access)
-            if let Some(recv_type) = infer_known_expr_ir_type(receiver, ctx)
-                .and_then(|ty| named_type_from_ir(&ty))
+            if let Some(recv_type) =
+                infer_known_expr_ir_type(receiver, ctx).and_then(|ty| named_type_from_ir(&ty))
             {
                 if let Some(accessor_fields) = ctx.enum_accessor_fields.get(&recv_type) {
                     if accessor_fields.contains(field.as_str()) {
@@ -3473,10 +3473,7 @@ fn compile_match_arm(
         }
         // Special case: Some { value: binding } → propagate the inner type
         // from the scrutinee's Optional type to the binding.
-        if variant_name == "Some"
-            && fields.len() == 1
-            && fields[0].0 == "value"
-        {
+        if variant_name == "Some" && fields.len() == 1 && fields[0].0 == "value" {
             if let ast::Pattern::Ident(bind_name) = &fields[0].1 {
                 if let Some(IrType::Optional(inner)) = scrutinee_ir_type {
                     ir_type_bindings.push((bind_name.clone(), inner.as_ref().clone()));
