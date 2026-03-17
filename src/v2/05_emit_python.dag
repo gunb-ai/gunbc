@@ -47,8 +47,12 @@ import v2.compiler.emit {
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
-  expr_has_self_call, has_non_tail_self_call
+  expr_has_self_call, has_non_tail_self_call,
+  apply_type_template1, apply_type_template2
 }
+
+// When cross-module data imports are supported in the v1 bootstrap, enable:
+// import std.languages { TypeMapping, LiteralSyntax, python_language, python_literals }
 
 // =========================================================================
 // Local scope helpers — span-based cache lookup for Expr-level code paths.
@@ -83,9 +87,15 @@ fn py_scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 }
 
 // =========================================================================
-// Python reserved words — identifiers that need underscore suffix
+// Python language facts — from std.languages spec (python_language, python_literals)
+//
+// These data declarations mirror dsl/std/languages.dag exactly. When cross-
+// module data imports are supported in the v1 bootstrap, they will be replaced
+// with: import std.languages { python_language, python_literals }
 // =========================================================================
 
+// Python reserved words — Ref: Python Reference 2.3.1 Keywords
+// Source of truth: std.languages.python_language.reserved_words
 data python_reserved: List<String> = [
   "False", "None", "True", "and", "as", "assert", "async", "await",
   "break", "class", "continue", "def", "del", "elif", "else",
@@ -94,6 +104,56 @@ data python_reserved: List<String> = [
   "return", "try", "while", "with", "yield",
   "type", "match", "case"
 ]
+
+// Python primitive type mapping — Ref: Python Reference, Built-in types
+// Source of truth: std.languages.python_language.types
+data python_type_map: Map<String, String> = {
+  "String": "str",
+  "Int": "int",
+  "Float": "float",
+  "Bool": "bool",
+  "Bytes": "bytes",
+  "Unit": "None",
+  "Secret": "str",
+  "Json": "dict"
+}
+
+// Python keywords and operators — Ref: Python Reference
+// Source of truth: std.languages.python_literals, python_language
+// Keys: true, false, null, and, or, not
+data python_keywords: Map<String, String> = {
+  "true": "True",
+  "false": "False",
+  "null": "None",
+  "and": "and",
+  "or": "or",
+  "not": "not "
+}
+
+// Python container templates — Ref: Python Reference, typing module
+// Source of truth: std.languages.python_language.types.{list,set,optional,map}_template
+data python_container_templates: Map<String, String> = {
+  "list": "list[{0}]",
+  "set": "set[{0}]",
+  "optional": "Optional[{0}]",
+  "map": "dict[{0}, {1}]"
+}
+
+// Lookup helper for keyword map — returns the Python keyword for a given key.
+fn python_keyword(key: String) -> String {
+  match lookup(python_keywords, key: key) {
+    Some { value: kw } => kw
+    None => key
+  }
+}
+
+// Look up a container template and apply it.
+fn python_container(kind: String, inner: String) -> String {
+  match lookup(python_container_templates, key: kind) {
+    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
+    None => concat(kind, "[", inner, "]")
+  }
+}
 
 // =========================================================================
 // Entry point — Python target
@@ -327,9 +387,16 @@ fn emit_py_type_expr(type_expr: TypeExpr) -> String {
     Container { kind: k, element: el, span: _ } =>
       emit_py_container_type(kind: k, element: el)
     Optional { inner: inn, span: _ } =>
-      concat("Optional[", emit_py_type_expr(type_expr: inn), "]")
+      python_container(kind: "optional", inner: emit_py_type_expr(type_expr: inn))
     MapType { key: k, value: v, span: _ } =>
-      concat("dict[", emit_py_type_expr(type_expr: k), ", ", emit_py_type_expr(type_expr: v), "]")
+      apply_type_template2(
+        template: match lookup(python_container_templates, key: "map") {
+          Some { value: tmpl } => tmpl
+          None => "dict[{0}, {1}]"
+        },
+        arg0: emit_py_type_expr(type_expr: k),
+        arg1: emit_py_type_expr(type_expr: v)
+      )
     Product { name: pn, fields: fs, span: _ } =>
       emit_py_product_type_expr(name: pn, fields: fs)
     Coproduct { name: cn, variants: vs, span: _ } =>
@@ -341,24 +408,20 @@ fn emit_py_type_expr(type_expr: TypeExpr) -> String {
 }
 
 fn emit_py_primitive_type(name: String) -> String {
-  if name == "String" { "str" }
-  else if name == "Int" { "int" }
-  else if name == "Bool" { "bool" }
-  else if name == "Float" { "float" }
-  else if name == "Secret" { "str" }
-  else if name == "Json" { "dict" }
-  else if name == "Unit" { "None" }
-  else if name == "Bytes" { "bytes" }
-  else { name }
+  match lookup(python_type_map, key: name) {
+    Some { value: mapped } => mapped
+    None => name
+  }
 }
 
 fn emit_py_container_type(kind: ContainerKind, element: TypeExpr) -> String {
   let inner = emit_py_type_expr(type_expr: element)
   match kind {
-    List => concat("list[", inner, "]")
-    Set => concat("set[", inner, "]")
-    NonEmptyList => concat("list[", inner, "]")
-    NonEmptySet => concat("set[", inner, "]")
+    List => python_container(kind: "list", inner: inner)
+    Set => python_container(kind: "set", inner: inner)
+    // Python has no NonEmpty wrapper types — use same container template
+    NonEmptyList => python_container(kind: "list", inner: inner)
+    NonEmptySet => python_container(kind: "set", inner: inner)
   }
 }
 
@@ -675,8 +738,8 @@ fn emit_py_literal(value: LiteralValue) -> String {
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
     LitBool { value: b } =>
-      if b { "True" } else { "False" }
-    LitNull => "None"
+      if b { python_keyword(key: "true") } else { python_keyword(key: "false") }
+    LitNull => python_keyword(key: "null")
   }
 }
 
@@ -938,8 +1001,8 @@ fn emit_py_bin_op_symbol(op: BinOpKind) -> String {
     BinGt => ">"
     BinLe => "<="
     BinGe => ">="
-    BinAnd => "and"
-    BinOr => "or"
+    BinAnd => python_keyword(key: "and")
+    BinOr => python_keyword(key: "or")
     NullCoalesce => "??"
   }
 }
@@ -958,7 +1021,7 @@ fn is_py_null_coalesce_op(op: BinOpKind) -> Bool {
 fn emit_py_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_py_expr_in_scope(expr: operand, registry: registry, scope: scope)
   match op {
-    Not => concat("not ", expr_str)
+    Not => concat(python_keyword(key: "not"), expr_str)
     Neg => concat("-", expr_str)
   }
 }

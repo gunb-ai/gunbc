@@ -56,7 +56,8 @@ import v2.compiler.emit {
   indent, make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
-  expr_has_self_call, has_non_tail_self_call
+  expr_has_self_call, has_non_tail_self_call,
+  apply_type_template1, apply_type_template2
 }
 
 // =========================================================================
@@ -89,10 +90,18 @@ fn go_scope_after_expr(expr: Expr, scope: InferScope) -> InferScope {
 }
 
 // =========================================================================
-// Go reserved words — identifiers that need underscore suffix
-// Ref: Go Spec "Keywords"
+// Go language facts — from std.languages spec (go_language, go_literals)
+//
+// These data declarations mirror dsl/std/languages.dag exactly. When cross-
+// module data imports are supported in the v1 bootstrap, they will be replaced
+// with: import std.languages { go_language, go_literals }
 // =========================================================================
 
+// When cross-module data imports are supported in the v1 bootstrap, enable:
+// import std.languages { TypeMapping, LiteralSyntax, go_language, go_literals }
+
+// Go reserved words — Ref: Go Spec "Keywords"
+// Source of truth: std.languages.go_language.reserved_words
 data go_reserved: List<String> = [
   "break", "case", "chan", "const", "continue",
   "default", "defer", "else", "fallthrough", "for",
@@ -108,6 +117,55 @@ data go_reserved: List<String> = [
   "imag", "len", "make", "new", "panic", "print", "println",
   "real", "recover"
 ]
+
+// Go primitive type mapping — Ref: Go Spec, Types
+// Source of truth: std.languages.go_language.types
+data go_type_map: Map<String, String> = {
+  "String": "string",
+  "Int": "int64",
+  "Float": "float64",
+  "Bool": "bool",
+  "Bytes": "[]byte",
+  "Unit": "struct{}",
+  "Secret": "string",
+  "Json": "interface{}"
+}
+
+// Go keywords and operators — Ref: Go Spec
+// Source of truth: std.languages.go_literals, go_language
+data go_keywords: Map<String, String> = {
+  "true": "true",
+  "false": "false",
+  "null": "nil",
+  "and": "&&",
+  "or": "||",
+  "not": "!"
+}
+
+// Go container templates — Ref: Go Spec, Types
+// Source of truth: std.languages.go_language.types.{list,set,optional,map}_template
+data go_container_templates: Map<String, String> = {
+  "list": "[]{0}",
+  "set": "map[{0}]struct{}",
+  "optional": "*{0}",
+  "map": "map[{0}]{1}"
+}
+
+// Lookup helper for keyword map.
+fn go_keyword(key: String) -> String {
+  match lookup(go_keywords, key: key) {
+    Some { value: kw } => kw
+    None => key
+  }
+}
+
+// Look up a container template and apply it.
+fn go_container(kind: String, inner: String) -> String {
+  match lookup(go_container_templates, key: kind) {
+    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
+    None => concat(kind, "[", inner, "]")
+  }
+}
 
 // =========================================================================
 // Entry point — Go target
@@ -335,9 +393,16 @@ fn emit_go_type_expr(type_expr: TypeExpr) -> String {
     Container { kind: k, element: el, span: _ } =>
       emit_go_container_type(kind: k, element: el)
     Optional { inner: inn, span: _ } =>
-      concat("*", emit_go_type_expr(type_expr: inn))
+      go_container(kind: "optional", inner: emit_go_type_expr(type_expr: inn))
     MapType { key: k, value: v, span: _ } =>
-      concat("map[", emit_go_type_expr(type_expr: k), "]", emit_go_type_expr(type_expr: v))
+      apply_type_template2(
+        template: match lookup(go_container_templates, key: "map") {
+          Some { value: tmpl } => tmpl
+          None => "map[{0}]{1}"
+        },
+        arg0: emit_go_type_expr(type_expr: k),
+        arg1: emit_go_type_expr(type_expr: v)
+      )
     Product { name: pn, fields: fs, span: _ } =>
       emit_go_product_type_expr(name: pn, fields: fs)
     Coproduct { name: cn, variants: vs, span: _ } =>
@@ -348,26 +413,21 @@ fn emit_go_type_expr(type_expr: TypeExpr) -> String {
   }
 }
 
-// Ref: go_language.types in languages.dag
 fn emit_go_primitive_type(name: String) -> String {
-  if name == "String" { "string" }
-  else if name == "Int" { "int64" }
-  else if name == "Bool" { "bool" }
-  else if name == "Float" { "float64" }
-  else if name == "Secret" { "string" }
-  else if name == "Json" { "interface{}" }
-  else if name == "Unit" { "struct{}" }
-  else if name == "Bytes" { "[]byte" }
-  else { name }
+  match lookup(go_type_map, key: name) {
+    Some { value: mapped } => mapped
+    None => name
+  }
 }
 
 fn emit_go_container_type(kind: ContainerKind, element: TypeExpr) -> String {
   let inner = emit_go_type_expr(type_expr: element)
   match kind {
-    List => concat("[]", inner)
-    Set => concat("map[", inner, "]struct{}")
-    NonEmptyList => concat("[]", inner)
-    NonEmptySet => concat("map[", inner, "]struct{}")
+    List => go_container(kind: "list", inner: inner)
+    Set => go_container(kind: "set", inner: inner)
+    // Go has no NonEmpty wrapper types — use same container template
+    NonEmptyList => go_container(kind: "list", inner: inner)
+    NonEmptySet => go_container(kind: "set", inner: inner)
   }
 }
 
@@ -672,8 +732,8 @@ fn emit_go_literal(value: LiteralValue) -> String {
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
     LitBool { value: b } =>
-      if b { "true" } else { "false" }
-    LitNull => "nil"
+      if b { go_keyword(key: "true") } else { go_keyword(key: "false") }
+    LitNull => go_keyword(key: "null")
   }
 }
 
@@ -927,8 +987,8 @@ fn emit_go_bin_op_symbol(op: BinOpKind) -> String {
     BinGt => ">"
     BinLe => "<="
     BinGe => ">="
-    BinAnd => "&&"
-    BinOr => "||"
+    BinAnd => go_keyword(key: "and")
+    BinOr => go_keyword(key: "or")
     NullCoalesce => "??"
   }
 }
@@ -947,7 +1007,7 @@ fn is_go_null_coalesce_op(op: BinOpKind) -> Bool {
 fn emit_go_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_go_expr_in_scope(expr: operand, registry: registry, scope: scope)
   match op {
-    Not => concat("!", expr_str)
+    Not => concat(go_keyword(key: "not"), expr_str)
     Neg => concat("-", expr_str)
   }
 }

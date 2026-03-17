@@ -52,8 +52,12 @@ import v2.compiler.emit {
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
-  span_key
+  span_key,
+  apply_type_template1, apply_type_template2
 }
+
+// When cross-module data imports are supported in the v1 bootstrap, enable:
+// import std.languages { TypeMapping, LiteralSyntax, rust_language, rust_literals }
 
 // =========================================================================
 // Bridge helpers — span-based type lookup for emit_expr_in_scope sub-tree
@@ -95,9 +99,15 @@ fn scope_after_plain_expr(expr: Expr, scope: InferScope) -> InferScope {
 }
 
 // =========================================================================
-// Rust reserved words — identifiers that need escaping with r# prefix
+// Rust language facts — from std.languages spec (rust_language, rust_literals)
+//
+// These data declarations mirror dsl/std/languages.dag exactly. When cross-
+// module data imports are supported in the v1 bootstrap, they will be replaced
+// with: import std.languages { rust_language, rust_literals }
 // =========================================================================
 
+// Rust reserved words — Ref: Rust Reference, Keywords
+// Source of truth: std.languages.rust_language.reserved_words
 data rust_reserved: List<String> = [
   "as", "async", "await", "break", "const", "continue", "crate",
   "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
@@ -108,6 +118,56 @@ data rust_reserved: List<String> = [
   "macro", "override", "priv", "try", "typeof", "unsized",
   "virtual"
 ]
+
+// Rust primitive type mapping — Ref: Rust Reference, Primitive types
+// Source of truth: std.languages.rust_language.types
+data rust_type_map: Map<String, String> = {
+  "String": "String",
+  "Int": "i64",
+  "Float": "f64",
+  "Bool": "bool",
+  "Bytes": "Vec<u8>",
+  "Unit": "()",
+  "Secret": "String",
+  "Json": "serde_json::Value"
+}
+
+// Rust keywords and operators — Ref: Rust Reference
+// Source of truth: std.languages.rust_literals, rust_language
+// Keys: true, false, null, and, or, not
+data rust_keywords: Map<String, String> = {
+  "true": "true",
+  "false": "false",
+  "null": "None",
+  "and": "&&",
+  "or": "||",
+  "not": "!"
+}
+
+// Rust container templates — Ref: Rust Reference, Standard library types
+// Source of truth: std.languages.rust_language.types.{list,set,optional,map}_template
+data rust_container_templates: Map<String, String> = {
+  "list": "Vec<{0}>",
+  "set": "std::collections::BTreeSet<{0}>",
+  "optional": "Option<{0}>",
+  "map": "BTreeMap<{0}, {1}>"
+}
+
+// Lookup helper for keyword map — returns the Rust keyword for a given key.
+fn rust_keyword(key: String) -> String {
+  match lookup(rust_keywords, key: key) {
+    Some { value: kw } => kw
+    None => key
+  }
+}
+
+// Look up a container template and apply it.
+fn rust_container(kind: String, inner: String) -> String {
+  match lookup(rust_container_templates, key: kind) {
+    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
+    None => concat(kind, "<", inner, ">")
+  }
+}
 
 // =========================================================================
 // Entry point — Rust target
@@ -421,9 +481,16 @@ fn emit_type_expr(type_expr: TypeExpr) -> String {
     Container { kind: k, element: el, span: _ } =>
       emit_container_type(kind: k, element: el)
     Optional { inner: inn, span: _ } =>
-      concat("Option<", emit_type_expr(type_expr: inn), ">")
+      rust_container(kind: "optional", inner: emit_type_expr(type_expr: inn))
     MapType { key: k, value: v, span: _ } =>
-      concat("BTreeMap<", emit_type_expr(type_expr: k), ", ", emit_type_expr(type_expr: v), ">")
+      apply_type_template2(
+        template: match lookup(rust_container_templates, key: "map") {
+          Some { value: tmpl } => tmpl
+          None => "BTreeMap<{0}, {1}>"
+        },
+        arg0: emit_type_expr(type_expr: k),
+        arg1: emit_type_expr(type_expr: v)
+      )
     Product { name: pn, fields: fs, span: _ } =>
       emit_product_type_expr(name: pn, fields: fs)
     Coproduct { name: cn, variants: vs, span: _ } =>
@@ -435,22 +502,18 @@ fn emit_type_expr(type_expr: TypeExpr) -> String {
 }
 
 fn emit_primitive_type(name: String) -> String {
-  if name == "String" { "String" }
-  else if name == "Int" { "i64" }
-  else if name == "Bool" { "bool" }
-  else if name == "Float" { "f64" }
-  else if name == "Secret" { "String" }
-  else if name == "Json" { "serde_json::Value" }
-  else if name == "Unit" { "()" }
-  else if name == "Bytes" { "Vec<u8>" }
-  else { name }
+  match lookup(rust_type_map, key: name) {
+    Some { value: mapped } => mapped
+    None => name
+  }
 }
 
 fn emit_container_type(kind: ContainerKind, element: TypeExpr) -> String {
   let inner = emit_type_expr(type_expr: element)
   match kind {
-    List => concat("Vec<", inner, ">")
-    Set => concat("std::collections::BTreeSet<", inner, ">")
+    List => rust_container(kind: "list", inner: inner)
+    Set => rust_container(kind: "set", inner: inner)
+    // NonEmpty wrappers are compiler-specific constructs, not language-level types
     NonEmptyList => concat("NonEmptyVec<", inner, ">")
     NonEmptySet => concat("NonEmptyBTreeSet<", inner, ">")
   }
@@ -830,8 +893,8 @@ fn emit_literal(value: LiteralValue) -> String {
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
     LitBool { value: b } =>
-      if b { "true" } else { "false" }
-    LitNull => "None"
+      if b { rust_keyword(key: "true") } else { rust_keyword(key: "false") }
+    LitNull => rust_keyword(key: "null")
   }
 }
 
@@ -1129,8 +1192,8 @@ fn emit_bin_op_symbol(op: BinOpKind) -> String {
     BinGt => ">"
     BinLe => "<="
     BinGe => ">="
-    BinAnd => "&&"
-    BinOr => "||"
+    BinAnd => rust_keyword(key: "and")
+    BinOr => rust_keyword(key: "or")
     NullCoalesce => "??"
   }
 }
@@ -1149,7 +1212,7 @@ fn is_null_coalesce_op(op: BinOpKind) -> Bool {
 fn emit_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_expr_in_scope(expr: operand, registry: registry, scope: scope)
   match op {
-    Not => concat("!", expr_str)
+    Not => concat(rust_keyword(key: "not"), expr_str)
     Neg => concat("-", expr_str)
   }
 }

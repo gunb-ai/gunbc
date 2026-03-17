@@ -675,3 +675,21 @@ fn has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bool {
         || has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
   }
 }
+
+// =========================================================================
+// Template application helpers — for language spec template strings.
+//
+// Templates from std.languages use {0}, {1} as positional placeholders.
+// These helpers apply arguments to templates via string replacement.
+// =========================================================================
+
+// Apply a single-argument template: replaces {0} with the argument.
+fn apply_type_template1(template: String, arg0: String) -> String {
+  template |> split(delimiter: "{0}") |> join(separator: arg0)
+}
+
+// Apply a two-argument template: replaces {0} and {1}.
+fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
+  template |> split(delimiter: "{0}") |> join(separator: arg0)
+    |> split(delimiter: "{1}") |> join(separator: arg1)
+}
