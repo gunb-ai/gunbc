@@ -1045,6 +1045,37 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
   }
 }
 
+// Extend scope with lambda parameter names.
+fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
+  let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
+    map_insert(acc, p, TypeBinding { name: p, resolved: Named { name: "_inferred", span: no_span() }, resolved_node: none })
+  )
+  InferScope {
+    type_env: scope.type_env,
+    func_env: scope.func_env,
+    locals: new_locals,
+    module_name: scope.module_name,
+    type_cache: scope.type_cache,
+    service_registry: scope.service_registry
+  }
+}
+
+// Extend scope with match pattern bindings.
+fn extend_scope_with_pattern(scope: InferScope, pattern: MatchPattern, scrutinee_type: TypeExpr) -> InferScope {
+  match pattern {
+    Bind { name: n } => extend_scope(scope: scope, name: n, resolved: scrutinee_type)
+    Wildcard => scope
+    LitPattern { value: _ } => scope
+    VariantPattern { name: _, field_bindings: bindings } =>
+      fold(bindings, init: scope, f: (acc, fb) =>
+        match fb.binding {
+          Bind { name: n } => extend_scope(scope: acc, name: n, resolved: Named { name: "_inferred", span: no_span() })
+          _ => extend_scope_with_pattern(scope: acc, pattern: fb.binding, scrutinee_type: Named { name: "_inferred", span: no_span() })
+        }
+      )
+  }
+}
+
 fn scope_after_stmt(stmt: Expr, stmt_type: TypeExpr, scope: InferScope) -> InferScope {
   match stmt {
     Let { name: name, value: _, body: body, span: _ } =>
@@ -1193,20 +1224,25 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
 
     Match { scrutinee: scrut, arms: arms, span: span } =>
       let scrut_result = infer_expr(expr: scrut, scope: scope)
+      let scrut_type = scrut_result.typed.resolved_type
       let typed_arms = arms |> map(arm =>
+        let arm_scope = extend_scope_with_pattern(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_type)
         let guard_result = if arm.guard != none {
-          Some { value: infer_expr(expr: arm.guard.value, scope: scope) }
+          Some { value: infer_expr(expr: arm.guard.value, scope: arm_scope) }
         } else {
           none
         }
-        let body_result = infer_expr(expr: arm.body, scope: scope)
+        let body_result = infer_expr(expr: arm.body, scope: arm_scope)
         TypedMatchArm {
           pattern: arm.pattern,
           guard: if guard_result != none { Some { value: guard_result.value.typed } } else { none },
           body: body_result.typed
         }
       )
-      let arm_body_results = arms |> map(arm => infer_expr(expr: arm.body, scope: scope))
+      let arm_body_results = arms |> map(arm =>
+        let arm_scope = extend_scope_with_pattern(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_type)
+        infer_expr(expr: arm.body, scope: arm_scope)
+      )
       let arm_diags = flat_map(arm_body_results, ar => ar.diagnostics)
       let arm_entries = flat_map(arm_body_results, ar => ar.type_entries)
       let result_type = if count(arm_body_results) > 0 {
@@ -1337,7 +1373,8 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       }
 
     Lambda { params: lam_params, body: lam_body, span: span } =>
-      let body_result = infer_expr(expr: lam_body, scope: scope)
+      let lam_scope = extend_scope_with_params(scope: scope, params: lam_params)
+      let body_result = infer_expr(expr: lam_body, scope: lam_scope)
       let texpr = TypedLambda { params: lam_params, body: body_result.typed, resolved_type: unit_type(), span: span }
       InferResult {
         typed: texpr,

@@ -404,17 +404,16 @@ fn skip_newlines(state: ParserState) -> ParserState {
 }
 
 // Skip newlines only if the next non-newline token is a continuation
-// operator (|> or .). This allows multi-line pipe chains and method chains
-// without breaking statement boundaries.
+// operator. This allows multi-line expressions using pipes, method chains,
+// and boolean operators without breaking statement boundaries.
 fn skip_continuation_newlines(state: ParserState) -> ParserState {
   if check(state: state, tag: "Newline") {
     let s = skip_newlines(state: state)
-    let k = peek_kind(state: s)
-    let tag = match k {
+    let tag = match peek_kind(state: s) {
       Some { value: kind } => kind_tag(kind: kind)
       None => ""
     }
-    if tag == "PipeArrow" || tag == "Dot" {
+    if tag == "PipeArrow" || tag == "Dot" || tag == "Or" || tag == "And" {
       s
     } else {
       // Not a continuation — return original state (keep newlines)
