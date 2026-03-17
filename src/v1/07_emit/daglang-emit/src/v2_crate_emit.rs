@@ -30,8 +30,6 @@ use std::path::{Path, PathBuf};
 use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
-use toml::{value::Table as TomlTable, Value as TomlValue};
-
 use crate::fn_codegen;
 use crate::render_rust;
 use crate::type_codegen;
@@ -78,191 +76,6 @@ fn workspace_root_from_manifest_dir() -> PathBuf {
         .nth(4)
         .expect("could not find workspace root from CARGO_MANIFEST_DIR")
         .to_path_buf()
-}
-
-fn lock_package_string(package: &TomlTable, key: &str) -> String {
-    package
-        .get(key)
-        .and_then(TomlValue::as_str)
-        .unwrap_or_else(|| panic!("workspace Cargo.lock package missing string `{key}`: {package:?}"))
-        .to_string()
-}
-
-fn parse_lock_dependency(dep: &str) -> (String, Option<String>) {
-    if let Some((name, version)) = dep.rsplit_once(' ') {
-        if version
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_digit())
-        {
-            return (name.to_string(), Some(version.to_string()));
-        }
-    }
-    (dep.to_string(), None)
-}
-
-fn lock_version_matches_requirement(version: &str, requirement: &str) -> bool {
-    version == requirement
-        || version
-            .strip_prefix(requirement)
-            .is_some_and(|suffix| suffix.starts_with('.'))
-}
-
-fn resolve_root_lock_dependency(
-    dep_name: &str,
-    dep_requirement: &str,
-    versions_by_name: &HashMap<String, Vec<String>>,
-) -> (String, String) {
-    let versions = versions_by_name
-        .get(dep_name)
-        .unwrap_or_else(|| panic!("workspace Cargo.lock is missing generated crate dependency `{dep_name}`"));
-    let matching_versions: Vec<&String> = versions
-        .iter()
-        .filter(|version| lock_version_matches_requirement(version, dep_requirement))
-        .collect();
-    match matching_versions.as_slice() {
-        [version] => (dep_name.to_string(), (*version).clone()),
-        [] => panic!(
-            "workspace Cargo.lock has no resolved version for `{dep_name}` matching `{dep_requirement}`"
-        ),
-        _ => panic!(
-            "workspace Cargo.lock resolved multiple `{dep_name}` versions matching `{dep_requirement}`: {:?}",
-            matching_versions
-        ),
-    }
-}
-
-fn resolve_lock_dependency(
-    dep: &str,
-    versions_by_name: &HashMap<String, Vec<String>>,
-) -> (String, String) {
-    let (name, version) = parse_lock_dependency(dep);
-    if let Some(version) = version {
-        return (name, version);
-    }
-    let versions = versions_by_name
-        .get(&name)
-        .unwrap_or_else(|| panic!("workspace Cargo.lock is missing transitive dependency `{name}`"));
-    match versions.as_slice() {
-        [version] => (name, version.clone()),
-        _ => panic!(
-            "workspace Cargo.lock has ambiguous transitive dependency `{name}`: {:?}",
-            versions
-        ),
-    }
-}
-
-fn emit_generated_cargo_lock(crate_name: &str, dependencies: &[(&str, &str)]) -> String {
-    let workspace_lock_path = workspace_root_from_manifest_dir().join("Cargo.lock");
-    let workspace_lock = std::fs::read_to_string(&workspace_lock_path).unwrap_or_else(|e| {
-        panic!(
-            "failed to read workspace Cargo.lock at {}: {}",
-            workspace_lock_path.display(),
-            e
-        )
-    });
-    let parsed: TomlValue = toml::from_str(&workspace_lock).unwrap_or_else(|e| {
-        panic!(
-            "failed to parse workspace Cargo.lock at {}: {}",
-            workspace_lock_path.display(),
-            e
-        )
-    });
-    let lock_version = parsed
-        .get("version")
-        .and_then(TomlValue::as_integer)
-        .unwrap_or(4);
-    let packages = parsed
-        .get("package")
-        .and_then(TomlValue::as_array)
-        .unwrap_or_else(|| panic!("workspace Cargo.lock missing package array"));
-
-    let package_tables: Vec<TomlTable> = packages
-        .iter()
-        .map(|package| {
-            package
-                .as_table()
-                .cloned()
-                .unwrap_or_else(|| panic!("workspace Cargo.lock package entry is not a table: {package:?}"))
-        })
-        .collect();
-
-    let mut packages_by_key = HashMap::new();
-    let mut versions_by_name: HashMap<String, Vec<String>> = HashMap::new();
-    for package in &package_tables {
-        let name = lock_package_string(package, "name");
-        let version = lock_package_string(package, "version");
-        versions_by_name
-            .entry(name.clone())
-            .or_default()
-            .push(version.clone());
-        packages_by_key.insert((name, version), package.clone());
-    }
-
-    let mut selected = HashSet::new();
-    let mut pending: Vec<(String, String)> = dependencies
-        .iter()
-        .map(|(dep_name, dep_requirement)| {
-            resolve_root_lock_dependency(dep_name, dep_requirement, &versions_by_name)
-        })
-        .collect();
-
-    while let Some(key) = pending.pop() {
-        if !selected.insert(key.clone()) {
-            continue;
-        }
-        let package = packages_by_key
-            .get(&key)
-            .unwrap_or_else(|| panic!("workspace Cargo.lock missing package {:?}", key));
-        if let Some(package_dependencies) = package.get("dependencies").and_then(TomlValue::as_array) {
-            for dependency in package_dependencies {
-                let dependency = dependency.as_str().unwrap_or_else(|| {
-                    panic!("workspace Cargo.lock dependency entry is not a string: {dependency:?}")
-                });
-                pending.push(resolve_lock_dependency(dependency, &versions_by_name));
-            }
-        }
-    }
-
-    let mut out = String::new();
-    out.push_str("# This file is automatically @generated by Cargo.\n");
-    out.push_str("# It is not intended for manual editing.\n");
-    out.push_str(&format!("version = {lock_version}\n\n"));
-
-    for package in &package_tables {
-        let key = (
-            lock_package_string(package, "name"),
-            lock_package_string(package, "version"),
-        );
-        if selected.contains(&key) {
-            out.push_str("[[package]]\n");
-            out.push_str(
-                &toml::to_string(package)
-                    .unwrap_or_else(|e| panic!("failed to serialize generated Cargo.lock package {:?}: {}", key, e)),
-            );
-            out.push('\n');
-        }
-    }
-
-    let mut root_package = TomlTable::new();
-    root_package.insert("name".to_string(), TomlValue::String(crate_name.to_string()));
-    root_package.insert("version".to_string(), TomlValue::String("0.1.0".to_string()));
-    root_package.insert(
-        "dependencies".to_string(),
-        TomlValue::Array(
-            dependencies
-                .iter()
-                .map(|(dep_name, _)| TomlValue::String((*dep_name).to_string()))
-                .collect(),
-        ),
-    );
-    out.push_str("[[package]]\n");
-    out.push_str(
-        &toml::to_string(&root_package)
-            .unwrap_or_else(|e| panic!("failed to serialize generated root Cargo.lock package: {}", e)),
-    );
-
-    out
 }
 
 fn dag_source_const_name(rel_path: &str) -> String {
@@ -726,10 +539,6 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         rel_path: "Cargo.toml".to_string(),
         content: cargo_toml,
     });
-    files.push(GeneratedFile {
-        rel_path: "Cargo.lock".to_string(),
-        content: emit_generated_cargo_lock("v2-compiler", &[("stacker", "0.1")]),
-    });
 
     files
 }
@@ -742,6 +551,25 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, &file.content)?;
+    }
+    Ok(())
+}
+
+/// Generate a `Cargo.lock` for the crate at `crate_dir` by delegating to Cargo.
+///
+/// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
+/// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
+pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
+    let output = std::process::Command::new("cargo")
+        .arg("generate-lockfile")
+        .current_dir(crate_dir)
+        .output()?;
+    if !output.status.success() {
+        return Err(std::io::Error::other(format!(
+            "cargo generate-lockfile failed in {}:\n{}",
+            crate_dir.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
     Ok(())
 }

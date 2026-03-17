@@ -3266,16 +3266,12 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        // Should produce: module files plus lib.rs, v2_rt.rs, Cargo.toml, and Cargo.lock.
+        // Should produce: module files plus lib.rs, v2_rt.rs, and Cargo.toml.
+        // Cargo.lock is generated separately by `generate_lockfile` after write_crate.
         let file_names: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         assert!(
             file_names.contains(&"Cargo.toml"),
             "missing Cargo.toml in {:?}",
-            file_names
-        );
-        assert!(
-            file_names.contains(&"Cargo.lock"),
-            "missing Cargo.lock in {:?}",
             file_names
         );
         assert!(
@@ -3444,6 +3440,7 @@ fn example(items: List<String>) -> Int {
         let tmp_dir = std::env::temp_dir().join(dir_name);
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir).expect("failed to generate lockfile");
         tmp_dir
     }
 
@@ -3691,6 +3688,7 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&out_dir).expect("failed to generate lockfile");
     }
 
     // ═════════════════════════════════════════════════════════════════════

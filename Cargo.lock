@@ -209,7 +209,6 @@ dependencies = [
  "daglang-typecheck",
  "gunbc-ir",
  "serde_json",
- "toml",
 ]
 
 [[package]]
