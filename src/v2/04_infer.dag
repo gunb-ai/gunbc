@@ -2733,11 +2733,62 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     }
   )
 
+  // Recursive types have binding.resolved = Named (cycle-breaking), so the
+  // Coproduct match above misses them. Walk original Node definitions to
+  // find coproduct (Disj) nodes and register their children as variants.
+  let variant_locals = fold(resolved_items, init: variant_locals, f: (acc, item) =>
+    match item.connective {
+      Some { value: Disj } =>
+        if resolved_env.env.recursive_types |> any(r => r == item.name) {
+          fold(item.children, init: acc, f: (vacc, child) =>
+            map_insert(vacc, child.name, TypeBinding {
+              name: child.name,
+              resolved: Named { name: item.name, span: no_span() },
+              resolved_node: none
+            })
+          )
+        } else {
+          acc
+        }
+      _ => acc
+    }
+  )
+  // Also check parent modules for recursive coproduct types.
+  let variant_locals = fold(map_values(parent_index), init: variant_locals, f: (acc, typed_parent) =>
+    fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
+      match titem.connective {
+        Some { value: Disj } =>
+          if resolved_env.env.recursive_types |> any(r => r == titem.name) {
+            fold(titem.children, init: inner_acc, f: (vacc, child) =>
+              map_insert(vacc, child.name, TypeBinding {
+                name: child.name,
+                resolved: Named { name: titem.name, span: no_span() },
+                resolved_node: none
+              })
+            )
+          } else {
+            inner_acc
+          }
+        _ => inner_acc
+      }
+    )
+  )
+
+  // Register built-in optional constructors (Some, None).
+  // Optional is a built-in type, not a user-defined coproduct, so
+  // these are not in the type environment's bindings.
+  let optional_locals = map_insert(variant_locals, "Some", TypeBinding {
+    name: "Some", resolved: Named { name: "Optional", span: no_span() }, resolved_node: none
+  })
+  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
+    name: "None", resolved: Named { name: "Optional", span: no_span() }, resolved_node: none
+  })
+
   // Build the InferScope and infer all items to produce TypedNodes.
   let infer_scope = InferScope {
     type_env: resolved_env.env,
     func_env: func_env,
-    locals: variant_locals,
+    locals: optional_locals,
     module_name: resolved.module.name,
     type_cache: empty_map(),
     service_registry: service_registry

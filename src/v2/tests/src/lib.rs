@@ -1853,21 +1853,21 @@ fn foo(item: String) -> String {
 
     /// Test that emit_rust.dag has tail-call optimization support.
     /// TCO-eligible functions should emit `loop` + `continue` instead of
-    /// direct self-recursion.
+    /// direct self-recursion. Uses typed TCO variants (emit_typed_tco_*).
     #[test]
     fn phase4_emit_has_tco_support() {
         let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
-            rust_source.contains("emit_tco_body"),
-            "emit_rust.dag should contain emit_tco_body function for TCO rendering"
+            rust_source.contains("emit_typed_tco_body"),
+            "emit_rust.dag should contain emit_typed_tco_body function for TCO rendering"
         );
         assert!(
-            rust_source.contains("emit_tco_expr"),
-            "emit_rust.dag should contain emit_tco_expr for TCO expression rendering"
+            rust_source.contains("emit_typed_tco_expr"),
+            "emit_rust.dag should contain emit_typed_tco_expr for TCO expression rendering"
         );
         assert!(
-            rust_source.contains("emit_tco_reassign"),
-            "emit_rust.dag should contain emit_tco_reassign for parameter reassignment"
+            rust_source.contains("emit_tco_params"),
+            "emit_rust.dag should contain emit_tco_params for mut parameter declarations"
         );
         assert!(
             rust_source.contains("loop {"),
@@ -1884,8 +1884,8 @@ fn foo(item: String) -> String {
 
         let python_source = read_v2_file("src/v2/05_emit_python.dag");
         assert!(
-            python_source.contains("emit_py_tco_body"),
-            "emit_python.dag should contain emit_py_tco_body function for TCO rendering"
+            python_source.contains("emit_py_typed_tco_body"),
+            "emit_python.dag should contain emit_py_typed_tco_body function for TCO rendering"
         );
         assert!(
             python_source.contains("while True:"),
@@ -1899,12 +1899,12 @@ fn foo(item: String) -> String {
         // Verify the shared classification functions exist in 05_emit.dag
         let emit_source = read_v2_file("src/v2/05_emit.dag");
         assert!(
-            emit_source.contains("fn expr_has_self_call"),
-            "emit.dag should contain expr_has_self_call for shared TCO classification"
+            emit_source.contains("fn typed_expr_has_self_call"),
+            "emit.dag should contain typed_expr_has_self_call for typed TCO classification"
         );
         assert!(
-            emit_source.contains("fn has_non_tail_self_call"),
-            "emit.dag should contain has_non_tail_self_call for shared TCO classification"
+            emit_source.contains("fn typed_has_non_tail_self_call"),
+            "emit.dag should contain typed_has_non_tail_self_call for typed TCO classification"
         );
     }
 
@@ -3506,6 +3506,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--release")
             .arg("--")
             .arg("self_compile_all_modules")
             .current_dir(&tmp_dir)

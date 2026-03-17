@@ -30,7 +30,13 @@ import v2.std.core {
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   ForEach, Index, Slice,
   FuncSig,
-  TypedExpr, TypedLet,
+  TypedExpr, TypedLiteral, TypedVar, TypedFieldAccess, TypedCall,
+  TypedMethodCall, TypedMatch, TypedIf, TypedLet, TypedRecordLit,
+  TypedListLit, TypedBinOp, TypedUnaryOp, TypedLambda,
+  TypedStringInterp, TypedBlock, TypedCast, TypedForEach,
+  TypedIndex, TypedSlice,
+  TypedNamedArg, TypedMatchArm, TypedFieldInit,
+  TypedStringPart, TypedText, TypedInterpolation,
   typed_expr_to_expr
 }
 
@@ -129,15 +135,14 @@ fn build_item_registry(items: List<TypedNode>) -> Map<String, ItemInfo> {
   let info_list = items |> map(item =>
     if item.body != none && item.uses |> count > 0 {
       // func or pattern (async, has uses)
-      let body_expr = typed_expr_to_expr(texpr: item.body.value)
-      ItemInfo { name: item.name, kind: "func", service_names: unique_strings(items: collect_service_calls(expr: body_expr)),
+      ItemInfo { name: item.name, kind: "func",
+        service_names: unique_strings(items: collect_typed_service_calls(texpr: item.body.value)),
         is_self_recursive: false, has_non_tail_self_call: false }
     } else if item.body != none && item.params |> count > 0 {
       // fn (pure function)
-      let body_expr = typed_expr_to_expr(texpr: item.body.value)
       ItemInfo { name: item.name, kind: "fn", service_names: [],
-        is_self_recursive: expr_has_self_call(expr: body_expr, fn_name: item.name),
-        has_non_tail_self_call: has_non_tail_self_call(expr: body_expr, fn_name: item.name, in_tail: true) }
+        is_self_recursive: typed_expr_has_self_call(texpr: item.body.value, fn_name: item.name),
+        has_non_tail_self_call: typed_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true) }
     } else {
       ItemInfo { name: item.name, kind: "other", service_names: [],
         is_self_recursive: false, has_non_tail_self_call: false }
@@ -187,6 +192,68 @@ fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> Lis
       )
       concat(ordered, leftovers)
     }
+  }
+}
+
+fn typed_named_arg_matches(arg: TypedNamedArg, name: String) -> Bool {
+  if arg.name == none {
+    false
+  } else {
+    arg.name.value == name
+  }
+}
+
+fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferScope) -> List<TypedNamedArg> {
+  let has_unnamed = args |> any(arg => arg.name == none)
+  if has_unnamed {
+    return args
+  }
+  match lookup_func_sig_in_scope(scope: scope, name: func) {
+    None => args
+    Some { value: sig } => {
+      let ordered = sig.params |> fold(init: [], f: (acc, param) =>
+        match args |> filter(arg => typed_named_arg_matches(arg: arg, name: param.name)) |> first {
+          Some { value: arg } => concat(acc, [arg])
+          None => acc
+        }
+      )
+      let leftovers = args |> filter(arg =>
+        if arg.name == none {
+          true
+        } else {
+          sig.params |> any(param => param.name == arg.name.value) == false
+        }
+      )
+      concat(ordered, leftovers)
+    }
+  }
+}
+
+// Typed-receiver versions of service call detection — for TypedExpr emit paths.
+fn is_typed_service_call_receiver(receiver: TypedExpr) -> Bool {
+  match receiver {
+    TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
+      match b {
+        TypedVar { name: _, resolved_type: _, span: _ } => {
+          match f |> chars |> first {
+            Some { value: ch } => is_upper(ch: ch)
+            None => false
+          }
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn extract_typed_service_name(receiver: TypedExpr) -> String? {
+  match receiver {
+    TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
+      match b {
+        TypedVar { name: ns, resolved_type: _, span: _ } => Some { value: concat(ns, ".", f) }
+        _ => none
+      }
+    _ => none
   }
 }
 
@@ -302,6 +369,77 @@ fn unique_strings(items: List<String>) -> List<String> {
       concat(acc, [item])
     }
   })
+}
+
+// =========================================================================
+// Typed service call collection — TypedExpr walker
+//
+// Same logic as collect_service_calls but operates on TypedExpr trees
+// directly, eliminating the need for typed_expr_to_expr conversion.
+// =========================================================================
+
+fn collect_typed_service_calls(texpr: TypedExpr) -> List<String> {
+  match texpr {
+    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } => {
+      let self_calls = if is_typed_service_call_receiver(receiver: r) {
+        match extract_typed_service_name(receiver: r) {
+          Some { value: service_name } => [service_name]
+          None => []
+        }
+      } else {
+        collect_typed_service_calls(texpr: r)
+      }
+      let arg_calls = collect_typed_service_calls_from_args(args: a)
+      concat(self_calls, arg_calls)
+    }
+    TypedCall { func: _, args: a, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_from_args(args: a)
+    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      collect_typed_service_calls(texpr: b)
+    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } => {
+      let calls = concat(collect_typed_service_calls(texpr: c), collect_typed_service_calls(texpr: t))
+      match e {
+        Some { value: eb } => concat(calls, collect_typed_service_calls(texpr: eb))
+        None => calls
+      }
+    }
+    TypedLet { name: _, value: v, body: b, resolved_type: _, span: _ } => {
+      let v_calls = collect_typed_service_calls(texpr: v)
+      match b {
+        Some { value: bd } => concat(v_calls, collect_typed_service_calls(texpr: bd))
+        None => v_calls
+      }
+    }
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+      ss |> flat_map(s => collect_typed_service_calls(texpr: s))
+    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
+      let s_calls = collect_typed_service_calls(texpr: s)
+      let arm_calls = arm_list |> flat_map(arm => collect_typed_service_calls(texpr: arm.body))
+      concat(s_calls, arm_calls)
+    }
+    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      concat(collect_typed_service_calls(texpr: l), collect_typed_service_calls(texpr: r))
+    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      collect_typed_service_calls(texpr: e)
+    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      collect_typed_service_calls(texpr: bd)
+    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> flat_map(f => collect_typed_service_calls(texpr: f.value))
+    TypedListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> flat_map(e => collect_typed_service_calls(texpr: e))
+    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
+      collect_typed_service_calls(texpr: e)
+    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+      ps |> flat_map(p => match p {
+        TypedInterpolation { expr: e } => collect_typed_service_calls(texpr: e)
+        _ => []
+      })
+    _ => []
+  }
+}
+
+fn collect_typed_service_calls_from_args(args: List<TypedNamedArg>) -> List<String> {
+  args |> flat_map(a => collect_typed_service_calls(texpr: a.value))
 }
 
 // =========================================================================
@@ -677,6 +815,156 @@ fn has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bool {
 }
 
 // =========================================================================
+// Typed self-call detection — TypedExpr walkers
+//
+// Same logic as expr_has_self_call / has_non_tail_self_call but operates
+// on TypedExpr trees directly, eliminating typed_expr_to_expr conversion.
+// =========================================================================
+
+fn typed_expr_has_self_call(texpr: TypedExpr, fn_name: String) -> Bool {
+  match texpr {
+    TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
+      if f == fn_name { true }
+      else { a |> any(na => typed_expr_has_self_call(texpr: na.value, fn_name: fn_name)) }
+    TypedVar { name: _, resolved_type: _, span: _ } => false
+    TypedLiteral { value: _, resolved_type: _, span: _ } => false
+    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: r, fn_name: fn_name)
+        || a |> any(na => typed_expr_has_self_call(texpr: na.value, fn_name: fn_name))
+    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: s, fn_name: fn_name)
+        || arm_list |> any(arm => typed_expr_has_self_call(texpr: arm.body, fn_name: fn_name))
+    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: c, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: t, fn_name: fn_name)
+        || match e {
+          Some { value: eb } => typed_expr_has_self_call(texpr: eb, fn_name: fn_name)
+          None => false
+        }
+    TypedLet { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: v, fn_name: fn_name)
+        || match bd {
+          Some { value: b } => typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+          None => false
+        }
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+      ss |> any(s => typed_expr_has_self_call(texpr: s, fn_name: fn_name))
+    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: l, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: r, fn_name: fn_name)
+    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: bd, fn_name: fn_name)
+    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> any(fi => typed_expr_has_self_call(texpr: fi.value, fn_name: fn_name))
+    TypedListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> any(el => typed_expr_has_self_call(texpr: el, fn_name: fn_name))
+    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+      ps |> any(p => match p {
+        TypedInterpolation { expr: e } => typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+        TypedText { value: _ } => false
+      })
+    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+    TypedForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: c, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: bd, fn_name: fn_name)
+    TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: i, fn_name: fn_name)
+    TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: s, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+  }
+}
+
+fn typed_has_non_tail_self_call(texpr: TypedExpr, fn_name: String, in_tail: Bool) -> Bool {
+  match texpr {
+    TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
+      if f == fn_name {
+        if in_tail == false { true }
+        else { a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false)) }
+      } else {
+        a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
+      }
+    TypedVar { name: _, resolved_type: _, span: _ } => false
+    TypedLiteral { value: _, resolved_type: _, span: _ } => false
+    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
+    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
+        || a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
+    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+      // Condition is never tail; branches inherit tail context.
+      typed_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)
+        || match e {
+          Some { value: eb } => typed_has_non_tail_self_call(texpr: eb, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
+      // Scrutinee is never tail; arm bodies inherit tail context.
+      typed_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
+        || arm_list |> any(arm =>
+          typed_has_non_tail_self_call(texpr: arm.body, fn_name: fn_name, in_tail: in_tail))
+    TypedLet { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
+      // Value is never tail; body (continuation) inherits tail context.
+      typed_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
+        || match bd {
+          Some { value: b } => typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+      // Only the last statement in a block is in tail position.
+      if ss |> count == 0 { false }
+      else {
+        let init_bad = ss |> enumerate
+          |> filter(p => p.first < (ss |> count) - 1)
+          |> any(p => typed_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false))
+        let last_bad = match ss |> last {
+          Some { value: last_expr } =>
+            typed_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+        init_bad || last_bad
+      }
+    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: l, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
+    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      // Lambda bodies are separate contexts — self-calls inside are non-tail.
+      typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
+    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> any(fi => typed_has_non_tail_self_call(texpr: fi.value, fn_name: fn_name, in_tail: false))
+    TypedListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> any(el => typed_has_non_tail_self_call(texpr: el, fn_name: fn_name, in_tail: false))
+    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+      ps |> any(p => match p {
+        TypedInterpolation { expr: e } => typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+        TypedText { value: _ } => false
+      })
+    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+    TypedForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
+    TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: i, fn_name: fn_name, in_tail: false)
+    TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+  }
+}
+
+// =========================================================================
 // Template application helpers — for language spec template strings.
 //
 // Templates from std.languages use {0}, {1} as positional placeholders.
@@ -692,4 +980,279 @@ fn apply_type_template1(template: String, arg0: String) -> String {
 fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
   template |> split(delimiter: "{0}") |> join(separator: arg0)
     |> split(delimiter: "{1}") |> join(separator: arg1)
+}
+
+// =========================================================================
+// Language data — single source of truth for per-language facts.
+//
+// Each language's type mappings, keywords, and container templates live
+// here as data declarations. Shared leaf functions accept the relevant
+// data as parameters. The data declarations are the single source of
+// truth — no per-language copies in the backend files.
+// =========================================================================
+
+// ---- Rust language data ----
+
+data rust_type_map: Map<String, String> = {
+  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
+  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
+}
+
+data rust_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "None",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+data rust_container_templates: Map<String, String> = {
+  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
+  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
+}
+
+// ---- Python language data ----
+
+data python_type_map: Map<String, String> = {
+  "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
+  "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
+}
+
+data python_keywords: Map<String, String> = {
+  "true": "True", "false": "False", "null": "None",
+  "and": "and", "or": "or", "not": "not ",
+  "div": "//"
+}
+
+data python_container_templates: Map<String, String> = {
+  "list": "list[{0}]", "set": "set[{0}]",
+  "optional": "Optional[{0}]", "map": "dict[{0}, {1}]"
+}
+
+// ---- Go language data ----
+
+data go_type_map: Map<String, String> = {
+  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
+  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
+}
+
+data go_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "nil",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+data go_container_templates: Map<String, String> = {
+  "list": "[]{0}", "set": "map[{0}]struct{}",
+  "optional": "*{0}", "map": "map[{0}]{1}"
+}
+
+// =========================================================================
+// Shared leaf functions — parameterized by language data
+// =========================================================================
+
+// Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
+fn emit_string_literal(s: String, suffix: String) -> String {
+  let escaped = s
+    |> split(delimiter: "\\") |> join(separator: "\\\\")
+  let escaped2 = escaped
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+  concat("\"", escaped2, "\"", suffix)
+}
+
+// Check if a binary op is null coalesce (shared across all backends).
+fn is_null_coalesce(op: BinOpKind) -> Bool {
+  match op {
+    NullCoalesce => true
+    _ => false
+  }
+}
+
+// =========================================================================
+// Per-language functions — centralized data, inline lookup.
+//
+// Data declarations above are the single source of truth. Each function
+// uses lookup() on the local data. The v1 bootstrap cannot pass data-
+// declared Maps as function parameters, so these use direct lookup.
+// =========================================================================
+
+// ---- Keyword lookup ----
+fn rust_keyword(key: String) -> String {
+  match lookup(rust_keywords, key: key) { Some { value: kw } => kw, None => key }
+}
+fn python_keyword(key: String) -> String {
+  match lookup(python_keywords, key: key) { Some { value: kw } => kw, None => key }
+}
+fn go_keyword(key: String) -> String {
+  match lookup(go_keywords, key: key) { Some { value: kw } => kw, None => key }
+}
+
+// ---- Container template lookup ----
+fn rust_container(kind: String, inner: String) -> String {
+  match lookup(rust_container_templates, key: kind) {
+    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
+    None => concat(kind, "<", inner, ">")
+  }
+}
+fn python_container(kind: String, inner: String) -> String {
+  match lookup(python_container_templates, key: kind) {
+    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
+    None => concat(kind, "[", inner, "]")
+  }
+}
+fn go_container(kind: String, inner: String) -> String {
+  match lookup(go_container_templates, key: kind) {
+    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
+    None => concat(kind, "[", inner, "]")
+  }
+}
+
+// ---- Primitive type mapping ----
+fn rust_primitive_type(name: String) -> String {
+  match lookup(rust_type_map, key: name) { Some { value: m } => m, None => name }
+}
+fn python_primitive_type(name: String) -> String {
+  match lookup(python_type_map, key: name) { Some { value: m } => m, None => name }
+}
+fn go_primitive_type(name: String) -> String {
+  match lookup(go_type_map, key: name) { Some { value: m } => m, None => name }
+}
+
+// ---- Map template lookup (two-arg templates) ----
+fn rust_map_template() -> String {
+  match lookup(rust_container_templates, key: "map") {
+    Some { value: tmpl } => tmpl
+    None => "BTreeMap<{0}, {1}>"
+  }
+}
+fn python_map_template() -> String {
+  match lookup(python_container_templates, key: "map") {
+    Some { value: tmpl } => tmpl
+    None => "dict[{0}, {1}]"
+  }
+}
+
+fn go_map_template() -> String {
+  match lookup(go_container_templates, key: "map") {
+    Some { value: tmpl } => tmpl
+    None => "map[{0}]{1}"
+  }
+}
+
+// ---- Literal emission ----
+fn rust_literal(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: s } => emit_string_literal(s: s, suffix: ".to_string()")
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { rust_keyword(key: "true") } else { rust_keyword(key: "false") }
+    LitNull => rust_keyword(key: "null")
+  }
+}
+fn python_literal(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: s } => emit_string_literal(s: s, suffix: "")
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { python_keyword(key: "true") } else { python_keyword(key: "false") }
+    LitNull => python_keyword(key: "null")
+  }
+}
+fn go_literal(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: s } => emit_string_literal(s: s, suffix: "")
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { go_keyword(key: "true") } else { go_keyword(key: "false") }
+    LitNull => go_keyword(key: "null")
+  }
+}
+
+// ---- Binary operator symbol ----
+fn rust_bin_op_symbol(op: BinOpKind) -> String {
+  match op {
+    Add => "+"  Sub => "-"  Mul => "*"  Div => rust_keyword(key: "div")  Mod => "%"
+    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
+    BinAnd => rust_keyword(key: "and")  BinOr => rust_keyword(key: "or")  NullCoalesce => "??"
+  }
+}
+fn python_bin_op_symbol(op: BinOpKind) -> String {
+  match op {
+    Add => "+"  Sub => "-"  Mul => "*"  Div => python_keyword(key: "div")  Mod => "%"
+    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
+    BinAnd => python_keyword(key: "and")  BinOr => python_keyword(key: "or")  NullCoalesce => "??"
+  }
+}
+fn go_bin_op_symbol(op: BinOpKind) -> String {
+  match op {
+    Add => "+"  Sub => "-"  Mul => "*"  Div => go_keyword(key: "div")  Mod => "%"
+    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
+    BinAnd => go_keyword(key: "and")  BinOr => go_keyword(key: "or")  NullCoalesce => "??"
+  }
+}
+
+// =========================================================================
+// Shared item-level helpers — identical across all backends
+// =========================================================================
+
+// Check if a return type indicates a type alias (not Unit).
+fn is_type_alias_return(return_type: TypeExpr) -> Bool {
+  match return_type {
+    Primitive { name: n, span: _ } => n != "Unit"
+    Named { name: _, span: _ } => true
+    Container { kind: _, element: _, span: _ } => true
+    Optional { inner: _, span: _ } => true
+    MapType { key: _, value: _, span: _ } => true
+    Product { name: _, fields: _, span: _ } => true
+    Coproduct { name: _, variants: _, span: _ } => true
+    Refined { base: _, predicates: _, span: _ } => true
+  }
+}
+
+// Check if a typed node is a service item.
+fn is_service_item(item: TypedNode) -> Bool {
+  item.transport != none && item.children |> count > 0
+}
+
+// Check if a typed graph has any service definitions.
+fn has_service_items(typed: TypedGraph) -> Bool {
+  typed.modules |> any(tm =>
+    tm.items |> any(item => is_service_item(item: item))
+  )
+}
+
+// =========================================================================
+// Span-based type cache lookup — shared across all backends
+//
+// Bridge helpers for functions that still receive plain Expr (everything
+// called from emit_expr_in_scope). Once emit_expr_in_scope is migrated
+// to TypedExpr these helpers can be deleted.
+// =========================================================================
+
+fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
+  map_get(cache, span_key(start: start, end: end))
+}
+
+fn missing_emit_type(span: SourceSpan) -> TypeExpr {
+  Named { name: "__EmitTypeCacheMiss", span: span }
+}
+
+fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
+  let s = expr_span(expr: expr)
+  match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
+    Some { value: t } => t
+    None => missing_emit_type(span: s)
+  }
+}
+
+// scope_after_plain_expr for plain Expr — used in emit_block and other
+// emit_expr_in_scope helpers that still receive Expr.
+fn scope_after_plain_expr(expr: Expr, scope: InferScope) -> InferScope {
+  match expr {
+    Let { name: name, value: value, body: body, span: _ } =>
+      if body == none {
+        extend_scope(scope: scope, name: name, resolved: infer_expr_type(expr: value, scope: scope))
+      } else {
+        scope
+      }
+    _ => scope
+  }
 }

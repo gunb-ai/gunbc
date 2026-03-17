@@ -3095,7 +3095,7 @@ fn replace_word(s: &str, from: &str, to: &str) -> String {
     let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
     let mut result = String::with_capacity(s.len());
     let mut i = 0;
-    while i <= bytes.len().saturating_sub(from_bytes.len()) {
+    while i + from_bytes.len() <= bytes.len() {
         if &bytes[i..i + from_bytes.len()] == from_bytes {
             let before_ok = i == 0 || !is_word(bytes[i - 1]);
             let after_pos = i + from_bytes.len();

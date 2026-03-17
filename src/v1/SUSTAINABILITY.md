@@ -376,7 +376,16 @@ review (anonymous records, collection intrinsics, test contracts, TCO
 backend contract, embedded metadata). Low priority, none block gist
 or self-hosting.
 
-All 5 streams are independent — no code overlap, any ordering works.
+Stream 6: **S87 emitter clone overhead** — the v2 emitter passes
+`InferScope` (containing `type_cache: Map<String, TypeExpr>` with ~5K-10K
+entries per module) by value through every recursive `emit_expr_in_scope`
+call. Each call clones the full scope at multi-child AST nodes. For 10K
+body nodes × 25K scope entries = 250M entry clones — hours in debug,
+minutes in release. The emitter also converts `TypedExpr` back to `Expr`
+(discarding attached types), then recovers types via span-keyed cache
+lookups. See S87 finding below.
+
+All 6 streams are independent — no code overlap, any ordering works.
 
 ### Risks identified during Track A–C integration (2026-03-15)
 
@@ -531,6 +540,72 @@ The `resolving` parameter is removed from `resolve_field`, `resolve_variant`,
 by validation"). The current API makes it easy to construct the wrong call.
 The correct call requires threading state through every intermediate helper.
 There is no compile-time or runtime enforcement — just convention.
+
+---
+
+### S87: Emitter clone-dominated performance (v2)
+
+**Current failure mode:** Self-compile (v2 crate processing its own 10
+.dag source files) takes hours in debug, 15+ minutes in release. The
+emitter is the dominant contributor after typecheck.
+
+**Missing fact:** resolved types at each expression node. The typechecker
+*computes* these (stored as `TypedExpr.resolved_type`) but the emitter
+discards them via `typed_expr_to_expr` (O(B) tree clone per item), then
+recovers them from a span-keyed cache (`infer_expr_type` → `map_get`).
+The cache (`type_cache: Map<String, TypeExpr>`) has ~5K-10K entries per
+module and is part of `InferScope`, which is cloned at every recursive
+emit call.
+
+**Boundary that should carry it:** the TypedExpr type already carries
+`resolved_type` at every node. The emitter should read it directly.
+
+**Root cause analysis (2026-03-17):**
+
+The clone cost model for `emit_expr_in_scope(expr: Expr, registry:
+Map<String, ItemInfo>, scope: InferScope)`:
+
+| Component | Entries | Cloned per call | Total for self-compile |
+|-----------|---------|-----------------|------------------------|
+| scope.type_cache | ~5K-10K | yes (in scope) | dominant |
+| scope.type_env | ~100 | yes (in scope) | moderate |
+| scope.func_env | ~100 | yes (in scope) | moderate |
+| scope.locals | ~0-30 | yes (in scope) | small |
+| registry | ~300 | yes (separate) | moderate |
+
+With B ≈ 10K recursive calls × S ≈ 25K scope entries = 250M entry
+clones. At ~100ns per clone (release): ~25s for emitter alone.
+
+**Four-task fix plan:**
+
+| Task | Before | After | Improvement |
+|------|--------|-------|-------------|
+| T1: Emit from TypedExpr | O(B × 25K) clones | O(B × 600) clones | ~40× |
+| T2: Single-pass analysis | O(3B) walks | O(B) walk | 3× |
+| T3: Split scope (ctx+locals) | O(B × 600) | O(B × 200 + let×30) | ~2× |
+| T4: v1 codegen refs | O(B × 200) | O(B) | ~200× |
+
+**T1 is highest impact:** eliminating `type_cache` from the emit scope
+shrinks clone cost from ~25K to ~300 entries per call (~40× reduction).
+After T1, self-compile emitter should complete in <1s release.
+
+**What T1 changes:**
+- `emit_expr_in_scope(expr: Expr, ...)` → `emit_texpr(texpr: TypedExpr, ...)`
+- All 17 expression emitters match on TypedExpr variants
+- `.resolved_type` read directly (no span cache lookup)
+- Deleted: `typed_expr_to_expr` (9 call sites), `infer_expr_type`,
+  `lookup_type_by_span`, `missing_emit_type`, `scope_after_plain_expr`,
+  `type_cache` on emit scope
+
+**T4 is a v1 codegen change:** detect read-only parameters and generate
+`&T` references. Applies broadly to all compiled .dag code, not just the
+emitter. Stretch goal — may not be needed if T1-T3 are sufficient.
+
+**Invariants this violates:**
+- "No duplicate representations" — types exist as TypedExpr.resolved_type
+  AND as span-keyed cache entries. The cache is a derived copy.
+- "No fallbacks that fabricate" — cache misses produce
+  `Named { name: "__EmitTypeCacheMiss" }`, a fabricated sentinel.
 
 ---
 
