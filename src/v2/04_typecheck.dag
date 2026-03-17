@@ -83,6 +83,10 @@ type TypeEnv {
 type TypeBinding {
   name: String
   resolved: TypeExpr
+  // B1 dual-write: Node representation alongside TypeExpr.
+  // During migration, both are populated. After TypeExpr deletion,
+  // resolved_node becomes the sole representation.
+  resolved_node: Node?
 }
 
 // Internal result type for threading diagnostics through resolution.
@@ -844,7 +848,7 @@ fn infer_method_call_type(receiver_type: TypeExpr, method: String) -> TypeExpr {
 
 fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr })
+    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr, resolved_node: none })
   )
   InferScope {
     type_env: scope.type_env,
@@ -864,7 +868,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, resolved_node: none }),
     module_name: scope.module_name,
     type_cache: scope.type_cache,
     service_registry: scope.service_registry
@@ -1552,7 +1556,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let kernel_bindings = fold(
     ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"],
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Primitive { name: name, span: zero_span } })
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Primitive { name: name, span: zero_span }, resolved_node: Some { value: Node { name: name, span: zero_span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } } })
   )
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [] }
 
@@ -1591,16 +1595,16 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     if item.connective != none {
       let resolved = node_to_type_expr(name: item.name, item: item, span: item.span)
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved, resolved_node: Some { value: item } })
     } else if item.return_type != none && item.params |> count == 0 && item.body == none {
       // Type alias: connective is none, but return_type references the aliased type
       let resolved = match item.return_type.value {
         Primitive { name: _, span: _ } => item.return_type.value
         _ => Named { name: item.name, span: item.span }
       }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved, resolved_node: Some { value: item } })
     } else if item.transport == none && item.children |> count > 0 {
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: Named { name: item.name, span: item.span } })
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: Named { name: item.name, span: item.span }, resolved_node: Some { value: item } })
     } else {
       acc
     }
@@ -2364,7 +2368,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       let span = item.span
       let dot_pos = find_dot_index(name: svc_name, index: 0)
       let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span } })
+      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: Some { value: Node { name: root, span: span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } } })
     } else {
       acc
     }
@@ -2376,7 +2380,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         let span = titem.span
         let dot_pos = find_dot_index(name: svc_name, index: 0)
         let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span } })
+        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: Some { value: Node { name: root, span: span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } } })
       } else {
         inner_acc
       }
@@ -2432,7 +2436,7 @@ type BindingResult {
 fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   let results = map(map_values(env.bindings), b =>
     let result = resolve_type_expr(expr: b.resolved, env: env, module_name: module_name)
-    BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved }, diagnostics: result.diagnostics }
+    BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved, resolved_node: none }, diagnostics: result.diagnostics }
   )
   let resolved_bindings = map(results, r => r.binding) |> fold(init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)

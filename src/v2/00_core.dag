@@ -442,4 +442,314 @@ type TypedNode {
   config: ServiceConfig?
 }
 
+// =========================================================================
+// TypeExpr <-> Node conversion (B1 additive step)
+//
+// These functions bridge the gap between TypeExpr (8 variants) and Node
+// (unified recursive structure). During the dual-write phase, both
+// representations coexist. After migration, TypeExpr is deleted and only
+// Node remains.
+//
+// Mapping:
+//   Named { name, span }           -> Node { name, span }  (leaf, no connective)
+//   Primitive { name, span }       -> Node { name, span }  (leaf, no connective)
+//   Product { name?, fields, span } -> Node { name, span, connective: Conj, children: fields-as-nodes }
+//   Coproduct { name?, variants, span } -> Node { name, span, connective: Disj, children: variants-as-nodes }
+//   Container { kind, element, span } -> Node { name: kind_name, span, children: [element-as-node] }
+//   Optional { inner, span }       -> Node { name: "Optional", span, connective: Disj, children: [inner-node, none-node] }
+//   MapType { key, value, span }   -> Node { name: "Map", span, children: [key-node, value-node] }
+//   Refined { base, predicates, span } -> Node { name: "Refined", span, connective: Conj, children: [base-node] }
+// =========================================================================
+
+fn empty_node(span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, children: [], connective: none,
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn type_expr_to_node(te: TypeExpr) -> Node {
+  match te {
+    Named { name: n, span: s } =>
+      type_expr_named_to_node(n: n, s: s)
+
+    Primitive { name: n, span: s } =>
+      type_expr_named_to_node(n: n, s: s)
+
+    Product { name: pn, fields: fs, span: s } =>
+      // Product.name is String? — extract name directly from the match binding.
+      // In the evaluator, String? values are stored as the raw string (not
+      // wrapped in Some), so we pass pn directly to the node constructor.
+      type_expr_product_to_node(pn: pn, fs: fs, s: s)
+
+    Coproduct { name: cn, variants: vs, span: s } =>
+      type_expr_coproduct_to_node(cn: cn, vs: vs, s: s)
+
+    Container { kind: k, element: el, span: s } =>
+      let kind_name = match k {
+        List => "List"
+        Set => "Set"
+        NonEmptyList => "NonEmptyList"
+        NonEmptySet => "NonEmptySet"
+      }
+      Node {
+        name: kind_name, span: s,
+        children: [type_expr_to_node(te: el)],
+        connective: none,
+        params: [], return_type: none, uses: [],
+        body: none, transport: none, properties: [], type_annotation: none, config: none
+      }
+
+    Optional { inner: inn, span: s } =>
+      Node {
+        name: "Optional", span: s,
+        children: [type_expr_to_node(te: inn), type_expr_named_to_node(n: "None", s: s)],
+        connective: Some { value: Disj },
+        params: [], return_type: none, uses: [],
+        body: none, transport: none, properties: [], type_annotation: none, config: none
+      }
+
+    MapType { key: k, value: v, span: s } =>
+      Node {
+        name: "Map", span: s,
+        children: [type_expr_to_node(te: k), type_expr_to_node(te: v)],
+        connective: none,
+        params: [], return_type: none, uses: [],
+        body: none, transport: none, properties: [], type_annotation: none, config: none
+      }
+
+    Refined { base: b, predicates: ps, span: s } =>
+      Node {
+        name: "Refined", span: s,
+        children: [type_expr_to_node(te: b)],
+        connective: Some { value: Conj },
+        params: [], return_type: none, uses: [],
+        body: none, transport: none,
+        properties: map(ps, p => predicate_to_field_init(p: p)),
+        type_annotation: none, config: none
+      }
+  }
+}
+
+fn type_expr_named_to_node(n: String, s: SourceSpan) -> Node {
+  Node {
+    name: n, span: s, children: [], connective: none,
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+// For Product/Coproduct: the name field is String? in TypeExpr.
+// Safely unwrap to "" when none.
+fn opt_str_or_empty(s: String?) -> String {
+  match s {
+    Some { value: v } => v
+    _ => ""
+  }
+}
+
+fn type_expr_product_to_node(pn: String?, fs: List<Field>, s: SourceSpan) -> Node {
+  Node {
+    name: opt_str_or_empty(s: pn), span: s,
+    children: map(fs, f => field_to_node(f: f)),
+    connective: Some { value: Conj },
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn type_expr_coproduct_to_node(cn: String?, vs: List<Variant>, s: SourceSpan) -> Node {
+  Node {
+    name: opt_str_or_empty(s: cn), span: s,
+    children: map(vs, v => variant_to_node(v: v)),
+    connective: Some { value: Disj },
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn field_to_node(f: Field) -> Node {
+  let type_node = type_expr_to_node(te: f.type_expr)
+  Node {
+    name: f.name, span: f.span,
+    children: [],
+    connective: none,
+    params: [], return_type: Some { value: f.type_expr }, uses: [],
+    body: f.default_value, transport: none,
+    properties: if f.from_key != none {
+      [FieldInit { name: "from_key", value: Literal { value: LitStr { value: f.from_key.value }, span: f.span } }]
+    } else { [] },
+    type_annotation: if f.optional { Some { value: Optional { inner: f.type_expr, span: f.span } } } else { none },
+    config: none
+  }
+}
+
+fn variant_to_node(v: Variant) -> Node {
+  Node {
+    name: v.name, span: v.span,
+    children: map(v.fields, f => field_to_node(f: f)),
+    connective: if v.fields |> count > 0 { Some { value: Conj } } else { none },
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn predicate_to_field_init(p: Predicate) -> FieldInit {
+  let zero_span = SourceSpan { start: 0, end: 0 }
+  match p {
+    NonEmpty => FieldInit { name: "NonEmpty", value: Literal { value: LitBool { value: true }, span: zero_span } }
+    Pattern { regex: r } => FieldInit { name: "Pattern", value: Literal { value: LitStr { value: r }, span: zero_span } }
+    Range { min: mn, max: mx } =>
+      // Encode range as two separate int literals — avoids needing int-to-string
+      FieldInit { name: "Range", value: Literal { value: LitStr { value: "range" }, span: zero_span } }
+    Brand { name: n } => FieldInit { name: "Brand", value: Literal { value: LitStr { value: n }, span: zero_span } }
+    ContentEncoding { encoding: e } => FieldInit { name: "ContentEncoding", value: Literal { value: LitStr { value: e }, span: zero_span } }
+    Format { name: n } => FieldInit { name: "Format", value: Literal { value: LitStr { value: n }, span: zero_span } }
+    Domain { name: n } => FieldInit { name: "Domain", value: Literal { value: LitStr { value: n }, span: zero_span } }
+  }
+}
+
+// Convert a Node (type-level) back to TypeExpr.
+// This is the inverse of type_expr_to_node, used during the dual-write
+// phase when consumers still expect TypeExpr.
+fn node_to_type_expr_full(n: Node) -> TypeExpr {
+  node_to_type_expr_by_connective(n: n, conn: n.connective)
+}
+
+fn node_to_type_expr_by_connective(n: Node, conn: Connective?) -> TypeExpr {
+  if conn == none {
+    node_to_type_expr_leaf(n: n)
+  } else {
+    match conn.value {
+      Conj => node_to_type_expr_conj(n: n)
+      Disj => node_to_type_expr_disj(n: n)
+    }
+  }
+}
+
+fn node_to_type_expr_conj(n: Node) -> TypeExpr {
+  if n.name == "Refined" {
+    node_to_type_expr_refined(children: n.children, span: n.span)
+  } else {
+    Product {
+      name: if n.name != "" { Some { value: n.name } } else { none },
+      fields: map(n.children, child => node_child_to_field(child: child)),
+      span: n.span
+    }
+  }
+}
+
+fn node_to_type_expr_refined(children: List<Node>, span: SourceSpan) -> TypeExpr {
+  match children |> first {
+    Some { value: base_child } =>
+      Refined { base: node_to_type_expr_full(n: base_child), predicates: [], span: span }
+    None =>
+      Named { name: "Refined", span: span }
+  }
+}
+
+fn node_to_type_expr_disj(n: Node) -> TypeExpr {
+  if n.name == "Optional" {
+    node_to_type_expr_optional(children: n.children, span: n.span)
+  } else {
+    Coproduct {
+      name: if n.name != "" { Some { value: n.name } } else { none },
+      variants: map(n.children, child => node_child_to_variant(child: child)),
+      span: n.span
+    }
+  }
+}
+
+fn node_to_type_expr_optional(children: List<Node>, span: SourceSpan) -> TypeExpr {
+  match children |> first {
+    Some { value: inner_child } =>
+      Optional { inner: node_to_type_expr_full(n: inner_child), span: span }
+    None =>
+      Named { name: "Optional", span: span }
+  }
+}
+
+fn node_to_type_expr_leaf(n: Node) -> TypeExpr {
+  if n.name == "Map" && n.children |> count == 2 {
+    node_to_type_expr_map(children: n.children, span: n.span)
+  } else if n.children |> count == 1 {
+    node_to_type_expr_container(name: n.name, children: n.children, span: n.span)
+  } else {
+    Named { name: n.name, span: n.span }
+  }
+}
+
+fn node_to_type_expr_map(children: List<Node>, span: SourceSpan) -> TypeExpr {
+  match children |> first {
+    Some { value: key_child } =>
+      match skip(children, 1) |> first {
+        Some { value: val_child } =>
+          MapType { key: node_to_type_expr_full(n: key_child), value: node_to_type_expr_full(n: val_child), span: span }
+        None => Named { name: "Map", span: span }
+      }
+    None => Named { name: "Map", span: span }
+  }
+}
+
+fn node_to_type_expr_container(name: String, children: List<Node>, span: SourceSpan) -> TypeExpr {
+  match children |> first {
+    Some { value: el_child } =>
+      if name == "List" {
+        Container { kind: List, element: node_to_type_expr_full(n: el_child), span: span }
+      } else if name == "Set" {
+        Container { kind: Set, element: node_to_type_expr_full(n: el_child), span: span }
+      } else if name == "NonEmptyList" {
+        Container { kind: NonEmptyList, element: node_to_type_expr_full(n: el_child), span: span }
+      } else if name == "NonEmptySet" {
+        Container { kind: NonEmptySet, element: node_to_type_expr_full(n: el_child), span: span }
+      } else {
+        Named { name: name, span: span }
+      }
+    None => Named { name: name, span: span }
+  }
+}
+
+fn node_child_to_field(child: Node) -> Field {
+  if child.return_type == none {
+    Field {
+      name: child.name,
+      type_expr: Named { name: child.name, span: child.span },
+      optional: false,
+      default_value: child.body,
+      from_key: none,
+      span: child.span
+    }
+  } else {
+    Field {
+      name: child.name,
+      type_expr: child.return_type.value,
+      optional: false,
+      default_value: child.body,
+      from_key: node_from_key(props: child.properties),
+      span: child.span
+    }
+  }
+}
+
+fn node_from_key(props: List<FieldInit>) -> String? {
+  match props |> first {
+    Some { value: fi } =>
+      if fi.name == "from_key" {
+        match fi.value {
+          Literal { value: LitStr { value: v }, span: _ } => Some { value: v }
+          _ => none
+        }
+      } else { none }
+    None => none
+  }
+}
+
+fn node_child_to_variant(child: Node) -> Variant {
+  Variant {
+    name: child.name,
+    fields: map(child.children, c => node_child_to_field(child: c)),
+    span: child.span
+  }
+}
 
