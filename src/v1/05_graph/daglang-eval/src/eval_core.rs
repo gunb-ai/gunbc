@@ -65,7 +65,10 @@ pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
         Value::Map(map) => map
             .get(field)
             .cloned()
-            .ok_or_else(|| EvalError::new(format!("no field '{field}' in map"))),
+            .ok_or_else(|| {
+                let keys: Vec<&String> = map.keys().collect();
+                EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
+            }),
         Value::Json(json) => match json {
             serde_json::Value::Object(obj) => Ok(obj
                 .get(field)
