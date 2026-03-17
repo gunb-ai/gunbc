@@ -10,9 +10,14 @@
 //             ControlFlowSyntax, LiteralSyntax, ModuleSyntax, FunctionSyntax,
 //             ErrorHandlingSyntax, TypeDefinitionSyntax, PatternMatchSyntax,
 //             AsyncSyntax)
-//   Layer 1: Categories (TuringComplete, ConfigFormat, MarkupFormat)
-//   Layer 2: Languages (Rust, Go, Markdown, HTML, Makefile, ...)
+//   Layer 0c: Runtime operation primitives (CollectionOps, StringOps, MapOps,
+//             NullCoalesceStrategy, ReservedWords, ValueSemantics,
+//             SerializationFramework, ProjectScaffold, ServiceCallSemantics)
+//   Layer 1: Categories (Language, LanguageSpec, ConfigFormat, MarkupFormat)
+//   Layer 2: Language identity data (rust_language, go_language, ...)
 //   Layer 2b: Rendering syntax data (rust_statements, go_expressions, ...)
+//   Layer 2c: Runtime operation data (rust_collection_ops, python_string_ops, ...)
+//   Layer 2d: LanguageSpec compositions (rust_spec, go_spec, python_spec)
 //   Layer 3: Rendering (render_heading, render_code_block, ...)
 //   Layer 4: Tools (gist, docgen, etc.)
 //
@@ -229,9 +234,147 @@ type AsyncSyntax
       select_stmt: String          // e.g. "select {\n{cases}\n}"
     }
 
+// ── Layer 0c: Runtime operation mappings ────────────────────────────
+//
+// "How does a language implement DSL builtin operations?"
+// Each field is a template mapping a DSL pipe method / builtin
+// function to its target-language equivalent.
+//
+// Templates use {recv} for the receiver, {arg} for the first argument,
+// {args} for the full argument list, {body} for a lambda body, and
+// {param} for a lambda parameter.
+
+// "How does a language operate on collections?"
+// Ref: Rust Iterator trait, Python builtins/itertools, Go slices package
+type CollectionOps {
+  count: String                  // e.g. "{recv}.len()" or "len({recv})"
+  first: String                  // e.g. "{recv}.first().cloned()" or "{recv}[0] if {recv} else None"
+  last: String                   // e.g. "{recv}.last().cloned()" or "{recv}[-1] if {recv} else None"
+  enumerate: String              // e.g. "{recv}.iter().enumerate()..." or "list(enumerate({recv}))"
+  join: String                   // e.g. "{recv}.join(&{arg})" or "{arg}.join({recv})"
+  map: String                    // e.g. "{recv}.into_iter().map({body}).collect()" or "[{body} for {param} in {recv}]"
+  filter: String                 // e.g. "{recv}.into_iter().filter({body}).collect()" or "[x for x in {recv} if {body}]"
+  flat_map: String               // e.g. "{recv}.into_iter().flat_map({body}).collect()"
+  fold: String                   // e.g. "{recv}.into_iter().fold({init}, {body})"
+  any: String                    // e.g. "{recv}.iter().any({body})" or "any({body} for {param} in {recv})"
+  all: String                    // e.g. "{recv}.iter().all({body})" or "all({body} for {param} in {recv})"
+  empty_list: String             // e.g. "vec![]" or "[]"
+  list_literal: String           // e.g. "vec![{elements}]" or "[{elements}]"
+}
+
+// "How does a language operate on strings?"
+// Ref: Rust String methods, Python str methods, Go strings package
+type StringOps {
+  split: String                  // e.g. "{recv}.split(&{arg})...collect()" or "{recv}.split({arg})"
+  chars: String                  // e.g. "{recv}.chars()...collect()" or "list({recv})"
+  concat: String                 // e.g. "format!(\"{}\", {args})" or "f\"{args}\""
+  string_literal: String         // e.g. "\"{value}\".to_string()" or "\"{value}\""
+  string_interp: String          // e.g. "format!(\"{fmt}\", {args})" or "f\"{fmt}\""
+  code_point: String             // e.g. "{recv} as u32 as i64" or "ord({recv})"
+  from_code_point: String        // e.g. "char::from_u32({arg} as u32)..." or "chr({arg})"
+}
+
+// "How does a language operate on maps?"
+// Ref: Rust HashMap/BTreeMap, Python dict, Go map
+type MapOps {
+  empty_map: String              // e.g. "BTreeMap::new()" or "{}" or "map[K]V{}"
+  map_insert: String             // e.g. "{recv}.insert({key}, {value})" or "{recv}[{key}] = {value}"
+  map_get: String                // e.g. "{recv}.get(&{key}).cloned()" or "{recv}.get({key})"
+  map_contains: String           // e.g. "{recv}.contains_key(&{key})" or "{key} in {recv}"
+}
+
+// "How does a language handle null/optional coalescing?"
+// This is deeply language-specific and not reducible to a template string.
+// Ref: Rust Option::unwrap_or_else, Python ternary, Go nil check
+type NullCoalesceStrategy
+  = MethodBased {
+      template: String           // e.g. "{lhs}.unwrap_or_else(|| {rhs})"
+    }
+  | TernaryBased {
+      template: String           // e.g. "({lhs} if {lhs} is not None else {rhs})"
+    }
+  | IIFEBased {
+      template: String           // e.g. "func() ... { if {lhs} != nil ... }()"
+    }
+
+// "How does a language handle identifier conflicts with reserved words?"
+// Ref: Rust r# raw identifiers, Python _ suffix convention, Go capitalization
+type ReservedWordStrategy
+  = PrefixEscape {
+      prefix: String             // e.g. "r#" for Rust
+    }
+  | SuffixEscape {
+      suffix: String             // e.g. "_" for Python
+    }
+  | NoEscape                     // Go: no escape; visibility is by capitalization
+
+// "What are the language's reserved words?"
+// The compiler needs these to escape identifiers that conflict with keywords.
+type ReservedWords {
+  keywords: List<String>
+  strategy: ReservedWordStrategy
+}
+
+// "How does a language pass values?"
+// Ref: Rust ownership, Python object references, Go value semantics
+type ValueSemantics
+  = OwnershipBased {
+      reference_prefix: String   // e.g. "&" for Rust
+      mutable_prefix: String     // e.g. "mut " for Rust
+      copy_primitives: List<String>  // e.g. ["Int", "Bool", "Float", "Unit"] — passed by value
+    }
+  | ReferenceBased               // Python: all objects are references
+  | ValueBased {
+      pointer_prefix: String     // e.g. "*" for Go pointers
+    }
+
+// "What serialization framework does the language use?"
+// The emitter needs this for data definitions, service mocks, and
+// type derives. Each language has a canonical serialization story.
+// Ref: Rust serde, Python dataclasses/json, Go encoding/json
+type SerializationFramework {
+  struct_derives: String?        // e.g. "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+  enum_derives: String?          // e.g. "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+  tag_attribute: String?         // e.g. "#[serde(tag = \"_variant\")]" for tagged enums
+  rename_attribute: String?      // e.g. "#[serde(rename = \"{key}\")]" for field renaming
+  json_parse: String?            // e.g. "serde_json::from_str({input})?" or "json.loads({input})"
+  json_emit: String?             // e.g. "serde_json::to_string({value})?" or "json.dumps({value})"
+  json_type: String              // e.g. "serde_json::Value" or "dict" or "interface{}"
+  default_value: String          // e.g. "Default::default()" or "None" or "nil"
+}
+
+// "What project scaffolding does the language need?"
+// The emitter generates project files beyond just source files.
+// Ref: Cargo.toml, go.mod, requirements.txt, pyproject.toml
+type ProjectScaffold {
+  manifest_file: String?         // e.g. "Cargo.toml" or "go.mod" or null
+  module_init_file: String?      // e.g. null or "__init__.py" or null
+  source_file_extension: String  // e.g. ".rs" or ".py" or ".go"
+  source_dir: String?            // e.g. "src/" or null
+  entry_point_file: String?      // e.g. "src/main.rs" or "__main__.py" or "main.go"
+}
+
+// "How does a language invoke async service calls?"
+// Different from AsyncSyntax (which covers general async constructs).
+// This is specifically about how service method invocations look.
+// Ref: Rust `.await?`, Python `await`, Go multi-return error check
+type ServiceCallSemantics
+  = AwaitQuestion {
+      template: String           // e.g. "{call}.await?" — Rust: Result-returning async
+    }
+  | AwaitPrefix {
+      template: String           // e.g. "await {call}" — Python: exception-based async
+    }
+  | MultiReturnError {
+      template: String           // e.g. "{result}, {err} := {call}" — Go: multi-return
+    }
+
 // ── Layer 1: Categories ──────────────────────────────────────────────
 
-// "What is a language?" -- the complete invariant.
+// "What is a language?" -- the baseline identity facts.
+// This captures what a language IS: its name, extensions, comment syntax,
+// naming conventions, and type mappings. It does NOT include how to write
+// code in the language (that's LanguageSpec).
 type Language {
   id: LanguageId
   name: String
@@ -239,6 +382,58 @@ type Language {
   comment: CommentSyntax
   naming: NamingConvention?
   types: TypeMapping?
+}
+
+// "What does the compiler need to emit code in a language?"
+// LanguageSpec is the COMPILER-OWNED CONTRACT. It composes all the
+// facts from Layer 0/0b/0c that the emitter consults when generating
+// target-language source files. A language extdep must fill in every
+// field of this type to be a valid emit target.
+//
+// This is layer 1 — the interface. Layer 2 (language extdeps) provides
+// the concrete data for each target language.
+//
+// Design principle: every hardcoded fact in the emitters
+// (05_emit_rust.dag, 05_emit_python.dag, 05_emit_go.dag) must be
+// expressible as a field lookup on this type. If adding a new target
+// language requires changing the emitter rather than just providing a
+// new LanguageSpec value, a field is missing from this type.
+type LanguageSpec {
+  // ── Identity ──
+  language: Language
+
+  // ── Syntax (Layer 0b) ──
+  statements: StatementSyntax
+  expressions: ExpressionSyntax
+  control_flow: ControlFlowSyntax
+  literals: LiteralSyntax
+  modules: ModuleSyntax
+  functions: FunctionSyntax
+  errors: ErrorHandlingSyntax
+  type_defs: TypeDefinitionSyntax
+  patterns: PatternMatchSyntax
+  async_model: AsyncSyntax?      // null for languages without async (C, etc.)
+
+  // ── Runtime operations (Layer 0c) ──
+  collection_ops: CollectionOps
+  string_ops: StringOps
+  map_ops: MapOps
+  null_coalesce: NullCoalesceStrategy
+
+  // ── Identifier handling ──
+  reserved_words: ReservedWords
+
+  // ── Value semantics ──
+  value_semantics: ValueSemantics
+
+  // ── Serialization ──
+  serialization: SerializationFramework
+
+  // ── Project structure ──
+  scaffold: ProjectScaffold
+
+  // ── Service calls ──
+  service_calls: ServiceCallSemantics
 }
 
 // "What is a markup format?" -- subset for non-Turing languages.
@@ -767,6 +962,334 @@ data python_async: AsyncSyntax = AwaitBased {
   await_expr: "await {expr}",
   spawn_task: "asyncio.create_task({expr})",
   gather: "asyncio.gather({exprs})"
+}
+
+// ── Layer 2c: Runtime operation data ─────────────────────────────────
+//
+// How each language implements DSL builtin operations.
+// Each data declaration maps DSL pipe methods / builtins to the
+// target language's idiomatic equivalent.
+
+// ── Rust runtime ops ─────────────────────────────────────────────────
+// Ref: Rust std::iter, std::collections, std::string
+
+data rust_collection_ops: CollectionOps = {
+  count: "{recv}.len()",
+  first: "{recv}.first().cloned()",
+  last: "{recv}.last().cloned()",
+  enumerate: "{recv}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()",
+  join: "{recv}.join(&{arg})",
+  map: "{recv}.into_iter().map({body}).collect::<Vec<_>>()",
+  filter: "{recv}.into_iter().filter({body}).collect::<Vec<_>>()",
+  flat_map: "{recv}.into_iter().flat_map({body}).collect::<Vec<_>>()",
+  fold: "{recv}.into_iter().fold({init}, {body})",
+  any: "{recv}.iter().any({body})",
+  all: "{recv}.iter().all({body})",
+  empty_list: "vec![]",
+  list_literal: "vec![{elements}]"
+}
+
+data rust_string_ops: StringOps = {
+  split: "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()",
+  chars: "{recv}.chars().map(|c| c.to_string()).collect::<Vec<_>>()",
+  concat: "format!(\"{fmt}\", {args})",
+  string_literal: "\"{value}\".to_string()",
+  string_interp: "format!(\"{fmt}\", {args})",
+  code_point: "{recv} as u32 as i64",
+  from_code_point: "char::from_u32({arg} as u32).map(|c| c.to_string()).unwrap_or_default()"
+}
+
+data rust_map_ops: MapOps = {
+  empty_map: "BTreeMap::new()",
+  map_insert: "{recv}.insert({key}, {value})",
+  map_get: "{recv}.get(&{key}).cloned()",
+  map_contains: "{recv}.contains_key(&{key})"
+}
+
+data rust_null_coalesce: NullCoalesceStrategy = MethodBased {
+  template: "{lhs}.unwrap_or_else(|| {rhs})"
+}
+
+data rust_reserved_words: ReservedWords = {
+  keywords: [
+    "as", "async", "await", "break", "const", "continue", "crate",
+    "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
+    "impl", "in", "let", "loop", "match", "mod", "move", "mut",
+    "pub", "ref", "return", "self", "Self", "static", "struct",
+    "super", "trait", "true", "type", "unsafe", "use", "where",
+    "while", "yield", "abstract", "become", "box", "do", "final",
+    "macro", "override", "priv", "try", "typeof", "unsized",
+    "virtual"
+  ],
+  strategy: PrefixEscape { prefix: "r#" }
+}
+
+data rust_value_semantics: ValueSemantics = OwnershipBased {
+  reference_prefix: "&",
+  mutable_prefix: "mut ",
+  copy_primitives: ["Int", "Bool", "Float", "Unit"]
+}
+
+data rust_serialization: SerializationFramework = {
+  struct_derives: "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
+  enum_derives: "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
+  tag_attribute: "#[serde(tag = \"_variant\")]",
+  rename_attribute: "#[serde(rename = \"{key}\")]",
+  json_parse: "serde_json::from_str({input})?",
+  json_emit: "serde_json::to_string({value})?",
+  json_type: "serde_json::Value",
+  default_value: "Default::default()"
+}
+
+data rust_scaffold: ProjectScaffold = {
+  manifest_file: "Cargo.toml",
+  module_init_file: null,
+  source_file_extension: ".rs",
+  source_dir: "src/",
+  entry_point_file: "src/main.rs"
+}
+
+data rust_service_calls: ServiceCallSemantics = AwaitQuestion {
+  template: "{call}.await?"
+}
+
+// ── Go runtime ops ───────────────────────────────────────────────────
+// Ref: Go slices package, strings package, fmt package
+
+data go_collection_ops: CollectionOps = {
+  count: "len({recv})",
+  first: "{recv}[0]",
+  last: "{recv}[len({recv})-1]",
+  enumerate: "{recv}",
+  join: "strings.Join({recv}, {arg})",
+  map: "func() []interface{} { var r []interface{}; for _, v := range {recv} { r = append(r, {body}) }; return r }()",
+  filter: "func() []interface{} { var r []interface{}; for _, v := range {recv} { if {body} { r = append(r, v) } }; return r }()",
+  flat_map: "func() []interface{} { var r []interface{}; for _, v := range {recv} { r = append(r, {body}...) }; return r }()",
+  fold: "func() interface{} { acc := {init}; for _, v := range {recv} { acc = {body} }; return acc }()",
+  any: "func() bool { for _, v := range {recv} { if {body} { return true } }; return false }()",
+  all: "func() bool { for _, v := range {recv} { if !({body}) { return false } }; return true }()",
+  empty_list: "nil",
+  list_literal: "[]{type}{ {elements} }"
+}
+
+data go_string_ops: StringOps = {
+  split: "strings.Split({recv}, {arg})",
+  chars: "strings.Split({recv}, \"\")",
+  concat: "fmt.Sprintf(\"{fmt}\", {args})",
+  string_literal: "\"{value}\"",
+  string_interp: "fmt.Sprintf(\"{fmt}\", {args})",
+  code_point: "int64([]rune({recv})[0])",
+  from_code_point: "string(rune({arg}))"
+}
+
+data go_map_ops: MapOps = {
+  empty_map: "make(map[{key_type}]{value_type})",
+  map_insert: "{recv}[{key}] = {value}",
+  map_get: "{recv}[{key}]",
+  map_contains: "func() bool { _, ok := {recv}[{key}]; return ok }()"
+}
+
+data go_null_coalesce: NullCoalesceStrategy = IIFEBased {
+  template: "func() interface{} { if {lhs} != nil { return {lhs} }; return {rhs} }()"
+}
+
+data go_reserved_words: ReservedWords = {
+  keywords: [
+    "break", "case", "chan", "const", "continue",
+    "default", "defer", "else", "fallthrough", "for",
+    "func", "go", "goto", "if", "import",
+    "interface", "map", "package", "range", "return",
+    "select", "struct", "switch", "type", "var",
+    "bool", "byte", "complex64", "complex128", "error",
+    "float32", "float64", "int", "int8", "int16", "int32", "int64",
+    "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
+    "uintptr", "true", "false", "iota", "nil",
+    "append", "cap", "close", "complex", "copy", "delete",
+    "imag", "len", "make", "new", "panic", "print", "println",
+    "real", "recover"
+  ],
+  strategy: NoEscape
+}
+
+data go_value_semantics: ValueSemantics = ValueBased {
+  pointer_prefix: "*"
+}
+
+data go_serialization: SerializationFramework = {
+  struct_derives: null,
+  enum_derives: null,
+  tag_attribute: null,
+  rename_attribute: null,
+  json_parse: "json.Unmarshal([]byte({input}), &{target})",
+  json_emit: "json.Marshal({value})",
+  json_type: "interface{}",
+  default_value: "nil"
+}
+
+data go_scaffold: ProjectScaffold = {
+  manifest_file: "go.mod",
+  module_init_file: null,
+  source_file_extension: ".go",
+  source_dir: null,
+  entry_point_file: "main.go"
+}
+
+data go_service_calls: ServiceCallSemantics = MultiReturnError {
+  template: "{result}, {err} := {call}"
+}
+
+// ── Python runtime ops ───────────────────────────────────────────────
+// Ref: Python builtins, itertools, functools
+
+data python_collection_ops: CollectionOps = {
+  count: "len({recv})",
+  first: "{recv}[0] if {recv} else None",
+  last: "{recv}[-1] if {recv} else None",
+  enumerate: "list(enumerate({recv}))",
+  join: "{arg}.join({recv})",
+  map: "[{body} for {param} in {recv}]",
+  filter: "[x for x in {recv} if {body}]",
+  flat_map: "[item for sublist in [{body} for {param} in {recv}] for item in sublist]",
+  fold: "functools.reduce({body}, {recv}, {init})",
+  any: "any({body} for {param} in {recv})",
+  all: "all({body} for {param} in {recv})",
+  empty_list: "[]",
+  list_literal: "[{elements}]"
+}
+
+data python_string_ops: StringOps = {
+  split: "{recv}.split({arg})",
+  chars: "list({recv})",
+  concat: "f\"{fmt}\"",
+  string_literal: "\"{value}\"",
+  string_interp: "f\"{fmt}\"",
+  code_point: "ord({recv})",
+  from_code_point: "chr({arg})"
+}
+
+data python_map_ops: MapOps = {
+  empty_map: "{}",
+  map_insert: "{recv}[{key}] = {value}",
+  map_get: "{recv}.get({key})",
+  map_contains: "{key} in {recv}"
+}
+
+data python_null_coalesce: NullCoalesceStrategy = TernaryBased {
+  template: "({lhs} if {lhs} is not None else {rhs})"
+}
+
+data python_reserved_words: ReservedWords = {
+  keywords: [
+    "False", "None", "True", "and", "as", "assert", "async", "await",
+    "break", "class", "continue", "def", "del", "elif", "else",
+    "except", "finally", "for", "from", "global", "if", "import",
+    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+    "return", "try", "while", "with", "yield",
+    "type", "match", "case"
+  ],
+  strategy: SuffixEscape { suffix: "_" }
+}
+
+data python_value_semantics: ValueSemantics = ReferenceBased
+
+data python_serialization: SerializationFramework = {
+  struct_derives: "@dataclass",
+  enum_derives: null,
+  tag_attribute: null,
+  rename_attribute: null,
+  json_parse: "json.loads({input})",
+  json_emit: "json.dumps({value})",
+  json_type: "dict",
+  default_value: "None"
+}
+
+data python_scaffold: ProjectScaffold = {
+  manifest_file: null,
+  module_init_file: "__init__.py",
+  source_file_extension: ".py",
+  source_dir: null,
+  entry_point_file: "__main__.py"
+}
+
+data python_service_calls: ServiceCallSemantics = AwaitPrefix {
+  template: "await {call}"
+}
+
+// ── Layer 2d: LanguageSpec compositions ──────────────────────────────
+//
+// Each LanguageSpec value composes all the Layer 0/0b/0c/2/2b/2c data
+// for a single target language. This is the value the emitter receives.
+
+// "Everything the compiler needs to emit Rust."
+data rust_spec: LanguageSpec = {
+  language: rust_language,
+  statements: rust_statements,
+  expressions: rust_expressions,
+  control_flow: rust_control_flow,
+  literals: rust_literals,
+  modules: rust_modules,
+  functions: rust_functions,
+  errors: rust_errors,
+  type_defs: rust_type_defs,
+  patterns: rust_patterns,
+  async_model: rust_async,
+  collection_ops: rust_collection_ops,
+  string_ops: rust_string_ops,
+  map_ops: rust_map_ops,
+  null_coalesce: rust_null_coalesce,
+  reserved_words: rust_reserved_words,
+  value_semantics: rust_value_semantics,
+  serialization: rust_serialization,
+  scaffold: rust_scaffold,
+  service_calls: rust_service_calls
+}
+
+// "Everything the compiler needs to emit Go."
+data go_spec: LanguageSpec = {
+  language: go_language,
+  statements: go_statements,
+  expressions: go_expressions,
+  control_flow: go_control_flow,
+  literals: go_literals,
+  modules: go_modules,
+  functions: go_functions,
+  errors: go_errors,
+  type_defs: go_type_defs,
+  patterns: go_patterns,
+  async_model: go_async,
+  collection_ops: go_collection_ops,
+  string_ops: go_string_ops,
+  map_ops: go_map_ops,
+  null_coalesce: go_null_coalesce,
+  reserved_words: go_reserved_words,
+  value_semantics: go_value_semantics,
+  serialization: go_serialization,
+  scaffold: go_scaffold,
+  service_calls: go_service_calls
+}
+
+// "Everything the compiler needs to emit Python."
+data python_spec: LanguageSpec = {
+  language: python_language,
+  statements: python_statements,
+  expressions: python_expressions,
+  control_flow: python_control_flow,
+  literals: python_literals,
+  modules: python_modules,
+  functions: python_functions,
+  errors: python_errors,
+  type_defs: python_type_defs,
+  patterns: python_patterns,
+  async_model: python_async,
+  collection_ops: python_collection_ops,
+  string_ops: python_string_ops,
+  map_ops: python_map_ops,
+  null_coalesce: python_null_coalesce,
+  reserved_words: python_reserved_words,
+  value_semantics: python_value_semantics,
+  serialization: python_serialization,
+  scaffold: python_scaffold,
+  service_calls: python_service_calls
 }
 
 // ── Markup formats ───────────────────────────────────────────────────
