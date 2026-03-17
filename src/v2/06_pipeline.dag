@@ -134,3 +134,44 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     }
   }
 }
+
+// Bootstrap variant: skips typecheck error gate so emitter runs despite
+// incomplete type inference. The v2 typechecker has false positives on
+// recursive types, lambda params, and variant constructors. The emitter
+// produces structurally correct code from the AST; Rust's own type
+// checker is the final arbiter.
+fn compile_sources_lenient(sources: List<SourceFile>, target: RenderTarget) -> CompileResult {
+  let tokenized = map(sources, s => tokenize(source: s.content))
+  let parse_results = map(tokenized, t => parse(tokens: t))
+  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
+  let has_errors = any(parse_results, p => p.error != None)
+
+  if has_errors {
+    CompileResult { files: [], diagnostics: parse_diagnostics }
+  } else {
+    let modules = map(parse_results, p => p.module.value)
+    let graph = resolve_modules(modules: modules)
+
+    let resolve_errors = graph.diagnostics |> filter(d => d.severity == Error)
+    if resolve_errors |> count > 0 {
+      return CompileResult {
+        files: [],
+        diagnostics: concat(parse_diagnostics, graph.diagnostics)
+      }
+    }
+
+    let typed = typecheck_and_validate(graph: graph)
+
+    // No typecheck gate — emit despite errors for bootstrap.
+    let emit_result = match target {
+      Rust => emit_rust(typed: typed)
+      Python => emit_python(typed: typed)
+      Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: SourceSpan { start: 0, end: 0 }, module_name: "" }] }
+    }
+
+    CompileResult {
+      files: emit_result.files,
+      diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics, emit_result.diagnostics)
+    }
+  }
+}
