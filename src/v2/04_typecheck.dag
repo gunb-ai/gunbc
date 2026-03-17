@@ -35,6 +35,7 @@ import v2.std.core {
   TypedNamedArg, TypedMatchArm, TypedFieldInit, TypedStringPart,
   TypedText, TypedInterpolation,
   typed_expr_to_expr,
+  type_expr_to_node, node_to_type_expr_full,
   FuncSig, FuncEnv,
   ForEach,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -65,6 +66,8 @@ type SpanType {
   start: Int
   end: Int
   resolved_type: TypeExpr
+  // B1 migration: Node representation of the resolved type.
+  resolved_type_node: Node?
 }
 
 type TypedModule {
@@ -83,9 +86,9 @@ type TypeEnv {
 type TypeBinding {
   name: String
   resolved: TypeExpr
-  // B1 dual-write: Node representation alongside TypeExpr.
-  // During migration, both are populated. After TypeExpr deletion,
-  // resolved_node becomes the sole representation.
+  // B1 migration: dual-write Node representation of the resolved type.
+  // During migration, resolved_node is populated alongside resolved.
+  // Once all consumers read from resolved_node, resolved will be removed.
   resolved_node: Node?
 }
 
@@ -93,6 +96,8 @@ type TypeBinding {
 type ResolveResult {
   resolved: TypeExpr
   diagnostics: List<Diagnostic>
+  // B1 migration: Node representation of the resolved type.
+  resolved_node: Node?
 }
 
 // =========================================================================
@@ -430,7 +435,7 @@ fn expr_span(expr: Expr) -> SourceSpan {
 }
 
 fn span_entry_typed(texpr: TypedExpr) -> SpanType {
-  SpanType { start: texpr.span.start, end: texpr.span.end, resolved_type: texpr.resolved_type }
+  SpanType { start: texpr.span.start, end: texpr.span.end, resolved_type: texpr.resolved_type, resolved_type_node: none }
 }
 
 fn ok_infer(texpr: TypedExpr) -> InferResult {
@@ -620,6 +625,171 @@ fn type_expr_equals(left: TypeExpr, right: TypeExpr) -> Bool {
       }
     Refined { base: _, predicates: _, span: _ } =>
       false
+  }
+}
+
+// =========================================================================
+// Node-based type utility functions (B1 migration)
+//
+// These are the Node equivalents of type_expr_equals, type_expr_shape,
+// normalize_access_type, and type_expr_deps. They work on Nodes used
+// as type representations rather than TypeExpr values.
+//
+// A Node-as-type uses:
+//   - name: the type's name
+//   - connective: Conj (product/record), Disj (coproduct/sum), none (leaf)
+//   - children: fields or variants
+//   - return_type: the field's type (for field children) or container element
+//   - properties: metadata (container_kind, optional, map_type)
+// =========================================================================
+
+// Check if a type-Node represents a container type.
+fn node_is_container(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "container_kind")
+}
+
+// Check if a type-Node represents an optional type.
+fn node_is_optional(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "optional")
+}
+
+// Check if a type-Node represents a map type.
+fn node_is_map(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "map_type")
+}
+
+// Check if a type-Node is a leaf (primitive or named reference).
+fn node_is_leaf(n: Node) -> Bool {
+  n.connective == none && n.children |> count == 0 && n.properties |> count == 0
+}
+
+// Check if a type-Node is a named reference (has return_type with Named).
+fn node_is_named_ref(n: Node) -> Bool {
+  if n.return_type == none { false }
+  else {
+    match n.return_type.value {
+      Named { name: _, span: _ } => true
+      _ => false
+    }
+  }
+}
+
+// Node-based shape description (equivalent to type_expr_shape).
+fn node_type_shape(n: Node) -> String {
+  if node_is_leaf(n: n) {
+    if node_is_named_ref(n: n) {
+      concat("Named(", normalize_type_name(name: n.name), ")")
+    } else {
+      concat("Primitive(", n.name, ")")
+    }
+  } else if n.connective != none {
+    match n.connective.value {
+      Conj =>
+        if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
+      Disj =>
+        if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
+    }
+  } else if node_is_container(n: n) {
+    let elem_shape = if n.return_type != none {
+      type_expr_shape(type_expr: n.return_type.value)
+    } else {
+      "?"
+    }
+    concat("Container(", n.name, ",", elem_shape, ")")
+  } else if node_is_optional(n: n) {
+    let inner_shape = if n.return_type != none {
+      type_expr_shape(type_expr: n.return_type.value)
+    } else {
+      "?"
+    }
+    concat("Optional(", inner_shape, ")")
+  } else if node_is_map(n: n) {
+    "Map(...)"
+  } else {
+    concat("Node(", n.name, ")")
+  }
+}
+
+// Node-based type equality (equivalent to type_expr_equals).
+// Two type-Nodes are equal if they represent the same type structure.
+fn node_type_equals(left: Node, right: Node) -> Bool {
+  // Both leaves: compare names (normalized)
+  if node_is_leaf(n: left) && node_is_leaf(n: right) {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  // Both products: compare names
+  else if left.connective != none && right.connective != none {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  // Leaf vs product/coproduct: compare leaf name with product/coproduct name
+  else if node_is_leaf(n: left) && right.connective != none {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  else if left.connective != none && node_is_leaf(n: right) {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  // Both containers: compare kind and element
+  else if node_is_container(n: left) && node_is_container(n: right) {
+    if left.name != right.name { false }
+    else if left.return_type != none && right.return_type != none {
+      type_expr_equals(left: left.return_type.value, right: right.return_type.value)
+    } else {
+      false
+    }
+  }
+  // Both optionals: compare inner
+  else if node_is_optional(n: left) && node_is_optional(n: right) {
+    if left.return_type != none && right.return_type != none {
+      type_expr_equals(left: left.return_type.value, right: right.return_type.value)
+    } else {
+      false
+    }
+  }
+  // Both maps: compare key and value
+  else if node_is_map(n: left) && node_is_map(n: right) {
+    if left.children |> count == 2 && right.children |> count == 2 {
+      let left_first = match left.children |> first {
+        Some { value: v } => v
+        None => left
+      }
+      let right_first = match right.children |> first {
+        Some { value: v } => v
+        None => right
+      }
+      let left_key = node_to_type_expr_full(n: left_first)
+      let right_key = node_to_type_expr_full(n: right_first)
+      type_expr_equals(left: left_key, right: right_key)
+    } else {
+      false
+    }
+  }
+  else {
+    false
+  }
+}
+
+// Node-based dependency extraction (equivalent to type_expr_deps).
+// Returns the list of Named type references this type-Node depends on.
+fn node_type_deps(n: Node) -> List<String> {
+  if node_is_named_ref(n: n) {
+    [n.name]
+  } else if node_is_leaf(n: n) {
+    []
+  } else if n.connective != none {
+    // Product or Coproduct: collect deps from children's return_types
+    flat_map(n.children, child =>
+      if child.return_type != none {
+        type_expr_deps(expr: child.return_type.value)
+      } else {
+        []
+      }
+    )
+  } else if n.return_type != none {
+    // Container, Optional, Refined: deps from the element/inner type
+    type_expr_deps(expr: n.return_type.value)
+  } else {
+    // Map or other: collect from children
+    flat_map(n.children, child => node_type_deps(n: child))
   }
 }
 
@@ -1464,6 +1634,16 @@ fn lookup_type(env: TypeEnv, name: String) -> TypeExpr? {
   }
 }
 
+// B1 migration: Node-based type lookup.
+// Returns the Node representation of a type from the environment.
+fn lookup_type_node(env: TypeEnv, name: String) -> Node? {
+  let canonical = normalize_type_name(name: name)
+  match map_get(env.bindings, canonical) {
+    Some { value: binding } => binding.resolved_node
+    None => None
+  }
+}
+
 // =========================================================================
 // Environment merging
 //
@@ -1556,7 +1736,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let kernel_bindings = fold(
     ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"],
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Primitive { name: name, span: zero_span }, resolved_node: Some { value: Node { name: name, span: zero_span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } } })
+    f: (acc, name) => map_insert(acc, name, TypeBinding {
+      name: name,
+      resolved: Primitive { name: name, span: zero_span },
+      resolved_node: Some { value: Node {
+        name: name, span: zero_span, children: [], connective: none,
+        params: [], return_type: none, uses: [], body: none,
+        transport: none, properties: [], type_annotation: none, config: none
+      } }
+    })
   )
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [] }
 
@@ -1595,16 +1783,37 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     if item.connective != none {
       let resolved = node_to_type_expr(name: item.name, item: item, span: item.span)
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved, resolved_node: Some { value: item } })
+      // The source Node IS the type: use it directly as resolved_node
+      let type_node = Node {
+        name: item.name, span: item.span, children: item.children,
+        connective: item.connective, params: [], return_type: none,
+        uses: [], body: none, transport: none, properties: [],
+        type_annotation: none, config: none
+      }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved, resolved_node: Some { value: type_node } })
     } else if item.return_type != none && item.params |> count == 0 && item.body == none {
       // Type alias: connective is none, but return_type references the aliased type
       let resolved = match item.return_type.value {
         Primitive { name: _, span: _ } => item.return_type.value
         _ => Named { name: item.name, span: item.span }
       }
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved, resolved_node: Some { value: item } })
+      // For aliases, create a leaf node referencing the aliased type
+      let alias_node = Node {
+        name: item.name, span: item.span, children: [],
+        connective: none, params: [], return_type: item.return_type,
+        uses: [], body: none, transport: none, properties: [],
+        type_annotation: none, config: none
+      }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: resolved, resolved_node: Some { value: alias_node } })
     } else if item.transport == none && item.children |> count > 0 {
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: Named { name: item.name, span: item.span }, resolved_node: Some { value: item } })
+      let ref_node = Node {
+        name: item.name, span: item.span, children: [],
+        connective: none, params: [],
+        return_type: Some { value: Named { name: item.name, span: item.span } },
+        uses: [], body: none, transport: none, properties: [],
+        type_annotation: none, config: none
+      }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: Named { name: item.name, span: item.span }, resolved_node: Some { value: ref_node } })
     } else {
       acc
     }
@@ -1711,7 +1920,7 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       // keep it as Named to break infinite expansion. Sound because the
       // name is guaranteed to be defined in the environment.
       if env.recursive_types |> any(r => r == name) {
-        ResolveResult { resolved: expr, diagnostics: [] }
+        ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
       } else {
         match lookup_type(env: env, name: name) {
           Some { value: resolved } =>
@@ -1724,13 +1933,14 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
                 message: concat("unresolved type '", name, "'"),
                 span: span,
                 module_name: module_name
-              }]
+              }],
+              resolved_node: none
             }
         }
       }
 
     Primitive { name: _, span: _ } =>
-      ResolveResult { resolved: expr, diagnostics: [] }
+      ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
 
     Product { name: prod_name, fields: fields, span: span } =>
       let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
@@ -1738,7 +1948,8 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       let all_diags = flat_map(field_results, fr => fr.diagnostics)
       ResolveResult {
         resolved: Product { name: prod_name, fields: resolved_fields, span: span },
-        diagnostics: all_diags
+        diagnostics: all_diags,
+        resolved_node: none
       }
 
     Coproduct { name: coprod_name, variants: variants, span: span } =>
@@ -1747,28 +1958,32 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       let all_diags = flat_map(variant_results, vr => vr.diagnostics)
       ResolveResult {
         resolved: Coproduct { name: coprod_name, variants: resolved_variants, span: span },
-        diagnostics: all_diags
+        diagnostics: all_diags,
+        resolved_node: none
       }
 
     Container { kind: kind, element: element, span: span } =>
       let elem_result = resolve_type_expr(expr: element, env: env, module_name: module_name)
       ResolveResult {
         resolved: Container { kind: kind, element: elem_result.resolved, span: span },
-        diagnostics: elem_result.diagnostics
+        diagnostics: elem_result.diagnostics,
+        resolved_node: none
       }
 
     Optional { inner: inner, span: span } =>
       let inner_result = resolve_type_expr(expr: inner, env: env, module_name: module_name)
       ResolveResult {
         resolved: Optional { inner: inner_result.resolved, span: span },
-        diagnostics: inner_result.diagnostics
+        diagnostics: inner_result.diagnostics,
+        resolved_node: none
       }
 
     Refined { base: base, predicates: predicates, span: span } =>
       let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
       ResolveResult {
         resolved: Refined { base: base_result.resolved, predicates: predicates, span: span },
-        diagnostics: base_result.diagnostics
+        diagnostics: base_result.diagnostics,
+        resolved_node: none
       }
 
     MapType { key: key, value: value, span: span } =>
@@ -1776,7 +1991,8 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       let value_result = resolve_type_expr(expr: value, env: env, module_name: module_name)
       ResolveResult {
         resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
-        diagnostics: concat(key_result.diagnostics, value_result.diagnostics)
+        diagnostics: concat(key_result.diagnostics, value_result.diagnostics),
+        resolved_node: none
       }
   }
 }
@@ -1877,7 +2093,8 @@ fn resolve_optional_type_expr(expr: TypeExpr?, env: TypeEnv, module_name: String
     let no_span = SourceSpan { start: 0, end: 0 }
     ResolveResult {
       resolved: Primitive { name: "Unit", span: no_span },
-      diagnostics: []
+      diagnostics: [],
+      resolved_node: none
     }
   } else {
     resolve_type_expr(expr: expr.value, env: env, module_name: module_name)
@@ -2248,7 +2465,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    ResolveResult { resolved: unit_type(), diagnostics: [] }
+    ResolveResult { resolved: unit_type(), diagnostics: [], resolved_node: none }
   } else {
     resolve_type_expr(expr: item.type_annotation.value, env: env, module_name: module_name)
   }
@@ -2368,7 +2585,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       let span = item.span
       let dot_pos = find_dot_index(name: svc_name, index: 0)
       let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: Some { value: Node { name: root, span: span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } } })
+      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: none })
     } else {
       acc
     }
@@ -2380,7 +2597,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         let span = titem.span
         let dot_pos = find_dot_index(name: svc_name, index: 0)
         let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: Some { value: Node { name: root, span: span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } } })
+        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: none })
       } else {
         inner_acc
       }
@@ -2436,7 +2653,8 @@ type BindingResult {
 fn resolve_env_bindings(env: TypeEnv, module_name: String) -> EnvResolveResult {
   let results = map(map_values(env.bindings), b =>
     let result = resolve_type_expr(expr: b.resolved, env: env, module_name: module_name)
-    BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved, resolved_node: none }, diagnostics: result.diagnostics }
+    // Preserve the resolved_node from the original binding
+    BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved, resolved_node: b.resolved_node }, diagnostics: result.diagnostics }
   )
   let resolved_bindings = map(results, r => r.binding) |> fold(init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
