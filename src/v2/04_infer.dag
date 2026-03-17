@@ -1035,7 +1035,7 @@ fn infer_method_call_type(receiver_type: TypeExpr, method: String) -> TypeExpr {
 
 fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr, resolved_node: Some { value: type_expr_to_node(te: p.type_expr) } })
+    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr, resolved_node: none })
   )
   InferScope {
     type_env: scope.type_env,
@@ -1054,7 +1054,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: TypeExpr) -> InferSco
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, resolved_node: Some { value: type_expr_to_node(te: resolved) } }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, resolved_node: none }),
     module_name: scope.module_name,
     service_registry: scope.service_registry
   }
@@ -1293,7 +1293,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             guard: if guard_result != none { Some { value: guard_result.value.typed } } else { none },
             body: body_result.typed
           },
-          diagnostics: concat(guard_diags, body_result.diagnostics),
+          diagnostics: concat(guard_diags, body_result.diagnostics)
           body_type: body_result.typed.resolved_type
         }
       )
@@ -1449,7 +1449,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         let state = fold(stmts, init: BlockInferState {
           scope: scope,
           diag_chunks: [],
-          last_type: unit_type(),
+          last_type: unit_type()
           typed_stmts: []
         }, f: (acc, stmt) =>
           let stmt_result = infer_expr(expr: stmt, scope: acc.scope)
@@ -1461,7 +1461,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           BlockInferState {
             scope: next_scope,
             diag_chunks: concat(acc.diag_chunks, [stmt_result.diagnostics]),
-            last_type: stmt_result.typed.resolved_type,
+            last_type: stmt_result.typed.resolved_type
             typed_stmts: concat([stmt_result.typed], acc.typed_stmts)
           }
         )
@@ -1990,7 +1990,7 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       // keep it as Named to break infinite expansion. Sound because the
       // name is guaranteed to be defined in the environment.
       if env.recursive_types |> any(r => r == name) {
-        ResolveResult { resolved: expr, diagnostics: [], resolved_node: Some { value: type_expr_to_node(te: expr) } }
+        ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
       } else {
         match lookup_type(env: env, name: name) {
           Some { value: resolved } =>
@@ -2010,65 +2010,59 @@ fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> Resol
       }
 
     Primitive { name: _, span: _ } =>
-      ResolveResult { resolved: expr, diagnostics: [], resolved_node: Some { value: type_expr_to_node(te: expr) } }
+      ResolveResult { resolved: expr, diagnostics: [], resolved_node: none }
 
     Product { name: prod_name, fields: fields, span: span } =>
       let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field)
       let all_diags = flat_map(field_results, fr => fr.diagnostics)
-      let resolved_product = Product { name: prod_name, fields: resolved_fields, span: span }
       ResolveResult {
-        resolved: resolved_product,
+        resolved: Product { name: prod_name, fields: resolved_fields, span: span },
         diagnostics: all_diags,
-        resolved_node: Some { value: type_expr_to_node(te: resolved_product) }
+        resolved_node: none
       }
 
     Coproduct { name: coprod_name, variants: variants, span: span } =>
       let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
       let resolved_variants = map(variant_results, vr => vr.variant)
       let all_diags = flat_map(variant_results, vr => vr.diagnostics)
-      let resolved_coproduct = Coproduct { name: coprod_name, variants: resolved_variants, span: span }
       ResolveResult {
-        resolved: resolved_coproduct,
+        resolved: Coproduct { name: coprod_name, variants: resolved_variants, span: span },
         diagnostics: all_diags,
-        resolved_node: Some { value: type_expr_to_node(te: resolved_coproduct) }
+        resolved_node: none
       }
 
     Container { kind: kind, element: element, span: span } =>
       let elem_result = resolve_type_expr(expr: element, env: env, module_name: module_name)
-      let resolved_container = Container { kind: kind, element: elem_result.resolved, span: span }
       ResolveResult {
-        resolved: resolved_container,
+        resolved: Container { kind: kind, element: elem_result.resolved, span: span },
         diagnostics: elem_result.diagnostics,
-        resolved_node: Some { value: type_expr_to_node(te: resolved_container) }
+        resolved_node: none
       }
 
     Optional { inner: inner, span: span } =>
       let inner_result = resolve_type_expr(expr: inner, env: env, module_name: module_name)
-      let resolved_optional = Optional { inner: inner_result.resolved, span: span }
       ResolveResult {
-        resolved: resolved_optional,
+        resolved: Optional { inner: inner_result.resolved, span: span },
         diagnostics: inner_result.diagnostics,
-        resolved_node: Some { value: type_expr_to_node(te: resolved_optional) }
+        resolved_node: none
       }
 
     Refined { base: base, predicates: predicates, span: span } =>
       let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
-      let resolved_refined = Refined { base: base_result.resolved, predicates: predicates, span: span }
       ResolveResult {
-        resolved: resolved_refined,
+        resolved: Refined { base: base_result.resolved, predicates: predicates, span: span },
         diagnostics: base_result.diagnostics,
-        resolved_node: Some { value: type_expr_to_node(te: resolved_refined) }
+        resolved_node: none
       }
 
     MapType { key: key, value: value, span: span } =>
       let key_result = resolve_type_expr(expr: key, env: env, module_name: module_name)
       let value_result = resolve_type_expr(expr: value, env: env, module_name: module_name)
-      let resolved_map = MapType { key: key_result.resolved, value: value_result.resolved, span: span }
       ResolveResult {
-        resolved: resolved_map,
+        resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
         diagnostics: concat(key_result.diagnostics, value_result.diagnostics),
-        resolved_node: Some { value: type_expr_to_node(te: resolved_map) }
+        resolved_node: none
       }
   }
 }
@@ -2167,11 +2161,10 @@ fn resolve_optional_type_expr(expr: TypeExpr?, env: TypeEnv, module_name: String
   // so variant pattern matching (Some { value: te }) doesn't work.
   if expr == none {
     let no_span = SourceSpan { start: 0, end: 0 }
-    let unit_te = Primitive { name: "Unit", span: no_span }
     ResolveResult {
-      resolved: unit_te,
+      resolved: Primitive { name: "Unit", span: no_span },
       diagnostics: [],
-      resolved_node: Some { value: type_expr_to_node(te: unit_te) }
+      resolved_node: none
     }
   } else {
     resolve_type_expr(expr: expr.value, env: env, module_name: module_name)
@@ -2542,7 +2535,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    ResolveResult { resolved: unit_type(), diagnostics: [], resolved_node: Some { value: type_expr_to_node(te: unit_type()) } }
+    ResolveResult { resolved: unit_type(), diagnostics: [], resolved_node: none }
   } else {
     resolve_type_expr(expr: item.type_annotation.value, env: env, module_name: module_name)
   }
@@ -2662,8 +2655,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       let span = item.span
       let dot_pos = find_dot_index(name: svc_name, index: 0)
       let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-      let svc_resolved = Named { name: root, span: span }
-      map_insert(acc, root, TypeBinding { name: root, resolved: svc_resolved, resolved_node: Some { value: type_expr_to_node(te: svc_resolved) } })
+      map_insert(acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: none })
     } else {
       acc
     }
@@ -2675,8 +2667,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         let span = titem.span
         let dot_pos = find_dot_index(name: svc_name, index: 0)
         let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
-        let svc_resolved = Named { name: root, span: span }
-        map_insert(inner_acc, root, TypeBinding { name: root, resolved: svc_resolved, resolved_node: Some { value: type_expr_to_node(te: svc_resolved) } })
+        map_insert(inner_acc, root, TypeBinding { name: root, resolved: Named { name: root, span: span }, resolved_node: none })
       } else {
         inner_acc
       }
@@ -2688,12 +2679,11 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let variant_locals = fold(map_values(resolved_env.env.bindings), init: service_locals, f: (acc, binding) =>
     match binding.resolved {
       Coproduct { name: _, variants: variants, span: _ } =>
-        let variant_te = Named { name: binding.name, span: no_span() }
         fold(variants, init: acc, f: (vacc, v) =>
           map_insert(vacc, v.name, TypeBinding {
             name: v.name,
-            resolved: variant_te,
-            resolved_node: Some { value: type_expr_to_node(te: variant_te) }
+            resolved: Named { name: binding.name, span: no_span() },
+            resolved_node: none
           })
         )
       _ => acc

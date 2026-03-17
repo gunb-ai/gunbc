@@ -62,11 +62,10 @@ import v2.compiler.emit {
   capitalize_first, sanitize_service_name, service_var_name,
   expr_has_self_call, has_non_tail_self_call,
   typed_expr_has_self_call, typed_has_non_tail_self_call,
-  span_key,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return,
   is_service_item, has_service_items,
-  lookup_type_by_span, missing_emit_type, infer_expr_type, scope_after_plain_expr,
+  missing_emit_type, infer_expr_type, scope_after_plain_expr,
   typed_named_arg_matches, order_typed_call_args,
   is_typed_service_call_receiver, extract_typed_service_name
 }
@@ -74,8 +73,8 @@ import v2.compiler.emit {
 // When cross-module data imports are supported in the v1 bootstrap, enable:
 // import std.languages { TypeMapping, LiteralSyntax, rust_language, rust_literals }
 
-// Bridge helpers (lookup_type_by_span, missing_emit_type, infer_expr_type,
-// scope_after_plain_expr) are now shared — imported from v2.compiler.emit
+// Bridge helpers (missing_emit_type, infer_expr_type, scope_after_plain_expr)
+// are now shared — imported from v2.compiler.emit
 
 // =========================================================================
 // Rust language facts — from std.languages spec (rust_language, rust_literals)
@@ -1019,7 +1018,8 @@ fn emit_let(name: String, value: Expr, body: Expr?, registry: Map<String, ItemIn
 
 fn explicit_record_struct_name(type_name: String?, inferred_type: TypeExpr) -> String? {
   match normalize_access_type(type_expr: inferred_type) {
-    Named { name: name, span: _ } => Some { value: name }
+    Named { name: name, span: _ } =>
+      if name == "__EmitTypeCacheMiss" { type_name } else { Some { value: name } }
     Product { name: name, fields: _, span: _ } =>
       if name == none { type_name } else { name }
     _ => type_name

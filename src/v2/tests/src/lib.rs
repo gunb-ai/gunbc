@@ -464,7 +464,6 @@ mod tests {
             "module_name".to_string(),
             gunbc_ir::Value::Str("main".to_string()),
         );
-        map.insert("type_cache".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         gunbc_ir::Value::Map(map)
     }
 
@@ -1258,10 +1257,10 @@ fn foo(item: String) -> String {
         ]);
 
         let mut state = std::collections::BTreeMap::new();
+        state.insert("tokens".to_string(), tokens);
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
 
         let mut inputs = HashMap::new();
-        inputs.insert("tokens".to_string(), tokens);
         inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
         match call_fn(&output, "expect_ident", inputs) {
@@ -1290,8 +1289,8 @@ fn foo(item: String) -> String {
         // Step 2: Test peek_kind
         let mut peek_inputs = HashMap::new();
         let mut state = std::collections::BTreeMap::new();
+        state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
-        peek_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
         peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
         match call_fn(&output, "peek_kind", peek_inputs) {

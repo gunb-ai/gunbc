@@ -96,13 +96,8 @@ fn empty_emit_scope() -> InferScope {
     func_env: FuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
-    type_cache: empty_map(),
     service_registry: empty_map()
   }
-}
-
-fn span_key(start: Int, end: Int) -> String {
-  concat(to_string(value: start), ":", to_string(value: end))
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
@@ -111,7 +106,6 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
-    type_cache: empty_map(),
     service_registry: empty_map()
   }
 }
@@ -1255,20 +1249,12 @@ fn has_service_items(typed: TypedGraph) -> Bool {
 // to TypedExpr these helpers can be deleted.
 // =========================================================================
 
-fn lookup_type_by_span(cache: Map<String, TypeExpr>, start: Int, end: Int) -> TypeExpr? {
-  map_get(cache, span_key(start: start, end: end))
-}
-
 fn missing_emit_type(span: SourceSpan) -> TypeExpr {
   Named { name: "__EmitTypeCacheMiss", span: span }
 }
 
 fn infer_expr_type(expr: Expr, scope: InferScope) -> TypeExpr {
-  let s = expr_span(expr: expr)
-  match lookup_type_by_span(cache: scope.type_cache, start: s.start, end: s.end) {
-    Some { value: t } => t
-    None => missing_emit_type(span: s)
-  }
+  missing_emit_type(span: expr_span(expr: expr))
 }
 
 // scope_after_plain_expr for plain Expr — used in emit_block and other
