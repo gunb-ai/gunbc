@@ -2505,6 +2505,32 @@ fn validate_node_kinds_accepts_classified_transport_node() {
 }
 
 #[test]
+fn validate_node_kinds_rejects_pure_node_with_resource_access() {
+    // A node with kind: Pure but a non-`res:*` input annotated via
+    // `with_resource_access()` is effectful and must be rejected.
+    let annotated_input = Port::new("db_conn", "DbHandle")
+        .with_resource_access(ResourceId::new("db"), AccessMode::Write);
+    let mut dag: Dag<Produce> = Dag::new();
+    dag.add_node(Node::opaque(
+        "writer",
+        vec![annotated_input],
+        vec![port("result", "String")],
+        Produce::produce("result", Value::Str("ok".into())),
+    ));
+    let err = validate_node_kinds_for_interception(&dag);
+    assert!(err.is_err());
+    let msg = err.unwrap_err().to_string();
+    assert!(
+        msg.contains("kind: Pure"),
+        "expected kind: Pure mention: {msg}"
+    );
+    assert!(
+        msg.contains("resource input"),
+        "expected resource input mention: {msg}"
+    );
+}
+
+#[test]
 fn dry_run_rejects_kindless_effectful_node() {
     let mut dag: Dag<Produce> = Dag::new();
     dag.add_node(Node::opaque(
