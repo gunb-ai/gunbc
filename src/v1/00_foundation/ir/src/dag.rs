@@ -501,7 +501,7 @@ pub struct Port {
     /// Internal routing guard (used by patterns, not public API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) guard: Option<Predicate>,
-    /// Resource access mode for `res:*` ports (used by resource accounting)
+    /// Resource access mode (used by resource accounting and admission control)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_access: Option<AccessMode>,
     /// Whether this port's type is nullable (`T?` in DSL).

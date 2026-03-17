@@ -964,9 +964,6 @@ fn derive_node_resource_requirements<T>(
                 .inputs
                 .iter()
                 .filter_map(|port| {
-                    if !port.name.is_resource() {
-                        return None;
-                    }
                     port.resource_access
                         .map(|mode| (normalize_resource_id(&port.name.0), mode))
                 })

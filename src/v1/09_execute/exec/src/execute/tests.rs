@@ -1,6 +1,6 @@
 use super::*;
 use gunbc_ir::build::*;
-use gunbc_ir::Edge;
+use gunbc_ir::{Edge, Port};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -555,6 +555,109 @@ fn test_execute_resource_distinct_file_writes_can_run_in_parallel() {
     assert!(
         peak.load(Ordering::SeqCst) >= 2,
         "distinct specific file writes should run in parallel"
+    );
+}
+
+#[test]
+fn test_execute_annotated_non_res_ports_serialize_on_conflict() {
+    // Ports with `resource_access` annotation but without `res:*` prefix must
+    // still participate in executor admission control.
+    if execution_max_concurrency() == 1 {
+        return;
+    }
+
+    #[derive(Debug, Clone)]
+    struct BlockingOp {
+        port: String,
+        value: Value,
+        sleep_ms: u64,
+        active: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+    }
+
+    impl BlockingOp {
+        fn new(
+            port: &str,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        ) -> Self {
+            Self {
+                port: port.to_string(),
+                value,
+                sleep_ms,
+                active,
+                peak,
+            }
+        }
+    }
+
+    impl Executable for BlockingOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            loop {
+                let observed = self.peak.load(Ordering::SeqCst);
+                if current <= observed {
+                    break;
+                }
+                if self
+                    .peak
+                    .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(self.sleep_ms));
+            self.active.fetch_sub(1, Ordering::SeqCst);
+
+            let mut out = HashMap::new();
+            out.insert(self.port.clone(), self.value.clone());
+            Ok(out)
+        }
+    }
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
+
+    // Build ports with resource_access annotation but NO `res:` prefix.
+    let mut db_input_a = Port::new("db_conn", "DbHandle");
+    db_input_a.resource_access = Some(AccessMode::Write);
+
+    let mut db_input_b = Port::new("db_conn", "DbHandle");
+    db_input_b.resource_access = Some(AccessMode::Write);
+
+    let mut dag: Dag<BlockingOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "db_env",
+        vec![],
+        vec![port("handle", "DbHandle")],
+        BlockingOp::new("handle", Value::Unit, 0, active.clone(), peak.clone()),
+    ));
+    dag.add_node(Node::opaque(
+        "writer_a",
+        vec![db_input_a],
+        vec![port("a", "Int")],
+        BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+    ));
+    dag.add_node(Node::opaque(
+        "writer_b",
+        vec![db_input_b],
+        vec![port("b", "Int")],
+        BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+    ));
+    dag.add_edge(edge("db_env", "handle", "writer_a", "db_conn"));
+    dag.add_edge(edge("db_env", "handle", "writer_b", "db_conn"));
+
+    let _ = execute_dag(&dag, ExecuteConfig::default()).expect("execution should succeed");
+    assert_eq!(
+        peak.load(Ordering::SeqCst),
+        1,
+        "annotated non-res:* ports with conflicting writes should be serialized"
     );
 }
 
