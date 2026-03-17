@@ -229,7 +229,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>] [--receipt]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|python|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>] [--receipt]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
