@@ -3406,6 +3406,9 @@ fn example(items: List<String>) -> Int {
 
     /// Assemble and write the v2 crate to a temp directory, returning its path.
     fn assemble_v2_crate_to_dir(dir_name: &str) -> std::path::PathBuf {
+        static NEXT_TMP_DIR_ID: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+
         let v2_files = [
             ("00_core", "src/v2/00_core.dag"),
             ("01_tokenize", "src/v2/01_tokenize.dag"),
@@ -3434,7 +3437,13 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        let tmp_dir = std::env::temp_dir().join(dir_name);
+        // Multiple v2 crate tests run in parallel, so each needs an isolated
+        // output directory instead of a shared temp path keyed only by name.
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "{dir_name}-{}-{}",
+            std::process::id(),
+            NEXT_TMP_DIR_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
         daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
