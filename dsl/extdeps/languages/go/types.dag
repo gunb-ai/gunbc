@@ -11,11 +11,6 @@
 
 module extdeps.languages.go.types
 
-import std.languages {
-  TypeMapping, NamingConvention, NamingCase,
-  TypeDefinitionSyntax
-}
-
 // ── Zero values ─────────────────────────────────────────────────────
 // Ref: Go Spec "The zero value"
 //
