@@ -7,6 +7,7 @@
 use gunbc_ir::{NodeId, NodeOrigin, Value};
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Node Identity
@@ -346,12 +347,12 @@ fn normalize_value_inner(value: &Value, home: &str, tmp: &str) -> Value {
             }
             Value::Str(normalized)
         }
-        Value::List(items) => Value::List(
+        Value::List(items) => Value::List(Arc::new(
             items
                 .iter()
                 .map(|v| normalize_value_inner(v, home, tmp))
                 .collect(),
-        ),
+        )),
         Value::Map(map) => {
             let normalized: std::collections::BTreeMap<String, Value> = map
                 .iter()
@@ -560,14 +561,14 @@ mod tests {
     #[test]
     fn normalize_value_recurses_into_collections() {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/test".to_string());
-        let input = Value::List(vec![
+        let input = Value::List(Arc::new(vec![
             Value::Str(format!("{}/a", home)),
             Value::Map({
                 let mut m = std::collections::BTreeMap::new();
                 m.insert("path".to_string(), Value::Str(format!("{}/b", home)));
                 m
             }),
-        ]);
+        ]));
         let normalized = normalize_value(&input);
         let debug = format!("{:?}", normalized);
         assert!(!debug.contains(&home), "home dir should be replaced");

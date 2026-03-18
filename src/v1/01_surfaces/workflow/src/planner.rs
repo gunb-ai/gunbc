@@ -315,7 +315,7 @@ fn value_hashes(value: &Value) -> Result<Vec<String>, WorkflowPlannerError> {
     match value {
         Value::List(items) | Value::Set(items) => {
             let mut hashes = Vec::new();
-            for item in items {
+            for item in items.iter() {
                 hashes.push(hash_value(item)?);
             }
             hashes.sort();

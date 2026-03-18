@@ -28,6 +28,7 @@
 //! primitive subset converts losslessly.
 
 use crate::value::Value;
+use std::sync::Arc;
 
 /// Classification of a Value variant for cross-repo bridging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +119,9 @@ pub fn from_bridge_json(json: &serde_json::Value) -> Value {
                 Value::Json(json.clone())
             }
         }
-        serde_json::Value::Array(arr) => Value::List(arr.iter().map(from_bridge_json).collect()),
+        serde_json::Value::Array(arr) => {
+            Value::List(Arc::new(arr.iter().map(from_bridge_json).collect()))
+        }
         serde_json::Value::Object(obj) => {
             if let Some(enum_obj) = obj.get("__enum").and_then(|v| v.as_object()) {
                 let ty = enum_obj
@@ -213,11 +216,11 @@ pub fn from_bridge_json_typed(json: &serde_json::Value, type_id: &str) -> Value 
         .and_then(|s| s.strip_suffix('>'))
     {
         if let serde_json::Value::Array(arr) = json {
-            return Value::List(
+            return Value::List(Arc::new(
                 arr.iter()
                     .map(|item| from_bridge_json_typed(item, list_inner))
                     .collect(),
-            );
+            ));
         }
     }
 
@@ -300,7 +303,7 @@ mod tests {
             ValueCategory::Shared
         );
         assert_eq!(classify_value(&Value::Int(42)), ValueCategory::Shared);
-        assert_eq!(classify_value(&Value::List(vec![])), ValueCategory::Shared);
+        assert_eq!(classify_value(&Value::List(Arc::new(vec![]))), ValueCategory::Shared);
         assert_eq!(
             classify_value(&Value::Json(serde_json::json!({}))),
             ValueCategory::Shared
@@ -314,7 +317,7 @@ mod tests {
             ValueCategory::GunbcOnly
         );
         assert_eq!(
-            classify_value(&Value::Set(vec![])),
+            classify_value(&Value::Set(Arc::new(vec![]))),
             ValueCategory::GunbcOnly
         );
         assert_eq!(classify_value(&Value::Skipped), ValueCategory::GunbcOnly);
@@ -337,13 +340,13 @@ mod tests {
 
     #[test]
     fn bridge_json_list() {
-        let val = Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        let val = Value::List(Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)]));
         let json = to_bridge_json(&val).unwrap();
         assert_eq!(json, serde_json::json!([1, 2, 3]));
         let back = from_bridge_json(&json);
         assert_eq!(
             back,
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+            Value::List(Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)]))
         );
     }
 
@@ -443,7 +446,7 @@ mod tests {
         let val = from_bridge_json_typed(&json, "List<HttpMethod>");
         assert_eq!(
             val,
-            Value::List(vec![
+            Value::List(Arc::new(vec![
                 Value::Enum {
                     ty: "HttpMethod".to_string(),
                     variant: "GET".to_string()
@@ -456,7 +459,7 @@ mod tests {
                     ty: "HttpMethod".to_string(),
                     variant: "DELETE".to_string()
                 },
-            ])
+            ]))
         );
     }
 }

@@ -285,12 +285,12 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "sources".to_string(),
-            gunbc_ir::Value::List(
+            gunbc_ir::Value::List(std::sync::Arc::new(
                 sources
                     .iter()
                     .map(|(path, content)| source_file_value(path, content))
                     .collect(),
-            ),
+            )),
         );
         inputs.insert("target".to_string(), render_target_value(target));
         let result =
@@ -320,14 +320,14 @@ mod tests {
         let mut map = std::collections::BTreeMap::new();
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
         map.insert("span".to_string(), zero_span_value());
-        map.insert("children".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("children".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("connective".to_string(), gunbc_ir::Value::Unit);
-        map.insert("params".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
-        map.insert("uses".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("body".to_string(), gunbc_ir::Value::Unit);
         map.insert("transport".to_string(), gunbc_ir::Value::Unit);
-        map.insert("properties".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
         gunbc_ir::Value::Map(map)
@@ -405,7 +405,7 @@ mod tests {
                 None => gunbc_ir::Value::Unit,
             },
         );
-        map.insert("fields".to_string(), gunbc_ir::Value::List(fields));
+        map.insert("fields".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(fields)));
         map.insert("span".to_string(), zero_span_value());
         gunbc_ir::Value::Map(map)
     }
@@ -1276,10 +1276,10 @@ fn foo(item: String) -> String {
             t
         };
 
-        let tokens = gunbc_ir::Value::List(vec![
+        let tokens = gunbc_ir::Value::List(std::sync::Arc::new(vec![
             gunbc_ir::Value::Map(token),
             gunbc_ir::Value::Map(eof_token),
-        ]);
+        ]));
 
         let mut state = std::collections::BTreeMap::new();
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
@@ -1503,7 +1503,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve_modules ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1547,7 +1547,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1602,7 +1602,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1676,7 +1676,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -2005,20 +2005,20 @@ fn example(items: List<String>) -> Int {
         );
         let tokens = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
         let token_list = tokens.get("return").cloned().unwrap_or_else(|| {
-            gunbc_ir::Value::List(
+            gunbc_ir::Value::List(std::sync::Arc::new(
                 tokens
                     .values()
                     .next()
                     .cloned()
                     .map(|v| {
                         if let gunbc_ir::Value::List(l) = v {
-                            l
+                            (*l).clone()
                         } else {
                             vec![v]
                         }
                     })
                     .unwrap_or_default(),
-            )
+            ))
         });
         // Just verify tokenization succeeds with pipe arrow
         let json = value_to_json(&token_list);
@@ -2234,20 +2234,20 @@ fn example(items: List<String>) -> Int {
             let tok_result = call_fn(&output, "tokenize", tok_inputs)
                 .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
             let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
-                gunbc_ir::Value::List(
+                gunbc_ir::Value::List(std::sync::Arc::new(
                     tok_result
                         .values()
                         .next()
                         .cloned()
                         .map(|v| {
                             if let gunbc_ir::Value::List(l) = v {
-                                l
+                                (*l).clone()
                             } else {
                                 vec![v]
                             }
                         })
                         .unwrap_or_default(),
-                )
+                ))
             });
 
             // Parse via v2
@@ -2362,7 +2362,7 @@ fn example(items: List<String>) -> Int {
         let mut resolve_inputs = HashMap::new();
         resolve_inputs.insert(
             "modules".to_string(),
-            gunbc_ir::Value::List(vec![mod_types, mod_funcs]),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![mod_types, mod_funcs])),
         );
         let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
             .expect("resolve_modules should succeed");
@@ -2480,10 +2480,10 @@ fn example(items: List<String>) -> Int {
         let mut inputs = HashMap::new();
         inputs.insert(
             "sources".to_string(),
-            gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
                 source_file_value("good.dag", "module good\n"),
                 source_file_value("bad.dag", "fn orphan() -> Int { 42 }\n"),
-            ]),
+            ])),
         );
         // RenderTarget::Rust variant value
         let mut target_map = std::collections::BTreeMap::new();
@@ -2576,7 +2576,7 @@ fn example(items: List<String>) -> Int {
         inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
         inputs.insert(
             "fields".to_string(),
-            gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
                 field_init_value(
                     "name",
                     literal_expr_value(literal_value_string("demo"), span.clone()),
@@ -2585,7 +2585,7 @@ fn example(items: List<String>) -> Int {
                     "enabled",
                     literal_expr_value(literal_value_bool(true), span.clone()),
                 ),
-            ]),
+            ])),
         );
         inputs.insert("span".to_string(), span);
         inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
@@ -2649,7 +2649,7 @@ fn example(items: List<String>) -> Int {
         inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
         inputs.insert(
             "fields".to_string(),
-            gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
                 field_init_value(
                     "name",
                     literal_expr_value(literal_value_string("demo"), span.clone()),
@@ -2658,7 +2658,7 @@ fn example(items: List<String>) -> Int {
                     "enabled",
                     literal_expr_value(literal_value_bool(true), span.clone()),
                 ),
-            ]),
+            ])),
         );
         inputs.insert("span".to_string(), span);
         inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
@@ -2912,7 +2912,7 @@ fn example(items: List<String>) -> Int {
         let module = v2_tokenize_and_parse(&output, src);
 
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve should succeed");
         let graph = resolve_result
@@ -3103,7 +3103,7 @@ fn example(items: List<String>) -> Int {
 
         // Step 2: Resolve imports
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(modules)));
         let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
             .expect("resolve_modules should succeed");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -3142,7 +3142,7 @@ fn example(items: List<String>) -> Int {
         );
 
         let mut emitted_files = Vec::new();
-        for typed_module in &typed_modules {
+        for typed_module in typed_modules.iter() {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
             emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
@@ -3851,7 +3851,7 @@ fn example(items: List<String>) -> Int {
 
         // Collect emitted file paths and contents.
         let mut mod_names = Vec::new();
-        for file_val in file_list {
+        for file_val in file_list.iter() {
             if let gunbc_ir::Value::Map(map) = file_val {
                 let path = match map.get("path") {
                     Some(gunbc_ir::Value::Str(p)) => p.clone(),
@@ -3978,7 +3978,7 @@ path = "src/lib.rs"
         std::fs::create_dir_all(&tmp_dir).expect("failed to create temp dir");
 
         let mut py_files = Vec::new();
-        for file_val in file_list {
+        for file_val in file_list.iter() {
             if let gunbc_ir::Value::Map(map) = file_val {
                 let path = match map.get("path") {
                     Some(gunbc_ir::Value::Str(p)) => p.clone(),

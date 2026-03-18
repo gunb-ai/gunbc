@@ -8,6 +8,7 @@ use gunbc_ir::patterns::collection::CollectionKind;
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::Value;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 impl Executable for PatternOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
@@ -44,7 +45,7 @@ impl Executable for PatternOp {
                 let count = list.len() as i64;
 
                 let mut out = OutputMap::new()
-                    .value(element_port, Value::List(list))
+                    .value(element_port, Value::List(Arc::new(list)))
                     .int("index", 0)
                     .int("count", count);
 
@@ -70,7 +71,7 @@ impl Executable for PatternOp {
                 let count = optional_int(&inputs, "count").unwrap_or(list.len() as i64);
 
                 OutputMap::new()
-                    .value(output_port, Value::List(list))
+                    .value(output_port, Value::List(Arc::new(list)))
                     .int("iterations", count)
                     .ok()
             }
@@ -166,7 +167,7 @@ fn execute_collection_aggregate(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let items = match inputs.get("items") {
-        Some(Value::List(values)) => values.clone(),
+        Some(Value::List(values)) => (**values).clone(),
         Some(Value::Skipped) => return OutputMap::new().value("items", Value::Skipped).ok(),
         None => Vec::new(),
         Some(value) => vec![value.clone()],
@@ -177,7 +178,7 @@ fn execute_collection_aggregate(
         | CollectionKind::Filter
         | CollectionKind::FlatMap
         | CollectionKind::FilterMap
-        | CollectionKind::Append => Value::List(items),
+        | CollectionKind::Append => Value::List(Arc::new(items)),
         CollectionKind::Sort | CollectionKind::SortBy => {
             let mut sorted = items;
             sorted.sort_by_key(|v| match v {
@@ -185,7 +186,7 @@ fn execute_collection_aggregate(
                 Value::Int(n) => n.to_string(),
                 other => format!("{other:?}"),
             });
-            Value::List(sorted)
+            Value::List(Arc::new(sorted))
         }
         CollectionKind::Dedup => {
             let mut out = Vec::new();
@@ -194,7 +195,7 @@ fn execute_collection_aggregate(
                     out.push(item);
                 }
             }
-            Value::List(out)
+            Value::List(Arc::new(out))
         }
         CollectionKind::Join => {
             let joined = items
@@ -240,7 +241,7 @@ fn execute_collection_aggregate(
                 .unwrap_or(false);
             Value::Bool(found)
         }
-        CollectionKind::Split | CollectionKind::Zip => Value::List(items),
+        CollectionKind::Split | CollectionKind::Zip => Value::List(Arc::new(items)),
         CollectionKind::Skip => {
             let n = inputs
                 .get("n")
@@ -249,7 +250,7 @@ fn execute_collection_aggregate(
                     _ => None,
                 })
                 .unwrap_or(0);
-            Value::List(items.into_iter().skip(n).collect())
+            Value::List(Arc::new(items.into_iter().skip(n).collect()))
         }
         CollectionKind::Enumerate => {
             let enumerated = items
@@ -262,7 +263,7 @@ fn execute_collection_aggregate(
                     Value::Map(map)
                 })
                 .collect();
-            Value::List(enumerated)
+            Value::List(Arc::new(enumerated))
         }
     };
 
@@ -272,7 +273,7 @@ fn execute_collection_aggregate(
 fn list_values(inputs: &HashMap<String, Value>, key: &str) -> Vec<Value> {
     match inputs.get(key) {
         None | Some(Value::Skipped) => Vec::new(),
-        Some(Value::List(values)) | Some(Value::Set(values)) => values.clone(),
+        Some(Value::List(values)) | Some(Value::Set(values)) => (**values).clone(),
         Some(value) => vec![value.clone()],
     }
 }
@@ -316,7 +317,7 @@ mod tests {
         let result = op.execute(inputs).expect("loop pack should accept scalar");
         assert_eq!(
             result.get("items"),
-            Some(&Value::List(vec![Value::Str("one".to_string())]))
+            Some(&Value::List(Arc::new(vec![Value::Str("one".to_string())])))
         );
         assert_eq!(result.get("iterations"), Some(&Value::Int(1)));
     }
@@ -329,20 +330,20 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![
+            Value::List(Arc::new(vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
                 Value::Str("c".to_string()),
-            ]),
+            ])),
         );
         inputs.insert("n".to_string(), Value::Int(1));
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("items"),
-            Some(&Value::List(vec![
+            Some(&Value::List(Arc::new(vec![
                 Value::Str("b".to_string()),
                 Value::Str("c".to_string()),
-            ]))
+            ])))
         );
     }
 
@@ -354,18 +355,18 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![
+            Value::List(Arc::new(vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
-            ]),
+            ])),
         );
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("items"),
-            Some(&Value::List(vec![
+            Some(&Value::List(Arc::new(vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
-            ]))
+            ])))
         );
     }
 
@@ -377,13 +378,13 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![
+            Value::List(Arc::new(vec![
                 Value::Str("x".to_string()),
                 Value::Str("y".to_string()),
-            ]),
+            ])),
         );
         let result = op.execute(inputs).unwrap();
-        let expected = Value::List(vec![
+        let expected = Value::List(Arc::new(vec![
             Value::Map({
                 let mut m = BTreeMap::new();
                 m.insert("index".to_string(), Value::Int(0));
@@ -396,7 +397,7 @@ mod tests {
                 m.insert("value".to_string(), Value::Str("y".to_string()));
                 m
             }),
-        ]);
+        ]));
         assert_eq!(result.get("items"), Some(&expected));
     }
 
@@ -406,9 +407,9 @@ mod tests {
             kind: CollectionKind::Enumerate,
         };
         let mut inputs = HashMap::new();
-        inputs.insert("items".to_string(), Value::List(vec![]));
+        inputs.insert("items".to_string(), Value::List(Arc::new(vec![])));
         let result = op.execute(inputs).unwrap();
-        assert_eq!(result.get("items"), Some(&Value::List(vec![])));
+        assert_eq!(result.get("items"), Some(&Value::List(Arc::new(vec![]))));
     }
 
     #[test]
