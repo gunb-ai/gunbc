@@ -82,13 +82,33 @@ fn require_input_port<'a>(
     })
 }
 
+fn require_single_input_value<'a>(
+    inputs: &'a HashMap<String, Value>,
+    op_name: &str,
+) -> Result<&'a Value, ExecError> {
+    if inputs.len() != 1 {
+        let mut available: Vec<&str> = inputs.keys().map(String::as_str).collect();
+        available.sort_unstable();
+        return Err(ExecError::new(format!(
+            "{op_name}: expected exactly 1 input port, found {}; available inputs: [{}]",
+            inputs.len(),
+            available.join(", ")
+        )));
+    }
+
+    inputs
+        .values()
+        .next()
+        .ok_or_else(|| ExecError::new(format!("{op_name}: expected exactly 1 input port")))
+}
+
 fn execute_primitive(
     kind: &PrimitiveOpKind,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match kind {
-        PrimitiveOpKind::GetField { field, input_port } => {
-            let value = require_input_port(&inputs, input_port, "GetField")?;
+        PrimitiveOpKind::GetField { field } => {
+            let value = require_single_input_value(&inputs, "GetField")?;
             let result =
                 eval::eval_get_field(value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
@@ -298,7 +318,58 @@ mod tests {
 
         assert_eq!(
             err.message,
-            "GetField: missing required input port `record`; available inputs: [other]"
+            "GetField: expected exactly 1 input port, found 0; available inputs: []"
+        );
+    }
+
+    #[test]
+    fn getfield_uses_sole_runtime_input() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "get_field".to_string(),
+            kind: PrimitiveOpKind::GetField {
+                field: "name".to_string(),
+            },
+        };
+        let inputs = [(
+            "record".to_string(),
+            Value::Map(
+                [("name".to_string(), Value::Str("alice".to_string()))]
+                    .into_iter()
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect();
+
+        let outputs = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect("GetField with one runtime input should succeed");
+
+        assert_eq!(outputs.get("value").and_then(Value::as_str), Some("alice"));
+    }
+
+    #[test]
+    fn getfield_multiple_inputs_errors() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "get_field".to_string(),
+            kind: PrimitiveOpKind::GetField {
+                field: "name".to_string(),
+            },
+        };
+        let inputs = [
+            ("record".to_string(), Value::Map(std::collections::BTreeMap::new())),
+            ("other".to_string(), Value::Map(std::collections::BTreeMap::new())),
+        ]
+        .into_iter()
+        .collect();
+
+        let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
+            .expect_err("GetField with multiple runtime inputs should fail closed");
+
+        assert_eq!(
+            err.message,
+            "GetField: expected exactly 1 input port, found 2; available inputs: [other, record]"
         );
     }
 
@@ -532,7 +603,7 @@ mod tests {
                     },
                 ),
                 HashMap::new(),
-                "StringInterpolate missing `name` input",
+                "StringInterpolate: missing required input port `name`; available inputs: []",
             ),
             (
                 primitive_op(

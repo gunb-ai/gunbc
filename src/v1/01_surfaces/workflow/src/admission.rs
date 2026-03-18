@@ -564,20 +564,22 @@ mod tests {
         let errors = validate_conflicting_claims(&spec);
         assert_eq!(errors.len(), 1);
         match &errors[0] {
-            WorkflowAdmissionError::ResourceAccess(
-                ResourceAccessError::MissingResourceId {
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                error: ResourceAccessError::MissingResourceId {
                     node_id,
                     port_name,
                 },
-            ) => {
+            } => {
                 assert_eq!(node_id.0, "wf.a");
                 assert_eq!(port_name, "db_conn");
                 assert_eq!(
                     errors[0].to_string(),
-                    "port 'db_conn' on node 'wf.a' has resource_access but no resource_id"
+                    "resource input 'db_conn' on node 'wf.a' has resource_access but no resource_id"
                 );
             }
-            other => panic!("expected ResourceAccess(MissingResourceId), got {other:?}"),
+            other => panic!(
+                "expected ResourceAccessMetadataInvalid(MissingResourceId), got {other:?}"
+            ),
         }
     }
 
@@ -616,15 +618,18 @@ mod tests {
         // Only metadata errors — no MissingRequiredClaims or UndeclaredEffectfulIo noise.
         for error in &errors {
             assert!(
-                matches!(error, WorkflowAdmissionError::ResourceAccess(_)),
+                matches!(
+                    error,
+                    WorkflowAdmissionError::ResourceAccessMetadataInvalid { .. }
+                ),
                 "expected only resource metadata errors, got: {error:?}"
             );
         }
         assert!(errors.iter().any(|e| matches!(
             e,
-            WorkflowAdmissionError::ResourceAccess(
-                ResourceAccessError::MissingResourceId { node_id, .. }
-            ) if node_id.0 == "wf.a"
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                error: ResourceAccessError::MissingResourceId { node_id, .. },
+            } if node_id.0 == "wf.a"
         )));
     }
 }

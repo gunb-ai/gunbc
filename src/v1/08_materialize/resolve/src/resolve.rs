@@ -989,16 +989,15 @@ fn resolve_primitive(
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(ResourcePassthroughOp)),
-        PrimitiveOpKind::GetField { field, input_port } => {
-            let missing =
-                missing_declared_input_ports(std::iter::once(input_port.as_str()), inputs);
-            if !missing.is_empty() {
+        PrimitiveOpKind::GetField { field } => {
+            if inputs.len() != 1 {
                 let declared = declared_input_port_names(inputs);
                 return Err(ResolveError {
                     node_id: String::new(),
                     reason: format!(
-                        "GetField `{field}`: expected exactly 1 declared input port, found {} (compiler bug)",
-                        inputs.len()
+                        "GetField `{field}`: expected exactly 1 declared input port, found {} [{}] (compiler bug)",
+                        inputs.len(),
+                        declared.join(", ")
                     ),
                 });
             }
@@ -1038,6 +1037,7 @@ fn resolve_primitive(
                 kind: kind.clone(),
                 output_port: default_output_port(outputs),
                 has_else: false,
+                input_port: None,
             }))
         }
         PrimitiveOpKind::Conditional => {
