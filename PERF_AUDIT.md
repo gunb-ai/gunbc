@@ -20,6 +20,8 @@ prior optimizations addressed the right layer.
 6. [Prior Optimizations: What They Fixed vs What They Missed](#prior-optimizations)
 7. [Compounding Effects](#compounding-effects)
 8. [Recommended Fix Order](#recommended-fix-order)
+9. [Structural Prevention](#structural-prevention)
+10. [Connection to Self-Hosting](#connection-to-self-hosting)
 
 ---
 
