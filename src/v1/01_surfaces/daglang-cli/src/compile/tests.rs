@@ -933,8 +933,8 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
-fn check_target_file_gunbc_auth_patterns_requires_gcp_service_module_imports() {
-    let root = unique_temp_root("gunbc_auth_patterns_service_imports");
+fn check_target_file_requires_imported_service_modules_for_service_calls() {
+    let root = unique_temp_root("target_file_imported_service_modules");
     let write_source = |relative: &str, content: &str| {
         let path = root.join(relative);
         std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
@@ -943,75 +943,61 @@ fn check_target_file_gunbc_auth_patterns_requires_gcp_service_module_imports() {
     };
 
     write_source(
-        "extdeps/cloud/gcp/iam.dag",
-        r#"module extdeps.cloud.gcp.iam
-service gcp.IAM {
-  operation GenerateAccessToken(access_token: String, target_sa: String) -> { access_token: String }
+        "providers/identity.dag",
+        r#"module providers.identity
+service acme.Identity {
+  operation IssueToken(audience: String) -> { token: String }
 }
 "#,
     );
     write_source(
-        "extdeps/cloud/gcp/sts.dag",
-        r#"module extdeps.cloud.gcp.sts
-service gcp.STS {
-  operation Exchange(subject_token: String, audience: String) -> { access_token: String }
+        "providers/snippets.dag",
+        r#"module providers.snippets
+service contoso.Snippets {
+  operation Create(description: String, body: String, auth_token: String) -> { url: String }
 }
 "#,
     );
     write_source(
-        "extdeps/cloud/gcp/secret_manager.dag",
-        r#"module extdeps.cloud.gcp.secret_manager
-service gcp.SecretManager {
-  operation AccessVersion(access_token: String, project_id: String, secret: String) -> { payload: String }
-}
-"#,
-    );
-    write_source(
-        "gunbc/auth/patterns.dag",
-        r#"module gunbc.auth.patterns
+        "sample/main.dag",
+        r#"module sample.main
 
-import extdeps.cloud.gcp.iam
-import extdeps.cloud.gcp.secret_manager
-import extdeps.cloud.gcp.sts
+import providers.identity
+import providers.snippets
 
-func credential_chain() -> { payload: String } {
-  access = gcp.STS.Exchange(subject_token: "subject", audience: "audience")
-  impersonated = gcp.IAM.GenerateAccessToken(access_token: access.access_token, target_sa: "service-account")
-  secret = gcp.SecretManager.AccessVersion(access_token: impersonated.access_token, project_id: "project", secret: "name")
-  return { payload: secret.payload }
+func run() -> { token: String, url: String } {
+  issued = acme.Identity.IssueToken(audience: "dag")
+  created = contoso.Snippets.Create(description: "snapshot", body: "body", auth_token: issued.token)
+  return { token: issued.token, url: created.url }
 }
 "#,
     );
 
     let context = PipelineContext {
         roots: vec![root.clone()],
-        target_file: Some(root.join("gunbc/auth/patterns.dag")),
+        target_file: Some(root.join("sample/main.dag")),
     };
 
-    let output = check_from_context(&context).expect("check should succeed with service imports");
-    assert_eq!(output.parsed_files, 4, "expected four fixture modules");
+    let output =
+        check_from_context(&context).expect("check should succeed with imported service modules");
+    assert_eq!(output.parsed_files, 3, "expected target file plus imported service modules");
 
     write_source(
-        "gunbc/auth/patterns.dag",
-        r#"module gunbc.auth.patterns
+        "sample/main.dag",
+        r#"module sample.main
 
-func credential_chain() -> { payload: String } {
-  access = gcp.STS.Exchange(subject_token: "subject", audience: "audience")
-  impersonated = gcp.IAM.GenerateAccessToken(access_token: access.access_token, target_sa: "service-account")
-  secret = gcp.SecretManager.AccessVersion(access_token: impersonated.access_token, project_id: "project", secret: "name")
-  return { payload: secret.payload }
+func run() -> { token: String, url: String } {
+  issued = acme.Identity.IssueToken(audience: "dag")
+  created = contoso.Snippets.Create(description: "snapshot", body: "body", auth_token: issued.token)
+  return { token: issued.token, url: created.url }
 }
 "#,
     );
 
-    let error = check_from_context(&context).expect_err("check should fail without service imports");
+    let error = check_from_context(&context).expect_err("check should fail without service modules");
     assert_typecheck_stage_error(&error);
     assert!(error.contains("unresolved service call"));
-    for service_call in [
-        "gcp.IAM.GenerateAccessToken",
-        "gcp.STS.Exchange",
-        "gcp.SecretManager.AccessVersion",
-    ] {
+    for service_call in ["acme.Identity.IssueToken", "contoso.Snippets.Create"] {
         assert!(
             error.contains(service_call),
             "expected missing import error to mention {service_call}: {error}"
@@ -1095,67 +1081,6 @@ func acquire_subject_token(audience: String) -> { access_token: String, metadata
             "expected missing import error to mention {service_call}: {error}"
         );
     }
-
-    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
-}
-
-#[test]
-fn check_target_file_gunbc_tools_gist_requires_github_gist_service_module_import() {
-    let root = unique_temp_root("gunbc_tools_gist_service_import");
-    let write_source = |relative: &str, content: &str| {
-        let path = root.join(relative);
-        std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
-            .expect("failed to create fixture parent directory");
-        std::fs::write(path, content).expect("failed to write fixture source");
-    };
-
-    write_source(
-        "extdeps/github/gists.dag",
-        r#"module extdeps.github.gists
-service github.Gist {
-  operation Create(description: String, content: String, public: Bool, auth_token: String) -> { id: String, html_url: String }
-}
-"#,
-    );
-    write_source(
-        "gunbc/tools/gist.dag",
-        r#"module gunbc.tools.gist
-
-import extdeps.github.gists
-
-func create_gist() -> { url: String } {
-  result = github.Gist.Create(description: "snapshot", content: "body", public: false, auth_token: "tok")
-  return { url: result.html_url }
-}
-"#,
-    );
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: Some(root.join("gunbc/tools/gist.dag")),
-    };
-
-    let output = check_from_context(&context).expect("check should succeed with gist service import");
-    assert_eq!(output.parsed_files, 2, "expected two fixture modules");
-
-    write_source(
-        "gunbc/tools/gist.dag",
-        r#"module gunbc.tools.gist
-
-func create_gist() -> { url: String } {
-  result = github.Gist.Create(description: "snapshot", content: "body", public: false, auth_token: "tok")
-  return { url: result.html_url }
-}
-"#,
-    );
-
-    let error = check_from_context(&context).expect_err("check should fail without gist service import");
-    assert_typecheck_stage_error(&error);
-    assert!(error.contains("unresolved service call"));
-    assert!(
-        error.contains("github.Gist.Create"),
-        "expected missing import error to mention github.Gist.Create: {error}"
-    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
