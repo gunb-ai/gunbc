@@ -3735,25 +3735,281 @@ fn compile_match_typed(
     let result_expected_type = result_expected_type
         .map(str::to_string)
         .or_else(|| infer_match_result_type(arms, ctx));
+    // R8 fix: Group consecutive arms that share the same outer variant but
+    // differ only in Rc-wrapped nested sub-patterns. Without merging, they
+    // produce duplicate match arms (same outer pattern) — Rust always matches
+    // the first one, making the rest dead code.
+    let compiled_arms = compile_match_arms_grouped(
+        arms,
+        has_none_arm,
+        scrutinee_type.as_deref(),
+        result_expected_type.as_deref(),
+        scrutinee_ir_type.as_ref(),
+        ctx,
+        counter,
+    );
     code_ir::Expr::Match {
         expr: Box::new(compiled_scrutinee),
-        arms: arms
-            .iter()
-            .enumerate()
-            .map(|(index, a)| {
-                compile_match_arm(
-                    a,
-                    index,
-                    has_none_arm,
-                    scrutinee_type.as_deref(),
-                    result_expected_type.as_deref(),
-                    scrutinee_ir_type.as_ref(),
+        arms: compiled_arms,
+    }
+}
+
+/// Detect if a match arm's pattern has an Rc-wrapped nested variant sub-pattern.
+///
+/// Returns `Some(outer_variant_name)` when the pattern is `Variant(name, fields)`
+/// and at least one field has a nested `Variant` sub-pattern where the field's type
+/// is in `rc_wrapped_types`. This identifies arms that will produce the same outer
+/// Rust pattern (with `ref field_name`) and need merging.
+fn rc_nested_variant_key(pat: &ast::Pattern, ctx: &CompileContext) -> Option<String> {
+    if let ast::Pattern::Variant(name, fields) = pat {
+        let variant_field_types = ctx.struct_field_types.get(name.as_str());
+        for (field_name, field_pat) in fields {
+            if matches!(field_pat, ast::Pattern::Variant(_, _)) {
+                let field_is_rc = variant_field_types
+                    .and_then(|ft| ft.get(field_name.as_str()))
+                    .is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
+                if field_is_rc {
+                    return Some(name.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Compile match arms, merging groups that share the same outer variant with
+/// different Rc-nested sub-patterns into a single arm with `if let` chains.
+///
+/// Without this merging, patterns like:
+///   Literal { value: LitInt { value: n }, span: _ }
+///   Literal { value: LitStr { value: s }, span: _ }
+/// produce two identical outer patterns `Expr::Literal { ref value, span: _, .. }`
+/// in Rust. The first arm always matches, making the second dead code.
+#[allow(clippy::too_many_arguments)]
+fn compile_match_arms_grouped(
+    arms: &[ast::MatchArm],
+    option_context: bool,
+    expected_type: Option<&str>,
+    result_expected_type: Option<&str>,
+    scrutinee_ir_type: Option<&IrType>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> Vec<code_ir::MatchArm> {
+    let mut result = Vec::new();
+    let mut i = 0;
+    while i < arms.len() {
+        let key = rc_nested_variant_key(&arms[i].pattern, ctx);
+        if let Some(ref variant_name) = key {
+            // Collect consecutive arms with the same outer variant key
+            let group_start = i;
+            i += 1;
+            while i < arms.len() {
+                if rc_nested_variant_key(&arms[i].pattern, ctx).as_ref() == Some(variant_name) {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            let group = &arms[group_start..i];
+            if group.len() > 1 {
+                result.push(compile_merged_rc_nested_arm(
+                    group,
+                    group_start,
+                    option_context,
+                    expected_type,
+                    result_expected_type,
                     ctx,
                     counter,
-                )
-            })
-            .collect(),
+                ));
+            } else {
+                // Single arm, no merging needed
+                result.push(compile_match_arm(
+                    &group[0],
+                    group_start,
+                    option_context,
+                    expected_type,
+                    result_expected_type,
+                    scrutinee_ir_type,
+                    ctx,
+                    counter,
+                ));
+            }
+        } else {
+            result.push(compile_match_arm(
+                &arms[i],
+                i,
+                option_context,
+                expected_type,
+                result_expected_type,
+                scrutinee_ir_type,
+                ctx,
+                counter,
+            ));
+            i += 1;
+        }
     }
+    result
+}
+
+/// Merge a group of arms that share the same outer variant but differ in
+/// Rc-wrapped nested sub-patterns into a single arm with `if let` / `else if let`
+/// chains in the body.
+///
+/// For example, DAG arms:
+///   Literal { value: LitInt { value: n }, span: _ } => int_to_string(value: n)
+///   Literal { value: LitStr { value: s }, span: _ } => s
+///
+/// Become a single Rust arm:
+///   Expr::Literal { ref value, span: _, .. } => {
+///       if let LiteralValue::LitInt { value: n, .. } = value.as_ref() {
+///           int_to_string(n.clone())
+///       } else if let LiteralValue::LitStr { value: s, .. } = value.as_ref() {
+///           s.clone()
+///       } else {
+///           unreachable!()
+///       }
+///   }
+#[allow(clippy::too_many_arguments)]
+fn compile_merged_rc_nested_arm(
+    group: &[ast::MatchArm],
+    base_index: usize,
+    option_context: bool,
+    expected_type: Option<&str>,
+    result_expected_type: Option<&str>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::MatchArm {
+    // Use the first arm to build the outer pattern (all arms share it)
+    let first = &group[0];
+    let mut pattern = compile_pattern_typed(&first.pattern, ctx, expected_type);
+    if option_context
+        && !is_null_pattern(&first.pattern)
+        && !matches!(first.pattern, ast::Pattern::Wildcard)
+    {
+        if let Some(guard_pos) = pattern.find(" if ") {
+            let guard = pattern[guard_pos..].to_string();
+            let base_pattern = pattern[..guard_pos].to_string();
+            pattern = format!("Some({base_pattern}){guard}");
+        } else {
+            pattern = format!("Some({pattern})");
+        }
+    }
+
+    // Build the if-let chain body. Each arm in the group contributes one
+    // `if let` / `else if let` branch testing the Rc-nested sub-pattern.
+    let mut if_let_parts: Vec<String> = Vec::new();
+    for (offset, arm) in group.iter().enumerate() {
+        let arm_index = base_index + offset;
+        let (condition, arm_body) =
+            compile_rc_nested_if_let_branch(arm, arm_index, result_expected_type, ctx, counter);
+        if offset == 0 {
+            if_let_parts.push(format!("if let {condition} {{\n{arm_body}\n}}"));
+        } else {
+            if_let_parts.push(format!(" else if let {condition} {{\n{arm_body}\n}}"));
+        }
+    }
+    if_let_parts.push(" else {\nunreachable!()\n}".to_string());
+
+    let raw_body = if_let_parts.join("");
+    let body = vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(raw_body))];
+    code_ir::MatchArm { pattern, body }
+}
+
+/// For a single arm in a merged group, produce the `if let` condition and the
+/// body expression as rendered Rust strings.
+///
+/// The condition is e.g. `LiteralValue::LitInt { value: n, .. } = value.as_ref()`
+/// and the body is the compiled arm body rendered to Rust.
+fn compile_rc_nested_if_let_branch(
+    arm: &ast::MatchArm,
+    arm_index: usize,
+    result_expected_type: Option<&str>,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> (String, String) {
+    use crate::render_rust::render_stmts_pub;
+    // Extract the Rc-nested sub-pattern info from the arm's pattern
+    let (rc_field_name, inner_variant, inner_fields) = extract_rc_nested_info(&arm.pattern, ctx)
+        .expect("compile_rc_nested_if_let_branch called on arm without Rc-nested pattern");
+
+    // Build the if-let condition: `EnumType::Variant { field: bind, .. } = field_name.as_ref()`
+    let qualified = ctx
+        .variant_to_enum
+        .get(inner_variant)
+        .map(|e| format!("{e}::{inner_variant}"))
+        .unwrap_or_else(|| inner_variant.to_string());
+    let bindings: Vec<String> = inner_fields
+        .iter()
+        .map(|(n, p)| match p {
+            ast::Pattern::Ident(bind) => {
+                if bind == n {
+                    n.clone()
+                } else {
+                    format!("{n}: {bind}")
+                }
+            }
+            ast::Pattern::Wildcard => format!("{n}: _"),
+            _ => format!("{n}: _"),
+        })
+        .collect();
+    let pat_str = format!("{qualified} {{ {}, .. }}", bindings.join(", "));
+    let condition = format!("{pat_str} = {rc_field_name}.as_ref()");
+
+    // Compile the arm body. We need to collect any non-Rc deref stmts
+    // (boxed fields within the inner variant) but NOT the Rc let-else stmt
+    // since the if-let handles that.
+    let variant_field_types = ctx.struct_field_types.get(inner_variant);
+    let mut deref_stmts = Vec::new();
+    // Check for boxed fields within the inner variant's bindings
+    for (n, p) in inner_fields {
+        if let ast::Pattern::Ident(bind_name) = p {
+            let field_needs_box = variant_field_types
+                .and_then(|ft| ft.get(n.as_str()))
+                .is_some_and(|_| needs_box_wrapping(inner_variant, n, ctx));
+            if field_needs_box {
+                deref_stmts.push(code_ir::Stmt::Let {
+                    name: bind_name.clone(),
+                    expr: code_ir::Expr::Deref(Box::new(code_ir::Expr::Var(bind_name.clone()))),
+                    mutable: false,
+                    ir_type: None,
+                });
+            }
+        }
+    }
+
+    // Compile the body expression
+    let body_expr = ctx.with_child_expr_path(ExprPathStep::MatchArmBody(arm_index), || {
+        compile_expr_typed(&arm.body, ctx, result_expected_type, counter)
+    });
+    deref_stmts.push(code_ir::Stmt::TailExpr(body_expr));
+
+    let body_str = render_stmts_pub(&deref_stmts);
+    (condition, body_str)
+}
+
+/// Extract Rc-nested sub-pattern info from a variant pattern.
+///
+/// Returns `(rc_field_name, inner_variant_name, inner_fields)` for the first
+/// field that has an Rc-wrapped nested variant sub-pattern.
+#[allow(clippy::type_complexity)]
+fn extract_rc_nested_info<'a>(
+    pat: &'a ast::Pattern,
+    ctx: &CompileContext,
+) -> Option<(&'a str, &'a str, &'a [(String, ast::Pattern)])> {
+    if let ast::Pattern::Variant(name, fields) = pat {
+        let variant_field_types = ctx.struct_field_types.get(name.as_str());
+        for (field_name, field_pat) in fields {
+            if let ast::Pattern::Variant(inner_variant, inner_fields) = field_pat {
+                let field_is_rc = variant_field_types
+                    .and_then(|ft| ft.get(field_name.as_str()))
+                    .is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
+                if field_is_rc {
+                    return Some((field_name.as_str(), inner_variant.as_str(), inner_fields));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Infer the type of a match scrutinee expression from context.

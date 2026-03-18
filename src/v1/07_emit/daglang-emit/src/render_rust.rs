@@ -57,6 +57,15 @@ pub fn render_expr_pub(expr: &Expr) -> String {
     render_expr(expr)
 }
 
+/// Public access to statement list rendering (for fn_codegen merged arm bodies).
+pub fn render_stmts_pub(stmts: &[Stmt]) -> String {
+    let mut out = String::new();
+    for stmt in stmts {
+        out.push_str(&render_stmt(stmt, 0));
+    }
+    out
+}
+
 /// Render a minimal Cargo.toml for a generated crate.
 pub fn render_cargo_toml(crate_name: &str, dependencies: &[(&str, &str)]) -> String {
     let mut out = String::new();
