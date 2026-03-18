@@ -163,6 +163,8 @@ pub struct CompileContext {
     /// stable identities produced by typecheck.
     pub(crate) expr_identities: HashMap<ExprPath, ExprIdentity>,
     pub(crate) expr_path: RefCell<ExprPath>,
+    /// R8: Set of type names that are Rc-wrapped for O(1) clone.
+    pub rc_wrapped_types: HashSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -547,6 +549,7 @@ impl CompileContext {
             expr_ir_types: HashMap::new(),
             expr_identities: HashMap::new(),
             expr_path: RefCell::new(ExprPath::default()),
+            rc_wrapped_types: HashSet::new(),
         }
     }
 
@@ -614,10 +617,24 @@ fn qualified_variant_expr(
     ctx: &CompileContext,
 ) -> Option<code_ir::Expr> {
     if qualifies_variant(expected_type, variant_name, ctx) {
-        Some(code_ir::Expr::Path(vec![
-            expected_type.expect("checked above").to_string(),
+        let enum_name = expected_type.expect("checked above").to_string();
+        let variant_expr = code_ir::Expr::Path(vec![
+            enum_name.clone(),
             variant_name.to_string(),
-        ]))
+        ]);
+        // R8: Wrap in Rc::new() if the enum is Rc-wrapped
+        if ctx.rc_wrapped_types.contains(&enum_name) {
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "Rc".to_string(),
+                    "new".to_string(),
+                ])),
+                args: vec![variant_expr],
+                obligation: None,
+            })
+        } else {
+            Some(variant_expr)
+        }
     } else {
         None
     }
@@ -1167,11 +1184,30 @@ fn compile_resolved_record_expr(
         .collect();
     let ir_fields = fill_missing_fields(struct_name, ir_fields, ctx);
     let ir_field_types = ctx.struct_field_ir_types.get(struct_name).cloned();
-    code_ir::Expr::Struct {
+    let struct_expr = code_ir::Expr::Struct {
         name: qualified_name,
         fields: ir_fields,
         rest: rest.map(Box::new),
         field_types: ir_field_types,
+    };
+    // R8: Wrap in Rc::new() if the result type is Rc-wrapped.
+    // For variants, check the parent enum; for plain structs, check the struct itself.
+    let result_type = ctx
+        .variant_to_enum
+        .get(struct_name)
+        .map(|s| s.as_str())
+        .unwrap_or(struct_name);
+    if ctx.rc_wrapped_types.contains(result_type) {
+        code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Path(vec![
+                "Rc".to_string(),
+                "new".to_string(),
+            ])),
+            args: vec![struct_expr],
+            obligation: None,
+        }
+    } else {
+        struct_expr
     }
 }
 
@@ -1250,14 +1286,36 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
+            let mut compiled_receiver = ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                compile_expr(receiver, ctx, counter)
+            });
+
+            // R8: For Rc-wrapped receiver types, strip the `.clone()` from the
+            // receiver and add `.clone()` to the field result instead.
+            // `state.clone().tokens` → `state.tokens.clone()` (can't move out of Rc).
+            // Also applies to bare variable field access when the variable type is Rc-wrapped:
+            // `state.tokens` → `state.tokens.clone()` (can't move field out of Rc deref).
+            let receiver_is_rc = is_rc_wrapped_expr(receiver, ctx)
+                || is_clone_of_rc_wrapped(&compiled_receiver, ctx)
+                || has_clone_on_receiver(&compiled_receiver, ctx)
+                || is_var_with_rc_type(&compiled_receiver, ctx);
+            if receiver_is_rc {
+                compiled_receiver = strip_clone(compiled_receiver);
+            }
+
             let field_expr = code_ir::Expr::Field(
-                Box::new(ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
-                    compile_expr(receiver, ctx, counter)
-                })),
+                Box::new(compiled_receiver),
                 rust_field,
             );
             if is_boxed_field_access(receiver, field, ctx) {
                 code_ir::Expr::Deref(Box::new(field_expr))
+            } else if receiver_is_rc {
+                // R8: Clone the field through Deref (O(1) for Rc fields)
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(field_expr),
+                    method: "clone".to_string(),
+                    args: vec![],
+                }
             } else {
                 field_expr
             }
@@ -1532,11 +1590,25 @@ fn compile_expr_typed(
                 })
                 .collect();
             let ir_fields = fill_missing_fields(record_name, ir_fields, ctx);
-            code_ir::Expr::Struct {
-                name: format!("{}::{}", expected_type.expect("checked above"), record_name),
+            let enum_name = expected_type.expect("checked above").to_string();
+            let struct_expr = code_ir::Expr::Struct {
+                name: format!("{}::{}", enum_name, record_name),
                 fields: ir_fields,
                 rest: None,
                 field_types: None,
+            };
+            // R8: Wrap in Rc::new() if the parent enum is Rc-wrapped
+            if ctx.rc_wrapped_types.contains(&enum_name) {
+                code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Path(vec![
+                        "Rc".to_string(),
+                        "new".to_string(),
+                    ])),
+                    args: vec![struct_expr],
+                    obligation: None,
+                }
+            } else {
+                struct_expr
             }
         }
         ast::Expr::Record(None, fields) => {
@@ -1613,10 +1685,25 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             args: vec![],
         }
     } else if let Some(enum_name) = resolve_variant_enum(name, ctx) {
-        code_ir::Expr::Path(vec![enum_name, name.to_string()])
+        let variant_expr = code_ir::Expr::Path(vec![enum_name.clone(), name.to_string()]);
+        // R8: Wrap in Rc::new() if the parent enum is Rc-wrapped
+        if ctx.rc_wrapped_types.contains(&enum_name) {
+            code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "Rc".to_string(),
+                    "new".to_string(),
+                ])),
+                args: vec![variant_expr],
+                obligation: None,
+            }
+        } else {
+            variant_expr
+        }
     } else {
         // S76: clone only when a variable is used more than once.
         // Single-use variables can be moved; multi-use need .clone().
+        // R8: When Rc-wrapping is active, always clone — match bindings through
+        // .as_ref() are references that need .clone() to convert to owned values.
         let escaped = escape_rust_keyword(name);
         if escaped.starts_with("__") {
             code_ir::Expr::Var(escaped)
@@ -1630,7 +1717,8 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             }
         } else {
             let count = ctx.use_counts.get(name).copied().unwrap_or(2);
-            if count <= 1 {
+            let force_clone = !ctx.rc_wrapped_types.is_empty();
+            if count <= 1 && !force_clone {
                 code_ir::Expr::Var(escaped)
             } else {
                 code_ir::Expr::MethodCall {
@@ -1641,6 +1729,69 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             }
         }
     }
+}
+
+/// Strip a trailing `.clone()` method call from a compiled expression.
+/// Used by R8 to convert `state.clone().tokens` → `state.tokens.clone()`.
+fn strip_clone(expr: code_ir::Expr) -> code_ir::Expr {
+    match expr {
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } if method == "clone" && args.is_empty() => *receiver,
+        other => other,
+    }
+}
+
+/// R8: Check if an AST expression evaluates to an Rc-wrapped type.
+fn is_rc_wrapped_expr(expr: &ast::Expr, ctx: &CompileContext) -> bool {
+    // Try ir_scope and param_types for idents
+    infer_known_expr_ir_type(expr, ctx)
+        .and_then(|ty| named_type_from_ir(&ty))
+        .or_else(|| infer_scrutinee_type(expr, ctx))
+        .is_some_and(|name| ctx.rc_wrapped_types.contains(&name))
+}
+
+/// R8: Check if a compiled expression has `.clone()` on top — indicates the receiver
+/// is a cloned value. When ALL non-Copy types are Rc-wrapped, a `.clone()` on the
+/// receiver means field access would try to move from a temporary Rc. Strip the clone
+/// and add it to the field result instead.
+fn has_clone_on_receiver(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    !ctx.rc_wrapped_types.is_empty()
+        && matches!(expr, code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty())
+}
+
+/// R8: Check if a compiled expression is a bare `Var(name)` where the name is likely
+/// Rc-wrapped. In v2 crate context (rc_wrapped_types is non-empty), all non-Copy
+/// types are Rc-wrapped, so field access on any variable needs `.clone()` on the result.
+fn is_var_with_rc_type(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    if ctx.rc_wrapped_types.is_empty() {
+        return false;
+    }
+    matches!(expr, code_ir::Expr::Var(_))
+}
+
+/// R8: Check if a compiled IR expression is `x.clone()` where x has Rc-wrapped type.
+/// This catches intermediate variables that aren't in ir_scope.
+fn is_clone_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    if let code_ir::Expr::MethodCall { receiver, method, args } = expr {
+        if method == "clone" && args.is_empty() {
+            // Check if the receiver is a variable with known Rc-wrapped type
+            if let code_ir::Expr::Var(name) = receiver.as_ref() {
+                return ctx.ir_scope.get(name)
+                    .and_then(named_type_from_ir)
+                    .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(&ty_name))
+                    || ctx.param_types.get(name)
+                        .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(ty_name));
+            }
+            // Also check for field access chains: x.clone() where x's type is unknown
+            // but the field access produced a value whose inner type is Rc-wrapped.
+            // Heuristic: if receiver is a field access on a known Rc-wrapped type,
+            // the result is also likely Rc-wrapped (since all fields are Rc).
+        }
+    }
+    false
 }
 
 /// Escape Rust reserved keywords for use as identifiers.
@@ -1975,11 +2126,21 @@ fn compile_intrinsic_call(
             let base = compile_call_arg(args, 0, ctx, counter);
             let base_struct_name =
                 infer_call_arg_type(args, 0, ctx).and_then(|ty| named_type_from_ir(&ty));
-            // Clone the base value since struct update syntax moves the base
-            let cloned_base = code_ir::Expr::MethodCall {
-                receiver: Box::new(base),
-                method: "clone".to_string(),
-                args: vec![],
+            // Clone the base value since struct update syntax moves the base.
+            // R8: For Rc-wrapped types, deref+clone to get the inner struct value.
+            let is_rc = base_struct_name.as_ref().is_some_and(|name| ctx.rc_wrapped_types.contains(name));
+            let cloned_base = if is_rc {
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Deref(Box::new(strip_clone(base)))),
+                    method: "clone".to_string(),
+                    args: vec![],
+                }
+            } else {
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(base),
+                    method: "clone".to_string(),
+                    args: vec![],
+                }
             };
             // Second arg should be a record literal with update fields
             match &args[1].1 {
@@ -3369,11 +3530,25 @@ fn strip_to_string_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
 /// Strip the outer `.clone()` from a compiled expression, producing a move.
 /// Used for intrinsics that consume their first argument (concat, append) so
 /// that `Rc::try_unwrap` in the runtime sees refcount 1 and mutates in place.
+///
+/// R8: Does NOT strip `.clone()` when the inner expression is a field access
+/// through an Rc-wrapped type (can't move out of an Rc).
 fn strip_outer_clone(expr: code_ir::Expr) -> code_ir::Expr {
     if matches!(&expr, code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty())
     {
-        match expr {
-            code_ir::Expr::MethodCall { receiver, .. } => *receiver,
+        match &expr {
+            code_ir::Expr::MethodCall { receiver, .. } => {
+                // R8: If the inner expression is a field access (added by Rc-wrapped
+                // field access codegen), don't strip — the field is behind Rc Deref
+                // and can't be moved out.
+                if matches!(receiver.as_ref(), code_ir::Expr::Field(_, _)) {
+                    return expr;
+                }
+                match expr {
+                    code_ir::Expr::MethodCall { receiver, .. } => *receiver,
+                    _ => unreachable!(),
+                }
+            }
             _ => unreachable!(),
         }
     } else {
@@ -3457,6 +3632,47 @@ fn compile_match_typed(
     // correct parent enum (e.g., LitStr -> LiteralValue::LitStr, not TokenKind::LitStr).
     let scrutinee_type =
         infer_scrutinee_type(scrutinee, ctx).or_else(|| infer_type_from_arms(arms, ctx));
+
+    // R8: If the scrutinee's type is Rc-wrapped, use .as_ref() to get &T for matching.
+    // Match ergonomics handles the rest: patterns implicitly match through references,
+    // and all bindings become references. The existing `.clone()` calls in compile_ident
+    // convert `&Rc<T>` → `Rc<T>` (O(1)) and `&String` → `String` automatically.
+    // For Optional: .as_ref().map(|rc| rc.as_ref()) gives Option<&T>.
+    if let Some(ref stype) = scrutinee_type {
+        let scrutinee_is_optional = has_none_arm
+            || infer_known_expr_ir_type(scrutinee, ctx)
+                .is_some_and(|ty| matches!(ty, IrType::Optional(_)));
+        if ctx.rc_wrapped_types.contains(stype) && !all_string_arms {
+            let inner = strip_clone(compiled_scrutinee);
+            if scrutinee_is_optional {
+                // Option<Rc<T>> → Option<&T> via .as_ref().map(|__rc| __rc.as_ref())
+                compiled_scrutinee = code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::MethodCall {
+                        receiver: Box::new(inner),
+                        method: "as_ref".to_string(),
+                        args: vec![],
+                    }),
+                    method: "map".to_string(),
+                    args: vec![code_ir::Expr::Closure {
+                        args: vec!["__rc".to_string()],
+                        body: Box::new(code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var("__rc".to_string())),
+                            method: "as_ref".to_string(),
+                            args: vec![],
+                        }),
+                    }],
+                };
+            } else {
+                // Rc<T> → &T via rc_val.as_ref()
+                compiled_scrutinee = code_ir::Expr::MethodCall {
+                    receiver: Box::new(inner),
+                    method: "as_ref".to_string(),
+                    args: vec![],
+                };
+            }
+        }
+    }
+
     // Also infer the scrutinee's IrType so we can propagate inner types through
     // Option patterns (Some { value: binding } → binding gets the unwrapped type).
     let scrutinee_ir_type = infer_known_expr_ir_type(scrutinee, ctx);

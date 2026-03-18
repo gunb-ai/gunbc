@@ -308,7 +308,16 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
-    let recursive_fields = type_codegen::compute_recursive_fields(&all_type_defs);
+    // R8: Build the set of non-Copy types that get Rc-wrapped for O(1) clone.
+    // This must be installed before compute_recursive_fields (which now skips
+    // Rc-wrapped types since they're already heap-allocated) and before any
+    // type_expr_to_rust calls (which Rc-wrap Named types in this set).
+    let rc_wrapped_types = type_codegen::build_rc_wrapped_types(&all_type_defs);
+
+    let recursive_fields =
+        type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
+            type_codegen::compute_recursive_fields(&all_type_defs)
+        });
 
     // 2. Build variant_to_enum map for identifier resolution
     let variant_to_enum = build_variant_to_enum(&all_type_defs);
@@ -472,6 +481,8 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
     // Initialize with hardcoded materialized types from std_types_prelude
     let mut visible_type_names: HashSet<String> =
         HashSet::from(["SourceSpan".to_string(), "BindingPower".to_string()]);
+    // R8: Install Rc-wrapped types for all type_expr_to_rust calls within module emission
+    type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
     for (_dag_stem, sf) in modules {
         let Some(rust_mod) = rust_mod_for_source_file(sf) else {
             continue;
@@ -540,6 +551,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             content,
         });
     }
+    }); // end with_rc_wrapped_types
 
     // 6. Emit lib.rs with mod declarations and cross-module uses
     let lib_content = emit_lib_rs(modules);
@@ -781,6 +793,7 @@ fn emit_module(
         str_param_names: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
+        rc_wrapped_types: type_codegen::current_rc_wrapped_types(),
     };
 
     for item in items {
