@@ -933,6 +933,95 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn check_target_file_gunbc_auth_patterns_requires_gcp_service_module_imports() {
+    let root = unique_temp_root("gunbc_auth_patterns_service_imports");
+    let write_source = |relative: &str, content: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
+            .expect("failed to create fixture parent directory");
+        std::fs::write(path, content).expect("failed to write fixture source");
+    };
+
+    write_source(
+        "extdeps/cloud/gcp/iam.dag",
+        r#"module extdeps.cloud.gcp.iam
+service gcp.IAM {
+  operation GenerateAccessToken(access_token: String, target_sa: String) -> { access_token: String }
+}
+"#,
+    );
+    write_source(
+        "extdeps/cloud/gcp/sts.dag",
+        r#"module extdeps.cloud.gcp.sts
+service gcp.STS {
+  operation Exchange(subject_token: String, audience: String) -> { access_token: String }
+}
+"#,
+    );
+    write_source(
+        "extdeps/cloud/gcp/secret_manager.dag",
+        r#"module extdeps.cloud.gcp.secret_manager
+service gcp.SecretManager {
+  operation AccessVersion(access_token: String, project_id: String, secret: String) -> { payload: String }
+}
+"#,
+    );
+    write_source(
+        "gunbc/auth/patterns.dag",
+        r#"module gunbc.auth.patterns
+
+import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.sts
+
+func credential_chain() -> { payload: String } {
+  access = gcp.STS.Exchange(subject_token: "subject", audience: "audience")
+  impersonated = gcp.IAM.GenerateAccessToken(access_token: access.access_token, target_sa: "service-account")
+  secret = gcp.SecretManager.AccessVersion(access_token: impersonated.access_token, project_id: "project", secret: "name")
+  return { payload: secret.payload }
+}
+"#,
+    );
+
+    let context = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("gunbc/auth/patterns.dag")),
+    };
+
+    let output = check_from_context(&context).expect("check should succeed with service imports");
+    assert_eq!(output.parsed_files, 4, "expected four fixture modules");
+
+    write_source(
+        "gunbc/auth/patterns.dag",
+        r#"module gunbc.auth.patterns
+
+func credential_chain() -> { payload: String } {
+  access = gcp.STS.Exchange(subject_token: "subject", audience: "audience")
+  impersonated = gcp.IAM.GenerateAccessToken(access_token: access.access_token, target_sa: "service-account")
+  secret = gcp.SecretManager.AccessVersion(access_token: impersonated.access_token, project_id: "project", secret: "name")
+  return { payload: secret.payload }
+}
+"#,
+    );
+
+    let error = check_from_context(&context).expect_err("check should fail without service imports");
+    assert_typecheck_stage_error(&error);
+    assert!(error.contains("unresolved service call"));
+    for service_call in [
+        "gcp.IAM.GenerateAccessToken",
+        "gcp.STS.Exchange",
+        "gcp.SecretManager.AccessVersion",
+    ] {
+        assert!(
+            error.contains(service_call),
+            "expected missing import error to mention {service_call}: {error}"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_single_file_uses_bound_resource_capability_call_succeeds() {
     let fixture = unique_temp_file("single_file_uses_bound_resource_capability_call");
     std::fs::write(
