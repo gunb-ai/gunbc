@@ -1,6 +1,6 @@
 //! Workflow planner admission/schema errors.
 
-use gunbc_ir::{AccessMode, NodeId};
+use gunbc_ir::{AccessMode, NodeId, ResourceAccessError};
 use std::fmt;
 
 use crate::process_registry::{ClaimId, ProcessUnitRef, UnitClaim};
@@ -12,15 +12,7 @@ pub enum WorkflowAdmissionError {
         node_id: NodeId,
         process_unit: ProcessUnitRef,
     },
-    MissingResourceAccessMode {
-        node_id: NodeId,
-        port_name: String,
-        resource_id: ClaimId,
-    },
-    MissingResourceId {
-        node_id: NodeId,
-        port_name: String,
-    },
+    ResourceAccess(ResourceAccessError),
     MissingRequiredClaims {
         node_id: NodeId,
         process_unit: ProcessUnitRef,
@@ -52,23 +44,7 @@ impl fmt::Display for WorkflowAdmissionError {
                 "node '{}' references unknown process unit '{}::{}'",
                 node_id.0, process_unit.process_id.0, process_unit.unit_id.0
             ),
-            WorkflowAdmissionError::MissingResourceAccessMode {
-                node_id,
-                port_name,
-                resource_id,
-            } => write!(
-                f,
-                "node '{}': resource input '{}' missing access metadata for claim '{}'",
-                node_id.0, port_name, resource_id.0
-            ),
-            WorkflowAdmissionError::MissingResourceId {
-                node_id,
-                port_name,
-            } => write!(
-                f,
-                "node '{}': resource input '{}' has resource_access but no resource_id",
-                node_id.0, port_name
-            ),
+            WorkflowAdmissionError::ResourceAccess(error) => write!(f, "{error}"),
             WorkflowAdmissionError::MissingRequiredClaims {
                 node_id,
                 process_unit,
