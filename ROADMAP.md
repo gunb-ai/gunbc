@@ -1,326 +1,774 @@
 # gunbc Roadmap
 
-**Goal:** Self-hosted v2 compiler. The compiler is written in .dag, compiles
+**Goal:** Self-hosted v2 compiler. The compiler is written in `.dag`, compiles
 itself, and produces identical output when compiling itself again (fixed point).
 
 **Thesis:** Explicit cause-and-effect relationships with basic primitives
-(truth-valued structure, Conj/Disj, composition) are sufficient to express
-any information concept. Named types are aliases for compositions — the
-compiler can always see through a name to the structure underneath.
+(truth-valued structure, `Conj`/`Disj`, composition) are sufficient to express
+any information concept. Named types are aliases for compositions; the compiler
+should always be able to see through the name to the structure underneath.
 
 ---
 
-## Completed work
+## Planning Status
 
-- **Stream 2 (sustainability cleanup):** All stale docs deleted. SUSTAINABILITY.md
-  updated. S83 fixed (stacker), S84 closed (TCO verified), S85 terminal fix (SCC),
-  S76-S81 marked terminal (die with v1).
+As of 2026-03-17, this file is the single live planning document for the repo.
+
+- The former v2 performance audit is folded into **Track S** below.
+- The active, still-relevant portions of `src/v1/SUSTAINABILITY.md` are folded
+  into **Tracks S/B/C/D** and the consolidated backlog section below.
+- `src/v1/SUSTAINABILITY.md` is now archival context, not a second roadmap.
+
+---
+
+## Completed Work
+
+- **Stream 2 (sustainability cleanup):** stale docs cleaned up, terminal v1-only
+  findings called out explicitly, stack growth and TCO status documented.
 - **Stream 3 phases A-E:** PortContract dissolved. Shape dissolved via
-  `Connective = Conj | Disj`. Dead code deleted (TypeBody, bridge helpers, old
-  emit functions). All dissolution comments cleaned.
-- **P0 (S85):** Recursive types — SCC cycle detection on type dependency graph.
-- **P1 (S84):** TCO pass — verified working in v2 emitter.
-- **P1 (S83):** Stack overflow — stacker wrapping at re-entrant call sites.
-- **B2:** Rename `04_typecheck.dag` → `04_infer.dag`. Module declaration updated.
-- **C1:** LanguageSpec interface defined in `dsl/std/languages.dag` with 14 facets
-  (statements, expressions, control_flow, literals, modules, functions, errors,
-  type_defs, patterns, async_model, collection_ops, string_ops, map_ops,
-  null_coalesce). Compositions: `rust_spec`, `go_spec`, `python_spec`.
-- **C2:** Language extdeps modeled for Rust (5 files), Python (5 files), Go (5 files)
-  in `dsl/extdeps/languages/`. Each covers types, runtime, imports, errors, async.
-- **B1 prep:** TypeExpr↔Node conversion infrastructure complete in `00_core.dag`
-  (`type_expr_to_node`, `node_to_type_expr_full`). Dual-write fields
-  (`resolved_node: Node?`) added to TypeBinding/ResolveResult/SpanType.
-  Node-reading type emit functions (`emit_rust_node_type`, `emit_py_node_type`,
-  `emit_go_node_type`) added to all three backends — ready to switch when
-  04_infer.dag populates `resolved_node`.
-- **Perf audit:** Five-pass audit of v2 compiler performance documented in
-  `src/v2/PERF_AUDIT.md`. Identified five repeatable bottleneck patterns:
-  quadratic builders, linear-scan lookups, redundant inference, full-tree cloning,
-  and duplicated block-emission. Priority order: 04_infer > 01_tokenize >
-  03_resolve > 05_emit* > 02_parse/06_pipeline.
-- **Test baseline:** 887 pass, 9 fail (module_graph discovery tests — pre-existing
-  parse failures on template strings in extdep .dag files).
+  `Connective = Conj | Disj`. Dead code and old bridge helpers removed where the
+  new structure made them unnecessary.
+- **P0 (S85):** recursive types use SCC cycle detection on the type dependency
+  graph.
+- **P1 (S84):** v2 emitter TCO verified.
+- **P1 (S83):** stack overflow mitigated with `stacker` at re-entrant call sites.
+- **B2:** `04_typecheck.dag` renamed to `04_infer.dag`.
+- **C1:** `LanguageSpec` interface defined in `dsl/std/languages.dag`.
+- **C2:** Rust, Python, and Go language extdeps modeled in
+  `dsl/extdeps/languages/`.
+- **Typed emit hot paths:** the high-payoff emitter fixes landed. `type_cache`
+  no longer dominates emit scope cloning, typed service-call collection/TCO
+  analysis exists, and Rust/Python/Go emitters all have typed expression paths.
+- **Infer and resolver asymptotics:** descendant-list churn and the worst
+  resolver list-scan hotspots were materially improved.
+- **Node convergence partial landing:** `Field.type_expr`, `Param.type_expr`,
+  and `ResourceUse.resource` are `Node`; `TypedExpr.resolved_type`,
+  `FuncSig.return_type`, and `TypedNode.return_type` are `Node`; all three
+  emitters have node-based type readers.
 
 ---
 
-## Parallel tracks
+## Parallel Tracks
 
-Work is organized into tracks that can proceed independently. Dependencies
-between tracks are noted; within each track, steps are sequential.
+Work is organized into tracks that can proceed mostly independently.
 
-```
-Track A: Pipeline validation        Track B: Node convergence      Track C: Language emission
-(gist → self-compile → bootstrap)   (TypeExpr → Expr → transport)  (extdeps model)
-─────────────────────────────────   ──────────────────────────────  ─────────────────────────
-A1: Gist compilation                B1: TypeExpr → Node             C1: LanguageSpec ✓
-A2: Runtime bridge                  B2: Rename typecheck → infer ✓  C2: Rust/Python/Go ✓
-A3: Gist end-to-end                 B3: Expr → Node                 C3: Emitters consult
-A4: Full self-compile pipeline      B4: Transport dissolution            extdeps
-A5: Bootstrap stage 0→1                                             C4: --target CLI
-A6: Fixed point
-A7: v1 retirement
+```text
+Track S: Stabilization + perf      Track A: Self-hosting           Track B: Node convergence
+──────────────────────────────     ───────────────────────────     ───────────────────────────
+S1: Finish Node migration          A1: Gist compilation           B1: TypeExpr -> Node
+S2: Repair emit/generated crate    A2: Runtime bridge             B2: Rename typecheck -> infer
+S3: Residual perf backlog          A3: Gist end-to-end            B3: Expr -> Node
+S4: Restore v2 test baseline       A4: Full self-compile          B4: Transport dissolution
+                                   A5: Bootstrap stage 0 -> 1
+                                   A6: Fixed point
+                                   A7: v1 retirement
 
-BLOCKER: Track A gated on v2 perf fixes (see PERF_AUDIT.md).
-         B1 completion gated on 04_infer.dag perf fixes (same file).
+Track C: Language emission         Track D: Complexity analysis    Track E: Artifact planning
+──────────────────────────────     ──────────────────────────────  ─────────────────────────────
+C1: LanguageSpec                   D1: Cost algebra               E0: Monolith wrapper
+C2: Rust/Python/Go facts           D2: Typed summaries            E1: Artifact model
+C3: Emitters consult extdeps       D3: DAG composition            E2: Target placement
+C4: CLI target selection           D4: Proofs + reporting         E3: Boundary semantics
+                                                                  E4: Planning/reporting
 ```
 
 **Dependencies:**
-- A5 (bootstrap) requires A4 (full self-compile)
-- A6 (fixed point) requires A5
-- B1-B4 are validated by re-bootstrapping (requires A6), but design work
-  and implementation can begin before A6 on the current v1-bootstrapped compiler
-- C1-C4 are fully independent — can proceed in parallel with A and B
-- B4 (transport dissolution) benefits from C2 (transport facts live in extdeps)
+
+- **Track A** is blocked on **Track S**. Self-hosting is not a performance-only
+  problem anymore; it is first blocked by current v2 correctness regressions.
+- **B1/B3** depend on **S1/S2** staying green while the representation changes.
+- **Track C** is largely independent of **A/B/D**.
+- **Track D** can begin once the `Node`/typed-expression boundaries stabilize
+  enough to make summaries trustworthy.
+- **Track E** should be designed early, before multi-target and deployment
+  assumptions harden. Its implementation depends on **B4/C3** being far enough
+  along that target facts and boundary structure are explicit.
+- **A5** requires **A4**.
+- **A6** requires **A5**.
 
 ---
 
-## Track A: Pipeline validation → bootstrap → self-hosting
+## Track S: Stabilization And Residual Performance
 
-**Blocker:** v2 compiler performance. Five bottleneck patterns documented in
-`src/v2/PERF_AUDIT.md` make self-compile infeasible (quadratic tokenizer,
-repeated inference in 04_infer.dag, O(M^4) resolve, O(B^2) emitters).
-Perf fixes must land before A4 can proceed.
+This track replaces the old standalone perf audit. It is the concrete blocker
+list for getting v2 back to a trustworthy self-hosting baseline.
+
+### S1: Finish TypeExpr -> Node migration
+
+**Current failure mode:** the core model has already moved to `Node` in several
+places, but parser/infer/generated-crate code still mixes `TypeExpr` and `Node`
+assumptions.
+
+Representative failure modes in the current tree:
+
+- parser helpers still build or destructure `Node`-typed fields as `TypeExpr`
+- return-type helpers still return `TypeExpr?` where the surrounding item uses
+  `Node?`
+- generated v2 crate code still shows `Node` vs `TypeExpr` mismatches and boxed
+  `Option<Node>` / `Option<Expr>` mismatches
+
+**Acceptance:**
+
+- [ ] parser helpers stop constructing or destructuring `Node`-typed fields as
+      `TypeExpr`
+- [ ] infer helpers and generated crate code no longer assume unboxed
+      `Option<Node>` / `Option<Expr>`
+- [ ] `v2_crate_cargo_check` passes
+- [ ] `cargo test -p v2-compiler-tests --quiet` returns to green
+
+### S2: Repair emitter and generated-crate coherence
+
+**Current failure mode:** typed hot paths are in place, but the emitted/generator
+surface is still internally inconsistent.
+
+Remaining coherence work:
+
+- stale Rust emit call sites still pass removed parameters to
+  `emit_simple_expr`
+- plain-`Expr` transport/mock/config helpers still exist and still form a small
+  bridge layer
+- `typed_expr_to_expr` still exists and is still imported in `04_infer.dag`,
+  even though the main hot-path callers are gone
+
+**Acceptance:**
+
+- [ ] stale Rust emit call sites are fixed
+- [ ] remaining plain-`Expr` helpers are either deleted or explicitly justified
+- [ ] `typed_expr_to_expr` is deleted once no imports/callers remain
+- [ ] generated Rust/Python/Go crates compile from the v2 pipeline
+
+### S3: Residual performance backlog
+
+**What is already a real win:**
+
+- emit scope clone blow-up: mostly fixed
+- infer descendant-list / `type_entries` churn: mostly fixed
+- resolver list-scan hotspots: substantially fixed
+- map-based argument ordering and deduplication: fixed
+
+**What still remains:**
+
+- **Tokenizer bootstrap-path builders:** `scan_string_body()` and
+  `process_escapes_loop()` still rely on immutable-list accumulation. This is
+  only provably linear if the runtime append primitive is O(1).
+- **Parser list builders:** many accumulators still use `concat([x], acc)` plus
+  `reverse(acc)`. That is an improvement over the oldest forms, but it is not
+  yet a proof of linear behavior under value semantics.
+- **Resolver Kahn inner-loop scan:** topological sorting still carries a flat
+  edge list and filters it each round. The worst old hotspots are improved, but
+  the remaining adjacency traversal should still move to a precomputed
+  neighbor map if module-graph scale matters.
+- **v1 interpreted/bootstrap `list_push`:** still clones the entire list before
+  appending, so repeated appends remain quadratic on the interpreted path.
+- **Do not mistake native fusion for language-level proof:** emitted/native
+  codegen can already fuse some `concat(acc, [x])` and `list_push` patterns into
+  append-like operations, but that does not by itself prove the same bound for
+  the bootstrap interpreter or for the source-level semantics.
+- **Final emit bridges:** plain-`Expr` helpers and dead conversion helpers still
+  exist.
+- **Parse/infer boundary churn:** `type_expr_to_node` still appears at many
+  parser boundaries; this goes away only when the parser is node-native end to
+  end.
+
+**Acceptance:**
+
+- [ ] tokenizer builders have a proven linear builder path in bootstrap and
+      native modes
+- [ ] parser accumulators use an O(1) builder or a documented linear primitive
+- [ ] Kahn/topological traversal no longer scans a flat edge list in the inner
+      loop
+- [ ] interpreted `list_push` semantics are fixed or explicitly removed from
+      bootstrap-critical paths
+- [ ] last bridge helpers are removed or documented as intentionally permanent
+
+### S4: Restore v2 test and cargo baseline
+
+**Current working-tree snapshot (2026-03-17):**
+
+- `cargo test -p daglang-emit --quiet`: passes (361 tests)
+- `cargo test -p v2-compiler-tests --quiet`: fails
+  (67 passed, 22 failed, 9 ignored)
+
+**Acceptance:**
+
+- [ ] `cargo test -p daglang-emit --quiet` stays green
+- [ ] `cargo test -p v2-compiler-tests --quiet` is green
+- [ ] `v2_crate_cargo_check` passes
+- [ ] multi-module synthetic and gist-adjacent tests are green
+
+---
+
+## Track A: Pipeline Validation -> Bootstrap -> Self-hosting
+
+**Blocker:** Track S must be complete enough for the v2 compiler to be a
+trustworthy target again.
 
 ### A1: Gist compilation
 
-Feed gist.dag + 11 transitive dependencies through the v2 pipeline. Verify
-emitted code compiles in each target language.
+Feed `gist.dag` and its transitive dependencies through the v2 pipeline. Verify
+that emitted code compiles in each target language.
 
 **Acceptance:**
-- [ ] `v2_compile_gist_rust` — v2 compiles gist → Rust → `cargo check`
-- [ ] `v2_compile_gist_python` — v2 compiles gist → Python → `py_compile`
+
+- [ ] `v2_compile_gist_rust`: v2 compiles gist -> Rust -> `cargo check`
+- [ ] `v2_compile_gist_python`: v2 compiles gist -> Python -> `py_compile`
 
 ### A2: Runtime bridge
 
 Generate entry point and runtime dependencies so the compiled gist executes.
 
 **Acceptance:**
-- [ ] Generated `main.rs` + `Cargo.toml` with runtime deps
+
+- [ ] generated `main.rs` + `Cargo.toml` with runtime deps
 - [ ] `cargo run -- gist --dry-run` produces correct dry-run output
-- [ ] Python equivalent produces same dry-run output
+- [ ] Python equivalent produces the same dry-run output
 
 ### A3: Gist end-to-end execution
 
 **Acceptance:**
-- [ ] Compiled Rust gist creates a real GitHub gist (manual gate, requires token)
-- [ ] Compiled Python gist creates a real GitHub gist (manual gate)
+
+- [ ] compiled Rust gist creates a real GitHub gist (manual gate)
+- [ ] compiled Python gist creates a real GitHub gist (manual gate)
 
 ### A4: Full self-compile pipeline
 
-Extend `self_compile_all_modules` from stages 1-3 (tokenize → parse → resolve)
-to stages 1-5 (+ typecheck + emit). S85 SCC fix may have unblocked the OOM.
+Extend the current self-compile path from tokenize/parse/resolve to the full
+tokenize/parse/resolve/infer/emit pipeline.
+
+**Current caveat:** the generated `self_compile_all_modules` ratchet is still a
+bootstrap smoke test. It currently uses lenient compilation and only requires
+that at least one emitted file be non-empty, which is useful for progress
+tracking but too weak to serve as a long-term semantic acceptance gate.
 
 **Acceptance:**
-- [ ] v2 crate processes its own .dag source through full pipeline
-- [ ] Emitted Rust files compile (`cargo check`)
-- [ ] No OOM, no stack overflow on any .dag file up to 4000 lines
 
-### A5: Bootstrap stage 0→1
+- [ ] v2 crate processes its own `.dag` source through the full pipeline
+- [ ] emitted Rust files compile with `cargo check`
+- [ ] no OOM or stack overflow on any `.dag` file up to 4000 lines
+- [ ] self-compile ratchet asserts semantic properties stronger than
+      "non-empty file emitted"
 
-```
-v1 compiles v2 .dag → Rust → rustc → v2-stage0  (what we have today)
-v2-stage0 compiles v2 .dag → Rust → rustc → v2-stage1  (the new thing)
+### A5: Bootstrap stage 0 -> 1
+
+```text
+v1 compiles v2 .dag -> Rust -> rustc -> v2-stage0
+v2-stage0 compiles v2 .dag -> Rust -> rustc -> v2-stage1
 ```
 
 **Acceptance:**
-- [ ] v2-stage1 builds successfully
-- [ ] v2-stage1 passes the same test suite as v2-stage0
+
+- [ ] `v2-stage1` builds successfully
+- [ ] `v2-stage1` passes the same test suite as `v2-stage0`
 
 ### A6: Fixed point
 
-```
-v2-stage1 compiles v2 .dag → Rust → rustc → v2-stage2
+```text
+v2-stage1 compiles v2 .dag -> Rust -> rustc -> v2-stage2
 ```
 
 **Acceptance:**
-- [ ] stage1 output == stage2 output (compiler reproduces itself)
+
+- [ ] `stage1` output == `stage2` output
 
 ### A7: v1 retirement
 
-Once the fixed point holds, v1 is bootstrap scaffolding — no longer needed.
+Once the fixed point holds, v1 is bootstrap scaffolding rather than the active
+compiler path.
 
 **Acceptance:**
+
 - [ ] v2 builds and tests without v1 in the dependency chain
-- [ ] S76-S81 heuristics in `v2_crate_emit.rs` are dead code
-- [ ] Interpreter (`daglang-eval`) is optional (dev/REPL, not required)
+- [ ] v1-only heuristics are dead code
+- [ ] interpreter/evaluator is optional, not required for the compiler
 
 ---
 
-## Track B: Node convergence
+## Track B: Node Convergence
 
-Structural unification — one type (Node) flows through the entire pipeline.
-After A6, each step is validated by re-bootstrapping (fixed point holds).
-Before A6, implementation proceeds on the v1-bootstrapped compiler and is
-validated by the existing test suite (887+ tests).
+Structural unification: one type (`Node`) flows through the pipeline.
 
-13 design decisions are documented in `project_typeexpr_node_convergence.md`.
+### B1: TypeExpr -> Node
 
-### B1: TypeExpr → Node
+Dissolve the remaining `TypeExpr`-specific structure into `Node` patterns. This
+track is no longer a speculative dual-write plan; the migration is already
+partially landed.
 
-Dissolve TypeExpr (8 variants) into Node patterns. The typechecker walks
-Nodes via connective + children instead of pattern-matching TypeExpr variants.
+**Already true:**
 
-Types that dissolve: TypeExpr, Field, Variant, TypeBinding, ResolveResult,
-ContainerKind, Predicate, FuncSig, FuncEnv.
+- `Field.type_expr` is `Node`
+- `Param.type_expr` is `Node`
+- `ResourceUse.resource` is `Node`
+- `TypedExpr.resolved_type` is `Node`
+- `FuncSig.return_type` is `Node`
+- `TypedNode.return_type` is `Node`
+- Rust/Python/Go emitters have node-based type readers
 
-Key design decisions:
-- Type variables are Params on the parent Node (same mechanism as value params)
-- Containers/Optional/Map are Nodes with type-level params, defined in std
-- Instantiation (`List<String>`) is composition — filling a param
-- Refined types are Conj(base, predicate)
-- Primitives dissolve — String, Int, Bool are kernel Nodes
+**Still remaining:**
 
-**Current state:** Dual-write infrastructure in place. Conversion functions
-(`type_expr_to_node`, `node_to_type_expr_full`) complete in 00_core.dag.
-Node-reading type emit functions added to all three backends. Remaining:
-04_infer.dag must populate `resolved_node` fields (blocked on perf fixes
-to the same file), then emitter call sites switch from `emit_type_expr` to
-`emit_*_node_type`, then TypeExpr is deleted.
+- parser still produces and consumes `TypeExpr` internally in many places
+- infer and emit still contain mixed `Node` / `TypeExpr` assumptions
+- `type_expr_to_node` / `node_to_type_expr` bridging is not yet fully faithful;
+  predicate conversion still drops information for some cases such as `Range`
+- `TypeExpr` still exists as a real downstream representation instead of being
+  strictly parse-local or fully deleted
 
 **Acceptance:**
-- [x] Conversion infrastructure (type_expr_to_node / node_to_type_expr_full)
-- [x] Dual-write fields on TypeBinding, ResolveResult, SpanType
-- [x] Node-reading type emit functions (emit_rust/py/go_node_type)
-- [x] is_type_alias_return_node shared helper
-- [ ] 04_infer.dag populates resolved_node (gated on perf fixes)
-- [ ] Emitter call sites switch to Node readers
-- [ ] TypeExpr type deleted from 00_core.dag
-- [ ] Field, Variant types deleted (replaced by child Nodes)
-- [ ] 887+ tests pass / fixed point holds (whichever gate is available)
 
-### B2: Rename typecheck → infer ✓
+- [x] `Node`-typed fields on `Field` / `Param` / `ResourceUse`
+- [x] `Node`-typed resolved types on `TypedExpr` / `FuncSig` / `TypedNode`
+- [x] node-based emit type readers
+- [ ] parser boundary becomes node-native without `type_expr_to_node` spray
+- [ ] infer and emit are internally consistent on `Node` and boxed option types
+- [ ] bridge conversions preserve predicate payloads rather than collapsing them
+      to lossy placeholders
+- [ ] `TypeExpr` is either deleted or reduced to a strictly parse-local form
+- [ ] generated v2 crate and tests stay green
 
-After convergence, the phase completes a Node graph (fills in return_types),
-not checks a separate type system.
+### B2: Rename typecheck -> infer
 
-**Acceptance:**
-- [x] `04_typecheck.dag` → `04_infer.dag`
-
-### B3: Expr → Node
-
-Dissolve Expr (17 variants) into Node patterns. Expressions become Nodes
-whose body/children carry computation structure.
-
-Types that dissolve: Expr, TypedExpr, TypedNode, TypedNamedArg, TypedMatchArm,
-TypedFieldInit, TypedStringPart, MatchPattern, FieldBinding, LiteralValue,
-BinOpKind, UnaryOpKind, StringPart, NamedArg, FieldInit, MatchArm.
-
-After this, "typed" just means "return_type is filled in." One type: Node.
-Inference is `List<Node> → List<Node>` — same Nodes, return_types completed.
+After convergence, the phase completes a node graph rather than checking a
+separate parallel type model.
 
 **Acceptance:**
-- [ ] Expr type deleted from 00_core.dag
-- [ ] Typed* family deleted (TypedNode, TypedExpr, etc.)
-- [ ] `typed_expr_to_expr` conversion deleted
-- [ ] Pipeline is `Node → Node → Node → TextFile`
+
+- [x] `04_typecheck.dag` -> `04_infer.dag`
+
+### B3: Expr -> Node
+
+Dissolve `Expr` and the `Typed*` family into node patterns. After this, "typed"
+just means "return_type is filled in."
+
+**Current state:** typed emit hot paths landed, but the pipeline still carries
+both `Expr` and `TypedExpr`.
+
+**Acceptance:**
+
+- [ ] `Expr` type deleted from `00_core.dag`
+- [ ] `Typed*` family deleted
+- [ ] `typed_expr_to_expr` deleted
+- [ ] transport/config/mock literal handling is node-native or isolated behind a
+      deliberate boundary type
+- [ ] pipeline shape is `Node -> Node -> Node -> TextFile`
 
 ### B4: Transport dissolution
 
-`transport: Node?` — the field stays (structural awareness: no smuggling I/O),
-but TransportBinding (the hardcoded 4-variant enum) dissolves. Transport value
-becomes a composed Node whose children carry transport facts.
-
-The emitter derives behavior from structure (has `base_url`? → HTTP client;
-has `argv`? → subprocess), not from matching a variant tag. New transports
-don't require compiler changes.
-
-Types that dissolve: TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef.
+`transport: Node?` stays, but `TransportBinding` should eventually dissolve.
+Transport behavior should come from structure rather than a fixed enum.
 
 **Acceptance:**
-- [ ] TransportBinding enum deleted
-- [ ] Emitters derive transport behavior from Node structure
+
+- [ ] `TransportBinding` enum deleted
+- [ ] emitters derive transport behavior from node structure
 - [ ] `transport != none` is the only hardcoded transport knowledge
 
 ---
 
-## Track C: Language emission as extdeps
+## Track C: Language Emission As Extdeps
 
-Languages are external systems with specifications. They belong in extdeps,
-modeled the same way GitHub and Git are modeled. Fully independent of
-tracks A and B — can proceed in parallel.
+Languages are external systems with specifications. They belong in extdeps and
+should be modeled the same way other external systems are modeled.
 
-### Architecture
-
-Three layers, separated:
-
-1. **Interface (compiler-owned):** The compiler defines what facts it needs
-   from any target language — type mappings, syntax patterns, naming
-   conventions, runtime ops, error model, async model, import system.
-   Stable contract, defined as .dag types.
-
-2. **Language extdeps (spec-derived):** Each language fills in the interface
-   from its real specification. Evolves independently of the compiler.
-
-3. **Wiring (compiler-owned for now):** Connects `--target` CLI flag to the
-   appropriate language extdep. Trivial, eventually dynamic.
-
-```
-dsl/extdeps/languages/
-  rust/       — types, syntax, runtime, naming, imports, errors, async
-  python/     — types, syntax, runtime, naming, imports, errors, async
-  typescript/ — ...
-  go/         — ...
-```
-
-### C1: Define LanguageSpec interface ✓
-
-The compiler defines the contract: what facts does the emitter need?
+### C1: Define LanguageSpec interface
 
 **Acceptance:**
-- [x] LanguageSpec type defined in `dsl/std/languages.dag` (14 facets)
-- [x] Covers: type mappings, naming, syntax patterns, runtime ops,
-      error model, async model, import system
-- [x] Full compositions: `rust_spec`, `go_spec`, `python_spec`
 
-### C2: Rust, Python, and Go language extdeps ✓
+- [x] `LanguageSpec` defined in `dsl/std/languages.dag`
+- [x] covers type mappings, naming, syntax patterns, runtime ops, error model,
+      async model, import system
+- [x] full compositions for Rust, Go, and Python
 
-Model each language from its real specification, implementing the
-LanguageSpec interface.
-
-Kernel runtime resolves here: "how do you concat strings in Rust?" is a
-fact in `dsl/extdeps/languages/rust/runtime.dag`. The current `v2_rt.rs`
-dissolves into the Rust language extdep.
+### C2: Rust, Python, and Go language extdeps
 
 **Acceptance:**
-- [x] Language extdeps in `dsl/extdeps/languages/` for Rust, Python, Go
-- [x] Runtime ops captured (string, list, map operations per language)
-- [x] Each language: types.dag, runtime.dag, imports.dag, errors.dag, async.dag
+
+- [x] language extdeps in `dsl/extdeps/languages/`
+- [x] runtime ops captured per language
+- [x] per-language `types.dag`, `runtime.dag`, `imports.dag`, `errors.dag`,
+      `async.dag`
 
 ### C3: Emitters consult extdeps
 
-The 1000+ line emitter monoliths shrink to thin semantic renderers handling
-irreducible differences (Rust ownership, Python exceptions). Surface
-knowledge comes from the language extdep.
-
-**Current state:** Type maps, container templates, and keywords are centralized
-as data declarations in `05_emit.dag` (lines 996-1046). These are the single
-source of truth but are still inline data, not imported from language extdeps.
-The emitters don't yet import from `dsl/extdeps/languages/`. The v1 bootstrap
-cannot pass data-declared Maps as function parameters, so per-language
-functions use direct `lookup()` on local data (05_emit.dag lines 1072-1190).
+**Current state:** type maps, container templates, and keywords are centralized
+in `05_emit.dag`, but still inline rather than imported from language extdeps.
 
 **Acceptance:**
-- [x] Type/keyword/container data centralized (05_emit.dag data declarations)
-- [ ] Emitters import from language extdeps instead of inline data
-- [ ] Adding a new target = writing a language extdep (no compiler changes)
-- [ ] Emitted code identical for all existing test cases
+
+- [x] type/keyword/container data centralized
+- [ ] emitters import from language extdeps instead of inline data
+- [ ] adding a new target means writing an extdep, not editing compiler logic
+- [ ] emitted code remains identical for existing tests
 
 ### C4: CLI target selection
 
-**Current state:** `RenderTarget = Rust | Python | Go` exists in 00_core.dag.
-Pipeline dispatches on target in 06_pipeline.dag. No CLI flag yet.
+**Current state:** `RenderTarget = Rust | Python | Go` exists and pipeline
+dispatches on it. No CLI flag yet.
 
 **Acceptance:**
-- [x] RenderTarget enum and pipeline dispatch
-- [ ] `--target` CLI flag (default: Rust, supports Python, TypeScript, Go)
-- [ ] Target selection loads appropriate language extdep
+
+- [x] `RenderTarget` enum and pipeline dispatch
+- [ ] `--target` CLI flag
+- [ ] target selection loads the appropriate language extdep
 
 ---
 
-## The fully converged Node
+## Track D: Runtime Complexity Analysis
 
-After stages 4 and 5 complete:
+The compiler should be able to prove upper bounds over DAG execution structure.
+This is a static analysis problem over authoritative graph structure, not a
+benchmarking feature.
+
+### Core model
+
+Use a small symbolic cost algebra rather than hard-coded big-O labels.
+
+```text
+ComplexitySummary {
+  work: CostExpr
+  span: CostExpr
+  output_size: Map<Port, CostExpr>
+  assumptions: List<Constraint>
+  certainty: Proven | Conservative | Unknown
+}
+```
+
+Two metrics are first-class:
+
+- `work`: total operations performed
+- `span`: critical path length under the DAG dependency structure
+
+Support facts:
+
+- symbolic size variables (`n`, `m`, `k`)
+- explicit assumptions and loop bounds
+- `Unknown` when the system cannot yet prove a tighter bound
+
+### Reference design
+
+Keep the program IR and the cost IR separate. The analyzer should walk the
+authoritative program structure (`TypedExpr` today, `Node` after convergence)
+and produce symbolic cost terms instead of trying to reuse program nodes as
+proof objects.
+
+```text
+SizeExpr
+  = Const(Int)
+  | Var(String)
+  | Len(String)
+  | Add(SizeExpr, SizeExpr)
+  | Max(SizeExpr, SizeExpr)
+
+CostExpr
+  = Const(Int)
+  | Add(CostExpr, CostExpr)
+  | Mul(CostExpr, CostExpr)
+  | Max(CostExpr, CostExpr)
+  | Sum { binder: String, upper: SizeExpr, body: CostExpr }
+  | PrimCost { op: String, args: List<SizeExpr>, model: CostModelRef }
+  | Unknown { reason: String }
+
+Constraint
+  = Eq(SizeExpr, SizeExpr)
+  | Leq(SizeExpr, SizeExpr)
+  | NonNegative(SizeExpr)
+
+SemanticsCtx {
+  backend: BootstrapInterp | LoweredRust | LoweredGo | LoweredPython
+  exec_model: Sequential | Parallel
+  list_model: PersistentList | RcVec
+  map_model: TreeMap | HashMapExpected
+  string_model: FlatString | RopeLike
+}
+```
+
+Variable costs should be represented as symbolic primitive rules, not collapsed
+into constants and not treated as "unknown" by default. The important question
+is "cost as a function of what size under which runtime model?"
+
+Reference examples:
+
+```text
+PrimCost("list_push", [n], BootstrapInterp/PersistentList) = n + 1
+PrimCost("list_push", [n], LoweredRust/RcVec) = 1   // amortized
+PrimCost("concat", [a, b], PersistentList) = a + b
+PrimCost("reverse", [n], any) = n
+PrimCost("map_insert", [n], TreeMap) = log(n)
+PrimCost("map_insert", [n], HashMapExpected) = 1    // expected
+```
+
+This is the core reason the analysis should be parameterized by
+`SemanticsCtx`: the same surface operation can have different faithful costs in
+the bootstrap interpreter and in emitted/native code.
+
+The analysis should also distinguish source-level forms from lowering-time
+rewrites. For example, emitted/native code can fuse `concat(acc, [x])` into an
+append-like block even when the bootstrap interpreter still pays value-copy
+costs for the same surface pattern.
+
+### Current motivating examples
+
+Tokenizer string builders should be expressible exactly enough to preserve the
+real lower-bound question.
+
+```text
+W_scan_string_body(L) = Sum(i = 0 .. L - 1,
+  Const(c_scan) + PrimCost("list_push", [i], current_model)
+)
+```
+
+Under O(1) append this simplifies to linear work. Under a persistent-list
+model where append clones the prior list, it stays quadratic.
+
+Parser accumulator builders should similarly remain symbolic rather than being
+prematurely labeled "linear."
+
+```text
+W_parse_items(n) = Sum(i = 0 .. n - 1,
+  item_cost(i) + PrimCost("concat", [Const(1), i], current_model)
+) + PrimCost("reverse", [n], current_model)
+```
+
+Typed emit is the positive example: once the pipeline reads resolved type
+structure directly, the formulas become simpler and more local. For an
+expression tree `E`:
+
+```text
+W_emit(E) =
+  Sum(v in nodes(E), tag_cost(v))
+  + Sum(call in calls(E), order_args_cost(call))
+```
+
+The reporting rule should be: compute an exact symbolic formula first, then
+derive asymptotic summaries from that formula. Do not discard representation or
+backend assumptions early.
+
+### D1: Cost algebra and proof vocabulary
+
+Define `SizeExpr`, `CostExpr`, `Constraint`, `SemanticsCtx`, and
+`ComplexitySummary` in the IR layer.
+
+**Acceptance:**
+
+- [ ] symbolic cost algebra exists in the IR layer
+- [ ] primitive cost rules are parameterized by `SemanticsCtx`
+- [ ] summaries can represent `Add`, `Mul`, `Max`, bounded sums, and `Unknown`
+- [ ] proof vocabulary is small and backend-independent at the algebra level
+- [ ] exact symbolic formulas can be rendered before asymptotic simplification
+
+### D2: Typed summaries for v2 expressions and functions
+
+Infer symbolic summaries from typed expressions/functions before lowering. Until
+Track B3 lands, the analyzer walks `TypedExpr`; after B3, the same transfer
+rules should attach directly to node-native bodies.
+
+**Planned semantics:**
+
+- straight-line code: additive work, additive span
+- branch: conservative `max`
+- recursion: require a decreasing measure or return `Unknown`
+- primitive collection ops: summarize through `PrimCost(...)` with size
+  variables, not hard-coded constants
+- collection traversals: summarize in terms of input cardinality and callee
+  summary
+
+**Acceptance:**
+
+- [ ] per-function complexity summaries exist for typed v2 items
+- [ ] summaries carry backend/representation assumptions explicitly
+- [ ] summaries mention symbolic input sizes rather than concrete values
+- [ ] unsupported recursion fails closed with `Unknown`
+
+### D3: DAG composition and pattern semantics
+
+Compose summaries over the lowered DAG and over pattern nodes such as loop and
+retry.
+
+**Planned semantics:**
+
+- DAG work = sum of node work
+- DAG span = longest dependency path
+- loop work = iteration count * body work
+- retry work/span = bounded by retry policy
+
+**Acceptance:**
+
+- [ ] acyclic DAG complexity composition exists
+- [ ] loop and retry patterns have explicit transfer rules
+- [ ] output cardinality/size summaries flow through pattern boundaries
+
+### D4: Proofs and reporting
+
+Surface complexity as a proof/report, not just an internal calculation.
+
+Integration points:
+
+- workflow proof surfaces
+- compiler diagnostics / reports
+- optional policy checks ("prove this workflow is bounded under these inputs")
+
+**Acceptance:**
+
+- [ ] complexity proof/reporting entrypoint exists
+- [ ] users can request work/span summaries for a workflow or compiled item
+- [ ] reports can show both symbolic formulas and simplified asymptotic forms
+- [ ] policy checks can reject unbounded or unknown-critical workflows when
+      configured to do so
+
+---
+
+## Track E: Artifact Planning And Boundary Semantics
+
+Language facts are only part of the story. Once one program can emit to
+multiple targets, the compiler also needs to know how the program is partitioned
+into artifacts and what semantics hold across target boundaries.
+
+**Current state:** the pipeline still assumes a mostly monolithic artifact
+model. Target selection is per compile, not per subgraph, and transport/boundary
+behavior is not yet planned as a first-class compilation product.
+
+**Guiding use case:** define an end-to-end web stack in one `.dag` graph:
+
+- backend services and workers
+- frontend application code
+- HTML/CSS/UI generation
+- middleware and shared API boundaries
+- cloud/deployment infrastructure
+
+The long-term goal is not just "many emitters." It is one graph that can be
+partitioned into multiple artifacts, placed onto multiple targets, and emitted
+with explicit contracts between those pieces.
+
+### E0: Wrap the current monolith explicitly
+
+Do this first. The compiler already behaves as though there is one artifact; the
+next step is to make that shape explicit instead of implicit.
+
+The purpose is not to solve multi-artifact planning immediately. It is to create
+the wrapper that later composition can build on without changing the meaning of
+today's pipeline.
+
+Sketch:
+
+```text
+artifact default {
+  kind: ServiceBinary
+  target: Rust
+  contents: [root graph]
+}
+```
+
+This should act as a compatibility layer:
+
+- current single-artifact compilation becomes an explicit default plan
+- later multi-artifact partitioning becomes composition rather than redesign
+- artifact-level metadata has a home before deployment concerns sprawl across
+  unrelated node properties
+
+**Acceptance:**
+
+- [ ] current monolithic compilation is representable as an explicit artifact
+      wrapper
+- [ ] introducing the wrapper does not change generated output for the current
+      monolithic path
+- [ ] artifact metadata has a dedicated structural home before boundary planning
+      expands
+
+### E1: Artifact model
+
+Make deployable/buildable units explicit in `.dag` instead of treating the
+current single emitted crate/module set as the permanent model.
+
+Examples:
+
+- binaries
+- libraries
+- services
+- frontends / bundles
+- firmware or bare-metal outputs
+- generated support artifacts (OpenAPI, schemas, stubs, manifests)
+
+**Acceptance:**
+
+- [ ] an explicit artifact model exists in the IR / source language
+- [ ] the current monolithic output is represented as a default artifact plan,
+      not a hardcoded special case
+- [ ] the compiler can emit multiple artifact plans from one source graph
+
+### E2: Target placement and graph partitioning
+
+Allow target choice to be attached to nodes or subgraphs rather than only to the
+entire compile invocation.
+
+This is the step that makes "this subgraph emits to Rust, that one to
+TypeScript, that one to MIPS" a principled compilation problem instead of an ad
+hoc emitter switch.
+
+**Acceptance:**
+
+- [ ] target placement can be declared in `.dag`
+- [ ] the compiler can partition a graph into same-target regions
+- [ ] invalid placements fail closed with clear diagnostics
+- [ ] target selection can still be overridden at the top level when desired
+
+### E3: Boundary semantics and shared transports
+
+Cross-target edges need explicit boundary semantics. A direct in-process call, a
+shared HTTP server, an RPC boundary, and a file/protocol handoff are different
+things and should not be inferred from syntax alone.
+
+Examples:
+
+- direct call
+- HTTP/JSON
+- shared REST server hosting multiple DAG boundaries
+- message queue / event stream
+- FFI / ABI boundary
+- file or manifest protocol
+- browser/server bridge
+
+**Acceptance:**
+
+- [ ] boundary kinds are first-class rather than hidden in emitter heuristics
+- [ ] shared transport hosts (for example one HTTP server serving multiple DAG
+      boundaries) can be represented explicitly
+- [ ] adapters/stubs/serialization code are emitted from boundary facts
+- [ ] cross-target edges without a valid boundary contract fail closed
+
+### E4: Planning and reporting
+
+Artifact and boundary planning should be inspectable, not implicit. The compiler
+should be able to tell the user what artifacts it will build, which targets they
+use, and how boundaries are realized.
+
+**Acceptance:**
+
+- [ ] the compiler can emit an artifact plan report
+- [ ] reports show partitions, targets, boundaries, and generated support code
+- [ ] artifact planning is available as a dry-run / proof surface before codegen
+- [ ] deployment-facing facts (ports, package names, manifests, server sharing)
+      are derived from explicit structure
+
+---
+
+## Consolidated Backlog From The Former Sustainability Ledger
+
+These items remain real, but they are lower priority than Tracks S/A/B/C/D.
+
+- **Anonymous record target resolution:** stop guessing nominal record targets
+  in v1 codegen; ambiguous cases must fail closed.
+- **Collection intrinsic semantics in shared IR:** collection operations should
+  be explicit shared semantics, not duplicated across evaluator/codegen/emitter.
+- **Generated self-hosting tests and stage contracts:** strengthen stage-level
+  assertions and generated integration coverage.
+- **TCO backend contract:** keep explicit tail-position analysis/rendering
+  contracts; no silent partial fallback.
+- **Embedded source metadata:** preserve source origin through lowering and
+  emission so diagnostics stay anchored in user code.
+
+---
+
+## The Fully Converged Node
+
+After Tracks B and C complete:
 
 ```dag
 type Connective = Conj | Disj
@@ -341,57 +789,55 @@ type Node {
 ### Why each field is irreducible
 
 | Field | Logical role | Why separate |
-|-------|-------------|-------------|
-| `children` + `connective` | Composition (AND/OR of sub-propositions) | The core primitive |
-| `params` | Obligations — what must be supplied (IMPLIES antecedent) | Consumed, not composed |
-| `return_type` | Guarantee — what is produced (IMPLIES consequent) | Flows out, not in |
-| `body` | Proof — computation connecting params to return_type | HOW, not WHAT |
-| `transport` | I/O grounding — where this node touches external reality | Must be structural (no smuggling) |
+|-------|--------------|--------------|
+| `children` + `connective` | Composition | The core primitive |
+| `params` | Obligations | Consumed, not composed |
+| `return_type` | Guarantee | Flows out, not in |
+| `body` | Proof / computation | How, not what |
+| `transport` | I/O grounding | Must remain structural |
 | `properties` | Extensible metadata | Domain facts |
 
 ### The irreducible kernel
 
-Only three things can't be Nodes:
-1. **Node** — the universal container (circular if self-defined)
-2. **Connective = Conj | Disj** — the logical primitive
-3. **Kernel primitives** (String, Int, Bool, List, Map) — engineering atoms
+Only three things cannot themselves be ordinary nodes:
 
-Everything else is composition. Named types are aliases. The `type` keyword
-is surface sugar that produces a Node.
+1. `Node` itself
+2. `Connective = Conj | Disj`
+3. kernel primitives such as `String`, `Int`, `Bool`, `List`, `Map`
+
+Everything else is composition.
 
 ### Pipeline
 
-```
-source → parse → resolve → infer → emit
-           ↓        ↓        ↓       ↓
-         Nodes    Nodes    Nodes   TextFiles
-         (raw)  (imports  (types
-                 linked)  filled)
+```text
+source -> parse -> resolve -> infer -> emit
+           |        |         |        |
+         Nodes    Nodes     Nodes    TextFiles
+          raw     linked    typed
 ```
 
-One type flows through the entire pipeline. Each phase enriches the same
-Nodes rather than converting between representations.
+One type flows through the pipeline; each phase enriches it rather than
+translating into a parallel representation.
 
 ---
 
-## The end state
+## The End State
 
-- **Self-hosted:** written in .dag, compiled by itself
-- **Structurally unified:** one type (Node) through the entire pipeline
-- **Compositional:** everything is Conj/Disj + kernel primitives
-- **Target-polymorphic:** Rust, Python, TypeScript, Go from same source
-- **Bootstrap-free:** no v1 dependency, no interpreter dependency
-- **Verified by fixed point:** compiler reproduces itself
-- **Extensible without compiler changes:** new transports, new languages,
-  new domain models — all .dag compositions
+- self-hosted
+- structurally unified
+- compositional
+- target-polymorphic
+- artifact-aware
+- bootstrap-free
+- fixed-point reproducible
+- complexity-analyzable in DAG-native terms (`work` and `span`)
 
 ---
 
 ## Non-goals
 
-- Deleting keywords from surface syntax. Keywords are good parse sugar.
-- Expanding String to bits at compile time. The logical decomposition is
-  the model; backends render efficiently.
-- A single template-driven renderer. Irreducible semantic differences
-  between languages (ownership, exceptions, multi-return) stay as thin
-  per-language modules.
+- deleting surface keywords from the language
+- expanding strings to bits at compile time
+- forcing all backends through one template-only renderer
+- pretending exact runtime prediction is possible when only conservative static
+  bounds are justified

@@ -20,10 +20,10 @@ module v2.compiler.infer
 import std.types { SourceSpan }
 import v2.std.core {
   Module, Node, TypedNode, ImportNames, ImportAll, ImportSpecific,
-  TypeExpr, Field, Variant, Param,
+  Field, Variant, Param,
   Connective, Conj, Disj,
   Expr, Diagnostic,
-  Named, Product, Coproduct, Container, Refined, Optional, MapType, Primitive,
+  Named, Primitive,
   ResourceUse,
   TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   Error,
@@ -85,14 +85,6 @@ fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
 type TypeBinding {
   name: String
   resolved: Node
-}
-
-// Internal result type for threading diagnostics through resolution.
-type ResolveResult {
-  resolved: TypeExpr
-  diagnostics: List<Diagnostic>
-  // B1 migration: Node representation of the resolved type.
-  resolved: Node?
 }
 
 type NodeResolveResult {
@@ -188,11 +180,6 @@ type BlockInferState {
 
 type TypedItemResult {
   item: TypedNode
-  diagnostics: List<Diagnostic>
-}
-
-type AccessCheckResult {
-  resolved_type: TypeExpr
   diagnostics: List<Diagnostic>
 }
 
@@ -335,7 +322,7 @@ type CycleDetectState {
 // Unwrap an optional return type at a function boundary.
 // The v1 codegen tracks optionality from field declarations and rejects
 // assigning optional values to non-optional struct fields. This function
-// boundary resets the tracking, allowing the result to be used as TypeExpr.
+// boundary resets the tracking.
 fn unwrap_return_type(rt: Node?) -> Node {
   if rt == none { leaf_node(name: "Unit") }
   else { rt.value }
@@ -343,7 +330,7 @@ fn unwrap_return_type(rt: Node?) -> Node {
 
 fn build_func_env(items: List<Node>) -> FuncEnv {
   // Called with resolved items (after resolve_item_types), so return_type
-  // fields have already been resolved by resolve_optional_type_expr.
+  // fields have already been resolved by resolve_optional_node.
   let sigs = fold(items, init: empty_map(), f: (acc, item) =>
     if item.params |> count > 0 {
       let is_async = item.uses |> count > 0
@@ -390,44 +377,6 @@ fn find_dot_index(name: String, index: Int) -> Int {
 // the operation and returns its output type.
 // =========================================================================
 
-fn check_service_field_access(base_type: TypeExpr, field: String, scope: InferScope) -> TypeExpr? {
-  match base_type {
-    Named { name: svc_name, span: _ } =>
-      let path = concat(svc_name, ".", field)
-      match map_get(scope.service_registry, path) {
-        Some { value: _ } => Some { value: Named { name: path, span: no_span() } }
-        None => None
-      }
-    _ => None
-  }
-}
-
-fn check_service_method_call(receiver_type: TypeExpr, method: String, scope: InferScope) -> TypeExpr? {
-  match receiver_type {
-    Named { name: svc_path, span: _ } =>
-      match map_get(scope.service_registry, svc_path) {
-        Some { value: ops } =>
-          let matching = ops |> filter(op => op.name == method)
-          match matching |> first {
-            Some { value: op } =>
-              if op.outputs |> count == 0 {
-                Some { value: unit_type() }
-              } else if op.outputs |> count == 1 {
-                match op.outputs |> first {
-                  Some { value: f } => Some { value: f.type_expr }
-                  None => Some { value: unit_type() }
-                }
-              } else {
-                Some { value: Product { name: none, fields: op.outputs, span: no_span() } }
-              }
-            None => None
-          }
-        None => None
-      }
-    _ => None
-  }
-}
-
 fn check_service_field_access_node(base_type: Node, field: String, scope: InferScope) -> Node? {
   if base_type.connective == none && base_type.children |> count == 0 {
     let path = concat(base_type.name, ".", field)
@@ -468,9 +417,9 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
 }
 
 // =========================================================================
-// Expression inference — step 3 of the typed AST design
+// Expression inference
 //
-// Assigns a resolved TypeExpr to every Expr node in the AST, producing
+// Assigns a resolved type (Node) to every Expr node in the AST, producing
 // TypedExpr values. This is a single top-down pass (not Hindley-Milner);
 // .dag has explicit type annotations on params and fields, so inference
 // is propagation, not unification.
@@ -485,15 +434,7 @@ fn no_span() -> SourceSpan {
 }
 
 // -------------------------------------------------------------------------
-// Helper: construct a unit TypeExpr
-// -------------------------------------------------------------------------
-
-fn unit_type() -> TypeExpr {
-  Primitive { name: "Unit", span: no_span() }
-}
-
-// -------------------------------------------------------------------------
-// Node-based constructor helpers (B1 migration)
+// Node-based constructor helpers
 // -------------------------------------------------------------------------
 
 fn leaf_node(name: String) -> Node {
@@ -554,63 +495,6 @@ fn lookup_in_scope(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Some { value: binding } => Some { value: binding.resolved }
     None => None
-  }
-}
-
-// -------------------------------------------------------------------------
-// lookup_field_type: given a resolved type (Product), look up a field
-// by name and return its type. Returns None if not found or not a Product.
-// -------------------------------------------------------------------------
-
-// Find a field by name in a list of fields.
-fn find_field_in_list(fields: List<Field>, field_name: String) -> TypeExpr? {
-  fold(fields, init: none, f: (acc, f) =>
-    if acc != none { acc }
-    else if f.name == field_name {
-      if f.optional {
-        Some { value: Optional { inner: f.type_expr, span: no_span() } }
-      } else {
-        Some { value: f.type_expr }
-      }
-    } else {
-      acc
-    }
-  )
-}
-
-// Find a field that appears in ALL variants of a Coproduct (common field).
-fn lookup_coproduct_common_field(variants: List<Variant>, field_name: String) -> TypeExpr? {
-  if count(variants) == 0 { None }
-  else {
-    // Check first variant for the field
-    match first(variants) {
-      Some { value: first_v } =>
-        match find_field_in_list(fields: first_v.fields, field_name: field_name) {
-          Some { value: field_type } =>
-            // Check all other variants have this field too
-            let all_have = all(variants, v => any(v.fields, f => f.name == field_name))
-            if all_have { Some { value: field_type } } else { None }
-          None => None
-        }
-      None => None
-    }
-  }
-}
-
-fn lookup_field_type(type_expr: TypeExpr, field_name: String) -> TypeExpr? {
-  match type_expr {
-    Product { name: _, fields: fields, span: _ } =>
-      find_field_in_list(fields: fields, field_name: field_name)
-    Coproduct { name: _, variants: variants, span: _ } =>
-      lookup_coproduct_common_field(variants: variants, field_name: field_name)
-    // For Optional types, unwrap and look up in inner
-    Optional { inner: inner, span: _ } =>
-      match lookup_field_type(type_expr: inner, field_name: field_name) {
-        Some { value: inner_result } =>
-          Some { value: Optional { inner: inner_result, span: no_span() } }
-        None => None
-      }
-    _ => None
   }
 }
 
@@ -676,16 +560,6 @@ fn lookup_func_sig(func_env: FuncEnv, name: String) -> FuncSig? {
 // infer_literal: resolve the type of a LiteralValue
 // -------------------------------------------------------------------------
 
-fn infer_literal(lit: LiteralValue) -> TypeExpr {
-  match lit {
-    LitStr { value: _ } => Primitive { name: "String", span: no_span() }
-    LitInt { value: _ } => Primitive { name: "Int", span: no_span() }
-    LitFloat { value: _ } => Primitive { name: "Float", span: no_span() }
-    LitBool { value: _ } => Primitive { name: "Bool", span: no_span() }
-    LitNull => Primitive { name: "Unit", span: no_span() }
-  }
-}
-
 fn infer_literal_node(lit: LiteralValue) -> Node {
   match lit {
     LitStr { value: _ } => leaf_node(name: "String")
@@ -703,14 +577,6 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 // -------------------------------------------------------------------------
 // Index/Slice access helpers
 // -------------------------------------------------------------------------
-
-fn normalize_access_type(type_expr: TypeExpr) -> TypeExpr {
-  match type_expr {
-    Refined { base: base, predicates: _, span: _ } =>
-      normalize_access_type(type_expr: base)
-    _ => type_expr
-  }
-}
 
 fn normalize_access_type_node(n: Node) -> Node {
   if n.name == "Refined" && n.connective != none {
@@ -737,98 +603,10 @@ fn normalize_type_name(name: String) -> String {
   }
 }
 
-fn container_kind_name(kind: ContainerKind) -> String {
-  match kind {
-    List => "List"
-    Set => "Set"
-    NonEmptyList => "NonEmptyList"
-    NonEmptySet => "NonEmptySet"
-  }
-}
-
-fn type_expr_shape(type_expr: TypeExpr) -> String {
-  match normalize_access_type(type_expr: type_expr) {
-    Named { name: name, span: _ } => concat("Named(", normalize_type_name(name: name), ")")
-    Primitive { name: name, span: _ } => concat("Primitive(", name, ")")
-    Container { kind: kind, element: element, span: _ } =>
-      concat("Container(", container_kind_name(kind: kind), ",", type_expr_shape(type_expr: element), ")")
-    Optional { inner: inner, span: _ } =>
-      concat("Optional(", type_expr_shape(type_expr: inner), ")")
-    MapType { key: key, value: value, span: _ } =>
-      concat("Map(", type_expr_shape(type_expr: key), ",", type_expr_shape(type_expr: value), ")")
-    Product { name: name, fields: _, span: _ } =>
-      if name == none { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: name.value), ")") }
-    Coproduct { name: name, variants: _, span: _ } =>
-      if name == none { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: name.value), ")") }
-    Refined { base: _, predicates: _, span: _ } =>
-      "Refined(<unreachable>)"
-  }
-}
-
-fn type_expr_equals(left: TypeExpr, right: TypeExpr) -> Bool {
-  let l = normalize_access_type(type_expr: left)
-  let r = normalize_access_type(type_expr: right)
-  match l {
-    Named { name: ln, span: _ } =>
-      match r {
-        Named { name: rn, span: _ } => normalize_type_name(name: ln) == normalize_type_name(name: rn)
-        Product { name: rn, fields: _, span: _ } =>
-          if rn == none { false } else { normalize_type_name(name: ln) == normalize_type_name(name: rn.value) }
-        Coproduct { name: rn, variants: _, span: _ } =>
-          if rn == none { false } else { normalize_type_name(name: ln) == normalize_type_name(name: rn.value) }
-        _ => false
-      }
-    Primitive { name: ln, span: _ } =>
-      match r {
-        Primitive { name: rn, span: _ } => ln == rn
-        _ => false
-      }
-    Container { kind: lk, element: le, span: _ } =>
-      match r {
-        Container { kind: rk, element: re, span: _ } =>
-          container_kind_name(kind: lk) == container_kind_name(kind: rk) && type_expr_equals(left: le, right: re)
-        _ => false
-      }
-    Optional { inner: li, span: _ } =>
-      match r {
-        Optional { inner: ri, span: _ } => type_expr_equals(left: li, right: ri)
-        _ => false
-      }
-    MapType { key: lk, value: lv, span: _ } =>
-      match r {
-        MapType { key: rk, value: rv, span: _ } =>
-          type_expr_equals(left: lk, right: rk) && type_expr_equals(left: lv, right: rv)
-        _ => false
-      }
-    Product { name: ln, fields: _, span: _ } =>
-      match r {
-        Named { name: rn, span: _ } =>
-          if ln == none { false } else { normalize_type_name(name: ln.value) == normalize_type_name(name: rn) }
-        Product { name: rn, fields: _, span: _ } =>
-          if ln == none { false }
-          else { if rn == none { false } else { normalize_type_name(name: ln.value) == normalize_type_name(name: rn.value) } }
-        _ => false
-      }
-    Coproduct { name: ln, variants: _, span: _ } =>
-      match r {
-        Named { name: rn, span: _ } =>
-          if ln == none { false } else { normalize_type_name(name: ln.value) == normalize_type_name(name: rn) }
-        Coproduct { name: rn, variants: _, span: _ } =>
-          if ln == none { false }
-          else { if rn == none { false } else { normalize_type_name(name: ln.value) == normalize_type_name(name: rn.value) } }
-        _ => false
-      }
-    Refined { base: _, predicates: _, span: _ } =>
-      false
-  }
-}
-
 // =========================================================================
-// Node-based type utility functions (B1 migration)
+// Node-based type utility functions
 //
-// These are the Node equivalents of type_expr_equals, type_expr_shape,
-// normalize_access_type, and type_expr_deps. They work on Nodes used
-// as type representations rather than TypeExpr values.
+// These work on Nodes used as type representations.
 //
 // A Node-as-type uses:
 //   - name: the type's name
@@ -869,7 +647,7 @@ fn node_is_named_ref(n: Node) -> Bool {
   }
 }
 
-// Node-based shape description (equivalent to type_expr_shape).
+// Node-based shape description.
 fn node_type_shape(n: Node) -> String {
   if node_is_leaf(n: n) {
     if node_is_named_ref(n: n) {
@@ -885,15 +663,17 @@ fn node_type_shape(n: Node) -> String {
         if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
     }
   } else if node_is_container(n: n) {
-    let elem_shape = match n.children |> first {
-      Some { value: el } => node_type_shape(n: el)
-      None => "?"
+    let elem_shape = if n.return_type != none {
+      type_expr_shape(type_expr: n.return_type.value)
+    } else {
+      "?"
     }
     concat("Container(", n.name, ",", elem_shape, ")")
   } else if node_is_optional(n: n) {
-    let inner_shape = match n.children |> first {
-      Some { value: inner } => node_type_shape(n: inner)
-      None => "?"
+    let inner_shape = if n.return_type != none {
+      type_expr_shape(type_expr: n.return_type.value)
+    } else {
+      "?"
     }
     concat("Optional(", inner_shape, ")")
   } else if node_is_map(n: n) {
@@ -903,7 +683,7 @@ fn node_type_shape(n: Node) -> String {
   }
 }
 
-// Node-based type equality (equivalent to type_expr_equals).
+// Node-based type equality.
 // Two type-Nodes are equal if they represent the same type structure.
 fn node_type_equals(left: Node, right: Node) -> Bool {
   // Both leaves: compare names (normalized)
@@ -963,7 +743,7 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   }
 }
 
-// Node-based dependency extraction (equivalent to type_expr_deps).
+// Node-based dependency extraction.
 // Returns the list of Named type references this type-Node depends on.
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
@@ -974,28 +754,17 @@ fn node_type_deps(n: Node) -> List<String> {
     // Product or Coproduct: collect deps from children's return_types
     flat_map(n.children, child =>
       if child.return_type != none {
-        node_type_deps(n: child.return_type.value)
+        type_expr_deps(expr: child.return_type.value)
       } else {
         []
       }
     )
+  } else if n.return_type != none {
+    // Container, Optional, Refined: deps from the element/inner type
+    type_expr_deps(expr: n.return_type.value)
   } else {
-    // Container, Map, or other: collect from children
+    // Map or other: collect from children
     flat_map(n.children, child => node_type_deps(n: child))
-  }
-}
-
-fn is_int_type(type_expr: TypeExpr) -> Bool {
-  match normalize_access_type(type_expr: type_expr) {
-    Primitive { name: name, span: _ } => name == "Int"
-    _ => false
-  }
-}
-
-fn is_string_type(type_expr: TypeExpr) -> Bool {
-  match normalize_access_type(type_expr: type_expr) {
-    Primitive { name: name, span: _ } => name == "String"
-    _ => false
   }
 }
 
@@ -1027,120 +796,6 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Di
   }
 }
 
-fn check_index_access(base_type: TypeExpr, index_type: TypeExpr, span: SourceSpan, module_name: String) -> AccessCheckResult {
-  match normalize_access_type(type_expr: base_type) {
-    Primitive { name: name, span: _ } =>
-      if name == "String" {
-        let diags = if is_int_type(type_expr: index_type) {
-          []
-        } else {
-          [access_error(
-            message: "string index requires an Int index",
-            span: span,
-            module_name: module_name
-          )]
-        }
-        AccessCheckResult {
-          resolved_type: Primitive { name: "String", span: no_span() },
-          diagnostics: diags
-        }
-      } else {
-        AccessCheckResult {
-          resolved_type: unit_type(),
-          diagnostics: [access_error(
-            message: "indexing is only supported for String and Map values",
-            span: span,
-            module_name: module_name
-          )]
-        }
-      }
-    MapType { key: key, value: value, span: _ } =>
-      let diags = if type_expr_equals(left: key, right: index_type) {
-        []
-      } else {
-        [access_error(
-          message: "map index key type does not match the map key type",
-          span: span,
-          module_name: module_name
-        )]
-      }
-      AccessCheckResult {
-        resolved_type: Optional { inner: value, span: no_span() },
-        diagnostics: diags
-      }
-    _ =>
-      AccessCheckResult {
-        resolved_type: unit_type(),
-        diagnostics: [access_error(
-          message: "indexing is only supported for String and Map values",
-          span: span,
-          module_name: module_name
-        )]
-      }
-  }
-}
-
-fn check_slice_access(base_type: TypeExpr, start_type: TypeExpr, end_type: TypeExpr, span: SourceSpan, module_name: String) -> AccessCheckResult {
-  let base_diags = if is_string_type(type_expr: base_type) {
-    []
-  } else {
-    [access_error(
-      message: "slice is only supported for String values",
-      span: span,
-      module_name: module_name
-    )]
-  }
-  let start_diags = if is_int_type(type_expr: start_type) {
-    []
-  } else {
-    [access_error(
-      message: "slice start requires an Int index",
-      span: span,
-      module_name: module_name
-    )]
-  }
-  let end_diags = if is_int_type(type_expr: end_type) {
-    []
-  } else {
-    [access_error(
-      message: "slice end requires an Int index",
-      span: span,
-      module_name: module_name
-    )]
-  }
-  AccessCheckResult {
-    resolved_type: if is_string_type(type_expr: base_type) {
-      Primitive { name: "String", span: no_span() }
-    } else {
-      unit_type()
-    },
-    diagnostics: concat(base_diags, start_diags, end_diags)
-  }
-}
-
-fn infer_binop_type(op: BinOpKind, left_type: TypeExpr) -> TypeExpr {
-  match op {
-    // Arithmetic: result is same as left operand
-    Add => left_type
-    Sub => left_type
-    Mul => left_type
-    Div => left_type
-    Mod => left_type
-    // Comparison: result is Bool
-    BinEq => Primitive { name: "Bool", span: no_span() }
-    BinNe => Primitive { name: "Bool", span: no_span() }
-    BinLt => Primitive { name: "Bool", span: no_span() }
-    BinGt => Primitive { name: "Bool", span: no_span() }
-    BinLe => Primitive { name: "Bool", span: no_span() }
-    BinGe => Primitive { name: "Bool", span: no_span() }
-    // Logical: result is Bool
-    BinAnd => Primitive { name: "Bool", span: no_span() }
-    BinOr => Primitive { name: "Bool", span: no_span() }
-    // NullCoalesce: unwrap Optional to inner type
-    NullCoalesce => extract_optional_inner(type_expr: left_type)
-  }
-}
-
 fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
   match op {
     BinEq => leaf_node(name: "Bool")
@@ -1160,13 +815,6 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
 // extract_optional_inner: unwrap Optional<T> to T; if not Optional, return as-is
 // -------------------------------------------------------------------------
 
-fn extract_optional_inner(type_expr: TypeExpr) -> TypeExpr {
-  match type_expr {
-    Optional { inner: inner, span: _ } => inner
-    _ => type_expr
-  }
-}
-
 fn extract_optional_inner_node(n: Node) -> Node {
   if n.connective != none && n.name == "Optional" {
     match n.children |> first {
@@ -1179,64 +827,6 @@ fn extract_optional_inner_node(n: Node) -> Node {
 // -------------------------------------------------------------------------
 // infer_method_call_type: compute result type for pipe methods
 // -------------------------------------------------------------------------
-
-fn infer_method_call_type(receiver_type: TypeExpr, method: String) -> TypeExpr {
-  // Extract the element type from Container types
-  let elem_type = match receiver_type {
-    Container { kind: _, element: el, span: _ } => el
-    _ => receiver_type
-  }
-  if method == "map" {
-    // map preserves container kind but element type comes from context;
-    // without bidirectional typing, return the same container shape
-    receiver_type
-  } else {
-    if method == "filter" {
-      // filter preserves the full container type
-      receiver_type
-    } else {
-      if method == "fold" {
-        // fold returns the accumulator type; without more info, Unit
-        unit_type()
-      } else {
-        if method == "first" {
-          // first returns Optional<element>
-          Optional { inner: elem_type, span: no_span() }
-        } else {
-          if method == "last" {
-            // last returns Optional<element>
-            Optional { inner: elem_type, span: no_span() }
-          } else {
-            if method == "count" {
-              Primitive { name: "Int", span: no_span() }
-            } else {
-              if method == "join" {
-                Primitive { name: "String", span: no_span() }
-              } else {
-                if method == "any" {
-                  Primitive { name: "Bool", span: no_span() }
-                } else {
-                  if method == "contains" {
-                    Primitive { name: "Bool", span: no_span() }
-                  } else {
-                    if method == "enumerate" {
-                      // enumerate wraps elements in (index, element) pairs;
-                      // keep as container for now
-                      receiver_type
-                    } else {
-                      // Unknown method — fall back to Unit
-                      unit_type()
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
 
 fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
@@ -1342,78 +932,6 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
   }
 }
 
-// Look up the resolved definition of a type by name in the type environment.
-// Returns the TypeExpr if found, or a Named fallback otherwise.
-fn resolve_scrutinee_type(env: TypeEnv, te: TypeExpr) -> TypeExpr {
-  match te {
-    Named { name: n, span: _ } =>
-      match lookup_type(env: env, name: n) {
-        Some { value: resolved } => resolved
-        None => te
-      }
-    _ => te
-  }
-}
-
-// Find a variant by name in a Coproduct type.
-fn find_variant_in_type(te: TypeExpr, variant_name: String) -> List<Field> {
-  match te {
-    Coproduct { name: _, variants: vs, span: _ } =>
-      fold(vs, init: [], f: (acc, v) =>
-        if count(acc) > 0 { acc }
-        else if v.name == variant_name { v.fields }
-        else { acc }
-      )
-    _ => []
-  }
-}
-
-// Find a field's type by name in a list of fields.
-fn find_field_type(fields: List<Field>, field_name: String) -> TypeExpr {
-  let found = fold(fields, init: none, f: (acc, f) =>
-    if acc != none { acc }
-    else if f.name == field_name { Some { value: f.type_expr } }
-    else { acc }
-  )
-  match found {
-    Some { value: te } => te
-    None => Named { name: "_inferred", span: no_span() }
-  }
-}
-
-// Extend scope with match pattern bindings.
-// For VariantPattern, looks up the variant definition in the scrutinee type
-// to assign correct field types instead of _inferred.
-fn extend_scope_with_pattern(scope: InferScope, pattern: MatchPattern, scrutinee_type: TypeExpr) -> InferScope {
-  match pattern {
-    Bind { name: n } => extend_scope(scope: scope, name: n, resolved: scrutinee_type)
-    Wildcard => scope
-    LitPattern { value: _ } => scope
-    VariantPattern { name: vname, field_bindings: bindings } =>
-      let resolved_scrut = resolve_scrutinee_type(env: scope.type_env, te: scrutinee_type)
-      let variant_fields = find_variant_in_type(te: resolved_scrut, variant_name: vname)
-      fold(bindings, init: scope, f: (acc, fb) =>
-        let field_type = find_field_type(fields: variant_fields, field_name: fb.field_name)
-        match fb.binding {
-          Bind { name: n } => extend_scope(scope: acc, name: n, resolved: field_type)
-          _ => extend_scope_with_pattern(scope: acc, pattern: fb.binding, scrutinee_type: field_type)
-        }
-      )
-  }
-}
-
-fn scope_after_stmt(stmt: Expr, stmt_type: TypeExpr, scope: InferScope) -> InferScope {
-  match stmt {
-    Let { name: name, value: _, body: body, span: _ } =>
-      if body == none {
-        extend_scope(scope: scope, name: name, resolved: stmt_type)
-      } else {
-        scope
-      }
-    _ => scope
-  }
-}
-
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
   if n.connective == none && n.children |> count == 0 {
     match lookup_type(env: env, name: n.name) {
@@ -1460,19 +978,6 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
           _ => extend_scope_with_pattern_node(scope: acc, pattern: fb.binding, scrutinee_type: field_type)
         }
       )
-  }
-}
-
-fn for_each_element_type(type_expr: TypeExpr) -> TypeExpr {
-  match normalize_access_type(type_expr: type_expr) {
-    Container { kind: _, element: element, span: _ } => element
-    Primitive { name: name, span: _ } =>
-      if name == "String" {
-        Primitive { name: "String", span: no_span() }
-      } else {
-        unit_type()
-      }
-    _ => unit_type()
   }
 }
 
@@ -2043,26 +1548,9 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
 //
 // Instead of threading a growing resolving list through resolution (O(d²)
 // memory from repeated concat), we compute cycle membership once at env
-// construction time. resolve_type_expr then uses the precomputed set:
-// Named references to cycle members are kept as Named; all others expand.
+// construction time. resolve_node then uses the precomputed set:
+// Named references to cycle members are kept as-is; all others expand.
 // =========================================================================
-
-// Extract Named type references from a TypeExpr (direct dependencies).
-fn type_expr_deps(expr: TypeExpr) -> List<String> {
-  match expr {
-    Named { name: name, span: _ } => [name]
-    Primitive { name: _, span: _ } => []
-    Product { name: _, fields: fields, span: _ } =>
-      flat_map(fields, f => type_expr_deps(expr: f.type_expr))
-    Coproduct { name: _, variants: variants, span: _ } =>
-      flat_map(variants, v => flat_map(v.fields, f => type_expr_deps(expr: f.type_expr)))
-    Container { kind: _, element: element, span: _ } => type_expr_deps(expr: element)
-    Optional { inner: inner, span: _ } => type_expr_deps(expr: inner)
-    Refined { base: base, predicates: _, span: _ } => type_expr_deps(expr: base)
-    MapType { key: key, value: value, span: _ } =>
-      concat(type_expr_deps(expr: key), type_expr_deps(expr: value))
-  }
-}
 
 // Check if a type name can reach itself through the dependency graph.
 // Uses Map<String, Bool> for O(1) visited checks instead of O(n) list scans.
@@ -2174,8 +1662,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     if item.connective != none {
-      let resolved = node_to_type_expr(name: item.name, item: item, span: item.span)
-      // The source Node IS the type: use it directly as resolved_node
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
         connective: item.connective, params: [], return_type: none,
@@ -2214,7 +1700,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, local_env])
-  // Precompute which types participate in cycles. Used by resolve_type_expr
+  // Precompute which types participate in cycles. Used by resolve_node
   // to break recursive expansion without threading a growing resolving list.
   let cycle_set = detect_type_cycles(bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
@@ -2228,79 +1714,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 }
 
 // =========================================================================
-// Convert a Node (with connective) to a TypeExpr.
-//
-// This creates the initial (unresolved) structural form of a type
-// definition. Named references within fields/variants remain as Named
-// until resolve_type_expr processes them.
-//
-// Conj → Product (record: all children hold simultaneously)
-// Disj → Coproduct (sum: exactly one child holds)
-// none with return_type → alias (Primitive passthrough or Named)
-// =========================================================================
-
-fn node_to_type_expr(name: String, item: Node, span: SourceSpan) -> TypeExpr {
-  match item.connective.value {
-    Conj =>
-      Product { name: name, fields: map(item.children, child => child_to_field(child: child)), span: span }
-    Disj =>
-      Coproduct { name: name, variants: map(item.children, child => child_to_variant(child: child)), span: span }
-  }
-}
-
-// Convert a child Node (field of a record type) to a Field.
-// The child's return_type becomes the field's type_expr.
-// If return_type is Optional, unwrap to inner type and set optional: true.
-fn child_to_field(child: Node) -> Field {
-  if child.return_type == none {
-    Field {
-      name: child.name,
-      type_expr: Named { name: child.name, span: child.span },
-      optional: false,
-      default_value: child.body,
-      from_key: none,
-      span: child.span
-    }
-  } else {
-    match child.return_type.value {
-      Optional { inner: inner, span: _ } =>
-        Field {
-          name: child.name,
-          type_expr: inner,
-          optional: true,
-          default_value: child.body,
-          from_key: none,
-          span: child.span
-        }
-      _ =>
-        Field {
-          name: child.name,
-          type_expr: child.return_type.value,
-          optional: false,
-          default_value: child.body,
-          from_key: none,
-          span: child.span
-        }
-    }
-  }
-}
-
-// Convert a child Node (variant of a sum type) to a Variant.
-// The variant's children are its fields.
-fn child_to_variant(child: Node) -> Variant {
-  Variant {
-    name: child.name,
-    fields: map(child.children, c => child_to_field(child: c)),
-    span: child.span
-  }
-}
-
-// =========================================================================
 // Resolve a Node type reference
 //
 // Walks the Node type tree, replacing leaf Named references with their
 // structural definitions from the environment. Dispatches on Node
-// structure (connective, children) rather than TypeExpr variants.
+// structure (connective, children).
 // =========================================================================
 
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
@@ -2417,12 +1835,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
     } else {
       match lookup_type(env: env, name: n.name) {
         Some { value: resolved } =>
-          // Guard: if resolved is a leaf with the same name, stop recursing
-          if resolved.children |> count == 0 && resolved.connective == none && resolved.name == n.name {
-            NodeResolveResult { resolved: resolved, diagnostics: [] }
-          } else {
-            resolve_node(n: resolved, env: env, module_name: module_name)
-          }
+          resolve_node(n: resolved, env: env, module_name: module_name)
         None =>
           if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float" || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes" {
             NodeResolveResult { resolved: n, diagnostics: [] }
@@ -2454,94 +1867,6 @@ fn resolve_optional_node(n: Node?, env: TypeEnv, module_name: String) -> NodeRes
 }
 
 // =========================================================================
-// Resolve a single TypeExpr (legacy — callers being migrated to resolve_node)
-// =========================================================================
-
-fn resolve_type_expr(expr: TypeExpr, env: TypeEnv, module_name: String) -> ResolveResult {
-  match expr {
-    Named { name: name, span: span } =>
-      // Cycle detection: if this type participates in a dependency cycle,
-      // keep it as Named to break infinite expansion. Sound because the
-      // name is guaranteed to be defined in the environment.
-      if is_recursive_type(env: env, name: name) {
-        ResolveResult { resolved: expr, diagnostics: [], resolved: none }
-      } else {
-        match lookup_type(env: env, name: name) {
-          Some { value: resolved } =>
-            resolve_type_expr(expr: resolved, env: env, module_name: module_name)
-          None =>
-            ResolveResult {
-              resolved: expr,
-              diagnostics: [Diagnostic {
-                severity: Error,
-                message: concat("unresolved type '", name, "'"),
-                span: span,
-                module_name: module_name
-              }],
-              resolved: none
-            }
-        }
-      }
-
-    Primitive { name: _, span: _ } =>
-      ResolveResult { resolved: expr, diagnostics: [], resolved: none }
-
-    Product { name: prod_name, fields: fields, span: span } =>
-      let field_results = map(fields, f => resolve_field(field: f, env: env, module_name: module_name))
-      let resolved_fields = map(field_results, fr => fr.field)
-      let all_diags = flat_map(field_results, fr => fr.diagnostics)
-      ResolveResult {
-        resolved: Product { name: prod_name, fields: resolved_fields, span: span },
-        diagnostics: all_diags,
-        resolved: none
-      }
-
-    Coproduct { name: coprod_name, variants: variants, span: span } =>
-      let variant_results = map(variants, v => resolve_variant(variant: v, env: env, module_name: module_name))
-      let resolved_variants = map(variant_results, vr => vr.variant)
-      let all_diags = flat_map(variant_results, vr => vr.diagnostics)
-      ResolveResult {
-        resolved: Coproduct { name: coprod_name, variants: resolved_variants, span: span },
-        diagnostics: all_diags,
-        resolved: none
-      }
-
-    Container { kind: kind, element: element, span: span } =>
-      let elem_result = resolve_type_expr(expr: element, env: env, module_name: module_name)
-      ResolveResult {
-        resolved: Container { kind: kind, element: elem_result.resolved, span: span },
-        diagnostics: elem_result.diagnostics,
-        resolved: none
-      }
-
-    Optional { inner: inner, span: span } =>
-      let inner_result = resolve_type_expr(expr: inner, env: env, module_name: module_name)
-      ResolveResult {
-        resolved: Optional { inner: inner_result.resolved, span: span },
-        diagnostics: inner_result.diagnostics,
-        resolved: none
-      }
-
-    Refined { base: base, predicates: predicates, span: span } =>
-      let base_result = resolve_type_expr(expr: base, env: env, module_name: module_name)
-      ResolveResult {
-        resolved: Refined { base: base_result.resolved, predicates: predicates, span: span },
-        diagnostics: base_result.diagnostics,
-        resolved: none
-      }
-
-    MapType { key: key, value: value, span: span } =>
-      let key_result = resolve_type_expr(expr: key, env: env, module_name: module_name)
-      let value_result = resolve_type_expr(expr: value, env: env, module_name: module_name)
-      ResolveResult {
-        resolved: MapType { key: key_result.resolved, value: value_result.resolved, span: span },
-        diagnostics: concat(key_result.diagnostics, value_result.diagnostics),
-        resolved: none
-      }
-  }
-}
-
-// =========================================================================
 // Field resolution
 // =========================================================================
 
@@ -2562,24 +1887,6 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
       span: field.span
     },
     diagnostics: concat(type_result.diagnostics, default_result.diagnostics)
-  }
-}
-
-// =========================================================================
-// Variant resolution
-// =========================================================================
-
-fn resolve_variant(variant: Variant, env: TypeEnv, module_name: String) -> VariantResult {
-  let field_results = map(variant.fields, f => resolve_field(field: f, env: env, module_name: module_name))
-  let resolved_fields = map(field_results, fr => fr.field)
-  let all_diags = flat_map(field_results, fr => fr.diagnostics)
-  VariantResult {
-    variant: Variant {
-      name: variant.name,
-      fields: resolved_fields,
-      span: variant.span
-    },
-    diagnostics: all_diags
   }
 }
 
@@ -2622,26 +1929,6 @@ fn resolve_resource_use(ru: ResourceUse, env: TypeEnv, module_name: String) -> R
       span: ru.span
     },
     diagnostics: type_result.diagnostics
-  }
-}
-
-// =========================================================================
-// Resolve optional TypeExpr (used for return types)
-// =========================================================================
-
-fn resolve_optional_type_expr(expr: TypeExpr?, env: TypeEnv, module_name: String) -> ResolveResult {
-  // Use field access instead of match on Some/None — the evaluator
-  // represents Optional as Map({"value": ...}) without _variant field,
-  // so variant pattern matching (Some { value: te }) doesn't work.
-  if expr == none {
-    let no_span = SourceSpan { start: 0, end: 0 }
-    ResolveResult {
-      resolved: Primitive { name: "Unit", span: no_span },
-      diagnostics: [],
-      resolved: none
-    }
-  } else {
-    resolve_type_expr(expr: expr.value, env: env, module_name: module_name)
   }
 }
 
@@ -3335,7 +2622,7 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
 // =========================================================================
 // Validation: check that no unresolved Named references survive
 //
-// Post-typecheck invariant checker. Walks every TypeExpr in every item
+// Post-typecheck invariant checker. Walks every type in every item
 // of every module and reports any remaining Named references (which
 // indicate a bug in the type checker).
 // =========================================================================
@@ -3385,50 +2672,6 @@ fn collect_unresolved_in_item(item: Node, module_name: String, defined_names: Ma
     concat(acc, collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names))
   )
   concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
-}
-
-fn collect_unresolved_in_type_expr(expr: TypeExpr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match expr {
-    Named { name: name, span: span } =>
-      // Allow Named refs that are defined in the graph (recursive cycle-breakers)
-      if map_contains_key(defined_names, name) {
-        []
-      } else {
-        [Diagnostic {
-          severity: Error,
-          message: concat("unresolved type '", name, "' survived typecheck (internal error)"),
-          span: span,
-          module_name: module_name
-        }]
-      }
-
-    Primitive { name: _, span: _ } => []
-
-    Product { name: _, fields: fields, span: _ } =>
-      fold(fields, init: [], f: (acc, f) =>
-        concat(acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-      )
-
-    Coproduct { name: _, variants: variants, span: _ } =>
-      fold(variants, init: [], f: (acc, v) =>
-        fold(v.fields, init: acc, f: (inner_acc, f) =>
-          concat(inner_acc, collect_unresolved_in_type_expr(expr: f.type_expr, module_name: module_name, defined_names: defined_names))
-        )
-      )
-
-    Container { kind: _, element: element, span: _ } =>
-      collect_unresolved_in_type_expr(expr: element, module_name: module_name, defined_names: defined_names)
-
-    Optional { inner: inner, span: _ } =>
-      collect_unresolved_in_type_expr(expr: inner, module_name: module_name, defined_names: defined_names)
-
-    Refined { base: base, predicates: _, span: _ } =>
-      collect_unresolved_in_type_expr(expr: base, module_name: module_name, defined_names: defined_names)
-
-    MapType { key: key, value: value, span: _ } =>
-      concat(collect_unresolved_in_type_expr(expr: key, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_type_expr(expr: value, module_name: module_name, defined_names: defined_names))
-  }
 }
 
 fn collect_unresolved_in_node(n: Node, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {

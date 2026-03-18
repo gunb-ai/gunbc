@@ -314,12 +314,18 @@ mod tests {
 
     fn named_type_value(name: &str) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            "_variant".to_string(),
-            gunbc_ir::Value::Str("Named".to_string()),
-        );
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
         map.insert("span".to_string(), zero_span_value());
+        map.insert("children".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("connective".to_string(), gunbc_ir::Value::Unit);
+        map.insert("params".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
+        map.insert("uses".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("body".to_string(), gunbc_ir::Value::Unit);
+        map.insert("transport".to_string(), gunbc_ir::Value::Unit);
+        map.insert("properties".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
+        map.insert("config".to_string(), gunbc_ir::Value::Unit);
         gunbc_ir::Value::Map(map)
     }
 
@@ -2695,11 +2701,11 @@ fn example(items: List<String>) -> Int {
         let mut eq_inputs = HashMap::new();
         eq_inputs.insert("left".to_string(), named_type_value("Config"));
         eq_inputs.insert("right".to_string(), named_type_value("pkg.Config"));
-        let eq_result = call_fn(&output, "type_expr_equals", eq_inputs)
-            .expect("type_expr_equals should succeed");
+        let eq_result = call_fn(&output, "node_type_equals", eq_inputs)
+            .expect("node_type_equals should succeed");
         assert!(
             matches!(eq_result.get("return"), Some(gunbc_ir::Value::Bool(true))),
-            "type_expr_equals should treat qualified and local names as equivalent: {:?}",
+            "node_type_equals should treat qualified and local names as equivalent: {:?}",
             eq_result
         );
     }
