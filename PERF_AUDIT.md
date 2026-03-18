@@ -20,6 +20,8 @@ prior optimizations addressed the right layer.
 | SG-4 | Codegen `.clone()` on every non-final variable use | **IN PROGRESS** | R3: borrow-based codegen for read-only args |
 | SG-5 | Non-TCO recursive functions clone through return path | **OPEN** | Bounded by expression depth; not dominant cost |
 | SG-6 | R6 byte-index `char_at` corrupts output on non-ASCII source | **FIXED** | Strip Unicode from .dag comments; long-term: Vec\<char\> |
+| SG-7 | Nested Rc match arms: duplicate outer patterns → unreachable!() | **FIXED** | Merge same-variant arms into if-let chains |
+| SG-8 | Operator precedence: `(a-b)/c` renders as `a-b/c` → infinite loop | **FIXED** | Parenthesize BinOp sub-expressions in render_operator_operand |
 
 ---
 
@@ -123,6 +125,103 @@ SG-6 (corrupt char_at) lived in this untested layer.
 **TODO:** Add `v2_rt` intrinsic unit tests (especially non-ASCII char_at/
 string_length), a non-ignored gist tokenize smoke test, and token content
 assertions. These are the minimum coverage to prevent this class of bug.
+
+---
+
+## Postmortem: SG-7 — Nested Rc Pattern Match Regression (2026-03-18)
+
+**Symptom:** Parser panics with `unreachable!()` in `status_expr_to_str`
+when parsing `gcp.dag` response blocks containing integer status codes.
+
+**Root cause:** R8's codegen for nested Rc-wrapped patterns produced
+duplicate match arms. When multiple arms match the same outer variant
+(`Expr::Literal`) but differ in the inner Rc-wrapped sub-pattern
+(`LitInt` vs `LitStr`), the codegen emitted:
+
+```rust
+match expr.as_ref() {
+    Expr::Literal { ref value, .. } => {
+        let LiteralValue::LitInt { .. } = value.as_ref() else { unreachable!() };
+        // ...
+    }
+    Expr::Literal { ref value, .. } => {  // DEAD CODE
+        let LiteralValue::LitStr { .. } = value.as_ref() else { unreachable!() };
+    }
+}
+```
+
+Rust always matches the first arm. When the literal is `LitStr`, the
+`let-else` hits `unreachable!()`.
+
+**Fix:** Added arm-grouping logic in `compile_match_typed` that detects
+consecutive arms with the same Rc-nested variant key and merges them
+into a single arm with an `if let` / `else if let` chain.
+
+---
+
+## Postmortem: SG-8 — Operator Precedence in Generated Code (2026-03-18)
+
+**Symptom:** After fixing SG-7, the parser hangs (infinite loop) in
+`int_to_string_acc` when converting status code `200` to a string.
+`samply` profiling confirmed 100% CPU in `int_to_string_acc`.
+
+**Root cause:** `render_operator_operand` in `render_rust.rs` did not
+parenthesize `BinOp` sub-expressions. The DAG source:
+
+```dag
+let rest = (value - digit) / 10
+```
+
+Generated as:
+
+```rust
+let rest = value.clone() - digit.clone() / 10;
+```
+
+Due to Rust's operator precedence, `/` binds tighter than `-`, so this
+evaluates as `value - (digit / 10)` instead of `(value - digit) / 10`.
+For `value = 200, digit = 0`: `rest = 200 - 0 = 200` — value never
+decreases, infinite loop.
+
+**Fix:** One-line change — add `Expr::BinOp { .. }` to
+`needs_grouping_in_operator` in `render_rust.rs`. All nested binary
+sub-expressions are now parenthesized in the generated code.
+
+**Why this wasn't caught:** The v2 compiler's own `.dag` source
+(`src/v2/`) doesn't use `(a - b) / c` patterns. The gist dependency
+chain exercises `int_to_string` via `status_expr_to_str` in service
+operation response blocks — a code path unique to extdep `.dag` files.
+No test exercised this path until the gist pipeline test.
+
+---
+
+## Final Performance Results (2026-03-18)
+
+```text
+Gist pipeline: 11 sources, 42K chars, ~6K tokens
+
+  Tokenize: 20ms    (was >20 minutes — SG-6 fix)
+  Parse:     3ms    (was infinite — SG-7 + SG-8 fixes)
+  Resolve: 342us    (was never reached)
+  Total:   24ms     (50,000x improvement)
+```
+
+The three layered causes, each masked by the one above it:
+
+1. **SG-6 (Unicode corruption):** `char_at` byte-indexed fast path
+   returned wrong characters after multi-byte UTF-8 in comments.
+   Tokenizer hung processing corrupted input.
+
+2. **SG-7 (Duplicate match arms):** R8's nested Rc pattern codegen
+   produced dead match arms. Parser panicked on `status_expr_to_str`
+   when encountering a string literal where it expected an integer.
+
+3. **SG-8 (Operator precedence):** Missing parentheses in generated
+   binary expressions. `int_to_string_acc` looped forever because
+   `(value - digit) / 10` rendered as `value - digit / 10`.
+
+Each fix revealed the next bug. Only after all three were resolved did
+the pipeline complete.
 
 ---
 
