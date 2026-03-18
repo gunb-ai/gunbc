@@ -2526,3 +2526,100 @@ pipeline ci {
             if pipeline == "ci" && stage == "build" && got == "Int"
     )));
 }
+
+#[test]
+fn aliased_module_import_makes_services_accessible() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("aliased import should make services accessible");
+}
+
+#[test]
+fn module_qualified_service_call_resolves() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified service call should resolve");
+}
+
+#[test]
+fn explicit_binding_disambiguates_same_name_services() {
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { SharedService }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("explicit binding should disambiguate same-name services");
+}

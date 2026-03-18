@@ -1108,8 +1108,7 @@ fn typecheck_graph_modules_spanned(
     let _sum_type_variants = collect_sum_type_variants(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
-    let service_call_registry = collect_service_call_contracts(&graph.modules);
-    let service_export_index = collect_service_exports(&graph.modules);
+    let service_call_source = collect_service_call_source(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
     let resource_capability_registry = collect_resource_capabilities(&graph.modules);
@@ -1126,8 +1125,7 @@ fn typecheck_graph_modules_spanned(
         record_type_registry: &record_type_registry,
         callable_registry: &callable_registry,
         pattern_callable_names: &pattern_callable_names,
-        service_call_registry: &service_call_registry,
-        service_export_index: &service_export_index,
+        service_call_source: &service_call_source,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
@@ -1743,8 +1741,7 @@ struct TypecheckContext<'a> {
     record_type_registry: &'a RecordTypeRegistry,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
     pattern_callable_names: &'a HashSet<String>,
-    service_call_registry: &'a ServiceCallRegistry,
-    service_export_index: &'a ServiceExportIndex,
+    service_call_source: &'a ServiceCallSource,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
@@ -1793,15 +1790,14 @@ fn collect_signatures(
     let mut signatures = Vec::new();
     let mut callable_body_metadata = HashMap::new();
     let data_bindings = collect_local_data_bindings(module);
-    let accessible_service_bindings =
-        collect_accessible_service_bindings(module, context.service_export_index);
+    let module_service_registry =
+        scope_service_call_registry(module, context.service_call_source);
     let body_context = BodyInferenceContext {
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
         data_bindings: &data_bindings,
         pattern_callable_names: context.pattern_callable_names,
-        service_call_registry: context.service_call_registry,
-        accessible_service_bindings: &accessible_service_bindings,
+        service_call_registry: &module_service_registry,
         interface_registry: context.interface_registry,
         resource_type_registry: context.resource_type_registry,
         resource_capability_registry: context.resource_capability_registry,
@@ -2459,6 +2455,17 @@ struct ServiceCallRegistry {
 }
 
 #[derive(Debug, Clone)]
+struct ServiceCallSourceEntry {
+    service_name: String,
+    contract: ServiceCallContract,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ServiceCallSource {
+    by_module: HashMap<String, HashMap<String, Option<ServiceCallSourceEntry>>>,
+}
+
+#[derive(Debug, Clone)]
 enum ServiceCallResolution {
     Resolved(ServiceCallContract),
     Ambiguous,
@@ -2781,10 +2788,11 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
     contracts
 }
 
-fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegistry {
-    let mut registry = ServiceCallRegistry::default();
+fn collect_service_call_source(modules: &[ResolvedModule]) -> ServiceCallSource {
+    let mut source = ServiceCallSource::default();
     for module in modules {
         let module_name = module.module_path.as_dotted();
+        let module_entries = source.by_module.entry(module_name.clone()).or_default();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -2804,6 +2812,10 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
                     .rsplit('.')
                     .next()
                     .unwrap_or(service.name.as_str());
+                let entry = ServiceCallSourceEntry {
+                    service_name: service.name.clone(),
+                    contract,
+                };
                 let mut keys = HashSet::new();
                 keys.insert(format!("{}.{}", service.name, operation.name));
                 keys.insert(format!("{service_tail}.{}", operation.name));
@@ -2812,67 +2824,70 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
                     module_name, service.name, operation.name
                 ));
                 for key in keys {
-                    register_service_call_contract(&mut registry, key, contract.clone());
+                    module_entries
+                        .entry(key)
+                        .and_modify(|existing| *existing = None)
+                        .or_insert_with(|| Some(entry.clone()));
                 }
             }
         }
     }
+    source
+}
+
+fn scope_service_call_registry(
+    module: &ResolvedModule,
+    source: &ServiceCallSource,
+) -> ServiceCallRegistry {
+    let mut registry = ServiceCallRegistry::default();
+    let module_path = module.module_path.as_dotted();
+
+    // Own module: all services visible
+    add_source_contracts(&mut registry, &module_path, None, source);
+
+    // Imports: all services visible (with or without alias), unless bindings filter
+    for import in &module.ast.imports {
+        let import_path = import.node.path.as_dotted();
+        let filter = import
+            .node
+            .bindings
+            .as_ref()
+            .map(|b| b.iter().cloned().collect::<HashSet<_>>());
+        add_source_contracts(&mut registry, &import_path, filter.as_ref(), source);
+    }
+
     registry
 }
 
-fn collect_service_exports(modules: &[ResolvedModule]) -> ServiceExportIndex {
-    modules
-        .iter()
-        .map(|module| {
-            (
-                module.module_path.as_dotted(),
-                module
-                    .ast
-                    .items
-                    .iter()
-                    .filter_map(|item| match &item.node {
-                        Item::ServiceDef(service) => Some(service.name.clone()),
-                        _ => None,
-                    })
-                    .collect(),
-            )
-        })
-        .collect()
-}
-
-fn collect_accessible_service_bindings(
-    module: &ResolvedModule,
-    service_export_index: &ServiceExportIndex,
-) -> HashSet<String> {
-    let mut bindings = service_export_index
-        .get(&module.module_path.as_dotted())
-        .cloned()
-        .unwrap_or_default();
-
-    for import in &module.ast.imports {
-        if let Some(import_bindings) = &import.node.bindings {
-            bindings.extend(import_bindings.iter().cloned());
-            continue;
-        }
-
-        if import.node.alias.is_some() {
-            continue;
-        }
-
-        if let Some(exports) = service_export_index.get(&import.node.path.as_dotted()) {
-            bindings.extend(exports.iter().cloned());
+fn add_source_contracts(
+    registry: &mut ServiceCallRegistry,
+    module_path: &str,
+    service_filter: Option<&HashSet<String>>,
+    source: &ServiceCallSource,
+) {
+    let Some(module_entries) = source.by_module.get(module_path) else {
+        return;
+    };
+    for (key, entry_opt) in module_entries {
+        match entry_opt {
+            Some(entry) => {
+                if let Some(filter) = service_filter {
+                    if !filter.contains(&entry.service_name) {
+                        continue;
+                    }
+                }
+                register_service_call_contract(registry, key.clone(), entry.contract.clone());
+            }
+            None => {
+                // Within-module ambiguity — propagate to scoped registry
+                registry
+                    .by_key
+                    .entry(key.clone())
+                    .and_modify(|existing| *existing = None)
+                    .or_insert(None);
+            }
         }
     }
-
-    bindings
-}
-
-fn service_call_binding(path: &[String]) -> Option<String> {
-    (path.len() >= 2).then(|| path[..path.len() - 1].join("."))
-}
-
-fn service_call_is_accessible(path: &[String], accessible_bindings: &HashSet<String>) -> bool {
-    service_call_binding(path).is_some_and(|binding| accessible_bindings.contains(&binding))
 }
 
 fn register_service_call_contract(
@@ -2985,7 +3000,6 @@ struct BodyInferenceContext<'a> {
     data_bindings: &'a HashMap<String, ValueType>,
     pattern_callable_names: &'a HashSet<String>,
     service_call_registry: &'a ServiceCallRegistry,
-    accessible_service_bindings: &'a HashSet<String>,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
@@ -2997,8 +3011,6 @@ struct BodyInferenceContext<'a> {
 struct BoundServiceCallRegistry {
     by_binding: HashMap<String, BoundServiceCallBinding>,
 }
-
-type ServiceExportIndex = HashMap<String, HashSet<String>>;
 
 #[derive(Debug, Clone)]
 enum BoundServiceCallBinding {
@@ -4227,35 +4239,12 @@ fn analyze_callable_body(
     collect_service_calls_from_stmts(body.stmts, &mut service_calls);
     for call in service_calls {
         let service_call_name = call.path.join(".");
-        let accessible_service = service_call_is_accessible(
-            &call.path,
-            body_context.accessible_service_bindings,
-        );
         let contract =
             match resolve_service_call_contract(&call.path, body_context.service_call_registry) {
-                ServiceCallResolution::Resolved(contract) => {
-                    if accessible_service {
-                        Some(contract)
-                    } else {
-                        if !body_context.allow_unresolved_references {
-                            analysis.errors.push(TypeError::UnresolvedServiceCall {
-                                caller: caller.to_string(),
-                                service_call: service_call_name.clone(),
-                            });
-                        }
-                        None
-                    }
-                }
+                ServiceCallResolution::Resolved(contract) => Some(contract),
                 ServiceCallResolution::Ambiguous => {
-                    if accessible_service {
-                        if !body_context.allow_unresolved_references {
-                            analysis.errors.push(TypeError::AmbiguousServiceCall {
-                                caller: caller.to_string(),
-                                service_call: service_call_name.clone(),
-                            });
-                        }
-                    } else if !body_context.allow_unresolved_references {
-                        analysis.errors.push(TypeError::UnresolvedServiceCall {
+                    if !body_context.allow_unresolved_references {
+                        analysis.errors.push(TypeError::AmbiguousServiceCall {
                             caller: caller.to_string(),
                             service_call: service_call_name.clone(),
                         });
