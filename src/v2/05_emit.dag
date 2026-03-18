@@ -177,10 +177,10 @@ fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferSc
       let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
         map_insert(acc, param.name, true)
       )
-      let ordered = sig.params |> fold(init: [], f: (acc, param) =>
+      let ordered = sig.params |> flat_map(param =>
         match map_get(arg_map, param.name) {
-          Some { value: arg } => concat(acc, [arg])
-          None => acc
+          Some { value: arg } => [arg]
+          None => []
         }
       )
       let leftovers = args |> filter(arg =>

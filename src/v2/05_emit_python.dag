@@ -65,9 +65,6 @@ import v2.compiler.emit {
   is_service_item, has_service_items
 }
 
-// When cross-module data imports are supported in the v1 bootstrap, enable:
-// import std.languages { TypeMapping, LiteralSyntax, python_language, python_literals }
-
 fn emit_single_field_product_py_type(field_node: Node) -> String {
   if field_node.return_type == none {
     "dict"
@@ -79,9 +76,7 @@ fn emit_single_field_product_py_type(field_node: Node) -> String {
 // =========================================================================
 // Python language facts — from std.languages spec (python_language, python_literals)
 //
-// These data declarations mirror dsl/std/languages.dag exactly. When cross-
-// module data imports are supported in the v1 bootstrap, they will be replaced
-// with: import std.languages { python_language, python_literals }
+// These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
 
 // Python reserved words — Ref: Python Reference 2.3.1 Keywords
@@ -1000,7 +995,7 @@ fn emit_py_headers_dict(auth: AuthConfig?, headers: List<HeaderDef>) -> String {
     None => ""
   }
   let header_entries = headers |> map(h =>
-    concat("\"", h.name, "\": \"TODO\"")
+    concat("\"", h.name, "\": _unimplemented(\"header value emission for '", h.name, "'\")")
   )
   let all_entries = if auth_entry == "" {
     header_entries |> join(separator: ", ")
@@ -1012,7 +1007,7 @@ fn emit_py_headers_dict(auth: AuthConfig?, headers: List<HeaderDef>) -> String {
 
 fn emit_py_shell_call(op_name: String, env: List<EnvDef>) -> String {
   let env_dict_entries = env |> map(e =>
-    concat("\"", e.name, "\": \"TODO\"")
+    concat("\"", e.name, "\": _unimplemented(\"env value emission for '", e.name, "'\")")
   )
   let env_str = concat("{", env_dict_entries |> join(separator: ", "), "}")
   concat(

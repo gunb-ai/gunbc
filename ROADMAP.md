@@ -48,6 +48,97 @@ As of 2026-03-17, this file is the single live planning document for the repo.
 
 ---
 
+## Invariant Audit Blockers (2026-03-17)
+
+The convergence branch audit identified three structural themes requiring
+design decisions before they can be resolved. Mechanical fixes (perf
+anti-patterns, dead imports, stale comments) were applied directly.
+
+### Blocker 1: Emitter walk triplication (Invariant: No parallel implementations)
+
+Node-type emission, transport dispatch, and service def emission are each
+implemented three times (Rust, Python, Go emitters). Adding a new container
+type or transport binding requires editing all three backends.
+
+**Cost of change:** 3 files per feature addition.
+
+**Design options:**
+- (A) Shared walk in `05_emit.dag` parameterized by language-specific
+  rendering callbacks. Requires function-as-data, available in v2 self-hosted
+  but not v1 bootstrap.
+- (B) Intermediate `TypeShape` classification: shared `classify_node_type()`
+  returns a structural description, each backend renders it. Adds a type but
+  eliminates walk duplication.
+- (C) Accept bounded duplication (3 backends, unlikely to grow).
+
+**Recommendation:** Option B aligns with Invariant 6 ("DAG nodes are facts,
+rendering is separate").
+
+**Blocked on:** Decision.
+
+### Blocker 2: Fabrication-on-error pattern (Invariant: No fallbacks that fabricate)
+
+The DSL has no `Result<T, E>` type. Every function returns a value. Parse and
+inference error paths fabricate dummy values (`leaf_type_node(name: "")`,
+`leaf_node(name: "Unit")`) alongside error diagnostics. ~50 sites in the
+parser, ~15 in inference.
+
+Parser dummies are tolerable (first-error-halt, callers check `err`).
+Inference dummies are riskier (fabricated types propagate mid-pipeline).
+Emitter `"TODO"` stubs were converted to loud failures.
+
+**Design options:**
+- (A) Add `Result<T, E>` to the DSL language. Structural fix but large scope.
+- (B) Convention: `ok: Bool` field on all result types; pipeline halts on
+  first `ok == false`. Weaker than (A) but cheaper.
+- (C) Accept parser pattern; fix inference individually (replace wildcard
+  at `infer_expr` line 1377 with exhaustive match; replace remaining
+  `leaf_node("Unit")` fallbacks with diagnostics).
+
+**Recommendation:** Option C now, Option A as a language feature later.
+
+**Blocked on:** Decision for inference fixes. Parser pattern is accepted.
+
+### Blocker 3: D1 completion — delete TypeExpr from 00_core.dag
+
+`TypeExpr` type definition (8 variants), `type_expr_to_node` + 7 helpers,
+and `Predicate` type remain in `00_core.dag`. The parser no longer calls
+`type_expr_to_node` (rewritten to build Nodes directly), but
+`field_to_node` and `variant_to_node` are still referenced somewhere in
+the emit pipeline or v1 bootstrap codegen.
+
+The `Predicate` → `FieldInit` conversion (`predicate_to_field_init`) is
+lossy: `Range { min, max }` becomes string `"range"`, losing the actual
+bounds. This is a fabrication fallback that should be fixed when Predicate
+is dissolved.
+
+**Blocked on:** Tracing the last callers of `field_to_node`/`variant_to_node`
+in the v1 emit pipeline (`daglang-emit`), migrating them, then deleting the
+entire TypeExpr block (~300 lines).
+
+### Blocker 4: Boundary contracts — Node conflates resolved/unresolved
+
+The unified `Node` type cannot structurally distinguish resolved from
+unresolved type references. `validate_no_unresolved()` is a post-hoc
+validation pass — its existence proves the boundary type is too permissive.
+
+**Root cause:** After TypeExpr→Node unification, a leaf `Node { name: "Foo" }`
+could be either a resolved reference or an unresolved one. The pipeline gates
+correctly at runtime, but the type boundary doesn't enforce it.
+
+**Design options:**
+- (A) Introduce `ResolvedNode` wrapper type. Large scope, breaks most callers.
+- (B) Add a `resolved: Bool` field to Node. Cheap but convention-based.
+- (C) Accept runtime validation; document the invariant in code.
+
+**Recommendation:** Option C for now. The validation pass catches violations
+at typecheck time. The risk (emit receiving unresolved types) only manifests
+if emit is called outside the normal pipeline.
+
+**Blocked on:** Decision. Option C requires no code changes.
+
+---
+
 ## Parallel Tracks
 
 Work is organized into tracks that can proceed mostly independently.
@@ -99,20 +190,27 @@ list for getting v2 back to a trustworthy self-hosting baseline.
 places, but parser/infer/generated-crate code still mixes `TypeExpr` and `Node`
 assumptions.
 
+**Progress (2026-03-17):**
+
+- Parser now builds Nodes directly (`type_expr_to_node` calls removed from
+  `02_parse.dag`)
+- All TypeExpr functions deleted from `04_infer.dag`
+- `node_to_type_expr_full` deleted from `00_core.dag`
+- Remaining: `TypeExpr` type definition + `type_expr_to_node` + `Predicate`
+  in `00_core.dag` (see Blocker 3 above)
+
 Representative failure modes in the current tree:
 
-- parser helpers still build or destructure `Node`-typed fields as `TypeExpr`
-- return-type helpers still return `TypeExpr?` where the surrounding item uses
-  `Node?`
 - generated v2 crate code still shows `Node` vs `TypeExpr` mismatches and boxed
   `Option<Node>` / `Option<Expr>` mismatches
 
 **Acceptance:**
 
-- [ ] parser helpers stop constructing or destructuring `Node`-typed fields as
+- [x] parser helpers stop constructing or destructuring `Node`-typed fields as
       `TypeExpr`
-- [ ] infer helpers and generated crate code no longer assume unboxed
-      `Option<Node>` / `Option<Expr>`
+- [x] infer helpers no longer assume unboxed `Option<Node>` / `Option<Expr>`
+- [ ] generated crate code no longer assumes unboxed `Option<Node>` /
+      `Option<Expr>`
 - [ ] `v2_crate_cargo_check` passes
 - [ ] `cargo test -p v2-compiler-tests --quiet` returns to green
 
@@ -187,7 +285,7 @@ Remaining coherence work:
 
 - `cargo test -p daglang-emit --quiet`: passes (361 tests)
 - `cargo test -p v2-compiler-tests --quiet`: fails
-  (67 passed, 22 failed, 9 ignored)
+  (85 passed, 4 failed, 9 ignored)
 
 **Acceptance:**
 

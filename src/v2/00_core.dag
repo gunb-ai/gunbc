@@ -722,10 +722,11 @@ fn typed_has_non_tail_self_call(texpr: TypedExpr, fn_name: String, in_tail: Bool
         }
     TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
       // Only the last statement in a block is in tail position.
-      if ss |> count == 0 { false }
+      let ss_count = ss |> count
+      if ss_count == 0 { false }
       else {
         let init_bad = ss |> enumerate
-          |> filter(p => p.first < (ss |> count) - 1)
+          |> filter(p => p.first < ss_count - 1)
           |> any(p => typed_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false))
         let last_bad = match ss |> last {
           Some { value: last_expr } =>

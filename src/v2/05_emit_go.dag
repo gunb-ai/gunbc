@@ -76,13 +76,8 @@ import v2.compiler.emit {
 // =========================================================================
 // Go language facts — from std.languages spec (go_language, go_literals)
 //
-// These data declarations mirror dsl/std/languages.dag exactly. When cross-
-// module data imports are supported in the v1 bootstrap, they will be replaced
-// with: import std.languages { go_language, go_literals }
+// These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
-
-// When cross-module data imports are supported in the v1 bootstrap, enable:
-// import std.languages { TypeMapping, LiteralSyntax, go_language, go_literals }
 
 // Go reserved words — Ref: Go Spec "Keywords"
 // Source of truth: std.languages.go_language.reserved_words
@@ -999,7 +994,7 @@ fn emit_go_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef
     None => ""
   }
   let header_lines = headers |> map(h =>
-    concat(prefix, "req.Header.Set(\"", h.name, "\", \"TODO\")")
+    concat(prefix, "panic(\"header value emission not implemented for '", h.name, "'\")")
   )
   let send_lines = concat(
     prefix, "resp, err := http.DefaultClient.Do(req)\n",
@@ -1023,7 +1018,7 @@ fn emit_go_shell_call(op_name: String, env: List<EnvDef>, depth: Int) -> String 
   let cmd_line = concat(prefix, "cmd := exec.Command(\"", to_snake(name: op_name), "\")")
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
   let env_lines = env |> map(e =>
-    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=TODO\")")
+    concat(prefix, "panic(\"env value emission not implemented for '", e.name, "'\")")
   )
   let run_lines = concat(
     prefix, "output, err := cmd.Output()\n",

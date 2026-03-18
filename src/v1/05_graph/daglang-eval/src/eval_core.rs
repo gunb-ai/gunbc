@@ -591,6 +591,12 @@ pub fn eval_builtin_call(
             Some((_, Value::Map(map))) => Ok(Value::List(map.values().cloned().collect())),
             _ => Err(EvalError::new("'map_values' requires a map")),
         },
+        "map_keys" => match args.first() {
+            Some((_, Value::Map(map))) => Ok(Value::List(
+                map.keys().cloned().map(Value::Str).collect(),
+            )),
+            _ => Err(EvalError::new("'map_keys' requires a map")),
+        },
         "empty_map" => Ok(Value::Map(BTreeMap::new())),
         "map_insert" => {
             if args.len() >= 3 {
@@ -635,7 +641,15 @@ pub fn eval_builtin_call(
                 Err(EvalError::new("'map_contains_key' requires map and key"))
             }
         }
-        "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
+        "Some" => match args.first() {
+            Some((_, value)) => {
+                let mut result = BTreeMap::new();
+                result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                result.insert("value".to_string(), value.clone());
+                Ok(Value::Map(result))
+            }
+            None => Err(EvalError::new("'Some' requires a value")),
+        },
         "code_point" => {
             let val = require_builtin_arg("c", 0, args);
             match val {
