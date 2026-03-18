@@ -4848,17 +4848,18 @@ fn lower_tco_plan(plan: TcoPlan, param_names: &[String]) -> Vec<code_ir::Stmt> {
         })
         .collect();
 
+    // Move (not clone) the loop variable into an immutable binding.
+    // The tail-call path always reassigns __tco_p_X before `continue`,
+    // so Rust allows moving it here. This keeps Rc refcount at 1,
+    // enabling Rc::try_unwrap to succeed in-place for list_push/map_insert
+    // instead of falling back to a full clone.
     let rebind_stmts: Vec<code_ir::Stmt> = param_names
         .iter()
         .zip(loop_vars.iter())
         .map(|(param, lv)| code_ir::Stmt::Let {
             name: param.clone(),
             mutable: false,
-            expr: code_ir::Expr::MethodCall {
-                receiver: Box::new(code_ir::Expr::Var(lv.clone())),
-                method: "clone".to_string(),
-                args: vec![],
-            },
+            expr: code_ir::Expr::Var(lv.clone()),
             ir_type: None,
         })
         .collect();
