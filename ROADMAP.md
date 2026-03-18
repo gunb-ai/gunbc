@@ -79,6 +79,13 @@ Parallel (no dependencies on critical path):
    │ (~655 refs, mech.)   │  │ extdeps + CLI    │  │ code             │
    └──────────────────────┘  └──────────────────┘  └──────────────────┘
 
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ F1: Span preservation (parallel w/ A1-A4)                       │
+   │ F2: Interpreter debugger (A5-A6 timeframe)                      │
+   │ F3: Hermetic reproduction (post-A6)                             │
+   │ F4: Cross-language source maps (post-A7, extends C3/C4)         │
+   └──────────────────────────────────────────────────────────────────┘
+
 Deferred (decided, waiting on prerequisites):
 
    ┌──────────────────────┐  ┌──────────────────┐
@@ -392,13 +399,170 @@ boundary structure are explicit.
 
 ---
 
+## Track F: Debuggability
+
+**Motivation:** A `.dag` program compiles to an intermediate language (Rust, Python,
+JS) which compiles again to machine code or bytecode. When something goes wrong at
+runtime, the user sees a Rust panic or Python traceback — pointing at generated code
+they didn't write, in a language they may not know. The gap between "where the error
+is reported" and "where the error was authored" can be two compilation steps wide.
+
+But `.dag` has structural properties that most languages don't: every phase is pure,
+every value is immutable, every node carries its source span, and an interpreter
+already exists that can execute `.dag` directly. The debugger should exploit these
+properties rather than trying to replicate what GDB/LLDB/pdb already do.
+
+**Design principle:** The interpreter is the primary debugging surface. Users debug
+their `.dag` logic in `.dag` terms. Cross-language source mapping is an optimization
+for production tracing — same interface, different backend. We define the interface
+now and build backends as needed.
+
+**Core interface — TraceEvent:**
+
+The contract between execution (however it happens) and debugging tools (however
+they present). This is target-agnostic and defined in `.dag`:
+
+```dag
+type TraceEvent
+  = Enter { node_id: String, span: SourceSpan, inputs: Map<String, String> }
+  | Exit  { node_id: String, span: SourceSpan, output: String }
+  | Error { node_id: String, span: SourceSpan, message: String }
+
+type TraceFrame {
+  func_name: String
+  span: SourceSpan
+  bindings: Map<String, String>
+}
+
+type Trace {
+  events: List<TraceEvent>
+  stack: List<TraceFrame>
+}
+```
+
+Values serialized as strings in the trace — the trace is a diagnostic artifact,
+not an execution artifact. This keeps the interface stable even as the value
+representation evolves. A structured `TraceValue` can replace `String` later
+without changing the event shape.
+
+**Why this interface is sustainable:**
+
+- The interpreter produces TraceEvents directly by instrumenting `eval_body`
+- Generated code can produce them via inserted instrumentation calls
+- Source maps are a way to reconstruct `span` from target-language positions
+  without instrumentation — a different *producer*, same *consumer*
+- All debugging tools (CLI, TUI, DAP adapter) consume TraceEvents regardless
+  of how they were produced
+
+**User scenarios this serves:**
+
+1. *"My workflow failed. Where?"* — Error TraceEvent carries the `.dag`
+   source span. No Rust/Python/JS knowledge needed.
+2. *"What were the inputs when it failed?"* — TraceFrame.bindings at the
+   error point. The interpreter already has this in its environment.
+3. *"Let me step through it."* — Breakpoints + step commands against the
+   interpreter, navigating by `.dag` source lines and node names.
+4. *"I want a regression test for this."* — Snapshot the Enter event's
+   inputs at a function boundary → hermetic test with captured state.
+
+### F1: Span preservation + interpreter source locations
+
+**Timing:** Alongside A1–A4. Small cost, high leverage.
+
+The emitter currently discards all spans (`span: _` on every match arm).
+The interpreter call stack has frames but no source locations. Errors say
+`EvalError` with no `.dag` file:line.
+
+**Work:**
+- Stop discarding spans in emitters — carry SourceSpan through to output
+- Thread source spans through interpreter stack frames (`eval_stack.rs`
+  frame struct gains `source_span` + `func_name`)
+- Errors format as `resolve.dag:142:5: type mismatch in field 'name'`
+  instead of opaque error strings
+
+**Acceptance:**
+- [ ] Every `EvalError` includes `.dag` file:line:col
+- [ ] Interpreter call stack is printable as `.dag`-level stack trace
+- [ ] Emitted code retains source origin as comments or metadata
+
+### F2: Interpreter debugger
+
+**Timing:** A5–A6 timeframe. By bootstrap, you need to debug the
+self-hosted compiler in `.dag` terms.
+
+**Work:**
+- Define TraceEvent + TraceFrame types in `dsl/std/`
+- Instrument `eval_body`/`eval_stmt` to emit TraceEvents
+- Breakpoints: by source location (`resolve.dag:142`) or node name
+  (`reconcile_field`). Interpreter checks break condition at each
+  Enter event.
+- Step into/over/out: mapped to DAG node entry/exit boundaries
+- State inspection: print TraceFrame.bindings at current position
+- Trace recording: write TraceEvent stream to file for offline replay
+
+**Acceptance:**
+- [ ] Can set breakpoint by `.dag` file:line or function name
+- [ ] Can step through `.dag` execution and inspect bindings
+- [ ] Can record a trace and replay it without re-executing
+
+### F3: Hermetic reproduction
+
+**Timing:** Post-A6. Once the pipeline is stable, formalize replay into
+a user-facing tool.
+
+Because every phase is pure and values are immutable, any function
+boundary is a potential isolation point. Capture the Enter event's
+inputs → you have a self-contained test case.
+
+**Work:**
+- Snapshot mode: at a specified function boundary, serialize all inputs
+- Test generation: emit a `.dag` test file that calls the function with
+  the captured inputs and asserts the observed output
+- Regression mode: on failure, automatically emit a snapshot test
+
+**Sketch:**
+```dag
+# auto-generated from trace snapshot at reconcile.dag:87
+# failure: "type mismatch: expected Node, got String"
+test reconcile_field_regression {
+  let input = { name: "status", children: [], connective: Conj }
+  let scope = { bindings: { "Status": { name: "Status", ... } } }
+  let result = reconcile_field(field: input, scope: scope)
+  assert result.return_type.name == "String"
+}
+```
+
+### F4: Cross-language source mapping
+
+**Timing:** Post-A7. Extends C3/C4. May never be fully needed if the
+interpreter debugger covers user needs.
+
+This is where the interface pays off. TraceEvent consumers (debugger UI,
+error reporters) don't change. Only the producer changes — instead of
+the interpreter emitting events, a source map translates target-language
+positions back to `.dag` spans.
+
+**Work:**
+- Source map emission: emitter writes `.dag.map` alongside generated code
+  (format: `{target_line:col} → {dag_file:line:col}`)
+- Error remapper: intercept target-language panics/tracebacks, translate
+  via source map, format as `.dag`-level error
+- *Optional, may not be worth it:* DAP (Debug Adapter Protocol) server
+  that wraps the interpreter, enabling VS Code / IDE debugging
+
+**Why this might not be needed:** If the interpreter debugger (F2) is
+good enough for logic debugging, the only remaining need for cross-language
+mapping is production error tracing — which the source map + error
+remapper handles without a full debugger.
+
+---
+
 ## Backlog
 
 - Anonymous record target resolution — ambiguous cases must fail closed
 - Collection intrinsic semantics in shared IR
 - Generated self-hosting tests and stage contracts
 - TCO backend contract — no silent partial fallback
-- Embedded source metadata through lowering/emission
 
 ---
 
@@ -456,3 +620,4 @@ translating into a parallel representation.
 - artifact-aware
 - bootstrap-free
 - fixed-point reproducible
+- debuggable (errors trace to `.dag` source; failures reproduce hermetically)

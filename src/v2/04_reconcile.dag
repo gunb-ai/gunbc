@@ -394,12 +394,9 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
           Some { value: op } =>
             if op.outputs |> count == 0 {
               Some { value: leaf_node(name: "Unit") }
-            } else if op.outputs |> count == 1 {
-              match op.outputs |> first {
-                Some { value: f } => Some { value: f.type_expr }
-                None => Some { value: leaf_node(name: "Unit") }
-              }
             } else {
+              // Always return a record type with named fields so field access
+              // (e.g., result.branch) works for both single- and multi-output operations.
               Some { value: Node {
                 name: "", span: no_span(),
                 children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, params: [], return_type: Some { value: f.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }),
@@ -1086,14 +1083,22 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
                 diagnostics: base_result.diagnostics
               }
             None =>
-              let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: leaf_node(name: field_name), span: span }
-              InferResult {
-                typed: texpr,
-                diagnostics: concat(base_result.diagnostics, [inference_error(
+              // Dynamic-typed expressions (e.g., lambda parameters) permit field
+              // access without error — the field type propagates as a leaf.
+              let is_dynamic = resolved_base.connective == none && resolved_base.children |> count == 0 && resolved_base.name == "Dynamic"
+              let field_diags = if is_dynamic {
+                []
+              } else {
+                [inference_error(
                   message: concat("no field '", field_name, "' on type"),
                   span: span,
                   module_name: scope.module_name
-                )])
+                )]
+              }
+              let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: leaf_node(name: field_name), span: span }
+              InferResult {
+                typed: texpr,
+                diagnostics: concat(base_result.diagnostics, field_diags)
               }
           }
       }

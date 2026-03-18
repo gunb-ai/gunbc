@@ -708,12 +708,9 @@ fn variant_to_child_node(variant: Variant) -> Node {
 // Derive return_type from an output field list.
 // Single output -> its type (Node). Multiple -> anonymous Conj node. None -> none.
 fn outputs_to_return_type(outputs: List<Field>, span: SourceSpan) -> Node? {
-  if outputs |> count == 1 {
-    match outputs |> first {
-      Some { value: f } => Some { value: f.type_expr }
-      None => none
-    }
-  } else if outputs |> count > 1 {
+  if outputs |> count > 0 {
+    // Always create an anonymous Conj record, even for single-output operations,
+    // so field names are preserved (e.g., output { branch: String } → { branch: String }).
     Some { value: Node { name: "", span: span, children: map(outputs, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none } }
   } else {
     none
