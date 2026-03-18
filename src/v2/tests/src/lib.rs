@@ -1964,7 +1964,7 @@ fn foo(item: String) -> String {
         );
         let core_source = read_v2_file("src/v2/05_emit.dag");
         assert!(
-            core_source.contains("order_call_args"),
+            core_source.contains("order_typed_call_args"),
             "emit.dag should reorder named arguments using function signatures"
         );
     }

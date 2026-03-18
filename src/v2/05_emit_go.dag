@@ -58,7 +58,7 @@ import v2.compiler.emit {
   go_literal, go_bin_op_symbol, go_map_template,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
-  build_item_registry, lookup_item, named_arg_matches, order_call_args,
+  build_item_registry, lookup_item,
   unique_strings,
   collect_typed_service_calls,
   escape_json_string,
@@ -309,14 +309,11 @@ fn emit_go_type_alias(name: String, base: Node) -> String {
   concat("type ", name, " = ", emit_go_node_type(n: base))
 }
 
-// emit_go_type_expr, emit_go_container_type, emit_go_product_type_expr,
-// emit_go_coproduct_type_expr deleted — all callers now use emit_go_node_type.
-
 // =========================================================================
 // Node-based type emission
 //
-// Dispatch on Node structure instead of TypeExpr variants.
-// All callers now use emit_go_node_type via type_expr_to_node conversion.
+// These functions dispatch on Node structure (connective + name + children)
+// to render Go type syntax.
 // =========================================================================
 
 fn emit_go_node_type(n: Node) -> String {

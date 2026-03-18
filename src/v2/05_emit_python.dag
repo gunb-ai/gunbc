@@ -49,7 +49,7 @@ import v2.compiler.emit {
   python_literal, python_bin_op_symbol, python_map_template,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
-  build_item_registry, lookup_item, named_arg_matches, order_call_args,
+  build_item_registry, lookup_item,
   typed_named_arg_matches, order_typed_call_args,
   is_typed_service_call_receiver, extract_typed_service_name,
   unique_strings,
@@ -67,6 +67,15 @@ import v2.compiler.emit {
 
 // When cross-module data imports are supported in the v1 bootstrap, enable:
 // import std.languages { TypeMapping, LiteralSyntax, python_language, python_literals }
+
+fn emit_single_field_product_py_type(field_node: Node) -> String {
+  if field_node.return_type == none {
+    "dict"
+  } else {
+    emit_py_node_type(n: field_node.return_type.value)
+  }
+}
+
 // =========================================================================
 // Python language facts — from std.languages spec (python_language, python_literals)
 //
@@ -294,9 +303,10 @@ fn emit_py_variant_class_from_child(parent_name: String, child: TypedNode) -> St
 }
 
 // =========================================================================
-// Node-reading type emission
+// Node-based type emission
 //
-// Dispatch on Node structure instead of TypeExpr variants.
+// These functions dispatch on Node structure (connective + name + children)
+// to render Python type syntax.
 // =========================================================================
 
 fn emit_py_node_type(n: Node) -> String {
@@ -356,11 +366,7 @@ fn emit_py_node_type_conj(n: Node) -> String {
   } else {
     if n.children |> count == 1 {
       match n.children |> first {
-        Some { value: field_node } =>
-          match field_node.return_type {
-            Some { value: rt } => emit_py_node_type(n: rt)
-            None => "dict"
-          }
+        Some { value: field_node } => emit_single_field_product_py_type(field_node: field_node)
         None => "dict"
       }
     } else {

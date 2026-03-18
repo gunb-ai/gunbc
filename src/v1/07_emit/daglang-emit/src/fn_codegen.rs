@@ -1681,6 +1681,7 @@ fn compile_intrinsic_call(
         "map" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
             compile_map_intrinsic(
                 &collection.clone(),
+                &args[0].1,
                 args.get(1).map(|(_, e)| e),
                 ctx,
                 counter,
@@ -1689,6 +1690,7 @@ fn compile_intrinsic_call(
         "filter" if args.len() == 2 => Some(with_call_arg_path(ctx, 1, || {
             compile_filter_intrinsic(
                 &collection.clone(),
+                &args[0].1,
                 args.get(1).map(|(_, e)| e),
                 ctx,
                 counter,
@@ -1728,7 +1730,7 @@ fn compile_intrinsic_call(
                 .or_else(|| args.get(1))
                 .map(|(_, e)| e);
             Some(with_call_arg_path(ctx, 1, || {
-                compile_any_intrinsic(&collection.clone(), pred, ctx, counter)
+                compile_any_intrinsic(&collection.clone(), &args[0].1, pred, ctx, counter)
             }))
         }
         "all" if args.len() == 2 => {
@@ -1737,12 +1739,9 @@ fn compile_intrinsic_call(
                 .find(|(n, _)| n.as_deref() == Some("predicate"))
                 .or_else(|| args.get(1))
                 .map(|(_, e)| e);
-            Some(compile_all_intrinsic(
-                &collection.clone(),
-                pred,
-                ctx,
-                counter,
-            ))
+            Some(with_call_arg_path(ctx, 1, || {
+                compile_all_intrinsic(&collection.clone(), &args[0].1, pred, ctx, counter)
+            }))
         }
         "contains" if args.len() == 2 => {
             let target = compile_call_arg(args, 1, ctx, counter);
@@ -2084,7 +2083,13 @@ fn compile_intrinsic_call(
                     let elem = fresh(counter, "elem");
                     let cond = match &filter_args[1].1 {
                         ast::Expr::Lambda(params, body) => {
-                            let compiled = compile_expr(body, ctx, counter);
+                            let compiled = compile_collection_lambda_body(
+                                &filter_args[0].1,
+                                params,
+                                body,
+                                ctx,
+                                counter,
+                            );
                             params
                                 .first()
                                 .map(|p| {
@@ -2172,7 +2177,13 @@ fn compile_intrinsic_call(
                     let elem = fresh(counter, "elem");
                     let cond = match &inner_args[1].1 {
                         ast::Expr::Lambda(params, body) => {
-                            let compiled = compile_expr(body, ctx, counter);
+                            let compiled = compile_collection_lambda_body(
+                                &inner_args[0].1,
+                                params,
+                                body,
+                                ctx,
+                                counter,
+                            );
                             params
                                 .first()
                                 .map(|p| {
@@ -2250,9 +2261,7 @@ fn compile_intrinsic_call(
             let mapped = match &args[1].1 {
                 ast::Expr::Lambda(params, body) => {
                     let compiled = with_call_arg_path(ctx, 1, || {
-                        ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
-                            compile_expr(body, ctx, counter)
-                        })
+                        compile_collection_lambda_body(&args[0].1, params, body, ctx, counter)
                     });
                     params
                         .first()
@@ -2487,7 +2496,8 @@ fn compile_intrinsic_call(
             let elem = fresh(counter, "elem");
             let key_expr = match &args[1].1 {
                 ast::Expr::Lambda(params, body) => {
-                    let compiled = compile_expr(body, ctx, counter);
+                    let compiled =
+                        compile_collection_lambda_body(&args[0].1, params, body, ctx, counter);
                     params
                         .first()
                         .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -2624,6 +2634,7 @@ fn resolve_named_or_positional(
 
 fn compile_map_intrinsic(
     collection: &code_ir::Expr,
+    collection_expr: &ast::Expr,
     mapper: Option<&ast::Expr>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -2632,9 +2643,8 @@ fn compile_map_intrinsic(
     let elem = fresh(counter, "elem");
     let mapped_value = match mapper {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
-                compile_expr(body, ctx, counter)
-            });
+            let compiled =
+                compile_collection_lambda_body(collection_expr, params, body, ctx, counter);
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -2670,6 +2680,7 @@ fn compile_map_intrinsic(
 
 fn compile_filter_intrinsic(
     collection: &code_ir::Expr,
+    collection_expr: &ast::Expr,
     predicate: Option<&ast::Expr>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -2678,9 +2689,8 @@ fn compile_filter_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
-                compile_expr(body, ctx, counter)
-            });
+            let compiled =
+                compile_collection_lambda_body(collection_expr, params, body, ctx, counter);
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -2745,6 +2755,9 @@ fn compile_fold_intrinsic(
             let mut fold_ctx = ctx.clone();
             if let Some(p) = params.first() {
                 fold_ctx.fold_accum_name = Some(p.clone());
+            }
+            if let (Some(param), Some(ty)) = (params.get(1), infer_list_element_ir_type(collection_expr, ctx)) {
+                fold_ctx.ir_scope.insert(param.clone(), ty);
             }
             // Compute use counts for lambda params with weight=1 (reassigned each iter).
             // Without this, lambda params are excluded from outer use_counts and default
@@ -2820,6 +2833,7 @@ fn compile_fold_intrinsic(
 
 fn compile_any_intrinsic(
     collection: &code_ir::Expr,
+    collection_expr: &ast::Expr,
     predicate: Option<&ast::Expr>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -2828,9 +2842,8 @@ fn compile_any_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
-                compile_expr(body, ctx, counter)
-            });
+            let compiled =
+                compile_collection_lambda_body(collection_expr, params, body, ctx, counter);
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -2870,6 +2883,7 @@ fn compile_any_intrinsic(
 /// fails, breaking early.
 fn compile_all_intrinsic(
     collection: &code_ir::Expr,
+    collection_expr: &ast::Expr,
     predicate: Option<&ast::Expr>,
     ctx: &CompileContext,
     counter: &mut usize,
@@ -2878,7 +2892,8 @@ fn compile_all_intrinsic(
     let elem = fresh(counter, "elem");
     let cond = match predicate {
         Some(ast::Expr::Lambda(params, body)) => {
-            let compiled = compile_expr(body, ctx, counter);
+            let compiled =
+                compile_collection_lambda_body(collection_expr, params, body, ctx, counter);
             params
                 .first()
                 .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
@@ -4010,8 +4025,10 @@ fn needs_box_wrapping(struct_name: &str, field_name: &str, ctx: &CompileContext)
 }
 
 fn is_boxed_field_access(receiver: &ast::Expr, field_name: &str, ctx: &CompileContext) -> bool {
-    infer_known_expr_ir_type(receiver, ctx)
+    ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || ctx.current_expr_ir_type())
         .and_then(|ty| named_type_from_ir(&ty))
+        .or_else(|| infer_known_expr_ir_type(receiver, ctx).and_then(|ty| named_type_from_ir(&ty)))
+        .or_else(|| infer_scrutinee_type(receiver, ctx))
         .is_some_and(|type_name| needs_box_wrapping(&type_name, field_name, ctx))
 }
 
@@ -4155,6 +4172,22 @@ fn infer_list_element_ir_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<
         IrType::Generic(name, args) if name == "List" && args.len() == 1 => Some(args[0].clone()),
         _ => None,
     }
+}
+
+fn compile_collection_lambda_body(
+    collection_expr: &ast::Expr,
+    params: &[String],
+    body: &ast::Expr,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    let mut body_ctx = ctx.clone();
+    if let (Some(param), Some(elem_ir_type)) = (params.first(), infer_list_element_ir_type(collection_expr, ctx)) {
+        body_ctx.ir_scope.insert(param.clone(), elem_ir_type);
+    }
+    body_ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
+        compile_expr(body, &body_ctx, counter)
+    })
 }
 
 fn infer_fold_result_ir_type(
@@ -5152,6 +5185,51 @@ mod tests {
                 assert_eq!(field, "start");
             }
             other => panic!("expected Field, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_boxed_field_access_derefs_recursive_wrapper() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope
+            .insert("item".to_string(), IrType::Named("Node".to_string()));
+        ctx.struct_field_ir_types.insert(
+            "Node".to_string(),
+            vec![(
+                "return_type".to_string(),
+                IrType::Optional(Box::new(IrType::Named("Node".to_string()))),
+            )],
+        );
+        ctx.boxed_fields
+            .insert(("Node".to_string(), "return_type".to_string()));
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("item".into())), "return_type".into());
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Deref(inner) => match *inner {
+                code_ir::Expr::Field(receiver, field) => {
+                    assert_eq!(field, "return_type");
+                    match *receiver {
+                        code_ir::Expr::MethodCall {
+                            ref receiver,
+                            ref method,
+                            ..
+                        } => {
+                            assert!(
+                                matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "item")
+                            );
+                            assert_eq!(method, "clone");
+                        }
+                        code_ir::Expr::Var(ref n) => assert_eq!(n, "item"),
+                        ref other => {
+                            panic!("expected Var or MethodCall(.clone()), got: {other:?}")
+                        }
+                    }
+                }
+                other => panic!("expected boxed field access, got: {other:?}"),
+            },
+            other => panic!("expected Deref(Field(..)), got: {other:?}"),
         }
     }
 

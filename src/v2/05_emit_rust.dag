@@ -69,6 +69,14 @@ import v2.compiler.emit {
 
 // Shared helpers imported from v2.compiler.emit
 
+fn emit_single_field_product_rust_type(field_node: Node) -> String {
+  if field_node.return_type == none {
+    "compile_error!(\"anonymous product field missing return_type\")"
+  } else {
+    emit_rust_node_type(n: field_node.return_type.value)
+  }
+}
+
 // =========================================================================
 // Rust language facts — from std.languages spec (rust_language, rust_literals)
 //
@@ -380,11 +388,10 @@ fn emit_variant_from_child(child: TypedNode) -> String {
 }
 
 // =========================================================================
-// Node-based type emission (migrated from TypeExpr)
+// Node-based type emission
 //
 // These functions dispatch on Node structure (connective + name + children)
-// instead of matching TypeExpr variants. All call sites use
-// emit_rust_node_type via type_expr_to_node.
+// to render Rust type syntax.
 // =========================================================================
 
 fn emit_rust_node_type(n: Node) -> String {
@@ -448,11 +455,7 @@ fn emit_rust_node_type_conj(n: Node) -> String {
     // Anonymous product.
     if n.children |> count == 1 {
       match n.children |> first {
-        Some { value: field_node } =>
-          match field_node.return_type {
-            Some { value: te } => emit_rust_node_type(n: te)
-            None => "compile_error!(\"anonymous product field missing return_type\")"
-          }
+        Some { value: field_node } => emit_single_field_product_rust_type(field_node: field_node)
         None => "compile_error!(\"anonymous product reached Node emitter\")"
       }
     } else {

@@ -135,28 +135,6 @@ fn return_type_to_outputs(return_type: Node?, span: SourceSpan) -> List<Field> {
   }
 }
 
-// Same as return_type_to_outputs but for TypedNode (non-optional return_type).
-fn typed_return_type_to_outputs(return_type: Node, span: SourceSpan) -> List<Field> {
-  if return_type.connective != none {
-    match return_type.connective.value {
-      Conj =>
-        if return_type.name == "" {
-          map(return_type.children, child =>
-            let child_type = if child.return_type == none { leaf_node(name: child.name) } else { child.return_type.value }
-            Field { name: child.name, type_expr: child_type, optional: false, default_value: none, from_key: none, span: span }
-          )
-        } else {
-          [Field { name: "value", type_expr: return_type, optional: false, default_value: none, from_key: none, span: span }]
-        }
-      Disj =>
-        [Field { name: "value", type_expr: return_type, optional: false, default_value: none, from_key: none, span: span }]
-    }
-  } else if return_type.name == "Unit" && return_type.children |> count == 0 {
-    []
-  } else {
-    [Field { name: "value", type_expr: return_type, optional: false, default_value: none, from_key: none, span: span }]
-  }
-}
 
 type InferScope {
   type_env: TypeEnv
@@ -192,6 +170,16 @@ type ArmInferResult {
   typed_arm: TypedMatchArm
   diagnostics: List<Diagnostic>
   body_type: Node
+}
+
+type PatternScopeResult {
+  scope: InferScope
+  diagnostics: List<Diagnostic>
+}
+
+type NodeLookupResult {
+  resolved: Node
+  diagnostics: List<Diagnostic>
 }
 
 type StringPartInferResult {
@@ -326,6 +314,15 @@ type CycleDetectState {
 fn unwrap_return_type(rt: Node?) -> Node {
   if rt == none { leaf_node(name: "Unit") }
   else { rt.value }
+}
+
+fn child_return_type_or_name(ch: Node) -> Node {
+  if ch.return_type == none { leaf_node(name: ch.name) }
+  else { ch.return_type.value }
+}
+
+fn service_op_entry(child: Node) -> OpEntry {
+  OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span) }
 }
 
 fn build_func_env(items: List<Node>) -> FuncEnv {
@@ -505,8 +502,7 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
         // Product: search children by name
         match n.children |> filter(c => c.name == field_name) |> first {
           Some { value: field_child } =>
-            if field_child.return_type == none { Some { value: leaf_node(name: field_child.name) } }
-            else { Some { value: field_child.return_type.value } }
+            Some { value: child_return_type_or_name(ch: field_child) }
           None => None
         }
       Disj =>
@@ -539,8 +535,7 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) 
       Some { value: first_variant } =>
         match first_variant.children |> filter(c => c.name == field_name) |> first {
           Some { value: field_child } =>
-            if field_child.return_type == none { Some { value: leaf_node(name: field_child.name) } }
-            else { Some { value: field_child.return_type.value } }
+            Some { value: child_return_type_or_name(ch: field_child) }
           None => None
         }
       None => None
@@ -640,10 +635,12 @@ fn node_is_leaf(n: Node) -> Bool {
 fn node_is_named_ref(n: Node) -> Bool {
   if n.return_type == none { false }
   else {
-    match n.return_type.value {
-      Named { name: _, span: _ } => true
-      _ => false
-    }
+    let rt = n.return_type.value
+    rt.connective == none && rt.children |> count == 0
+      && rt.name != "" && rt.name != "None"
+      && rt.name != "String" && rt.name != "Int" && rt.name != "Bool"
+      && rt.name != "Float" && rt.name != "Secret" && rt.name != "Json"
+      && rt.name != "Unit" && rt.name != "Bytes"
   }
 }
 
@@ -920,7 +917,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
 // Extend scope with lambda parameter names.
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p, TypeBinding { name: p, resolved: leaf_node(name: "_inferred") })
+    map_insert(acc, p, TypeBinding { name: p, resolved: leaf_node(name: "Dynamic") })
   )
   InferScope {
     type_env: scope.type_env,
@@ -952,29 +949,64 @@ fn scope_after_stmt_node(stmt: Expr, stmt_type: Node, scope: InferScope) -> Infe
   }
 }
 
-fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_type: Node) -> InferScope {
+fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String) -> NodeLookupResult {
+  match scrut.children |> filter(c => c.name == variant_name) |> first {
+    Some { value: v } => NodeLookupResult { resolved: v, diagnostics: [] }
+    None => NodeLookupResult {
+      resolved: scrut,
+      diagnostics: [Diagnostic {
+        severity: Error,
+        message: concat("variant '", concat(variant_name, concat("' not found in type '", concat(scrut.name, "'")))),
+        span: Some { value: scrut.span },
+        module_name: Some { value: module_name }
+      }]
+    }
+  }
+}
+
+fn lookup_field_in_variant(variant: Node, field_name: String, module_name: String) -> NodeLookupResult {
+  match variant.children |> filter(c => c.name == field_name) |> first {
+    Some { value: field_child } =>
+      let resolved = child_return_type_or_name(ch: field_child)
+      NodeLookupResult { resolved: resolved, diagnostics: [] }
+    None => NodeLookupResult {
+      resolved: leaf_node(name: field_name),
+      diagnostics: [Diagnostic {
+        severity: Error,
+        message: concat("field '", concat(field_name, concat("' not found in variant '", concat(variant.name, "'")))),
+        span: Some { value: variant.span },
+        module_name: Some { value: module_name }
+      }]
+    }
+  }
+}
+
+fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_type: Node) -> PatternScopeResult {
   match pattern {
-    Bind { name: n } => extend_scope(scope: scope, name: n, resolved: scrutinee_type)
-    Wildcard => scope
-    LitPattern { value: _ } => scope
+    Bind { name: n } => PatternScopeResult { scope: extend_scope(scope: scope, name: n, resolved: scrutinee_type), diagnostics: [] }
+    Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
+    LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, field_bindings: bindings } =>
       let resolved_scrut = resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)
       // Find variant child by name in the Disj node
-      let variant_node = match resolved_scrut.children |> filter(c => c.name == vname) |> first {
-        Some { value: v } => v
-        None => leaf_node(name: "_inferred")
-      }
-      fold(bindings, init: scope, f: (acc, fb) =>
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name)
+      let variant_node = variant_lookup.resolved
+      let variant_diags = variant_lookup.diagnostics
+      fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
         // Find field in variant's children
-        let field_type = match variant_node.children |> filter(c => c.name == fb.field_name) |> first {
-          Some { value: field_child } =>
-            if field_child.return_type == none { leaf_node(name: field_child.name) }
-            else { field_child.return_type.value }
-          None => leaf_node(name: "_inferred")
-        }
+        let field_lookup = lookup_field_in_variant(variant: variant_node, field_name: fb.field_name, module_name: scope.module_name)
+        let field_type = field_lookup.resolved
         match fb.binding {
-          Bind { name: n } => extend_scope(scope: acc, name: n, resolved: field_type)
-          _ => extend_scope_with_pattern_node(scope: acc, pattern: fb.binding, scrutinee_type: field_type)
+          Bind { name: n } => PatternScopeResult {
+            scope: extend_scope(scope: acc.scope, name: n, resolved: field_type),
+            diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
+          }
+          _ =>
+            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb.binding, scrutinee_type: field_type)
+            PatternScopeResult {
+              scope: nested.scope,
+              diagnostics: concat(acc.diagnostics, concat(field_lookup.diagnostics, nested.diagnostics))
+            }
         }
       )
   }
@@ -1101,7 +1133,9 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     Match { scrutinee: scrut, arms: arms, span: span } =>
       let scrut_result = infer_expr(expr: scrut, scope: scope)
       let arm_infer_results = arms |> map(arm =>
-        let arm_scope = extend_scope_with_pattern_node(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_result.typed.resolved_type)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_result.typed.resolved_type)
+        let arm_scope = pattern_result.scope
+        let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm.guard != none {
           Some { value: infer_expr(expr: arm.guard.value, scope: arm_scope) }
         } else {
@@ -1115,7 +1149,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             guard: if guard_result != none { Some { value: guard_result.value.typed } } else { none },
             body: body_result.typed
           },
-          diagnostics: concat(guard_diags, body_result.diagnostics)
+          diagnostics: concat(pattern_diags, concat(guard_diags, body_result.diagnostics))
           body_type: body_result.typed.resolved_type
         }
       )
@@ -1670,10 +1704,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.return_type != none && item.params |> count == 0 && item.body == none {
       // Type alias: connective is none, but return_type references the aliased type
-      let resolved = match item.return_type.value {
-        Primitive { name: _, span: _ } => item.return_type.value
-        _ => Named { name: item.name, span: item.span }
-      }
       // For aliases, create a leaf node referencing the aliased type
       let alias_node = Node {
         name: item.name, span: item.span, children: [],
@@ -1686,7 +1716,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       let ref_node = Node {
         name: item.name, span: item.span, children: [],
         connective: none, params: [],
-        return_type: Some { value: Named { name: item.name, span: item.span } },
+        return_type: Some { value: leaf_node(name: item.name) },
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, config: none
       }
@@ -2390,9 +2420,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Build service registry: map service paths to OpEntry lists from children.
   let local_svc_registry = fold(resolved_items, init: empty_map(), f: (acc, item) =>
     if item.transport != none && item.children |> count > 0 {
-      let entries = item.children |> map(c =>
-        OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span) }
-      )
+      let entries = item.children |> map(c => service_op_entry(child: c))
       map_insert(acc, item.name, entries)
     } else {
       acc
@@ -2402,7 +2430,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
       if titem.transport != none && titem.children |> count > 0 {
         let entries = titem.children |> map(c =>
-          OpEntry { name: c.name, outputs: typed_return_type_to_outputs(return_type: c.return_type, span: c.span) }
+          OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: Some { value: c.return_type }, span: c.span) }
         )
         map_insert(inner_acc, titem.name, entries)
       } else {

@@ -155,46 +155,6 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> FuncSig? {
   map_get(scope.func_env.signatures, name)
 }
 
-fn named_arg_matches(arg: NamedArg, name: String) -> Bool {
-  if arg.name == none {
-    false
-  } else {
-    arg.name.value == name
-  }
-}
-
-fn order_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
-  let has_unnamed = args |> any(arg => arg.name == none)
-  if has_unnamed {
-    return args
-  }
-  match lookup_func_sig_in_scope(scope: scope, name: func) {
-    None => args
-    Some { value: sig } => {
-      let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
-        if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
-      )
-      let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-        map_insert(acc, param.name, true)
-      )
-      let ordered = sig.params |> fold(init: [], f: (acc, param) =>
-        match map_get(arg_map, param.name) {
-          Some { value: arg } => concat(acc, [arg])
-          None => acc
-        }
-      )
-      let leftovers = args |> filter(arg =>
-        if arg.name == none {
-          true
-        } else {
-          emit_map_has(m: param_name_set, key: arg.name.value) == false
-        }
-      )
-      concat(ordered, leftovers)
-    }
-  }
-}
-
 fn typed_named_arg_matches(arg: TypedNamedArg, name: String) -> Bool {
   if arg.name == none {
     false
