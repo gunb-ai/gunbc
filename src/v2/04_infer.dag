@@ -331,7 +331,7 @@ fn build_func_env(items: List<Node>) -> FuncEnv {
   let sigs = fold(items, init: empty_map(), f: (acc, item) =>
     if item.params |> count > 0 {
       let is_async = item.uses |> count > 0
-      let rt_node = if item.return_type == none { leaf_node(name: "Unit") } else { item.return_type.value }
+      let rt_node = if item.return_type == none { leaf_node(name: item.name) } else { item.return_type.value }
       map_insert(acc, item.name, FuncSig { name: item.name, params: item.params, return_type: rt_node, is_async: is_async })
     } else {
       acc
@@ -1017,12 +1017,12 @@ fn for_each_element_type_node(n: Node) -> Node {
   if normed.connective == none && normed.children |> count == 1 {
     match normed.children |> first {
       Some { value: el } => el
-      None => leaf_node(name: "Unit")
+      None => normed
     }
   } else if normed.connective == none && normed.children |> count == 0 && normed.name == "String" {
     leaf_node(name: "String")
   } else {
-    leaf_node(name: "Unit")
+    normed
   }
 }
 
@@ -1044,7 +1044,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         Some { value: resolved } =>
           ok_infer(texpr: TypedVar { name: name, resolved_type: resolved, span: span })
         None =>
-          let texpr = TypedVar { name: name, resolved_type: leaf_node(name: "Unit"), span: span }
+          let texpr = TypedVar { name: name, resolved_type: leaf_node(name: name), span: span }
           InferResult {
             typed: texpr,
             diagnostics: [inference_error(
@@ -1074,7 +1074,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
                 diagnostics: base_result.diagnostics
               }
             None =>
-              let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: leaf_node(name: "Unit"), span: span }
+              let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: leaf_node(name: field_name), span: span }
               InferResult {
                 typed: texpr,
                 diagnostics: concat(base_result.diagnostics, [inference_error(
@@ -1098,18 +1098,31 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         let type_match = lookup_type(env: scope.type_env, name: func_name)
         match type_match {
           Some { value: tn } => tn
-          None => leaf_node(name: "Unit")
+          None => leaf_node(name: func_name)
         }
       } else {
         match sig {
           Some { value: s } => s.return_type
-          None => leaf_node(name: "Unit")
+          None => leaf_node(name: func_name)
         }
+      }
+      let call_diags = if sig == none {
+        let type_match = lookup_type(env: scope.type_env, name: func_name)
+        match type_match {
+          Some { value: _ } => []
+          None => [inference_error(
+            message: concat("function '", func_name, "' not found in scope"),
+            span: span,
+            module_name: scope.module_name
+          )]
+        }
+      } else {
+        []
       }
       let texpr = TypedCall { func: func_name, args: typed_args, resolved_type: resolved_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: arg_diags
+        diagnostics: concat(arg_diags, call_diags)
       }
 
     MethodCall { receiver: recv, method: method_name, args: mc_args, span: span } =>
@@ -1157,12 +1170,21 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let arm_diags = flat_map(arm_infer_results, ar => ar.diagnostics)
       let result_type = match first(arm_infer_results) {
         Some { value: ar } => ar.body_type
-        None => leaf_node(name: "Unit")
+        None => scrut_result.typed.resolved_type
+      }
+      let empty_arms_diags = if count(arm_infer_results) == 0 {
+        [inference_error(
+          message: "match expression has no arms",
+          span: span,
+          module_name: scope.module_name
+        )]
+      } else {
+        []
       }
       let texpr = TypedMatch { scrutinee: scrut_result.typed, arms: typed_arms, resolved_type: result_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(scrut_result.diagnostics, arm_diags)
+        diagnostics: concat(scrut_result.diagnostics, arm_diags, empty_arms_diags)
       }
 
     If { condition: cond, then_branch: then_expr, else_branch: else_expr, span: span } =>
@@ -1188,11 +1210,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
               module_name: scope.module_name
             )]
           }
-          let resolved_type = if count(branch_diags) > 0 {
-            leaf_node(name: "Unit")
-          } else {
-            then_result.typed.resolved_type
-          }
+          let resolved_type = then_result.typed.resolved_type
           let texpr = TypedIf { condition: cond_result.typed, then_branch: then_result.typed, else_branch: Some { value: else_result.typed }, resolved_type: resolved_type, span: span }
           InferResult {
             typed: texpr,
@@ -1271,7 +1289,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     Lambda { params: lam_params, body: lam_body, span: span } =>
       let lam_scope = extend_scope_with_params(scope: scope, params: lam_params)
       let body_result = infer_expr(expr: lam_body, scope: lam_scope)
-      let texpr = TypedLambda { params: lam_params, body: body_result.typed, resolved_type: leaf_node(name: "Unit"), span: span }
+      let texpr = TypedLambda { params: lam_params, body: body_result.typed, resolved_type: body_result.typed.resolved_type, span: span }
       InferResult {
         typed: texpr,
         diagnostics: body_result.diagnostics
@@ -1341,7 +1359,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let elem_type_node = for_each_element_type_node(n: coll_result.typed.resolved_type)
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node)
       let body_result = infer_expr(expr: body_expr, scope: body_scope)
-      let texpr = TypedForEach { variable: variable, collection: coll_result.typed, body: body_result.typed, resolved_type: leaf_node(name: "Unit"), span: span }
+      let texpr = TypedForEach { variable: variable, collection: coll_result.typed, body: body_result.typed, resolved_type: body_result.typed.resolved_type, span: span }
       InferResult {
         typed: texpr,
         diagnostics: concat(coll_result.diagnostics, body_result.diagnostics)
@@ -1379,8 +1397,19 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         diagnostics: concat(base_result.diagnostics, start_result.diagnostics, end_result.diagnostics, slice_check.diagnostics)
       }
 
-    // Fallback for any unrecognized variant
-    _ => ok_infer(texpr: TypedLiteral { value: LitNull, resolved_type: leaf_node(name: "Unit"), span: SourceSpan { start: 0, end: 0 } })
+    // All 19 Expr variants are handled above. This arm is unreachable.
+    // If a new variant is added to Expr without a case here, this emits
+    // a clear error diagnostic rather than silently fabricating Unit.
+    _ =>
+      let span = expr_span(expr: expr)
+      InferResult {
+        typed: TypedLiteral { value: LitNull, resolved_type: leaf_node(name: "Unknown"), span: span },
+        diagnostics: [inference_error(
+          message: "unhandled expression variant in infer_expr",
+          span: span,
+          module_name: scope.module_name
+        )]
+      }
   }
 }
 
