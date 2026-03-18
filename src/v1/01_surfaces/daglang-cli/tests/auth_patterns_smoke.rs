@@ -42,6 +42,41 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
     }
 }
 
+fn assert_missing_provider_binding_fails_check(
+    import_line: &str,
+    replacement: &str,
+    missing_service_call: &str,
+) {
+    let tmp = copy_dsl_to_temp();
+    let patterns = tmp.join("gunbc/auth/patterns.dag");
+
+    let original = std::fs::read_to_string(&patterns).expect("read patterns.dag");
+    let modified = original.replacen(import_line, replacement, 1);
+    assert_ne!(
+        original, modified,
+        "replacement did not match — patterns.dag import line may have changed"
+    );
+    std::fs::write(&patterns, &modified).expect("write modified patterns.dag");
+
+    let context = DriverContext {
+        roots: vec![tmp.clone()],
+        target_file: Some(patterns),
+    };
+
+    let result = check_from_context(&context);
+    let _ = std::fs::remove_dir_all(&tmp);
+    let error = result.expect_err("check should fail when a required provider binding is removed");
+
+    assert!(
+        error.contains("unresolved service call"),
+        "expected unresolved service call error, got: {error}"
+    );
+    assert!(
+        error.contains(missing_service_call),
+        "expected missing binding error to mention {missing_service_call}: {error}"
+    );
+}
+
 /// Verifies that the real `dsl/gunbc/auth/patterns.dag` passes the full check
 /// pipeline (discovery + typecheck) against the real `dsl/` source tree with
 /// `target_file` set and strict import resolution.
@@ -73,52 +108,57 @@ fn real_gunbc_auth_patterns_check_typechecks() {
     );
 }
 
-/// Proves that removing a provider module import (`extdeps.cloud.gcp.iam`)
-/// from `gunbc/auth/patterns.dag` drops the module from the dependency graph.
-///
-/// This catches the case where the positive test above would pass vacuously
-/// even after a provider import is removed, by proving the module graph
-/// shrinks when a provider binding disappears.
+/// Proves that each explicit provider binding in the real auth-patterns file is
+/// compiler-enforced: removing any one binding must fail the check/typecheck
+/// pipeline on the corresponding service call.
 #[test]
-fn removing_iam_provider_import_drops_module_from_graph() {
-    let tmp = copy_dsl_to_temp();
-    let patterns = tmp.join("gunbc/auth/patterns.dag");
-
-    let original = std::fs::read_to_string(&patterns).expect("read patterns.dag");
-
-    // Remove the entire IAM provider import line.
-    let modified = original.replace(
-        "import extdeps.cloud.gcp.iam { gcp.IAM }\n",
-        "",
-    );
-    assert_ne!(
-        original, modified,
-        "replacement did not match — patterns.dag IAM import line may have changed"
-    );
-    std::fs::write(&patterns, &modified).expect("write modified patterns.dag");
-
-    let context = DriverContext {
-        roots: vec![tmp.clone()],
-        target_file: Some(patterns),
-    };
-
-    let result = check_from_context(&context);
-    let _ = std::fs::remove_dir_all(&tmp);
-
-    match result {
-        Err(_) => {
-            // Best case: the check pipeline rejects the missing provider.
-        }
-        Ok(output) => {
-            // The typechecker does not yet validate service call references,
-            // so check may succeed — but the missing import must shrink the
-            // parsed module count, proving the provider was in the graph.
-            assert!(
-                output.parsed_files < 9,
-                "removing the IAM provider import should reduce the module count \
-                 below 9, but got {}",
-                output.parsed_files
-            );
-        }
+fn removing_required_provider_bindings_from_auth_patterns_fails_check() {
+    for (import_line, replacement, missing_service_call) in [
+        (
+            "import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }\n",
+            "import extdeps.cloud.gcp.gcp { shell.GCloud }\n",
+            "shell.OAuth2.RefreshToken",
+        ),
+        (
+            "import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }\n",
+            "import extdeps.cloud.gcp.gcp { shell.OAuth2 }\n",
+            "shell.GCloud.AuthPrintAccessToken",
+        ),
+        (
+            "import extdeps.cloud.gcp.secret_manager { gcp.SecretManager }\n",
+            "",
+            "gcp.SecretManager.AccessVersion",
+        ),
+        (
+            "import extdeps.cloud.gcp.iam { gcp.IAM }\n",
+            "",
+            "gcp.IAM.GenerateAccessToken",
+        ),
+        (
+            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }\n",
+            "import extdeps.cloud.gcp.sts { github.OIDC, gcp.Metadata }\n",
+            "gcp.STS.Exchange",
+        ),
+        (
+            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }\n",
+            "import extdeps.cloud.gcp.sts { gcp.STS, gcp.Metadata }\n",
+            "github.OIDC.GetToken",
+        ),
+        (
+            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }\n",
+            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC }\n",
+            "gcp.Metadata.GetIdentityToken",
+        ),
+        (
+            "import extdeps.shell { shell.Env }\n",
+            "",
+            "shell.Env.Get",
+        ),
+    ] {
+        assert_missing_provider_binding_fails_check(
+            import_line,
+            replacement,
+            missing_service_call,
+        );
     }
 }

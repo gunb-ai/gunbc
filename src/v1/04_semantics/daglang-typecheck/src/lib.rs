@@ -1109,6 +1109,7 @@ fn typecheck_graph_modules_spanned(
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
+    let service_export_index = collect_service_exports(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
     let resource_capability_registry = collect_resource_capabilities(&graph.modules);
@@ -1126,6 +1127,7 @@ fn typecheck_graph_modules_spanned(
         callable_registry: &callable_registry,
         pattern_callable_names: &pattern_callable_names,
         service_call_registry: &service_call_registry,
+        service_export_index: &service_export_index,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
@@ -1742,6 +1744,7 @@ struct TypecheckContext<'a> {
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
     pattern_callable_names: &'a HashSet<String>,
     service_call_registry: &'a ServiceCallRegistry,
+    service_export_index: &'a ServiceExportIndex,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
@@ -1790,12 +1793,15 @@ fn collect_signatures(
     let mut signatures = Vec::new();
     let mut callable_body_metadata = HashMap::new();
     let data_bindings = collect_local_data_bindings(module);
+    let accessible_service_bindings =
+        collect_accessible_service_bindings(module, context.service_export_index);
     let body_context = BodyInferenceContext {
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
         data_bindings: &data_bindings,
         pattern_callable_names: context.pattern_callable_names,
         service_call_registry: context.service_call_registry,
+        accessible_service_bindings: &accessible_service_bindings,
         interface_registry: context.interface_registry,
         resource_type_registry: context.resource_type_registry,
         resource_capability_registry: context.resource_capability_registry,
@@ -2814,6 +2820,61 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
     registry
 }
 
+fn collect_service_exports(modules: &[ResolvedModule]) -> ServiceExportIndex {
+    modules
+        .iter()
+        .map(|module| {
+            (
+                module.module_path.as_dotted(),
+                module
+                    .ast
+                    .items
+                    .iter()
+                    .filter_map(|item| match &item.node {
+                        Item::ServiceDef(service) => Some(service.name.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn collect_accessible_service_bindings(
+    module: &ResolvedModule,
+    service_export_index: &ServiceExportIndex,
+) -> HashSet<String> {
+    let mut bindings = service_export_index
+        .get(&module.module_path.as_dotted())
+        .cloned()
+        .unwrap_or_default();
+
+    for import in &module.ast.imports {
+        if let Some(import_bindings) = &import.node.bindings {
+            bindings.extend(import_bindings.iter().cloned());
+            continue;
+        }
+
+        if import.node.alias.is_some() {
+            continue;
+        }
+
+        if let Some(exports) = service_export_index.get(&import.node.path.as_dotted()) {
+            bindings.extend(exports.iter().cloned());
+        }
+    }
+
+    bindings
+}
+
+fn service_call_binding(path: &[String]) -> Option<String> {
+    (path.len() >= 2).then(|| path[..path.len() - 1].join("."))
+}
+
+fn service_call_is_accessible(path: &[String], accessible_bindings: &HashSet<String>) -> bool {
+    service_call_binding(path).is_some_and(|binding| accessible_bindings.contains(&binding))
+}
+
 fn register_service_call_contract(
     registry: &mut ServiceCallRegistry,
     key: String,
@@ -2924,6 +2985,7 @@ struct BodyInferenceContext<'a> {
     data_bindings: &'a HashMap<String, ValueType>,
     pattern_callable_names: &'a HashSet<String>,
     service_call_registry: &'a ServiceCallRegistry,
+    accessible_service_bindings: &'a HashSet<String>,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
@@ -2935,6 +2997,8 @@ struct BodyInferenceContext<'a> {
 struct BoundServiceCallRegistry {
     by_binding: HashMap<String, BoundServiceCallBinding>,
 }
+
+type ServiceExportIndex = HashMap<String, HashSet<String>>;
 
 #[derive(Debug, Clone)]
 enum BoundServiceCallBinding {
@@ -4163,12 +4227,35 @@ fn analyze_callable_body(
     collect_service_calls_from_stmts(body.stmts, &mut service_calls);
     for call in service_calls {
         let service_call_name = call.path.join(".");
+        let accessible_service = service_call_is_accessible(
+            &call.path,
+            body_context.accessible_service_bindings,
+        );
         let contract =
             match resolve_service_call_contract(&call.path, body_context.service_call_registry) {
-                ServiceCallResolution::Resolved(contract) => Some(contract),
+                ServiceCallResolution::Resolved(contract) => {
+                    if accessible_service {
+                        Some(contract)
+                    } else {
+                        if !body_context.allow_unresolved_references {
+                            analysis.errors.push(TypeError::UnresolvedServiceCall {
+                                caller: caller.to_string(),
+                                service_call: service_call_name.clone(),
+                            });
+                        }
+                        None
+                    }
+                }
                 ServiceCallResolution::Ambiguous => {
-                    if !body_context.allow_unresolved_references {
-                        analysis.errors.push(TypeError::AmbiguousServiceCall {
+                    if accessible_service {
+                        if !body_context.allow_unresolved_references {
+                            analysis.errors.push(TypeError::AmbiguousServiceCall {
+                                caller: caller.to_string(),
+                                service_call: service_call_name.clone(),
+                            });
+                        }
+                    } else if !body_context.allow_unresolved_references {
+                        analysis.errors.push(TypeError::UnresolvedServiceCall {
                             caller: caller.to_string(),
                             service_call: service_call_name.clone(),
                         });

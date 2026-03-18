@@ -1340,6 +1340,9 @@ service SharedService {
         (
             "sample/main.dag",
             r#"module sample.main
+import sample.first
+import sample.second
+
 func run(path: String) -> { body: String } {
   let response = SharedService.read(path: path)
   return { body: response.body }
