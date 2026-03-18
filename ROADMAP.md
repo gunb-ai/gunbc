@@ -21,6 +21,39 @@ As of 2026-03-17, this file is the single live planning document for the repo.
 
 ---
 
+## Immediate Priority (2026-03-17)
+
+### P0: Generated test stack safety
+
+The current branch fixes the host-side generated-crate blockers
+(`v2_crate_cargo_check`, `v2_crate_cargo_build`) and restores the failing
+`phase6_if_else_branch_is_inferred` path, but the ignored generated-runtime
+lane still exposes one open issue: `v2_crate_cargo_test` can build and start
+running generated tests, then abort with a stack overflow in the heavy
+generated integration tests.
+
+This must not be normalized as "just a slow ignored test." Generated tests
+should not introduce stack-overflow behavior that the corresponding host
+compiler/runtime path would not also hit.
+
+**Short-term handling:**
+
+- Keep the heavy generated-runtime lane opt-in/ignored while the overflow is
+  being isolated.
+- Treat any generated-test stack overflow as a real compiler/runtime defect,
+  not a harmless test artifact.
+
+**Acceptance:**
+
+- [ ] generated tests either pass or fail semantically; they do not abort with
+      stack overflow
+- [ ] generated test execution is no more stack-fragile than the equivalent
+      host-side compiler path
+- [ ] heavy self/gist generated tests can remain opt-in for runtime cost, but
+      not because they overflow the stack
+
+---
+
 ## Completed Work
 
 - **Stream 2 (sustainability cleanup):** stale docs cleaned up, terminal v1-only
@@ -286,12 +319,19 @@ Remaining coherence work:
 - `cargo test -p daglang-emit --quiet`: passes (361 tests)
 - `cargo test -p v2-compiler-tests --quiet`: fails
   (85 passed, 4 failed, 9 ignored)
+- `v2_crate_cargo_check`: passes
+- `v2_crate_cargo_build`: passes
+- `v2_crate_cargo_test`: still ignored and still open; the generated crate can
+  reach its own heavy generated tests and then abort with a stack overflow
 
 **Acceptance:**
 
 - [ ] `cargo test -p daglang-emit --quiet` stays green
 - [ ] `cargo test -p v2-compiler-tests --quiet` is green
 - [ ] `v2_crate_cargo_check` passes
+- [ ] `v2_crate_cargo_build` passes
+- [ ] `v2_crate_cargo_test` no longer aborts with stack overflow in generated
+      heavy tests
 - [ ] multi-module synthetic and gist-adjacent tests are green
 
 ---
@@ -343,6 +383,8 @@ tracking but too weak to serve as a long-term semantic acceptance gate.
 - [ ] v2 crate processes its own `.dag` source through the full pipeline
 - [ ] emitted Rust files compile with `cargo check`
 - [ ] no OOM or stack overflow on any `.dag` file up to 4000 lines
+- [ ] generated self/gist runtime tests do not introduce stack overflows that
+      are absent from the corresponding host-side pipeline
 - [ ] self-compile ratchet asserts semantic properties stronger than
       "non-empty file emitted"
 
