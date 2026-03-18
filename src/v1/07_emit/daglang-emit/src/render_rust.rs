@@ -501,14 +501,14 @@ fn render_expr(expr: &Expr) -> String {
         } => {
             // C1.7: Special `?` operator rendering.
             if method == "?" {
-                return format!("{}?", render_expr(receiver));
+                return format!("{}?", render_postfix_receiver(receiver));
             }
-            let recv = render_expr(receiver);
+            let recv = render_postfix_receiver(receiver);
             let args_str: Vec<String> = args.iter().map(render_expr).collect();
             format!("{}.{}({})", recv, method, args_str.join(", "))
         }
         Expr::Field(expr, field) => {
-            format!("{}.{}", render_expr(expr), field)
+            format!("{}.{}", render_postfix_receiver(expr), field)
         }
         Expr::Deref(expr) => format!("*{}", render_expr(expr)),
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
@@ -608,6 +608,27 @@ fn render_expr(expr: &Expr) -> String {
             format!("[{}]", items_str.join(", "))
         }
         Expr::RawCode(code) => code.clone(),
+    }
+}
+
+fn render_postfix_receiver(expr: &Expr) -> String {
+    let rendered = render_expr(expr);
+    if matches!(
+        expr,
+        Expr::Deref(_)
+            | Expr::Ref(_)
+            | Expr::RefMut(_)
+            | Expr::Struct { .. }
+            | Expr::Closure { .. }
+            | Expr::BinOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::Match { .. }
+            | Expr::If { .. }
+            | Expr::Block(_)
+    ) {
+        format!("({rendered})")
+    } else {
+        rendered
     }
 }
 
@@ -902,6 +923,16 @@ mod tests {
         assert_eq!(render_expr(&Expr::var("x").deref()), "*x");
         assert_eq!(render_expr(&Expr::var("x").ref_of()), "&x");
         assert_eq!(render_expr(&Expr::var("x").ref_mut()), "&mut x");
+    }
+
+    #[test]
+    fn render_expr_method_call_parenthesizes_deref_receiver() {
+        let expr = Expr::MethodCall {
+            receiver: Box::new(Expr::Field(Box::new(Expr::var("item")), "return_type".to_string()).deref()),
+            method: "unwrap".to_string(),
+            args: vec![],
+        };
+        assert_eq!(render_expr(&expr), "(*item.return_type).unwrap()");
     }
 
     #[test]

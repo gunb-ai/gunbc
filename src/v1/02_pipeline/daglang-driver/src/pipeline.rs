@@ -203,6 +203,11 @@ fn emit_with_options(
             emit_mips_bundle(&reachable, derived, extern_assets, &options.embedded_data)
                 .map_err(CompileError::Emit)
         }
+        (CodegenTarget::Python, CodegenLayer::Native) => {
+            Err(CompileError::from(
+                "python target is only available through the v2 compiler pipeline; use --layer 2 with the v2 self-hosted compiler".to_string(),
+            ))
+        }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {
             let module_name = target_module_name
                 .or_else(|| {

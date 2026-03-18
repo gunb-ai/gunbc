@@ -454,6 +454,7 @@ pub struct CompileOptions {
 pub enum CodegenTarget {
     #[default]
     Rust,
+    Python,
     Go,
     C,
     Mips,
@@ -463,6 +464,7 @@ impl std::fmt::Display for CodegenTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = match self {
             Self::Rust => "rust",
+            Self::Python => "python",
             Self::Go => "go",
             Self::C => "c",
             Self::Mips => "mips",
