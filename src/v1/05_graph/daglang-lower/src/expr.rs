@@ -179,7 +179,9 @@ fn lower_expr(
                 .collect(),
         ),
         // Named variant record (e.g., `Ok { value: "x" }`)
-        ast::Expr::Record(Some(name), fields) if variant_names.contains(name.as_str()) => {
+        ast::Expr::Record(Some(name), fields)
+            if variant_names.contains(name.as_str()) || name == "Some" || name == "None" =>
+        {
             LoweredExpr::VariantConstruct {
                 tag: name.clone(),
                 fields: fields

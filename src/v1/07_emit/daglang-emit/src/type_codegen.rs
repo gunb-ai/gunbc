@@ -701,7 +701,14 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
                 .map(|(k, v)| {
                     let key_str = render_expr_to_rust(k, "String", opts);
                     let val_str = render_expr_to_rust(v, context_type, opts);
-                    format!("({key_str}.to_string(), {val_str})")
+                    // In static context, string literal values are &str but HashMap<K, String>
+                    // needs String values. Add .to_string() for String-typed values.
+                    let val_expr = if context_type == "String" && opts.static_context {
+                        format!("{val_str}.to_string()")
+                    } else {
+                        val_str
+                    };
+                    format!("({key_str}.to_string(), {val_expr})")
                 })
                 .collect();
             format!("HashMap::from([{}])", items.join(", "))

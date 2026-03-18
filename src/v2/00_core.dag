@@ -146,7 +146,7 @@ type Connective = Conj | Disj
 
 type Field {
   name: String
-  type_expr: TypeExpr
+  type_expr: Node
   optional: Bool
   default_value: Expr?
   from_key: String?
@@ -161,14 +161,14 @@ type Variant {
 
 type Param {
   name: String
-  type_expr: TypeExpr
+  type_expr: Node
   default_value: Expr?
   span: SourceSpan
 }
 
 type ResourceUse {
   name: String
-  resource: TypeExpr
+  resource: Node
   span: SourceSpan
 }
 
@@ -205,7 +205,7 @@ type Expr
   | Lambda { params: List<String>, body: Expr, span: SourceSpan }
   | StringInterp { parts: List<StringPart>, span: SourceSpan }
   | Block { stmts: List<Expr>, span: SourceSpan }
-  | Cast { expr: Expr, target: TypeExpr, span: SourceSpan }
+  | Cast { expr: Expr, target: Node, span: SourceSpan }
   | ForEach { variable: String, collection: Expr, body: Expr, span: SourceSpan }
   | Index { base: Expr, index: Expr, span: SourceSpan }
   | Slice { base: Expr, start: Expr, end: Expr, span: SourceSpan }
@@ -328,29 +328,29 @@ type Severity = Error | Warning
 
 // =========================================================================
 // Typed AST — produced by the typechecker after expression-level inference.
-// Every expression carries its resolved TypeExpr.
+// Every expression carries its resolved type as a Node.
 // =========================================================================
 
 type TypedExpr
-  = TypedLiteral { value: LiteralValue, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedVar { name: String, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedFieldAccess { base: TypedExpr, field: String, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedCall { func: String, args: List<TypedNamedArg>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedMethodCall { receiver: TypedExpr, method: String, args: List<TypedNamedArg>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedMatch { scrutinee: TypedExpr, arms: List<TypedMatchArm>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedIf { condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedLet { name: String, value: TypedExpr, body: TypedExpr?, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedRecordLit { type_name: String?, fields: List<TypedFieldInit>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedListLit { elements: List<TypedExpr>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedBinOp { op: BinOpKind, left: TypedExpr, right: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedUnaryOp { op: UnaryOpKind, operand: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedLambda { params: List<String>, body: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedStringInterp { parts: List<TypedStringPart>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedBlock { stmts: List<TypedExpr>, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedCast { expr: TypedExpr, target: TypeExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedForEach { variable: String, collection: TypedExpr, body: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedIndex { base: TypedExpr, index: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
-  | TypedSlice { base: TypedExpr, start: TypedExpr, end: TypedExpr, resolved_type: TypeExpr, span: SourceSpan }
+  = TypedLiteral { value: LiteralValue, resolved_type: Node, span: SourceSpan }
+  | TypedVar { name: String, resolved_type: Node, span: SourceSpan }
+  | TypedFieldAccess { base: TypedExpr, field: String, resolved_type: Node, span: SourceSpan }
+  | TypedCall { func: String, args: List<TypedNamedArg>, resolved_type: Node, span: SourceSpan }
+  | TypedMethodCall { receiver: TypedExpr, method: String, args: List<TypedNamedArg>, resolved_type: Node, span: SourceSpan }
+  | TypedMatch { scrutinee: TypedExpr, arms: List<TypedMatchArm>, resolved_type: Node, span: SourceSpan }
+  | TypedIf { condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, resolved_type: Node, span: SourceSpan }
+  | TypedLet { name: String, value: TypedExpr, body: TypedExpr?, resolved_type: Node, span: SourceSpan }
+  | TypedRecordLit { type_name: String?, fields: List<TypedFieldInit>, resolved_type: Node, span: SourceSpan }
+  | TypedListLit { elements: List<TypedExpr>, resolved_type: Node, span: SourceSpan }
+  | TypedBinOp { op: BinOpKind, left: TypedExpr, right: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedUnaryOp { op: UnaryOpKind, operand: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedLambda { params: List<String>, body: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedStringInterp { parts: List<TypedStringPart>, resolved_type: Node, span: SourceSpan }
+  | TypedBlock { stmts: List<TypedExpr>, resolved_type: Node, span: SourceSpan }
+  | TypedCast { expr: TypedExpr, target: Node, resolved_type: Node, span: SourceSpan }
+  | TypedForEach { variable: String, collection: TypedExpr, body: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedIndex { base: TypedExpr, index: TypedExpr, resolved_type: Node, span: SourceSpan }
+  | TypedSlice { base: TypedExpr, start: TypedExpr, end: TypedExpr, resolved_type: Node, span: SourceSpan }
 
 type TypedNamedArg { name: String?, value: TypedExpr }
 type TypedMatchArm { pattern: MatchPattern, guard: TypedExpr?, body: TypedExpr }
@@ -385,7 +385,7 @@ fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
 type FuncSig {
   name: String
   params: List<Param>
-  return_type: TypeExpr
+  return_type: Node
   is_async: Bool
 }
 
@@ -415,7 +415,7 @@ type Node {
   connective: Connective?
   // Ports — what flows in and out
   params: List<Param>
-  return_type: TypeExpr?
+  return_type: Node?
   uses: List<ResourceUse>
   // Computation — how it executes (none = externally provided)
   body: Expr?
@@ -423,7 +423,7 @@ type Node {
   transport: TransportBinding?
   // Metadata
   properties: List<FieldInit>
-  type_annotation: TypeExpr?
+  type_annotation: Node?
   config: ServiceConfig?
 }
 
@@ -433,13 +433,336 @@ type TypedNode {
   children: List<TypedNode>
   connective: Connective?
   params: List<Param>
-  return_type: TypeExpr
+  return_type: Node
   uses: List<ResourceUse>
   body: TypedExpr?
   transport: TransportBinding?
   properties: List<FieldInit>
-  type_annotation: TypeExpr?
+  type_annotation: Node?
   config: ServiceConfig?
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
 }
 
+// =========================================================================
+// TypeExpr -> Node conversion
+//
+// The parser produces TypeExpr (8 variants). The rest of the pipeline
+// works with Node (unified recursive structure). These functions convert
+// parser-produced TypeExpr values into Nodes.
+//
+// Mapping:
+//   Named { name, span }           -> Node { name, span }  (leaf, no connective)
+//   Primitive { name, span }       -> Node { name, span }  (leaf, no connective)
+//   Product { name?, fields, span } -> Node { name, span, connective: Conj, children: fields-as-nodes }
+//   Coproduct { name?, variants, span } -> Node { name, span, connective: Disj, children: variants-as-nodes }
+//   Container { kind, element, span } -> Node { name: kind_name, span, children: [element-as-node] }
+//   Optional { inner, span }       -> Node { name: "Optional", span, connective: Disj, children: [inner-node, none-node] }
+//   MapType { key, value, span }   -> Node { name: "Map", span, children: [key-node, value-node] }
+//   Refined { base, predicates, span } -> Node { name: "Refined", span, connective: Conj, children: [base-node] }
+// =========================================================================
 
+fn empty_node(span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, children: [], connective: none,
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn type_expr_to_node(te: TypeExpr) -> Node {
+  match te {
+    Named { name: n, span: s } =>
+      type_expr_named_to_node(n: n, s: s)
+
+    Primitive { name: n, span: s } =>
+      type_expr_named_to_node(n: n, s: s)
+
+    Product { name: pn, fields: fs, span: s } =>
+      // Product.name is String? — extract name directly from the match binding.
+      // In the evaluator, String? values are stored as the raw string (not
+      // wrapped in Some), so we pass pn directly to the node constructor.
+      type_expr_product_to_node(pn: pn, fs: fs, s: s)
+
+    Coproduct { name: cn, variants: vs, span: s } =>
+      type_expr_coproduct_to_node(cn: cn, vs: vs, s: s)
+
+    Container { kind: k, element: el, span: s } =>
+      let kind_name = match k {
+        List => "List"
+        Set => "Set"
+        NonEmptyList => "NonEmptyList"
+        NonEmptySet => "NonEmptySet"
+      }
+      Node {
+        name: kind_name, span: s,
+        children: [type_expr_to_node(te: el)],
+        connective: none,
+        params: [], return_type: none, uses: [],
+        body: none, transport: none, properties: [], type_annotation: none, config: none
+      }
+
+    Optional { inner: inn, span: s } =>
+      Node {
+        name: "Optional", span: s,
+        children: [type_expr_to_node(te: inn), type_expr_named_to_node(n: "None", s: s)],
+        connective: Some { value: Disj },
+        params: [], return_type: none, uses: [],
+        body: none, transport: none, properties: [], type_annotation: none, config: none
+      }
+
+    MapType { key: k, value: v, span: s } =>
+      Node {
+        name: "Map", span: s,
+        children: [type_expr_to_node(te: k), type_expr_to_node(te: v)],
+        connective: none,
+        params: [], return_type: none, uses: [],
+        body: none, transport: none, properties: [], type_annotation: none, config: none
+      }
+
+    Refined { base: b, predicates: ps, span: s } =>
+      Node {
+        name: "Refined", span: s,
+        children: [type_expr_to_node(te: b)],
+        connective: Some { value: Conj },
+        params: [], return_type: none, uses: [],
+        body: none, transport: none,
+        properties: map(ps, p => predicate_to_field_init(p: p)),
+        type_annotation: none, config: none
+      }
+  }
+}
+
+fn type_expr_named_to_node(n: String, s: SourceSpan) -> Node {
+  Node {
+    name: n, span: s, children: [], connective: none,
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+// Unwrap String? to "" when none. Used by Product/Coproduct conversion
+// where the name field is optional.
+fn opt_str_or_empty(s: String?) -> String {
+  match s {
+    Some { value: v } => v
+    _ => ""
+  }
+}
+
+fn type_expr_product_to_node(pn: String?, fs: List<Field>, s: SourceSpan) -> Node {
+  Node {
+    name: opt_str_or_empty(s: pn), span: s,
+    children: map(fs, f => field_to_node(f: f)),
+    connective: Some { value: Conj },
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn type_expr_coproduct_to_node(cn: String?, vs: List<Variant>, s: SourceSpan) -> Node {
+  Node {
+    name: opt_str_or_empty(s: cn), span: s,
+    children: map(vs, v => variant_to_node(v: v)),
+    connective: Some { value: Disj },
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn field_to_node(f: Field) -> Node {
+  Node {
+    name: f.name, span: f.span,
+    children: [],
+    connective: none,
+    params: [], return_type: Some { value: f.type_expr }, uses: [],
+    body: f.default_value, transport: none,
+    properties: if f.from_key != none {
+      [FieldInit { name: "from_key", value: Literal { value: LitStr { value: f.from_key.value }, span: f.span } }]
+    } else { [] },
+    type_annotation: if f.optional { Some { value: Node {
+      name: "Optional", span: f.span,
+      children: [f.type_expr, Node { name: "None", span: f.span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }],
+      connective: Some { value: Disj },
+      params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none
+    } } } else { none },
+    config: none
+  }
+}
+
+fn variant_to_node(v: Variant) -> Node {
+  Node {
+    name: v.name, span: v.span,
+    children: map(v.fields, f => field_to_node(f: f)),
+    connective: if v.fields |> count > 0 { Some { value: Conj } } else { none },
+    params: [], return_type: none, uses: [],
+    body: none, transport: none, properties: [], type_annotation: none, config: none
+  }
+}
+
+fn predicate_to_field_init(p: Predicate) -> FieldInit {
+  let zero_span = SourceSpan { start: 0, end: 0 }
+  match p {
+    NonEmpty => FieldInit { name: "NonEmpty", value: Literal { value: LitBool { value: true }, span: zero_span } }
+    Pattern { regex: r } => FieldInit { name: "Pattern", value: Literal { value: LitStr { value: r }, span: zero_span } }
+    Range { min: mn, max: mx } =>
+      // Encode range as two separate int literals — avoids needing int-to-string
+      FieldInit { name: "Range", value: Literal { value: LitStr { value: "range" }, span: zero_span } }
+    Brand { name: n } => FieldInit { name: "Brand", value: Literal { value: LitStr { value: n }, span: zero_span } }
+    ContentEncoding { encoding: e } => FieldInit { name: "ContentEncoding", value: Literal { value: LitStr { value: e }, span: zero_span } }
+    Format { name: n } => FieldInit { name: "Format", value: Literal { value: LitStr { value: n }, span: zero_span } }
+    Domain { name: n } => FieldInit { name: "Domain", value: Literal { value: LitStr { value: n }, span: zero_span } }
+  }
+}
+
+// =========================================================================
+// Typed self-call detection — TypedExpr walkers
+//
+// These functions walk TypedExpr trees to detect self-recursive calls
+// and non-tail self-calls. Used by the typechecker to pre-compute
+// is_self_recursive and has_non_tail_self_call on TypedNode.
+// =========================================================================
+
+fn typed_expr_has_self_call(texpr: TypedExpr, fn_name: String) -> Bool {
+  match texpr {
+    TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
+      if f == fn_name { true }
+      else { a |> any(na => typed_expr_has_self_call(texpr: na.value, fn_name: fn_name)) }
+    TypedVar { name: _, resolved_type: _, span: _ } => false
+    TypedLiteral { value: _, resolved_type: _, span: _ } => false
+    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: r, fn_name: fn_name)
+        || a |> any(na => typed_expr_has_self_call(texpr: na.value, fn_name: fn_name))
+    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: s, fn_name: fn_name)
+        || arm_list |> any(arm => typed_expr_has_self_call(texpr: arm.body, fn_name: fn_name))
+    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: c, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: t, fn_name: fn_name)
+        || match e {
+          Some { value: eb } => typed_expr_has_self_call(texpr: eb, fn_name: fn_name)
+          None => false
+        }
+    TypedLet { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: v, fn_name: fn_name)
+        || match bd {
+          Some { value: b } => typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+          None => false
+        }
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+      ss |> any(s => typed_expr_has_self_call(texpr: s, fn_name: fn_name))
+    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: l, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: r, fn_name: fn_name)
+    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: bd, fn_name: fn_name)
+    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> any(fi => typed_expr_has_self_call(texpr: fi.value, fn_name: fn_name))
+    TypedListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> any(el => typed_expr_has_self_call(texpr: el, fn_name: fn_name))
+    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+      ps |> any(p => match p {
+        TypedInterpolation { expr: e } => typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+        TypedText { value: _ } => false
+      })
+    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+    TypedForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: c, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: bd, fn_name: fn_name)
+    TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: i, fn_name: fn_name)
+    TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: s, fn_name: fn_name)
+        || typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+  }
+}
+
+fn typed_has_non_tail_self_call(texpr: TypedExpr, fn_name: String, in_tail: Bool) -> Bool {
+  match texpr {
+    TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
+      if f == fn_name {
+        if in_tail == false { true }
+        else { a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false)) }
+      } else {
+        a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
+      }
+    TypedVar { name: _, resolved_type: _, span: _ } => false
+    TypedLiteral { value: _, resolved_type: _, span: _ } => false
+    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
+    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
+        || a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
+    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+      // Condition is never tail; branches inherit tail context.
+      typed_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)
+        || match e {
+          Some { value: eb } => typed_has_non_tail_self_call(texpr: eb, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
+      // Scrutinee is never tail; arm bodies inherit tail context.
+      typed_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
+        || arm_list |> any(arm =>
+          typed_has_non_tail_self_call(texpr: arm.body, fn_name: fn_name, in_tail: in_tail))
+    TypedLet { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
+      // Value is never tail; body (continuation) inherits tail context.
+      typed_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
+        || match bd {
+          Some { value: b } => typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+      // Only the last statement in a block is in tail position.
+      let ss_count = ss |> count
+      if ss_count == 0 { false }
+      else {
+        let init_bad = ss |> enumerate
+          |> filter(p => p.first < ss_count - 1)
+          |> any(p => typed_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false))
+        let last_bad = match ss |> last {
+          Some { value: last_expr } =>
+            typed_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail)
+          None => false
+        }
+        init_bad || last_bad
+      }
+    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: l, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
+    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      // Lambda bodies are separate contexts — self-calls inside are non-tail.
+      typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
+    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> any(fi => typed_has_non_tail_self_call(texpr: fi.value, fn_name: fn_name, in_tail: false))
+    TypedListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> any(el => typed_has_non_tail_self_call(texpr: el, fn_name: fn_name, in_tail: false))
+    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+      ps |> any(p => match p {
+        TypedInterpolation { expr: e } => typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+        TypedText { value: _ } => false
+      })
+    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+    TypedForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
+    TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: i, fn_name: fn_name, in_tail: false)
+    TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
+        || typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+  }
+}

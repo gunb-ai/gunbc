@@ -10625,7 +10625,9 @@ fn lower_expr(
             }
         }
         // C24-P2: Tagged variant record → VariantConstruct; plain record → RecordConstruct.
-        Expr::Record(Some(tag), fields) if ctx.variant_names.contains(tag.as_str()) => {
+        Expr::Record(Some(tag), fields)
+            if ctx.variant_names.contains(tag.as_str()) || tag == "Some" || tag == "None" =>
+        {
             synthesize_variant_construct(
                 builder,
                 ctx,

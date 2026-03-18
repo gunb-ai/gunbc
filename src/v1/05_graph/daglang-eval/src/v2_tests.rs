@@ -34,7 +34,7 @@ const V2_RESOLVE_DAG: &str = include_str!(concat!(
 ));
 const V2_TYPECHECK_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../../src/v2/04_typecheck.dag"
+    "/../../../../src/v2/04_infer.dag"
 ));
 const V2_EMIT_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -158,7 +158,7 @@ fn v2_typecheck_dag_parses() {
         .module_path
         .as_ref()
         .expect("should recover module path");
-    assert_eq!(module_path.node.as_dotted(), "v2.compiler.typecheck");
+    assert_eq!(module_path.node.as_dotted(), "v2.compiler.infer");
 }
 
 #[test]
