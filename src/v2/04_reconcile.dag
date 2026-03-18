@@ -1851,6 +1851,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 // =========================================================================
 
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
+  resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
+}
+
+fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {
+  // Depth limit prevents infinite recursion through structural type expansion.
+  // In practice, type nesting rarely exceeds 10 levels. A limit of 50 is generous.
+  if depth > 50 {
+    return NodeResolveResult { resolved: n, diagnostics: [] }
+  }
   if n.connective != none {
     match n.connective.value {
       Conj =>
@@ -1858,7 +1867,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
           // Refined: recurse on first child (base type)
           match n.children |> first {
             Some { value: base } =>
-              let base_result = resolve_node(n: base, env: env, module_name: module_name)
+              let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1)
               NodeResolveResult {
                 resolved: Node { name: n.name, span: n.span, children: [base_result.resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config },
                 diagnostics: base_result.diagnostics
@@ -1871,7 +1880,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
             if child.return_type == none {
               NodeResolveResult { resolved: child, diagnostics: [] }
             } else {
-              let rt_result = resolve_node(n: child.return_type.value, env: env, module_name: module_name)
+              let rt_result = resolve_node_bounded(n: child.return_type.value, env: env, module_name: module_name, depth: depth + 1)
               NodeResolveResult {
                 resolved: Node { name: child.name, span: child.span, children: child.children, connective: child.connective, params: child.params, return_type: Some { value: rt_result.resolved }, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, config: child.config },
                 diagnostics: rt_result.diagnostics
@@ -1890,7 +1899,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
           // Optional: recurse on first child (inner type)
           match n.children |> first {
             Some { value: inner } =>
-              let inner_result = resolve_node(n: inner, env: env, module_name: module_name)
+              let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1)
               let none_node = match skip(n.children, 1) |> first {
                 Some { value: none_child } => none_child
                 None => leaf_node(name: "None")
@@ -1908,7 +1917,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
               if field_child.return_type == none {
                 NodeResolveResult { resolved: field_child, diagnostics: [] }
               } else {
-                let rt_result = resolve_node(n: field_child.return_type.value, env: env, module_name: module_name)
+                let rt_result = resolve_node_bounded(n: field_child.return_type.value, env: env, module_name: module_name, depth: depth + 1)
                 NodeResolveResult {
                   resolved: Node { name: field_child.name, span: field_child.span, children: field_child.children, connective: field_child.connective, params: field_child.params, return_type: Some { value: rt_result.resolved }, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: field_child.properties, type_annotation: field_child.type_annotation, config: field_child.config },
                   diagnostics: rt_result.diagnostics
@@ -1940,8 +1949,8 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
       Some { value: v } => v
       None => leaf_node(name: "Unit")
     }
-    let key_result = resolve_node(n: key_child, env: env, module_name: module_name)
-    let val_result = resolve_node(n: val_child, env: env, module_name: module_name)
+    let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
+    let val_result = resolve_node_bounded(n: val_child, env: env, module_name: module_name, depth: depth + 1)
     NodeResolveResult {
       resolved: Node { name: n.name, span: n.span, children: [key_result.resolved, val_result.resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config },
       diagnostics: concat(key_result.diagnostics, val_result.diagnostics)
@@ -1950,7 +1959,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
     // Container (List, Set, etc.): recurse on single child (element type)
     match n.children |> first {
       Some { value: el } =>
-        let el_result = resolve_node(n: el, env: env, module_name: module_name)
+        let el_result = resolve_node_bounded(n: el, env: env, module_name: module_name, depth: depth + 1)
         NodeResolveResult {
           resolved: Node { name: n.name, span: n.span, children: [el_result.resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config },
           diagnostics: el_result.diagnostics
@@ -1967,7 +1976,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
           if resolved.children |> count == 0 && resolved.connective == none && resolved.name == n.name {
             NodeResolveResult { resolved: resolved, diagnostics: [] }
           } else {
-            resolve_node(n: resolved, env: env, module_name: module_name)
+            resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: depth + 1)
           }
         None =>
           if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float" || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes" {
