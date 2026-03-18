@@ -590,12 +590,26 @@ fn apply_type_template2(template: String, arg0: String, arg1: String) -> String 
 }
 
 // =========================================================================
-// Language data — single source of truth for per-language facts.
+// Language data — inline copies of per-language facts.
 //
-// Each language's type mappings, keywords, and container templates live
-// here as data declarations. Shared leaf functions accept the relevant
-// data as parameters. The data declarations are the single source of
-// truth — no per-language copies in the backend files.
+// Canonical source: dsl/extdeps/languages/{rust,python,go}/types.dag
+// (emit_type_map, emit_keywords, emit_container_templates)
+//
+// These inline data declarations duplicate the extdep definitions.
+// Replacing them with imports requires v1 bootstrap changes:
+//   1. Name collision: all three extdeps define emit_type_map /
+//      emit_keywords / emit_container_templates. build_data_values
+//      removes ambiguous unqualified names, and the evaluator's
+//      eval_ident cannot resolve dotted qualified paths.
+//   2. No import renaming: the import syntax lacks `as` aliases,
+//      so emit_type_map cannot be imported as rust_type_map.
+//   3. Test harness: compile_all_modules in v2-compiler-tests has
+//      a hardcoded file list that does not follow extdep imports.
+//   4. Data declarations are not import-bindable: import { name }
+//      binds types and functions, not data declarations.
+//
+// When the v1 bootstrap gains qualified data references or import
+// renaming, these should be replaced with imports from the extdeps.
 // =========================================================================
 
 // ---- Rust language data ----
