@@ -2424,6 +2424,24 @@ type TypecheckModuleResult {
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index)
   let env = env_result.env
+
+  // Gate: if type environment construction produced errors (unresolved types),
+  // halt before inference. This makes unresolved nodes structurally impossible
+  // downstream — inference and emit never see them.
+  // validate_no_unresolved becomes a redundant safety net, not the source of truth.
+  let env_errors = env_result.diagnostics |> filter(d => d.severity == Error)
+  if env_errors |> count > 0 {
+    return TypecheckModuleResult {
+      typed: TypedModule {
+        module: resolved.module,
+        items: [],
+        type_env: env,
+        func_env: FuncEnv { signatures: empty_map() }
+      },
+      diagnostics: env_result.diagnostics
+    }
+  }
+
   // Resolve all type expressions in every item against the environment.
   let item_results = map(resolved.module.items, item =>
     resolve_item_types(item: item, env: env, module_name: resolved.module.name)
