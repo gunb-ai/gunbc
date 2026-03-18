@@ -417,6 +417,35 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    // R3: Build set of (fn_name, param_index) where the param is exactly `String`
+    // (not `Option<String>` or other wrappers). These become `&str` in generated code.
+    let global_fn_str_params: HashSet<(String, usize)> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::FnDef(fd) => {
+                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+                    Some(
+                        fd.params
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, param)| {
+                                if matches!(&param.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String")
+                                {
+                                    Some((rust_name.clone(), i))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                }
+                _ => None,
+            })
+        })
+        .flatten()
+        .collect();
+
     // 4b. Build enum accessor fields (common fields across all variants)
     let enum_accessor_fields = type_codegen::build_enum_accessor_fields(&all_type_defs);
 
@@ -494,6 +523,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &global_fn_param_types,
             &enum_accessor_fields,
             &global_optional_return_fns,
+            &global_fn_str_params,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -683,6 +713,7 @@ fn emit_module(
     global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
     enum_accessor_fields: &HashMap<String, HashSet<String>>,
     optional_return_fns: &HashSet<String>,
+    global_fn_str_params: &HashSet<(String, usize)>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -746,6 +777,8 @@ fn emit_module(
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_ir_types: std::collections::HashMap::new(),
+        fn_str_params: global_fn_str_params.clone(),
+        str_param_names: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
     };

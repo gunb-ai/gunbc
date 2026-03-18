@@ -857,8 +857,17 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .map(|p| (p.name.clone(), fn_codegen::type_expr_to_ir_type(&p.ty)))
         .collect();
 
+    // R3: Track which params are exactly String (now &str) — not Optional<String>
+    let str_param_names: std::collections::HashSet<String> = fd
+        .params
+        .iter()
+        .filter(|p| matches!(&p.ty, TypeExpr::Named(n) if n == "String"))
+        .map(|p| p.name.clone())
+        .collect();
+
     let mut analysis_ctx = ctx.clone();
     analysis_ctx.param_types = param_types.clone();
+    analysis_ctx.str_param_names = str_param_names.clone();
     analysis_ctx.current_return_type = return_type_name.clone();
     analysis_ctx.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
     analysis_ctx.ir_scope = ir_scope.clone();
@@ -887,7 +896,11 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     let mut params: Vec<(String, String)> = fd
         .params
         .iter()
-        .map(|p| (p.name.clone(), type_expr_to_rust(&p.ty)))
+        .map(|p| {
+            let ty = type_expr_to_rust(&p.ty);
+            let ty = if ty == "String" { "&str".to_string() } else { ty };
+            (p.name.clone(), ty)
+        })
         .collect();
     let ret = type_expr_to_rust(&fd.return_type);
     let rename_todo_params = matches!(fd.name.as_str(), "box_top_line" | "box_bottom_line");
@@ -925,7 +938,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     // transform the function body to use a loop instead of recursion.
     let rust_fn_name = to_snake_case(&fd.name);
     let param_names: Vec<String> = fd.params.iter().map(|p| p.name.clone()).collect();
-    let body = match fn_codegen::apply_tco(&rust_fn_name, &param_names, &body) {
+    let body = match fn_codegen::apply_tco(&rust_fn_name, &param_names, &body, &str_param_names) {
         Some(tco_body) => tco_body,
         None => body,
     };
@@ -1197,6 +1210,8 @@ pub fn typedefs_to_source_file(
         data_ir_types: std::collections::HashMap::new(),
         fn_return_ir_types: std::collections::HashMap::new(),
         optional_return_fns: std::collections::HashSet::new(),
+        fn_str_params: std::collections::HashSet::new(),
+            str_param_names: std::collections::HashSet::new(),
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_ir_types: std::collections::HashMap::new(),
@@ -1349,6 +1364,8 @@ pub fn generate_types_for_modules(
             fold_accum_name: None,
             enum_accessor_fields: HashMap::new(),
             optional_return_fns: std::collections::HashSet::new(),
+            fn_str_params: std::collections::HashSet::new(),
+            str_param_names: std::collections::HashSet::new(),
             anonymous_record_targets: collect_anonymous_record_targets(
                 module.callable_body_metadata(&fd.name),
             ),
@@ -1924,6 +1941,8 @@ mod tests {
                 expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
                 enum_accessor_fields: HashMap::new(),
                 optional_return_fns: HashSet::new(),
+                fn_str_params: HashSet::new(),
+                str_param_names: HashSet::new(),
             },
         )
     }

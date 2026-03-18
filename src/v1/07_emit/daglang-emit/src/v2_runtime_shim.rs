@@ -158,16 +158,16 @@ pub fn str_eq(a: impl AsRef<str>, b: impl AsRef<str>) -> bool {
 /// Scan while a predicate holds, returning the end position.
 /// `pred` receives a single-character string and returns true to continue.
 /// O(k) where k = number of chars satisfying pred.
-pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(String) -> bool) -> i64 {
+pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(&str) -> bool) -> i64 {
     let bytes = s.as_ref().as_bytes();
     let mut pos = start.max(0) as usize;
     if s.as_ref().is_ascii() {
-        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
+        while pos < bytes.len() && pred(&String::from(bytes[pos] as char)) {
             pos += 1;
         }
     } else {
         let chars: Vec<char> = s.as_ref().chars().collect();
-        while pos < chars.len() && pred(chars[pos].to_string()) {
+        while pos < chars.len() && pred(&chars[pos].to_string()) {
             pos += 1;
         }
     }

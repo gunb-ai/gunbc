@@ -145,6 +145,14 @@ pub struct CompileContext {
     pub enum_accessor_fields: HashMap<String, HashSet<String>>,
     /// Set of function names whose return type is Optional (T?).
     pub optional_return_fns: HashSet<String>,
+    /// R3: Set of (fn_name, param_index) pairs where the param is exactly `String`
+    /// (now `&str`). Used to elide `.to_string()` / `.clone()` when passing `&str`
+    /// values to these params.
+    pub fn_str_params: HashSet<(String, usize)>,
+    /// R3: Set of param names in the CURRENT function that are `String` (now `&str`).
+    /// Unlike `param_types` which includes match bindings, this tracks only function
+    /// params whose type was changed from String to &str.
+    pub str_param_names: HashSet<String>,
     /// Typecheck-produced anonymous-record constructor targets keyed by stable AST identity.
     pub anonymous_record_targets: HashMap<ExprIdentity, String>,
     /// Typecheck-produced synthesized anonymous-record types for this callable.
@@ -532,6 +540,8 @@ impl CompileContext {
             fold_accum_name: None,
             enum_accessor_fields: HashMap::new(),
             optional_return_fns: HashSet::new(),
+            fn_str_params: HashSet::new(),
+            str_param_names: HashSet::new(),
             anonymous_record_targets: HashMap::new(),
             synthesized_anonymous_record_types: Vec::new(),
             expr_ir_types: HashMap::new(),
@@ -1044,7 +1054,50 @@ fn compile_struct_field_value(
             obligation: None,
         };
     }
+    // R3: String fields need .to_string() when the value is &str
+    // (string literal or String param that became &str).
+    result = ensure_owned_string(result, field_name, field_types, ctx);
     result
+}
+
+/// Wrap an expression in `.to_string()` when it produces `&str` but the target
+/// struct field expects an owned `String`. This covers:
+///   - bare string literals (`Expr::Str`)
+///   - String params that became `&str` via R3 borrow codegen
+///   - format!() expressions are already String — left untouched
+fn ensure_owned_string(
+    expr: code_ir::Expr,
+    field_name: &str,
+    field_types: Option<&std::collections::HashMap<String, String>>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    let field_is_string = field_types
+        .and_then(|ft| ft.get(field_name))
+        .map(|t| t == "String")
+        .unwrap_or(false);
+    if !field_is_string {
+        return expr;
+    }
+    if is_str_expr(&expr, ctx) {
+        code_ir::Expr::MethodCall {
+            receiver: Box::new(expr),
+            method: "to_string".to_string(),
+            args: vec![],
+        }
+    } else {
+        expr
+    }
+}
+
+/// Check whether an expression produces `&str` rather than owned `String`.
+fn is_str_expr(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    match expr {
+        // String literals are &'static str
+        code_ir::Expr::Str(_) => true,
+        // Variables referencing String params (now &str)
+        code_ir::Expr::Var(name) => ctx.str_param_names.contains(name.as_str()),
+        _ => false,
+    }
 }
 
 /// Infer a struct name from field names using the CompileContext's struct registry.
@@ -1567,6 +1620,14 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
         let escaped = escape_rust_keyword(name);
         if escaped.starts_with("__") {
             code_ir::Expr::Var(escaped)
+        } else if ctx.str_param_names.contains(name) {
+            // R3: String params are &str — use .to_string() to convert to owned.
+            // Call sites strip this when passing to another &str param.
+            code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::Var(escaped)),
+                method: "to_string".to_string(),
+                args: vec![],
+            }
         } else {
             let count = ctx.use_counts.get(name).copied().unwrap_or(2);
             if count <= 1 {
@@ -3161,18 +3222,30 @@ fn compile_call(
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
+    let rust_name = to_snake_case(name);
     let ir_args: Vec<code_ir::Expr> = args
         .iter()
         .enumerate()
         .map(|(index, (arg_name, _))| {
             let expected_type = lookup_call_arg_type(name, index, arg_name.as_deref(), ctx);
-            clone_if_needed(
-                compile_call_arg_typed(args, index, expected_type, ctx, counter),
-                ctx.fold_accum_name.as_deref(),
-            )
+            let compiled = compile_call_arg_typed(args, index, expected_type, ctx, counter);
+            // R3: When passing to a callee whose param is String (now &str),
+            // optimize away ownership conversions:
+            // - Strip .to_string() on &str values (param refs, string literals)
+            // - Strip .clone() on String values, borrow instead
+            let callee_param_is_str = ctx.fn_str_params.contains(&(rust_name.clone(), index));
+            if callee_param_is_str && is_str_param_to_string(&compiled, ctx) {
+                strip_to_string_for_str_param(compiled)
+            } else {
+                let cloned = clone_if_needed(compiled, ctx.fold_accum_name.as_deref());
+                if callee_param_is_str {
+                    borrow_for_str_param(cloned)
+                } else {
+                    cloned
+                }
+            }
         })
         .collect();
-    let rust_name = to_snake_case(name);
 
     code_ir::Expr::Call {
         func: Box::new(code_ir::Expr::Var(rust_name)),
@@ -3205,6 +3278,91 @@ fn clone_if_needed(expr: code_ir::Expr, fold_accum_name: Option<&str>) -> code_i
         }
         // Literals, calls, etc. are temporary values — don't clone
         _ => expr,
+    }
+}
+
+/// R3: Check if an expression is `.to_string()` on an `&str` source:
+/// - `param.to_string()` where `param` is a non-optional String parameter (now `&str`)
+/// - `"literal".to_string()` -- string literals are already `&str`
+///
+/// These can be stripped when passing to another function whose String param is `&str`.
+fn is_str_param_to_string(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    if let code_ir::Expr::MethodCall { receiver, method, args } = expr {
+        if method == "to_string" && args.is_empty() {
+            match receiver.as_ref() {
+                code_ir::Expr::Var(name) => {
+                    return ctx.str_param_names.contains(name.as_str());
+                }
+                code_ir::Expr::Str(_) => return true,
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+/// R3: Convert a cloned/owned expression to a borrow for passing to an &str param.
+/// Strips `.clone()` and adds `&` for auto-deref from `&String` to `&str`.
+/// Leaves already-borrowed and temporary expressions unchanged.
+fn borrow_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
+    match &expr {
+        // .clone() on field access → strip clone, borrow the field
+        code_ir::Expr::MethodCall { method, args, .. }
+            if method == "clone" && args.is_empty() =>
+        {
+            match expr {
+                code_ir::Expr::MethodCall { receiver, .. } => {
+                    code_ir::Expr::Ref(receiver)
+                }
+                _ => unreachable!(),
+            }
+        }
+        // .to_string() → strip and borrow (for non-param .to_string() calls)
+        code_ir::Expr::MethodCall { method, args, .. }
+            if method == "to_string" && args.is_empty() =>
+        {
+            match expr {
+                code_ir::Expr::MethodCall { receiver, .. } => {
+                    if matches!(receiver.as_ref(), code_ir::Expr::Str(_)) {
+                        *receiver // bare string literal is already &str
+                    } else {
+                        code_ir::Expr::Ref(receiver) // &expr auto-derefs to &str
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+        // Other method calls (.unwrap(), etc.) → borrow for auto-deref
+        code_ir::Expr::MethodCall { .. } => code_ir::Expr::Ref(Box::new(expr)),
+        // Bare variable (non-param String, e.g., destructured from match) → borrow
+        code_ir::Expr::Var(_) => code_ir::Expr::Ref(Box::new(expr)),
+        // Field access → borrow for auto-deref
+        code_ir::Expr::Field(_, _) => code_ir::Expr::Ref(Box::new(expr)),
+        // Temporaries (calls, format!) → borrow for auto-deref
+        code_ir::Expr::Call { .. } | code_ir::Expr::FormatStr { .. } => {
+            code_ir::Expr::Ref(Box::new(expr))
+        }
+        // Already a borrow, literal, etc. → pass through
+        _ => expr,
+    }
+}
+
+/// R3: Strip `.to_string()` from a String param reference, producing a
+/// reference for passing to another `&str` parameter. Uses `&var` which
+/// works for both `&str` (no-op borrow) and `String` (auto-deref to `&str`).
+fn strip_to_string_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
+    match expr {
+        code_ir::Expr::MethodCall { receiver, method, args }
+            if method == "to_string" && args.is_empty() =>
+        {
+            match receiver.as_ref() {
+                // "lit".to_string() → "lit" (already &str)
+                code_ir::Expr::Str(_) => *receiver,
+                // var.to_string() → &var (works for both &str and String via auto-deref)
+                _ => code_ir::Expr::Ref(receiver),
+            }
+        }
+        other => other,
     }
 }
 
@@ -4562,6 +4720,7 @@ pub fn apply_tco(
     fn_name: &str,
     param_names: &[String],
     body: &[code_ir::Stmt],
+    str_param_names: &HashSet<String>,
 ) -> Option<Vec<code_ir::Stmt>> {
     let plan = match plan_tco(fn_name, body) {
         Ok(Some(plan)) => plan,
@@ -4569,7 +4728,7 @@ pub fn apply_tco(
         Err(_) => return None,
     };
 
-    let lowered = lower_tco_plan(plan, param_names);
+    let lowered = lower_tco_plan(plan, param_names, str_param_names);
     if ensure_lowered_body_has_no_self_call(&lowered, fn_name).is_err() {
         return None;
     }
@@ -4834,17 +4993,29 @@ fn plan_embedded_expr(
     }
 }
 
-fn lower_tco_plan(plan: TcoPlan, param_names: &[String]) -> Vec<code_ir::Stmt> {
+fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
     let loop_vars: Vec<String> = param_names.iter().map(|p| format!("__tco_p_{p}")).collect();
 
     let mut preamble: Vec<code_ir::Stmt> = param_names
         .iter()
         .zip(loop_vars.iter())
-        .map(|(param, lv)| code_ir::Stmt::Let {
-            name: lv.clone(),
-            mutable: true,
-            expr: code_ir::Expr::Var(param.clone()),
-            ir_type: None,
+        .map(|(param, lv)| {
+            // R3: &str params need .to_string() since TCO loop vars must own data
+            let init_expr = if str_param_names.contains(param) {
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(param.clone())),
+                    method: "to_string".to_string(),
+                    args: vec![],
+                }
+            } else {
+                code_ir::Expr::Var(param.clone())
+            };
+            code_ir::Stmt::Let {
+                name: lv.clone(),
+                mutable: true,
+                expr: init_expr,
+                ir_type: None,
+            }
         })
         .collect();
 
@@ -4925,10 +5096,16 @@ fn lower_tco_recur(args: &[code_ir::Expr], loop_vars: &[String]) -> code_ir::Stm
 
     for (i, arg) in args.iter().enumerate() {
         if i < loop_vars.len() {
+            // R3: Strip Ref(&) from TCO args — loop vars own their values,
+            // so we need owned String, not &str references to temporaries.
+            let owned_arg = match arg {
+                code_ir::Expr::Ref(inner) => inner.as_ref().clone(),
+                other => other.clone(),
+            };
             stmts.push(code_ir::Stmt::Let {
                 name: temps[i].clone(),
                 mutable: false,
-                expr: arg.clone(),
+                expr: owned_arg,
                 ir_type: None,
             });
         }
@@ -6592,7 +6769,7 @@ mod tests {
                 right: Box::new(code_ir::Expr::IntLit(1)),
             }],
         ))];
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(result.is_some(), "simple tail recursion should be eligible");
         let transformed = result.unwrap();
         // Structure: let mut __tco_p_n = n; loop { let n = __tco_p_n.clone(); ... }
@@ -6630,7 +6807,7 @@ mod tests {
                 right: Box::new(code_ir::Expr::IntLit(1)),
             }),
         ];
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "non-tail recursion should NOT be eligible"
@@ -6657,7 +6834,7 @@ mod tests {
             },
             code_ir::Stmt::Return(self_call("f", vec![code_ir::Expr::Var("x".into())])),
         ];
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "mixed tail/non-tail should NOT be eligible"
@@ -6672,7 +6849,7 @@ mod tests {
             op: "+".into(),
             right: Box::new(code_ir::Expr::IntLit(1)),
         })];
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "non-recursive function should return None"
@@ -6688,7 +6865,7 @@ mod tests {
             args: vec![code_ir::Expr::Var("n".into())],
             obligation: None,
         })];
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "mutual recursion (call to different fn) should return None"
@@ -6711,7 +6888,7 @@ mod tests {
                 "state".into(),
             ))]),
         })];
-        let result = apply_tco("f", &["state".into()], &body);
+        let result = apply_tco("f", &["state".into()], &body, &HashSet::new());
         assert!(
             result.is_some(),
             "tail calls inside if branches should be eligible"
@@ -6777,7 +6954,7 @@ mod tests {
                 code_ir::Expr::Var("a".into()),
             ],
         ))];
-        let result = apply_tco("f", &["a".into(), "b".into()], &body);
+        let result = apply_tco("f", &["a".into(), "b".into()], &body, &HashSet::new());
         assert!(result.is_some());
         let transformed = result.unwrap();
 
@@ -6840,7 +7017,7 @@ mod tests {
                 }],
             )),
         ];
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(result.is_some());
         let transformed = result.unwrap();
 
@@ -6884,7 +7061,7 @@ mod tests {
             code_ir::Stmt::Return(code_ir::Expr::Var("n".into())),
         ];
 
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "tail expressions nested under a non-tail if-expression must block TCO"
@@ -6901,7 +7078,7 @@ mod tests {
             code_ir::Stmt::Return(code_ir::Expr::Var("n".into())),
         ];
 
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "self-calls used in assertions must block TCO"
@@ -6914,7 +7091,7 @@ mod tests {
             self_call("f", vec![code_ir::Expr::Var("n".into())]),
         )])];
 
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "lexical block statements must not inherit function tail position"
@@ -6930,7 +7107,7 @@ mod tests {
             ))],
         }];
 
-        let result = apply_tco("f", &["n".into()], &body);
+        let result = apply_tco("f", &["n".into()], &body, &HashSet::new());
         assert!(
             result.is_none(),
             "nested loop bodies containing self-calls must fail TCO rewriting"
