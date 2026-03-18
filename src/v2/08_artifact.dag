@@ -1,0 +1,80 @@
+// v2 artifact model — explicit representation of buildable/deployable units.
+//
+// The compiler currently assumes a single monolithic artifact. This module
+// makes that assumption explicit as a data type so that multi-artifact
+// compilation can be added later without changing the core pipeline.
+//
+// E0 compatibility wrapper: default_artifact_plan() wraps the current
+// monolithic behavior as an explicit ArtifactPlan with one ServiceBinary
+// artifact and no boundaries. No pipeline wiring yet — that's E1/E2.
+
+module v2.compiler.artifact
+
+// =========================================================================
+// Artifact kinds
+// =========================================================================
+
+// An artifact is a buildable/deployable unit.
+type ArtifactKind
+  = ServiceBinary
+  | Library
+  | Frontend
+  | GeneratedSupport
+
+// =========================================================================
+// Artifact
+// =========================================================================
+
+type Artifact {
+  name: String
+  kind: ArtifactKind
+  target: String
+  entry_modules: List<String>
+  dependencies: List<String>
+}
+
+// =========================================================================
+// Boundary — how artifacts communicate
+// =========================================================================
+
+type BoundaryKind
+  = DirectCall
+  | HttpJson
+  | MessageQueue
+  | Ffi
+  | FileProtocol
+
+type Boundary {
+  from_artifact: String
+  to_artifact: String
+  kind: BoundaryKind
+  contract: String
+}
+
+// =========================================================================
+// Artifact plan — what the compiler will build
+// =========================================================================
+
+type ArtifactPlan {
+  artifacts: List<Artifact>
+  boundaries: List<Boundary>
+}
+
+// =========================================================================
+// Default plan — compatibility wrapper
+// =========================================================================
+
+// Create a default single-artifact plan from the current pipeline state.
+// This is the compatibility wrapper — current behavior becomes an explicit plan.
+fn default_artifact_plan(root_modules: List<String>, target: String) -> ArtifactPlan {
+  ArtifactPlan {
+    artifacts: [Artifact {
+      name: "default",
+      kind: ServiceBinary,
+      target: target,
+      entry_modules: root_modules,
+      dependencies: []
+    }],
+    boundaries: []
+  }
+}

@@ -95,6 +95,7 @@ mod tests {
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/06_pipeline.dag"),
+            root.join("src/v2/08_artifact.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -190,6 +191,7 @@ mod tests {
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/06_pipeline.dag"),
+            root.join("src/v2/08_artifact.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -744,6 +746,11 @@ fn foo(item: String) -> String {
     #[test]
     fn phase0_pipeline_parses_strict() {
         assert_parses_strict("src/v2/06_pipeline.dag");
+    }
+
+    #[test]
+    fn phase0_artifact_parses_strict() {
+        assert_parses_strict("src/v2/08_artifact.dag");
     }
 
     #[test]
