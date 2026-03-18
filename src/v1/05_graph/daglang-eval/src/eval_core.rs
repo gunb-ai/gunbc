@@ -621,7 +621,7 @@ pub fn eval_builtin_call(
             } else {
                 Err(EvalError::new("'map_merge' requires two maps"))
             }
-        },
+        }
         "map_contains_key" => {
             if args.len() >= 2 {
                 match &args[0].1 {

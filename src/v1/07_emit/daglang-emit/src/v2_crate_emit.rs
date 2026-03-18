@@ -27,14 +27,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
-use daglang_syntax::ast_utils::type_expr_to_string;
-use gunbc_ir::code_ir;
-
 use crate::fn_codegen;
 use crate::render_rust;
 use crate::type_codegen;
 use crate::v2_runtime_shim;
+use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
+use daglang_syntax::ast_utils::type_expr_to_string;
+use gunbc_ir::code_ir;
 
 /// A generated file with its path relative to the crate root and content.
 #[derive(Debug)]
@@ -552,6 +551,25 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, &file.content)?;
+    }
+    Ok(())
+}
+
+/// Generate a `Cargo.lock` for the crate at `crate_dir` by delegating to Cargo.
+///
+/// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
+/// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
+pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
+    let output = std::process::Command::new("cargo")
+        .arg("generate-lockfile")
+        .current_dir(crate_dir)
+        .output()?;
+    if !output.status.success() {
+        return Err(std::io::Error::other(format!(
+            "cargo generate-lockfile failed in {}:\n{}",
+            crate_dir.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
     Ok(())
 }

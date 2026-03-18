@@ -317,9 +317,10 @@ impl<T> Node<T> {
                             port.type_id.0.as_str(),
                             port.cardinality,
                         );
-                        // Preserve resource_access so SubDag auto-inference
-                        // doesn't lose Write/Exclusive mode information.
+                        // Preserve resource_access and resource_id so SubDag
+                        // auto-inference doesn't lose mode or identity.
                         inferred.resource_access = port.resource_access;
+                        inferred.resource_id = port.resource_id.clone();
                         inputs.push(inferred);
                     }
                 }
@@ -339,6 +340,7 @@ impl<T> Node<T> {
                             port.cardinality,
                         );
                         inferred.resource_access = port.resource_access;
+                        inferred.resource_id = port.resource_id.clone();
                         outputs.push(inferred);
                     }
                 }
@@ -422,7 +424,11 @@ impl<T> Node<T> {
     }
 
     /// Set the mock-resolution input alias for param-source nodes.
-    pub fn with_input_alias(mut self, node_id: impl Into<NodeId>, port: impl Into<PortName>) -> Self {
+    pub fn with_input_alias(
+        mut self,
+        node_id: impl Into<NodeId>,
+        port: impl Into<PortName>,
+    ) -> Self {
         self.input_alias = Some((node_id.into(), port.into()));
         self
     }

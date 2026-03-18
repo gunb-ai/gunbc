@@ -390,7 +390,12 @@ fn enum_accessor_impl(enum_name: &str, variants: &[Variant]) -> Option<String> {
     for (field_name, rust_type) in &common {
         let arms: Vec<String> = variants
             .iter()
-            .map(|v| format!("{}::{} {{ {}, .. }} => {}.clone()", enum_name, v.name, field_name, field_name))
+            .map(|v| {
+                format!(
+                    "{}::{} {{ {}, .. }} => {}.clone()",
+                    enum_name, v.name, field_name, field_name
+                )
+            })
             .collect();
         methods.push(format!(
             "    pub fn {field_name}(&self) -> {rust_type} {{\n        match self {{\n            {arms}\n        }}\n    }}",
@@ -1222,7 +1227,6 @@ pub fn typedefs_to_source_file(
         items: code_items,
     }
 }
-
 
 /// Extract TypeDefs from a `TypedProject` and produce a rendered Rust source
 /// string containing all generated types for the specified module paths.

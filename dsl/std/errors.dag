@@ -1,19 +1,39 @@
-// std/errors.dag -- Provider error shapes from API documentation.
-//
-// Each type models the actual error response body of a specific provider.
-// No invented abstractions — each shape is cited from the provider's API docs.
+// std/errors.dag -- Canonical provider error-shape vocabulary.
 
 module std.errors
 
-// GitHub REST API error response.
-// Ref: https://docs.github.com/en/rest/overview/resources-in-the-rest-api#client-errors
+type HttpErrorShape {
+  status: Int
+  error_type: String
+  message: String
+  detail: String?
+}
+
+type AuthError = Expired | InvalidToken | MissingCredential | InsufficientScope | Forbidden
+
+type RateLimitError {
+  retry_after_seconds: Int?
+  scope: String
+}
+
+type ConflictError {
+  resource: String
+  expected_version: String?
+  actual_version: String?
+}
+
+type ProviderError {
+  provider: String
+  operation: String
+  http_status: Int?
+  message: String
+}
+
 type GitHubErrorShape {
   message: String
   documentation_url: String?
 }
 
-// GCP API error response (standard across all GCP REST APIs).
-// Ref: https://cloud.google.com/apis/design/errors#error_model
 type GcpErrorDetails {
   code: Int
   message: String
@@ -24,8 +44,6 @@ type GcpErrorShape {
   error: GcpErrorDetails
 }
 
-// Anthropic API error response.
-// Ref: https://docs.anthropic.com/en/api/errors
 type AnthropicErrorDetails {
   type: String
   message: String
@@ -36,8 +54,6 @@ type AnthropicErrorShape {
   error: AnthropicErrorDetails
 }
 
-// OpenAI API error response.
-// Ref: https://platform.openai.com/docs/guides/error-codes
 type OpenAiErrorDetails {
   message: String
   type: String

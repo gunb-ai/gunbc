@@ -56,22 +56,15 @@ type NamingConvention {
 }
 
 // "What is a type system mapping?" -- abstract -> concrete types.
-// Ref: each field maps a DAG primitive to a concrete target-language type.
 type TypeMapping {
   string: String
   int: String
   float: String
   bool: String
   bytes: String
-  unit: String                     // e.g. "()" or "None" or "struct{}"
-  secret: String                   // opaque credential type (often == string)
-  json: String                     // dynamic/untyped JSON value
   list_template: String
-  set_template: String             // e.g. "std::collections::BTreeSet<{0}>"
   optional_template: String
   map_template: String
-  result_template: String?         // e.g. "Result<{0}, {1}>" or null if N/A
-  tuple_template: String?          // e.g. "({0}, {1})" or "tuple[{0}, {1}]" or null
 }
 
 // ── Layer 0b: Rendering syntax primitives ────────────────────────────
@@ -368,7 +361,6 @@ type ServiceCallSemantics
   | MultiReturnError {
       template: String           // e.g. "{result}, {err} := {call}" — Go: multi-return
     }
-
 // ── Layer 1: Categories ──────────────────────────────────────────────
 
 // "What is a language?" -- the baseline identity facts.
@@ -479,15 +471,9 @@ data rust_language: Language = {
     float: "f64",
     bool: "bool",
     bytes: "Vec<u8>",
-    unit: "()",
-    secret: "String",
-    json: "serde_json::Value",
     list_template: "Vec<{0}>",
-    set_template: "std::collections::BTreeSet<{0}>",
     optional_template: "Option<{0}>",
-    map_template: "HashMap<{0}, {1}>",
-    result_template: "Result<{0}, {1}>",
-    tuple_template: "({0}, {1})"
+    map_template: "HashMap<{0}, {1}>"
   }
 }
 
@@ -515,15 +501,9 @@ data go_language: Language = {
     float: "float64",
     bool: "bool",
     bytes: "[]byte",
-    unit: "struct{}",
-    secret: "string",
-    json: "interface{}",
     list_template: "[]{0}",
-    set_template: "map[{0}]struct{}",
     optional_template: "*{0}",
-    map_template: "map[{0}]{1}",
-    result_template: null,
-    tuple_template: null
+    map_template: "map[{0}]{1}"
   }
 }
 
@@ -551,15 +531,9 @@ data python_language: Language = {
     float: "float",
     bool: "bool",
     bytes: "bytes",
-    unit: "None",
-    secret: "str",
-    json: "dict",
     list_template: "list[{0}]",
-    set_template: "set[{0}]",
     optional_template: "{0} | None",
-    map_template: "dict[{0}, {1}]",
-    result_template: null,
-    tuple_template: "tuple[{0}, {1}]"
+    map_template: "dict[{0}, {1}]"
   }
 }
 
@@ -587,18 +561,13 @@ data typescript_language: Language = {
     float: "number",
     bool: "boolean",
     bytes: "Uint8Array",
-    unit: "void",
-    secret: "string",
-    json: "unknown",
     list_template: "{0}[]",
-    set_template: "Set<{0}>",
     optional_template: "{0} | undefined",
-    map_template: "Map<{0}, {1}>",
-    result_template: null,
-    tuple_template: "[{0}, {1}]"
+    map_template: "Map<{0}, {1}>"
   }
 }
 
+<<<<<<< HEAD
 // ── Layer 2b: Rendering syntax data ──────────────────────────────────
 //
 // Each data declaration answers "how does language X write construct Y?"
@@ -1291,7 +1260,6 @@ data python_spec: LanguageSpec = {
   scaffold: python_scaffold,
   service_calls: python_service_calls
 }
-
 // ── Markup formats ───────────────────────────────────────────────────
 
 // "What is Markdown?"

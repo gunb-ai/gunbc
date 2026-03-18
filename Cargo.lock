@@ -416,6 +416,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-interp"
+version = "0.1.0"
+dependencies = [
+ "daglang-eval",
+ "daglang-lower",
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-lib-transport",
+ "serde_json",
+]
+
+[[package]]
 name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [

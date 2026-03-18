@@ -43,7 +43,11 @@ The invariant headings in this document are also the canonical theme
 labels for ratchets, review feedback, and queue planning. A review queue
 branch must declare exactly one primary theme from this list and stop
 before taking a second review item from a different theme, so CI
-failures stay attributable to a single ratchet.
+failures stay attributable to a single ratchet. Review queue branches
+must also keep each commit strictly scoped to that invariant fix: no
+unrelated helper cleanup, dead-code removal, or opportunistic
+refactoring unless it is directly required for the fix to compile and
+pass tests.
 
 ### No duplicate representations
 

@@ -154,7 +154,12 @@ fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
     // Body — optionally wrapped with stacker::maybe_grow for stack safety.
     if use_stacker && !f.body.is_empty() {
         let inner_pad = "    ".repeat(indent + 1);
-        writeln!(out, "{}stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {{", inner_pad).unwrap();
+        writeln!(
+            out,
+            "{}stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {{",
+            inner_pad
+        )
+        .unwrap();
         for stmt in &f.body {
             out.push_str(&render_stmt(stmt, indent + 2));
         }

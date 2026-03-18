@@ -16,6 +16,7 @@ members = [
     "src/v1/08_materialize/resolve",
     "src/v1/08_materialize/blob",
     "src/v1/08_materialize/transport",
+    "src/v1/08_materialize/interp",
     "src/v1/09_execute/exec",
     "src/v1/01_surfaces/daglang-cli",
     "src/v1/01_surfaces/cli",
