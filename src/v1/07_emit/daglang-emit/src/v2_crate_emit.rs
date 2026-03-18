@@ -1387,6 +1387,27 @@ mod generated_tests {{
             .join();
         result.expect("gist-compile-all test panicked");
     }}
+
+    #[test]
+    fn type_size_regression_check() {{
+        // Prevent silent type size regressions in generated v2 types.
+        // These bounds assume Node.transport and Node.config are boxed (R2).
+        let node_size = std::mem::size_of::<crate::v2_core::Node>();
+        let typed_expr_size = std::mem::size_of::<crate::v2_core::TypedExpr>();
+        assert!(
+            node_size <= 160,
+            "Node size regression: {{}} bytes (limit: 160). Check for unboxed rare fields.",
+            node_size
+        );
+        assert!(
+            typed_expr_size <= 800,
+            "TypedExpr size regression: {{}} bytes (limit: 800). Node size likely regressed.",
+            typed_expr_size
+        );
+        // Print sizes for audit trail
+        eprintln!("  Node: {{}} bytes", node_size);
+        eprintln!("  TypedExpr: {{}} bytes", typed_expr_size);
+    }}
 }}
 "#,
         const_decls = const_decls,
