@@ -1089,13 +1089,13 @@ mod generated_tests {{
 {const_decls}
     #[test]
     fn tokenize_produces_tokens() {{
-        let tokens = tokenize("fn foo() -> Int {{ 42 }}".to_string());
+        let tokens = tokenize("fn foo() -> Int {{ 42 }}");
         assert!(!tokens.is_empty(), "tokenize should produce at least one token");
     }}
 
     #[test]
     fn tokenize_ends_with_eof() {{
-        let tokens = tokenize("type Foo {{ x: Int }}".to_string());
+        let tokens = tokenize("type Foo {{ x: Int }}");
         let last = tokens.last().expect("should have tokens");
         assert!(
             matches!(last.kind, crate::v2_core::TokenKind::Eof),
@@ -1106,7 +1106,7 @@ mod generated_tests {{
 
     #[test]
     fn tokenize_fn_keyword() {{
-        let tokens = tokenize("fn".to_string());
+        let tokens = tokenize("fn");
         // Should have at least KwFn and Eof
         assert!(tokens.len() >= 2, "expected at least 2 tokens, got {{}}", tokens.len());
         assert!(
@@ -1118,14 +1118,14 @@ mod generated_tests {{
 
     #[test]
     fn tokenize_count_stable() {{
-        let tokens = tokenize("module test\ntype Foo {{ x: Int }}".to_string());
+        let tokens = tokenize("module test\ntype Foo {{ x: Int }}");
         // Non-trivial input should produce multiple tokens
         assert!(tokens.len() > 5, "non-trivial input should produce multiple tokens, got {{}}", tokens.len());
     }}
 
     #[test]
     fn parse_trivial_module() {{
-        let tokens = tokenize("module test\ntype Foo {{ x: Int }}\n".to_string());
+        let tokens = tokenize("module test\ntype Foo {{ x: Int }}\n");
         let result = crate::parse::parse(tokens);
         // ParseResult should have a module
         assert!(result.module.is_some(), "valid module should parse successfully");
@@ -1142,7 +1142,7 @@ mod generated_tests {{
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {{
                 // Tokenize the v2 compiler's own tokenizer source
-                let tokens = tokenize({tokenize_source_const}.to_string());
+                let tokens = tokenize({tokenize_source_const});
 
                 // Token list should be non-empty
                 assert!(!tokens.is_empty(), "tokenizing 01_tokenize.dag should produce tokens");
@@ -1235,7 +1235,7 @@ mod generated_tests {{
                 let modules: Vec<(&str, &str, &str)> = vec![
 {self_parse_sources}                ];
                 for (file, source, expected_name) in &modules {{
-                    let tokens = tokenize(source.to_string());
+                    let tokens = tokenize(source);
                     assert!(
                         !tokens.is_empty(),
                         "{{}} should produce tokens", file

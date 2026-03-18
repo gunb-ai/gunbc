@@ -3518,8 +3518,11 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_gist_resolve() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-resolve");
 
+        // Run in release mode — debug mode is 20x+ slower due to stacker wrapping
+        // and unoptimized code, making 1,515 lines of gist source infeasible.
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--release")
             .arg("--")
             .arg("gist_resolve_all_modules")
             .current_dir(&tmp_dir)
@@ -3556,6 +3559,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--release")
             .arg("--")
             .arg("gist_compile_all_modules")
             .current_dir(&tmp_dir)

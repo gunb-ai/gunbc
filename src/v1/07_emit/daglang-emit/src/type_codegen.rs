@@ -2442,7 +2442,7 @@ mod tests {
 
     #[test]
     fn explicit_anonymous_record_targets_drive_let_bound_codegen() {
-        let signatures = vec![TypedItemSignature::Fn(TypedCallableSignature {
+        let signatures = [TypedItemSignature::Fn(TypedCallableSignature {
             name: "consume".to_string(),
             params: vec![TypedBinding {
                 name: "cfg".to_string(),
