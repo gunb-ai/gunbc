@@ -238,11 +238,13 @@ pub enum PrimitiveOpKind {
     },
     /// C24: String interpolation — `"hello {name}, you have {count} items"`.
     /// Inputs: one port per interpolated expression. Output: concatenated string.
+    /// Input port names are derived from `parts`: `interp_0`, `interp_1`, …,
+    /// `interp_{parts.len() - 2}`.  The node's declared ports are authoritative;
+    /// this variant carries only the template structure.
     StringInterpolate {
-        /// Static template parts interleaved with input port names.
-        /// `parts.len() == input_ports.len() + 1` (first/last are always literal).
+        /// Static template parts interleaved with input port values.
+        /// `parts.len() == <number of input ports> + 1` (first/last are always literal).
         parts: Vec<String>,
-        input_ports: Vec<String>,
     },
     /// C24: Binary operation — `a + b`, `a == b`, `a && b`, etc.
     BinaryOp {
@@ -11900,15 +11902,19 @@ fn synthesize_string_interpolate(
     let mut input_sources: Vec<(String, String, String)> = Vec::new();
 
     // Walk through parts: literals become template strings, exprs become input ports.
+    // Port names use a sequential counter (interp_0, interp_1, …) so they can be
+    // derived from `parts.len() - 1` without storing them in PrimitiveOpKind.
     let mut current_literal = String::new();
-    for (i, part) in string_parts.iter().enumerate() {
+    let mut expr_index: usize = 0;
+    for part in string_parts.iter() {
         match part {
             daglang_syntax::ast::StringPart::Literal(s) => {
                 current_literal.push_str(s);
             }
             daglang_syntax::ast::StringPart::Expr(expr) => {
                 parts.push(std::mem::take(&mut current_literal));
-                let port_name = format!("interp_{i}");
+                let port_name = format!("interp_{expr_index}");
+                expr_index += 1;
                 let (node, port) = lower_expr(
                     builder,
                     ctx,
@@ -11950,7 +11956,6 @@ fn synthesize_string_interpolate(
             name: format!("string_interpolate::{}::{}", ctx.item_name, output_name),
             kind: PrimitiveOpKind::StringInterpolate {
                 parts,
-                input_ports: input_port_names,
             },
         },
     ));

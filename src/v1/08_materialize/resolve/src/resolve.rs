@@ -423,10 +423,12 @@ impl Executable for PurePrimitiveOp {
                 daglang_lower::eval::eval_get_field(value, field)
                     .map_err(|e| ExecError::new(format!("on port `{input_port}`: {e}")))?
             }
-            PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
-                let values: Vec<Value> = input_ports
-                    .iter()
-                    .map(|port| require_input_port(&inputs, port, "StringInterpolate").cloned())
+            PrimitiveOpKind::StringInterpolate { parts } => {
+                let values: Vec<Value> = (0..parts.len().saturating_sub(1))
+                    .map(|i| {
+                        let port = format!("interp_{i}");
+                        require_input_port(&inputs, &port, "StringInterpolate").cloned()
+                    })
                     .collect::<Result<_, _>>()?;
                 daglang_lower::eval::eval_string_interpolate(parts, &values)
                     .map_err(|e| ExecError::new(e.to_string()))?
@@ -1009,36 +1011,8 @@ fn resolve_primitive(
                 has_else: false,
             }))
         }
-        PrimitiveOpKind::StringInterpolate { input_ports, .. } => {
-            let missing =
-                missing_declared_input_ports(input_ports.iter().map(String::as_str), inputs);
-            if !missing.is_empty() {
-                let declared = declared_input_port_names(inputs);
-                return Err(ResolveError {
-                    node_id: String::new(),
-                    reason: format!(
-                        "StringInterpolate: input_ports [{}] not found in declared inputs [{}] (compiler bug)",
-                        missing.join(", "),
-                        declared.join(", ")
-                    ),
-                });
-            }
-            Ok(DynOp::new(PurePrimitiveOp {
-                kind: kind.clone(),
-                output_port: default_output_port(outputs),
-                has_else: false,
-            }))
-        }
-        PrimitiveOpKind::Conditional => {
-            let output_port = default_output_port(outputs);
-            let has_else = inputs.iter().any(|port| port.name.0 == "else");
-            Ok(DynOp::new(PurePrimitiveOp {
-                kind: kind.clone(),
-                output_port,
-                has_else,
-            }))
-        }
-        PrimitiveOpKind::BinaryOp { .. }
+        PrimitiveOpKind::StringInterpolate { .. }
+        | PrimitiveOpKind::BinaryOp { .. }
         | PrimitiveOpKind::UnaryOp { .. }
         | PrimitiveOpKind::MatchDispatch { .. }
         | PrimitiveOpKind::RecordConstruct { .. }
@@ -1049,6 +1023,15 @@ fn resolve_primitive(
             output_port: default_output_port(outputs),
             has_else: false,
         })),
+        PrimitiveOpKind::Conditional => {
+            let output_port = default_output_port(outputs);
+            let has_else = inputs.iter().any(|port| port.name.0 == "else");
+            Ok(DynOp::new(PurePrimitiveOp {
+                kind: kind.clone(),
+                output_port,
+                has_else,
+            }))
+        }
     }
 }
 
@@ -2415,9 +2398,10 @@ mod tests {
 
     #[test]
     fn resolve_string_interpolate_concatenates_parts() {
+        // parts has 3 entries → ports are interp_0, interp_1 (derived, not stored)
         let node = Node::opaque(
             "interp",
-            vec![Port::new("name", "String"), Port::new("count", "Int")],
+            vec![Port::new("interp_0", "String"), Port::new("interp_1", "Int")],
             vec![Port::new("result", "String")],
             LoweredOp::Primitive {
                 module: "test".to_string(),
@@ -2428,49 +2412,17 @@ mod tests {
                         ", you have ".to_string(),
                         " items".to_string(),
                     ],
-                    input_ports: vec!["name".to_string(), "count".to_string()],
                 },
             },
         );
         let result = resolve_node(&node).expect("should resolve");
         let mut inputs = HashMap::new();
-        inputs.insert("name".to_string(), Value::Str("Alice".to_string()));
-        inputs.insert("count".to_string(), Value::Int(42));
+        inputs.insert("interp_0".to_string(), Value::Str("Alice".to_string()));
+        inputs.insert("interp_1".to_string(), Value::Int(42));
         let outputs = result.execute(inputs).expect("should execute");
         assert_eq!(
             outputs.get("result").and_then(Value::as_str),
             Some("hello Alice, you have 42 items")
-        );
-    }
-
-    #[test]
-    fn resolve_string_interpolate_rejects_missing_declared_input_ports() {
-        let node = Node::opaque(
-            "interp",
-            vec![Port::new("name", "String")],
-            vec![Port::new("result", "String")],
-            LoweredOp::Primitive {
-                module: "test".to_string(),
-                name: "string_interpolate".to_string(),
-                kind: PrimitiveOpKind::StringInterpolate {
-                    parts: vec![
-                        "hello ".to_string(),
-                        ", you have ".to_string(),
-                        " items".to_string(),
-                    ],
-                    input_ports: vec!["name".to_string(), "count".to_string()],
-                },
-            },
-        );
-
-        let err = resolve_node(&node).expect_err(
-            "StringInterpolate with input_ports not matching declared inputs must fail at resolve time",
-        );
-        assert!(
-            err.reason
-                .contains("input_ports [count] not found in declared inputs [name]"),
-            "error should identify the missing declared input port: {}",
-            err.reason
         );
     }
 

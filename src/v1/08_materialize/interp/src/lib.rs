@@ -93,10 +93,12 @@ fn execute_primitive(
                 eval::eval_get_field(value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
-        PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
-            let values: Vec<Value> = input_ports
-                .iter()
-                .map(|port| require_input_port(&inputs, port, "StringInterpolate").cloned())
+        PrimitiveOpKind::StringInterpolate { parts } => {
+            let values: Vec<Value> = (0..parts.len().saturating_sub(1))
+                .map(|i| {
+                    let port = format!("interp_{i}");
+                    require_input_port(&inputs, &port, "StringInterpolate").cloned()
+                })
                 .collect::<Result<_, _>>()?;
             let result = eval::eval_string_interpolate(parts, &values)
                 .map_err(|e| ExecError::new(e.to_string()))?;
@@ -276,6 +278,7 @@ mod tests {
 
     #[test]
     fn string_interpolate_missing_input_port_errors() {
+        // parts has 3 entries → expects 2 ports: interp_0, interp_1
         let op = LoweredOp::Primitive {
             module: "test".to_string(),
             name: "string_interpolate".to_string(),
@@ -285,10 +288,10 @@ mod tests {
                     ", you have ".to_string(),
                     " items".to_string(),
                 ],
-                input_ports: vec!["name".to_string(), "count".to_string()],
             },
         };
-        let inputs = [("name".to_string(), Value::Str("Alice".to_string()))]
+        // Only supply interp_0, omit interp_1.
+        let inputs = [("interp_0".to_string(), Value::Str("Alice".to_string()))]
             .into_iter()
             .collect();
 
@@ -297,7 +300,7 @@ mod tests {
 
         assert_eq!(
             err.message,
-            "StringInterpolate: missing required input port `count`; available inputs: [name]"
+            "StringInterpolate: missing required input port `interp_1`; available inputs: [interp_0]"
         );
     }
 
