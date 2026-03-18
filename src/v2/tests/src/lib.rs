@@ -765,6 +765,11 @@ fn foo(item: String) -> String {
         assert_parses_strict("dsl/std/behavioral.dag");
     }
 
+    #[test]
+    fn phase0_shared_primitives_parses_strict() {
+        assert_parses_strict("dsl/std/primitives.dag");
+    }
+
     // ═════════════════════════════════════════════════════════════════════
     // Phase 1: Compilation gate — v1 compiler can compile each v2 module
     // ═════════════════════════════════════════════════════════════════════
