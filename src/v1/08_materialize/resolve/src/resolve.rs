@@ -878,7 +878,7 @@ fn resolve_op(
             // This arm is unreachable but kept for exhaustiveness.
             unreachable!("pipeline nodes are skipped before resolve_node_body is called")
         }
-        LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, inputs, outputs),
+        LoweredOp::Primitive { kind, .. } => resolve_primitive(node_id, kind, inputs, outputs),
         LoweredOp::Callable {
             module,
             name,
@@ -928,11 +928,39 @@ fn resolve_op(
 // ============================================================================
 
 /// Resolve typed lowered primitive nodes shared across all modules.
+///
+/// For expression primitives, validates that the node's declared input ports
+/// cover all ports required by the `PrimitiveOpKind`. This catches incomplete
+/// primitive input maps at resolve time (before execution), rather than
+/// deferring to runtime `require_input_port()` failures.
 fn resolve_primitive(
+    node_id: &str,
     kind: &PrimitiveOpKind,
     inputs: &[Port],
     outputs: &[Port],
 ) -> Result<DynOp, ResolveError> {
+    // Validate declared ports cover the kind's required ports.
+    if let Some(required) = kind.required_input_ports() {
+        let declared: std::collections::HashSet<&str> =
+            inputs.iter().map(|p| p.name.0.as_str()).collect();
+        let missing: Vec<&str> = required
+            .iter()
+            .filter(|port| !declared.contains(port.as_str()))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            let mut declared_sorted: Vec<&str> = declared.into_iter().collect();
+            declared_sorted.sort_unstable();
+            return Err(ResolveError {
+                node_id: node_id.to_string(),
+                reason: format!(
+                    "primitive node has incomplete input ports: missing [{}]; declared [{}]",
+                    missing.join(", "),
+                    declared_sorted.join(", "),
+                ),
+            });
+        }
+    }
     match kind {
         PrimitiveOpKind::FsEnv => Ok(DynOp::new(DslFsEnvOp)),
         PrimitiveOpKind::CallParamSource { param, .. } => {
@@ -969,7 +997,7 @@ fn resolve_primitive(
         PrimitiveOpKind::GetField { field } => {
             if inputs.len() != 1 {
                 return Err(ResolveError {
-                    node_id: String::new(),
+                    node_id: node_id.to_string(),
                     reason: format!(
                         "GetField `{field}`: expected exactly 1 declared input port, found {} (compiler bug)",
                         inputs.len()
@@ -982,7 +1010,7 @@ fn resolve_primitive(
                     .first()
                     .map(|p| p.name.0.clone())
                     .ok_or_else(|| ResolveError {
-                        node_id: String::new(),
+                        node_id: node_id.to_string(),
                         reason: format!(
                             "GetField `{field}`: node has no output port (compiler bug)"
                         ),
@@ -1525,6 +1553,32 @@ mod tests {
             .expect("executor path should annotate primitive failures with node trace");
         assert_eq!(node_trace.node_id, "binary");
         assert_eq!(node_trace.role, NodeRole::Pure);
+    }
+
+    #[test]
+    fn resolve_rejects_primitive_with_incomplete_declared_ports() {
+        // A BinaryOp node that only declares "left" — missing required "right".
+        // This must fail at resolve time, not wait until execution.
+        let node = Node::opaque(
+            "binary",
+            vec![Port::new("left", "Int")],
+            vec![Port::new("result", "Int")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "binary".to_string(),
+                kind: PrimitiveOpKind::BinaryOp {
+                    op: daglang_lower::expr::LoweredBinOp::Add,
+                },
+            },
+        );
+        let err = resolve_node(&node)
+            .expect_err("resolve should reject primitive with incomplete declared ports");
+        assert!(
+            err.reason.contains("missing [right]"),
+            "error should name the missing port: {}",
+            err.reason
+        );
+        assert_eq!(err.node_id, "binary");
     }
 
     #[test]
