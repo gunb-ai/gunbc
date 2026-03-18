@@ -748,7 +748,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_shared_behavioral_parses_strict() {
-        assert_parses_strict("dsl/shared/behavioral.dag");
+        assert_parses_strict("dsl/std/behavioral.dag");
     }
 
     // ═════════════════════════════════════════════════════════════════════

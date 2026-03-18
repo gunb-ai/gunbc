@@ -663,17 +663,15 @@ fn node_type_shape(n: Node) -> String {
         if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
     }
   } else if node_is_container(n: n) {
-    let elem_shape = if n.return_type != none {
-      type_expr_shape(type_expr: n.return_type.value)
-    } else {
-      "?"
+    let elem_shape = match n.children |> first {
+      Some { value: el } => node_type_shape(n: el)
+      None => "?"
     }
     concat("Container(", n.name, ",", elem_shape, ")")
   } else if node_is_optional(n: n) {
-    let inner_shape = if n.return_type != none {
-      type_expr_shape(type_expr: n.return_type.value)
-    } else {
-      "?"
+    let inner_shape = match n.children |> first {
+      Some { value: inner } => node_type_shape(n: inner)
+      None => "?"
     }
     concat("Optional(", inner_shape, ")")
   } else if node_is_map(n: n) {
@@ -751,19 +749,14 @@ fn node_type_deps(n: Node) -> List<String> {
   } else if node_is_leaf(n: n) {
     []
   } else if n.connective != none {
-    // Product or Coproduct: collect deps from children's return_types
     flat_map(n.children, child =>
       if child.return_type != none {
-        type_expr_deps(expr: child.return_type.value)
+        node_type_deps(n: child.return_type.value)
       } else {
         []
       }
     )
-  } else if n.return_type != none {
-    // Container, Optional, Refined: deps from the element/inner type
-    type_expr_deps(expr: n.return_type.value)
   } else {
-    // Map or other: collect from children
     flat_map(n.children, child => node_type_deps(n: child))
   }
 }
@@ -860,11 +853,17 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
     AccessCheckResultNode { resolved_type: leaf_node(name: "String"), diagnostics: diags }
   } else if normed.name == "Map" && normed.children |> count == 2 {
+    let key_node = match normed.children |> first {
+      Some { value: k } => k
+      None => leaf_node(name: "String")
+    }
     let val_node = match normed.children |> skip(1) |> first {
       Some { value: v } => v
       None => leaf_node(name: "Unit")
     }
-    AccessCheckResultNode { resolved_type: optional_node(inner: val_node), diagnostics: [] }
+    let key_diags = if node_type_equals(left: key_node, right: index_type) { [] }
+    else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
+    AccessCheckResultNode { resolved_type: optional_node(inner: val_node), diagnostics: key_diags }
   } else {
     AccessCheckResultNode {
       resolved_type: leaf_node(name: "Unit"),
@@ -1835,7 +1834,11 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
     } else {
       match lookup_type(env: env, name: n.name) {
         Some { value: resolved } =>
-          resolve_node(n: resolved, env: env, module_name: module_name)
+          if resolved.children |> count == 0 && resolved.connective == none && resolved.name == n.name {
+            NodeResolveResult { resolved: resolved, diagnostics: [] }
+          } else {
+            resolve_node(n: resolved, env: env, module_name: module_name)
+          }
         None =>
           if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float" || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes" {
             NodeResolveResult { resolved: n, diagnostics: [] }
