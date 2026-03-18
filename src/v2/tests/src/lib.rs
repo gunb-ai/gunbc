@@ -462,10 +462,6 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn empty_registry_value() -> gunbc_ir::Value {
-        gunbc_ir::Value::Map(std::collections::BTreeMap::new())
-    }
-
     fn infer_scope_value(
         type_env: gunbc_ir::Value,
     ) -> gunbc_ir::Value {
@@ -3371,6 +3367,8 @@ fn example(items: List<String>) -> Int {
         let tmp_dir = std::env::temp_dir().join(dir_name);
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
+            .expect("failed to generate lockfile");
         tmp_dir
     }
 
@@ -3391,6 +3389,7 @@ fn example(items: List<String>) -> Int {
 
         let output = cargo_command(&tmp_dir)
             .arg("check")
+            .arg("--locked")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");

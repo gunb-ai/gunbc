@@ -784,7 +784,6 @@ mod tests {
                 name: "extract_field".into(),
                 kind: PrimitiveOpKind::GetField {
                     field: "name".into(),
-                    input_port: "record".into(),
                 },
             },
         ));

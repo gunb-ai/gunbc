@@ -9,6 +9,7 @@ module gunbc.tools.gist
 
 import extdeps.git
 import extdeps.github.auth { github_token }
+import extdeps.github.gists
 import std.resources { Network }
 import std.types { CommitSha, Url }
 

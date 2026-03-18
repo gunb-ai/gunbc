@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceAccessError, ResourceId};
+use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceId};
 
 use crate::errors::WorkflowAdmissionError;
 use crate::process_registry::{ClaimId, ProcessUnitRegistry, UnitClaim};
@@ -143,7 +143,7 @@ pub fn validate_conflicting_claims(spec: &WorkflowSpec) -> Vec<WorkflowAdmission
     let accesses = match derive_resource_accesses(&spec.dag) {
         Ok(accesses) => accesses,
         Err(resource_errors) => {
-            errors.extend(resource_errors.into_iter().map(workflow_resource_access_error));
+            errors.extend(resource_errors.into_iter().map(WorkflowAdmissionError::ResourceAccess));
             return errors;
         }
     };
@@ -192,7 +192,7 @@ fn derive_declared_claims(
     let accesses = derive_resource_accesses(&spec.dag).map_err(|resource_errors| {
         resource_errors
             .into_iter()
-            .map(workflow_resource_access_error)
+            .map(WorkflowAdmissionError::ResourceAccess)
             .collect::<Vec<_>>()
     })?;
 
@@ -214,25 +214,6 @@ fn derive_declared_claims(
     Ok(claims_by_node)
 }
 
-fn workflow_resource_access_error(error: ResourceAccessError) -> WorkflowAdmissionError {
-    match error {
-        ResourceAccessError::MissingAccessMode {
-            node_id,
-            port_name,
-            resource_id,
-        } => WorkflowAdmissionError::MissingResourceAccessMode {
-            node_id,
-            port_name,
-            resource_id: ClaimId::new(resource_id.0),
-        },
-        ResourceAccessError::MissingResourceId { node_id, port_name } => {
-            WorkflowAdmissionError::MissingResourceId {
-                node_id,
-                port_name,
-            }
-        }
-    }
-}
 
 fn mode_rank(mode: gunbc_ir::AccessMode) -> u8 {
     match mode {
@@ -319,7 +300,7 @@ fn compute_ordered_pairs(dag: &Dag<WorkflowUnit>) -> HashSet<(gunbc_ir::NodeId, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{AccessMode, Edge, Node, Port};
+    use gunbc_ir::{AccessMode, Edge, Node, Port, ResourceAccessError};
 
     use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec};
     use crate::schema::{
@@ -540,18 +521,20 @@ mod tests {
         let errors = validate_conflicting_claims(&spec);
         assert_eq!(errors.len(), 1);
         match &errors[0] {
-            WorkflowAdmissionError::MissingResourceId {
-                node_id,
-                port_name,
-            } => {
+            WorkflowAdmissionError::ResourceAccess(
+                ResourceAccessError::MissingResourceId {
+                    node_id,
+                    port_name,
+                },
+            ) => {
                 assert_eq!(node_id.0, "wf.a");
                 assert_eq!(port_name, "db_conn");
                 assert_eq!(
                     errors[0].to_string(),
-                    "node 'wf.a': resource input 'db_conn' has resource_access but no resource_id"
+                    "port 'db_conn' on node 'wf.a' has resource_access but no resource_id"
                 );
             }
-            other => panic!("expected MissingResourceId, got {other:?}"),
+            other => panic!("expected ResourceAccess(MissingResourceId), got {other:?}"),
         }
     }
 
@@ -590,17 +573,15 @@ mod tests {
         // Only metadata errors — no MissingRequiredClaims or UndeclaredEffectfulIo noise.
         for error in &errors {
             assert!(
-                matches!(
-                    error,
-                    WorkflowAdmissionError::MissingResourceId { .. }
-                        | WorkflowAdmissionError::MissingResourceAccessMode { .. }
-                ),
+                matches!(error, WorkflowAdmissionError::ResourceAccess(_)),
                 "expected only resource metadata errors, got: {error:?}"
             );
         }
         assert!(errors.iter().any(|e| matches!(
             e,
-            WorkflowAdmissionError::MissingResourceId { node_id, .. } if node_id.0 == "wf.a"
+            WorkflowAdmissionError::ResourceAccess(
+                ResourceAccessError::MissingResourceId { node_id, .. }
+            ) if node_id.0 == "wf.a"
         )));
     }
 }
