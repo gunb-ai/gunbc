@@ -57,68 +57,122 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
                     │   v2 compiles itself → stage 0 → 1   │
                     └──────────────┬──────────────────────┘
                                    │
-                    ┌──────────────▼──────────────────────┐
-                    │     A1: Gist Compilation (<60s)      │
-                    │   gist.dag → tokenize/parse/resolve  │
-                    │    /infer/emit in release mode        │
-                    └──────────────┬──────────────────────┘
-                                   │
-              ┌────────────────────┼────────────────────┐
-              │                    │                     │
-   ┌──────────▼──────────┐  ┌─────▼───────────┐  ┌─────▼───────────┐
-   │  R8: Struct clone    │  │ R1-R7: DONE ✓   │  │ S4: Test base   │
-   │  reduction           │  │ String/Node/TCO  │  │ DONE ✓ (92+363) │
-   │  ← NEXT BLOCKER      │  │ /intrinsics/COW  │  │                 │
-   └──────────────────────┘  └─────────────────┘  └─────────────────┘
+              ┌────────────────────┤
+              │                    │
+   ┌──────────▼──────────┐  ┌─────▼───────────────────────┐
+   │  Result<T,E> in DSL │  │  A1: Gist Compilation (<60s) │
+   │  (Blocker 2)        │  │  ← before A6, not before A1  │
+   │  ← before A6        │  └──────────────┬──────────────┘
+   └─────────────────────┘                 │
+                              ┌────────────▼────────────┐
+                              │  R8: Rc-wrap generated   │
+                              │  types (DAG values =     │
+                              │  shared ownership)       │
+                              │  ← NEXT BLOCKER          │
+                              └─────────────────────────┘
 
-Independent tracks (can proceed in parallel):
+Parallel with R8 (no dependencies):
 
-   ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-   │ B3/B4: Node conv │  │ C3/C4: Language  │  │ D2-D4: Cost      │
-   │ (needs design    │  │ emission from    │  │ analysis on real │
-   │  decisions)      │  │ extdeps + CLI    │  │ code             │
-   └──────────────────┘  └──────────────────┘  └──────────────────┘
+   ┌──────────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+   │ Blocker 3: delete    │  │ C3/C4: Language  │  │ D2-D4: Cost      │
+   │ TypeExpr from        │  │ emission from    │  │ analysis on real │
+   │ 00_core.dag (~300    │  │ extdeps + CLI    │  │ code             │
+   │ lines, mechanical)   │  │                  │  │                  │
+   └──────────────────────┘  └──────────────────┘  └──────────────────┘
+
+Deferred (decided, waiting on prerequisites):
+
+   ┌──────────────────────┐  ┌──────────────────┐
+   │ Blocker 1: shared    │  │ B3: Expr→Node +  │
+   │ emitter walk (A →    │  │ delete validate_ │
+   │ needs v2 self-host)  │  │ no_unresolved()  │
+   └──────────────────────┘  └──────────────────┘
 ```
 
 **Critical path:** R8 → A1 → A4 → A5 → A6 → A7
 
 ---
 
-## Immediate Priority: R8 — Struct Clone Reduction
+## Immediate Priority: R8 — Rc-Wrap Generated Types
 
-The 2026-03-18 session eliminated string cloning (R3) and O(n²) intrinsics
-(R6), reducing gist memory from 10GB to ~2GB. But the generated crate still
-takes >20 minutes because `compile_ident` clones every non-Copy struct/enum
-variable on multi-use. For 1,515 lines of gist source:
+**Structural principle:** The DAG language has value semantics with no mutation.
+Every value is logically shared — using a value twice doesn't require two
+copies. The codegen maps DAG values to Rust ownership, where using a value
+twice requires `.clone()`. That's the mismatch. The fix is uniform: **DAG
+values are shared; Rust represents sharing as `Rc`.**
 
-- Each Token clone: ~100 bytes × ~25K tokens × ~3 uses = ~7.5MB
-- Each Node clone: ~120 bytes × ~5K nodes × ~5 uses = ~3MB
-- Each ParseResult clone: ~200+ bytes × thousands of results
+```text
+DAG value semantics          Rust representation
+─────────────────           ────────────────────
+String                  →    &str param (Copy)         ← R3 done
+Int, Bool               →    i64, bool (Copy)          ← already free
+List<T>                 →    Rc<Vec<T>>                ← already done
+Map<K,V>                →    Rc<HashMap<K,V>>          ← runtime ops done
+struct Node { ... }     →    Rc<Node>                  ← THIS IS R8
+enum TokenKind { ... }  →    Rc<TokenKind>             ← THIS IS R8
+```
 
-These compound inside hot loops (tokenizer, parser, resolver).
+**Rule:** Every non-Copy generated type (struct or non-unit-variant enum) is
+Rc-wrapped at all usage sites. `compile_ident` can emit `.clone()` freely on
+any variable — it's always O(1). No type-specific checks, no special cases.
 
-**Root cause:** `compile_ident` (fn_codegen.rs) only distinguishes String
-params (now &str/Copy) from everything else. All other multi-use variables
-get `.clone()`. The codegen has no concept of borrowing for struct types.
+**Types excluded from Rc-wrapping** (pure tag enums, already Copy):
+Connective, BinOpKind, UnaryOpKind, OperationModifier, RenderTarget, Severity,
+Certainty. The codegen already detects these (`is_simple_enum` → derives Copy).
 
-**Design options:**
+### Callsite migration
 
-- (A) **Rc-wrap generated struct types.** Generated structs use `Rc<T>` so
-  clone is O(1). Requires changing type codegen, not function codegen. The
-  generated code already uses Rc for List/Map fields.
-- (B) **Reference-based codegen for non-mutated struct params.** Same approach
-  as R3 but for all non-Copy types: change function params from `T` to `&T`.
-  Larger scope — every struct param becomes a reference, requiring lifetime
-  annotations or ownership conversion at use sites.
-- (C) **Accept current performance; focus on self-hosting.** The v2 compiler's
-  own source (~14K lines) is ~10x larger than the gist (1,515 lines). If gist
-  takes 20min, self-compile would take hours. This option is not viable for A4+.
+**type_codegen.rs** (the structural change — one predicate, applied uniformly):
 
-**Recommendation:** Option A (Rc-wrap) is the smallest change with the biggest
-impact. It aligns with how List/Map are already wrapped and doesn't require
-lifetime tracking.
+- **TC-1:** `type_expr_to_rust_with_registry` Named type resolution (~line 150).
+  Thread a `HashSet<String>` of non-Copy generated type names. Emit `Rc<T>`
+  instead of `T` for matching names. This single change controls field types
+  in struct/enum definitions AND function signatures.
+- **TC-2/TC-4/TC-5:** `typedef_to_code_ir` and `format_variant` field rendering.
+  Inherits from TC-1 — field types become `Rc<T>` automatically.
+- **TC-3:** `typedef_to_code_ir_boxed` Box-wrapping. Skip Box for Rc-wrapped
+  fields — Rc already heap-allocates, breaking cycles. Extends the existing
+  `TypeExpr::Generic` exclusion to Named types in the Rc set. This eliminates
+  all current boxed fields (return_type, body, type_annotation, transport,
+  config) since their types are all Rc-wrapped.
+- **TC-6/TC-7:** `fndef_to_code_ir` param and return type rendering. Inherits
+  from TC-1.
 
-**Acceptance:**
+**fn_codegen.rs** (construction, matching, field access):
+
+- **FN-1:** `compile_struct_field_value` (~line 1020). When target field is
+  `Rc<T>` and value is freshly constructed `T`, wrap in `Rc::new(...)`.
+  Mirrors existing Box-wrapping logic.
+- **FN-2:** `compile_match_typed` (~line 3427). When scrutinee type is
+  Rc-wrapped, emit `match &*x { ... }` instead of `match x { ... }`.
+  Bindings become references; field access through Deref still works.
+- **FN-3/FN-4:** Box deref logic (`collect_boxed_deref_stmts`, field access
+  deref). Remove for fields that are Rc-wrapped (Deref handles automatically).
+  Keep for any remaining Box-wrapped fields.
+
+**render_rust.rs:**
+
+- **RR-2:** `render_match`. If deref is inserted at IR level (FN-2), no
+  change needed. Otherwise, insert `&*` on Rc-typed scrutinees.
+
+**v2_runtime_shim.rs:**
+
+- **RT-1:** `index_by` closure receives `&Rc<V>` instead of `&V`. Auto-deref
+  handles field access in closures — verify but likely no change needed.
+
+**v2_crate_emit.rs:**
+
+- **V2-2/V2-3:** Hardcoded types (`SourceSpan`, `BindingPower`, `FilePath`)
+  are NOT Rc-wrapped — they're small, Copy-compatible, not generated from .dag.
+
+### Key simplification: Box-wrapping becomes unnecessary
+
+Once all generated types are Rc-wrapped, `compute_recursive_fields` returns
+empty — Rc already breaks all cycles. The R2 boxing of Node.transport/config
+becomes redundant. The entire Box-wrapping infrastructure can be simplified
+or removed after R8 lands.
+
+### Acceptance
 
 - [ ] `v2_crate_gist_resolve` passes in release mode in <60 seconds
 - [ ] memory usage for gist resolve drops below 500MB
@@ -164,56 +218,34 @@ lifetime tracking.
 
 ---
 
-## Design Decisions Pending
+## Design Decisions (Decided)
 
-Four structural themes require design decisions before the corresponding work
-can proceed. These are independent of the A1 critical path.
+### Blocker 1: Emitter walk triplication → Decision: A (shared walk with callbacks)
 
-### Blocker 1: Emitter walk triplication
+Deferred until v2 self-hosted. Requires function-as-data, available in v2 but
+not v1 bootstrap. Until then, the bounded duplication (3 backends) is accepted.
 
-Node-type emission, transport dispatch, and service def emission are each
-implemented three times (Rust, Python, Go). Adding a container type or
-transport binding requires editing all three backends.
+### Blocker 2: Fabrication-on-error → Decision: A (add Result<T, E> to DSL)
 
-**Options:**
-- (A) Shared walk parameterized by callbacks (needs function-as-data → v2)
-- (B) `TypeShape` classification: shared `classify_node_type()`, backends render
-- (C) Accept bounded duplication (3 backends, unlikely to grow)
+The structural fix. Large scope but it's a language feature, not a hack. Does
+not block A1 critical path — current fabrication pattern works for bootstrap.
+Should land before A6 (fixed point) to make the self-hosted compiler
+structurally sound.
 
-**Recommendation:** B. Aligns with Invariant 6.
+### Blocker 3: Delete TypeExpr from 00_core.dag → Scheduled for next tasks
 
-### Blocker 2: Fabrication-on-error pattern
+Mechanical work: trace last callers of `field_to_node`/`variant_to_node` in
+daglang-emit, migrate them, delete ~300 lines. Parallelizable with R8.
 
-The DSL has no `Result<T, E>`. Parse and inference error paths fabricate dummy
-values alongside diagnostics. Parser dummies are tolerable; inference dummies
-propagate fabricated types mid-pipeline.
+### Blocker 4: Node conflates resolved/unresolved → Deferred to B3
 
-**Options:**
-- (A) Add `Result<T, E>` to the DSL. Structural fix, large scope.
-- (B) Convention: `ok: Bool` field, pipeline halts on first false.
-- (C) Accept parser pattern; fix inference individually.
+`validate_no_unresolved()` violates Invariant 9 (correctness by construction,
+not by validation). The validation pass is marked for deletion when B3
+(Expr→Node) reworks pipeline boundary types — that's the natural moment to
+make resolved-vs-unresolved a type distinction rather than a runtime check.
 
-**Recommendation:** C now, A later.
-
-### Blocker 3: Delete TypeExpr from 00_core.dag
-
-`TypeExpr` definition (8 variants), `type_expr_to_node` + helpers, and
-`Predicate` type remain. Parser no longer calls `type_expr_to_node`, but
-`field_to_node`/`variant_to_node` are still referenced in the v1 emit pipeline.
-
-**Blocked on:** Tracing last callers in daglang-emit, migrating them, deleting
-~300 lines.
-
-### Blocker 4: Node conflates resolved/unresolved
-
-`validate_no_unresolved()` exists because the type boundary is too permissive.
-
-**Options:**
-- (A) `ResolvedNode` wrapper. Large scope.
-- (B) `resolved: Bool` field. Convention-based.
-- (C) Accept runtime validation.
-
-**Recommendation:** C. The validation pass catches violations at typecheck time.
+**TODO in B3:** delete `validate_no_unresolved()` and replace with structural
+type distinction (e.g., `ResolvedNode` wrapper or equivalent).
 
 ---
 
@@ -286,9 +318,14 @@ conversion.
 Dissolve `Expr` and `Typed*` family into node patterns. After this, "typed"
 just means "return_type is filled in."
 
+Also: delete `validate_no_unresolved()` (Blocker 4). When pipeline boundary
+types are reworked here, make resolved-vs-unresolved a type distinction
+rather than a runtime check. The validation pass violates Invariant 9.
+
 **Acceptance:**
 - [ ] `Expr` type deleted from `00_core.dag`
 - [ ] `Typed*` family deleted
+- [ ] `validate_no_unresolved()` deleted; replaced with structural type boundary
 - [ ] pipeline shape is `Node → Node → Node → TextFile`
 
 ### B4: Transport dissolution (NEEDS DESIGN DECISION)
