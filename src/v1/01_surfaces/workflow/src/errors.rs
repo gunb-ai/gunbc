@@ -12,7 +12,9 @@ pub enum WorkflowAdmissionError {
         node_id: NodeId,
         process_unit: ProcessUnitRef,
     },
-    ResourceAccess(ResourceAccessError),
+    ResourceAccessMetadataInvalid {
+        error: ResourceAccessError,
+    },
     MissingRequiredClaims {
         node_id: NodeId,
         process_unit: ProcessUnitRef,
@@ -44,7 +46,9 @@ impl fmt::Display for WorkflowAdmissionError {
                 "node '{}' references unknown process unit '{}::{}'",
                 node_id.0, process_unit.process_id.0, process_unit.unit_id.0
             ),
-            WorkflowAdmissionError::ResourceAccess(error) => write!(f, "{error}"),
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                error,
+            } => write!(f, "{error}"),
             WorkflowAdmissionError::MissingRequiredClaims {
                 node_id,
                 process_unit,

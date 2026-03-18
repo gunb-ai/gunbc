@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceId};
+use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceAccessError, ResourceId};
 
 use crate::errors::WorkflowAdmissionError;
 use crate::process_registry::{ClaimId, ProcessUnitRegistry, UnitClaim};
@@ -143,7 +143,11 @@ pub fn validate_conflicting_claims(spec: &WorkflowSpec) -> Vec<WorkflowAdmission
     let accesses = match derive_resource_accesses(&spec.dag) {
         Ok(accesses) => accesses,
         Err(resource_errors) => {
-            errors.extend(resource_errors.into_iter().map(WorkflowAdmissionError::ResourceAccess));
+            errors.extend(
+                resource_errors
+                    .into_iter()
+                    .map(workflow_resource_access_error),
+            );
             return errors;
         }
     };
@@ -192,7 +196,7 @@ fn derive_declared_claims(
     let accesses = derive_resource_accesses(&spec.dag).map_err(|resource_errors| {
         resource_errors
             .into_iter()
-            .map(WorkflowAdmissionError::ResourceAccess)
+            .map(workflow_resource_access_error)
             .collect::<Vec<_>>()
     })?;
 
@@ -214,6 +218,9 @@ fn derive_declared_claims(
     Ok(claims_by_node)
 }
 
+fn workflow_resource_access_error(error: ResourceAccessError) -> WorkflowAdmissionError {
+    WorkflowAdmissionError::ResourceAccessMetadataInvalid { error }
+}
 
 fn mode_rank(mode: gunbc_ir::AccessMode) -> u8 {
     match mode {
@@ -460,6 +467,42 @@ mod tests {
             error,
             WorkflowAdmissionError::UndeclaredEffectfulIo { node_id, .. } if node_id.0 == "wf.a"
         )));
+    }
+
+    #[test]
+    fn missing_resource_id_surfaces_exact_metadata_error() {
+        let mut inputs = required_input_contract();
+        let mut db_input = Port::new("db_conn", "DbHandle");
+        db_input.resource_access = Some(AccessMode::Write);
+        inputs.push(db_input);
+
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "wf.a",
+            inputs,
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "a",
+            ))),
+        ));
+
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let registry = registry_for_two_nodes(vec![UnitClaim::write("db")], vec![]);
+        let errors =
+            validate_workflow_admission(&spec, &registry).expect_err("missing resource_id must fail");
+
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                error: ResourceAccessError::MissingResourceId { node_id, port_name },
+            } if node_id.0 == "wf.a" && port_name == "db_conn"
+        )));
+        assert!(
+            errors
+                .iter()
+                .all(|error| !error.to_string().contains("<missing resource_id")),
+            "workflow admission should not fabricate placeholder claim ids: {errors:?}"
+        );
     }
 
     #[test]

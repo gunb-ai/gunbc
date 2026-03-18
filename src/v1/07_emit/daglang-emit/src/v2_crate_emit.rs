@@ -559,21 +559,34 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
 ///
 /// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
 /// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
+///
+/// The helper tries Cargo's normal resolution first, then retries with
+/// `--offline` so temp-crate validation remains hermetic when the needed
+/// crates are already cached locally but the environment has no network.
 pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
-    let output = std::process::Command::new("cargo")
+    let mut base = std::process::Command::new("cargo");
+    base.arg("generate-lockfile").current_dir(crate_dir);
+    let output = base.output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let mut offline = std::process::Command::new("cargo");
+    offline
         .arg("generate-lockfile")
         .arg("--offline")
-        .current_dir(crate_dir)
-        .output()?;
-    if !output.status.success() {
-        return Err(std::io::Error::other(format!(
-            "cargo generate-lockfile failed in {}:\n{}\nretry with --offline also failed:\n{}",
-            crate_dir.display(),
-            String::from_utf8_lossy(&output.stderr),
-            String::from_utf8_lossy(&offline_output.stderr)
-        )));
+        .current_dir(crate_dir);
+    let offline_output = offline.output()?;
+    if offline_output.status.success() {
+        return Ok(());
     }
-    Ok(())
+
+    Err(std::io::Error::other(format!(
+        "cargo generate-lockfile failed in {}:\nnormal stderr:\n{}\n\noffline stderr:\n{}",
+        crate_dir.display(),
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&offline_output.stderr)
+    )))
 }
 
 fn emit_lib_rs(modules: &[(&str, &SourceFile)]) -> String {
