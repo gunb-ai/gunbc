@@ -2259,7 +2259,10 @@ impl LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
-    let mut names = HashSet::new();
+    let mut names: HashSet<String> = expr::BUILTIN_VARIANT_NAMES
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
     for module in project.modules() {
         for item in &module.ast.items {
             if let Item::TypeDef(def) = &item.node {
@@ -10659,9 +10662,7 @@ fn lower_expr(
             }
         }
         // C24-P2: Tagged variant record → VariantConstruct; plain record → RecordConstruct.
-        Expr::Record(Some(tag), fields)
-            if ctx.variant_names.contains(tag.as_str()) || tag == "Some" || tag == "None" =>
-        {
+        Expr::Record(Some(tag), fields) if ctx.variant_names.contains(tag.as_str()) => {
             synthesize_variant_construct(
                 builder,
                 ctx,
@@ -10751,7 +10752,7 @@ fn collect_expr_leaf_refs(
             if seen.contains(&port_name) {
                 return;
             }
-            if name == "None" || name == "null" || ctx.variant_names.contains(name.as_str()) {
+            if name == "null" || ctx.variant_names.contains(name.as_str()) {
                 return;
             }
             if let Some(param_ty) = ctx.param_types.get(name) {
