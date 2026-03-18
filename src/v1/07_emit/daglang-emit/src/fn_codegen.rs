@@ -1298,7 +1298,10 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
             let receiver_is_rc = is_rc_wrapped_expr(receiver, ctx)
                 || is_clone_of_rc_wrapped(&compiled_receiver, ctx)
                 || has_clone_on_receiver(&compiled_receiver, ctx)
-                || is_var_with_rc_type(&compiled_receiver, ctx);
+                || is_var_with_rc_type(&compiled_receiver, ctx)
+                // R8: .unwrap() on Option<Rc<T>> returns Rc<T>, so field
+                // access needs clone to avoid moving out of the Rc.
+                || is_unwrap_of_rc_wrapped(&compiled_receiver, ctx);
             if receiver_is_rc {
                 compiled_receiver = strip_clone(compiled_receiver);
             }
@@ -1772,6 +1775,19 @@ fn is_var_with_rc_type(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
     matches!(expr, code_ir::Expr::Var(_))
 }
 
+/// R8: Check if a compiled IR expression is `.unwrap()` — the result of unwrapping
+/// Option<Rc<T>> is Rc<T>, so field access on it needs `.clone()`.
+fn is_unwrap_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
+    if ctx.rc_wrapped_types.is_empty() {
+        return false;
+    }
+    matches!(
+        expr,
+        code_ir::Expr::MethodCall { method, args, .. }
+            if method == "unwrap" && args.is_empty()
+    )
+}
+
 /// R8: Check if a compiled IR expression is `x.clone()` where x has Rc-wrapped type.
 /// This catches intermediate variables that aren't in ir_scope.
 fn is_clone_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
@@ -2232,14 +2248,50 @@ fn compile_intrinsic_call(
         "lookup" if args.len() == 2 => {
             let table = resolve_named_or_positional(args, "table", 0, ctx, counter);
             let key = resolve_named_or_positional(args, "key", 1, ctx, counter);
-            Some(code_ir::Expr::Call {
+            let lookup_call = code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
                     "lookup".to_string(),
                 ])),
                 args: vec![table, key],
                 obligation: None,
-            })
+            };
+            // R8: Data table statics store bare T (Rc is not Sync), but the
+            // rest of the code expects Rc<T>.  Wrap: lookup(..).map(Rc::new).
+            let table_name = match &args[0].1 {
+                ast::Expr::Ident(n) => Some(n.as_str()),
+                _ => args
+                    .iter()
+                    .find(|(name, _)| name.as_deref() == Some("table"))
+                    .and_then(|(_, e)| match e {
+                        ast::Expr::Ident(n) => Some(n.as_str()),
+                        _ => None,
+                    }),
+            };
+            let needs_rc_wrap = table_name.is_some_and(|name| {
+                ctx.data_ir_types.get(name).is_some_and(|ir| {
+                    if let IrType::Generic(_, type_args) = ir {
+                        type_args.last().is_some_and(|val_ty| {
+                            named_type_from_ir(val_ty)
+                                .is_some_and(|n| ctx.rc_wrapped_types.contains(&n))
+                        })
+                    } else {
+                        false
+                    }
+                })
+            });
+            if needs_rc_wrap {
+                Some(code_ir::Expr::MethodCall {
+                    receiver: Box::new(lookup_call),
+                    method: "map".to_string(),
+                    args: vec![code_ir::Expr::Path(vec![
+                        "Rc".to_string(),
+                        "new".to_string(),
+                    ])],
+                })
+            } else {
+                Some(lookup_call)
+            }
         }
         // concat(a) → identity (single-arg concat is a no-op, avoids
         // clashing with Rust's built-in `concat!` macro).
@@ -3033,7 +3085,11 @@ fn compile_fold_intrinsic(
                     .filter(|ty| matches!(ty, IrType::Generic(name, _) if name == "List")),
                 _ => None,
             })
-        });
+        })
+        // R8: Wrap element types in Rc<> in the IrType annotation when the type
+        // is Rc-wrapped. render_ir_type renders Named("T") as "T", but if T is
+        // Rc-wrapped the annotation needs "Rc<T>".
+        .map(|ty| rc_wrap_ir_type(&ty, &ctx.rc_wrapped_types));
     code_ir::Expr::Block(vec![
         code_ir::Stmt::Let {
             name: acc.clone(),
@@ -3865,6 +3921,33 @@ fn compile_match_arm(
     // Recurses into nested variant patterns (e.g., Some { value: Optional { inner: x } }).
     let mut deref_stmts = Vec::new();
     collect_boxed_deref_stmts(&arm.pattern, ctx, &mut deref_stmts);
+    // R8: When matching Option<Rc<T>> via .as_ref().map(|__rc| __rc.as_ref()),
+    // bindings inside Some(x) are &T. Re-bind as Rc<T> so x.clone() gives Rc<T>.
+    // This applies to explicit Some { value: x } patterns in DAG source where the
+    // inner type is Rc-wrapped. Skip variant names (e.g., KwReturn) — only rebind
+    // actual variable bindings (lowercase, not in variant_to_enum).
+    if expected_type.is_some_and(|t| ctx.rc_wrapped_types.contains(t)) {
+        if let ast::Pattern::Variant(ref vname, ref fields) = arm.pattern {
+            if vname == "Some" && fields.len() == 1 && fields[0].0 == "value" {
+                if let ast::Pattern::Ident(ref bind_name) = fields[0].1 {
+                    let is_variant = resolve_variant_enum(bind_name, ctx).is_some();
+                    if !is_variant {
+                        let escaped = escape_rust_keyword(bind_name);
+                        deref_stmts.push(code_ir::Stmt::Let {
+                            name: escaped.clone(),
+                            mutable: false,
+                            expr: rc_wrap(code_ir::Expr::MethodCall {
+                                receiver: Box::new(code_ir::Expr::Var(escaped)),
+                                method: "clone".to_string(),
+                                args: vec![],
+                            }),
+                            ir_type: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
     // Track match bindings from optional fields so the body compilation
     // knows they're already Option<T> and doesn't double-wrap in Some().
     let body_ctx = if let ast::Pattern::Variant(variant_name, fields) = &arm.pattern {
@@ -4025,13 +4108,22 @@ fn compile_pattern_typed(
                             format!("ref {n}")
                         } else {
                             let field_type = variant_field_types.and_then(|ft| ft.get(n.as_str()));
-                            let compiled =
-                                compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()));
-                            // Use shorthand field pattern when binding name matches field name
-                            if compiled == *n {
-                                n.clone()
+                            // R8: If the field type is Rc-wrapped and the sub-pattern is
+                            // a variant destructure, Rust can't auto-deref Rc in patterns.
+                            // Bind the field with ref and defer the destructure to the body.
+                            let field_is_rc = field_type
+                                .is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
+                            if field_is_rc && matches!(p, ast::Pattern::Variant(_, _)) {
+                                format!("ref {n}")
                             } else {
-                                format!("{n}: {compiled}")
+                                let compiled =
+                                    compile_pattern_typed(p, ctx, field_type.map(|s| s.as_str()));
+                                // Use shorthand field pattern when binding name matches field name
+                                if compiled == *n {
+                                    n.clone()
+                                } else {
+                                    format!("{n}: {compiled}")
+                                }
                             }
                         }
                     })
@@ -4294,6 +4386,30 @@ fn rc_wrap(expr: code_ir::Expr) -> code_ir::Expr {
     }
 }
 
+/// R8: Transform an IrType so that Named types that are Rc-wrapped include
+/// "Rc<T>" in the type name. This ensures type annotations render correctly
+/// when the underlying Rust type is Rc-wrapped.
+fn rc_wrap_ir_type(ty: &IrType, rc_wrapped: &HashSet<String>) -> IrType {
+    if rc_wrapped.is_empty() {
+        return ty.clone();
+    }
+    match ty {
+        IrType::Named(n) if rc_wrapped.contains(n) => IrType::Named(format!("Rc<{n}>")),
+        IrType::Generic(name, args) => IrType::Generic(
+            name.clone(),
+            args.iter().map(|a| rc_wrap_ir_type(a, rc_wrapped)).collect(),
+        ),
+        IrType::Optional(inner) => IrType::Optional(Box::new(rc_wrap_ir_type(inner, rc_wrapped))),
+        IrType::Tuple(items) => IrType::Tuple(
+            items
+                .iter()
+                .map(|i| rc_wrap_ir_type(i, rc_wrapped))
+                .collect(),
+        ),
+        _ => ty.clone(),
+    }
+}
+
 /// Produce statements that Rc-unwrap an expression into a mutable Vec:
 ///   let __rc = expr;           // substitutable by substitute_var
 ///   let mut var = Rc::try_unwrap(__rc).unwrap_or_else(|rc| (*rc).clone());
@@ -4431,11 +4547,84 @@ fn collect_boxed_deref_stmts(
                         });
                     }
                 }
-                // Recurse into nested variant patterns
-                ast::Pattern::Variant(_, _) => {
-                    collect_boxed_deref_stmts(field_pat, ctx, out);
+                // Recurse into nested variant patterns.
+                // R8: If the field is Rc-wrapped, the pattern was compiled as
+                // `ref field_name` instead of inlining. Add a let-else to
+                // destructure through the Rc.
+                ast::Pattern::Variant(inner_variant, inner_fields) => {
+                    let field_is_rc = ctx
+                        .struct_field_types
+                        .get(variant_name.as_str())
+                        .and_then(|ft| ft.get(field_name.as_str()))
+                        .is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
+                    if field_is_rc {
+                        collect_rc_nested_deref_stmts(
+                            field_name,
+                            inner_variant,
+                            inner_fields,
+                            ctx,
+                            out,
+                        );
+                    } else {
+                        collect_boxed_deref_stmts(field_pat, ctx, out);
+                    }
                 }
                 _ => {}
+            }
+        }
+    }
+}
+
+/// R8: Emit let-else destructuring for an Rc-wrapped field with a nested
+/// variant pattern. The outer pattern binds the field as `ref field_name`,
+/// and this function emits:
+///   `let EnumType::Variant { field: bind, .. } = field_name.as_ref() else { unreachable!() };`
+fn collect_rc_nested_deref_stmts(
+    field_name: &str,
+    inner_variant: &str,
+    inner_fields: &[(String, ast::Pattern)],
+    ctx: &CompileContext,
+    out: &mut Vec<code_ir::Stmt>,
+) {
+    let qualified = ctx
+        .variant_to_enum
+        .get(inner_variant)
+        .map(|e| format!("{e}::{inner_variant}"))
+        .unwrap_or_else(|| inner_variant.to_string());
+    let variant_field_types = ctx.struct_field_types.get(inner_variant);
+    let bindings: Vec<String> = inner_fields
+        .iter()
+        .map(|(n, p)| match p {
+            ast::Pattern::Ident(bind) => {
+                if bind == n {
+                    n.clone()
+                } else {
+                    format!("{n}: {bind}")
+                }
+            }
+            ast::Pattern::Wildcard => format!("{n}: _"),
+            _ => format!("{n}: _"),
+        })
+        .collect();
+    let pat_str = format!("{qualified} {{ {}, .. }}", bindings.join(", "));
+    out.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+        "let {pat_str} = {field_name}.as_ref() else {{ unreachable!() }}"
+    ))));
+    // If any of the bound fields are themselves Box-wrapped, add their deref stmts too
+    for (n, p) in inner_fields {
+        if let ast::Pattern::Ident(bind_name) = p {
+            let field_needs_box = variant_field_types
+                .and_then(|ft| ft.get(n.as_str()))
+                .is_some_and(|_| {
+                    needs_box_wrapping(inner_variant, n, ctx)
+                });
+            if field_needs_box {
+                out.push(code_ir::Stmt::Let {
+                    name: bind_name.clone(),
+                    expr: code_ir::Expr::Deref(Box::new(code_ir::Expr::Var(bind_name.clone()))),
+                    mutable: false,
+                    ir_type: None,
+                });
             }
         }
     }
