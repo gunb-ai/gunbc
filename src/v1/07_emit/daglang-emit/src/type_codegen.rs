@@ -1652,14 +1652,9 @@ pub fn compute_recursive_fields(
         }
     }
 
-    // Size-based override: box rare fields on Node to reduce type size.
-    // transport (TransportBinding) and config (ServiceConfig) are used by ~6% of
-    // nodes but inline at 184b + 256b respectively. Boxing shrinks Node from ~544b
-    // to ~120b, cascading through TypedExpr, Param, and stack frames.
-    if all_type_names.contains("Node") {
-        recursive_fields.insert(("Node".to_string(), "transport".to_string()));
-        recursive_fields.insert(("Node".to_string(), "config".to_string()));
-    }
+    // R2 size-based override removed: R8 Rc-wraps TransportBinding and
+    // ServiceConfig, so these fields are already heap-allocated via Rc.
+    // Box-wrapping on top of Rc is redundant and produces incorrect deref code.
 
     recursive_fields
 }
