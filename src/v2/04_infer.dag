@@ -23,7 +23,6 @@ import v2.std.core {
   Field, Variant, Param,
   Connective, Conj, Disj,
   Expr, Diagnostic,
-  Named, Primitive,
   ResourceUse,
   TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   Error,

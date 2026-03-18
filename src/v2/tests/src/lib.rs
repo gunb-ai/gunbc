@@ -2885,7 +2885,7 @@ fn example(items: List<String>) -> Int {
     }
 
     /// Focused test: func with return type goes through typecheck without error.
-    /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
+    /// Exercises Optional<Node> handling in resolve_optional_type_expr.
     #[test]
     fn phase6_func_return_type_typecheck() {
         let output = compile_all_modules().expect("compilation should succeed");
@@ -3265,7 +3265,7 @@ fn example(items: List<String>) -> Int {
         }
     }
 
-    /// The recursive type detection should identify Expr and TypeExpr as needing Box<>.
+    /// The recursive type detection should identify Expr as needing Box<>.
     #[test]
     fn v2_recursive_types_detected() {
         let source = read_v2_file("src/v2/00_core.dag");
@@ -3289,14 +3289,6 @@ fn example(items: List<String>) -> Int {
         assert!(
             has_expr_recursive,
             "Expr should have recursive fields, got: {:?}",
-            recursive_fields
-        );
-
-        // TypeExpr should have recursive fields (e.g. Optional::inner is TypeExpr)
-        let has_type_expr_recursive = recursive_fields.iter().any(|(ty, _)| ty == "TypeExpr");
-        assert!(
-            has_type_expr_recursive,
-            "TypeExpr should have recursive fields, got: {:?}",
             recursive_fields
         );
     }

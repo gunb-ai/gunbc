@@ -21,8 +21,6 @@ import v2.std.core {
   Node,
   Connective, Conj, Disj,
   Field, Variant, Param, ResourceUse,
-  Predicate, NonEmpty, Pattern, Range, Brand, ContentEncoding, Format,
-  predicate_to_field_init,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
   RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast, ForEach,
   Index, Slice,
@@ -85,7 +83,7 @@ type TypeResult { type_expr: Node, state: ParserState, err: Diagnostic? }
 type ModuleResult { module: Module, state: ParserState, err: Diagnostic? }
 type ImportResult { import: Import, state: ParserState, err: Diagnostic? }
 type VariantResult { variant: Variant, state: ParserState, err: Diagnostic? }
-type PredResult { predicate: Predicate, state: ParserState, err: Diagnostic? }
+type PredResult { predicate: FieldInit, state: ParserState, err: Diagnostic? }
 type ParamResult { param: Param, state: ParserState, err: Diagnostic? }
 type TransportResult { transport: TransportBinding, state: ParserState, err: Diagnostic? }
 type OpResult { operation: OperationDef, state: ParserState, err: Diagnostic? }
@@ -105,7 +103,7 @@ type NamesResult { names: List<String>, state: ParserState, err: Diagnostic? }
 type FieldsResult { fields: List<Field>, state: ParserState, err: Diagnostic? }
 type FieldInitsResult { fields: List<FieldInit>, state: ParserState, err: Diagnostic? }
 type VariantsResult { variants: List<Variant>, state: ParserState, err: Diagnostic? }
-type PredsResult { predicates: List<Predicate>, state: ParserState, err: Diagnostic? }
+type PredsResult { predicates: List<FieldInit>, state: ParserState, err: Diagnostic? }
 type ParamsResult { params: List<Param>, state: ParserState, err: Diagnostic? }
 type UsesResult { uses: List<ResourceUse>, state: ParserState, err: Diagnostic? }
 type ArgsResult { args: List<NamedArg>, state: ParserState, err: Diagnostic? }
@@ -815,7 +813,7 @@ fn try_where_clause(tokens: List<Token>, state: ParserState, base_te: Node, star
     let adv = advance(tokens: tokens, state: state)
     let r = parse_predicates(tokens: tokens, state: adv.state)
     if has_err(err: r.err) { return TypeResult { type_expr: base_te, state: r.state, err: r.err } }
-    let refined = Node { name: "Refined", span: start_span, children: [base_te], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: map(r.predicates, p => predicate_to_field_init(p: p)), type_annotation: none, config: none }
+    let refined = Node { name: "Refined", span: start_span, children: [base_te], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: r.predicates, type_annotation: none, config: none }
     TypeResult { type_expr: refined, state: r.state, err: none }
   } else {
     TypeResult { type_expr: base_te, state: state, err: none }
@@ -827,7 +825,7 @@ fn parse_predicates(tokens: List<Token>, state: ParserState) -> PredsResult {
   parse_predicates_acc(tokens: tokens, state: state, acc: [])
 }
 
-fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Predicate>) -> PredsResult {
+fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> PredsResult {
   let r = parse_single_predicate(tokens: tokens, state: state)
   if has_err(err: r.err) { return PredsResult { predicates: [], state: r.state, err: r.err } }
   let acc = concat([r.predicate], acc)
@@ -840,8 +838,10 @@ fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Predi
 }
 
 // parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
+// Produces FieldInit directly — no intermediate Predicate type.
 fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult {
-  let dummy_pred = NonEmpty
+  let zero_span = SourceSpan { start: 0, end: 0 }
+  let dummy_pred = FieldInit { name: "_dummy", value: Literal { value: LitBool { value: false }, span: zero_span } }
   // Use expect_name to accept keywords (like "pattern") as predicate names.
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return PredResult { predicate: dummy_pred, state: r.state, err: r.err } }
@@ -859,7 +859,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         match r2.expr {
           Literal { value: LitStr { value: s } } => {
-            let result = PredResult { predicate: Pattern { regex: s }, state: r3.state, err: none }
+            let result = PredResult { predicate: FieldInit { name: "Pattern", value: Literal { value: LitStr { value: s }, span: zero_span } }, state: r3.state, err: none }
             result }
           _ => { let result = PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "pattern() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
             result }
@@ -870,7 +870,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: Format { name: r2.name }, state: r3.state, err: none }
+        let result = PredResult { predicate: FieldInit { name: "Format", value: Literal { value: LitStr { value: r2.name }, span: zero_span } }, state: r3.state, err: none }
         result
       }
       "brand" => {
@@ -880,7 +880,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         match r2.expr {
           Literal { value: LitStr { value: s } } => {
-            let result = PredResult { predicate: Brand { name: s }, state: r3.state, err: none }
+            let result = PredResult { predicate: FieldInit { name: "Brand", value: Literal { value: LitStr { value: s }, span: zero_span } }, state: r3.state, err: none }
             result }
           _ => { let result = PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "brand() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
             result }
@@ -891,7 +891,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: ContentEncoding { encoding: r2.name }, state: r3.state, err: none }
+        let result = PredResult { predicate: FieldInit { name: "ContentEncoding", value: Literal { value: LitStr { value: r2.name }, span: zero_span } }, state: r3.state, err: none }
         result
       }
       "domain" => {
@@ -899,7 +899,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: Domain { name: r2.name }, state: r3.state, err: none }
+        let result = PredResult { predicate: FieldInit { name: "Domain", value: Literal { value: LitStr { value: r2.name }, span: zero_span } }, state: r3.state, err: none }
         result
       }
       "range" => {
@@ -908,7 +908,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: Range { min: r2.min_val, max: r2.max_val }, state: r3.state, err: none }
+        let result = PredResult { predicate: FieldInit { name: "Range", value: Literal { value: LitStr { value: "range" }, span: zero_span } }, state: r3.state, err: none }
         result
       }
       _ => {
@@ -919,7 +919,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
   } else {
     // No args — handle bare predicate names
     match pred_name {
-      "non_empty" => { let result = PredResult { predicate: NonEmpty, state: s, err: none }
+      "non_empty" => { let result = PredResult { predicate: FieldInit { name: "NonEmpty", value: Literal { value: LitBool { value: true }, span: zero_span } }, state: s, err: none }
         result }
       _ => { let result = PredResult { predicate: dummy_pred, state: s, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: s)) } }
         result }

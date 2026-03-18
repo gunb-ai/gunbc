@@ -82,7 +82,7 @@ type TokenKind
 //
 // The parser produces an AST from a token list. The AST is a faithful
 // representation of the source structure with no semantic interpretation.
-// Names are strings, types are TypeExpr values, expressions are Expr
+// Names are strings, types are Node values, expressions are Expr
 // values. Nothing is resolved or checked yet.
 //
 // Every node that a diagnostic might blame carries a SourceSpan for
@@ -105,39 +105,6 @@ type Import {
   names: ImportNames
   span: SourceSpan
 }
-
-// =========================================================================
-// Type expressions
-//
-// A TypeExpr is a VALUE that describes a type's structure. It is not a
-// string key into a table. It is the type itself, represented as data.
-//
-// In v1, types were referenced by TypeId (a string) and resolved via
-// TypeRegistry (a HashMap). In v2, TypeExpr is structural. No registry,
-// no deferred lookup, no stale copies.
-//
-// After typechecking, no unresolved Named references survive — every
-// Named { name } has been resolved to its structural form (Product,
-// Coproduct, Container, Refined). Exception: recursive types may retain
-// a Named reference to break the cycle, but the name is guaranteed to
-// be defined in the module graph.
-// =========================================================================
-
-type TypeExpr
-  = Named { name: String, span: SourceSpan }
-  | Product { name: String?, fields: List<Field>, span: SourceSpan }
-  | Coproduct { name: String?, variants: List<Variant>, span: SourceSpan }
-  | Container { kind: ContainerKind, element: TypeExpr, span: SourceSpan }
-  | Refined { base: TypeExpr, predicates: List<Predicate>, span: SourceSpan }
-  | Optional { inner: TypeExpr, span: SourceSpan }
-  // MapType allows arbitrary key types in the AST (pre-typecheck).
-  // The typechecker enforces String-key constraint (S19).
-  | MapType { key: TypeExpr, value: TypeExpr, span: SourceSpan }
-  // Kernel types (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
-  // that have no structural expansion.
-  | Primitive { name: String, span: SourceSpan }
-
-type ContainerKind = List | Set | NonEmptyList | NonEmptySet
 
 // Connective — the logical primitive for type structure.
 // Conj = conjunction: all children hold simultaneously (record fields).
@@ -171,19 +138,6 @@ type ResourceUse {
   resource: Node
   span: SourceSpan
 }
-
-// =========================================================================
-// Predicates — type refinements
-// =========================================================================
-
-type Predicate
-  = NonEmpty
-  | Pattern { regex: String }
-  | Range { min: Int?, max: Int? }
-  | Brand { name: String }
-  | ContentEncoding { encoding: String }
-  | Format { name: String }
-  | Domain { name: String }
 
 // =========================================================================
 // Expressions
@@ -442,177 +396,6 @@ type TypedNode {
   config: ServiceConfig?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
-}
-
-// =========================================================================
-// TypeExpr -> Node conversion
-//
-// The parser produces TypeExpr (8 variants). The rest of the pipeline
-// works with Node (unified recursive structure). These functions convert
-// parser-produced TypeExpr values into Nodes.
-//
-// Mapping:
-//   Named { name, span }           -> Node { name, span }  (leaf, no connective)
-//   Primitive { name, span }       -> Node { name, span }  (leaf, no connective)
-//   Product { name?, fields, span } -> Node { name, span, connective: Conj, children: fields-as-nodes }
-//   Coproduct { name?, variants, span } -> Node { name, span, connective: Disj, children: variants-as-nodes }
-//   Container { kind, element, span } -> Node { name: kind_name, span, children: [element-as-node] }
-//   Optional { inner, span }       -> Node { name: "Optional", span, connective: Disj, children: [inner-node, none-node] }
-//   MapType { key, value, span }   -> Node { name: "Map", span, children: [key-node, value-node] }
-//   Refined { base, predicates, span } -> Node { name: "Refined", span, connective: Conj, children: [base-node] }
-// =========================================================================
-
-fn empty_node(span: SourceSpan) -> Node {
-  Node {
-    name: "", span: span, children: [], connective: none,
-    params: [], return_type: none, uses: [],
-    body: none, transport: none, properties: [], type_annotation: none, config: none
-  }
-}
-
-fn type_expr_to_node(te: TypeExpr) -> Node {
-  match te {
-    Named { name: n, span: s } =>
-      type_expr_named_to_node(n: n, s: s)
-
-    Primitive { name: n, span: s } =>
-      type_expr_named_to_node(n: n, s: s)
-
-    Product { name: pn, fields: fs, span: s } =>
-      // Product.name is String? — extract name directly from the match binding.
-      // In the evaluator, String? values are stored as the raw string (not
-      // wrapped in Some), so we pass pn directly to the node constructor.
-      type_expr_product_to_node(pn: pn, fs: fs, s: s)
-
-    Coproduct { name: cn, variants: vs, span: s } =>
-      type_expr_coproduct_to_node(cn: cn, vs: vs, s: s)
-
-    Container { kind: k, element: el, span: s } =>
-      let kind_name = match k {
-        List => "List"
-        Set => "Set"
-        NonEmptyList => "NonEmptyList"
-        NonEmptySet => "NonEmptySet"
-      }
-      Node {
-        name: kind_name, span: s,
-        children: [type_expr_to_node(te: el)],
-        connective: none,
-        params: [], return_type: none, uses: [],
-        body: none, transport: none, properties: [], type_annotation: none, config: none
-      }
-
-    Optional { inner: inn, span: s } =>
-      Node {
-        name: "Optional", span: s,
-        children: [type_expr_to_node(te: inn), type_expr_named_to_node(n: "None", s: s)],
-        connective: Some { value: Disj },
-        params: [], return_type: none, uses: [],
-        body: none, transport: none, properties: [], type_annotation: none, config: none
-      }
-
-    MapType { key: k, value: v, span: s } =>
-      Node {
-        name: "Map", span: s,
-        children: [type_expr_to_node(te: k), type_expr_to_node(te: v)],
-        connective: none,
-        params: [], return_type: none, uses: [],
-        body: none, transport: none, properties: [], type_annotation: none, config: none
-      }
-
-    Refined { base: b, predicates: ps, span: s } =>
-      Node {
-        name: "Refined", span: s,
-        children: [type_expr_to_node(te: b)],
-        connective: Some { value: Conj },
-        params: [], return_type: none, uses: [],
-        body: none, transport: none,
-        properties: map(ps, p => predicate_to_field_init(p: p)),
-        type_annotation: none, config: none
-      }
-  }
-}
-
-fn type_expr_named_to_node(n: String, s: SourceSpan) -> Node {
-  Node {
-    name: n, span: s, children: [], connective: none,
-    params: [], return_type: none, uses: [],
-    body: none, transport: none, properties: [], type_annotation: none, config: none
-  }
-}
-
-// Unwrap String? to "" when none. Used by Product/Coproduct conversion
-// where the name field is optional.
-fn opt_str_or_empty(s: String?) -> String {
-  match s {
-    Some { value: v } => v
-    _ => ""
-  }
-}
-
-fn type_expr_product_to_node(pn: String?, fs: List<Field>, s: SourceSpan) -> Node {
-  Node {
-    name: opt_str_or_empty(s: pn), span: s,
-    children: map(fs, f => field_to_node(f: f)),
-    connective: Some { value: Conj },
-    params: [], return_type: none, uses: [],
-    body: none, transport: none, properties: [], type_annotation: none, config: none
-  }
-}
-
-fn type_expr_coproduct_to_node(cn: String?, vs: List<Variant>, s: SourceSpan) -> Node {
-  Node {
-    name: opt_str_or_empty(s: cn), span: s,
-    children: map(vs, v => variant_to_node(v: v)),
-    connective: Some { value: Disj },
-    params: [], return_type: none, uses: [],
-    body: none, transport: none, properties: [], type_annotation: none, config: none
-  }
-}
-
-fn field_to_node(f: Field) -> Node {
-  Node {
-    name: f.name, span: f.span,
-    children: [],
-    connective: none,
-    params: [], return_type: Some { value: f.type_expr }, uses: [],
-    body: f.default_value, transport: none,
-    properties: if f.from_key != none {
-      [FieldInit { name: "from_key", value: Literal { value: LitStr { value: f.from_key.value }, span: f.span } }]
-    } else { [] },
-    type_annotation: if f.optional { Some { value: Node {
-      name: "Optional", span: f.span,
-      children: [f.type_expr, Node { name: "None", span: f.span, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }],
-      connective: Some { value: Disj },
-      params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none
-    } } } else { none },
-    config: none
-  }
-}
-
-fn variant_to_node(v: Variant) -> Node {
-  Node {
-    name: v.name, span: v.span,
-    children: map(v.fields, f => field_to_node(f: f)),
-    connective: if v.fields |> count > 0 { Some { value: Conj } } else { none },
-    params: [], return_type: none, uses: [],
-    body: none, transport: none, properties: [], type_annotation: none, config: none
-  }
-}
-
-fn predicate_to_field_init(p: Predicate) -> FieldInit {
-  let zero_span = SourceSpan { start: 0, end: 0 }
-  match p {
-    NonEmpty => FieldInit { name: "NonEmpty", value: Literal { value: LitBool { value: true }, span: zero_span } }
-    Pattern { regex: r } => FieldInit { name: "Pattern", value: Literal { value: LitStr { value: r }, span: zero_span } }
-    Range { min: mn, max: mx } =>
-      // Encode range as two separate int literals — avoids needing int-to-string
-      FieldInit { name: "Range", value: Literal { value: LitStr { value: "range" }, span: zero_span } }
-    Brand { name: n } => FieldInit { name: "Brand", value: Literal { value: LitStr { value: n }, span: zero_span } }
-    ContentEncoding { encoding: e } => FieldInit { name: "ContentEncoding", value: Literal { value: LitStr { value: e }, span: zero_span } }
-    Format { name: n } => FieldInit { name: "Format", value: Literal { value: LitStr { value: n }, span: zero_span } }
-    Domain { name: n } => FieldInit { name: "Domain", value: Literal { value: LitStr { value: n }, span: zero_span } }
-  }
 }
 
 // =========================================================================
