@@ -507,89 +507,103 @@ inside a hot loop and costs O(n)."
 The goal is not to find and fix this class of bug faster — it's to make
 it **structurally unrepresentable**. Three changes would do this:
 
-### Prevention 1: Performance gate test (immediate)
+---
 
-Add a test that asserts wall-clock time:
+## Structural Prevention
 
-```rust
-#[test]
-fn perf_gate_tokenize_1k_lines() {
-    let source = generate_dag_source(lines: 1000);
-    let start = Instant::now();
-    let tokens = tokenize(source);
-    let elapsed = start.elapsed();
-    assert!(elapsed < Duration::from_secs(2),
-        "tokenize(1000 lines) took {:?}, budget is 2s", elapsed);
-}
+Wall-clock performance tests are the wrong answer. They're
+machine-dependent, symptom-testing, and tell you nothing about cause.
+The question isn't "is it fast?" — it's "can we prove it's fast?"
 
-#[test]
-fn perf_gate_parse_resolve_1k_lines() {
-    let sources = generate_dag_sources(files: 5, lines_each: 200);
-    let start = Instant::now();
-    let result = resolve_sources(sources);
-    let elapsed = start.elapsed();
-    assert!(elapsed < Duration::from_secs(5),
-        "resolve(1000 lines) took {:?}, budget is 5s", elapsed);
-}
+### Why this happened
+
+Three v1 infrastructure layers sat below the `.dag` source and escaped
+every invariant the project enforces:
+
+| Layer | File | Lines | Subject to invariants? |
+|-------|------|-------|----------------------|
+| Runtime intrinsics | `v2_runtime_shim.rs` (string constant) | 226 | **No** — invisible to tests, linters, review |
+| Expression codegen | `fn_codegen.rs` | 5,000+ | **No** — hand-written Rust, never profiled |
+| Type codegen | `type_codegen.rs` | 2,000+ | **No** — boxing/clone decisions unaudited |
+| Rendering | `render_rust.rs` | 200+ | **No** — stacker wrapping only |
+
+Every layer that caused this problem is **v1 scaffolding that self-hosting
+eliminates.** The `.dag` source has invariants. The v1 codegen does not.
+
+### What prevents this structurally
+
+Three mechanisms, each addressing a different level:
+
+**A) Kernel primitives have declared complexity contracts.**
+
+Each primitive operation (`char_at`, `string_length`, `list_push`,
+`map_insert`) must declare its complexity. The declaration is the spec;
+implementations must satisfy it.
+
+```dag
+// In dsl/std/primitives.dag or equivalent
+extern func char_at(s: String, pos: Int) -> String
+  // complexity: O(1)
+
+extern func string_length(s: String) -> Int
+  // complexity: O(1)
+
+extern func list_push(list: List<T>, item: T) -> List<T>
+  // complexity: O(1) amortized
 ```
 
-This catches ANY O(n²) regression immediately, regardless of which layer
-introduces it. It doesn't matter whether the cause is a runtime intrinsic,
-a codegen clone, or a DAG algorithm — if the test takes >2s, something
-is wrong.
+An implementation that's O(pos) for `char_at` violates its declared
+contract. This is verifiable without timing — you inspect the
+implementation and check that it uses indexed access, not linear scan.
 
-**Where:** Generated crate test module (`v2_crate_emit.rs`, test generation).
-**Budget:** 1,000 lines in <2s for tokenize, <5s for full pipeline.
+**B) The cost algebra (Track D) runs on the compiler itself.**
 
-### Prevention 2: Eliminate the hardcoded runtime (medium-term)
+The tokenizer's `tokenize_loop` gets a `ComplexitySummary`:
 
-v2_rt.rs should not be a string constant. Options:
+```text
+W_tokenize(n) = Sum(i = 0..n,
+  PrimCost("char_at", [Const(1)], model)
+  + PrimCost("string_length", [Const(1)], model)
+  + PrimCost("list_push", [Const(1)], model)
+)
+```
 
-**(A) Real Rust file in the repo.** Move v2_rt.rs to a real source file
-that's compiled, tested, and benchmarked like any other Rust code. It
-gets copied into generated crates at assembly time, not embedded as a
-string.
+If `char_at`'s model says O(1), this reduces to O(n). If the model says
+O(i), it reduces to O(n²) and the analyzer flags it. **The compiler
+proves its own performance** — no wall-clock heuristics needed.
 
-**(B) .dag-defined intrinsics.** Define string/collection operations in
-`.dag` files (e.g., `dsl/std/intrinsics.dag`) so they go through the
-same pipeline and audit process as everything else. The runtime becomes
-`extern func` declarations that the codegen provides implementations for.
+**C) Self-hosting makes the proof load-bearing.**
 
-Either way, the runtime must be **visible, testable, and subject to the
-same invariants as the rest of the codebase.** No more string constants
-that escape scrutiny.
+A compiler that can't tokenize 1,515 lines can't compile itself. The
+fixed-point test (Track A, stage A6: `stage1 output == stage2 output`)
+requires the compiler to be efficient enough to process its own source
+(~14,000 lines). An O(n²) tokenizer makes self-compilation infeasible.
 
-### Prevention 3: Codegen complexity contract (longer-term)
-
-The codegen should guarantee: **no generated operation inside a loop body
-is worse than O(1) amortized, unless the source .dag operation is itself
-non-constant.**
-
-Concrete rules:
-- String reads (char_at, string_length) must compile to O(1) operations
-  in the generated code. If the underlying representation doesn't support
-  O(1) access, the codegen must pre-index at loop entry.
-- Clone is only inserted when ownership transfer is required. Read-only
-  access uses borrows.
-- Any loop body that generates more than one `.clone()` of the same
-  variable should emit a compile-time warning.
-
-This is the hardest prevention to implement, but it's the one that makes
-the problem structurally impossible rather than just detectable.
+Self-hosting isn't a performance test — it's a structural constraint.
+You don't need to assert "tokenize < 2s" if the compiler must tokenize
+itself to exist.
 
 ---
 
-## What Else Could Be Hiding
+## Connection to Self-Hosting
 
-Beyond v2_rt.rs, the other unaudited codegen layers are:
+In the self-hosted world, every layer that caused this problem disappears:
 
-- **fn_codegen.rs** (5,000+ lines): expression compilation, clone insertion,
-  Rc wrapping, TCO transformation. Never profiled against real workloads.
-- **type_codegen.rs** (2,000+ lines): type definition emission, recursive
-  field detection, boxing algorithm. Boxing decisions affect every type's
-  size and every clone's cost.
-- **render_rust.rs** (200+ lines): code_ir → Rust text. Stacker wrapping.
+| v1 layer (disappears) | v2 replacement | Why it's auditable |
+|------------------------|---------------|-------------------|
+| `v2_runtime_shim.rs` (string constant) | `.dag`-defined `extern func` with complexity contracts | Subject to parse/infer/emit pipeline, Track D analysis |
+| `fn_codegen.rs` (clone strategy) | `05_emit_rust.dag` (v2 emitter) | The emitter IS `.dag` code — same invariants apply |
+| `type_codegen.rs` (boxing decisions) | `05_emit_rust.dag` type emission | Boxing rules expressed in `.dag`, not hidden in Rust |
+| `render_rust.rs` | Subsumed by `05_emit_rust.dag` | One layer, not two |
 
-These are the "infrastructure" files that every generated program flows
-through. They should be treated as performance-critical code — because
-they are.
+The fundamental shift: in v1, there are **two compilers** — the `.dag`
+compiler and the Rust codegen. The `.dag` compiler has invariants; the
+Rust codegen doesn't. In v2, there's **one compiler** that compiles
+itself. Every layer is subject to the same invariants.
+
+Self-hosting doesn't automatically make `char_at` O(1). But it makes the
+`char_at` implementation **visible, auditable, and subject to the cost
+algebra.** The combination of declared complexity (A), proven bounds (B),
+and self-hosting pressure (C) makes O(n²) intrinsics structurally
+unrepresentable — they'd violate their declared contract, fail the cost
+analysis, and prevent the compiler from reaching fixed point.

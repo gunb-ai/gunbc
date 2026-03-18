@@ -195,13 +195,15 @@ C3: Emitters consult extdeps       D3: DAG composition            E2: Target pla
 C4: CLI target selection           D4: Proofs + reporting         E3: Boundary semantics
                                                                   E4: Planning/reporting
 
-Track R: Representation sizing
+Track R: Representation + runtime
 ──────────────────────────────
 R1: Audit + catalog
 R2: Box rare fields
 R3: Clone reduction
 R4: Interpreter value repr
-R5: TCO clone leak
+R5: TCO clone leak (DONE)
+R6: String intrinsics fix
+R7: Primitive complexity contracts
 ```
 
 **Dependencies:**
@@ -348,11 +350,26 @@ Remaining coherence work:
 
 ---
 
-## Track R: Representation Sizing
+## Track R: Representation And Runtime Efficiency
 
-Types must be proportional to their common case. If a rarely-populated
-optional field dominates a type's size, every clone, every stack frame,
-and every match arm pays for it — even when the field is `none`.
+**Principle:** Every primitive operation must have a declared complexity
+contract, and every generated code path must satisfy it. Types must be
+proportional to their common case. The compiler must be able to prove its
+own performance bounds (Track D) — no wall-clock heuristics.
+
+**Context:** The 2026-03-18 perf audit (`PERF_AUDIT.md`) discovered that
+the generated v2 crate OOMs on 1,515 lines because `char_at` in the
+hardcoded `v2_rt.rs` runtime is O(pos) per call and the codegen clones
+the source string on every call — making tokenization O(n²). This was
+invisible to every prior audit because v2_rt.rs is a string constant
+inside the v1 emitter, not subject to the project's invariants.
+
+**Long-term resolution:** Self-hosting eliminates this class of bug.
+v2_rt.rs, fn_codegen.rs, type_codegen.rs, and render_rust.rs are v1
+scaffolding. When the v2 compiler compiles itself, the runtime becomes
+`.dag`-defined `extern func` with declared complexity contracts, the
+emitter is `05_emit_rust.dag` (subject to Track D analysis), and the
+fixed-point test (A6) makes the proof load-bearing.
 
 This track was added after the 2026-03-18 session discovered that `Node`
 is 544 bytes (because it inlines `TransportBinding` at 184b and
@@ -459,7 +476,9 @@ performance when the v2 compiler runs interpreted.
 - [ ] quadratic behavior is explicitly accepted and documented for
       bootstrap-only paths
 
-### R5: TCO clone leak in generated Rust code
+### R5: TCO clone leak in generated Rust code (DONE)
+
+**Status:** Fixed. TCO loop variable is now moved instead of cloned.
 
 The Rust emitter's TCO (tail call optimization) pattern emits
 `let state = __tco_p_state.clone()` at the top of each loop iteration.
@@ -485,10 +504,58 @@ cloning it, ensuring `Rc::try_unwrap` succeeds in-place.
 
 **Acceptance:**
 
-- [ ] TCO loops do not clone `Rc`-wrapped state at iteration start
-- [ ] `list_push` in TCO functions is O(1) amortized (no fallback clone)
+- [x] TCO loops do not clone `Rc`-wrapped state at iteration start
+- [x] `list_push` in TCO functions is O(1) amortized (no fallback clone)
 - [ ] tokenizer processes 1,515 lines in <1s (currently OOMs)
 - [ ] gist pipeline completes within reasonable time/memory bounds
+
+### R6: Fix runtime string intrinsics
+
+**Status:** Current blocker for Track A. Root cause of generated crate OOM.
+
+`char_at`, `string_length`, `substring`, and the `scan_*` family in
+`v2_runtime_shim.rs` all operate on strings via `.chars()` iterator,
+which is O(n) per call for positional access. The codegen compounds
+this by cloning the source string at every call site.
+
+**File:** `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs`
+
+**Fix:** Convert source to `Vec<char>` once at tokenizer entry. Pass
+`&[char]` to all string intrinsics. Replace `.chars().nth(pos)` with
+`chars[pos]` (O(1) indexed access). This avoids changing the codegen's
+ownership model — the change is localized to the tokenizer's entry
+point and the runtime intrinsics.
+
+Alternatively: change the codegen to pass `&str` instead of
+`String` for read-only arguments. Larger scope but fixes the
+problem at the root (codegen clone strategy).
+
+**Acceptance:**
+
+- [ ] `char_at` is O(1) per call, not O(pos)
+- [ ] `string_length` is O(1) (cached or precomputed), not O(n)
+- [ ] source string is not cloned per-character in the tokenizer
+- [ ] `v2_crate_gist_resolve` completes without OOM
+- [ ] `v2_compile_gist_rust` completes without stack overflow
+
+### R7: Kernel primitive complexity contracts
+
+**Prerequisite for:** Track D (cost algebra) running on the compiler itself.
+
+Each kernel primitive must declare its complexity so the cost algebra
+can produce faithful bounds. Without contracts, `PrimCost("char_at", ...)`
+is `Unknown` and the analyzer can't prove anything.
+
+**Scope:** Define contracts in `.dag` (e.g., `dsl/std/primitives.dag`)
+for all kernel operations. Initially as comments/conventions; eventually
+as machine-readable annotations the cost analyzer consumes.
+
+**Acceptance:**
+
+- [ ] every kernel primitive has a declared complexity
+- [ ] the cost algebra (D1 types) can reference primitive contracts
+- [ ] any implementation that violates its contract is detectable by
+      inspection (not wall-clock timing)
 
 ---
 
@@ -498,9 +565,10 @@ cloning it, ensuring `Rc::try_unwrap` succeeds in-place.
 
 - **Track S** must be complete enough for the v2 compiler to be a
   trustworthy target again.
-- **Track R** (at least R2) must land before A1+. The generated crate
-  and host interpreter both OOM/overflow on gist-scale inputs due to
-  `Node` being 544 bytes with pervasive cloning.
+- **Track R** (at least R6, then R2) must land before A1+. R6 (string
+  intrinsics) is the immediate blocker — tokenization is O(n²) due to
+  `char_at` scanning and source cloning. R2 (Node boxing) addresses the
+  secondary constant-factor issue.
 
 ### A1: Gist compilation
 
