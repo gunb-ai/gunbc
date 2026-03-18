@@ -156,7 +156,7 @@ fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
         let inner_pad = "    ".repeat(indent + 1);
         writeln!(
             out,
-            "{}stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {{",
+            "{}stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {{",
             inner_pad
         )
         .unwrap();
