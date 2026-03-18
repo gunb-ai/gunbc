@@ -1180,10 +1180,17 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       } else {
         []
       }
+      let exhaustiveness_diags = check_match_exhaustiveness(
+        scrutinee_type: scrut_result.typed.resolved_type,
+        arms: typed_arms,
+        env: scope.type_env,
+        span: span,
+        module_name: scope.module_name
+      )
       let texpr = TypedMatch { scrutinee: scrut_result.typed, arms: typed_arms, resolved_type: result_type, span: span }
       InferResult {
         typed: texpr,
-        diagnostics: concat(scrut_result.diagnostics, arm_diags, empty_arms_diags)
+        diagnostics: concat(scrut_result.diagnostics, arm_diags, empty_arms_diags, exhaustiveness_diags)
       }
 
     If { condition: cond, then_branch: then_expr, else_branch: else_expr, span: span } =>
@@ -1579,6 +1586,68 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 // =========================================================================
 // Type environment lookup
 // =========================================================================
+
+// =========================================================================
+// Match exhaustiveness checking
+//
+// When matching on a known coproduct (Disj), check that all variants
+// are covered. Wildcard and Bind patterns cover all remaining variants.
+// Non-exhaustive matches emit a Warning diagnostic.
+// =========================================================================
+
+fn check_match_exhaustiveness(
+  scrutinee_type: Node,
+  arms: List<TypedMatchArm>,
+  env: TypeEnv,
+  span: SourceSpan,
+  module_name: String
+) -> List<Diagnostic> {
+  // Resolve the scrutinee type — if it's a leaf name, look up its definition.
+  let resolved = if scrutinee_type.connective != none {
+    scrutinee_type
+  } else {
+    match lookup_type(env: env, name: scrutinee_type.name) {
+      Some { value: def } => def
+      None => scrutinee_type
+    }
+  }
+  // Only check coproducts (Disj connective).
+  match resolved.connective {
+    Some { value: Disj } =>
+      let variant_names = resolved.children |> map(c => c.name)
+      // Check if any arm is a wildcard or bind (covers all remaining).
+      let has_catch_all = any(arms, arm =>
+        match arm.pattern {
+          Wildcard => true
+          Bind { name: _ } => true
+          _ => false
+        }
+      )
+      if has_catch_all {
+        []
+      } else {
+        // Collect covered variant names from VariantPattern arms.
+        let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
+          match arm.pattern {
+            VariantPattern { name: n, field_bindings: _ } => map_insert(acc, n, true)
+            _ => acc
+          }
+        )
+        let uncovered = variant_names |> filter(v => map_has(m: covered_set, key: v) == false)
+        if count(uncovered) > 0 {
+          [Diagnostic {
+            severity: Warning,
+            message: concat("non-exhaustive match: missing variant(s) ", join(uncovered, separator: ", ")),
+            span: Some { value: span },
+            module_name: Some { value: module_name }
+          }]
+        } else {
+          []
+        }
+      }
+    _ => []
+  }
+}
 
 fn lookup_type(env: TypeEnv, name: String) -> Node? {
   let canonical = normalize_type_name(name: name)
