@@ -33,7 +33,6 @@ import v2.std.core {
   TypedCast, TypedForEach, TypedIndex, TypedSlice,
   TypedNamedArg, TypedMatchArm, TypedFieldInit, TypedStringPart,
   TypedText, TypedInterpolation,
-  typed_expr_to_expr,
   typed_expr_has_self_call, typed_has_non_tail_self_call,
   FuncSig, FuncEnv,
   ForEach,

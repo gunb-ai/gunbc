@@ -311,31 +311,6 @@ type TypedMatchArm { pattern: MatchPattern, guard: TypedExpr?, body: TypedExpr }
 type TypedFieldInit { name: String, value: TypedExpr }
 type TypedStringPart = TypedText { value: String } | TypedInterpolation { expr: TypedExpr }
 
-// Utility: strip TypedExpr back to Expr (needed for TCO analysis, service call collection)
-fn typed_expr_to_expr(texpr: TypedExpr) -> Expr {
-  match texpr {
-    TypedLiteral { value: v, resolved_type: _, span: s } => Literal { value: v, span: s }
-    TypedVar { name: n, resolved_type: _, span: s } => Var { name: n, span: s }
-    TypedFieldAccess { base: b, field: f, resolved_type: _, span: s } => FieldAccess { base: typed_expr_to_expr(texpr: b), field: f, span: s }
-    TypedCall { func: f, args: a, resolved_type: _, span: s } => Call { func: f, args: a |> map(ta => NamedArg { name: ta.name, value: typed_expr_to_expr(texpr: ta.value) }), span: s }
-    TypedMethodCall { receiver: r, method: m, args: a, resolved_type: _, span: s } => MethodCall { receiver: typed_expr_to_expr(texpr: r), method: m, args: a |> map(ta => NamedArg { name: ta.name, value: typed_expr_to_expr(texpr: ta.value) }), span: s }
-    TypedMatch { scrutinee: sc, arms: arms, resolved_type: _, span: s } => Match { scrutinee: typed_expr_to_expr(texpr: sc), arms: arms |> map(a => MatchArm { pattern: a.pattern, guard: if a.guard != none { Some { value: typed_expr_to_expr(texpr: a.guard.value) } } else { none }, body: typed_expr_to_expr(texpr: a.body) }), span: s }
-    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: s } => If { condition: typed_expr_to_expr(texpr: c), then_branch: typed_expr_to_expr(texpr: t), else_branch: if e != none { Some { value: typed_expr_to_expr(texpr: e.value) } } else { none }, span: s }
-    TypedLet { name: n, value: v, body: b, resolved_type: _, span: s } => Let { name: n, value: typed_expr_to_expr(texpr: v), body: if b != none { Some { value: typed_expr_to_expr(texpr: b.value) } } else { none }, span: s }
-    TypedRecordLit { type_name: tn, fields: fs, resolved_type: _, span: s } => RecordLit { type_name: tn, fields: fs |> map(fi => FieldInit { name: fi.name, value: typed_expr_to_expr(texpr: fi.value) }), span: s }
-    TypedListLit { elements: els, resolved_type: _, span: s } => ListLit { elements: els |> map(e => typed_expr_to_expr(texpr: e)), span: s }
-    TypedBinOp { op: o, left: l, right: r, resolved_type: _, span: s } => BinOp { op: o, left: typed_expr_to_expr(texpr: l), right: typed_expr_to_expr(texpr: r), span: s }
-    TypedUnaryOp { op: o, operand: e, resolved_type: _, span: s } => UnaryOp { op: o, operand: typed_expr_to_expr(texpr: e), span: s }
-    TypedLambda { params: ps, body: bd, resolved_type: _, span: s } => Lambda { params: ps, body: typed_expr_to_expr(texpr: bd), span: s }
-    TypedStringInterp { parts: ps, resolved_type: _, span: s } => StringInterp { parts: ps |> map(p => match p { TypedText { value: v } => Text { value: v }, TypedInterpolation { expr: e } => Interpolation { expr: typed_expr_to_expr(texpr: e) } }), span: s }
-    TypedBlock { stmts: ss, resolved_type: _, span: s } => Block { stmts: ss |> map(st => typed_expr_to_expr(texpr: st)), span: s }
-    TypedCast { expr: e, target: t, resolved_type: _, span: s } => Cast { expr: typed_expr_to_expr(texpr: e), target: t, span: s }
-    TypedForEach { variable: v, collection: c, body: bd, resolved_type: _, span: s } => ForEach { variable: v, collection: typed_expr_to_expr(texpr: c), body: typed_expr_to_expr(texpr: bd), span: s }
-    TypedIndex { base: b, index: i, resolved_type: _, span: s } => Index { base: typed_expr_to_expr(texpr: b), index: typed_expr_to_expr(texpr: i), span: s }
-    TypedSlice { base: b, start: st, end: e, resolved_type: _, span: s } => Slice { base: typed_expr_to_expr(texpr: b), start: typed_expr_to_expr(texpr: st), end: typed_expr_to_expr(texpr: e), span: s }
-  }
-}
-
 type FuncSig {
   name: String
   params: List<Param>
