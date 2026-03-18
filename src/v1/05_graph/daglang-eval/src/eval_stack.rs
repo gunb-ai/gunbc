@@ -1793,6 +1793,18 @@ fn eval_intrinsic_inner(
                 _ => Err(EvalError::new("ends_with requires string and suffix")),
             }
         }
+        "string_contains" => {
+            let needle = rest
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("substring"))
+                .or_else(|| rest.first());
+            match (receiver, needle) {
+                (Value::Str(s), Some((_, e))) => Ok(Value::Bool(
+                    s.contains(&value_to_string(&eval_expr(e, env, ctx)?)),
+                )),
+                _ => Err(EvalError::new("string_contains requires string and substring")),
+            }
+        }
         "split" => {
             let delim = rest
                 .iter()
@@ -2781,6 +2793,58 @@ mod tests {
         let r = evaluate_stack(&body, &inp, &HashMap::new(), &HashMap::new()).unwrap();
         let result = &r["return"];
         // Should be Some { value: 42 }
+        if let Value::Map(map) = result {
+            assert_eq!(map.get("_variant"), Some(&Value::Str("Some".into())));
+            assert_eq!(map.get("value"), Some(&Value::Int(42)));
+        } else {
+            panic!("expected Map, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn builtin_map_keys() {
+        let mut inp = HashMap::new();
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("a".to_string(), Value::Int(1));
+        m.insert("b".to_string(), Value::Int(2));
+        inp.insert("m".into(), Value::Map(m));
+        let body = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let(
+                    "r".into(),
+                    LoweredExpr::Call {
+                        name: "map_keys".into(),
+                        args: vec![(Some("map".into()), ident("m"))],
+                    },
+                ),
+                LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+            ],
+            ..Default::default()
+        };
+        let r = evaluate_stack(&body, &inp, &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(
+            r["return"],
+            Value::List(vec![Value::Str("a".into()), Value::Str("b".into())])
+        );
+    }
+
+    #[test]
+    fn builtin_some_returns_tagged_option() {
+        let body = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let(
+                    "r".into(),
+                    LoweredExpr::Call {
+                        name: "Some".into(),
+                        args: vec![(Some("value".into()), int(42))],
+                    },
+                ),
+                LoweredStmt::Return(vec![("return".into(), ident("r"))]),
+            ],
+            ..Default::default()
+        };
+        let r = evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
+        let result = &r["return"];
         if let Value::Map(map) = result {
             assert_eq!(map.get("_variant"), Some(&Value::Str("Some".into())));
             assert_eq!(map.get("value"), Some(&Value::Int(42)));

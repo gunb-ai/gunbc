@@ -18,7 +18,7 @@
 //! - `daglang report-coverage <file.dag|dir> [--format text|json]`: Lint report-stage coverage across pipeline stages
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|python|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Legacy repo-specific path, unsupported in core daglang-cli
 
 use std::path::PathBuf;
@@ -74,7 +74,7 @@ fn main() {
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
         eprintln!(
-            "  compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
+            "  compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|python|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
         );
         eprintln!("                      Full compilation pipeline (canonical-json: IR only, no file writes)");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
@@ -466,6 +466,7 @@ fn parse_compile_output_format(value: &str) -> Option<CompileOutputFormat> {
 fn parse_codegen_target(value: &str) -> Option<CodegenTarget> {
     match value {
         "rust" => Some(CodegenTarget::Rust),
+        "python" => Some(CodegenTarget::Python),
         "go" => Some(CodegenTarget::Go),
         "c" => Some(CodegenTarget::C),
         "mips" => Some(CodegenTarget::Mips),
@@ -1351,7 +1352,7 @@ mod tests {
 
     #[test]
     fn parse_compile_command_args_handles_codegen_and_output_flags() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|python|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let valid = vec![
             "daglang".to_string(),
             "compile".to_string(),
@@ -1549,7 +1550,7 @@ mod tests {
 
     #[test]
     fn parse_compile_command_args_rejects_invalid_shapes() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--target rust|python|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let unknown_flag = vec![
             "daglang".to_string(),
             "compile".to_string(),

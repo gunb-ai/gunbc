@@ -48,11 +48,13 @@ type DepEdge {
 
 // State threaded through Kahn's algorithm.
 type KahnState {
-  // Modules that have been placed in sorted order so far.
+  // Modules that have been placed in sorted order so far (ordered output).
   sorted: List<String>
-  // Current in-degree for each module (parallel with module_names).
-  in_degrees: List<Int>
-  // Module names list (index-aligned with in_degrees).
+  // O(1) membership set for sorted modules.
+  sorted_set: Map<String, Bool>
+  // Current in-degree for each module, keyed by module name.
+  in_degree_map: Map<String, Int>
+  // Module names list (for iteration).
   module_names: List<String>
   // Adjacency: list of edges (dep -> dependant).
   edges: List<DepEdge>
@@ -62,6 +64,22 @@ type KahnState {
 type KahnStepResult {
   state: KahnState
   progress: Bool
+}
+
+// Accumulator for Phase 2 — builds imports-by-name map and collects diagnostics.
+type ResolveAccum {
+  imports_by_name: Map<String, List<ResolvedImport>>
+  diagnostics: List<Diagnostic>
+}
+
+// Map membership check — returns true if key is present, false otherwise.
+// Uses match on map_get since the evaluator represents None as a variant map,
+// not as the none literal (Value::Unit), so direct == / != comparisons fail.
+fn map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // =========================================================================
@@ -77,12 +95,21 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     map_insert(acc, m.name, m)
   )
 
-  // Phase 2: resolve each module's imports
-  let resolve_results = modules |> map(m =>
-    resolve_module_imports(module: m, module_index: module_index)
+  // Phase 2: resolve each module's imports.
+  // Build a map from module name to resolved imports for O(1) lookup,
+  // and collect diagnostics in a single pass.
+  let resolve_accum = modules |> fold(init: ResolveAccum {
+    imports_by_name: empty_map(),
+    diagnostics: []
+  }, f: (acc, m) =>
+    let result = resolve_module_imports(module: m, module_index: module_index)
+    ResolveAccum {
+      imports_by_name: map_insert(acc.imports_by_name, m.name, result.resolved_imports),
+      diagnostics: concat(acc.diagnostics, result.diagnostics)
+    }
   )
-  let resolved_imports_list = resolve_results |> map(r => r.resolved_imports)
-  let import_diags = resolve_results |> flat_map(r => r.diagnostics)
+  let imports_by_name = resolve_accum.imports_by_name
+  let import_diags = resolve_accum.diagnostics
 
   // Phase 3: topological sort
   let topo_result = topological_sort(modules: modules)
@@ -94,14 +121,16 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
   // Phase 4: assign dep_order from the sorted order.
   // Modules not in the sorted output (cycle members) get no dep_order
   // and are excluded from the acyclic result.
+  // Build a map from module name to its position in the sorted list for O(1) lookup.
   let sorted_names = topo_result.sorted
-  let acyclic_resolved = modules |> enumerate |> flat_map(pair =>
-    let idx = pair.first
-    let m = pair.second
-    match find_index_in_list(names: sorted_names, target: m.name) {
+  let sorted_order_map = sorted_names |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    map_insert(acc, pair.second, pair.first)
+  )
+  let acyclic_resolved = modules |> flat_map(m =>
+    match map_get(sorted_order_map, m.name) {
       Some { value: order } =>
-        match get_at_index(items: resolved_imports_list, index: idx) {
-          // get_at_index is on parallel arrays (same enumerate index) — None is
+        match map_get(imports_by_name, m.name) {
+          // imports_by_name should contain every module — None is
           // unreachable. Default to [] only as a safe fallback.
           Some { value: imps } =>
             [ResolvedModule {
@@ -189,13 +218,15 @@ fn resolve_import(
       }
     }
     Some { value: target_mod } => {
-      // Validate each imported name exists in the target
+      // Validate each imported name exists in the target.
+      // Build a set from the exported names for O(1) membership checks.
       let exported = get_exported_names(module: target_mod)
+      let exported_set = fold(exported, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
       let name_diags = match import.names {
         ImportAll => []
         ImportSpecific { names: specific_names } =>
           specific_names
-            |> filter(name => exported |> any(e => e == name) == false)
+            |> filter(name => map_has(m: exported_set, key: name) == false)
             |> map(missing_name =>
               Diagnostic {
                 severity: Error,
@@ -284,20 +315,19 @@ fn get_module_deps(module: Module) -> List<String> {
 // Check for duplicate module declarations (same name appearing twice).
 // DuplicateCheckState — fold accumulator for seen-set duplicate detection.
 type DuplicateCheckState {
-  seen_names: List<String>
+  seen_names: Map<String, Bool>
   diagnostics: List<Diagnostic>
 }
 
 fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
-  // Fold over modules maintaining a seen-names list.
-  // For each module, check if its name is already in the seen list.
-  // If so, emit a diagnostic. Then add the name to the seen list.
-  // This is O(n*m) where m is unique names, avoiding the O(n²) nested enumerate+filter.
+  // Fold over modules maintaining a seen-names map for O(1) lookup.
+  // For each module, check if its name is already in the seen map.
+  // If so, emit a diagnostic. Then add the name to the seen map.
   let result = modules |> fold(init: DuplicateCheckState {
-    seen_names: [],
+    seen_names: empty_map(),
     diagnostics: []
   }, f: fn(state, m) {
-    let is_dup = state.seen_names |> any(name => name == m.name)
+    let is_dup = map_has(m: state.seen_names, key: m.name)
     if is_dup {
       DuplicateCheckState {
         seen_names: state.seen_names,
@@ -310,7 +340,7 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
       }
     } else {
       DuplicateCheckState {
-        seen_names: concat(state.seen_names, [m.name]),
+        seen_names: map_insert(state.seen_names, m.name, true),
         diagnostics: state.diagnostics
       }
     }
@@ -341,14 +371,23 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
       )
     )
 
-  // Compute initial in-degrees
-  let initial_in_degrees = module_names |> map(name =>
-    all_edges |> filter(e => e.to_module == name) |> count
+  // Compute initial in-degrees as a map for O(1) lookup.
+  // First initialize all modules to 0, then increment for each edge.
+  let zero_degrees = module_names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, 0)
+  )
+  let initial_in_degree_map = all_edges |> fold(init: zero_degrees, f: (acc, e) =>
+    let current = match map_get(acc, e.to_module) {
+      Some { value: d } => d
+      None => 0
+    }
+    map_insert(acc, e.to_module, current + 1)
   )
 
   let initial_state = KahnState {
     sorted: [],
-    in_degrees: initial_in_degrees,
+    sorted_set: empty_map(),
+    in_degree_map: initial_in_degree_map,
     module_names: module_names,
     edges: all_edges
   }
@@ -363,7 +402,7 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
   } else {
     // Modules not in sorted output are part of a cycle
     let cycle_members = module_names
-      |> filter(name => final_state.sorted |> any(s => s == name) == false)
+      |> filter(name => map_has(m: final_state.sorted_set, key: name) == false)
     let cycle_desc = cycle_members |> join(separator: " -> ")
     TopoResult {
       sorted: final_state.sorted,
@@ -396,51 +435,52 @@ fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
 // emit them (sorted), and decrement neighbors' in-degrees.
 fn kahn_step(state: KahnState) -> KahnStepResult {
   // Find all nodes with in-degree 0 that aren't already sorted.
-  // get_at_index_int on parallel arrays (in_degrees indexed by enumerate) — None
-  // is unreachable by construction. Treat None as non-zero (skip the node).
-  let zero_nodes = state.module_names |> enumerate
-    |> filter(pair =>
-      let deg = match get_at_index_int(items: state.in_degrees, index: pair.first) {
+  // Uses in_degree_map for O(1) degree lookup and sorted_set for O(1) membership.
+  let zero_nodes = state.module_names
+    |> filter(name =>
+      let deg = match map_get(state.in_degree_map, name) {
         Some { value: d } => d
         None => -1
       }
-      deg == 0 && (state.sorted |> any(s => s == pair.second) == false)
+      deg == 0 && map_has(m: state.sorted_set, key: name) == false
     )
-    |> map(pair => pair.second)
     |> sort_by(name => name)  // deterministic ordering
 
   if zero_nodes |> count == 0 {
     return KahnStepResult { state: state, progress: false }
   }
 
+  // Build a set from zero_nodes for O(1) membership checks.
+  let zero_set = zero_nodes |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
+
   // Add zero-degree nodes to sorted output
   let new_sorted = concat(state.sorted, zero_nodes)
+  let new_sorted_set = zero_nodes |> fold(init: state.sorted_set, f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
 
   // Decrement in-degrees: for each edge from a zero_node, decrement target.
-  // get_at_index_int on parallel arrays — None is unreachable. Treat None as -1.
-  let new_in_degrees = state.module_names |> enumerate |> map(pair =>
-    let idx = pair.first
-    let name = pair.second
-    let current_deg = match get_at_index_int(items: state.in_degrees, index: idx) {
-      Some { value: d } => d
-      None => -1
-    }
-    // Count how many edges point to this node FROM a zero_node
-    let decrements = state.edges
-      |> filter(e => e.to_module == name && (zero_nodes |> any(z => z == e.from_module)))
-      |> count
-    // Mark zero_nodes themselves as -1 so they aren't picked again
-    if zero_nodes |> any(z => z == name) {
-      -1
-    } else {
-      current_deg - decrements
-    }
+  // Mark zero_nodes themselves as -1 so they aren't picked again.
+  let decremented = state.edges
+    |> filter(e => map_has(m: zero_set, key: e.from_module))
+    |> fold(init: state.in_degree_map, f: (acc, e) =>
+      let current = match map_get(acc, e.to_module) {
+        Some { value: d } => d
+        None => -1
+      }
+      map_insert(acc, e.to_module, current - 1)
+    )
+  let new_in_degree_map = zero_nodes |> fold(init: decremented, f: (acc, name) =>
+    map_insert(acc, name, -1)
   )
 
   KahnStepResult {
     state: KahnState {
       sorted: new_sorted,
-      in_degrees: new_in_degrees,
+      sorted_set: new_sorted_set,
+      in_degree_map: new_in_degree_map,
       module_names: state.module_names,
       edges: state.edges
     },
@@ -448,43 +488,3 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
   }
 }
 
-// =========================================================================
-// Cycle detection
-//
-// =========================================================================
-// Utility functions
-//
-// These operate on lists by index since the DSL doesn't have mutable
-// maps or arrays. Indices are computed via enumerate + filter.
-// =========================================================================
-
-// Find the index of a name in a list. Returns None if not found.
-fn find_index_in_list(names: List<String>, target: String) -> Int? {
-  let matches = names |> enumerate |> filter(pair => pair.second == target)
-  match matches |> first {
-    Some { value: pair } => Some { value: pair.first }
-    None => None
-  }
-}
-
-// Get element at index from a list of ResolvedImport lists.
-// Returns None if index is out of bounds (indicates a compiler bug — parallel
-// arrays should always have matching indices).
-fn get_at_index(items: List<List<ResolvedImport>>, index: Int) -> List<ResolvedImport>? {
-  let matches = items |> enumerate |> filter(pair => pair.first == index)
-  match matches |> first {
-    Some { value: pair } => Some { value: pair.second }
-    None => None
-  }
-}
-
-// Get element at index from a list of Ints.
-// Returns None if index is out of bounds (indicates a compiler bug — parallel
-// arrays should always have matching indices).
-fn get_at_index_int(items: List<Int>, index: Int) -> Int? {
-  let matches = items |> enumerate |> filter(pair => pair.first == index)
-  match matches |> first {
-    Some { value: pair } => Some { value: pair.second }
-    None => None
-  }
-}
