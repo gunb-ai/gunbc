@@ -262,7 +262,11 @@ mod tests {
         }
     }
 
-    fn assert_missing_input_error(op: LoweredOp, inputs: HashMap<String, Value>, expected: &str) {
+    fn assert_missing_input_error(
+        op: LoweredOp,
+        inputs: HashMap<String, Value>,
+        expected: &str,
+    ) {
         let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
             .expect_err("missing required primitive inputs should fail closed");
 
@@ -559,9 +563,7 @@ mod tests {
                     "list_construct",
                     PrimitiveOpKind::ListConstruct { count: 2 },
                 ),
-                [("elem_0".to_string(), Value::Int(1))]
-                    .into_iter()
-                    .collect(),
+                [("elem_0".to_string(), Value::Int(1))].into_iter().collect(),
                 "ListConstruct missing `elem_1` input",
             ),
         ];

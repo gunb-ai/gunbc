@@ -295,14 +295,26 @@ impl PrimitiveOpKind {
     /// named statically).
     pub fn required_input_ports(&self) -> Option<Vec<String>> {
         match self {
-            PrimitiveOpKind::BinaryOp { .. } => Some(vec!["left".into(), "right".into()]),
+            PrimitiveOpKind::BinaryOp { .. } => {
+                Some(vec!["left".into(), "right".into()])
+            }
             PrimitiveOpKind::UnaryOp { .. } => Some(vec!["operand".into()]),
-            PrimitiveOpKind::Conditional => Some(vec!["condition".into(), "then".into()]),
-            PrimitiveOpKind::NullCoalesce => Some(vec!["value".into(), "default".into()]),
-            PrimitiveOpKind::MatchDispatch { .. } => Some(vec!["scrutinee".into()]),
-            PrimitiveOpKind::StringInterpolate { input_ports, .. } => Some(input_ports.clone()),
+            PrimitiveOpKind::Conditional => {
+                Some(vec!["condition".into(), "then".into()])
+            }
+            PrimitiveOpKind::NullCoalesce => {
+                Some(vec!["value".into(), "default".into()])
+            }
+            PrimitiveOpKind::MatchDispatch { .. } => {
+                Some(vec!["scrutinee".into()])
+            }
+            PrimitiveOpKind::StringInterpolate { input_ports, .. } => {
+                Some(input_ports.clone())
+            }
             PrimitiveOpKind::RecordConstruct { fields } => Some(fields.clone()),
-            PrimitiveOpKind::VariantConstruct { fields, .. } => Some(fields.clone()),
+            PrimitiveOpKind::VariantConstruct { fields, .. } => {
+                Some(fields.clone())
+            }
             PrimitiveOpKind::ListConstruct { count } => {
                 Some((0..*count).map(|i| format!("elem_{i}")).collect())
             }

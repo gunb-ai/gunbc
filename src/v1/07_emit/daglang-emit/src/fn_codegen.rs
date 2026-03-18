@@ -2090,9 +2090,7 @@ fn compile_intrinsic_call(
                             );
                             params
                                 .first()
-                                .map(|p| {
-                                    substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone()))
-                                })
+                                .map(|p| substitute_var(&compiled, p, &code_ir::Expr::Var(elem.clone())))
                                 .unwrap_or(compiled)
                         }
                         other => code_ir::Expr::Call {
@@ -2150,10 +2148,7 @@ fn compile_intrinsic_call(
             if let ast::Expr::Call(inner_name, inner_args) = &args[0].1 {
                 // first(skip(list, n)) → list.get(n as usize).cloned()
                 if inner_name == "skip" && inner_args.len() == 2 {
-                    let list = clone_if_needed(
-                        compile_expr(&inner_args[0].1, ctx, counter),
-                        fold_accum_name,
-                    );
+                    let list = clone_if_needed(compile_expr(&inner_args[0].1, ctx, counter), fold_accum_name);
                     let idx = compile_expr(&inner_args[1].1, ctx, counter);
                     return Some(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::MethodCall {
@@ -2754,10 +2749,7 @@ fn compile_fold_intrinsic(
             if let Some(p) = params.first() {
                 fold_ctx.fold_accum_name = Some(p.clone());
             }
-            if let (Some(param), Some(ty)) = (
-                params.get(1),
-                infer_list_element_ir_type(collection_expr, ctx),
-            ) {
+            if let (Some(param), Some(ty)) = (params.get(1), infer_list_element_ir_type(collection_expr, ctx)) {
                 fold_ctx.ir_scope.insert(param.clone(), ty);
             }
             // Compute use counts for lambda params with weight=1 (reassigned each iter).
@@ -2772,8 +2764,8 @@ fn compile_fold_intrinsic(
                 }
             }
             let lambda_body_path = path.child(ExprPathStep::LambdaBody);
-            let mut compiled = fold_ctx
-                .with_expr_path(lambda_body_path, || compile_expr(body, &fold_ctx, counter));
+            let mut compiled =
+                fold_ctx.with_expr_path(lambda_body_path, || compile_expr(body, &fold_ctx, counter));
             if let Some(p) = params.first() {
                 compiled = substitute_var(&compiled, p, &code_ir::Expr::Var(acc.clone()));
             }
@@ -4182,10 +4174,7 @@ fn compile_collection_lambda_body(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let mut body_ctx = ctx.clone();
-    if let (Some(param), Some(elem_ir_type)) = (
-        params.first(),
-        infer_list_element_ir_type(collection_expr, ctx),
-    ) {
+    if let (Some(param), Some(elem_ir_type)) = (params.first(), infer_list_element_ir_type(collection_expr, ctx)) {
         body_ctx.ir_scope.insert(param.clone(), elem_ir_type);
     }
     body_ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {

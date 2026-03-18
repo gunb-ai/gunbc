@@ -1802,9 +1802,7 @@ fn eval_intrinsic_inner(
                 (Value::Str(s), Some((_, e))) => Ok(Value::Bool(
                     s.contains(&value_to_string(&eval_expr(e, env, ctx)?)),
                 )),
-                _ => Err(EvalError::new(
-                    "string_contains requires string and substring",
-                )),
+                _ => Err(EvalError::new("string_contains requires string and substring")),
             }
         }
         "split" => {
