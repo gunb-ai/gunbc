@@ -1022,6 +1022,67 @@ func credential_chain() -> { payload: String } {
 }
 
 #[test]
+fn check_target_file_gunbc_tools_gist_requires_github_gist_service_module_import() {
+    let root = unique_temp_root("gunbc_tools_gist_service_import");
+    let write_source = |relative: &str, content: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
+            .expect("failed to create fixture parent directory");
+        std::fs::write(path, content).expect("failed to write fixture source");
+    };
+
+    write_source(
+        "extdeps/github/gists.dag",
+        r#"module extdeps.github.gists
+service github.Gist {
+  operation Create(description: String, content: String, public: Bool, auth_token: String) -> { id: String, html_url: String }
+}
+"#,
+    );
+    write_source(
+        "gunbc/tools/gist.dag",
+        r#"module gunbc.tools.gist
+
+import extdeps.github.gists
+
+func create_gist() -> { url: String } {
+  result = github.Gist.Create(description: "snapshot", content: "body", public: false, auth_token: "tok")
+  return { url: result.html_url }
+}
+"#,
+    );
+
+    let context = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("gunbc/tools/gist.dag")),
+    };
+
+    let output = check_from_context(&context).expect("check should succeed with gist service import");
+    assert_eq!(output.parsed_files, 2, "expected two fixture modules");
+
+    write_source(
+        "gunbc/tools/gist.dag",
+        r#"module gunbc.tools.gist
+
+func create_gist() -> { url: String } {
+  result = github.Gist.Create(description: "snapshot", content: "body", public: false, auth_token: "tok")
+  return { url: result.html_url }
+}
+"#,
+    );
+
+    let error = check_from_context(&context).expect_err("check should fail without gist service import");
+    assert_typecheck_stage_error(&error);
+    assert!(error.contains("unresolved service call"));
+    assert!(
+        error.contains("github.Gist.Create"),
+        "expected missing import error to mention github.Gist.Create: {error}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_single_file_uses_bound_resource_capability_call_succeeds() {
     let fixture = unique_temp_file("single_file_uses_bound_resource_capability_call");
     std::fs::write(
