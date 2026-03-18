@@ -2,7 +2,7 @@
 //!
 //! When the v2 compiler crate is emitted, this module is written verbatim
 //! as `src/v2_rt.rs` so that intrinsic calls (`char_at`, `string_length`,
-//! `substring`, `lookup`, `concat`) resolve to real Rust functions.
+//! `substring`, `string_contains`, `lookup`, `concat`) resolve to real Rust functions.
 
 /// The Rust source code for the v2 runtime shim module.
 pub const V2_RUNTIME_SOURCE: &str = r#"//! Runtime shims for v2 compiler intrinsic operations.
@@ -74,6 +74,11 @@ pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {
         .skip(start as usize)
         .take((end - start).max(0) as usize)
         .collect()
+}
+
+/// Check whether a string contains a given substring.
+pub fn string_contains(s: impl AsRef<str>, substring: impl AsRef<str>) -> bool {
+    s.as_ref().contains(substring.as_ref())
 }
 
 // ---------------------------------------------------------------------------

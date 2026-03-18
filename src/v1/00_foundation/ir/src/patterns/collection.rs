@@ -377,6 +377,14 @@ pub fn non_collection_builtin_contracts() -> Vec<(&'static str, BuiltinContract)
             },
         ),
         (
+            "string_contains",
+            BuiltinContract {
+                arity: 2,
+                params: &["value", "substring"],
+                output_type: "Bool",
+            },
+        ),
+        (
             "repeat",
             BuiltinContract {
                 arity: 2,
@@ -589,6 +597,7 @@ mod tests {
             "get",
             "starts_with",
             "ends_with",
+            "string_contains",
             "repeat",
             "chars",
         ] {

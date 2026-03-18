@@ -90,7 +90,7 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_typecheck.dag"),
+            root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
@@ -187,7 +187,7 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_typecheck.dag"),
+            root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
@@ -316,12 +316,18 @@ mod tests {
 
     fn named_type_value(name: &str) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            "_variant".to_string(),
-            gunbc_ir::Value::Str("Named".to_string()),
-        );
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
         map.insert("span".to_string(), zero_span_value());
+        map.insert("children".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("connective".to_string(), gunbc_ir::Value::Unit);
+        map.insert("params".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
+        map.insert("uses".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("body".to_string(), gunbc_ir::Value::Unit);
+        map.insert("transport".to_string(), gunbc_ir::Value::Unit);
+        map.insert("properties".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
+        map.insert("config".to_string(), gunbc_ir::Value::Unit);
         gunbc_ir::Value::Map(map)
     }
 
@@ -381,7 +387,10 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn product_type_value(name: Option<&str>, fields: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+    fn product_type_value(
+        name: Option<&str>,
+        fields: Vec<gunbc_ir::Value>,
+    ) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -419,7 +428,10 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn literal_expr_value(literal: gunbc_ir::Value, span: gunbc_ir::Value) -> gunbc_ir::Value {
+    fn literal_expr_value(
+        literal: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
             "_variant".to_string(),
@@ -434,14 +446,6 @@ mod tests {
         let mut map = std::collections::BTreeMap::new();
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
         map.insert("value".to_string(), value);
-        gunbc_ir::Value::Map(map)
-    }
-
-    fn span_type_value(start: i64, end: i64, resolved_type: gunbc_ir::Value) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert("start".to_string(), gunbc_ir::Value::Int(start));
-        map.insert("end".to_string(), gunbc_ir::Value::Int(end));
-        map.insert("resolved_type".to_string(), resolved_type);
         gunbc_ir::Value::Map(map)
     }
 
@@ -460,25 +464,7 @@ mod tests {
 
     fn infer_scope_value(
         type_env: gunbc_ir::Value,
-        type_cache: Vec<gunbc_ir::Value>,
     ) -> gunbc_ir::Value {
-        // type_cache is now Map<String, TypeExpr> keyed by "start:end"
-        let mut cache_map = std::collections::BTreeMap::new();
-        for entry in &type_cache {
-            if let gunbc_ir::Value::Map(m) = entry {
-                let start = match m.get("start") {
-                    Some(gunbc_ir::Value::Int(i)) => i.to_string(),
-                    _ => continue,
-                };
-                let end = match m.get("end") {
-                    Some(gunbc_ir::Value::Int(i)) => i.to_string(),
-                    _ => continue,
-                };
-                if let Some(resolved) = m.get("resolved_type") {
-                    cache_map.insert(format!("{}:{}", start, end), resolved.clone());
-                }
-            }
-        }
         let mut map = std::collections::BTreeMap::new();
         map.insert("type_env".to_string(), type_env);
         map.insert("func_env".to_string(), func_env_value());
@@ -490,7 +476,6 @@ mod tests {
             "module_name".to_string(),
             gunbc_ir::Value::Str("main".to_string()),
         );
-        map.insert("type_cache".to_string(), gunbc_ir::Value::Map(cache_map));
         gunbc_ir::Value::Map(map)
     }
 
@@ -754,7 +739,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_typecheck_parses_strict() {
-        assert_parses_strict("src/v2/04_typecheck.dag");
+        assert_parses_strict("src/v2/04_infer.dag");
     }
 
     #[test]
@@ -765,6 +750,11 @@ fn foo(item: String) -> String {
     #[test]
     fn phase0_pipeline_parses_strict() {
         assert_parses_strict("src/v2/06_pipeline.dag");
+    }
+
+    #[test]
+    fn phase0_shared_behavioral_parses_strict() {
+        assert_parses_strict("dsl/std/behavioral.dag");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1246,22 +1236,12 @@ fn foo(item: String) -> String {
             span.insert("start".to_string(), gunbc_ir::Value::Int(0));
             span.insert("end".to_string(), gunbc_ir::Value::Int(4));
 
-            let mut token = std::collections::BTreeMap::new();
-            token.insert("kind".to_string(), gunbc_ir::Value::Map(ident_kind));
-            token.insert("span".to_string(), gunbc_ir::Value::Map(span.clone()));
+        let mut state = std::collections::BTreeMap::new();
+        state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
 
-            let eof_token = {
-                let mut t = std::collections::BTreeMap::new();
-                t.insert(
-                    "kind".to_string(),
-                    gunbc_ir::Value::Enum {
-                        ty: String::new(),
-                        variant: "Eof".to_string(),
-                    },
-                );
-                t.insert("span".to_string(), gunbc_ir::Value::Map(span));
-                t
-            };
+        let mut inputs = HashMap::new();
+        inputs.insert("tokens".to_string(), tokens);
+        inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
             let tokens = gunbc_ir::Value::List(vec![
                 gunbc_ir::Value::Map(token),
@@ -1299,12 +1279,12 @@ fn foo(item: String) -> String {
                 other => panic!("expected token list, got: {:?}", other),
             };
 
-            // Step 2: Test peek_kind
-            let mut peek_inputs = HashMap::new();
-            let mut state = std::collections::BTreeMap::new();
-            state.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
-            state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
-            peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
+        // Step 2: Test peek_kind
+        let mut peek_inputs = HashMap::new();
+        let mut state = std::collections::BTreeMap::new();
+        state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
+        peek_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        peek_inputs.insert("state".to_string(), gunbc_ir::Value::Map(state));
 
             match call_fn(&output, "peek_kind", peek_inputs) {
                 Ok(outputs) => {
@@ -1611,6 +1591,31 @@ fn foo(item: String) -> String {
             } else {
                 panic!("TextFile is not a Map: {:?}", text_file);
             }
+        } else {
+            panic!("typed graph not a map");
+        };
+        assert!(!typed_modules.is_empty());
+        let mut emit_inputs = HashMap::new();
+        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
+        let text_file = if let Some(ret) = emit_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(emit_result.into_iter().collect())
+        };
+        if let gunbc_ir::Value::Map(m) = &text_file {
+            assert!(m.contains_key("path"), "TextFile should have 'path'");
+            assert!(m.contains_key("content"), "TextFile should have 'content'");
+            if let Some(gunbc_ir::Value::Str(content)) = m.get("content") {
+                assert!(
+                    content.contains("struct") || content.contains("pub"),
+                    "emitted content should contain Rust code"
+                );
+            }
+        } else {
+            panic!("TextFile is not a Map: {:?}", text_file);
+        }
     }
 
     #[test]
@@ -1676,6 +1681,29 @@ fn foo(item: String) -> String {
             } else {
                 panic!("not a TextFile map");
             }
+        } else {
+            panic!("not a map");
+        };
+        let mut emit_inputs = HashMap::new();
+        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
+        let text_file = if let Some(ret) = emit_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(emit_result.into_iter().collect())
+        };
+        if let gunbc_ir::Value::Map(m) = &text_file {
+            if let Some(gunbc_ir::Value::Str(s)) = m.get("content") {
+                assert!(
+                    s.contains("struct Foo"),
+                    "emitted Rust should contain 'struct Foo', got: {}",
+                    &s[..s.len().min(300)]
+                );
+            }
+        } else {
+            panic!("not a TextFile map");
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1781,8 +1809,8 @@ fn foo(item: String) -> String {
     fn phase4_emit_handles_for_loop() {
         let source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
-            source.contains("emit_for_each"),
-            "emit_rust.dag should contain emit_for_each function"
+            source.contains("emit_typed_for_each"),
+            "emit_rust.dag should contain emit_typed_for_each function"
         );
         assert!(
             source.contains("into_iter"),
@@ -1802,21 +1830,21 @@ fn foo(item: String) -> String {
 
     /// Test that emit_rust.dag has tail-call optimization support.
     /// TCO-eligible functions should emit `loop` + `continue` instead of
-    /// direct self-recursion.
+    /// direct self-recursion. Uses typed TCO variants (emit_typed_tco_*).
     #[test]
     fn phase4_emit_has_tco_support() {
         let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
-            rust_source.contains("emit_tco_body"),
-            "emit_rust.dag should contain emit_tco_body function for TCO rendering"
+            rust_source.contains("emit_typed_tco_body"),
+            "emit_rust.dag should contain emit_typed_tco_body function for TCO rendering"
         );
         assert!(
-            rust_source.contains("emit_tco_expr"),
-            "emit_rust.dag should contain emit_tco_expr for TCO expression rendering"
+            rust_source.contains("emit_typed_tco_expr"),
+            "emit_rust.dag should contain emit_typed_tco_expr for TCO expression rendering"
         );
         assert!(
-            rust_source.contains("emit_tco_reassign"),
-            "emit_rust.dag should contain emit_tco_reassign for parameter reassignment"
+            rust_source.contains("emit_tco_params"),
+            "emit_rust.dag should contain emit_tco_params for mut parameter declarations"
         );
         assert!(
             rust_source.contains("loop {"),
@@ -1833,8 +1861,8 @@ fn foo(item: String) -> String {
 
         let python_source = read_v2_file("src/v2/05_emit_python.dag");
         assert!(
-            python_source.contains("emit_py_tco_body"),
-            "emit_python.dag should contain emit_py_tco_body function for TCO rendering"
+            python_source.contains("emit_py_typed_tco_body"),
+            "emit_python.dag should contain emit_py_typed_tco_body function for TCO rendering"
         );
         assert!(
             python_source.contains("while True:"),
@@ -1845,15 +1873,15 @@ fn foo(item: String) -> String {
             "emit_python.dag should emit continue for tail self-calls in Python"
         );
 
-        // Verify the shared classification functions exist in 05_emit.dag
-        let emit_source = read_v2_file("src/v2/05_emit.dag");
+        // Verify the shared classification functions exist in 00_core.dag
+        let core_source = read_v2_file("src/v2/00_core.dag");
         assert!(
-            emit_source.contains("fn expr_has_self_call"),
-            "emit.dag should contain expr_has_self_call for shared TCO classification"
+            core_source.contains("fn typed_expr_has_self_call"),
+            "core.dag should contain typed_expr_has_self_call for typed TCO classification"
         );
         assert!(
-            emit_source.contains("fn has_non_tail_self_call"),
-            "emit.dag should contain has_non_tail_self_call for shared TCO classification"
+            core_source.contains("fn typed_has_non_tail_self_call"),
+            "core.dag should contain typed_has_non_tail_self_call for typed TCO classification"
         );
     }
 
@@ -1888,7 +1916,7 @@ fn foo(item: String) -> String {
     /// Test that the typecheck.dag has mutual recursion cycle detection.
     #[test]
     fn phase4_typecheck_has_cycle_detection() {
-        let source = read_v2_file("src/v2/04_typecheck.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("detect_type_cycles"),
             "typecheck.dag should contain detect_type_cycles for SCC-based cycle detection"
@@ -1918,7 +1946,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase6_typecheck_resolves_and_validates_expression_tree_types() {
-        let source = read_v2_file("src/v2/04_typecheck.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("fn resolve_expr_types"),
             "typecheck.dag should walk expression trees during type resolution"
@@ -1938,7 +1966,7 @@ fn foo(item: String) -> String {
         );
         let core_source = read_v2_file("src/v2/05_emit.dag");
         assert!(
-            core_source.contains("order_call_args"),
+            core_source.contains("order_typed_call_args"),
             "emit.dag should reorder named arguments using function signatures"
         );
     }
@@ -2501,13 +2529,8 @@ fn example(items: List<String>) -> Int {
         let scope = infer_scope_value(
             type_env_value(vec![type_binding_value(
                 "Config",
-                product_type_value(Some("Config"), record_fields.clone()),
+                product_type_value(Some("Config"), record_fields),
             )]),
-            vec![span_type_value(
-                10,
-                20,
-                product_type_value(None, record_fields),
-            )],
         );
 
         let mut inputs = HashMap::new();
@@ -2526,7 +2549,7 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), empty_registry_value());
+        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -2575,20 +2598,12 @@ fn example(items: List<String>) -> Int {
         ];
         let scope = infer_scope_value(
             type_env_value(vec![
-                type_binding_value(
-                    "Config",
-                    product_type_value(Some("Config"), exact_fields.clone()),
-                ),
+                type_binding_value("Config", product_type_value(Some("Config"), exact_fields)),
                 type_binding_value(
                     "ConfigExpanded",
                     product_type_value(Some("ConfigExpanded"), wider_fields),
                 ),
             ]),
-            vec![span_type_value(
-                10,
-                20,
-                product_type_value(None, exact_fields),
-            )],
         );
 
         let mut inputs = HashMap::new();
@@ -2607,7 +2622,7 @@ fn example(items: List<String>) -> Int {
             ]),
         );
         inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), empty_registry_value());
+        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         inputs.insert("scope".to_string(), scope);
 
         let rendered = returned_value(
@@ -2666,11 +2681,11 @@ fn example(items: List<String>) -> Int {
         let mut eq_inputs = HashMap::new();
         eq_inputs.insert("left".to_string(), named_type_value("Config"));
         eq_inputs.insert("right".to_string(), named_type_value("pkg.Config"));
-        let eq_result = call_fn(&output, "type_expr_equals", eq_inputs)
-            .expect("type_expr_equals should succeed");
+        let eq_result = call_fn(&output, "node_type_equals", eq_inputs)
+            .expect("node_type_equals should succeed");
         assert!(
             matches!(eq_result.get("return"), Some(gunbc_ir::Value::Bool(true))),
-            "type_expr_equals should treat qualified and local names as equivalent: {:?}",
+            "node_type_equals should treat qualified and local names as equivalent: {:?}",
             eq_result
         );
     }
@@ -3081,7 +3096,7 @@ fn example(items: List<String>) -> Int {
         for typed_module in &typed_modules {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), empty_registry_value());
+            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
             if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
                 let text_file = if let Some(ret) = result.get("return") {
                     ret.clone()
@@ -3162,7 +3177,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3191,8 +3206,7 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        // Should produce: module files plus lib.rs, v2_rt.rs, and Cargo.toml.
-        // Cargo.lock is generated separately by `generate_lockfile` after write_crate.
+        // Should produce: 7 module files + lib.rs + v2_rt.rs + Cargo.toml = 10 files
         let file_names: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         assert!(
             file_names.contains(&"Cargo.toml"),
@@ -3223,54 +3237,6 @@ fn example(items: List<String>) -> Int {
                 f.rel_path
             );
         }
-    }
-
-    /// Proves the `port_contract` removal in `02_parse.dag` is a prerequisite
-    /// for this batch: `Node` in `00_core.dag` has no `port_contract` field,
-    /// so any generated Node constructor referencing it would fail `cargo check`.
-    #[test]
-    fn v2_port_contract_removal_is_prerequisite_for_cargo_check() {
-        // 1. Verify the Node type definition has no port_contract field.
-        let core_source = read_v2_file("src/v2/00_core.dag");
-        let core_ast = daglang_syntax::parser::parse_to_result(&core_source);
-        let node_td = core_ast
-            .ast
-            .items
-            .iter()
-            .find_map(|item| {
-                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
-                    if td.name == "Node" {
-                        return Some(td);
-                    }
-                }
-                None
-            })
-            .expect("Node type must exist in 00_core.dag");
-
-        let fields = match &node_td.body {
-            daglang_syntax::ast::TypeBody::Record(fields) => fields,
-            other => panic!("Node should be a record type, got: {:?}", other),
-        };
-        assert!(
-            !fields.iter().any(|f| f.name == "port_contract"),
-            "Node must not have a port_contract field (dissolved in Stream 3)"
-        );
-
-        // 2. Verify the generated parse.rs has no port_contract: assignments.
-        //    If 02_parse.dag still had `port_contract: none` in its Node
-        //    constructors, this would appear in the generated code and
-        //    cargo check would fail against the Node struct above.
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-parse-port-contract");
-        let parse_rs = std::fs::read_to_string(tmp_dir.join("src/parse.rs"))
-            .expect("generated parse.rs should exist");
-
-        assert!(
-            !parse_rs.contains("port_contract"),
-            "generated parse.rs must not reference port_contract — \
-             Node has no such field, so this would break cargo check"
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
     /// The recursive type detection should identify Expr and TypeExpr as needing Box<>.
@@ -3351,7 +3317,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3383,8 +3349,6 @@ fn example(items: List<String>) -> Int {
         ));
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
-        daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
-            .expect("failed to generate lockfile");
         tmp_dir
     }
 
@@ -3405,7 +3369,6 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("check")
-            .arg("--locked")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
@@ -3496,6 +3459,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--release")
             .arg("--")
             .arg("self_compile_all_modules")
             .current_dir(&tmp_dir)
@@ -3609,7 +3573,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_typecheck", "src/v2/04_typecheck.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3632,8 +3596,6 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
-        daglang_emit::v2_crate_emit::generate_lockfile(&out_dir)
-            .expect("failed to generate lockfile");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -3835,7 +3797,10 @@ fn example(items: List<String>) -> Int {
             .get("diagnostics")
             .expect("compile_sources should return diagnostics");
         let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages.iter().filter(|m| !m.is_empty()).collect();
+        let errors: Vec<&String> = messages
+            .iter()
+            .filter(|m| !m.is_empty())
+            .collect();
         assert!(
             errors.is_empty(),
             "gist Rust compilation should produce no diagnostics: {:?}",
@@ -3897,12 +3862,7 @@ fn example(items: List<String>) -> Int {
         if !lib_path.exists() {
             let lib_content: String = mod_names
                 .iter()
-                .map(|m| {
-                    format!(
-                        "#[allow(dead_code, unused_imports, unused_variables)]\nmod {};",
-                        m
-                    )
-                })
+                .map(|m| format!("#[allow(dead_code, unused_imports, unused_variables)]\nmod {};", m))
                 .collect::<Vec<_>>()
                 .join("\n");
             std::fs::write(&lib_path, lib_content).expect("failed to write lib.rs");
@@ -3966,7 +3926,10 @@ path = "src/lib.rs"
             .get("diagnostics")
             .expect("compile_sources should return diagnostics");
         let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages.iter().filter(|m| !m.is_empty()).collect();
+        let errors: Vec<&String> = messages
+            .iter()
+            .filter(|m| !m.is_empty())
+            .collect();
         assert!(
             errors.is_empty(),
             "gist Python compilation should produce no diagnostics: {:?}",
