@@ -552,12 +552,47 @@ fn render_expr(expr: &Expr) -> String {
             }
         }
         Expr::BinOp { left, op, right } => {
-            format!(
-                "{} {} {}",
-                render_operator_operand(left),
-                op,
-                render_operator_operand(right)
-            )
+            // Render `expr == None` / `expr != None` as `.is_none()` / `.is_some()`.
+            // This is both more idiomatic Rust and avoids type mismatches when the
+            // expression is `Box<Option<T>>` (auto-deref works for method calls but
+            // not for `==`/`!=` with a bare `None`).
+            if let (true, Some(method)) = (
+                matches!(right.as_ref(), Expr::Var(name) if name == "None"),
+                match op.as_str() {
+                    "==" => Some("is_none"),
+                    "!=" => Some("is_some"),
+                    _ => None,
+                },
+            ) {
+                // Strip Deref: `*expr` → `expr` because .is_none()/.is_some()
+                // auto-deref through Box<Option<T>>, and `*expr.is_none()`
+                // would incorrectly parse as `*(expr.is_none())`.
+                let inner = match left.as_ref() {
+                    Expr::Deref(inner) => inner.as_ref(),
+                    other => other,
+                };
+                format!("{}.{}()", render_expr(inner), method)
+            } else if let (true, Some(method)) = (
+                matches!(left.as_ref(), Expr::Var(name) if name == "None"),
+                match op.as_str() {
+                    "==" => Some("is_none"),
+                    "!=" => Some("is_some"),
+                    _ => None,
+                },
+            ) {
+                let inner = match right.as_ref() {
+                    Expr::Deref(inner) => inner.as_ref(),
+                    other => other,
+                };
+                format!("{}.{}()", render_expr(inner), method)
+            } else {
+                format!(
+                    "{} {} {}",
+                    render_operator_operand(left),
+                    op,
+                    render_operator_operand(right)
+                )
+            }
         }
         Expr::UnaryOp { op, expr } => {
             format!("{}{}", op, render_operator_operand(expr))
