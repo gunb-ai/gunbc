@@ -8,11 +8,11 @@
 //      std::future::Future trait
 //
 // Consumers:
-//   v2/05_emit_rust.dag — async func emission, service call awaiting, main.rs
+//   v2/05_emit_rust.dag -- async func emission, service call awaiting, main.rs
 
 module extdeps.languages.rust.async_
 
-// ── Async function syntax ───────────────────────────────────────────
+// -- Async function syntax -------------------------------------------
 // Ref: Rust Reference 15 "Async and await"
 
 // "How does Rust define an async function?"
@@ -23,8 +23,8 @@ data async_fn_template: String = "pub async fn \{name\}(\{params\})\{ret\} \{\n\
 data await_suffix: String = ".await"
 data async_call_template: String = "\{call\}.await?"
 
-// ── Tokio runtime ───────────────────────────────────────────────────
-// Ref: tokio.rs — tokio 1.x
+// -- Tokio runtime ---------------------------------------------------
+// Ref: tokio.rs -- tokio 1.x
 
 // "What async runtime does generated Rust use?"
 data runtime_crate: String = "tokio"
@@ -35,13 +35,13 @@ data runtime_features: List<String> = ["full"]
 data tokio_main_attribute: String = "#[tokio::main]"
 data tokio_main_template: String = "#[tokio::main]\nasync fn main() \{\n\{body\}\n\}"
 
-// ── Task spawning ───────────────────────────────────────────────────
+// -- Task spawning ---------------------------------------------------
 // Ref: tokio::spawn, tokio::task::JoinHandle
 
 data spawn_template: String = "tokio::spawn(\{expr\})"
 data join_template: String = "futures::join!(\{exprs\})"
 
-// ── HTTP client ─────────────────────────────────────────────────────
+// -- HTTP client -----------------------------------------------------
 // Ref: reqwest 0.12.x (docs.rs/reqwest)
 //
 // Used by service definitions with REST transport.
@@ -58,7 +58,7 @@ data http_json_body_template: String = ".json(&\{body\})"
 data http_send_template: String = ".send().await?"
 data http_json_response_template: String = ".json::<\{type\}>().await?"
 
-// ── Process execution ───────────────────────────────────────────────
+// -- Process execution -----------------------------------------------
 // Ref: std::process::Command
 //
 // Used by service definitions with shell transport.
@@ -70,7 +70,7 @@ data command_cwd_template: String = ".current_dir(\{dir\})"
 data command_output_template: String = ".output()"
 data stdout_to_string: String = "String::from_utf8_lossy(&output.stdout).to_string()"
 
-// ── File I/O ────────────────────────────────────────────────────────
+// -- File I/O --------------------------------------------------------
 // Ref: std::fs
 
 data file_read_template: String = "std::fs::read_to_string(\{path\})?"

@@ -1,4 +1,4 @@
-// v2 compiler pipeline — the full .dag-to-files transform.
+// v2 compiler pipeline -- the full .dag-to-files transform.
 //
 // The compiler reads .dag source files and emits target-language source
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
@@ -9,7 +9,7 @@
 //
 // The emit stage dispatches to per-target renderers based on
 // RenderTarget (Rust, Python). Adding a new target means adding a
-// renderer module — no pipeline changes needed.
+// renderer module -- no pipeline changes needed.
 
 module v2.compiler.pipeline
 
@@ -38,7 +38,7 @@ type SourceFile {
 // =========================================================================
 
 // Gather all diagnostics from a list of parse results.
-// ParseResult.error is Diagnostic? — extract non-None errors directly.
+// ParseResult.error is Diagnostic? -- extract non-None errors directly.
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
@@ -80,7 +80,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
 
   // Check for parse errors BEFORE extracting modules.
   // parse() returns { module: none } on failure, so extracting p.module
-  // before this check would produce List<Module?> — a type violation
+  // before this check would produce List<Module?> -- a type violation
   // that the evaluator cannot catch at runtime (S56).
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let has_errors = any(parse_results, p => p.error != None)
@@ -162,7 +162,7 @@ fn compile_sources_lenient(sources: List<SourceFile>, target: RenderTarget) -> C
 
     let typed = typecheck_and_validate(graph: graph)
 
-    // No typecheck gate — emit despite errors for bootstrap.
+    // No typecheck gate -- emit despite errors for bootstrap.
     let emit_result = match target {
       Rust => emit_rust(typed: typed)
       Python => emit_python(typed: typed)

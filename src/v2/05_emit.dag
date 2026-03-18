@@ -1,6 +1,6 @@
-// v2 emitter core — target-agnostic dispatch and shared helpers.
+// v2 emitter core -- target-agnostic dispatch and shared helpers.
 //
-// No I/O — file writing is handled by the pipeline.
+// No I/O -- file writing is handled by the pipeline.
 // This module provides:
 //   - The `emit` entry point that dispatches to per-target renderers
 //   - Scope management helpers (module_emit_scope, empty_emit_scope)
@@ -45,7 +45,7 @@ import v2.compiler.infer {
 }
 
 // =========================================================================
-// Emit result — files plus diagnostic channel for downstream consumers.
+// Emit result -- files plus diagnostic channel for downstream consumers.
 // =========================================================================
 
 type EmitResult {
@@ -71,7 +71,7 @@ type InterpPart {
 }
 
 // =========================================================================
-// Item registry — maps item names to their kind and service dependencies.
+// Item registry -- maps item names to their kind and service dependencies.
 // Used by emit_call to forward service params to func callees (S54 fix).
 // =========================================================================
 
@@ -195,7 +195,7 @@ fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferSc
   }
 }
 
-// Typed-receiver versions of service call detection — for TypedExpr emit paths.
+// Typed-receiver versions of service call detection -- for TypedExpr emit paths.
 fn is_typed_service_call_receiver(receiver: TypedExpr) -> Bool {
   match receiver {
     TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
@@ -223,7 +223,7 @@ fn extract_typed_service_name(receiver: TypedExpr) -> String? {
   }
 }
 
-// Map membership check — returns true if key is present in the map.
+// Map membership check -- returns true if key is present in the map.
 fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
   match map_get(m, key) {
     Some { value: _ } => true
@@ -240,7 +240,7 @@ fn unique_strings(items: List<String>) -> List<String> {
 }
 
 // =========================================================================
-// Typed service call collection — TypedExpr walker
+// Typed service call collection -- TypedExpr walker
 //
 // Same logic as collect_service_calls but operates on TypedExpr trees
 // directly, eliminating the need for typed_expr_to_expr conversion.
@@ -319,13 +319,13 @@ fn collect_typed_service_calls_from_args_into(args: List<TypedNamedArg>, acc: Un
 }
 
 // =========================================================================
-// Nested record detection — for data definition edge cases
+// Nested record detection -- for data definition edge cases
 //
 // Detects anonymous inline records in type expressions.
 // List<{ path: String, content: String }> has no named Rust type.
 // =========================================================================
 
-// Nested record detection — for data definition edge cases.
+// Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
   if n.connective != none {
@@ -355,7 +355,7 @@ fn has_nested_records_node(n: Node) -> Bool {
 }
 
 // =========================================================================
-// JSON emission for data values — used with serde_json::json!() macro
+// JSON emission for data values -- used with serde_json::json!() macro
 // =========================================================================
 
 fn emit_data_value_json(value: Expr) -> String {
@@ -382,7 +382,7 @@ fn emit_data_value_json(value: Expr) -> String {
   }
 }
 
-// Typed variant — operates on TypedExpr directly, no typed_expr_to_expr needed.
+// Typed variant -- operates on TypedExpr directly, no typed_expr_to_expr needed.
 fn emit_typed_data_value_json(value: TypedExpr) -> String {
   match value {
     TypedLiteral { value: v, resolved_type: _, span: _ } => match v {
@@ -572,7 +572,7 @@ fn service_var_name(service_name: String) -> String {
 }
 
 // =========================================================================
-// Template application helpers — for language spec template strings.
+// Template application helpers -- for language spec template strings.
 //
 // Templates from std.languages use {0}, {1} as positional placeholders.
 // These helpers apply arguments to templates via string replacement.
@@ -590,7 +590,7 @@ fn apply_type_template2(template: String, arg0: String, arg1: String) -> String 
 }
 
 // =========================================================================
-// Language data — inline copies of per-language facts.
+// Language data -- inline copies of per-language facts.
 //
 // Canonical source: dsl/extdeps/languages/{rust,python,go}/types.dag
 // (emit_type_map, emit_keywords, emit_container_templates)
@@ -667,7 +667,7 @@ data go_container_templates: Map<String, String> = {
 }
 
 // =========================================================================
-// Shared leaf functions — parameterized by language data
+// Shared leaf functions -- parameterized by language data
 // =========================================================================
 
 // Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
@@ -688,7 +688,7 @@ fn is_null_coalesce(op: BinOpKind) -> Bool {
 }
 
 // =========================================================================
-// Per-language functions — centralized data, inline lookup.
+// Per-language functions -- centralized data, inline lookup.
 //
 // Data declarations above are the single source of truth. Each function
 // uses lookup() on the local data. The v1 bootstrap cannot pass data-
@@ -811,7 +811,7 @@ fn go_bin_op_symbol(op: BinOpKind) -> String {
 }
 
 // =========================================================================
-// Shared item-level helpers — identical across all backends
+// Shared item-level helpers -- identical across all backends
 // =========================================================================
 
 // Check if a return type indicates a type alias (not Unit).
@@ -832,7 +832,7 @@ fn has_service_items(typed: TypedGraph) -> Bool {
 }
 
 // =========================================================================
-// Shared classification functions — target-agnostic item/type/transport
+// Shared classification functions -- target-agnostic item/type/transport
 // dispatch. Each backend calls these to determine WHAT kind of thing it's
 // looking at, then applies its own rendering for HOW to emit it.
 //

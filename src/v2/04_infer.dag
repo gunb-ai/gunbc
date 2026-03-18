@@ -1,4 +1,4 @@
-// v2 type checker/resolver — resolves Named type references to structural form.
+// v2 type checker/resolver -- resolves Named type references to structural form.
 //
 // After this pass, no unresolved Named references survive in the typed graph.
 // Every Named { name } is replaced by its structural expansion (Product,
@@ -114,7 +114,7 @@ fn return_type_to_outputs(return_type: Node?, span: SourceSpan) -> List<Field> {
       match rt.connective.value {
         Conj =>
           if rt.name == "" {
-            // Anonymous product — expand children as fields
+            // Anonymous product -- expand children as fields
             map(rt.children, child =>
               let child_type = if child.return_type == none { leaf_node(name: child.name) } else { child.return_type.value }
               Field { name: child.name, type_expr: child_type, optional: false, default_value: none, from_key: none, span: span }
@@ -339,7 +339,7 @@ fn build_func_env(items: List<Node>) -> FuncEnv {
 }
 
 // =========================================================================
-// Service namespace locals — S86 heuristic bridge
+// Service namespace locals -- S86 heuristic bridge
 //
 // Service names are dotted (e.g., "git.Core", "github.Gist"). Expressions
 // reference the namespace root ("git") as a variable. This extracts
@@ -1421,7 +1421,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
 // -------------------------------------------------------------------------
 // infer_record_lit: helper for RecordLit inference
 //
-// type_name is String? — handle with == none check per v1 codegen limitation.
+// type_name is String? -- handle with == none check per v1 codegen limitation.
 // If type_name given, look up in type_env; else construct anonymous Product.
 // -------------------------------------------------------------------------
 
@@ -1437,7 +1437,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
   if type_name == none {
-    // Anonymous record — construct Conj node from field inits
+    // Anonymous record -- construct Conj node from field inits
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
         name: fir.typed_field.name, span: no_span(),
@@ -1458,7 +1458,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
       diagnostics: fi_diags
     }
   } else {
-    // Named record — look up type in env
+    // Named record -- look up type in env
     let resolved_node = match lookup_type(env: scope.type_env, name: type_name.value) {
       Some { value: tn } => tn
       None => leaf_node(name: type_name.value)
@@ -1573,7 +1573,7 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 // Kernel type environment
 //
 // The 8 kernel primitives that have no structural expansion.
-// These are the atoms of the type system — everything else is
+// These are the atoms of the type system -- everything else is
 // composed from them.
 // =========================================================================
 
@@ -1601,7 +1601,7 @@ fn check_match_exhaustiveness(
   span: SourceSpan,
   module_name: String
 ) -> List<Diagnostic> {
-  // Resolve the scrutinee type — if it's a leaf name, look up its definition.
+  // Resolve the scrutinee type -- if it's a leaf name, look up its definition.
   let resolved = if scrutinee_type.connective != none {
     scrutinee_type
   } else {
@@ -1675,7 +1675,7 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
 // =========================================================================
 // Cycle detection: precompute which types participate in dependency cycles.
 //
-// Instead of threading a growing resolving list through resolution (O(d²)
+// Instead of threading a growing resolving list through resolution (O(d^2)
 // memory from repeated concat), we compute cycle membership once at env
 // construction time. resolve_node then uses the precomputed set:
 // Named references to cycle members are kept as-is; all others expand.
@@ -1703,7 +1703,7 @@ fn reaches_self_with_map(root: String, current: String, bindings: Map<String, Ty
 
 // Detect all type names that participate in dependency cycles.
 // Uses a global visited map so each binding is explored at most once,
-// reducing total cost from O(K × V² × E_type) to O(K × (V + E_type)).
+// reducing total cost from O(K x V^2 x E_type) to O(K x (V + E_type)).
 fn detect_type_cycles(bindings: Map<String, TypeBinding>) -> List<String> {
   let all_names = map(map_values(bindings), b => b.name)
   // Build a map of recursive flags, using global_visited to avoid redundant work.
@@ -1983,7 +1983,7 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
       }
     }
   } else {
-    // Unknown structure — pass through
+    // Unknown structure -- pass through
     NodeResolveResult { resolved: n, diagnostics: [] }
   }
 }
@@ -2495,7 +2495,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   // Gate: if type environment construction produced errors (unresolved types),
   // halt before inference. This makes unresolved nodes structurally impossible
-  // downstream — inference and emit never see them.
+  // downstream -- inference and emit never see them.
   // validate_no_unresolved becomes a redundant safety net, not the source of truth.
   let env_errors = env_result.diagnostics |> filter(d => d.severity == Error)
   if env_errors |> count > 0 {
@@ -2683,7 +2683,7 @@ type EnvResolveResult {
   diagnostics: List<Diagnostic>
 }
 
-// Result of resolving a single type binding — follows the same
+// Result of resolving a single type binding -- follows the same
 // value+diagnostics pattern as ResolveResult, ItemResult, etc.
 type BindingResult {
   binding: TypeBinding
@@ -2783,7 +2783,7 @@ fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
     let item_diags = flat_map(tm.module.items, item =>
       collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names)
     )
-    // Also check typed items (tm.items) — these contain resolved_type on
+    // Also check typed items (tm.items) -- these contain resolved_type on
     // TypedExpr bodies and the resolved return_type on TypedNode.
     let typed_item_diags = flat_map(tm.items, titem =>
       collect_unresolved_in_typed_item(item: titem, module_name: tm.module.name, defined_names: defined_names)

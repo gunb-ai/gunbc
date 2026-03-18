@@ -1,4 +1,4 @@
-// v2 parser — recursive descent, first-error-halt.
+// v2 parser -- recursive descent, first-error-halt.
 //
 // Consumes a flat List<Token> (from the tokenizer) and produces a
 // Module AST. Every production function takes a ParserState and
@@ -66,7 +66,7 @@ type ParseResult {
   error: Diagnostic?
 }
 
-// Typed parse results — replace the untyped PR type.
+// Typed parse results -- replace the untyped PR type.
 // Each result type has the value fields directly (no val nesting),
 // plus state and err for threading.
 
@@ -74,7 +74,7 @@ type ParseResult {
 type AdvanceResult { token: Token, state: ParserState }
 type EatResult { consumed: Bool, state: ParserState, token: Token? }
 
-// Typed PR replacements (flat — r.val.X becomes r.X)
+// Typed PR replacements (flat -- r.val.X becomes r.X)
 type TokenResult { token: Token, state: ParserState, err: Diagnostic? }
 type NameResult { name: String, state: ParserState, err: Diagnostic? }
 type ExprResult { expr: Expr, state: ParserState, err: Diagnostic? }
@@ -334,7 +334,7 @@ fn expect_name(tokens: List<Token>, state: ParserState) -> NameResult {
       NameResult { name: n, state: adv.state, err: none }
     }
     _ => {
-      // Try to extract keyword name — all Kw* tokens can be field names.
+      // Try to extract keyword name -- all Kw* tokens can be field names.
       let kw_name = keyword_to_name(tokens: tokens, state: state)
       match kw_name {
         Some { value: n } => {
@@ -411,7 +411,7 @@ fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> Parser
     if tag == "PipeArrow" || tag == "Dot" || tag == "Or" || tag == "And" {
       s
     } else {
-      // Not a continuation — return original state (keep newlines)
+      // Not a continuation -- return original state (keep newlines)
       state
     }
   } else {
@@ -472,8 +472,8 @@ fn child_return_type_or_empty(ch: Node) -> Node {
 }
 
 // Convert a Node return type to output fields.
-// Conj node with children → extract children as fields.
-// Otherwise → single "value" field wrapping the node.
+// Conj node with children -> extract children as fields.
+// Otherwise -> single "value" field wrapping the node.
 fn node_return_type_to_outputs(rt: Node) -> List<Field> {
   if is_conj_with_children(n: rt) {
     rt.children |> map(ch => Field { name: ch.name, type_expr: child_return_type_or_empty(ch: ch), optional: false, default_value: ch.body, from_key: none, span: ch.span })
@@ -572,7 +572,7 @@ fn parse_imports_acc(tokens: List<Token>, state: ParserState, acc: List<Import>)
 }
 
 fn parse_items(tokens: List<Token>, state: ParserState) -> ItemsResult {
-  // Iterative item collection — avoids O(items) recursion depth.
+  // Iterative item collection -- avoids O(items) recursion depth.
   // The old recursive version created 130+ stack frames for 02_parse.dag,
   // each holding an ItemsResult with a growing items list.
   parse_items_acc(tokens: tokens, state: state, acc: [])
@@ -645,7 +645,7 @@ fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Str
 }
 
 // =========================================================================
-// 4. parse_item — dispatch on keyword
+// 4. parse_item -- dispatch on keyword
 // =========================================================================
 
 fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
@@ -666,12 +666,12 @@ fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
 }
 
 // =========================================================================
-// Type structure → child Node conversion
+// Type structure -> child Node conversion
 //
 // Record fields become child Nodes with return_type.
 // Sum variants become child Nodes with their own children.
-// Optional fields: Field.optional → return_type: Optional { inner: T }
-// Default values: Field.default_value → body on the child Node
+// Optional fields: Field.optional -> return_type: Optional { inner: T }
+// Default values: Field.default_value -> body on the child Node
 // =========================================================================
 
 fn field_to_child_node(field: Field) -> Node {
@@ -706,7 +706,7 @@ fn variant_to_child_node(variant: Variant) -> Node {
 }
 
 // Derive return_type from an output field list.
-// Single output → its type (Node). Multiple → anonymous Conj node. None → none.
+// Single output -> its type (Node). Multiple -> anonymous Conj node. None -> none.
 fn outputs_to_return_type(outputs: List<Field>, span: SourceSpan) -> Node? {
   if outputs |> count == 1 {
     match outputs |> first {
@@ -755,7 +755,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
       let s = skip_newlines(tokens: tokens, state: eq.state)
       parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span)
     } else {
-      // Bare type declaration — primitive type with no structural expansion
+      // Bare type declaration -- primitive type with no structural expansion
       let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: leaf_type_node(name: name, span: start_span) }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       ItemResult { item: item, state: s, err: none }
     }
@@ -796,7 +796,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: wr.state), err: none }
     }
   } else {
-    // Not an identifier — parse as type expression (e.g., { fields })
+    // Not an identifier -- parse as type expression (e.g., { fields })
     let r = parse_type_expr(tokens: tokens, state: state)
     if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
     // Check for where clause
@@ -839,7 +839,7 @@ fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Field
 }
 
 // parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
-// Returns FieldInit directly — no intermediate Predicate type needed.
+// Returns FieldInit directly -- no intermediate Predicate type needed.
 fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult {
   let zero_span = SourceSpan { start: 0, end: 0 }
   let dummy_pred = FieldInit { name: "", value: Literal { value: LitBool { value: false }, span: zero_span } }
@@ -918,7 +918,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
       }
     }
   } else {
-    // No args — handle bare predicate names
+    // No args -- handle bare predicate names
     match pred_name {
       "non_empty" => { let result = PredResult { predicate: FieldInit { name: "NonEmpty", value: Literal { value: LitBool { value: true }, span: zero_span } }, state: s, err: none }
         result }
@@ -1005,7 +1005,7 @@ fn parse_more_variants_acc(tokens: List<Token>, state: ParserState, acc: List<Va
 }
 
 // =========================================================================
-// 6. parse_type_body — Record { fields } vs Sum variants
+// 6. parse_type_body -- Record { fields } vs Sum variants
 //    (Used internally; top-level dispatches via parse_type_def)
 // =========================================================================
 
@@ -1067,7 +1067,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
         let te = Node { name: type_name, span: start_span, children: [first_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
         maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
       } else {
-        // Unknown single-arg generic — treat as named type.
+        // Unknown single-arg generic -- treat as named type.
         let te = leaf_type_node(name: type_name, span: start_span)
         maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
       }
@@ -1170,7 +1170,7 @@ fn parse_optional_from_key(tokens: List<Token>, state: ParserState) -> FromKeyRe
           result
         }
         _ => {
-          // "from" without string literal — not a from clause, backtrack
+          // "from" without string literal -- not a from clause, backtrack
           let result = FromKeyResult { from_key: none, state: state, err: none }
           result
         }
@@ -1274,7 +1274,7 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
 
 fn parse_uses_clause(tokens: List<Token>, state: ParserState) -> UsesResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  // "uses" is not a keyword — it's an identifier in v2
+  // "uses" is not a keyword -- it's an identifier in v2
   let k = peek_kind(tokens: tokens, state: s)
   match k {
     Some { value: Ident { name: "uses" } } => {
@@ -1359,7 +1359,7 @@ fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
 
-  // Build child Nodes from operations — dissolve PortContract into properties + return_type
+  // Build child Nodes from operations -- dissolve PortContract into properties + return_type
   let op_children = r.operations |> map(op =>
     let all_props = concat(op.modifier_props, op.response_props, op.exit_props, op.mock_props)
     Node {
@@ -1773,7 +1773,7 @@ fn parse_op_body_entries(
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
           parse_op_body_entries(tokens: tokens, state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: r.mocks)
         } else {
-          // Unknown identifier entry — skip it (name: value)
+          // Unknown identifier entry -- skip it (name: value)
           if peek_is_colon_after_ident(tokens: tokens, state: s) {
             let r = expect_ident(tokens: tokens, state: s)
             if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
@@ -1963,12 +1963,12 @@ fn parse_operation_modifiers_acc(tokens: List<Token>, state: ParserState, acc: L
 // =========================================================================
 
 // Parse a status/exit code pattern: integer, Nxx wildcard (5xx), or identifier (nonzero).
-// Nxx: tokenizer produces LitInt(N) + Ident("xx") — combine into LitStr("Nxx").
+// Nxx: tokenizer produces LitInt(N) + Ident("xx") -- combine into LitStr("Nxx").
 fn parse_status_pattern(tokens: List<Token>, state: ParserState) -> ExprResult {
   let k = peek_kind(tokens: tokens, state: state)
   match k {
     Some { value: LitInt { value: n } } => {
-      // Check if next token is Ident("xx") → wildcard like 5xx
+      // Check if next token is Ident("xx") -> wildcard like 5xx
       if state.pos + 1 < count(tokens) {
         let next_tok = get(tokens, state.pos + 1)
         match next_tok {
@@ -2135,7 +2135,7 @@ fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBrace")
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
 
-  // Build child Nodes from capabilities — dissolve CapabilityContract into return_type
+  // Build child Nodes from capabilities -- dissolve CapabilityContract into return_type
   let cap_children = r.capabilities |> map(cap =>
     Node {
       name: cap.name, span: cap.span,
@@ -2517,7 +2517,7 @@ fn parse_block(tokens: List<Token>, state: ParserState) -> ExprResult {
 }
 
 fn parse_stmts(tokens: List<Token>, state: ParserState) -> StmtsResult {
-  // Iterative — avoids O(statements) recursion depth per block.
+  // Iterative -- avoids O(statements) recursion depth per block.
   parse_stmts_acc(tokens: tokens, state: state, acc: [])
 }
 
@@ -2561,7 +2561,7 @@ fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   }
 }
 
-// Parse bare assignment: name = expr → desugar to Let { name, value, body: none }
+// Parse bare assignment: name = expr -> desugar to Let { name, value, body: none }
 fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = Literal { value: LitNull, span: SourceSpan { start: 0, end: 0 } }
@@ -2576,7 +2576,7 @@ fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult 
 }
 
 // =========================================================================
-// 15. parse_expr — Pratt precedence climbing entry
+// 15. parse_expr -- Pratt precedence climbing entry
 // =========================================================================
 
 fn parse_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
@@ -2584,7 +2584,7 @@ fn parse_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 }
 
 // =========================================================================
-// 16. parse_expr_bp — precedence climbing core
+// 16. parse_expr_bp -- precedence climbing core
 // =========================================================================
 
 fn parse_expr_bp(tokens: List<Token>, state: ParserState, min_bp: Int) -> ExprResult {
@@ -2601,7 +2601,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Expr, min_bp: I
     ExprResult { expr: lhs, state: state, err: none }
   } else {
     // Skip newlines if the next non-newline token is a continuation operator
-    // (|> or .) — these operators work across line breaks.
+    // (|> or .) -- these operators work across line breaks.
     let s = skip_continuation_newlines(tokens: tokens, state: state)
     // Try postfix: .field, (args), as Type
     let post = try_postfix(tokens: tokens, state: s, lhs: lhs, min_bp: min_bp)
@@ -2690,7 +2690,7 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
     NullCoalesce => NullCoalesce
     // All other tokens are not binary operators. This function is only called
     // after infix_bp confirms the token is an operator, so this arm is
-    // unreachable in correct usage. Returns Add as a defensive fallback —
+    // unreachable in correct usage. Returns Add as a defensive fallback --
     // the parser will produce a type error downstream.
     _ => Add
   }
@@ -2799,7 +2799,7 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
 }
 
 // =========================================================================
-// Lambda body — single expression OR implicit block (let/return start)
+// Lambda body -- single expression OR implicit block (let/return start)
 // =========================================================================
 
 fn parse_lambda_body(tokens: List<Token>, state: ParserState) -> ExprResult {
@@ -2866,7 +2866,7 @@ fn is_uppercase_start(name: String) -> Bool {
 }
 
 // =========================================================================
-// 18. try_postfix — .field, (args), as Type, ?
+// 18. try_postfix -- .field, (args), as Type, ?
 // =========================================================================
 
 fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Expr, min_bp: Int) -> PostfixResult {
@@ -2948,7 +2948,7 @@ fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Expr, spa
   let first_expr = r.expr
   let s = r.state
 
-  // Check for DotDot → slice
+  // Check for DotDot -> slice
   if check(tokens: tokens, state: s, tag: "DotDot") {
     let adv = advance(tokens: tokens, state: s)
     let r = parse_expr(tokens: tokens, state: adv.state)
@@ -3034,7 +3034,7 @@ fn parse_single_arg(tokens: List<Token>, state: ParserState) -> ArgResult {
       let arg = NamedArg { name: Some { value: name_r.name }, value: r.expr }
       ArgResult { arg: arg, state: r.state, err: none }
     } else {
-      // Not a named arg — restore and parse as positional expression
+      // Not a named arg -- restore and parse as positional expression
       let restored = with(state, { pos: save_pos })
       let r = parse_expr(tokens: tokens, state: restored)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, state: r.state, err: r.err } }
@@ -3092,7 +3092,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Expr, 
     ExprResult { expr: lhs, state: state, err: none }
   } else {
     // Skip newlines if the next non-newline token is a continuation operator
-    // (|> or .) — same as parse_expr_loop, enables multi-line pipe chains.
+    // (|> or .) -- same as parse_expr_loop, enables multi-line pipe chains.
     let s = skip_continuation_newlines(tokens: tokens, state: state)
     if check(tokens: tokens, state: s, tag: "LParen") && 14 >= min_bp {
       let r = parse_call_args(tokens: tokens, state: s)
@@ -3142,7 +3142,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Expr, 
 }
 
 fn parse_match_arms(tokens: List<Token>, state: ParserState) -> ArmsResult {
-  // Iterative — avoids O(arms) recursion depth per match.
+  // Iterative -- avoids O(arms) recursion depth per match.
   parse_match_arms_acc(tokens: tokens, state: state, acc: [])
 }
 
@@ -3673,7 +3673,7 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 }
 
 // =========================================================================
-// fn(param1, param2) { body } — lambda expression with fn keyword
+// fn(param1, param2) { body } -- lambda expression with fn keyword
 //
 // Parses the fn keyword, a parenthesized parameter list (names only, no types),
 // and a brace-delimited body. Produces a Lambda AST node.

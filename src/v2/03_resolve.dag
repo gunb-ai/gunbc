@@ -1,6 +1,6 @@
-// v2 module resolver — pure function from parsed modules to dependency-ordered graph.
+// v2 module resolver -- pure function from parsed modules to dependency-ordered graph.
 //
-// No I/O — file discovery and parsing are handled by the pipeline.
+// No I/O -- file discovery and parsing are handled by the pipeline.
 // Takes a list of parsed Module values and:
 //   1. Validates there are no duplicate module declarations
 //   2. Resolves each import to its target module
@@ -37,7 +37,7 @@ type ResolvedImport {
 }
 
 // =========================================================================
-// Internal types — used by the topological sort and cycle detection
+// Internal types -- used by the topological sort and cycle detection
 // =========================================================================
 
 // An edge in the import graph: from_module imports to_module.
@@ -68,13 +68,13 @@ type KahnStepResult {
   progress: Bool
 }
 
-// Accumulator for Phase 2 — builds imports-by-name map and collects diagnostics.
+// Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
   imports_by_name: Map<String, List<ResolvedImport>>
   diagnostics: List<Diagnostic>
 }
 
-// Map membership check — returns true if key is present, false otherwise.
+// Map membership check -- returns true if key is present, false otherwise.
 // Uses match on map_get since the evaluator represents None as a variant map,
 // not as the none literal (Value::Unit), so direct == / != comparisons fail.
 fn map_has(m: Map<String, Bool>, key: String) -> Bool {
@@ -132,7 +132,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     match map_get(sorted_order_map, m.name) {
       Some { value: order } =>
         match map_get(imports_by_name, m.name) {
-          // imports_by_name should contain every module — None is
+          // imports_by_name should contain every module -- None is
           // unreachable. Default to [] only as a safe fallback.
           Some { value: imps } =>
             [ResolvedModule {
@@ -315,7 +315,7 @@ fn get_module_deps(module: Module) -> List<String> {
 // =========================================================================
 
 // Check for duplicate module declarations (same name appearing twice).
-// DuplicateCheckState — fold accumulator for seen-set duplicate detection.
+// DuplicateCheckState -- fold accumulator for seen-set duplicate detection.
 type DuplicateCheckState {
   seen_names: Map<String, Bool>
   diagnostics: List<Diagnostic>
@@ -351,7 +351,7 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
 }
 
 // =========================================================================
-// Topological sort — Kahn's algorithm
+// Topological sort -- Kahn's algorithm
 //
 // Iterative approach using fold over a bounded number of steps.
 // Each step finds all zero-in-degree nodes, removes them, and
@@ -427,7 +427,7 @@ fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
   }
   let step = kahn_step(state: state)
   if step.progress == false {
-    // No progress — either done or stuck on a cycle
+    // No progress -- either done or stuck on a cycle
     return step.state
   }
   kahn_iterate(state: step.state, remaining: remaining - 1)

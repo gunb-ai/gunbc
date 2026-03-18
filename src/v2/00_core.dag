@@ -1,4 +1,4 @@
-// v2 core types — the compiler's domain model.
+// v2 core types -- the compiler's domain model.
 //
 // Imports shared types from std.types (the same types used by all DSL
 // programs). Defines compiler-specific types (tokens, AST, expressions)
@@ -6,7 +6,7 @@
 //
 // This module describes the COMPILER's data model, not a runtime or
 // interpreter. The compiler reads .dag source files and emits target-
-// language source files. There is no executable DAG IR here — the
+// language source files. There is no executable DAG IR here -- the
 // compiler's output is text files, not a graph to be interpreted.
 //
 // Dependency chain:
@@ -78,7 +78,7 @@ type TokenKind
   | Unknown { char: String }
 
 // =========================================================================
-// AST — Abstract Syntax Tree
+// AST -- Abstract Syntax Tree
 //
 // The parser produces an AST from a token list. The AST is a faithful
 // representation of the source structure with no semantic interpretation.
@@ -106,7 +106,7 @@ type Import {
   span: SourceSpan
 }
 
-// Connective — the logical primitive for type structure.
+// Connective -- the logical primitive for type structure.
 // Conj = conjunction: all children hold simultaneously (record fields).
 // Disj = disjunction: exactly one child holds (sum variants).
 type Connective = Conj | Disj
@@ -249,7 +249,7 @@ type CapabilityDef {
 }
 
 // =========================================================================
-// Render target — which language the emitter produces.
+// Render target -- which language the emitter produces.
 // =========================================================================
 
 type RenderTarget = Rust | Python | Go
@@ -281,7 +281,7 @@ type Diagnostic {
 type Severity = Error | Warning
 
 // =========================================================================
-// Typed AST — produced by the typechecker after expression-level inference.
+// Typed AST -- produced by the typechecker after expression-level inference.
 // Every expression carries its resolved type as a Node.
 // =========================================================================
 
@@ -323,12 +323,12 @@ type FuncEnv {
 }
 
 // =========================================================================
-// Node — unified recursive structure
+// Node -- unified recursive structure
 //
 // Everything is a node in DAG composition. Keywords (fn, type, service)
 // are parse sugar that tell the parser what fields to expect. After
 // parsing, everything is a Node. The checker validates edge constraints
-// on node properties — never asks "what keyword?"
+// on node properties -- never asks "what keyword?"
 //
 // The type is self-referential: children: List<Node>. An operation is a
 // Node with params and return_type. A capability is a Node with
@@ -338,17 +338,17 @@ type FuncEnv {
 type Node {
   name: String
   span: SourceSpan
-  // Fractal composition — operations, capabilities, items are all children
+  // Fractal composition -- operations, capabilities, items are all children
   children: List<Node>
-  // Logical connective — And (record/all-hold), Or (sum/one-holds), none (leaf)
+  // Logical connective -- And (record/all-hold), Or (sum/one-holds), none (leaf)
   connective: Connective?
-  // Ports — what flows in and out
+  // Ports -- what flows in and out
   params: List<Param>
   return_type: Node?
   uses: List<ResourceUse>
-  // Computation — how it executes (none = externally provided)
+  // Computation -- how it executes (none = externally provided)
   body: Expr?
-  // Binding — external execution strategy
+  // Binding -- external execution strategy
   transport: TransportBinding?
   // Metadata
   properties: List<FieldInit>
@@ -374,7 +374,7 @@ type TypedNode {
 }
 
 // =========================================================================
-// Typed self-call detection — TypedExpr walkers
+// Typed self-call detection -- TypedExpr walkers
 //
 // These functions walk TypedExpr trees to detect self-recursive calls
 // and non-tail self-calls. Used by the typechecker to pre-compute
@@ -499,7 +499,7 @@ fn typed_has_non_tail_self_call(texpr: TypedExpr, fn_name: String, in_tail: Bool
     TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
       typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
     TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
-      // Lambda bodies are separate contexts — self-calls inside are non-tail.
+      // Lambda bodies are separate contexts -- self-calls inside are non-tail.
       typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
     TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
       fs |> any(fi => typed_has_non_tail_self_call(texpr: fi.value, fn_name: fn_name, in_tail: false))

@@ -1,4 +1,4 @@
-// v2 complexity analysis — cost algebra and proof vocabulary.
+// v2 complexity analysis -- cost algebra and proof vocabulary.
 //
 // Defines the symbolic types for runtime complexity analysis of DAG
 // execution structure. The analyzer walks authoritative program structure
@@ -6,20 +6,20 @@
 // these types are proof objects, not program nodes.
 //
 // Two metrics are first-class:
-//   work  — total operations performed
-//   span  — critical path length under DAG dependency structure
+//   work  -- total operations performed
+//   span  -- critical path length under DAG dependency structure
 //
 // Costs are parameterized by SemanticsCtx so that the same surface
 // operation can have different faithful costs in the bootstrap
 // interpreter vs emitted/native code.
 //
 // This module is type definitions only. Analysis implementation
-// (D2–D4) will be added in later tracks.
+// (D2-D4) will be added in later tracks.
 
 module v2.compiler.complexity
 
 // =========================================================================
-// Size expressions — symbolic sizes for analysis
+// Size expressions -- symbolic sizes for analysis
 //
 // A SizeExpr represents a symbolic size: a constant, a named variable
 // (n, m, k), the length of a named collection, or arithmetic over
@@ -35,7 +35,7 @@ type SizeExpr
   | SizeMax { left: SizeExpr, right: SizeExpr }
 
 // =========================================================================
-// Cost expressions — symbolic costs
+// Cost expressions -- symbolic costs
 //
 // A CostExpr represents the cost of a computation symbolically.
 // Supports constant costs, arithmetic composition, bounded summation
@@ -74,9 +74,9 @@ type Constraint
 // =========================================================================
 // Certainty of a proof
 //
-// Proven      — the bound is exact or tight under stated assumptions.
-// Conservative — the bound is valid but may not be tight.
-// Unknown     — the system could not derive a useful bound.
+// Proven      -- the bound is exact or tight under stated assumptions.
+// Conservative -- the bound is valid but may not be tight.
+// Unknown     -- the system could not derive a useful bound.
 // =========================================================================
 
 type Certainty = Proven | Conservative | Unknown
@@ -104,16 +104,16 @@ type SemanticsCtx {
 }
 
 // =========================================================================
-// Complexity summary — the main output type
+// Complexity summary -- the main output type
 //
 // Attaches to a function, expression, or DAG node to describe its
 // runtime behavior:
 //
-//   work        — total operations (sequential cost)
-//   span        — critical path (parallel cost)
-//   output_size — symbolic size of each named output
-//   assumptions — constraints under which the formula holds
-//   certainty   — how confident the proof is
+//   work        -- total operations (sequential cost)
+//   span        -- critical path (parallel cost)
+//   output_size -- symbolic size of each named output
+//   assumptions -- constraints under which the formula holds
+//   certainty   -- how confident the proof is
 //
 // The reporting rule: compute exact symbolic formulas first, then
 // derive asymptotic summaries from those formulas. Do not discard

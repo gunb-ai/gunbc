@@ -1,16 +1,16 @@
 // extdeps/cloud/core.dag -- "What is a cloud provider?"
 //
 // Universal concepts shared across GCP, AWS, and Azure.
-// Types only — concrete values live in provider-specific core.dag files.
+// Types only -- concrete values live in provider-specific core.dag files.
 //
 // Consumers:
-//   extdeps/cloud/gcp/core.dag   — GCP-specific identity, endpoints
-//   extdeps/cloud/aws/core.dag   — AWS-specific ARNs, SigV4
-//   extdeps/cloud/azure/core.dag — Azure-specific tenants, subscriptions
+//   extdeps/cloud/gcp/core.dag   -- GCP-specific identity, endpoints
+//   extdeps/cloud/aws/core.dag   -- AWS-specific ARNs, SigV4
+//   extdeps/cloud/azure/core.dag -- Azure-specific tenants, subscriptions
 
 module extdeps.cloud.cloud
 
-// ── Authentication schemes ────────────────────────────────────────
+// -- Authentication schemes ----------------------------------------
 // How cloud APIs authenticate requests. Each provider uses a subset.
 
 type CloudAuthScheme
@@ -19,7 +19,7 @@ type CloudAuthScheme
   | ApiKey
   | OidcToken { audience: String }
 
-// ── Service endpoints ─────────────────────────────────────────────
+// -- Service endpoints ---------------------------------------------
 
 type ServiceEndpoint {
   base_url: String
@@ -27,7 +27,7 @@ type ServiceEndpoint {
   regional: Bool
 }
 
-// ── Rate limiting ─────────────────────────────────────────────────
+// -- Rate limiting -------------------------------------------------
 
 type RateLimitPolicy {
   requests_per_minute: Int
@@ -35,7 +35,7 @@ type RateLimitPolicy {
   scope: String
 }
 
-// ── Credentials ───────────────────────────────────────────────────
+// -- Credentials ---------------------------------------------------
 
 type Credential {
   scheme: CloudAuthScheme
@@ -43,14 +43,14 @@ type Credential {
   expires_seconds: Int?
 }
 
-// ── Idempotency ───────────────────────────────────────────────────
+// -- Idempotency ---------------------------------------------------
 
 type IdempotencyToken {
   header: String
   format: String
 }
 
-// ── Quotas ────────────────────────────────────────────────────────
+// -- Quotas --------------------------------------------------------
 
 type CloudQuota {
   resource: String
@@ -58,7 +58,7 @@ type CloudQuota {
   scope: String
 }
 
-// ── Regions ───────────────────────────────────────────────────────
+// -- Regions -------------------------------------------------------
 
 type CloudRegion {
   provider: String

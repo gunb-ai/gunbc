@@ -1,4 +1,4 @@
-// v2 artifact model — explicit representation of buildable/deployable units.
+// v2 artifact model -- explicit representation of buildable/deployable units.
 //
 // The compiler currently assumes a single monolithic artifact. This module
 // makes that assumption explicit as a data type so that multi-artifact
@@ -6,7 +6,7 @@
 //
 // E0 compatibility wrapper: default_artifact_plan() wraps the current
 // monolithic behavior as an explicit ArtifactPlan with one ServiceBinary
-// artifact and no boundaries. No pipeline wiring yet — that's E1/E2.
+// artifact and no boundaries. No pipeline wiring yet -- that's E1/E2.
 
 module v2.compiler.artifact
 
@@ -34,7 +34,7 @@ type Artifact {
 }
 
 // =========================================================================
-// Boundary — how artifacts communicate
+// Boundary -- how artifacts communicate
 // =========================================================================
 
 type BoundaryKind
@@ -52,7 +52,7 @@ type Boundary {
 }
 
 // =========================================================================
-// Artifact plan — what the compiler will build
+// Artifact plan -- what the compiler will build
 // =========================================================================
 
 type ArtifactPlan {
@@ -61,11 +61,11 @@ type ArtifactPlan {
 }
 
 // =========================================================================
-// Default plan — compatibility wrapper
+// Default plan -- compatibility wrapper
 // =========================================================================
 
 // Create a default single-artifact plan from the current pipeline state.
-// This is the compatibility wrapper — current behavior becomes an explicit plan.
+// This is the compatibility wrapper -- current behavior becomes an explicit plan.
 fn default_artifact_plan(root_modules: List<String>, target: String) -> ArtifactPlan {
   ArtifactPlan {
     artifacts: [Artifact {

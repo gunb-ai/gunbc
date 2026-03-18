@@ -9,7 +9,7 @@
 //
 // Consumers:
 //   extdeps/cloud/gcp/{storage,pubsub,iam,secret_manager,cloud_run,sts}.dag
-//   gunbc/auth/patterns.dag         — credential chain
+//   gunbc/auth/patterns.dag         -- credential chain
 
 module extdeps.cloud.gcp.gcp
 
@@ -17,7 +17,7 @@ import extdeps.cloud.cloud { ServiceEndpoint, CloudAuthScheme }
 import std.types { FilePath, NonEmptyStr, Secret }
 import std.errors { GcpErrorShape }
 
-// ── Projects ──────────────────────────────────────────────────────
+// -- Projects ------------------------------------------------------
 
 type GcpProject {
   project_id: String
@@ -25,7 +25,7 @@ type GcpProject {
   name: String
 }
 
-// ── Service accounts ──────────────────────────────────────────────
+// -- Service accounts ----------------------------------------------
 
 type GcpServiceAccount {
   email: String
@@ -34,7 +34,7 @@ type GcpServiceAccount {
   disabled: Bool
 }
 
-// ── OAuth2 scopes ─────────────────────────────────────────────────
+// -- OAuth2 scopes -------------------------------------------------
 
 type OAuth2Scope {
   scope: String
@@ -49,7 +49,7 @@ data common_scopes: List<OAuth2Scope> = [
   { scope: "https://www.googleapis.com/auth/secretmanager", description: "Secret Manager access" }
 ]
 
-// ── Workload Identity Federation ──────────────────────────────────
+// -- Workload Identity Federation ----------------------------------
 
 type WifPool {
   name: String
@@ -65,7 +65,7 @@ type WifProvider {
   attribute_mapping: Map<String, String>?
 }
 
-// ── API endpoints ─────────────────────────────────────────────────
+// -- API endpoints -------------------------------------------------
 // Pattern: {service}.googleapis.com/{version}
 
 type GcpApiEndpoint {
@@ -83,7 +83,7 @@ data api_endpoints: List<GcpApiEndpoint> = [
   { service: "sts", base_url: "https://sts.googleapis.com/v1", version: "v1" }
 ]
 
-// ── Regions ───────────────────────────────────────────────────────
+// -- Regions -------------------------------------------------------
 
 type GcpRegion {
   name: String
@@ -100,7 +100,7 @@ data regions: List<GcpRegion> = [
   { name: "eu", zones: [], multi_region: true }
 ]
 
-// ── Service: GCP auth operations (shell + REST transport) ───────
+// -- Service: GCP auth operations (shell + REST transport) -------
 
 service gcloud.Auth {
   operation Login {
