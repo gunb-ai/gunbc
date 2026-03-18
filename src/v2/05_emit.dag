@@ -817,3 +817,60 @@ fn has_service_items(typed: TypedGraph) -> Bool {
   )
 }
 
+// =========================================================================
+// Shared classification functions — target-agnostic item/type/transport
+// dispatch. Each backend calls these to determine WHAT kind of thing it's
+// looking at, then applies its own rendering for HOW to emit it.
+//
+// Sustainability invariant: "No duplicate representations."
+// These classifiers are the single authority for item/type/transport kind.
+// =========================================================================
+
+// Classify a typed item into one of the structural categories.
+// Returns: "type_def", "type_alias", "function", "data_def",
+//          "service_def", "resource_def", "extern_func", or "unhandled".
+// For "function", callers must further check item.uses to distinguish fn vs func.
+fn classify_typed_item(item: TypedNode) -> String {
+  if item.connective != none && item.transport == none {
+    "type_def"
+  } else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
+    "type_alias"
+  } else if item.body != none && item.type_annotation == none {
+    "function"
+  } else if item.body != none && item.type_annotation != none {
+    "data_def"
+  } else if item.transport != none && item.children |> count > 0 {
+    "service_def"
+  } else if item.transport == none && item.children |> count > 0 {
+    "resource_def"
+  } else if item.params |> count > 0 {
+    "extern_func"
+  } else {
+    "unhandled"
+  }
+}
+
+// Classify a Node's type structure based on its connective.
+// Returns: "leaf", "conj", or "disj".
+fn classify_type_structure(n: Node) -> String {
+  if n.connective == none {
+    "leaf"
+  } else {
+    match n.connective.value {
+      Conj => "conj"
+      Disj => "disj"
+    }
+  }
+}
+
+// Classify a transport binding into its kind.
+// Returns: "rest", "shell", "file", or "local".
+fn classify_transport_kind(transport: TransportBinding) -> String {
+  match transport {
+    RestBinding { base_url: _, auth: _, headers: _ } => "rest"
+    ShellBinding { argv: _, env: _ } => "shell"
+    FileBinding { base_path: _ } => "file"
+    LocalBinding => "local"
+  }
+}
+

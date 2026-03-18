@@ -71,7 +71,8 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  is_typed_service_call_receiver, extract_typed_service_name
+  is_typed_service_call_receiver, extract_typed_service_name,
+  classify_typed_item, classify_type_structure, classify_transport_kind
 }
 // =========================================================================
 // Go language facts — from std.languages spec (go_language, go_literals)
@@ -194,37 +195,29 @@ fn collect_go_std_imports(has_services: Bool, has_errors: Bool) -> List<String> 
 // =========================================================================
 
 fn emit_go_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  // Type definition: has connective (record=Conj, sum=Disj)
-  if item.connective != none && item.transport == none {
+  let kind = classify_typed_item(item: item)
+  if kind == "type_def" {
     emit_go_type_def_from_connective(item: item)
-  }
-  // Type alias: no connective, no body, no params, no transport, no children, but has return_type
-  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
+  } else if kind == "type_alias" {
     emit_go_type_alias(name: item.name, base: item.return_type)
-  }
-  else if item.body != none && item.type_annotation == none {
+  } else if kind == "function" {
     if item.uses |> count > 0 {
       emit_go_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       emit_go_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
     }
-  }
-  else if item.body != none && item.type_annotation != none {
+  } else if kind == "data_def" {
     emit_go_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  }
-  else if item.transport != none && item.children |> count > 0 {
+  } else if kind == "service_def" {
     emit_go_service_def(item: item, registry: registry)
-  }
-  else if item.transport == none && item.children |> count > 0 {
+  } else if kind == "resource_def" {
     emit_go_resource_def(item: item)
-  }
-  else if item.params |> count > 0 {
+  } else if kind == "extern_func" {
     let params_str = emit_go_params(params: item.params)
     let ret_str = emit_go_return_type(return_type: item.return_type)
     concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
       "\tpanic(\"extern func not implemented\")\n}")
-  }
-  else {
+  } else {
     concat("// unhandled node: ", item.name)
   }
 }
@@ -312,17 +305,13 @@ fn emit_go_type_alias(name: String, base: Node) -> String {
 // =========================================================================
 
 fn emit_go_node_type(n: Node) -> String {
-  emit_go_node_type_dispatch(n: n, conn: n.connective)
-}
-
-fn emit_go_node_type_dispatch(n: Node, conn: Connective?) -> String {
-  if conn == none {
+  let kind = classify_type_structure(n: n)
+  if kind == "leaf" {
     emit_go_node_type_leaf(n: n)
+  } else if kind == "conj" {
+    emit_go_node_type_conj(n: n)
   } else {
-    match conn.value {
-      Conj => emit_go_node_type_conj(n: n)
-      Disj => emit_go_node_type_disj(n: n)
-    }
+    emit_go_node_type_disj(n: n)
   }
 }
 

@@ -62,7 +62,8 @@ import v2.compiler.emit {
   capitalize_first, sanitize_service_name, service_var_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
-  is_service_item, has_service_items
+  is_service_item, has_service_items,
+  classify_typed_item, classify_type_structure, classify_transport_kind
 }
 
 fn emit_single_field_product_py_type(field_node: Node) -> String {
@@ -193,37 +194,29 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 // =========================================================================
 
 fn emit_py_typed_item(item: TypedNode, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  // Type definition: has connective (record=Conj, sum=Disj)
-  if item.connective != none && item.transport == none {
+  let kind = classify_typed_item(item: item)
+  if kind == "type_def" {
     emit_py_type_def_from_connective(item: item)
-  }
-  // Type alias: no connective, no body, no params, no transport, no children, but has return_type
-  else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
+  } else if kind == "type_alias" {
     concat(item.name, " = ", emit_py_node_type(n: item.return_type))
-  }
-  else if item.body != none && item.type_annotation == none {
+  } else if kind == "function" {
     if item.uses |> count > 0 {
       emit_py_func_def(name: item.name, params: item.params, return_type: item.return_type, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       emit_py_fn_def(name: item.name, params: item.params, return_type: item.return_type, body: item.body.value, registry: registry, scope: scope)
     }
-  }
-  else if item.body != none && item.type_annotation != none {
+  } else if kind == "data_def" {
     emit_py_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  }
-  else if item.transport != none && item.children |> count > 0 {
+  } else if kind == "service_def" {
     emit_py_service_def(item: item, registry: registry)
-  }
-  else if item.transport == none && item.children |> count > 0 {
+  } else if kind == "resource_def" {
     emit_py_resource_def(item: item)
-  }
-  else if item.params |> count > 0 {
+  } else if kind == "extern_func" {
     let params_str = emit_py_params(params: item.params)
     let ret_str = emit_py_return_type(return_type: item.return_type)
     concat("def ", py_ident(name: item.name), "(", params_str, ")", ret_str, ":\n",
       "    raise NotImplementedError(\"extern func\")")
-  }
-  else {
+  } else {
     concat("# unhandled node: ", item.name)
   }
 }
@@ -305,17 +298,13 @@ fn emit_py_variant_class_from_child(parent_name: String, child: TypedNode) -> St
 // =========================================================================
 
 fn emit_py_node_type(n: Node) -> String {
-  emit_py_node_type_dispatch(n: n, conn: n.connective)
-}
-
-fn emit_py_node_type_dispatch(n: Node, conn: Connective?) -> String {
-  if conn == none {
+  let kind = classify_type_structure(n: n)
+  if kind == "leaf" {
     emit_py_node_type_leaf(n: n)
+  } else if kind == "conj" {
+    emit_py_node_type_conj(n: n)
   } else {
-    match conn.value {
-      Conj => emit_py_node_type_conj(n: n)
-      Disj => emit_py_node_type_disj(n: n)
-    }
+    emit_py_node_type_disj(n: n)
   }
 }
 
