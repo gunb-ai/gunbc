@@ -404,9 +404,61 @@ character access becomes O(1) instead of O(pos).
 
 ---
 
-## Process Observation
+## v2_rt.rs: Full Intrinsic Audit
 
-The performance audit cycle looked like this:
+**File:** `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs`
+**Injected into:** every generated v2 crate as `src/v2_rt.rs`
+
+v2_rt.rs is a 226-line Rust string constant embedded in the v1 emitter.
+It provides the primitive operations that `.dag` intrinsics compile to.
+It was written once, never profiled, never tested at scale, and never
+included in any performance audit.
+
+### Function-by-function complexity
+
+| Function | Signature | Complexity | Problem |
+|----------|-----------|-----------|---------|
+| `char_at` | `impl AsRef<str>, i64 → String` | **O(pos)** | `.chars().nth(pos)` scans from start every call |
+| `string_length` | `impl AsRef<str> → i64` | **O(n)** | `.chars().count()` iterates full string |
+| `substring` | `impl AsRef<str>, i64, i64 → String` | **O(start + len)** | skip + collect + allocate |
+| `string_contains` | `impl AsRef<str>² → bool` | O(n×m) | Correct for small patterns |
+| `scan_while` | `impl AsRef<str>, i64, Fn → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
+| `skip_horizontal_ws` | `impl AsRef<str>, i64 → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
+| `scan_to_eol` | `impl AsRef<str>, i64 → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
+| `scan_string_end` | `impl AsRef<str>, i64 → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
+| `concat` (String) | `String, String → String` | O(a+b) | Correct |
+| `concat` (Rc<Vec>) | `Rc<Vec>, Rc<Vec> → Rc<Vec>` | O(a+b) or O(b) | COW when refcount=1 |
+| `list_push` | via codegen Rc pattern | O(1) amortized | Fixed by R5 |
+| `map_insert` | `Rc<HashMap>, K, V → Rc<HashMap>` | O(1) amortized | COW when refcount=1 |
+| `map_merge` | `Rc<HashMap>² → Rc<HashMap>` | O(overlay) | Correct |
+| `lookup` | `&HashMap, &str → Option<V>` | O(1) | Correct |
+| `index_by` | `Rc<Vec>, Fn → Rc<HashMap>` | O(n) | Correct |
+| `code_point` | `impl AsRef<str> → i64` | O(1) | Correct |
+| `from_code_point` | `i64 → String` | O(1) | Correct |
+| `filesystem_read` | `String → Result` | O(file_size) | Correct (I/O) |
+
+**Note:** The string functions accept `impl AsRef<str>` — they CAN take
+`&str` without cloning. The clone problem is in the codegen, which
+generates `source.clone()` at every call site regardless.
+
+### Compounding with codegen clone strategy
+
+The codegen (`fn_codegen.rs:3997`, `clone_if_needed`) inserts `.clone()`
+on every non-final variable use. So even though `char_at` accepts
+`impl AsRef<str>`, the generated code passes `source.clone()`.
+
+Three costs compound per character in the tokenizer:
+1. `source.clone()` — O(n) string copy (codegen)
+2. `.chars().nth(pos)` — O(pos) scan (runtime)
+3. `string_length(source.clone())` — O(n) per iteration (both)
+
+For 50K characters: Σ(n + pos) ≈ **1.25 billion character operations**.
+
+---
+
+## Process Observation: Why This Happened
+
+### The audit cycle
 
 1. **Track S (DAG-level):** Found and fixed O(n²) list builders, linear
    scans, dead code. All valid fixes at the algorithm level.
@@ -421,12 +473,121 @@ The performance audit cycle looked like this:
 4. **This audit:** Found that the dominant cost is `char_at(source.clone())`
    in the hardcoded runtime, which was never examined by any prior audit.
 
-**The lesson:** Each optimization pass focused on its own layer
-(.dag algorithms, stack frames, Rc refcounting) without examining the
-layer below. The actual bottleneck was in the simplest, most "obviously
-correct" code — the 5-line `char_at` function that nobody questioned.
+### Three structural failures enabled this
 
-**What should change:** Performance audits must trace end-to-end through
-generated code, not stop at the .dag source level. The generated Rust
-is the actual program that runs — its runtime characteristics are the
-only ones that matter.
+**1. v2_rt.rs is a string constant, not a real source file.**
+
+It lives inside `v2_runtime_shim.rs` as a `const &str`. It's invisible
+to tests, linters, profilers, and code review. It's 226 lines that
+every generated program depends on, hidden inside a Rust string literal.
+No other code in this project operates this way — everything else is
+either `.dag` source (auditable) or real Rust source (compilable,
+testable). v2_rt.rs is neither.
+
+**2. No end-to-end performance gate.**
+
+We have correctness tests (does the output match?) but zero performance
+tests (does it finish in <N seconds?). An O(n²) regression passes every
+test we have. A function that takes 16 minutes instead of 10ms is
+indistinguishable from a correct one in our test suite.
+
+**3. The codegen has no complexity model.**
+
+`clone_if_needed` doesn't know whether it's inside a loop that runs 50K
+times. It treats every clone as equally cheap. There's no mechanism to
+say "this argument is read-only, pass by reference" or "this clone is
+inside a hot loop and costs O(n)."
+
+---
+
+## Structural Prevention: Making This Impossible
+
+The goal is not to find and fix this class of bug faster — it's to make
+it **structurally unrepresentable**. Three changes would do this:
+
+### Prevention 1: Performance gate test (immediate)
+
+Add a test that asserts wall-clock time:
+
+```rust
+#[test]
+fn perf_gate_tokenize_1k_lines() {
+    let source = generate_dag_source(lines: 1000);
+    let start = Instant::now();
+    let tokens = tokenize(source);
+    let elapsed = start.elapsed();
+    assert!(elapsed < Duration::from_secs(2),
+        "tokenize(1000 lines) took {:?}, budget is 2s", elapsed);
+}
+
+#[test]
+fn perf_gate_parse_resolve_1k_lines() {
+    let sources = generate_dag_sources(files: 5, lines_each: 200);
+    let start = Instant::now();
+    let result = resolve_sources(sources);
+    let elapsed = start.elapsed();
+    assert!(elapsed < Duration::from_secs(5),
+        "resolve(1000 lines) took {:?}, budget is 5s", elapsed);
+}
+```
+
+This catches ANY O(n²) regression immediately, regardless of which layer
+introduces it. It doesn't matter whether the cause is a runtime intrinsic,
+a codegen clone, or a DAG algorithm — if the test takes >2s, something
+is wrong.
+
+**Where:** Generated crate test module (`v2_crate_emit.rs`, test generation).
+**Budget:** 1,000 lines in <2s for tokenize, <5s for full pipeline.
+
+### Prevention 2: Eliminate the hardcoded runtime (medium-term)
+
+v2_rt.rs should not be a string constant. Options:
+
+**(A) Real Rust file in the repo.** Move v2_rt.rs to a real source file
+that's compiled, tested, and benchmarked like any other Rust code. It
+gets copied into generated crates at assembly time, not embedded as a
+string.
+
+**(B) .dag-defined intrinsics.** Define string/collection operations in
+`.dag` files (e.g., `dsl/std/intrinsics.dag`) so they go through the
+same pipeline and audit process as everything else. The runtime becomes
+`extern func` declarations that the codegen provides implementations for.
+
+Either way, the runtime must be **visible, testable, and subject to the
+same invariants as the rest of the codebase.** No more string constants
+that escape scrutiny.
+
+### Prevention 3: Codegen complexity contract (longer-term)
+
+The codegen should guarantee: **no generated operation inside a loop body
+is worse than O(1) amortized, unless the source .dag operation is itself
+non-constant.**
+
+Concrete rules:
+- String reads (char_at, string_length) must compile to O(1) operations
+  in the generated code. If the underlying representation doesn't support
+  O(1) access, the codegen must pre-index at loop entry.
+- Clone is only inserted when ownership transfer is required. Read-only
+  access uses borrows.
+- Any loop body that generates more than one `.clone()` of the same
+  variable should emit a compile-time warning.
+
+This is the hardest prevention to implement, but it's the one that makes
+the problem structurally impossible rather than just detectable.
+
+---
+
+## What Else Could Be Hiding
+
+Beyond v2_rt.rs, the other unaudited codegen layers are:
+
+- **fn_codegen.rs** (5,000+ lines): expression compilation, clone insertion,
+  Rc wrapping, TCO transformation. Never profiled against real workloads.
+- **type_codegen.rs** (2,000+ lines): type definition emission, recursive
+  field detection, boxing algorithm. Boxing decisions affect every type's
+  size and every clone's cost.
+- **render_rust.rs** (200+ lines): code_ir → Rust text. Stacker wrapping.
+
+These are the "infrastructure" files that every generated program flows
+through. They should be treated as performance-critical code — because
+they are.
