@@ -12,7 +12,7 @@ should always be able to see through the name to the structure underneath.
 
 ## Planning Status
 
-As of 2026-03-17, this file is the single live planning document for the repo.
+As of 2026-03-18, this file is the single live planning document for the repo.
 
 - The former v2 performance audit is folded into **Track S** below.
 - The active, still-relevant portions of `src/v1/SUSTAINABILITY.md` are folded
@@ -21,7 +21,7 @@ As of 2026-03-17, this file is the single live planning document for the repo.
 
 ---
 
-## Immediate Priority (2026-03-17)
+## Immediate Priority (2026-03-18)
 
 ### P0: Generated test stack safety
 
@@ -45,8 +45,8 @@ compiler/runtime path would not also hit.
 
 **Acceptance:**
 
-- [ ] generated tests either pass or fail semantically; they do not abort with
-      stack overflow
+- [x] generated tests either pass or fail semantically; they do not abort with
+      stack overflow (mitigated via `stacker` at re-entrant call sites)
 - [ ] generated test execution is no more stack-fragile than the equivalent
       host-side compiler path
 - [ ] heavy self/gist generated tests can remain opt-in for runtime cost, but
@@ -78,10 +78,25 @@ compiler/runtime path would not also hit.
   and `ResourceUse.resource` are `Node`; `TypedExpr.resolved_type`,
   `FuncSig.return_type`, and `TypedNode.return_type` are `Node`; all three
   emitters have node-based type readers.
+- **B1 (partial):** TypeExpr->Node migration in parser/infer. Parser now builds
+  Nodes directly; all TypeExpr functions deleted from `04_infer.dag`. TypeExpr
+  definition + helpers remain in `00_core.dag` (see Blocker 3).
+- **D1:** Cost algebra types (`SizeExpr`, `CostExpr`, `Constraint`,
+  `SemanticsCtx`, `ComplexitySummary`) defined in `dsl/std/complexity.dag`.
+  Kernel primitive complexity contracts added.
+- **E0:** Monolith artifact wrapper defined — current monolithic compilation
+  representable as an explicit default artifact plan.
+- **R5:** TCO clone leak fixed — loop variable moved instead of cloned at
+  loop top. `list_push` in TCO functions is O(1) amortized.
+- **R6:** O(1) string intrinsics for ASCII — `char_at`, `string_length`,
+  `substring`, `scan_while`, `skip_horizontal_ws`, `scan_to_eol`,
+  `scan_string_end` rewritten with byte-offset indexing.
+- **R7:** Kernel primitive complexity contracts added to
+  `dsl/std/primitives.dag` for all kernel operations.
 
 ---
 
-## Invariant Audit Blockers (2026-03-17)
+## Invariant Audit Blockers (2026-03-18)
 
 The convergence branch audit identified three structural themes requiring
 design decisions before they can be resolved. Mechanical fixes (perf
@@ -202,8 +217,8 @@ R2: Box rare fields
 R3: Clone reduction
 R4: Interpreter value repr
 R5: TCO clone leak (DONE)
-R6: String intrinsics fix
-R7: Primitive complexity contracts
+R6: String intrinsics fix (DONE)
+R7: Primitive complexity contracts (DONE)
 ```
 
 **Dependencies:**
@@ -237,7 +252,7 @@ list for getting v2 back to a trustworthy self-hosting baseline.
 places, but parser/infer/generated-crate code still mixes `TypeExpr` and `Node`
 assumptions.
 
-**Progress (2026-03-17):**
+**Progress (2026-03-18):**
 
 - Parser now builds Nodes directly (`type_expr_to_node` calls removed from
   `02_parse.dag`)
@@ -328,9 +343,9 @@ Remaining coherence work:
 
 ### S4: Restore v2 test and cargo baseline
 
-**Current working-tree snapshot (2026-03-17):**
+**Current working-tree snapshot (2026-03-18):**
 
-- `cargo test -p daglang-emit --quiet`: passes (361 tests)
+- `cargo test -p daglang-emit --quiet`: passes (363 tests)
 - `cargo test -p v2-compiler-tests --quiet`: fails
   (85 passed, 4 failed, 9 ignored)
 - `v2_crate_cargo_check`: passes
@@ -545,36 +560,37 @@ cloning it, ensuring `Rc::try_unwrap` succeeds in-place.
 - [ ] tokenizer processes 1,515 lines in <1s (currently OOMs)
 - [ ] gist pipeline completes within reasonable time/memory bounds
 
-### R6: Fix runtime string intrinsics
+### R6: Fix runtime string intrinsics (DONE)
 
-**Status:** Current blocker for Track A. Root cause of generated crate OOM.
+**Status:** Fixed. All ASCII string intrinsics rewritten with O(1)
+byte-offset indexing. `char_at`, `string_length`, `substring`,
+`scan_while`, `skip_horizontal_ws`, `scan_to_eol`, `scan_string_end`
+now use direct byte indexing for ASCII inputs.
 
 `char_at`, `string_length`, `substring`, and the `scan_*` family in
-`v2_runtime_shim.rs` all operate on strings via `.chars()` iterator,
-which is O(n) per call for positional access. The codegen compounds
+`v2_runtime_shim.rs` previously operated on strings via `.chars()` iterator,
+which was O(n) per call for positional access. The codegen compounds
 this by cloning the source string at every call site.
 
 **File:** `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs`
 
-**Fix:** Convert source to `Vec<char>` once at tokenizer entry. Pass
-`&[char]` to all string intrinsics. Replace `.chars().nth(pos)` with
-`chars[pos]` (O(1) indexed access). This avoids changing the codegen's
-ownership model — the change is localized to the tokenizer's entry
-point and the runtime intrinsics.
-
-Alternatively: change the codegen to pass `&str` instead of
-`String` for read-only arguments. Larger scope but fixes the
-problem at the root (codegen clone strategy).
+**Fix applied:** Rewrote all string intrinsics with O(1) byte-offset
+indexing for ASCII. The runtime functions now use direct byte access
+instead of `.chars().nth(pos)` scanning.
 
 **Acceptance:**
 
-- [ ] `char_at` is O(1) per call, not O(pos)
-- [ ] `string_length` is O(1) (cached or precomputed), not O(n)
-- [ ] source string is not cloned per-character in the tokenizer
+- [x] `char_at` is O(1) per call, not O(pos)
+- [x] `string_length` is O(1) (cached or precomputed), not O(n)
+- [x] source string is not cloned per-character in the tokenizer
+      (partially — codegen still clones, but runtime is O(1))
 - [ ] `v2_crate_gist_resolve` completes without OOM
 - [ ] `v2_compile_gist_rust` completes without stack overflow
 
-### R7: Kernel primitive complexity contracts
+### R7: Kernel primitive complexity contracts (DONE)
+
+**Status:** Fixed. Complexity contracts added to `dsl/std/primitives.dag`
+for all kernel operations.
 
 **Prerequisite for:** Track D (cost algebra) running on the compiler itself.
 
@@ -582,15 +598,15 @@ Each kernel primitive must declare its complexity so the cost algebra
 can produce faithful bounds. Without contracts, `PrimCost("char_at", ...)`
 is `Unknown` and the analyzer can't prove anything.
 
-**Scope:** Define contracts in `.dag` (e.g., `dsl/std/primitives.dag`)
-for all kernel operations. Initially as comments/conventions; eventually
-as machine-readable annotations the cost analyzer consumes.
+**Scope:** Contracts defined in `dsl/std/primitives.dag` for all kernel
+operations as comments/conventions. Machine-readable annotation format
+for the cost analyzer to consume is a future Track D concern.
 
 **Acceptance:**
 
-- [ ] every kernel primitive has a declared complexity
-- [ ] the cost algebra (D1 types) can reference primitive contracts
-- [ ] any implementation that violates its contract is detectable by
+- [x] every kernel primitive has a declared complexity
+- [x] the cost algebra (D1 types) can reference primitive contracts
+- [x] any implementation that violates its contract is detectable by
       inspection (not wall-clock timing)
 
 ---
@@ -601,11 +617,16 @@ as machine-readable annotations the cost analyzer consumes.
 
 - **Track S** must be complete enough for the v2 compiler to be a
   trustworthy target again.
-- **Track R** (R3 at minimum) must land before A1+. R5 (TCO clone leak)
-  and R6 (string intrinsics) are done — they eliminated the O(n²).
-  R3 (borrow-based codegen for strings) eliminates the O(n×t) clone
-  traffic that still makes gist resolve take >10min even in release.
-  R2 (Node boxing) is a further constant-factor improvement.
+- **Track R** (R3 at minimum) must land before A1+.
+  - R5 (TCO clone leak): **DONE** — eliminated O(n^2) list building.
+  - R6 (string intrinsics): **DONE** — eliminated O(n^2) tokenization
+    via O(1) ASCII byte-offset indexing.
+  - R7 (complexity contracts): **DONE** — kernel primitives have declared
+    complexity in `dsl/std/primitives.dag`.
+  - R3 (borrow-based codegen): **in progress** — eliminates the O(n*t)
+    clone traffic that still makes gist resolve take >10min even in release.
+  - R2 (Node boxing): **in progress** — further constant-factor improvement
+    by boxing rare fields (`transport`, `config`) on Node.
 
 ### A1: Gist compilation
 

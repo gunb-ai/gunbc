@@ -10,6 +10,18 @@ prior optimizations addressed the right layer.
 
 ---
 
+## Status (2026-03-18)
+
+| Smoking Gun | Description | Status | Fix |
+|-------------|-------------|--------|-----|
+| SG-1 | `char_at` O(pos) per call -> O(n^2) tokenization | **FIXED** | R6: O(1) byte-offset indexing for ASCII |
+| SG-2 | `string_length` O(n) per call | **FIXED** | R6: O(1) byte-length for ASCII |
+| SG-3 | `substring` O(start + len) per call | **FIXED** | R6: O(len) byte-slice for ASCII |
+| SG-4 | Codegen `.clone()` on every non-final variable use | **IN PROGRESS** | R3: borrow-based codegen for read-only args |
+| SG-5 | Non-TCO recursive functions clone through return path | **OPEN** | Bounded by expression depth; not dominant cost |
+
+---
+
 ## Table of Contents
 
 1. [Pipeline Overview](#pipeline-overview)
@@ -418,26 +430,26 @@ included in any performance audit.
 
 ### Function-by-function complexity
 
-| Function | Signature | Complexity | Problem |
-|----------|-----------|-----------|---------|
-| `char_at` | `impl AsRef<str>, i64 → String` | **O(pos)** | `.chars().nth(pos)` scans from start every call |
-| `string_length` | `impl AsRef<str> → i64` | **O(n)** | `.chars().count()` iterates full string |
-| `substring` | `impl AsRef<str>, i64, i64 → String` | **O(start + len)** | skip + collect + allocate |
-| `string_contains` | `impl AsRef<str>² → bool` | O(n×m) | Correct for small patterns |
-| `scan_while` | `impl AsRef<str>, i64, Fn → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
-| `skip_horizontal_ws` | `impl AsRef<str>, i64 → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
-| `scan_to_eol` | `impl AsRef<str>, i64 → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
-| `scan_string_end` | `impl AsRef<str>, i64 → i64` | **O(n)** | Rebuilds `Vec<char>` every call |
-| `concat` (String) | `String, String → String` | O(a+b) | Correct |
-| `concat` (Rc<Vec>) | `Rc<Vec>, Rc<Vec> → Rc<Vec>` | O(a+b) or O(b) | COW when refcount=1 |
-| `list_push` | via codegen Rc pattern | O(1) amortized | Fixed by R5 |
-| `map_insert` | `Rc<HashMap>, K, V → Rc<HashMap>` | O(1) amortized | COW when refcount=1 |
-| `map_merge` | `Rc<HashMap>² → Rc<HashMap>` | O(overlay) | Correct |
-| `lookup` | `&HashMap, &str → Option<V>` | O(1) | Correct |
-| `index_by` | `Rc<Vec>, Fn → Rc<HashMap>` | O(n) | Correct |
-| `code_point` | `impl AsRef<str> → i64` | O(1) | Correct |
-| `from_code_point` | `i64 → String` | O(1) | Correct |
-| `filesystem_read` | `String → Result` | O(file_size) | Correct (I/O) |
+| Function | Signature | Complexity | Problem | Status |
+|----------|-----------|-----------|---------|--------|
+| `char_at` | `impl AsRef<str>, i64 → String` | **O(1)** | Was O(pos): `.chars().nth(pos)` scanned from start | **FIXED** (R6) |
+| `string_length` | `impl AsRef<str> → i64` | **O(1)** | Was O(n): `.chars().count()` iterated full string | **FIXED** (R6) |
+| `substring` | `impl AsRef<str>, i64, i64 → String` | **O(len)** | Was O(start + len): skip + collect + allocate | **FIXED** (R6) |
+| `string_contains` | `impl AsRef<str>² → bool` | O(n×m) | Correct for small patterns | OK |
+| `scan_while` | `impl AsRef<str>, i64, Fn → i64` | **O(scanned)** | Was O(n): rebuilt `Vec<char>` every call | **FIXED** (R6) |
+| `skip_horizontal_ws` | `impl AsRef<str>, i64 → i64` | **O(scanned)** | Was O(n): rebuilt `Vec<char>` every call | **FIXED** (R6) |
+| `scan_to_eol` | `impl AsRef<str>, i64 → i64` | **O(scanned)** | Was O(n): rebuilt `Vec<char>` every call | **FIXED** (R6) |
+| `scan_string_end` | `impl AsRef<str>, i64 → i64` | **O(scanned)** | Was O(n): rebuilt `Vec<char>` every call | **FIXED** (R6) |
+| `concat` (String) | `String, String → String` | O(a+b) | Correct | OK |
+| `concat` (Rc<Vec>) | `Rc<Vec>, Rc<Vec> → Rc<Vec>` | O(a+b) or O(b) | COW when refcount=1 | OK |
+| `list_push` | via codegen Rc pattern | O(1) amortized | Was O(n): cloned entire Vec | **FIXED** (R5) |
+| `map_insert` | `Rc<HashMap>, K, V → Rc<HashMap>` | O(1) amortized | COW when refcount=1 | OK |
+| `map_merge` | `Rc<HashMap>² → Rc<HashMap>` | O(overlay) | Correct | OK |
+| `lookup` | `&HashMap, &str → Option<V>` | O(1) | Correct | OK |
+| `index_by` | `Rc<Vec>, Fn → Rc<HashMap>` | O(n) | Correct | OK |
+| `code_point` | `impl AsRef<str> → i64` | O(1) | Correct | OK |
+| `from_code_point` | `i64 → String` | O(1) | Correct | OK |
+| `filesystem_read` | `String → Result` | O(file_size) | Correct (I/O) | OK |
 
 **Note:** The string functions accept `impl AsRef<str>` — they CAN take
 `&str` without cloning. The clone problem is in the codegen, which
