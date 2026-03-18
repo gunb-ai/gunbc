@@ -60,24 +60,23 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
               ┌────────────────────┤
               │                    │
    ┌──────────▼──────────┐  ┌─────▼───────────────────────┐
-   │  Result<T,E> in DSL │  │  A1: Gist Compilation (<60s) │
-   │  (Blocker 2)        │  │  ← before A6, not before A1  │
-   │  ← before A6        │  └──────────────┬──────────────┘
-   └─────────────────────┘                 │
+   │  Result<T,E> in DSL │  │  A1: Gist Compilation       │
+   │  (Blocker 2)        │  │  resolve: DONE (24ms)       │
+   │  ← before A6        │  │  compile: NEXT              │
+   └─────────────────────┘  └──────────────┬──────────────┘
+                                           │
                               ┌────────────▼────────────┐
-                              │  R8: Rc-wrap generated   │
-                              │  types (DAG values =     │
-                              │  shared ownership)       │
-                              │  ← NEXT BLOCKER          │
+                              │  R8: DONE ✓              │
+                              │  Rc-wrap + SG-6/7/8 fix  │
+                              │  (was >20min, now 24ms)  │
                               └─────────────────────────┘
 
-Parallel with R8 (no dependencies):
+Parallel (no dependencies on critical path):
 
    ┌──────────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-   │ Blocker 3: delete    │  │ C3/C4: Language  │  │ D2-D4: Cost      │
-   │ TypeExpr from        │  │ emission from    │  │ analysis on real │
-   │ 00_core.dag (~300    │  │ extdeps + CLI    │  │ code             │
-   │ lines, mechanical)   │  │                  │  │                  │
+   │ Namespace rename:    │  │ C3/C4: Language  │  │ D2-D4: Cost      │
+   │ Typed*→Reconciled*   │  │ emission from    │  │ analysis on real │
+   │ (~655 refs, mech.)   │  │ extdeps + CLI    │  │ code             │
    └──────────────────────┘  └──────────────────┘  └──────────────────┘
 
 Deferred (decided, waiting on prerequisites):
@@ -89,11 +88,20 @@ Deferred (decided, waiting on prerequisites):
    └──────────────────────┘  └──────────────────┘
 ```
 
-**Critical path:** R8 → A1 → A4 → A5 → A6 → A7
+**Critical path:** A1 → A4 → A5 → A6 → A7
 
 ---
 
-## Immediate Priority: R8 — Rc-Wrap Generated Types
+## Immediate Priority: A1 — Gist Compilation
+
+R8 is complete. The gist resolve pipeline runs in **24ms** (tokenize 20ms,
+parse 3ms, resolve 342us). The next step is running the full pipeline
+(tokenize → parse → resolve → **reconcile → emit**) on gist sources and
+verifying the emitted Rust compiles.
+
+---
+
+## Completed: R8 — Rc-Wrap Generated Types
 
 **Structural principle:** The DAG language has value semantics with no mutation.
 Every value is logically shared — using a value twice doesn't require two
