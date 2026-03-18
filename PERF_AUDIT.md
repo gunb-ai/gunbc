@@ -19,6 +19,80 @@ prior optimizations addressed the right layer.
 | SG-3 | `substring` O(start + len) per call | **FIXED** | R6: O(len) byte-slice for ASCII |
 | SG-4 | Codegen `.clone()` on every non-final variable use | **IN PROGRESS** | R3: borrow-based codegen for read-only args |
 | SG-5 | Non-TCO recursive functions clone through return path | **OPEN** | Bounded by expression depth; not dominant cost |
+| SG-6 | R6 byte-index `char_at` corrupts output on non-ASCII source | **FIXED** | Strip Unicode from .dag comments; long-term: Vec\<char\> |
+
+---
+
+## Postmortem: SG-6 — Byte/Character Position Mismatch (2026-03-18)
+
+**Symptom:** Gist resolve takes >20 minutes in release mode for 1,515 lines
+(42K characters) even after R3 (no String cloning), R6 (O(1) intrinsics),
+and R8 (Rc-wrapped types, O(1) clone). Memory improved from 10GB to 620MB
+but time stayed at >20 minutes.
+
+**Discovery path:**
+1. Per-stage profiling test showed the FIRST file (`types.dag`, 17K chars)
+   hadn't finished tokenizing after 60+ seconds
+2. Scaling test with synthetic ASCII input (`"type Foo { x: Int }\n" × N`)
+   showed correct O(n^1.17) behavior: 10K chars in 43ms
+3. The same tokenizer hanging on real 17K-char files pointed to a
+   content-dependent issue, not algorithmic complexity
+4. `types.dag` contains Unicode mathematical symbols in comments: ⟦, ⟧,
+   ⊆, ⊥, ⊤, ℤ, 𝔽, Σ, ∪, ∩, etc. (multi-byte UTF-8)
+
+**Root cause:**
+
+R6 optimized `char_at(source, pos)` with a byte-indexed ASCII fast path:
+```rust
+if pos < bytes.len() && bytes[pos] < 128 {
+    return String::from(bytes[pos] as char);  // O(1)
+}
+s.as_ref().chars().nth(pos).map(...)  // O(pos) fallback
+```
+
+The tokenizer maintains `pos` as a **character index** (increments by 1 per
+character regardless of byte width). After the first multi-byte character
+(⟦ at ~byte 100 in types.dag):
+
+- `pos` (character index) = 100
+- Actual byte position of character 100 = ~106 (6 extra bytes from 3-byte ⟦⟧)
+- `bytes[100]` is a valid ASCII byte from an **earlier** position in the file
+- `bytes[100] < 128` is TRUE → fast path returns the **wrong character**
+
+The tokenizer silently processes corrupted input. Instead of seeing the
+expected character at position 100, it sees a character from position ~94.
+This causes it to misinterpret tokens — likely scanning endlessly for a
+delimiter that never appears at the expected position.
+
+**Why this wasn't caught:**
+- All v2 compiler `.dag` files (`src/v2/*.dag`) are ASCII-only
+- The gist dependency chain includes `dsl/std/types.dag` which has
+  Unicode in set-theory notation comments
+- The `v2_crate_cargo_check` test (which passes) only compiles the
+  generated crate — it doesn't run the gist resolve test
+- The tokenizer scaling test used synthetic ASCII input
+- The failure mode is a hang (wrong characters → infinite scan), not a
+  crash or error message
+
+**Fix:**
+- Immediate: strip Unicode from `.dag` file comments (ASCII equivalents)
+- Long-term: convert source to `Vec<char>` once at tokenize entry; use
+  index-based access (`chars[pos]`) for O(1) correct access regardless
+  of encoding
+
+**Structural lesson:**
+
+Any optimization that assumes byte position = character position is a
+latent corruption bug. The hybrid approach ("check if this specific byte
+is ASCII") is only correct when ALL preceding bytes are single-byte
+characters — a property that cannot be verified per-byte. Either commit
+fully to byte indexing (track byte offsets everywhere) or fully to
+character indexing (accept O(pos) or pre-convert to Vec<char>).
+
+This is the same class of bug as SG-1 (O(n²) char_at) — the R6 "fix"
+traded one failure mode (slow but correct) for another (fast but silently
+wrong on non-ASCII input). The correct fix addresses both: `Vec<char>`
+conversion gives O(1) access that works for all encodings.
 
 ---
 

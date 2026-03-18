@@ -1421,6 +1421,71 @@ mod generated_tests {{
         eprintln!("  Node: {{}} bytes", node_size);
         eprintln!("  TypedExpr: {{}} bytes", typed_expr_size);
     }}
+
+    /// Profile the gist pipeline by stage: tokenize, parse, resolve.
+    /// Reports per-file and per-stage wall-clock times.
+    #[test]
+    #[ignore]
+    fn profile_gist_pipeline() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                use std::time::Instant;
+
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+{gist_resolve_sources}                ];
+
+                eprintln!("\n=== GIST PIPELINE PROFILE ({{}} sources) ===\n", sources.len());
+
+                // Stage 1: Tokenize each source individually
+                let t_stage = Instant::now();
+                let mut token_lists = Vec::new();
+                for source in &sources {{
+                    let t = Instant::now();
+                    let tokens = crate::tokenize::tokenize(&source.content);
+                    let elapsed = t.elapsed();
+                    eprintln!("  tokenize {{:>40}}: {{:>8.2?}}  ({{:>5}} tokens, {{:>5}} chars)",
+                        source.path, elapsed, tokens.len(), source.content.len());
+                    token_lists.push(tokens);
+                }}
+                let tokenize_total = t_stage.elapsed();
+                eprintln!("  TOKENIZE TOTAL: {{:?}}\n", tokenize_total);
+
+                // Stage 2: Parse each token stream
+                let t_stage = Instant::now();
+                let mut modules = Vec::new();
+                for (i, tokens) in token_lists.iter().enumerate() {{
+                    let t = Instant::now();
+                    let result = crate::parse::parse(tokens.clone());
+                    let elapsed = t.elapsed();
+                    let ok = result.module.is_some();
+                    eprintln!("  parse   {{:>40}}: {{:>8.2?}}  (ok={{}})", sources[i].path, elapsed, ok);
+                    if let Some(m) = result.module.clone() {{
+                        modules.push(m);
+                    }}
+                }}
+                let parse_total = t_stage.elapsed();
+                eprintln!("  PARSE TOTAL:    {{:?}}\n", parse_total);
+
+                // Stage 3: Resolve module graph
+                let t_stage = Instant::now();
+                let graph = crate::resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_total = t_stage.elapsed();
+                let errors: Vec<_> = graph.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .collect();
+                eprintln!("  RESOLVE TOTAL:  {{:?}}  ({{}} errors)\n", resolve_total, errors.len());
+
+                eprintln!("=== SUMMARY ===");
+                eprintln!("  Tokenize: {{:?}}", tokenize_total);
+                eprintln!("  Parse:    {{:?}}", parse_total);
+                eprintln!("  Resolve:  {{:?}}", resolve_total);
+                eprintln!("  Total:    {{:?}}", tokenize_total + parse_total + resolve_total);
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile test panicked");
+    }}
 }}
 "#,
         const_decls = const_decls,

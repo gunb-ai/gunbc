@@ -3586,6 +3586,42 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
+    /// Profile the gist pipeline by stage (tokenize/parse/resolve) in release mode.
+    /// Reports per-file and per-stage wall-clock times.
+    #[test]
+    #[ignore]
+    fn v2_crate_profile_gist() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-profile");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--release")
+            .arg("--")
+            .arg("profile_gist_pipeline")
+            .arg("--nocapture")
+            .arg("--ignored")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Always print output for profiling
+        eprintln!("{}", stderr);
+        println!("{}", stdout);
+
+        if !output.status.success() {
+            panic!(
+                "profile_gist_pipeline failed (crate at {}):\nstderr:\n{}",
+                tmp_dir.display(),
+                stderr
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
     /// Generate the v2 crate to target/v2-compiler/ for inspection.
     /// Does not clean up — the crate persists for manual browsing/running.
     #[test]
