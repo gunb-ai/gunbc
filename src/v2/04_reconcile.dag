@@ -1,21 +1,24 @@
-// v2 type checker/resolver -- resolves Named type references to structural form.
+// v2 namespace reconciler -- verifies that named structural compositions
+// are used consistently throughout the module graph.
 //
-// After this pass, no unresolved Named references survive in the typed graph.
-// Every Named { name } is replaced by its structural expansion (Product,
-// Coproduct, Container, Refined) or by Primitive { name } for kernel types.
+// "Types" in the DAG language are named compositions (namespaces), not
+// formal type-theoretic constructs. This stage reconciles how names are
+// used with how they're defined:
 //
-// Exception: recursive types retain a Named reference to break the cycle,
-// but the name is guaranteed to be defined in the module graph.
+//   - Namespace lookup: `Token` -> has fields `kind`, `span`
+//   - Consistency check: `Token { kind: x }` -> does x match TokenKind?
+//   - Identity propagation: `char_at(s, pos)` -> result is in String namespace
+//   - Coverage validation: does `match` cover all variants in the namespace?
 //
-// Nominal identity is preserved: resolved types keep their name alongside
-// the structural form for diagnostics and emission.
+// After this pass, every expression has a resolved namespace identity
+// (return_type: Node) and all name usages are reconciled with definitions.
 //
 // Dependency chain:
 //   v2.compiler.resolve (ModuleGraph, dependency order)
-//     -> v2.compiler.typecheck (TypedGraph, resolved types)
+//     -> v2.compiler.reconcile (reconciled graph, namespace-consistent)
 //       -> v2.compiler.emit (target-language files)
 
-module v2.compiler.infer
+module v2.compiler.reconcile
 
 import std.types { SourceSpan }
 import v2.std.core {
@@ -3078,12 +3081,12 @@ fn collect_unresolved_in_typed_expr(texpr: TypedExpr, module_name: String, defin
 }
 
 // =========================================================================
-// Convenience: typecheck and validate in one call
+// Reconcile namespaces and validate consistency in one call.
 //
-// Returns the typed graph with any validation diagnostics appended.
+// Returns the reconciled graph with any validation diagnostics appended.
 // =========================================================================
 
-fn typecheck_and_validate(graph: ModuleGraph) -> TypedGraph {
+fn reconcile(graph: ModuleGraph) -> TypedGraph {
   let typed = typecheck(graph: graph)
   let validation_diags = validate_no_unresolved(graph: typed)
   TypedGraph {
