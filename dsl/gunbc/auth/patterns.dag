@@ -15,11 +15,11 @@ import std.types {
   ProjectId,
   ServiceAccountEmail
 }
-import extdeps.cloud.gcp.gcp
-import extdeps.cloud.gcp.secret_manager
-import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }
+import extdeps.cloud.gcp.secret_manager { gcp.SecretManager }
+import extdeps.cloud.gcp.iam { gcp.IAM }
 import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }
-import extdeps.shell
+import extdeps.shell { shell.Env }
 
 // Acquire a subject token based on runtime environment.
 // Useful independently for: any workflow that needs a subject token
