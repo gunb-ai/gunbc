@@ -440,22 +440,58 @@ shrinks it from 544 to ~120 bytes. This cascades:
 - [ ] `v2_compile_gist_rust` passes without host-side stack overflow
 - [ ] size assertions from R1 enforce the new bounds
 
-### R3: Clone reduction in v1 emitter
+### R3: Borrow-based codegen for read-only arguments
 
-The v1 emitter has 650+ `.clone()` calls. Many defensively clone full
-`Expr` (208b) or `Node` (544b) values where a borrow would suffice.
+**Status:** Current blocker for Track A. This is the investment into v1
+that unblocks self-hosting.
 
-**Scope:**
+**Problem:** `compile_ident` in `fn_codegen.rs:1565-1581` clones every
+multi-use variable (`variable.clone()`). For String-typed variables in
+hot loops (tokenizer source string, parser token list), this generates
+O(n) memcpy per use. The tokenizer clones the source string ~3-5 times
+per token × ~25K tokens × ~50KB source = ~4GB of string copying for
+1,515 lines of input. Even in release mode, this takes >10 minutes
+(235s system time = kernel memcpy/mmap overhead).
 
-- Audit clone sites in `daglang-emit/src/` for unnecessary copies
-- Replace defensive clones with borrows where ownership isn't needed
-- Focus on hot paths: `lower_rust.rs`, `fn_codegen.rs`, `render_rust.rs`
+**Root cause:** `compile_ident` has `use_counts` but no type information
+at the decision point. It can't distinguish "this String is read-only"
+from "this struct needs full ownership."
+
+**Fix approach:**
+
+The `CompileContext` already has `param_types: HashMap<String, String>`
+and `ir_scope: HashMap<String, IrType>`. The fix:
+
+1. In `compile_ident`, when `use_count > 1`:
+   - Look up the variable's type in `ir_scope` or `param_types`
+   - If the type is `String` (or `Named("String")`): emit
+     `Expr::Ref(Box::new(Expr::Var(name)))` instead of
+     `Expr::MethodCall { method: "clone" }`
+   - The v2_rt functions already accept `impl AsRef<str>`, so `&String`
+     works without callee changes
+
+2. For the TCO loop pattern, the rebind at loop top already moves
+   (R5 fix). The borrows happen within the loop body, referencing the
+   moved local. This is safe because the local isn't mutated until
+   the tail-call reassignment at loop end.
+
+3. Extend to other read-only types if needed (Int, Bool are Copy so
+   irrelevant; structs need full clone for field access).
+
+**Files:**
+
+- `src/v1/07_emit/daglang-emit/src/fn_codegen.rs:1565-1581` — the
+  clone decision in `compile_ident`
+- `src/v1/07_emit/daglang-emit/src/fn_codegen.rs:97-151` — CompileContext
+  with `ir_scope` and `param_types`
 
 **Acceptance:**
 
-- [ ] clone count reduced by ≥50% in emit pipeline
-- [ ] no functional regressions
-- [ ] measurable improvement in emit-phase memory and time
+- [ ] String-typed multi-use variables emit `&variable` not `variable.clone()`
+- [ ] generated tokenizer does not clone source string per-token
+- [ ] `v2_crate_gist_resolve` passes in release mode in <60 seconds
+- [ ] all 92 existing tests pass
+- [ ] 235s of system time (kernel memcpy) drops to <10s
 
 ### R4: Interpreter value representation
 
@@ -565,10 +601,11 @@ as machine-readable annotations the cost analyzer consumes.
 
 - **Track S** must be complete enough for the v2 compiler to be a
   trustworthy target again.
-- **Track R** (at least R6, then R2) must land before A1+. R6 (string
-  intrinsics) is the immediate blocker — tokenization is O(n²) due to
-  `char_at` scanning and source cloning. R2 (Node boxing) addresses the
-  secondary constant-factor issue.
+- **Track R** (R3 at minimum) must land before A1+. R5 (TCO clone leak)
+  and R6 (string intrinsics) are done — they eliminated the O(n²).
+  R3 (borrow-based codegen for strings) eliminates the O(n×t) clone
+  traffic that still makes gist resolve take >10min even in release.
+  R2 (Node boxing) is a further constant-factor improvement.
 
 ### A1: Gist compilation
 
