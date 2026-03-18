@@ -201,6 +201,7 @@ R1: Audit + catalog
 R2: Box rare fields
 R3: Clone reduction
 R4: Interpreter value repr
+R5: TCO clone leak
 ```
 
 **Dependencies:**
@@ -457,6 +458,37 @@ performance when the v2 compiler runs interpreted.
 - [ ] `list_push` is O(1) amortized in the interpreter, or
 - [ ] quadratic behavior is explicitly accepted and documented for
       bootstrap-only paths
+
+### R5: TCO clone leak in generated Rust code
+
+The Rust emitter's TCO (tail call optimization) pattern emits
+`let state = __tco_p_state.clone()` at the top of each loop iteration.
+This bumps the `Rc` refcount on list fields, so when `list_push` calls
+`Rc::try_unwrap`, refcount is >1 and it falls back to cloning the
+entire `Vec`. Every token emission copies all prior tokens — O(n²)
+even in the compiled native code.
+
+This was discovered in the 2026-03-18 Track A investigation: the
+compiled v2 crate's `tokenize_loop` grows at ~300MB/s and OOMs at
+~10GB when processing 1,515 lines of gist sources.
+
+**Root cause:** The emitter should `move` the TCO state instead of
+cloning it, ensuring `Rc::try_unwrap` succeeds in-place.
+
+**Scope:**
+
+- Fix the TCO loop pattern in `05_emit_rust.dag` (and potentially
+  `05_emit_python.dag`, `05_emit_go.dag`) to consume the state
+  rather than cloning it
+- Verify `Rc::try_unwrap` succeeds (refcount == 1) in the hot path
+- Re-run gist compile tests
+
+**Acceptance:**
+
+- [ ] TCO loops do not clone `Rc`-wrapped state at iteration start
+- [ ] `list_push` in TCO functions is O(1) amortized (no fallback clone)
+- [ ] tokenizer processes 1,515 lines in <1s (currently OOMs)
+- [ ] gist pipeline completes within reasonable time/memory bounds
 
 ---
 
