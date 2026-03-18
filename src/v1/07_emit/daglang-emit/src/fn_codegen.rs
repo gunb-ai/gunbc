@@ -1267,10 +1267,11 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                         .values()
                         .any(|fields| fields.contains_key(field.as_str()));
                     // When the field name is ambiguous (exists on both enum and struct),
-                    // use method call only for chained field access (x.typed.resolved_type)
-                    // since that pattern is characteristic of typed tree traversal.
+                    // use method call for chained field access where the intermediate
+                    // field returns a TypedExpr (e.g., x.typed.resolved_type,
+                    // ta.value.resolved_type for TypedNamedArg).
                     let use_accessor = !is_struct_field
-                        || (matches!(receiver.as_ref(), ast::Expr::FieldAccess(_, inner) if inner == "typed"));
+                        || (matches!(receiver.as_ref(), ast::Expr::FieldAccess(_, inner) if inner == "typed" || inner == "value"));
                     if use_accessor {
                         return code_ir::Expr::MethodCall {
                             receiver: Box::new(compile_expr(receiver, ctx, counter)),

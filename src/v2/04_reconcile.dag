@@ -839,9 +839,20 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node {
     leaf_node(name: "String")
   } else if method == "any" || method == "contains" || method == "all" {
     leaf_node(name: "Bool")
+  } else if method == "split" || method == "chars" {
+    container_node(kind_name: "List", element: leaf_node(name: "String"))
+  } else if method == "flat_map" || method == "reverse" || method == "skip" || method == "concat" {
+    receiver_type
   } else {
     leaf_node(name: "Unit")
   }
+}
+
+fn is_builtin_collection_func(name: String) -> Bool {
+  name == "split" || name == "join" || name == "count" || name == "last" ||
+  name == "map" || name == "filter" || name == "enumerate" || name == "any" ||
+  name == "fold" || name == "flat_map" || name == "reverse" || name == "skip" ||
+  name == "concat" || name == "first"
 }
 
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
@@ -1095,19 +1106,28 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
-      let resolved_type = if sig == none {
+      let builtin = is_builtin_collection_func(name: func_name)
+      let resolved_type = if sig != none {
+        match sig {
+          Some { value: s } => s.return_type
+          None => leaf_node(name: func_name)
+        }
+      } else if builtin {
+        let first_arg_type = match typed_args |> first {
+          Some { value: ta } => ta.value.resolved_type
+          None => leaf_node(name: "Unit")
+        }
+        infer_method_call_type_node(receiver_type: first_arg_type, method: func_name)
+      } else {
         let type_match = lookup_type(env: scope.type_env, name: func_name)
         match type_match {
           Some { value: tn } => tn
           None => leaf_node(name: func_name)
         }
-      } else {
-        match sig {
-          Some { value: s } => s.return_type
-          None => leaf_node(name: func_name)
-        }
       }
-      let call_diags = if sig == none {
+      let call_diags = if sig != none || builtin {
+        []
+      } else {
         let type_match = lookup_type(env: scope.type_env, name: func_name)
         match type_match {
           Some { value: _ } => []
@@ -1117,8 +1137,6 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             module_name: scope.module_name
           )]
         }
-      } else {
-        []
       }
       let texpr = TypedCall { func: func_name, args: typed_args, resolved_type: resolved_type, span: span }
       InferResult {
@@ -1821,6 +1839,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         type_annotation: none, config: none
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
+    } else if item.properties |> count > 0 && item.connective == none && item.transport == none && item.return_type == none && item.params |> count == 0 {
+      // Resource declaration: has properties (kind, mode) but no children/connective.
+      // Register as a nominal type so it can be referenced in `uses` clauses.
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: leaf_node(name: item.name) })
     } else {
       acc
     }
@@ -2542,7 +2564,16 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let resolved_env = EnvResolveResult { env: env, diagnostics: [] }
 
   // Build func_env from the resolved items (return types resolved by now).
-  let func_env = build_func_env(items: resolved_items)
+  // Merge parent func_env signatures so cross-module functions are in scope.
+  let local_func_env = build_func_env(items: resolved_items)
+  let parent_func_sigs = fold(resolved.resolved_imports, init: empty_map(),
+    f: (acc, imp) =>
+      match map_get(parent_index, imp.module_path) {
+        Some { value: typed_parent } => map_merge(acc, typed_parent.func_env.signatures)
+        None => acc
+      }
+  )
+  let func_env = FuncEnv { signatures: map_merge(parent_func_sigs, local_func_env.signatures) }
 
   // Build service registry: map service paths to OpEntry lists from children.
   let local_svc_registry = fold(resolved_items, init: empty_map(), f: (acc, item) =>
