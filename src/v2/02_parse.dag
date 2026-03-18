@@ -661,7 +661,7 @@ fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
     Some { value: KwExtern }   => parse_extern_decl(tokens: tokens, state: s)
     Some { value: KwPattern }  => parse_func_def(tokens: tokens, state: s)
     Some { value: KwInterface } => parse_func_def(tokens: tokens, state: s)
-    _ => ItemResult { item: Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(tokens: tokens, state: s)) } }
+    _ => ItemResult { item: Node { name: "<unknown>", span: current_span(tokens: tokens, state: s), children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(tokens: tokens, state: s)) } }
   }
 }
 
@@ -739,10 +739,11 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let e = eat(tokens: tokens, state: s, tag: "LBrace")
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
-    if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+    let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
+    if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
-    if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
+    if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f))
     let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
@@ -763,7 +764,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
 
 // After `type Name =`, determine if this is a sum type or alias.
 fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: String, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
+  let dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
   // Check if the first token is an identifier (potential variant name)
   // followed by LBrace or Pipe (sum type indicators).
   // If it's an identifier, try to parse as a sum type.
@@ -956,13 +957,13 @@ fn parse_single_named_int(tokens: List<Token>, state: ParserState) -> NamedIntRe
   if has_err(err: r.err) { return NamedIntResult { arg_name: "", arg_value: 0, state: r.state, err: r.err } }
   let name = r.name
   let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
-  if has_err(err: r2.err) { return NamedIntResult { arg_name: "", arg_value: 0, state: r2.state, err: r2.err } }
+  if has_err(err: r2.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r2.state, err: r2.err } }
   let r3 = parse_expr(tokens: tokens, state: r2.state)
-  if has_err(err: r3.err) { return NamedIntResult { arg_name: "", arg_value: 0, state: r3.state, err: r3.err } }
+  if has_err(err: r3.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: r3.err } }
   match r3.expr {
     Literal { value: LitInt { value: n } } =>
       NamedIntResult { arg_name: name, arg_value: n, state: r3.state, err: none }
-    _ => NamedIntResult { arg_name: "", arg_value: 0, state: r3.state, err: Some { value: parse_error(msg: concat("range() argument `", name, "` requires an integer literal"), span: current_span(tokens: tokens, state: r3.state)) } }
+    _ => NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: Some { value: parse_error(msg: concat("range() argument `", name, "` requires an integer literal"), span: current_span(tokens: tokens, state: r3.state)) } }
   }
 }
 
@@ -1019,11 +1020,12 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
     // Inline record type: { fields }
     Some { value: LBrace } => {
       let adv = advance(tokens: tokens, state: s)
+      let inline_start = current_span(tokens: tokens, state: s)
       let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: adv.state))
-      if has_err(err: r.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: SourceSpan { start: 0, end: 0 }), state: r.state, err: r.err } }
+      if has_err(err: r.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: inline_start), state: r.state, err: r.err } }
       let s2 = skip_newlines(tokens: tokens, state: r.state)
       let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
-      if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: SourceSpan { start: 0, end: 0 }), state: r2.state, err: r2.err } }
+      if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: inline_start), state: r2.state, err: r2.err } }
       let span = current_span(tokens: tokens, state: s)
       let te = Node { name: "", span: span, children: map(r.fields, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
       TypeResult { type_expr: te, state: r2.state, err: none }
@@ -1034,12 +1036,12 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       let span = current_span(tokens: tokens, state: s)
       finish_type_expr_from_name(tokens: tokens, state: adv.state, type_name: n, start_span: span)
     }
-    _ => TypeResult { type_expr: leaf_type_node(name: "", span: SourceSpan { start: 0, end: 0 }), state: s, err: Some { value: parse_error(msg: "expected type expression", span: current_span(tokens: tokens, state: s)) } }
+    _ => TypeResult { type_expr: leaf_type_node(name: "", span: current_span(tokens: tokens, state: s)), state: s, err: Some { value: parse_error(msg: "expected type expression", span: current_span(tokens: tokens, state: s)) } }
   }
 }
 
 fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name: String, start_span: SourceSpan) -> TypeResult {
-  let dummy_te = leaf_type_node(name: "", span: SourceSpan { start: 0, end: 0 })
+  let dummy_te = leaf_type_node(name: type_name, span: start_span)
   // Check for generic: Name<T> or Map<K,V>
   let e = eat(tokens: tokens, state: state, tag: "Lt")
   if e.consumed {
@@ -1192,21 +1194,22 @@ fn parse_fn_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
 
   let r = parse_params(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let params = r.params
   let s = r.state
 
   // Optional return type: -> Type
   let ret = parse_optional_return_type(tokens: tokens, state: s)
-  if has_err(err: ret.err) { return ItemResult { item: dummy, state: ret.state, err: ret.err } }
+  if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
   let return_type = ret.return_type
   let s = ret.state
 
   // Body: { exprs }
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: s))
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
   let item = Node {
@@ -1238,25 +1241,26 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
 
   let r = parse_params(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let params = r.params
   let s = r.state
 
   let ret = parse_optional_return_type(tokens: tokens, state: s)
-  if has_err(err: ret.err) { return ItemResult { item: dummy, state: ret.state, err: ret.err } }
+  if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
   let return_type = ret.return_type
   let s = ret.state
 
   // Optional uses clause
   let uses_r = parse_uses_clause(tokens: tokens, state: skip_newlines(tokens: tokens, state: s))
-  if has_err(err: uses_r.err) { return ItemResult { item: dummy, state: uses_r.state, err: uses_r.err } }
+  if has_err(err: uses_r.err) { return ItemResult { item: named_dummy, state: uses_r.state, err: uses_r.err } }
   let uses = uses_r.uses
   let s = uses_r.state
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: s))
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
   let item = Node {
@@ -1341,18 +1345,19 @@ fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = parse_dotted_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
 
   let r = expect(tokens: tokens, state: r.state, tag: "LBrace")
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
   // Parse service body: config, transport, operations
   let r = parse_service_body(tokens: tokens, state: s)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let s = skip_newlines(tokens: tokens, state: r.state)
   let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
-  if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
+  if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
 
   // Build child Nodes from operations — dissolve PortContract into properties + return_type
   let op_children = r.operations |> map(op =>
@@ -2119,15 +2124,16 @@ fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
 
   let r = expect(tokens: tokens, state: r.state, tag: "LBrace")
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r = parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), properties: [], capabilities: [])
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBrace")
-  if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
+  if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
 
   // Build child Nodes from capabilities — dissolve CapabilityContract into return_type
   let cap_children = r.capabilities |> map(cap =>
@@ -2325,19 +2331,20 @@ fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
 
   let r = expect(tokens: tokens, state: r.state, tag: "Colon")
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r = parse_type_expr(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let te = r.type_expr
 
   let r = expect(tokens: tokens, state: r.state, tag: "Eq")
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r = parse_expr(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let item = Node {
     name: name, span: start_span, children: [], params: [],
@@ -2366,10 +2373,11 @@ fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
       let r2 = expect_ident(tokens: tokens, state: adv.state)
       if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
       let name = r2.name
+      let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
       let r3 = parse_params(tokens: tokens, state: r2.state)
-      if has_err(err: r3.err) { return ItemResult { item: dummy, state: r3.state, err: r3.err } }
+      if has_err(err: r3.err) { return ItemResult { item: named_dummy, state: r3.state, err: r3.err } }
       let ret = parse_optional_return_type(tokens: tokens, state: r3.state)
-      if has_err(err: ret.err) { return ItemResult { item: dummy, state: ret.state, err: ret.err } }
+      if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
       let resolved_ret = if ret.return_type != none { ret.return_type.value } else { leaf_type_node(name: "Unit", span: start_span) }
       let item = Node {
         name: name, span: start_span, children: [], params: r3.params,
@@ -2384,10 +2392,11 @@ fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
       let r2 = expect_ident(tokens: tokens, state: adv.state)
       if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
       let name = r2.name
+      let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
       let r3 = parse_params(tokens: tokens, state: r2.state)
-      if has_err(err: r3.err) { return ItemResult { item: dummy, state: r3.state, err: r3.err } }
+      if has_err(err: r3.err) { return ItemResult { item: named_dummy, state: r3.state, err: r3.err } }
       let ret = parse_optional_return_type(tokens: tokens, state: r3.state)
-      if has_err(err: ret.err) { return ItemResult { item: dummy, state: ret.state, err: ret.err } }
+      if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
       let resolved_ret = if ret.return_type != none { ret.return_type.value } else { leaf_type_node(name: "Unit", span: start_span) }
       let item = Node {
         name: name, span: start_span, children: [], params: r3.params,
