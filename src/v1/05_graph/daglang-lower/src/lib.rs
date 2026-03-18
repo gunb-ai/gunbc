@@ -456,14 +456,37 @@ pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
     op.obligation_category()
 }
 
-/// Map a lowered node's obligation category (+ port types for tool distinction)
-/// to a [`NodeKind`].
+fn semantic_carrier_kind_for_port(
+    type_registry: &gunbc_ir::TypeRegistry,
+    port: &Port,
+) -> gunbc_ir::SemanticCarrierKind {
+    type_registry.semantic_carrier_kind(&port.type_id)
+}
+
+fn is_tool_handle_port(type_registry: &gunbc_ir::TypeRegistry, port: &Port) -> bool {
+    semantic_carrier_kind_for_port(type_registry, port) == gunbc_ir::SemanticCarrierKind::ToolHandle
+}
+
+fn is_resource_handle_output(type_registry: &gunbc_ir::TypeRegistry, port: &Port) -> bool {
+    matches!(
+        semantic_carrier_kind_for_port(type_registry, port),
+        gunbc_ir::SemanticCarrierKind::FilesystemHandle
+            | gunbc_ir::SemanticCarrierKind::NetworkHandle
+            | gunbc_ir::SemanticCarrierKind::ToolHandle
+    )
+}
+
+/// Map a lowered node's obligation category (+ registry-backed port types) to
+/// a [`NodeKind`].
 ///
 /// `ResourceProvide` nodes that emit `ToolHandle` become `ToolEnvironment`;
 /// other `ResourceProvide` become `ResourceEnvironment`. Nodes with a
 /// `ToolHandle` input port become `ToolConsumer` regardless of their
 /// obligation category.
-pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
+pub fn obligation_to_node_kind(
+    node: &Node<LoweredOp>,
+    type_registry: &gunbc_ir::TypeRegistry,
+) -> NodeKind {
     let op = match &node.body {
         gunbc_ir::NodeBody::Opaque(op) => op,
         gunbc_ir::NodeBody::SubDag(..) => return NodeKind::Pure,
@@ -485,8 +508,14 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 
     // ToolConsumer: any node that consumes a ToolHandle input, unless it's
     // already a transport executor.
-    let has_tool_input = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-    let has_tool_output = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+    let has_tool_input = node
+        .inputs
+        .iter()
+        .any(|port| is_tool_handle_port(type_registry, port));
+    let has_tool_output = node
+        .outputs
+        .iter()
+        .any(|port| is_tool_handle_port(type_registry, port));
 
     match cat {
         ObligationCategory::ServiceTransportPrepare => NodeKind::TransportPrepare,
@@ -514,9 +543,9 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 
 /// Walk all nodes in a lowered DAG (recursively into subdags) and set
 /// `node.kind` from `obligation_to_node_kind`.
-pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
+pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>, type_registry: &gunbc_ir::TypeRegistry) {
     for node in &mut dag.nodes {
-        node.kind = obligation_to_node_kind(node);
+        node.kind = obligation_to_node_kind(node, type_registry);
         // Stamp transport class from ServiceCallMetadata so consumers can
         // read it directly from the Node without Any-downcasting LoweredOp.
         // S45: response_provider is derived from the spec's single-authority
@@ -536,7 +565,7 @@ pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
             }
         }
         if let gunbc_ir::NodeBody::SubDag(ref mut inner, _) = node.body {
-            stamp_node_kinds(inner);
+            stamp_node_kinds(inner, type_registry);
         }
     }
     // C22: Stamp static fingerprints on transport execute nodes after all
@@ -2493,6 +2522,7 @@ fn lower_typed_project_impl(
     type_registry: Option<&gunbc_ir::TypeRegistry>,
     env_resolver: &dyn Fn(&str) -> Option<String>,
 ) -> Result<LowerOutput, LowerError> {
+    let type_registry = type_registry.unwrap_or_else(|| project.dsl_type_registry());
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
     let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
@@ -2786,7 +2816,7 @@ fn lower_typed_project_impl(
     wire_param_source_inputs(&mut builder);
 
     let mut dag = builder.into_dag();
-    stamp_node_kinds(&mut dag);
+    stamp_node_kinds(&mut dag, type_registry);
     validate_callable_output_wiring(&dag)?;
 
     // Validation (cardinality, port type IDs, structural invariants) is
@@ -2794,8 +2824,6 @@ fn lower_typed_project_impl(
     // That is the single validation authority — lowering produces the DAG,
     // verification gates it. Port type-id validation against a full registry
     // (including DSL-defined types) is deferred to S18.
-    let _ = type_registry;
-
     let output_paths = extract_output_paths(&dag);
     let inferred_entrypoints = infer_entrypoints(&dag);
     Ok(LowerOutput {
@@ -3543,8 +3571,8 @@ mod parity {
 ///
 /// # Classification rules (S14 — structural, not name-prefix)
 ///
-/// 1. **ResourceProvide**: any fn whose output type contains "Handle" or "Env"
-///    (structural indicator of resource provision).
+/// 1. **ResourceProvide**: any fn whose output type resolves to a handle
+///    semantic carrier in the registry.
 /// 2. **PureDataLoad**: fn with zero user-facing inputs and a single `String`
 ///    output (structural indicator of data loading / constant).
 /// 3. **PureRender**: fn with at least one user-facing input and a single
@@ -3555,16 +3583,16 @@ fn infer_fn_obligation(
     kind: CallableKind,
     user_param_count: usize,
     outputs: &[Port],
+    type_registry: &gunbc_ir::TypeRegistry,
 ) -> CallableObligation {
     if kind != CallableKind::Fn {
         return CallableObligation::None;
     }
 
-    // Rule 1: Output type contains "Handle" or "Env" → resource provider.
-    let has_handle_output = outputs.iter().any(|p| {
-        let ty = p.type_id.0.as_str();
-        ty.contains("Handle") || ty.contains("Env")
-    });
+    // Rule 1: handle-semantic outputs are resource providers.
+    let has_handle_output = outputs
+        .iter()
+        .any(|port| is_resource_handle_output(type_registry, port));
     if has_handle_output {
         return CallableObligation::ResourceProvide;
     }
@@ -3598,7 +3626,7 @@ fn lower_callable(
     is_interactive: bool,
     fn_body: Option<Box<LoweredFnBody>>,
     origin: NodeOrigin,
-    _type_registry: Option<&gunbc_ir::TypeRegistry>,
+    type_registry: &gunbc_ir::TypeRegistry,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
@@ -3632,7 +3660,13 @@ fn lower_callable(
         ));
     }
     inputs.push(Port::list(PortName::DEPS, "Any"));
-    let obligation = infer_fn_obligation(&callable.name, kind, callable.params.len(), &outputs);
+    let obligation = infer_fn_obligation(
+        &callable.name,
+        kind,
+        callable.params.len(),
+        &outputs,
+        type_registry,
+    );
     let primary_output = outputs
         .first()
         .map(|port| port.name.0.clone())

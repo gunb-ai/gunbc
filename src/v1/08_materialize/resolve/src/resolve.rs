@@ -2797,12 +2797,8 @@ mod tests {
                 },
             },
         ));
-        dag.edges.push(Edge::new(
-            "custom_data_node",
-            "config",
-            "compute",
-            "input",
-        ));
+        dag.edges
+            .push(Edge::new("custom_data_node", "config", "compute", "input"));
 
         let resolved =
             resolve_lowered_dag_with(&dag).expect("resolve should succeed with data-decl node");
