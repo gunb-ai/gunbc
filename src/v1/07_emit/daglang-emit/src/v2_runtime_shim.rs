@@ -54,26 +54,40 @@ pub fn concat<T: Concat>(a: T, b: T) -> T {
 // ---------------------------------------------------------------------------
 
 /// Extract the character at a given position as a single-char string.
+/// O(1) for ASCII (all .dag source); falls back to O(pos) for multi-byte UTF-8.
 pub fn char_at(s: impl AsRef<str>, pos: i64) -> String {
-    s.as_ref()
-        .chars()
-        .nth(pos as usize)
-        .map(|c| c.to_string())
-        .unwrap_or_default()
+    let bytes = s.as_ref().as_bytes();
+    let pos = pos as usize;
+    if pos < bytes.len() && bytes[pos] < 128 {
+        // ASCII fast path: O(1) indexed access
+        return String::from(bytes[pos] as char);
+    }
+    // Non-ASCII fallback
+    s.as_ref().chars().nth(pos).map(|c| c.to_string()).unwrap_or_default()
 }
 
 /// Return the number of characters in a string.
+/// O(1) for ASCII (byte length == char count); O(n) for multi-byte UTF-8.
 pub fn string_length(s: impl AsRef<str>) -> i64 {
-    s.as_ref().chars().count() as i64
+    let s = s.as_ref();
+    if s.is_ascii() {
+        s.len() as i64
+    } else {
+        s.chars().count() as i64
+    }
 }
 
 /// Extract a substring by character indices [start, end).
+/// O(end - start) for ASCII; O(start + len) for multi-byte UTF-8.
 pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {
-    s.as_ref()
-        .chars()
-        .skip(start as usize)
-        .take((end - start).max(0) as usize)
-        .collect()
+    let s = s.as_ref();
+    let start = start.max(0) as usize;
+    let end = end.max(0) as usize;
+    if s.is_ascii() && end <= s.len() {
+        // ASCII fast path: byte slicing is O(end - start)
+        return s[start..end.min(s.len())].to_string();
+    }
+    s.chars().skip(start).take((end - start).max(0)).collect()
 }
 
 /// Check whether a string contains a given substring.
@@ -143,56 +157,67 @@ pub fn str_eq(a: impl AsRef<str>, b: impl AsRef<str>) -> bool {
 
 /// Scan while a predicate holds, returning the end position.
 /// `pred` receives a single-character string and returns true to continue.
+/// O(k) where k = number of chars satisfying pred.
 pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(String) -> bool) -> i64 {
-    let chars: Vec<char> = s.as_ref().chars().collect();
+    let bytes = s.as_ref().as_bytes();
     let mut pos = start.max(0) as usize;
-    while pos < chars.len() && pred(chars[pos].to_string()) {
-        pos += 1;
+    if s.as_ref().is_ascii() {
+        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
+            pos += 1;
+        }
+    } else {
+        let chars: Vec<char> = s.as_ref().chars().collect();
+        while pos < chars.len() && pred(chars[pos].to_string()) {
+            pos += 1;
+        }
     }
     pos as i64
 }
 
 /// Skip horizontal whitespace (spaces and tabs), returning the new position.
+/// O(k) where k = whitespace run length.
 pub fn skip_horizontal_ws(s: impl AsRef<str>, start: i64) -> i64 {
-    let chars: Vec<char> = s.as_ref().chars().collect();
+    let bytes = s.as_ref().as_bytes();
     let mut pos = start.max(0) as usize;
-    while pos < chars.len() && (chars[pos] == ' ' || chars[pos] == '\t') {
+    while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
         pos += 1;
     }
     pos as i64
 }
 
 /// Scan to end of line, returning the position of the newline (or end of string).
+/// O(k) where k = distance to newline.
 pub fn scan_to_eol(s: impl AsRef<str>, start: i64) -> i64 {
-    let chars: Vec<char> = s.as_ref().chars().collect();
+    let bytes = s.as_ref().as_bytes();
     let start = start.max(0) as usize;
-    for (i, &ch) in chars.iter().enumerate().skip(start) {
-        if ch == '\n' {
+    for i in start..bytes.len() {
+        if bytes[i] == b'\n' {
             return i as i64;
         }
     }
-    chars.len() as i64
+    bytes.len() as i64
 }
 
 /// Scan to end of a string literal, handling escape sequences.
 /// Returns the position after the closing quote.
+/// O(k) where k = string literal length.
 pub fn scan_string_end(s: impl AsRef<str>, start: i64) -> i64 {
-    let chars: Vec<char> = s.as_ref().chars().collect();
+    let bytes = s.as_ref().as_bytes();
     let mut pos = start.max(0) as usize;
-    while pos < chars.len() {
-        if chars[pos] == '\\' {
-            if pos + 1 < chars.len() {
+    while pos < bytes.len() {
+        if bytes[pos] == b'\\' {
+            if pos + 1 < bytes.len() {
                 pos += 2;
             } else {
-                return chars.len() as i64;
+                return bytes.len() as i64;
             }
-        } else if chars[pos] == '"' {
+        } else if bytes[pos] == b'"' {
             return (pos + 1) as i64;
         } else {
             pos += 1;
         }
     }
-    chars.len() as i64
+    bytes.len() as i64
 }
 
 /// Return the Unicode code point of a character (given as a single-char string).
