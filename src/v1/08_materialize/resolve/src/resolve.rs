@@ -1332,8 +1332,10 @@ mod tests {
     use daglang_lower::{
         CallableKind, CallableObligation, PrimitiveLiteral, PrimitiveOpKind, TransportObligation,
     };
-    use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
-    use gunbc_ir::{Node, Port};
+    use gunbc_exec::{
+        execute_dag, BoundaryMocks, DryRunStrictness, ExecuteConfig, ExecutionMode, NodeRole,
+    };
+    use gunbc_ir::{Edge, Node, Port};
 
     fn callable_node(
         id: &str,
@@ -1473,6 +1475,56 @@ mod tests {
                 .was_intercepted,
             "transport execute node should be intercepted before any interpreter path"
         );
+    }
+
+    #[test]
+    fn resolve_and_execute_missing_required_primitive_input_fails_closed() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "left_src",
+            vec![],
+            vec![Port::new("out", "Int")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "left_src".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::Int(1),
+                },
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "binary",
+            vec![Port::new("left", "Int"), Port::new("right", "Int")],
+            vec![Port::new("result", "Int")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "binary".to_string(),
+                kind: PrimitiveOpKind::BinaryOp {
+                    op: daglang_lower::expr::LoweredBinOp::Add,
+                },
+            },
+        ));
+        dag.add_edge(Edge::new("left_src", "out", "binary", "left"));
+
+        let resolved = resolve_lowered_dag_with(&dag).expect("resolve lowered dag");
+        let err = execute_dag(
+            &resolved,
+            ExecuteConfig {
+                strictness: DryRunStrictness::Lenient,
+                ..Default::default()
+            },
+        )
+        .expect_err("missing primitive input should fail through the executor path");
+
+        assert_eq!(
+            err.message,
+            "BinaryOp: missing required input port `right`; available inputs: [left]"
+        );
+        let node_trace = err
+            .node_trace()
+            .expect("executor path should annotate primitive failures with node trace");
+        assert_eq!(node_trace.node_id, "binary");
+        assert_eq!(node_trace.role, NodeRole::Pure);
     }
 
     #[test]
