@@ -2607,10 +2607,11 @@ service SharedService {
         (
             "sample/main.dag",
             r#"module sample.main
-import vendor.alpha { SharedService }
+import vendor.alpha
+import vendor.beta
 
 func run(path: String) -> { body: String } {
-  let response = SharedService.read(path: path)
+  let response = vendor.alpha.SharedService.read(path: path)
   return { body: response.body }
 }"#,
         ),
@@ -2621,5 +2622,5 @@ func run(path: String) -> { body: String } {
             allow_unresolved_imports: false,
         },
     )
-    .expect("explicit binding should disambiguate same-name services");
+    .expect("module-qualified call should disambiguate same-name services from both imports");
 }

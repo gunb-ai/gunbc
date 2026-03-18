@@ -3585,3 +3585,53 @@ fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
+
+#[test]
+fn check_disambiguates_same_name_services_via_module_qualified_call() {
+    let root = unique_temp_root("disambiguate_same_name_services");
+    let write_source = |relative: &str, content: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
+            .expect("failed to create fixture parent directory");
+        std::fs::write(path, content).expect("failed to write fixture source");
+    };
+
+    write_source(
+        "vendor/alpha.dag",
+        r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}
+"#,
+    );
+    write_source(
+        "vendor/beta.dag",
+        r#"module vendor.beta
+service SharedService {
+  operation read(path: String) -> { body: String }
+}
+"#,
+    );
+    write_source(
+        "sample/main.dag",
+        r#"module sample.main
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = vendor.alpha.SharedService.read(path: path)
+  return { body: response.body }
+}
+"#,
+    );
+
+    let context = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("sample/main.dag")),
+    };
+
+    check_from_context(&context)
+        .expect("module-qualified call should disambiguate same-name services at compile level");
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
