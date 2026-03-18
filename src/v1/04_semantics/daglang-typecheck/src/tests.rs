@@ -2627,6 +2627,11 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn selective_import_disambiguates_same_name_services() {
+    // Both modules export SharedService with incompatible signatures.
+    // sample.main imports vendor.alpha { SharedService } (selective) and
+    // vendor.beta { BetaOnly } (selective, excluding SharedService).
+    // If the selective-import filter is broken and beta's SharedService leaks,
+    // the registry collision makes SharedService.read ambiguous and the test fails.
     let graph = module_graph_from_sources(&[
         (
             "vendor/alpha.dag",
@@ -2639,13 +2644,17 @@ service SharedService {
             "vendor/beta.dag",
             r#"module vendor.beta
 service SharedService {
-  operation read(path: String) -> { body: String }
+  operation read(query: String) -> { content: String }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
 }"#,
         ),
         (
             "sample/main.dag",
             r#"module sample.main
 import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
 
 func run(path: String) -> { body: String } {
   let response = SharedService.read(path: path)
