@@ -565,9 +565,9 @@ fn parse_imports_acc(tokens: List<Token>, state: ParserState, acc: List<Import>)
   if check(tokens: tokens, state: s, tag: "KwImport") {
     let r = parse_import(tokens: tokens, state: s)
     if has_err(err: r.err) { return ImportsResult { imports: [], state: r.state, err: r.err } }
-    parse_imports_acc(tokens: tokens, state: r.state, acc: concat([r.import], acc))
+    parse_imports_acc(tokens: tokens, state: r.state, acc: list_push(acc, r.import))
   } else {
-    ImportsResult { imports: reverse(acc), state: s, err: none }
+    ImportsResult { imports: acc, state: s, err: none }
   }
 }
 
@@ -581,11 +581,11 @@ fn parse_items(tokens: List<Token>, state: ParserState) -> ItemsResult {
 fn parse_items_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> ItemsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if at_end(tokens: tokens, state: s) || check(tokens: tokens, state: s, tag: "Eof") {
-    ItemsResult { items: reverse(acc), state: s, err: none }
+    ItemsResult { items: acc, state: s, err: none }
   } else {
     let r = parse_item(tokens: tokens, state: s)
     if has_err(err: r.err) { return ItemsResult { items: acc, state: r.state, err: r.err } }
-    parse_items_acc(tokens: tokens, state: r.state, acc: concat([r.item], acc))
+    parse_items_acc(tokens: tokens, state: r.state, acc: list_push(acc, r.item))
   }
 }
 
@@ -632,7 +632,7 @@ fn parse_import_names(tokens: List<Token>, state: ParserState) -> NamesResult {
 fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<String>) -> NamesResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") {
-    NamesResult { names: reverse(acc), state: s, err: none }
+    NamesResult { names: acc, state: s, err: none }
   } else {
     let r = parse_dotted_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return NamesResult { names: [], state: r.state, err: r.err } }
@@ -640,7 +640,7 @@ fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Str
     let s = skip_newlines(tokens: tokens, state: r.state)
     let e = eat(tokens: tokens, state: s, tag: "Comma")
     let s = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { s })
-    parse_import_names_acc(tokens: tokens, state: s, acc: concat([name], acc))
+    parse_import_names_acc(tokens: tokens, state: s, acc: list_push(acc, name))
   }
 }
 
@@ -829,12 +829,12 @@ fn parse_predicates(tokens: List<Token>, state: ParserState) -> PredsResult {
 fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> PredsResult {
   let r = parse_single_predicate(tokens: tokens, state: state)
   if has_err(err: r.err) { return PredsResult { predicates: [], state: r.state, err: r.err } }
-  let acc = concat([r.predicate], acc)
+  let acc = list_push(acc, r.predicate)
   let e = eat(tokens: tokens, state: r.state, tag: "Comma")
   if e.consumed {
     parse_predicates_acc(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state), acc: acc)
   } else {
-    PredsResult { predicates: reverse(acc), state: r.state, err: none }
+    PredsResult { predicates: acc, state: r.state, err: none }
   }
 }
 
@@ -998,9 +998,9 @@ fn parse_more_variants_acc(tokens: List<Token>, state: ParserState, acc: List<Va
     if has_err(err: r.err) { return VariantsResult { variants: [], state: r.state, err: r.err } }
     let r2 = parse_variant_fields(tokens: tokens, state: r.state, vname: r.name)
     if has_err(err: r2.err) { return VariantsResult { variants: [], state: r2.state, err: r2.err } }
-    parse_more_variants_acc(tokens: tokens, state: r2.state, acc: concat([r2.variant], acc))
+    parse_more_variants_acc(tokens: tokens, state: r2.state, acc: list_push(acc, r2.variant))
   } else {
-    VariantsResult { variants: reverse(acc), state: s, err: none }
+    VariantsResult { variants: acc, state: s, err: none }
   }
 }
 
@@ -1100,7 +1100,7 @@ fn parse_field_list(tokens: List<Token>, state: ParserState) -> FieldsResult {
 fn parse_field_list_acc(tokens: List<Token>, state: ParserState, acc: List<Field>) -> FieldsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || check(tokens: tokens, state: s, tag: "RParen") || at_end(tokens: tokens, state: s) {
-    FieldsResult { fields: reverse(acc), state: s, err: none }
+    FieldsResult { fields: acc, state: s, err: none }
   } else {
     // Accept identifiers OR keywords as field names (keywords like "type",
     // "resource", "capability" are valid field names in record definitions).
@@ -1110,9 +1110,9 @@ fn parse_field_list_acc(tokens: List<Token>, state: ParserState, acc: List<Field
       let s2 = r.state
       let e = eat(tokens: tokens, state: s2, tag: "Comma")
       let s3 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { s2 })
-      parse_field_list_acc(tokens: tokens, state: s3, acc: concat([r.field], acc))
+      parse_field_list_acc(tokens: tokens, state: s3, acc: list_push(acc, r.field))
     } else {
-      FieldsResult { fields: reverse(acc), state: s, err: none }
+      FieldsResult { fields: acc, state: s, err: none }
     }
   }
 }
@@ -1294,14 +1294,14 @@ fn parse_uses_list(tokens: List<Token>, state: ParserState) -> UsesResult {
 fn parse_uses_list_acc(tokens: List<Token>, state: ParserState, acc: List<ResourceUse>) -> UsesResult {
   let r = parse_uses_entry(tokens: tokens, state: state)
   if has_err(err: r.err) { return UsesResult { uses: [], state: r.state, err: r.err } }
-  let acc = concat([r.resource_use], acc)
+  let acc = list_push(acc, r.resource_use)
   let s = r.state
 
   let e = eat(tokens: tokens, state: s, tag: "Comma")
   if e.consumed {
     parse_uses_list_acc(tokens: tokens, state: e.state, acc: acc)
   } else {
-    UsesResult { uses: reverse(acc), state: s, err: none }
+    UsesResult { uses: acc, state: s, err: none }
   }
 }
 
@@ -1398,7 +1398,7 @@ fn parse_service_body(tokens: List<Token>, state: ParserState) -> ServiceBodyRes
 fn parse_service_entries(tokens: List<Token>, state: ParserState, config: ServiceConfig?, transport: TransportBinding, operations: List<OperationDef>) -> ServiceBodyResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    ServiceBodyResult { config: config, transport: transport, operations: reverse(operations), state: s, err: none }
+    ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: none }
   } else {
     let k = peek_kind(tokens: tokens, state: s)
     match k {
@@ -1422,7 +1422,7 @@ fn parse_service_entries(tokens: List<Token>, state: ParserState, config: Servic
       Some { value: KwOperation } => {
         let r = parse_operation_def(tokens: tokens, state: s)
         if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
-        parse_service_entries(tokens: tokens, state: r.state, config: config, transport: transport, operations: concat([r.operation], operations))
+        parse_service_entries(tokens: tokens, state: r.state, config: config, transport: transport, operations: list_push(operations, r.operation))
       }
       _ => ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
     }
@@ -1737,17 +1737,17 @@ fn parse_op_body_entries(
       Some { value: KwIdempotent } => {
         let adv = advance(tokens: tokens, state: s)
         let prop = modifier_to_prop(name: "idempotent", span: current_span(tokens: tokens, state: s))
-        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: concat([prop], modifier_props), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwReadonly } => {
         let adv = advance(tokens: tokens, state: s)
         let prop = modifier_to_prop(name: "readonly", span: current_span(tokens: tokens, state: s))
-        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: concat([prop], modifier_props), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwHermetic } => {
         let adv = advance(tokens: tokens, state: s)
         let prop = modifier_to_prop(name: "hermetic", span: current_span(tokens: tokens, state: s))
-        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: concat([prop], modifier_props), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: Ident { name: id } } => {
         if id == "transport" {
@@ -1827,7 +1827,7 @@ fn int_to_string(value: Int) -> String {
   if value == 0 { "0" }
   else {
     let digits = int_to_string_acc(value: value, acc: [])
-    join(reverse(digits), separator: "")
+    join(digits, separator: "")
   }
 }
 
@@ -1841,7 +1841,7 @@ fn int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
       Some { value: p } => p.second
       None => "?"
     }
-    int_to_string_acc(value: rest, acc: concat([ch], acc))
+    int_to_string_acc(value: rest, acc: list_push(acc, ch))
   }
 }
 
@@ -1906,7 +1906,7 @@ fn parse_exit_entries(tokens: List<Token>, state: ParserState) -> ExitEntriesRes
 fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> ExitEntriesResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    ExitEntriesResult { entries: reverse(acc), state: s, err: none }
+    ExitEntriesResult { entries: acc, state: s, err: none }
   } else {
     let r = parse_status_pattern(tokens: tokens, state: s)
     if has_err(err: r.err) { return ExitEntriesResult { entries: [], state: r.state, err: r.err } }
@@ -1931,7 +1931,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Fie
     let entry = FieldInit { name: prop_name, value: Var { name: type_name, span: r3.type_expr.span } }
     let e = eat(tokens: tokens, state: desc_r.state, tag: "Comma")
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
-    parse_exit_entries_acc(tokens: tokens, state: s2, acc: concat([entry], acc))
+    parse_exit_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
   }
 }
 
@@ -1944,17 +1944,17 @@ fn parse_operation_modifiers_acc(tokens: List<Token>, state: ParserState, acc: L
   match k {
     Some { value: KwIdempotent } => {
       let adv = advance(tokens: tokens, state: state)
-      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: concat([Idempotent], acc))
+      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Idempotent))
     }
     Some { value: KwReadonly } => {
       let adv = advance(tokens: tokens, state: state)
-      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: concat([Readonly], acc))
+      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Readonly))
     }
     Some { value: KwHermetic } => {
       let adv = advance(tokens: tokens, state: state)
-      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: concat([Hermetic], acc))
+      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Hermetic))
     }
-    _ => ModsResult { modifiers: reverse(acc), state: state, err: none }
+    _ => ModsResult { modifiers: acc, state: state, err: none }
   }
 }
 
@@ -2037,7 +2037,7 @@ fn parse_response_entries(tokens: List<Token>, state: ParserState) -> RespEntrie
 fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> RespEntriesResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    RespEntriesResult { entries: reverse(acc), state: s, err: none }
+    RespEntriesResult { entries: acc, state: s, err: none }
   } else {
     let r = parse_status_pattern(tokens: tokens, state: s)
     if has_err(err: r.err) { return RespEntriesResult { entries: [], state: r.state, err: r.err } }
@@ -2053,7 +2053,7 @@ fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List
     let entry = FieldInit { name: prop_name, value: Var { name: type_name, span: r3.type_expr.span } }
     let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r3.state })
-    parse_response_entries_acc(tokens: tokens, state: s2, acc: concat([entry], acc))
+    parse_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
   }
 }
 
@@ -2082,7 +2082,7 @@ fn parse_mock_response_entries(tokens: List<Token>, state: ParserState) -> MockE
 fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> MockEntriesResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    MockEntriesResult { entries: reverse(acc), state: s, err: none }
+    MockEntriesResult { entries: acc, state: s, err: none }
   } else {
     let r = parse_status_pattern(tokens: tokens, state: s)
     if has_err(err: r.err) { return MockEntriesResult { entries: [], state: r.state, err: r.err } }
@@ -2107,7 +2107,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
     let entry = FieldInit { name: prop_name, value: body }
     let e = eat(tokens: tokens, state: desc_r.state, tag: "Comma")
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
-    parse_mock_response_entries_acc(tokens: tokens, state: s2, acc: concat([entry], acc))
+    parse_mock_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
   }
 }
 
@@ -2164,14 +2164,14 @@ fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
 fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: List<FieldInit>, capabilities: List<CapabilityDef>) -> ResPropResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    ResPropResult { properties: reverse(properties), capabilities: reverse(capabilities), state: s, err: none }
+    ResPropResult { properties: properties, capabilities: capabilities, state: s, err: none }
   } else {
     let k = peek_kind(tokens: tokens, state: s)
     match k {
       Some { value: KwCapability } => {
         let r = parse_capability(tokens: tokens, state: s)
         if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-        parse_resource_entries(tokens: tokens, state: r.state, properties: properties, capabilities: concat([r.capability], capabilities))
+        parse_resource_entries(tokens: tokens, state: r.state, properties: properties, capabilities: list_push(capabilities, r.capability))
       }
       Some { value: KwAcquire } => {
         let adv = advance(tokens: tokens, state: s)
@@ -2201,7 +2201,7 @@ fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: L
           let r3 = parse_expr(tokens: tokens, state: r2.state)
           if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
           let fi = FieldInit { name: fname, value: r3.expr }
-          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: concat([fi], properties), capabilities: capabilities)
+          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: list_push(properties, fi), capabilities: capabilities)
         } else {
           ResPropResult { properties: properties, capabilities: capabilities, state: s, err: Some { value: parse_error(msg: "unexpected token in resource block", span: current_span(tokens: tokens, state: s)) } }
         }
@@ -2439,7 +2439,7 @@ fn parse_param_list(tokens: List<Token>, state: ParserState) -> ParamsResult {
 fn parse_param_list_acc(tokens: List<Token>, state: ParserState, acc: List<Param>) -> ParamsResult {
   let r = parse_param(tokens: tokens, state: state)
   if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
-  let acc = concat([r.param], acc)
+  let acc = list_push(acc, r.param)
   let s = r.state
 
   let e = eat(tokens: tokens, state: s, tag: "Comma")
@@ -2447,12 +2447,12 @@ fn parse_param_list_acc(tokens: List<Token>, state: ParserState, acc: List<Param
     let s2 = skip_newlines(tokens: tokens, state: e.state)
     if check(tokens: tokens, state: s2, tag: "RParen") {
       // Trailing comma
-      ParamsResult { params: reverse(acc), state: s2, err: none }
+      ParamsResult { params: acc, state: s2, err: none }
     } else {
       parse_param_list_acc(tokens: tokens, state: s2, acc: acc)
     }
   } else {
-    ParamsResult { params: reverse(acc), state: s, err: none }
+    ParamsResult { params: acc, state: s, err: none }
   }
 }
 
@@ -2524,11 +2524,11 @@ fn parse_stmts(tokens: List<Token>, state: ParserState) -> StmtsResult {
 fn parse_stmts_acc(tokens: List<Token>, state: ParserState, acc: List<Expr>) -> StmtsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) || check(tokens: tokens, state: s, tag: "Eof") {
-    StmtsResult { stmts: reverse(acc), state: s, err: none }
+    StmtsResult { stmts: acc, state: s, err: none }
   } else {
     let r = parse_stmt(tokens: tokens, state: s)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
-    parse_stmts_acc(tokens: tokens, state: r.state, acc: concat([r.expr], acc))
+    parse_stmts_acc(tokens: tokens, state: r.state, acc: list_push(acc, r.expr))
   }
 }
 
@@ -2828,11 +2828,11 @@ fn parse_lambda_body(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_lambda_stmts(tokens: List<Token>, state: ParserState, acc: List<Expr>) -> StmtsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RParen") || check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) || check(tokens: tokens, state: s, tag: "Eof") {
-    StmtsResult { stmts: reverse(acc), state: s, err: none }
+    StmtsResult { stmts: acc, state: s, err: none }
   } else {
     let r = parse_stmt(tokens: tokens, state: s)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
-    parse_lambda_stmts(tokens: tokens, state: r.state, acc: concat([r.expr], acc))
+    parse_lambda_stmts(tokens: tokens, state: r.state, acc: list_push(acc, r.expr))
   }
 }
 
@@ -2996,19 +2996,19 @@ fn parse_arg_list_acc(tokens: List<Token>, state: ParserState, acc: List<NamedAr
   let s = skip_newlines(tokens: tokens, state: state)
   let r = parse_single_arg(tokens: tokens, state: s)
   if has_err(err: r.err) { return ArgsResult { args: [], state: r.state, err: r.err } }
-  let acc = concat([r.arg], acc)
+  let acc = list_push(acc, r.arg)
   let s = r.state
 
   let e = eat(tokens: tokens, state: s, tag: "Comma")
   if e.consumed {
     let s2 = skip_newlines(tokens: tokens, state: e.state)
     if check(tokens: tokens, state: s2, tag: "RParen") {
-      ArgsResult { args: reverse(acc), state: s2, err: none }
+      ArgsResult { args: acc, state: s2, err: none }
     } else {
       parse_arg_list_acc(tokens: tokens, state: s2, acc: acc)
     }
   } else {
-    ArgsResult { args: reverse(acc), state: s, err: none }
+    ArgsResult { args: acc, state: s, err: none }
   }
 }
 
@@ -3149,13 +3149,13 @@ fn parse_match_arms(tokens: List<Token>, state: ParserState) -> ArmsResult {
 fn parse_match_arms_acc(tokens: List<Token>, state: ParserState, acc: List<MatchArm>) -> ArmsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    ArmsResult { arms: reverse(acc), state: s, err: none }
+    ArmsResult { arms: acc, state: s, err: none }
   } else {
     let r = parse_match_arm(tokens: tokens, state: s)
     if has_err(err: r.err) { return ArmsResult { arms: acc, state: r.state, err: r.err } }
     let e = eat(tokens: tokens, state: r.state, tag: "Comma")
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
-    parse_match_arms_acc(tokens: tokens, state: s2, acc: concat([r.arm], acc))
+    parse_match_arms_acc(tokens: tokens, state: s2, acc: list_push(acc, r.arm))
   }
 }
 
@@ -3218,13 +3218,13 @@ fn parse_match_arm_body(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_match_arm_stmts(tokens: List<Token>, state: ParserState, acc: List<Expr>) -> StmtsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) || check(tokens: tokens, state: s, tag: "Eof") {
-    StmtsResult { stmts: reverse(acc), state: s, err: none }
+    StmtsResult { stmts: acc, state: s, err: none }
   } else if looks_like_arm_start(tokens: tokens, state: s) {
-    StmtsResult { stmts: reverse(acc), state: s, err: none }
+    StmtsResult { stmts: acc, state: s, err: none }
   } else {
     let r = parse_stmt(tokens: tokens, state: s)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
-    parse_match_arm_stmts(tokens: tokens, state: r.state, acc: concat([r.expr], acc))
+    parse_match_arm_stmts(tokens: tokens, state: r.state, acc: list_push(acc, r.expr))
   }
 }
 
@@ -3393,7 +3393,7 @@ fn parse_variant_bindings_brace(tokens: List<Token>, state: ParserState) -> Bind
 fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc: List<FieldBinding>) -> BindingsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    BindingsResult { field_bindings: reverse(acc), state: s, err: none }
+    BindingsResult { field_bindings: acc, state: s, err: none }
   } else {
     let r = expect_name(tokens: tokens, state: s)
     if has_err(err: r.err) { return BindingsResult { field_bindings: [], state: r.state, err: r.err } }
@@ -3408,12 +3408,12 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc
       let e2 = eat(tokens: tokens, state: s2, tag: "Comma")
       let s3 = skip_newlines(tokens: tokens, state: if e2.consumed { e2.state } else { s2 })
       let fb = FieldBinding { field_name: field_name, binding: r2.pattern }
-      parse_variant_bindings_brace_acc(tokens: tokens, state: s3, acc: concat([fb], acc))
+      parse_variant_bindings_brace_acc(tokens: tokens, state: s3, acc: list_push(acc, fb))
     } else {
       let e2 = eat(tokens: tokens, state: s, tag: "Comma")
       let s2 = skip_newlines(tokens: tokens, state: if e2.consumed { e2.state } else { s })
       let fb = FieldBinding { field_name: field_name, binding: Bind { name: field_name } }
-      parse_variant_bindings_brace_acc(tokens: tokens, state: s2, acc: concat([fb], acc))
+      parse_variant_bindings_brace_acc(tokens: tokens, state: s2, acc: list_push(acc, fb))
     }
   }
 }
@@ -3553,13 +3553,13 @@ fn parse_field_init_list(tokens: List<Token>, state: ParserState) -> FieldInitsR
 fn parse_field_init_list_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> FieldInitsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    FieldInitsResult { fields: reverse(acc), state: s, err: none }
+    FieldInitsResult { fields: acc, state: s, err: none }
   } else {
     let r = parse_field_init(tokens: tokens, state: s)
     if has_err(err: r.err) { return FieldInitsResult { fields: [], state: r.state, err: r.err } }
     let e = eat(tokens: tokens, state: r.state, tag: "Comma")
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
-    parse_field_init_list_acc(tokens: tokens, state: s2, acc: concat([r.field], acc))
+    parse_field_init_list_acc(tokens: tokens, state: s2, acc: list_push(acc, r.field))
   }
 }
 
@@ -3625,13 +3625,13 @@ fn parse_expr_list_until(tokens: List<Token>, state: ParserState, end_tag: Strin
 fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_tag: String, acc: List<Expr>) -> ExprsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: end_tag) || at_end(tokens: tokens, state: s) {
-    ExprsResult { exprs: reverse(acc), state: s, err: none }
+    ExprsResult { exprs: acc, state: s, err: none }
   } else {
     let r = parse_expr(tokens: tokens, state: s)
     if has_err(err: r.err) { return ExprsResult { exprs: [], state: r.state, err: r.err } }
     let e = eat(tokens: tokens, state: r.state, tag: "Comma")
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
-    parse_expr_list_until_acc(tokens: tokens, state: s2, end_tag: end_tag, acc: concat([r.expr], acc))
+    parse_expr_list_until_acc(tokens: tokens, state: s2, end_tag: end_tag, acc: list_push(acc, r.expr))
   }
 }
 
@@ -3705,7 +3705,7 @@ fn collect_fn_lambda_params(tokens: List<Token>, state: ParserState, acc: List<S
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RParen") {
     // End of params
-    IdentCollectResult { success: true, params: reverse(acc), state: s, err: none }
+    IdentCollectResult { success: true, params: acc, state: s, err: none }
   } else {
     let name_r = expect_ident(tokens: tokens, state: s)
     if has_err(err: name_r.err) {
@@ -3714,10 +3714,10 @@ fn collect_fn_lambda_params(tokens: List<Token>, state: ParserState, acc: List<S
       let s2 = skip_newlines(tokens: tokens, state: name_r.state)
       if check(tokens: tokens, state: s2, tag: "Comma") {
         let adv = advance(tokens: tokens, state: s2)
-        collect_fn_lambda_params(tokens: tokens, state: adv.state, acc: concat([name_r.name], acc))
+        collect_fn_lambda_params(tokens: tokens, state: adv.state, acc: list_push(acc, name_r.name))
       } else {
         // Last param (no trailing comma)
-        IdentCollectResult { success: true, params: reverse(concat([name_r.name], acc)), state: s2, err: none }
+        IdentCollectResult { success: true, params: list_push(acc, name_r.name), state: s2, err: none }
       }
     }
   }
@@ -3753,12 +3753,12 @@ fn collect_lambda_idents(tokens: List<Token>, state: ParserState, acc: List<Stri
     match k {
       Some { value: Ident { name: n } } => {
         let adv = advance(tokens: tokens, state: state)
-        let new_acc = concat([n], acc)
+        let new_acc = list_push(acc, n)
         let e = eat(tokens: tokens, state: adv.state, tag: "Comma")
         if e.consumed {
           collect_lambda_idents(tokens: tokens, state: e.state, acc: new_acc)
         } else {
-          IdentCollectResult { success: true, params: reverse(new_acc), state: adv.state, err: none }
+          IdentCollectResult { success: true, params: new_acc, state: adv.state, err: none }
         }
       }
       _ => IdentCollectResult { success: false, params: acc, state: state, err: none }
@@ -3792,7 +3792,7 @@ fn parse_string_interp(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<StringPart>, span: SourceSpan) -> ExprResult {
   let r = parse_expr(tokens: tokens, state: state)
   if has_err(err: r.err) { return r }
-  let new_parts = concat([Interpolation { expr: r.expr }], parts)
+  let new_parts = list_push(parts, Interpolation { expr: r.expr })
   let s = r.state
 
   let k = peek_kind(tokens: tokens, state: s)
@@ -3800,7 +3800,7 @@ fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<Strin
     Some { value: StrMid { value: mid } } => {
       let adv = advance(tokens: tokens, state: s)
       let mid_parts = if string_length(s: mid) > 0 {
-        concat([Text { value: mid }], new_parts)
+        list_push(new_parts, Text { value: mid })
       } else {
         new_parts
       }
@@ -3809,15 +3809,15 @@ fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<Strin
     Some { value: StrEnd { value: suffix } } => {
       let adv = advance(tokens: tokens, state: s)
       let final_parts = if string_length(s: suffix) > 0 {
-        reverse(concat([Text { value: suffix }], new_parts))
+        list_push(new_parts, Text { value: suffix })
       } else {
-        reverse(new_parts)
+        new_parts
       }
       let result = ExprResult { expr: StringInterp { parts: final_parts, span: span }, state: adv.state, err: none }
       result
     }
     _ => {
-      let result = ExprResult { expr: StringInterp { parts: reverse(new_parts), span: span }, state: s, err: none }
+      let result = ExprResult { expr: StringInterp { parts: new_parts, span: span }, state: s, err: none }
       result
     }
   }
