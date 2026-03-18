@@ -1022,6 +1022,84 @@ func credential_chain() -> { payload: String } {
 }
 
 #[test]
+fn check_target_file_gunbc_auth_patterns_requires_sts_provider_bindings() {
+    let root = unique_temp_root("gunbc_auth_patterns_sts_provider_bindings");
+    let write_source = |relative: &str, content: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
+            .expect("failed to create fixture parent directory");
+        std::fs::write(path, content).expect("failed to write fixture source");
+    };
+
+    write_source(
+        "extdeps/cloud/gcp/sts.dag",
+        r#"module extdeps.cloud.gcp.sts
+service gcp.STS {
+  operation Exchange(subject_token: String, audience: String) -> { access_token: String }
+}
+service github.OIDC {
+  operation GetToken(audience: String, request_url: String, request_token: String) -> { subject_token: String }
+}
+service gcp.Metadata {
+  operation GetIdentityToken(audience: String) -> { subject_token: String }
+}
+"#,
+    );
+    write_source(
+        "gunbc/auth/patterns.dag",
+        r#"module gunbc.auth.patterns
+
+import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }
+
+func acquire_subject_token(audience: String) -> { access_token: String, metadata_token: String } {
+  oidc = github.OIDC.GetToken(audience: audience, request_url: "https://token", request_token: "request-token")
+  metadata = gcp.Metadata.GetIdentityToken(audience: audience)
+  sts = gcp.STS.Exchange(subject_token: oidc.subject_token, audience: metadata.subject_token)
+  return { access_token: sts.access_token, metadata_token: metadata.subject_token }
+}
+"#,
+    );
+
+    let context = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("gunbc/auth/patterns.dag")),
+    };
+
+    let output =
+        check_from_context(&context).expect("check should succeed with explicit provider bindings");
+    assert_eq!(output.parsed_files, 2, "expected two fixture modules");
+
+    write_source(
+        "gunbc/auth/patterns.dag",
+        r#"module gunbc.auth.patterns
+
+func acquire_subject_token(audience: String) -> { access_token: String, metadata_token: String } {
+  oidc = github.OIDC.GetToken(audience: audience, request_url: "https://token", request_token: "request-token")
+  metadata = gcp.Metadata.GetIdentityToken(audience: audience)
+  sts = gcp.STS.Exchange(subject_token: oidc.subject_token, audience: metadata.subject_token)
+  return { access_token: sts.access_token, metadata_token: metadata.subject_token }
+}
+"#,
+    );
+
+    let error = check_from_context(&context).expect_err("check should fail without provider bindings");
+    assert_typecheck_stage_error(&error);
+    assert!(error.contains("unresolved service call"));
+    for service_call in [
+        "gcp.STS.Exchange",
+        "github.OIDC.GetToken",
+        "gcp.Metadata.GetIdentityToken",
+    ] {
+        assert!(
+            error.contains(service_call),
+            "expected missing import error to mention {service_call}: {error}"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn check_target_file_gunbc_tools_gist_requires_github_gist_service_module_import() {
     let root = unique_temp_root("gunbc_tools_gist_service_import");
     let write_source = |relative: &str, content: &str| {

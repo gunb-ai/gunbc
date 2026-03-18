@@ -18,7 +18,7 @@ import std.types {
 import extdeps.cloud.gcp.gcp
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam
-import extdeps.cloud.gcp.sts
+import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }
 import extdeps.shell
 
 // Acquire a subject token based on runtime environment.
