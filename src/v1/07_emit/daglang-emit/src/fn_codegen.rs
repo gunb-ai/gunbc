@@ -1197,12 +1197,17 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
-            code_ir::Expr::Field(
+            let field_expr = code_ir::Expr::Field(
                 Box::new(ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
                     compile_expr(receiver, ctx, counter)
                 })),
                 rust_field,
-            )
+            );
+            if is_boxed_field_access(receiver, field, ctx) {
+                code_ir::Expr::Deref(Box::new(field_expr))
+            } else {
+                field_expr
+            }
         }
         ast::Expr::Call(name, args) => {
             if let Some(intrinsic) = compile_intrinsic_call(name, args, ctx, counter) {
@@ -4002,6 +4007,12 @@ fn needs_box_wrapping(struct_name: &str, field_name: &str, ctx: &CompileContext)
         }
     }
     false
+}
+
+fn is_boxed_field_access(receiver: &ast::Expr, field_name: &str, ctx: &CompileContext) -> bool {
+    infer_known_expr_ir_type(receiver, ctx)
+        .and_then(|ty| named_type_from_ir(&ty))
+        .is_some_and(|type_name| needs_box_wrapping(&type_name, field_name, ctx))
 }
 
 /// Recursively collect deref let-bindings for boxed fields in a pattern tree.

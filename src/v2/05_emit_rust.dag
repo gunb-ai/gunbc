@@ -1368,13 +1368,13 @@ fn emit_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, 
   let auth_line = match auth {
     Some { value: ac } =>
       concat("let request = client.post(&url)\n    .header(\"",
-        ac.header, "\", ", emit_simple_expr(expr: ac.token_expr, registry: registry, depth: depth), ");")
+        ac.header, "\", ", emit_simple_expr(expr: ac.token_expr), ");")
     None =>
       "let request = client.post(&url);"
   }
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
-      emit_simple_expr(expr: h.value, registry: registry, depth: depth), ");")
+      emit_simple_expr(expr: h.value), ");")
   )
   let send_line = "let response = request.send().await?;"
   let parse_line = "let result = response.json().await?;"
@@ -1388,7 +1388,7 @@ fn emit_shell_call(op_name: String, env: List<EnvDef>, registry: Map<String, Ite
   let cmd_line = concat("let output = std::process::Command::new(\"",
     rust_ident(name: op_name), "\")")
   let env_lines = env |> map(e =>
-    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value, registry: registry, depth: depth), ")")
+    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"
@@ -1535,7 +1535,7 @@ fn emit_operation_test(service_name: String, op_node: TypedNode, registry: Map<S
 }
 
 fn emit_mock_prop_setup(mock_prop: FieldInit, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  let body_str = emit_simple_expr(expr: mock_prop.value, registry: registry, depth: depth)
+  let body_str = emit_simple_expr(expr: mock_prop.value)
   concat("let ", mock_prop.name, " = ", body_str, ";")
 }
 

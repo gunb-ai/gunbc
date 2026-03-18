@@ -501,14 +501,14 @@ fn render_expr(expr: &Expr) -> String {
         } => {
             // C1.7: Special `?` operator rendering.
             if method == "?" {
-                return format!("{}?", render_expr(receiver));
+                return format!("{}?", render_postfix_receiver(receiver));
             }
-            let recv = render_expr(receiver);
+            let recv = render_postfix_receiver(receiver);
             let args_str: Vec<String> = args.iter().map(render_expr).collect();
             format!("{}.{}({})", recv, method, args_str.join(", "))
         }
         Expr::Field(expr, field) => {
-            format!("{}.{}", render_expr(expr), field)
+            format!("{}.{}", render_postfix_receiver(expr), field)
         }
         Expr::Deref(expr) => format!("*{}", render_expr(expr)),
         Expr::Ref(expr) => format!("&{}", render_expr(expr)),
@@ -608,6 +608,27 @@ fn render_expr(expr: &Expr) -> String {
             format!("[{}]", items_str.join(", "))
         }
         Expr::RawCode(code) => code.clone(),
+    }
+}
+
+fn render_postfix_receiver(expr: &Expr) -> String {
+    let rendered = render_expr(expr);
+    if matches!(
+        expr,
+        Expr::Deref(_)
+            | Expr::Ref(_)
+            | Expr::RefMut(_)
+            | Expr::Struct { .. }
+            | Expr::Closure { .. }
+            | Expr::BinOp { .. }
+            | Expr::UnaryOp { .. }
+            | Expr::Match { .. }
+            | Expr::If { .. }
+            | Expr::Block(_)
+    ) {
+        format!("({rendered})")
+    } else {
+        rendered
     }
 }
 
