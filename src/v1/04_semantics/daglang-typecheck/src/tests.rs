@@ -2588,7 +2588,7 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
-fn explicit_binding_disambiguates_same_name_services() {
+fn module_qualified_call_disambiguates_same_name_services() {
     let graph = module_graph_from_sources(&[
         (
             "vendor/alpha.dag",
@@ -2623,4 +2623,41 @@ func run(path: String) -> { body: String } {
         },
     )
     .expect("module-qualified call should disambiguate same-name services from both imports");
+}
+
+#[test]
+fn selective_import_disambiguates_same_name_services() {
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { SharedService }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("selective import should disambiguate same-name services");
 }
