@@ -804,11 +804,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
     let wr = try_where_clause(tokens: tokens, state: r.state, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
     let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: wr.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none }
-<<<<<<< HEAD
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: wr.state), err: none }
-=======
-    ItemResult { item: item, state: skip_newlines(state: wr.state), err: none }
->>>>>>> origin/main
   }
 }
 
