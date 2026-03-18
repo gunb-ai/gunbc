@@ -20,7 +20,7 @@ type RequestedTokenType = RequestAccessToken | RequestIdToken
 
 // ── Grant type ────────────────────────────────────────────────────
 
-type StsGrantType = String
+type StsGrantType = TokenExchange {}
 
 // ── Token exchange request ────────────────────────────────────────
 
