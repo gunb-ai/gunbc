@@ -839,10 +839,10 @@ fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Field
 }
 
 // parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
-// Produces FieldInit directly — no intermediate Predicate type.
+// Returns FieldInit directly — no intermediate Predicate type needed.
 fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult {
   let zero_span = SourceSpan { start: 0, end: 0 }
-  let dummy_pred = FieldInit { name: "_dummy", value: Literal { value: LitBool { value: false }, span: zero_span } }
+  let dummy_pred = FieldInit { name: "", value: Literal { value: LitBool { value: false }, span: zero_span } }
   // Use expect_name to accept keywords (like "pattern") as predicate names.
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return PredResult { predicate: dummy_pred, state: r.state, err: r.err } }
