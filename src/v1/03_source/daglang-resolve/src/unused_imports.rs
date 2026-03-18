@@ -6,6 +6,8 @@
 //! against an export index derived from the resolved module graph.
 
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fmt;
 
 use daglang_syntax::ast::{
     CapabilityDef, Expr, Field, ForBody, Item, MatchArm, OperationDef, Pattern, SourceFile, Stmt,
@@ -26,16 +28,41 @@ pub struct UnusedImport {
 /// Exported-name lookup keyed by dotted module path.
 pub type ModuleExportIndex = HashMap<String, HashSet<String>>;
 
+/// Failure modes for unused-import analysis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnusedImportAnalysisError {
+    /// A non-aliased module import requires a resolved export index for
+    /// complete analysis.
+    MissingModuleExportIndex { module_paths: Vec<String> },
+}
+
+impl fmt::Display for UnusedImportAnalysisError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingModuleExportIndex { module_paths } => write!(
+                f,
+                "unused-import analysis needs a module export index for non-aliased module imports: {}. Call find_unused_imports_with_export_index with build_module_export_index(...)",
+                module_paths.join(", ")
+            ),
+        }
+    }
+}
+
+impl Error for UnusedImportAnalysisError {}
+
 /// Find all unused imports in a parsed source file.
 ///
 /// An import binding is "unused" if its name never appears in any type
 /// annotation, expression, pattern, or declaration in the module body.
 /// Module-level imports (without explicit bindings) are only checked for
-/// aliased imports; non-aliased module imports require an export index
-/// (see [`find_unused_imports_with_export_index`]) for accurate results
-/// and are conservatively treated as used when no index is available.
-pub fn find_unused_imports(source: &SourceFile) -> Vec<UnusedImport> {
-    find_unused_imports_inner(source, None)
+/// aliased imports. Non-aliased module imports require an export index
+/// (see [`find_unused_imports_with_export_index`]); this function returns
+/// an error instead of silently skipping those imports.
+pub fn find_unused_imports(
+    source: &SourceFile,
+) -> Result<Vec<UnusedImport>, UnusedImportAnalysisError> {
+    require_module_export_index(source)?;
+    Ok(find_unused_imports_inner(source, None))
 }
 
 /// Build a one-pass index of names exported by each resolved module.
@@ -65,6 +92,21 @@ pub fn find_unused_imports_with_export_index(
     export_index: &ModuleExportIndex,
 ) -> Vec<UnusedImport> {
     find_unused_imports_inner(source, Some(export_index))
+}
+
+fn require_module_export_index(source: &SourceFile) -> Result<(), UnusedImportAnalysisError> {
+    let module_paths: Vec<String> = source
+        .imports
+        .iter()
+        .filter(|import| import.node.bindings.is_none() && import.node.alias.is_none())
+        .map(|import| import.node.path.as_dotted())
+        .collect();
+
+    if module_paths.is_empty() {
+        Ok(())
+    } else {
+        Err(UnusedImportAnalysisError::MissingModuleExportIndex { module_paths })
+    }
 }
 
 fn find_unused_imports_inner(
@@ -97,12 +139,11 @@ fn find_unused_imports_inner(
                     // Non-aliased: match against exported service/type namespaces.
                     index
                         .get(&path_str)
-                        .is_some_and(|exports| {
-                            exports.iter().any(|name| referenced.contains(name))
-                        })
+                        .is_some_and(|exports| exports.iter().any(|name| referenced.contains(name)))
                 } else {
-                    // No export index: cannot verify structurally, skip.
-                    true
+                    unreachable!(
+                        "find_unused_imports must reject non-aliased module imports without an export index"
+                    )
                 };
                 if !is_used {
                     unused.push(UnusedImport {
@@ -446,9 +487,7 @@ fn collect_operation_names(op: &OperationDef, names: &mut HashSet<String>) {
 
 fn collect_transport_names(transport: &TransportBinding, names: &mut HashSet<String>) {
     match transport {
-        TransportBinding::Rest {
-            body, headers, ..
-        } => {
+        TransportBinding::Rest { body, headers, .. } => {
             if let Some(expr) = body {
                 collect_expr_names(expr, names);
             }
@@ -629,6 +668,10 @@ mod tests {
         parser::parse(source).expect("test source should parse")
     }
 
+    fn analyzed_unused_imports(source: &SourceFile) -> Vec<UnusedImport> {
+        find_unused_imports(source).expect("test source should not require an export index")
+    }
+
     #[test]
     fn binding_used_as_type_is_not_reported() {
         let source = parse(
@@ -640,7 +683,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -655,7 +698,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -669,14 +712,14 @@ mod tests {
             }
             "#,
         );
-        let unused = find_unused_imports(&source);
+        let unused = analyzed_unused_imports(&source);
         assert_eq!(unused.len(), 1);
         assert_eq!(unused[0].binding.as_deref(), Some("Unused"));
         assert_eq!(unused[0].module_path, "std.types");
     }
 
     #[test]
-    fn module_import_without_export_index_is_skipped() {
+    fn module_import_without_export_index_errors() {
         let source = parse(
             r#"
             module test.a
@@ -688,12 +731,13 @@ mod tests {
             }
             "#,
         );
-        // Without an export index, non-aliased module-level imports cannot be
-        // verified structurally and are conservatively treated as used.
-        let unused = find_unused_imports(&source);
-        assert!(
-            unused.is_empty(),
-            "non-aliased module imports without export index should be skipped, got: {unused:?}"
+        let err = find_unused_imports(&source)
+            .expect_err("non-aliased module imports should require an export index");
+        assert_eq!(
+            err,
+            UnusedImportAnalysisError::MissingModuleExportIndex {
+                module_paths: vec!["extdeps.cargo".into()],
+            }
         );
     }
 
@@ -759,7 +803,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -775,7 +819,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -787,7 +831,7 @@ mod tests {
             type MyPath = FilePath
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -801,7 +845,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -815,7 +859,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -832,7 +876,7 @@ mod tests {
             }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -843,7 +887,7 @@ mod tests {
             fn greet() -> String { "hello" }
             "#,
         );
-        assert!(find_unused_imports(&source).is_empty());
+        assert!(analyzed_unused_imports(&source).is_empty());
     }
 
     #[test]
@@ -859,7 +903,7 @@ mod tests {
             }
             "#,
         );
-        let unused = find_unused_imports(&source);
+        let unused = analyzed_unused_imports(&source);
         assert!(
             unused.is_empty(),
             "expected no unused imports but got: {unused:?}"
@@ -875,7 +919,7 @@ mod tests {
             fn greet() -> String { "hello" }
             "#,
         );
-        let unused = find_unused_imports(&source);
+        let unused = analyzed_unused_imports(&source);
         assert_eq!(unused.len(), 3);
         let binding_names: Vec<_> = unused.iter().filter_map(|u| u.binding.as_deref()).collect();
         assert!(binding_names.contains(&"A"));
