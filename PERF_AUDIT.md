@@ -94,6 +94,36 @@ traded one failure mode (slow but correct) for another (fast but silently
 wrong on non-ASCII input). The correct fix addresses both: `Vec<char>`
 conversion gives O(1) access that works for all encodings.
 
+### Why tests didn't catch it
+
+**What exists:**
+
+- Generated crate tokenizer tests: `tokenize("fn foo()")`, `tokenize("type Foo { x: Int }")`,
+  self-parse of `src/v2/*.dag` files — **all pure ASCII inputs**
+- `v2_crate_cargo_check`: compiles the generated crate but **doesn't run it**
+- `v2_crate_gist_resolve`: processes `dsl/std/types.dag` (which had Unicode) —
+  **but is `#[ignore]` because it was "too slow"** (circular: slow because of this bug)
+- 92 non-ignored host tests, 363 codegen unit tests — **none process non-ASCII input**
+
+**What's missing:**
+
+| Missing test layer | What it would catch |
+|--------------------|---------------------|
+| `v2_rt` intrinsic unit tests for non-ASCII | `char_at("AB⟦CD", 3)` returns wrong char |
+| Tokenizer round-trip property test | `tokens.map(text).join() != source` detects corruption |
+| Non-ignored gist tokenize smoke test | Any gist processing bug surfaces immediately |
+| Token position/content assertions | Position N produces unexpected token kind/text |
+
+**The structural gap:** `v2_rt.rs` is a 250-line string constant embedded in the
+v1 emitter. It has **zero test coverage**. Every other layer (parser, codegen,
+type system) has tests. But the runtime that every generated program depends on
+is invisible to tests, linters, and profilers. Both SG-1 (O(n²) char_at) and
+SG-6 (corrupt char_at) lived in this untested layer.
+
+**TODO:** Add `v2_rt` intrinsic unit tests (especially non-ASCII char_at/
+string_length), a non-ignored gist tokenize smoke test, and token content
+assertions. These are the minimum coverage to prevent this class of bug.
+
 ---
 
 ## Table of Contents
