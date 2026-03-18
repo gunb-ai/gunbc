@@ -1073,7 +1073,7 @@ fn emit_test_module(dag_sources: &[EmbeddedDagSource]) -> String {
         .filter(|source| source.include_in_self_resolve)
         .map(|source| {
             format!(
-                "                    crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }},\n",
+                "                    std::rc::Rc::new(crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }}),\n",
                 source.rel_path, source.const_name
             )
         })
@@ -1088,7 +1088,7 @@ fn emit_test_module(dag_sources: &[EmbeddedDagSource]) -> String {
                 .as_ref()
                 .unwrap_or_else(|| panic!("gist source {} is not under dsl/", source.rel_path));
             format!(
-                "                    crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }},\n",
+                "                    std::rc::Rc::new(crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }}),\n",
                 logical_path, source.const_name
             )
         })
@@ -1111,7 +1111,7 @@ mod generated_tests {{
         let tokens = tokenize("type Foo {{ x: Int }}");
         let last = tokens.last().expect("should have tokens");
         assert!(
-            matches!(last.kind, crate::v2_core::TokenKind::Eof),
+            matches!(&*last.kind, crate::v2_core::TokenKind::Eof),
             "last token should be Eof, got {{:?}}",
             last.kind
         );
@@ -1123,7 +1123,7 @@ mod generated_tests {{
         // Should have at least KwFn and Eof
         assert!(tokens.len() >= 2, "expected at least 2 tokens, got {{}}", tokens.len());
         assert!(
-            matches!(tokens[0].kind, crate::v2_core::TokenKind::KwFn),
+            matches!(&*tokens[0].kind, crate::v2_core::TokenKind::KwFn),
             "first token should be KwFn, got {{:?}}",
             tokens[0].kind
         );
@@ -1163,7 +1163,7 @@ mod generated_tests {{
                 // Should end with Eof
                 let last = tokens.last().expect("should have tokens");
                 assert!(
-                    matches!(last.kind, crate::v2_core::TokenKind::Eof),
+                    matches!(&*last.kind, crate::v2_core::TokenKind::Eof),
                     "last token should be Eof, got {{:?}}",
                     last.kind
                 );
@@ -1201,10 +1201,10 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {{
-                let source = crate::pipeline::SourceFile {{
+                let source = std::rc::Rc::new(crate::pipeline::SourceFile {{
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo {{ x: Int, name: String }}\nfn add(a: Int, b: Int) -> Int {{ a + b }}\n".to_string(),
-                }};
+                }});
                 let result = crate::pipeline::compile_sources(std::rc::Rc::new(vec![source]), crate::v2_core::RenderTarget::Rust);
 
                 // Should produce at least one output file
@@ -1254,7 +1254,7 @@ mod generated_tests {{
                         "{{}} should produce tokens", file
                     );
                     assert!(
-                        matches!(tokens.last().unwrap().kind, crate::v2_core::TokenKind::Eof),
+                        matches!(&*tokens.last().unwrap().kind, crate::v2_core::TokenKind::Eof),
                         "{{}} should end with Eof", file
                     );
                     let result = crate::parse::parse(tokens);
@@ -1283,7 +1283,7 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                let sources: Vec<crate::pipeline::SourceFile> = vec![
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
 {self_compile_source_files}                ];
 
                 let source_count = sources.len();
@@ -1328,7 +1328,7 @@ mod generated_tests {{
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
                 // Gist's transitive source closure, derived from imports.
-                let sources: Vec<crate::pipeline::SourceFile> = vec![
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
 {gist_resolve_sources}                ];
                 let result = crate::pipeline::resolve_sources(
                     std::rc::Rc::new(sources),
@@ -1367,7 +1367,7 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                let sources: Vec<crate::pipeline::SourceFile> = vec![
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
 {gist_resolve_sources}                ];
                 let result = crate::pipeline::compile_sources(
                     std::rc::Rc::new(sources),
