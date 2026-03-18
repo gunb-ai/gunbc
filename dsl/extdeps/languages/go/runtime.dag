@@ -10,10 +10,6 @@
 
 module extdeps.languages.go.runtime
 
-import std.languages {
-  NamingConvention, NamingCase
-}
-
 // ── String operations ───────────────────────────────────────────────
 // Ref: pkg.go.dev/strings, pkg.go.dev/fmt
 
