@@ -2583,6 +2583,46 @@ fn lower_errors_when_no_callable_items_exist() {
 }
 
 #[test]
+fn lower_uses_registry_to_classify_tool_consumer_inputs() {
+    let typed = typed_project_from_sources(&[(
+        "dsl/alias_tool_consumer.dag",
+        r#"module sample.alias_tool_consumer
+type LintTool = ToolHandle
+
+fn lint(tool: LintTool) -> Bool { true }
+"#,
+    )]);
+
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "sample.alias_tool_consumer::lint")
+        .expect("lint node should be present");
+    assert_eq!(node.kind, gunbc_ir::NodeKind::ToolConsumer);
+}
+
+#[test]
+fn lower_uses_registry_to_classify_resource_handle_outputs() {
+    let typed = typed_project_from_sources(&[(
+        "dsl/alias_resource_env.dag",
+        r#"module sample.alias_resource_env
+type WorkspaceAccess = FilesystemHandle
+
+fn reuse(fs: WorkspaceAccess) -> WorkspaceAccess { fs }
+"#,
+    )]);
+
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "sample.alias_resource_env::reuse")
+        .expect("reuse node should be present");
+    assert_eq!(node.kind, gunbc_ir::NodeKind::ResourceEnvironment);
+}
+
+#[test]
 fn classify_obligation_uses_structural_lowered_metadata() {
     let op = LoweredOp::Transport {
         module: "sample.services".to_string(),

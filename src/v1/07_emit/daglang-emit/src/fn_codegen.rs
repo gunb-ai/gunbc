@@ -2749,7 +2749,10 @@ fn compile_fold_intrinsic(
             if let Some(p) = params.first() {
                 fold_ctx.fold_accum_name = Some(p.clone());
             }
-            if let (Some(param), Some(ty)) = (params.get(1), infer_list_element_ir_type(collection_expr, ctx)) {
+            if let (Some(param), Some(ty)) = (
+                params.get(1),
+                infer_list_element_ir_type(collection_expr, ctx),
+            ) {
                 fold_ctx.ir_scope.insert(param.clone(), ty);
             }
             // Compute use counts for lambda params with weight=1 (reassigned each iter).
@@ -4174,7 +4177,10 @@ fn compile_collection_lambda_body(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let mut body_ctx = ctx.clone();
-    if let (Some(param), Some(elem_ir_type)) = (params.first(), infer_list_element_ir_type(collection_expr, ctx)) {
+    if let (Some(param), Some(elem_ir_type)) = (
+        params.first(),
+        infer_list_element_ir_type(collection_expr, ctx),
+    ) {
         body_ctx.ir_scope.insert(param.clone(), elem_ir_type);
     }
     body_ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {

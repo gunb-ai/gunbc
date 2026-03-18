@@ -62,13 +62,10 @@ pub fn eval_literal(lit: &LoweredLiteral) -> Value {
 
 pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
     match base {
-        Value::Map(map) => map
-            .get(field)
-            .cloned()
-            .ok_or_else(|| {
-                let keys: Vec<&String> = map.keys().collect();
-                EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
-            }),
+        Value::Map(map) => map.get(field).cloned().ok_or_else(|| {
+            let keys: Vec<&String> = map.keys().collect();
+            EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
+        }),
         Value::Json(json) => match json {
             serde_json::Value::Object(obj) => Ok(obj
                 .get(field)
@@ -592,9 +589,9 @@ pub fn eval_builtin_call(
             _ => Err(EvalError::new("'map_values' requires a map")),
         },
         "map_keys" => match args.first() {
-            Some((_, Value::Map(map))) => Ok(Value::List(
-                map.keys().cloned().map(Value::Str).collect(),
-            )),
+            Some((_, Value::Map(map))) => {
+                Ok(Value::List(map.keys().cloned().map(Value::Str).collect()))
+            }
             _ => Err(EvalError::new("'map_keys' requires a map")),
         },
         "empty_map" => Ok(Value::Map(BTreeMap::new())),
