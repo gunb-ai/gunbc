@@ -7,9 +7,9 @@
 
 module gunbc.tools.gist
 
-import extdeps.git
+import extdeps.git { git.Core }
 import extdeps.github.auth { github_token }
-import extdeps.github.gists
+import extdeps.github.gists { github.Gist }
 import std.resources { Network }
 import std.types { CommitSha, Url }
 
