@@ -65,7 +65,10 @@ pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
         Value::Map(map) => map
             .get(field)
             .cloned()
-            .ok_or_else(|| EvalError::new(format!("no field '{field}' in map"))),
+            .ok_or_else(|| {
+                let keys: Vec<&String> = map.keys().collect();
+                EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
+            }),
         Value::Json(json) => match json {
             serde_json::Value::Object(obj) => Ok(obj
                 .get(field)
@@ -588,6 +591,12 @@ pub fn eval_builtin_call(
             Some((_, Value::Map(map))) => Ok(Value::List(map.values().cloned().collect())),
             _ => Err(EvalError::new("'map_values' requires a map")),
         },
+        "map_keys" => match args.first() {
+            Some((_, Value::Map(map))) => Ok(Value::List(
+                map.keys().cloned().map(Value::Str).collect(),
+            )),
+            _ => Err(EvalError::new("'map_keys' requires a map")),
+        },
         "empty_map" => Ok(Value::Map(BTreeMap::new())),
         "map_insert" => {
             if args.len() >= 3 {
@@ -632,7 +641,15 @@ pub fn eval_builtin_call(
                 Err(EvalError::new("'map_contains_key' requires map and key"))
             }
         }
-        "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
+        "Some" => match args.first() {
+            Some((_, value)) => {
+                let mut result = BTreeMap::new();
+                result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                result.insert("value".to_string(), value.clone());
+                Ok(Value::Map(result))
+            }
+            None => Err(EvalError::new("'Some' requires a value")),
+        },
         "code_point" => {
             let val = require_builtin_arg("c", 0, args);
             match val {
@@ -795,6 +812,21 @@ pub fn eval_builtin_call(
             }
             _ => Err(EvalError::new("reverse requires a List")),
         },
+        // list_push(list, item) — O(1) amortized append to end of list.
+        "list_push" => {
+            if args.len() >= 2 {
+                match &args[0].1 {
+                    Value::List(list) => {
+                        let mut new_list = list.clone();
+                        new_list.push(args[1].1.clone());
+                        Ok(Value::List(new_list))
+                    }
+                    _ => Err(EvalError::new("list_push requires (List, item)")),
+                }
+            } else {
+                Err(EvalError::new("list_push requires list and item"))
+            }
+        }
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             let mut map = BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(name.to_string()));
