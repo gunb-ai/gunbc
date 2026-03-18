@@ -194,6 +194,13 @@ C2: Rust/Python/Go facts           D2: Typed summaries            E1: Artifact m
 C3: Emitters consult extdeps       D3: DAG composition            E2: Target placement
 C4: CLI target selection           D4: Proofs + reporting         E3: Boundary semantics
                                                                   E4: Planning/reporting
+
+Track R: Representation sizing
+──────────────────────────────
+R1: Audit + catalog
+R2: Box rare fields
+R3: Clone reduction
+R4: Interpreter value repr
 ```
 
 **Dependencies:**
@@ -209,6 +216,10 @@ C4: CLI target selection           D4: Proofs + reporting         E3: Boundary s
   along that target facts and boundary structure are explicit.
 - **A5** requires **A4**.
 - **A6** requires **A5**.
+- **Track R** blocks **Track A** at A1+. The generated crate and host
+  interpreter both OOM/overflow on gist-scale inputs due to type
+  representation bloat. R2 (boxing rare fields) is the minimum fix.
+- **Track R** is independent of **B/C/D/E**.
 
 ---
 
@@ -336,10 +347,128 @@ Remaining coherence work:
 
 ---
 
+## Track R: Representation Sizing
+
+Types must be proportional to their common case. If a rarely-populated
+optional field dominates a type's size, every clone, every stack frame,
+and every match arm pays for it — even when the field is `none`.
+
+This track was added after the 2026-03-18 session discovered that `Node`
+is 544 bytes (because it inlines `TransportBinding` at 184b and
+`ServiceConfig` at 256b, both used by only 6% of nodes), making
+`TypedExpr` 1,112 bytes, `infer_expr`'s closure frame 356KB, and
+generated self-compile tests OOM after 13+ minutes.
+
+The perf audit (Track S) caught algorithmic complexity (O(n²) builders,
+linear scans) but missed representation sizing — a hidden constant-factor
+multiplier on every operation.
+
+### R1: Audit and catalog type sizes
+
+Systematically measure the generated Rust type sizes for every `.dag`
+type. Identify every type where rare optional fields account for >50%
+of the total size.
+
+**Method:**
+
+- Add `static_assert!(std::mem::size_of::<Node>() <= 128)` style checks
+  to the generated crate test harness
+- Emit a size report as part of `v2_crate_cargo_check` that prints
+  `size_of` for all generated types
+- Flag any type exceeding a size budget (e.g., 256 bytes for types
+  instantiated >100 times per module)
+
+**Known violations (from 2026-03-18 investigation):**
+
+| Type | Current size | Common-case size | Bloat source | Usage of bloat field |
+|------|-------------|-----------------|--------------|---------------------|
+| `Node` | 544b | ~80b | transport (184b) + config (256b) | 6% of nodes |
+| `TypedExpr` | ~1,112b | ~200b | resolved_type: Node (544b) inline | 100%, but Node itself is bloated |
+| `Param` | ~648b | ~100b | contains inline Node | 100% |
+| `TypedNode` | ~600b | ~120b | same as Node + TypedExpr body | 100% |
+| `ServiceConfig` | 256b | ~50b | 3 × `Expr?` (208b each) | ~30% populate all 4 fields |
+| `TransportBinding` | 184b | 0-48b | RestBinding (328b) dominates enum | LocalBinding is 0b but pays 184b |
+
+**Acceptance:**
+
+- [ ] size report exists and runs as part of test baseline
+- [ ] every type >256 bytes is either justified or has a boxing plan
+- [ ] size assertions prevent silent regressions
+
+### R2: Box rare fields on Node
+
+The highest-impact single fix. Boxing `transport` and `config` on `Node`
+shrinks it from 544 to ~120 bytes. This cascades:
+
+- `TypedExpr`: ~1,112b → ~700b (resolved_type shrinks)
+- `Param`: ~648b → ~200b
+- `infer_expr` frame: 356KB → estimated <150KB
+- Clone cost: every clone copies ~400 fewer bytes
+
+**Scope:**
+
+- Change `transport: TransportBinding?` to `transport: Box<TransportBinding>?`
+  in generated Rust (v1 type_codegen.rs boxing algorithm)
+- Change `config: ServiceConfig?` similarly
+- Update all field access sites (`.transport` → `transport.as_ref()`)
+- Verify generated crate compiles and tests pass
+- Re-run gist compile tests to verify OOM is resolved
+
+**Acceptance:**
+
+- [ ] `Node` size ≤ 160 bytes
+- [ ] `TypedExpr` size ≤ 800 bytes
+- [ ] `v2_crate_cargo_test` passes without stack overflow or OOM
+- [ ] `v2_compile_gist_rust` passes without host-side stack overflow
+- [ ] size assertions from R1 enforce the new bounds
+
+### R3: Clone reduction in v1 emitter
+
+The v1 emitter has 650+ `.clone()` calls. Many defensively clone full
+`Expr` (208b) or `Node` (544b) values where a borrow would suffice.
+
+**Scope:**
+
+- Audit clone sites in `daglang-emit/src/` for unnecessary copies
+- Replace defensive clones with borrows where ownership isn't needed
+- Focus on hot paths: `lower_rust.rs`, `fn_codegen.rs`, `render_rust.rs`
+
+**Acceptance:**
+
+- [ ] clone count reduced by ≥50% in emit pipeline
+- [ ] no functional regressions
+- [ ] measurable improvement in emit-phase memory and time
+
+### R4: Interpreter value representation
+
+The v1 interpreter's `list_push` clones the entire `Vec<Value>` on every
+append, making repeated appends O(n²). This affects bootstrap
+performance when the v2 compiler runs interpreted.
+
+**Design options:**
+
+- (A) Change `Value::List(Vec<Value>)` to `Value::List(Rc<Vec<Value>>)`
+  with COW via `Rc::make_mut`
+- (B) Use a persistent list structure (e.g., `im::Vector`)
+- (C) Accept quadratic bootstrap; optimize only the emitted/native path
+
+**Acceptance:**
+
+- [ ] `list_push` is O(1) amortized in the interpreter, or
+- [ ] quadratic behavior is explicitly accepted and documented for
+      bootstrap-only paths
+
+---
+
 ## Track A: Pipeline Validation -> Bootstrap -> Self-hosting
 
-**Blocker:** Track S must be complete enough for the v2 compiler to be a
-trustworthy target again.
+**Blockers:**
+
+- **Track S** must be complete enough for the v2 compiler to be a
+  trustworthy target again.
+- **Track R** (at least R2) must land before A1+. The generated crate
+  and host interpreter both OOM/overflow on gist-scale inputs due to
+  `Node` being 544 bytes with pervasive cloning.
 
 ### A1: Gist compilation
 
