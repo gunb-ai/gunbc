@@ -481,6 +481,7 @@ fn needs_grouping_in_operator(expr: &Expr) -> bool {
             | Expr::Block(_)
             | Expr::Closure { .. }
             | Expr::Struct { .. }
+            | Expr::BinOp { .. }
     )
 }
 
