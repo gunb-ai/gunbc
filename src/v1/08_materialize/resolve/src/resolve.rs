@@ -1538,6 +1538,7 @@ mod tests {
         let err = execute_dag(
             &resolved,
             ExecuteConfig {
+                mode: ExecutionMode::Real,
                 strictness: DryRunStrictness::Lenient,
                 ..Default::default()
             },
