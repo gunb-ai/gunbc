@@ -67,27 +67,36 @@ pub fn execute_lowered_op(
     }
 }
 
+fn require_input_port<'a>(
+    inputs: &'a HashMap<String, Value>,
+    port: &str,
+    op_name: &str,
+) -> Result<&'a Value, ExecError> {
+    inputs.get(port).ok_or_else(|| {
+        let mut available: Vec<&str> = inputs.keys().map(String::as_str).collect();
+        available.sort_unstable();
+        ExecError::new(format!(
+            "{op_name}: missing required input port `{port}`; available inputs: [{}]",
+            available.join(", ")
+        ))
+    })
+}
+
 fn execute_primitive(
     kind: &PrimitiveOpKind,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     match kind {
-        PrimitiveOpKind::GetField { field } => {
-            if inputs.len() != 1 {
-                return Err(ExecError::new(format!(
-                    "GetField `{field}`: expected exactly 1 input, got {}",
-                    inputs.len()
-                )));
-            }
-            let (_, value) = inputs.into_iter().next().unwrap();
+        PrimitiveOpKind::GetField { field, input_port } => {
+            let value = require_input_port(&inputs, input_port, "GetField")?;
             let result =
-                eval::eval_get_field(&value, field).map_err(|e| ExecError::new(e.to_string()))?;
+                eval::eval_get_field(value, field).map_err(|e| ExecError::new(e.to_string()))?;
             Ok([("value".to_string(), result)].into_iter().collect())
         }
         PrimitiveOpKind::StringInterpolate { parts, input_ports } => {
             let values: Vec<Value> = input_ports
                 .iter()
-                .map(|port| require_input(&inputs, "StringInterpolate", port))
+                .map(|port| require_input_port(&inputs, port, "StringInterpolate").cloned())
                 .collect::<Result<_, _>>()?;
             let result = eval::eval_string_interpolate(parts, &values)
                 .map_err(|e| ExecError::new(e.to_string()))?;
@@ -287,47 +296,36 @@ mod tests {
         let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
             .expect_err("GetField with zero inputs should fail closed");
 
-        assert!(
-            err.message.contains("expected exactly 1 input"),
-            "error should mention input count: {}",
-            err.message
+        assert_eq!(
+            err.message,
+            "GetField: missing required input port `record`; available inputs: [other]"
         );
     }
 
     #[test]
-    fn getfield_multiple_inputs_errors() {
+    fn string_interpolate_missing_input_port_errors() {
         let op = LoweredOp::Primitive {
             module: "test".to_string(),
-            name: "get_field".to_string(),
-            kind: PrimitiveOpKind::GetField {
-                field: "name".to_string(),
+            name: "string_interpolate".to_string(),
+            kind: PrimitiveOpKind::StringInterpolate {
+                parts: vec![
+                    "hello ".to_string(),
+                    ", you have ".to_string(),
+                    " items".to_string(),
+                ],
+                input_ports: vec!["name".to_string(), "count".to_string()],
             },
         };
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "record".to_string(),
-            Value::Map(
-                [("name".to_string(), Value::Str("alice".to_string()))]
-                    .into_iter()
-                    .collect(),
-            ),
-        );
-        inputs.insert(
-            "other".to_string(),
-            Value::Map(
-                [("name".to_string(), Value::Str("bob".to_string()))]
-                    .into_iter()
-                    .collect(),
-            ),
-        );
+        let inputs = [("name".to_string(), Value::Str("Alice".to_string()))]
+            .into_iter()
+            .collect();
 
         let err = execute_lowered_op(&op, inputs, &empty_sibling_fns(), &empty_data_values())
-            .expect_err("GetField with multiple inputs should fail closed");
+            .expect_err("StringInterpolate with missing input port should fail closed");
 
-        assert!(
-            err.message.contains("expected exactly 1 input"),
-            "error should mention input count: {}",
-            err.message
+        assert_eq!(
+            err.message,
+            "StringInterpolate: missing required input port `count`; available inputs: [name]"
         );
     }
 
