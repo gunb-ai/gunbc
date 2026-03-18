@@ -16,6 +16,9 @@ import std.types {
   ServiceAccountEmail
 }
 import extdeps.cloud.gcp.gcp
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.sts
 import extdeps.shell
 
 // Acquire a subject token based on runtime environment.
