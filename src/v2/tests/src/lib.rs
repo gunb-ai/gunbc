@@ -8,8 +8,11 @@
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    static NEXT_TEMP_DIR_ID: AtomicU64 = AtomicU64::new(0);
 
     fn workspace_root() -> std::path::PathBuf {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -3358,7 +3361,9 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        let tmp_dir = std::env::temp_dir().join(dir_name);
+        let unique_id = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
+        let tmp_dir =
+            std::env::temp_dir().join(format!("{dir_name}-{}-{unique_id}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
         daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
