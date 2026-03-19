@@ -94,13 +94,19 @@ fn missing_declared_input_ports<'a>(
     missing
 }
 
-fn declared_input_port_names(inputs: &[Port]) -> Vec<&str> {
+fn declared_input_port_names(inputs: &[Port]) -> Vec<String> {
     let mut declared = inputs
         .iter()
-        .map(|port| port.name.0.as_str())
+        .map(|port| port.name.0.clone())
         .collect::<Vec<_>>();
     declared.sort_unstable();
     declared
+}
+
+fn string_interpolate_input_port_names(parts: &[String]) -> Vec<String> {
+    (0..parts.len().saturating_sub(1))
+        .map(|i| format!("interp_{i}"))
+        .collect()
 }
 
 fn require_input_port<'a>(
@@ -1011,8 +1017,26 @@ fn resolve_primitive(
                 has_else: false,
             }))
         }
-        PrimitiveOpKind::StringInterpolate { .. }
-        | PrimitiveOpKind::BinaryOp { .. }
+        PrimitiveOpKind::StringInterpolate { parts } => {
+            let declared = declared_input_port_names(inputs);
+            let expected = string_interpolate_input_port_names(parts);
+            if declared != expected {
+                return Err(ResolveError {
+                    node_id: String::new(),
+                    reason: format!(
+                        "StringInterpolate: declared inputs [{}] do not match expected inputs [{}] derived from parts (compiler bug)",
+                        declared.join(", "),
+                        expected.join(", ")
+                    ),
+                });
+            }
+            Ok(DynOp::new(PurePrimitiveOp {
+                kind: kind.clone(),
+                output_port: default_output_port(outputs),
+                has_else: false,
+            }))
+        }
+        PrimitiveOpKind::BinaryOp { .. }
         | PrimitiveOpKind::UnaryOp { .. }
         | PrimitiveOpKind::MatchDispatch { .. }
         | PrimitiveOpKind::RecordConstruct { .. }
@@ -2423,6 +2447,36 @@ mod tests {
         assert_eq!(
             outputs.get("result").and_then(Value::as_str),
             Some("hello Alice, you have 42 items")
+        );
+    }
+
+    #[test]
+    fn resolve_string_interpolate_rejects_misdeclared_input_ports() {
+        let node = Node::opaque(
+            "interp",
+            vec![Port::new("interp_0", "String"), Port::new("name", "Int")],
+            vec![Port::new("result", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "string_interpolate".to_string(),
+                kind: PrimitiveOpKind::StringInterpolate {
+                    parts: vec![
+                        "hello ".to_string(),
+                        ", you have ".to_string(),
+                        " items".to_string(),
+                    ],
+                },
+            },
+        );
+
+        let err = resolve_node(&node)
+            .expect_err("StringInterpolate with misdeclared inputs must fail at resolve time");
+        assert!(
+            err.reason.contains(
+                "declared inputs [interp_0, name] do not match expected inputs [interp_0, interp_1]"
+            ),
+            "error should identify the declared-vs-expected port mismatch: {}",
+            err.reason
         );
     }
 
