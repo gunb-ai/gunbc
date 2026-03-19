@@ -7,7 +7,7 @@ use daglang_lower::{
 };
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_typecheck::TypecheckOptions;
-use gunbc_exec::{lower, ExecutionMode};
+use gunbc_exec::{lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
