@@ -7,7 +7,7 @@ use daglang_lower::{
 };
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_typecheck::TypecheckOptions;
-use gunbc_exec::{lower, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
@@ -4029,9 +4029,20 @@ service FsStorage {
 }"#,
         ),
         (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}
+service LegacyOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
             "sample/main.dag",
             r#"module sample.main
 import extdeps.storage as storage
+import extdeps.legacy { LegacyOnly }
 
 func run(path: String) -> { body: String } {
   let response = FsStorage.read(path: path)
@@ -4048,21 +4059,45 @@ func run(path: String) -> { body: String } {
     .expect("aliased import service call should typecheck");
 
     let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
-    let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
+    let prepare_node = output
+        .dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "prepare_transport_extdeps_storage_FsStorage_read")
+        .expect("lowered DAG should contain the selected extdeps.storage prepare node");
+    match &prepare_node.body {
         gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
             module,
+            obligation,
             service_metadata,
             ..
         }) => {
-            module == "extdeps.storage"
-                && service_metadata.service == "FsStorage"
-                && service_metadata.operation == "read"
+            assert_eq!(module, "extdeps.storage");
+            assert_eq!(*obligation, TransportObligation::Prepare);
+            assert_eq!(service_metadata.service, "FsStorage");
+            assert_eq!(service_metadata.operation, "read");
         }
-        _ => false,
+        other => panic!("expected prepare transport node, got {other:?}"),
+    }
+
+    let selected_prepare_is_wired = output.dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "param_source_sample_main_run_path"
+            && edge.from_port.0 == "path"
+            && edge.to_node.0 == "prepare_transport_extdeps_storage_FsStorage_read"
+            && edge.to_port.0 == "path"
+    });
+    let legacy_prepare_is_wired = output.dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "param_source_sample_main_run_path"
+            && edge.from_port.0 == "path"
+            && edge.to_node.0 == "prepare_transport_extdeps_legacy_FsStorage_read"
     });
     assert!(
-        has_fs_storage_transport,
-        "lowered DAG should contain a transport node for extdeps.storage FsStorage.read via aliased import"
+        selected_prepare_is_wired,
+        "lowered DAG should wire sample.main::run to extdeps.storage FsStorage.read via the aliased import binding"
+    );
+    assert!(
+        !legacy_prepare_is_wired,
+        "lowered DAG must not wire the conflicting extdeps.legacy FsStorage transport when the import binding excludes it"
     );
 }
 
@@ -4110,22 +4145,44 @@ func run(path: String) -> { body: String } {
     .expect("module-qualified call should disambiguate conflicting FsStorage providers");
 
     let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
-
-    // Assert the correct provider's transport was emitted.
-    let has_correct_provider_transport = output.dag.nodes.iter().any(|node| match &node.body {
+    let prepare_node = output
+        .dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "prepare_transport_extdeps_storage_FsStorage_read")
+        .expect("lowered DAG should contain the selected extdeps.storage prepare node");
+    match &prepare_node.body {
         gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
             module,
+            obligation,
             service_metadata,
             ..
         }) => {
-            module == "extdeps.storage"
-                && service_metadata.service == "FsStorage"
-                && service_metadata.operation == "read"
+            assert_eq!(module, "extdeps.storage");
+            assert_eq!(*obligation, TransportObligation::Prepare);
+            assert_eq!(service_metadata.service, "FsStorage");
+            assert_eq!(service_metadata.operation, "read");
         }
-        _ => false,
+        other => panic!("expected prepare transport node, got {other:?}"),
+    }
+
+    let selected_prepare_is_wired = output.dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "param_source_sample_main_run_path"
+            && edge.from_port.0 == "path"
+            && edge.to_node.0 == "prepare_transport_extdeps_storage_FsStorage_read"
+            && edge.to_port.0 == "path"
+    });
+    let legacy_prepare_is_wired = output.dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "param_source_sample_main_run_path"
+            && edge.from_port.0 == "path"
+            && edge.to_node.0 == "prepare_transport_extdeps_legacy_FsStorage_read"
     });
     assert!(
-        has_correct_provider_transport,
-        "lowered transport must come from extdeps.storage, not extdeps.legacy"
+        selected_prepare_is_wired,
+        "lowered DAG should wire sample.main::run to extdeps.storage FsStorage.read for the module-qualified call"
+    );
+    assert!(
+        !legacy_prepare_is_wired,
+        "lowered DAG must not wire the conflicting extdeps.legacy FsStorage transport for the module-qualified call"
     );
 }

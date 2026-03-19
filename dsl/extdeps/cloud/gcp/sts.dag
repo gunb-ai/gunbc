@@ -9,7 +9,6 @@
 
 module extdeps.cloud.gcp.sts
 
-import std.types { Url }
 import std.errors { GcpErrorShape, GitHubErrorShape }
 
 // -- Token types ---------------------------------------------------
@@ -42,14 +41,6 @@ type StsTokenResponse {
   expires_in: Int
 }
 
-// -- Constants -----------------------------------------------------
-
-data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
-
-data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
-
-data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
-
 // -- Service: REST transport wiring ------------------------------
 
 service gcp.STS {
@@ -70,10 +61,21 @@ service gcp.STS {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
-    // Body includes grant_type and token_type fields -- the compiler
-    // generates the full OAuth2 token exchange request from these inputs.
+    // Keep OAuth2 wire values literal here until transport-body serialization
+    // can derive them generically from resolved type metadata; the typed
+    // request record remains the schema authority for lowering-time checks.
     idempotent
-    transport rest { method: POST, path: "/v1/token" }
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: StsTokenExchange {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: subject_token,
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        audience: audience,
+        requested_token_type: "urn:ietf:params:oauth:token-type:access_token"
+      }
+    }
     response {
       200 => StsTokenResponse
       400 => GcpErrorShape

@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeDef, TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
@@ -1604,6 +1604,7 @@ struct LoweringContext<'a> {
     endpoints_by_name: &'a HashMap<String, Option<LoweredEndpoint>>,
     data_values: &'a HashMap<String, serde_json::Value>,
     service_registry: &'a ServiceEndpointRegistry,
+    scoped_service_registry: &'a ServiceEndpointRegistry,
     bound_callable_sources: &'a HashMap<String, LoweredEndpoint>,
     bound_service_sources: &'a HashMap<String, ServiceTransportEndpoint>,
     expanded_results: &'a HashMap<String, PatternExpansionResult>,
@@ -1709,6 +1710,7 @@ struct DagWiringContext<'a> {
     endpoints_by_full: &'a HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &'a HashMap<String, Option<LoweredEndpoint>>,
     service_registry: &'a ServiceEndpointRegistry,
+    scoped_service_registries: &'a HashMap<String, ServiceEndpointRegistry>,
     data_values: &'a HashMap<String, serde_json::Value>,
     variant_names: &'a HashSet<String>,
     /// Default expressions for callable parameters, keyed by callable name.
@@ -2772,10 +2774,13 @@ fn lower_typed_project_impl(
     let mut service_registry = transport_manifest.registry;
     let data_values = build_data_values(project);
     let callable_param_defaults = collect_callable_param_defaults(project);
+    let scoped_service_registries =
+        build_scoped_service_endpoint_registries(project, &service_registry);
     let wctx = DagWiringContext {
         endpoints_by_full: &endpoints_by_full,
         endpoints_by_name: &endpoints_by_name,
         service_registry: &service_registry,
+        scoped_service_registries: &scoped_service_registries,
         data_values: &data_values,
         variant_names: &variant_names,
         callable_param_defaults: &callable_param_defaults,
@@ -2799,10 +2804,13 @@ fn lower_typed_project_impl(
     builder.apply_manifest(&stub_manifest);
     service_registry.merge(stub_manifest.registry);
     let known_interface_types = collect_interface_type_names(project);
+    let scoped_service_registries =
+        build_scoped_service_endpoint_registries(project, &service_registry);
     let wctx = DagWiringContext {
         endpoints_by_full: &endpoints_by_full,
         endpoints_by_name: &endpoints_by_name,
         service_registry: &service_registry,
+        scoped_service_registries: &scoped_service_registries,
         data_values: &data_values,
         variant_names: &variant_names,
         callable_param_defaults: &callable_param_defaults,
@@ -2822,6 +2830,7 @@ fn lower_typed_project_impl(
         &endpoints_by_full,
         &endpoints_by_name,
         &service_registry,
+        &scoped_service_registries,
         &auth_provider_names,
     );
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
@@ -3770,6 +3779,7 @@ fn add_dependency_edges(
 ) {
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
+        let scoped_service_registry = module_scoped_service_registry(wctx, module_name.as_str());
         let source_file = module.path.display().to_string();
         let param_types_by_callable = module
             .signatures
@@ -3837,6 +3847,7 @@ fn add_dependency_edges(
                     endpoints_by_name: wctx.endpoints_by_name,
                     data_values: wctx.data_values,
                     service_registry: wctx.service_registry,
+                    scoped_service_registry,
                     bound_callable_sources: &empty_callables,
                     bound_service_sources: &empty_services,
                     expanded_results: &empty_expanded,
@@ -3873,6 +3884,7 @@ fn add_dependency_edges(
                     endpoints_by_name: wctx.endpoints_by_name,
                     data_values: wctx.data_values,
                     service_registry: wctx.service_registry,
+                    scoped_service_registry,
                     uses_binding_types: &uses_binding_types,
                     all_fn_bodies: &empty_fn_bodies,
                     variant_names: wctx.variant_names,
@@ -4099,10 +4111,10 @@ struct LoopBodyTransport {
 fn resolve_loop_body_service_call(
     call_path: &[String],
     uses_binding_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
+    service_lookup: ServiceLookupContext<'_>,
 ) -> Option<LoopBodyTransport> {
     // First try direct registry lookup.
-    if let Some(endpoint) = resolve_service_endpoint(call_path, service_registry) {
+    if let Some(endpoint) = resolve_service_endpoint(call_path, service_lookup.scoped) {
         return endpoint_to_loop_body_transport(&endpoint);
     }
     // Try uses-binding resolution: first segment is binding name.
@@ -4112,7 +4124,7 @@ fn resolve_loop_body_service_call(
         let capability = call_path.last()?;
         let cap_key = format!("{resource_type}.{capability}");
         let cap_path: Vec<String> = cap_key.split('.').map(String::from).collect();
-        if let Some(endpoint) = resolve_service_endpoint(&cap_path, service_registry) {
+        if let Some(endpoint) = resolve_service_endpoint(&cap_path, service_lookup.global) {
             return endpoint_to_loop_body_transport(&endpoint);
         }
     }
@@ -4133,9 +4145,9 @@ fn endpoint_to_loop_body_transport(
 fn resolve_loop_body_service_endpoint(
     call_path: &[String],
     uses_binding_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
+    service_lookup: ServiceLookupContext<'_>,
 ) -> Option<ServiceTransportEndpoint> {
-    if let Some(endpoint) = resolve_service_endpoint(call_path, service_registry) {
+    if let Some(endpoint) = resolve_service_endpoint(call_path, service_lookup.scoped) {
         return Some(endpoint);
     }
     let binding = call_path.first()?;
@@ -4144,7 +4156,7 @@ fn resolve_loop_body_service_endpoint(
         let capability = call_path.last()?;
         let cap_key = format!("{resource_type}.{capability}");
         let cap_path: Vec<String> = cap_key.split('.').map(String::from).collect();
-        return resolve_service_endpoint(&cap_path, service_registry);
+        return resolve_service_endpoint(&cap_path, service_lookup.global);
     }
     None
 }
@@ -4321,6 +4333,7 @@ fn make_loop_body_dag_from_stmts(
                     endpoints_by_name: &empty_endpoints,
                     data_values: ctx.data_values,
                     service_registry: ctx.service_registry,
+                    scoped_service_registry: ctx.scoped_service_registry,
                     bound_callable_sources: &bound_callable_sources,
                     bound_service_sources: &bound_service_sources,
                     expanded_results: &empty_expanded,
@@ -4343,10 +4356,14 @@ fn make_loop_body_dag_from_stmts(
                 }
             }
             Expr::ServiceCall(path, args) => {
+                let service_lookup = ServiceLookupContext {
+                    scoped: ctx.scoped_service_registry,
+                    global: ctx.service_registry,
+                };
                 let Some(endpoint) = resolve_loop_body_service_endpoint(
                     path,
                     ctx.uses_binding_types,
-                    ctx.service_registry,
+                    service_lookup,
                 ) else {
                     continue;
                 };
@@ -4365,6 +4382,7 @@ fn make_loop_body_dag_from_stmts(
                     endpoints_by_name: &empty_endpoints,
                     data_values: &empty_data,
                     service_registry: ctx.service_registry,
+                    scoped_service_registry: ctx.scoped_service_registry,
                     bound_callable_sources: &bound_callable_sources,
                     bound_service_sources: &bound_service_sources,
                     expanded_results: &empty_expanded,
@@ -4399,6 +4417,7 @@ fn make_loop_body_dag_from_stmts(
         endpoints_by_name: &empty_endpoints,
         data_values: ctx.data_values,
         service_registry: ctx.service_registry,
+        scoped_service_registry: ctx.scoped_service_registry,
         bound_callable_sources: &bound_callable_sources,
         bound_service_sources: &bound_service_sources,
         expanded_results: &empty_expanded,
@@ -4696,10 +4715,111 @@ struct ControlFlowPatternContext<'a> {
     endpoints_by_name: &'a HashMap<String, Option<LoweredEndpoint>>,
     data_values: &'a HashMap<String, serde_json::Value>,
     service_registry: &'a ServiceEndpointRegistry,
+    scoped_service_registry: &'a ServiceEndpointRegistry,
     uses_binding_types: &'a HashMap<String, String>,
     all_fn_bodies: &'a std::collections::BTreeMap<String, LoweredFnBody>,
     variant_names: &'a HashSet<String>,
     callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
+}
+
+fn build_scoped_service_endpoint_registries(
+    project: &TypedProject,
+    global_registry: &ServiceEndpointRegistry,
+) -> HashMap<String, ServiceEndpointRegistry> {
+    let all_modules = &project.graph().modules;
+    let mut scoped = HashMap::new();
+
+    for module in project.modules() {
+        let module_name = module.module_path.as_dotted();
+        let mut registry = ServiceEndpointRegistry::default();
+        let resolved_module = &all_modules[module.graph_index];
+        let resolved_module_name = resolved_module.module_path.as_dotted();
+        for item in &resolved_module.ast.items {
+            let Item::ServiceDef(service) = &item.node else {
+                continue;
+            };
+            let service_tail = service
+                .name
+                .rsplit('.')
+                .next()
+                .unwrap_or(service.name.as_str());
+            for operation in &service.operations {
+                let module_scoped =
+                    format!("{resolved_module_name}.{}.{}", service.name, operation.name);
+                let Some(endpoint) = global_registry.get(&module_scoped).cloned() else {
+                    continue;
+                };
+                registry.register(format!("{}.{}", service.name, operation.name), endpoint.clone());
+                registry.register(format!("{service_tail}.{}", operation.name), endpoint.clone());
+                registry.register(module_scoped, endpoint);
+            }
+        }
+
+        for import in &module.ast.imports {
+            let import_path = import.node.path.as_dotted();
+            let filter = import
+                .node
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.iter().cloned().collect::<HashSet<_>>());
+            if let Some(imported_module) = all_modules
+                .iter()
+                .find(|resolved| resolved.module_path.as_dotted() == import_path)
+            {
+                let imported_module_name = imported_module.module_path.as_dotted();
+                for item in &imported_module.ast.items {
+                    let Item::ServiceDef(service) = &item.node else {
+                        continue;
+                    };
+                    if let Some(filter) = filter.as_ref() {
+                        if !filter.contains(&service.name) {
+                            continue;
+                        }
+                    }
+                    let service_tail = service
+                        .name
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(service.name.as_str());
+                    for operation in &service.operations {
+                        let module_scoped =
+                            format!("{imported_module_name}.{}.{}", service.name, operation.name);
+                        let Some(endpoint) = global_registry.get(&module_scoped).cloned() else {
+                            continue;
+                        };
+                        registry.register(
+                            format!("{}.{}", service.name, operation.name),
+                            endpoint.clone(),
+                        );
+                        registry.register(
+                            format!("{service_tail}.{}", operation.name),
+                            endpoint.clone(),
+                        );
+                        registry.register(module_scoped, endpoint);
+                    }
+                }
+            }
+        }
+
+        scoped.insert(module_name, registry);
+    }
+
+    scoped
+}
+
+fn module_scoped_service_registry<'a>(
+    wctx: &'a DagWiringContext<'_>,
+    module_name: &str,
+) -> &'a ServiceEndpointRegistry {
+    wctx.scoped_service_registries
+        .get(module_name)
+        .unwrap_or(wctx.service_registry)
+}
+
+#[derive(Clone, Copy)]
+struct ServiceLookupContext<'a> {
+    scoped: &'a ServiceEndpointRegistry,
+    global: &'a ServiceEndpointRegistry,
 }
 
 fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPatternContext<'_>) {
@@ -4708,12 +4828,16 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
     for (index, site) in for_sites.iter().enumerate() {
         let node_id = format!("{}::cf_for_{index}", ctx.target.node_id);
         // Resolve body service calls to LoopBodyTransport entries.
+        let service_lookup = ServiceLookupContext {
+            scoped: ctx.scoped_service_registry,
+            global: ctx.service_registry,
+        };
         let mut body_transports = Vec::new();
         for call_path in &site.body_service_call_paths {
             if let Some(transport) = resolve_loop_body_service_call(
                 call_path,
                 ctx.uses_binding_types,
-                ctx.service_registry,
+                service_lookup,
             ) {
                 body_transports.push(transport);
             }
@@ -4764,12 +4888,16 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
     for (index, site) in if_sites.iter().enumerate() {
         let node_id = format!("{}::cf_if_{index}", ctx.target.node_id);
         // Resolve branch-body service calls to transport entries.
+        let service_lookup = ServiceLookupContext {
+            scoped: ctx.scoped_service_registry,
+            global: ctx.service_registry,
+        };
         let mut then_transports = Vec::new();
         for call_path in &site.then_service_call_paths {
             if let Some(transport) = resolve_loop_body_service_call(
                 call_path,
                 ctx.uses_binding_types,
-                ctx.service_registry,
+                service_lookup,
             ) {
                 then_transports.push(transport);
             }
@@ -4779,7 +4907,7 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
             if let Some(transport) = resolve_loop_body_service_call(
                 call_path,
                 ctx.uses_binding_types,
-                ctx.service_registry,
+                service_lookup,
             ) {
                 else_transports.push(transport);
             }
@@ -4843,12 +4971,16 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         // the match condition isn't wired to the BranchBuilder's condition port.
         // Both branches execute and the fn_body evaluation picks the correct arm.
         // Per-arm transport isolation still requires proper match condition routing.
+        let service_lookup = ServiceLookupContext {
+            scoped: ctx.scoped_service_registry,
+            global: ctx.service_registry,
+        };
         let mut match_transports = Vec::new();
         for call_path in &site.all_service_call_paths {
             if let Some(transport) = resolve_loop_body_service_call(
                 call_path,
                 ctx.uses_binding_types,
-                ctx.service_registry,
+                service_lookup,
             ) {
                 match_transports.push(transport);
             }
@@ -5447,6 +5579,7 @@ fn expand_non_generic_pattern_calls(
             endpoints_by_name: ctx.endpoints_by_name,
             data_values: ctx.data_values,
             service_registry: ctx.service_registry,
+            scoped_service_registry: ctx.scoped_service_registry,
             bound_callable_sources: ctx.bound_callable_sources,
             bound_service_sources: ctx.bound_service_sources,
             local_let_bindings: ctx.local_let_bindings,
@@ -6464,6 +6597,231 @@ fn validate_rest_output_field_paths(
     Ok(())
 }
 
+fn validate_sts_exchange_body_against_typed_schema(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    type_defs: &HashMap<String, &TypeDef>,
+) -> Result<(), LowerError> {
+    const STS_SERVICE: &str = "gcp.STS";
+    const STS_OPERATION: &str = "Exchange";
+    const TOKEN_EXCHANGE_URN: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
+    const JWT_URN: &str = "urn:ietf:params:oauth:token-type:jwt";
+    const ACCESS_TOKEN_URN: &str = "urn:ietf:params:oauth:token-type:access_token";
+
+    if service.name != STS_SERVICE || operation.name != STS_OPERATION {
+        return Ok(());
+    }
+
+    let (request_type_name, body_fields) = match &operation.transport {
+        Some(TransportBinding::Rest {
+            body: Some(body), ..
+        }) => match body {
+            Expr::Record(Some(type_name), fields) => (
+                type_name.as_str(),
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value))
+                    .collect::<HashMap<_, _>>(),
+            ),
+            Expr::Record(None, _) | Expr::Map(_) => {
+                return Err(LowerError::InvalidTransportSpec {
+                    service: service.name.clone(),
+                    operation: operation.name.clone(),
+                    detail: format!(
+                        "{STS_SERVICE}.{STS_OPERATION} requires a typed REST body record so lowering can resolve the request schema from DSL metadata"
+                    ),
+                });
+            }
+            _ => {
+                return Err(LowerError::InvalidTransportSpec {
+                    service: service.name.clone(),
+                    operation: operation.name.clone(),
+                    detail: format!(
+                        "{STS_SERVICE}.{STS_OPERATION} REST body must stay a typed record matching the declared request schema"
+                    ),
+                });
+            }
+        },
+        Some(TransportBinding::Rest { body: None, .. }) => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} requires an explicit typed REST body so lowering can validate it against the declared request schema"
+                ),
+            });
+        }
+        _ => return Ok(()),
+    };
+
+    let request_fields = match type_defs.get(request_type_name) {
+        Some(TypeDef {
+            body: TypeBody::Record(fields),
+            ..
+        }) => fields.as_slice(),
+        Some(_) => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("`{request_type_name}` must remain a record type"),
+            });
+        }
+        None => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} requires the typed REST body record `{request_type_name}` to resolve to a local request schema"
+                ),
+            });
+        }
+    };
+
+    let request_field_types = request_fields
+        .iter()
+        .map(|field| (field.name.as_str(), &field.ty))
+        .collect::<HashMap<_, _>>();
+
+    for key in body_fields.keys() {
+        if !request_field_types.contains_key(key) {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("STS body field `{key}` is not declared on `{request_type_name}`"),
+            });
+        }
+    }
+
+    for field in request_fields {
+        if !is_type_expr_optional(&field.ty) && !body_fields.contains_key(field.name.as_str()) {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body is missing required `{request_type_name}.{}` field",
+                    field.name
+                ),
+            });
+        }
+    }
+
+    let named_type_name = |field_name: &str| -> Result<&str, LowerError> {
+        let Some(field_ty) = request_field_types.get(field_name) else {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("STS request schema is missing `{request_type_name}.{field_name}`"),
+            });
+        };
+        named_type_expr_name(field_ty).ok_or_else(|| LowerError::InvalidTransportSpec {
+            service: service.name.clone(),
+            operation: operation.name.clone(),
+            detail: format!("`{request_type_name}.{field_name}` must resolve to a named enum type"),
+        })
+    };
+    let grant_type_name = named_type_name("grant_type")?;
+    let subject_token_type_name = named_type_name("subject_token_type")?;
+    let requested_token_type_name = named_type_name("requested_token_type")?;
+
+    let expect_unit_variant = |enum_name: &str, variant_name: &str| -> Result<(), LowerError> {
+        let Some(type_def) = type_defs.get(enum_name) else {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} requires local `{enum_name}` so lowering can validate the REST body literals"
+                ),
+            });
+        };
+        let TypeBody::Sum(variants) = &type_def.body else {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("`{enum_name}` must remain a sum type"),
+            });
+        };
+        if !variants
+            .iter()
+            .any(|variant| variant.name == variant_name && variant.fields.is_empty())
+        {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "`{enum_name}` must keep unit variant `{variant_name}` for `{STS_SERVICE}.{STS_OPERATION}`"
+                ),
+            });
+        }
+        Ok(())
+    };
+    expect_unit_variant(grant_type_name, "TokenExchange")?;
+    expect_unit_variant(subject_token_type_name, "Jwt")?;
+    expect_unit_variant(requested_token_type_name, "RequestAccessToken")?;
+
+    let expect_input_ref = |field_name: &str| -> Result<(), LowerError> {
+        match body_fields.get(field_name) {
+            Some(Expr::Ident(name)) if name == field_name => Ok(()),
+            _ => Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body field `{field_name}` must remain wired from operation input `{field_name}`"
+                ),
+            }),
+        }
+    };
+    expect_input_ref("subject_token")?;
+    expect_input_ref("audience")?;
+
+    let expect_literal = |field_name: &str,
+                          expected: &str,
+                          source: &str|
+     -> Result<(), LowerError> {
+        match body_fields.get(field_name) {
+            Some(Expr::Literal(Literal::String(value))) if value == expected => Ok(()),
+            Some(Expr::Literal(Literal::String(value))) => Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body field `{field_name}` must stay aligned with `{source}` and use `{expected}`, found `{value}`"
+                ),
+            }),
+            _ => Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body field `{field_name}` must stay a literal derived from `{source}`"
+                ),
+            }),
+        }
+    };
+    expect_literal(
+        "grant_type",
+        TOKEN_EXCHANGE_URN,
+        &format!("{grant_type_name}::TokenExchange"),
+    )?;
+    expect_literal(
+        "subject_token_type",
+        JWT_URN,
+        &format!("{subject_token_type_name}::Jwt"),
+    )?;
+    expect_literal(
+        "requested_token_type",
+        ACCESS_TOKEN_URN,
+        &format!("{requested_token_type_name}::RequestAccessToken"),
+    )?;
+
+    Ok(())
+}
+
+fn named_type_expr_name(ty: &TypeExpr) -> Option<&str> {
+    match ty {
+        TypeExpr::Named(name) => Some(name.as_str()),
+        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => named_type_expr_name(inner),
+        _ => None,
+    }
+}
+
 // ============================================================================
 // ServiceOperationSpec extraction from annotations
 // ============================================================================
@@ -7450,6 +7808,15 @@ fn derive_service_transport_triplets(
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let source_file = module.path.display().to_string();
+        let module_type_defs = module
+            .ast
+            .items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::TypeDef(type_def) => Some((type_def.name.clone(), type_def)),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -7478,6 +7845,11 @@ fn derive_service_transport_triplets(
                     }
                 }
                 validate_rest_output_field_paths(service, operation)?;
+                validate_sts_exchange_body_against_typed_schema(
+                    service,
+                    operation,
+                    &module_type_defs,
+                )?;
                 let service_metadata =
                     derive_service_call_metadata(service, operation, &data_registry)?;
                 // RT4: Fail-closed when a service operation has no transport
@@ -7808,6 +8180,11 @@ fn add_service_call_edges(
     let mut fn_node_use_count: HashMap<String, usize> = HashMap::new();
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
+        let scoped_service_registry = module_scoped_service_registry(wctx, module_name.as_str());
+        let service_lookup = ServiceLookupContext {
+            scoped: scoped_service_registry,
+            global: wctx.service_registry,
+        };
         let source_file = module.path.display().to_string();
         for item in &module.ast.items {
             let Some(callable) = item.node.as_callable() else {
@@ -7940,7 +8317,7 @@ fn add_service_call_edges(
                 caller.as_str(),
                 stmts,
                 &uses_binding_types,
-                wctx.service_registry,
+                service_lookup,
                 active_profile_bindings,
                 profile_bound_interfaces,
                 known_interface_types,
@@ -7987,7 +8364,7 @@ fn add_service_call_edges(
                     caller.as_str(),
                     &call.path,
                     &uses_binding_types,
-                    wctx.service_registry,
+                    service_lookup,
                     active_profile_bindings,
                     profile_bound_interfaces,
                     known_interface_types,
@@ -8038,6 +8415,7 @@ fn add_service_call_edges(
                     endpoints_by_name: endpoints_for_ctx,
                     data_values: wctx.data_values,
                     service_registry: wctx.service_registry,
+                    scoped_service_registry,
                     bound_callable_sources: &bound_callable_sources,
                     bound_service_sources: &bound_service_sources,
                     expanded_results: &empty_expanded,
@@ -8199,6 +8577,7 @@ fn add_service_call_edges(
                 endpoints_by_name: endpoints_for_ctx,
                 data_values: wctx.data_values,
                 service_registry: wctx.service_registry,
+                scoped_service_registry,
                 bound_callable_sources: &augmented_callable_sources,
                 bound_service_sources: &bound_service_sources,
                 expanded_results: &empty_expanded,
@@ -8236,6 +8615,11 @@ fn add_service_call_edges(
     }
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
+        let scoped_service_registry = module_scoped_service_registry(wctx, module_name.as_str());
+        let service_lookup = ServiceLookupContext {
+            scoped: scoped_service_registry,
+            global: wctx.service_registry,
+        };
         for item in &module.ast.items {
             let Item::PipelineDef(def) = &item.node else {
                 continue;
@@ -8265,7 +8649,7 @@ fn add_service_call_edges(
                         caller.as_str(),
                         &call.path,
                         &uses_binding_types,
-                        wctx.service_registry,
+                        service_lookup,
                         active_profile_bindings,
                         profile_bound_interfaces,
                         known_interface_types,
@@ -8429,12 +8813,12 @@ pub(crate) fn resolve_service_call_source(
     caller: &str,
     call_path: &[String],
     uses_binding_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
+    service_lookup: ServiceLookupContext<'_>,
     active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
 ) -> Result<Option<ServiceCallResolvedSource>, LowerError> {
-    if let Some(endpoint) = resolve_service_endpoint(call_path, service_registry) {
+    if let Some(endpoint) = resolve_service_endpoint(call_path, service_lookup.scoped) {
         return Ok(Some(ServiceCallResolvedSource {
             endpoint,
             binding_config: None,
@@ -8473,7 +8857,7 @@ pub(crate) fn resolve_service_call_source(
             let cap_key = format!("{interface_type}.{capability}");
             if let Some(endpoint) = resolve_service_endpoint(
                 &cap_key.split('.').map(String::from).collect::<Vec<_>>(),
-                service_registry,
+                service_lookup.global,
             ) {
                 return Ok(Some(ServiceCallResolvedSource {
                     endpoint,
@@ -8500,7 +8884,7 @@ pub(crate) fn resolve_service_call_source(
             let cap_key = format!("{interface_type}.{capability}");
             if let Some(endpoint) = resolve_service_endpoint(
                 &cap_key.split('.').map(String::from).collect::<Vec<_>>(),
-                service_registry,
+                service_lookup.global,
             ) {
                 return Ok(Some(ServiceCallResolvedSource {
                     endpoint,
@@ -8542,7 +8926,7 @@ pub(crate) fn resolve_service_call_source(
         .map(|segment| segment.to_string())
         .collect::<Vec<_>>();
     implementation_call_path.push(capability);
-    let endpoint = resolve_service_endpoint(&implementation_call_path, service_registry)
+    let endpoint = resolve_service_endpoint(&implementation_call_path, service_lookup.global)
         .ok_or_else(|| LowerError::UnresolvedServiceCall {
             caller: caller.to_string(),
             service_call: implementation_call_path.join("."),
@@ -8564,7 +8948,7 @@ fn collect_bound_service_sources(
     caller: &str,
     stmts: &[Stmt],
     uses_binding_types: &HashMap<String, String>,
-    service_registry: &ServiceEndpointRegistry,
+    service_lookup: ServiceLookupContext<'_>,
     active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
@@ -8584,7 +8968,7 @@ fn collect_bound_service_sources(
                         caller,
                         path,
                         uses_binding_types,
-                        service_registry,
+                        service_lookup,
                         active_profile_bindings,
                         profile_bound_interfaces,
                         known_interface_types,
@@ -8723,10 +9107,14 @@ fn wire_auth_credential_edges(
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     service_registry: &ServiceEndpointRegistry,
+    scoped_service_registries: &HashMap<String, ServiceEndpointRegistry>,
     auth_provider_names: &HashSet<String>,
 ) {
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
+        let scoped_service_registry = scoped_service_registries
+            .get(module_name.as_str())
+            .unwrap_or(service_registry);
         for item in &module.ast.items {
             let stmts = match &item.node {
                 Item::FuncDef(def) => def.body.stmts.as_slice(),
@@ -8758,7 +9146,9 @@ fn wire_auth_credential_edges(
             collect_service_calls_from_stmts(stmts, &mut service_calls);
 
             for call in &service_calls {
-                let Some(endpoint) = resolve_service_endpoint(&call.path, service_registry) else {
+                let Some(endpoint) =
+                    resolve_service_endpoint(&call.path, scoped_service_registry)
+                else {
                     continue;
                 };
                 if !endpoint.has_auth {
