@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use daglang_contract::DiagnosticContext;
 use daglang_driver::{check_from_context, CompileError, DriverContext};
-use daglang_syntax::parser::parse;
+use daglang_syntax::{ast::SourceFile, parser::parse};
 
 fn dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl")
@@ -46,10 +46,15 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
     }
 }
 
-fn parsed_import_binding_sets(path: &std::path::Path) -> BTreeMap<String, BTreeSet<String>> {
+fn parse_source_file(path: &std::path::Path) -> (String, SourceFile) {
     let source = std::fs::read_to_string(path).expect("read dag source");
     let ast = parse(&source)
         .unwrap_or_else(|errors| panic!("failed to parse {}: {errors:#?}", path.display()));
+    (source, ast)
+}
+
+fn parsed_import_binding_sets(path: &std::path::Path) -> BTreeMap<String, BTreeSet<String>> {
+    let (_, ast) = parse_source_file(path);
     let mut imports = BTreeMap::new();
 
     for import in ast.imports {
@@ -68,20 +73,64 @@ fn parsed_import_binding_sets(path: &std::path::Path) -> BTreeMap<String, BTreeS
     imports
 }
 
+fn source_with_removed_import_binding(
+    path: &std::path::Path,
+    module: &str,
+    binding: &str,
+) -> String {
+    let (source, ast) = parse_source_file(path);
+    let mut matching_imports = ast
+        .imports
+        .iter()
+        .filter(|import| import.node.path.as_dotted() == module);
+    let import = matching_imports
+        .next()
+        .unwrap_or_else(|| panic!("expected auth patterns to import {module}"));
+    assert!(
+        matching_imports.next().is_none(),
+        "expected a single import entry for {module}"
+    );
+
+    let bindings = import
+        .node
+        .bindings
+        .as_ref()
+        .unwrap_or_else(|| panic!("expected {module} to use explicit bindings"));
+    let remaining: Vec<_> = bindings
+        .iter()
+        .filter(|candidate| candidate.as_str() != binding)
+        .cloned()
+        .collect();
+    assert_ne!(
+        remaining.len(),
+        bindings.len(),
+        "expected {module} to import binding `{binding}`"
+    );
+
+    let replacement = if remaining.is_empty() {
+        String::new()
+    } else {
+        format!("import {module} {{ {} }}", remaining.join(", "))
+    };
+
+    let mut modified = String::with_capacity(
+        source.len() - (import.span.end - import.span.start) + replacement.len(),
+    );
+    modified.push_str(&source[..import.span.start]);
+    modified.push_str(&replacement);
+    modified.push_str(&source[import.span.end..]);
+    modified
+}
+
 fn assert_missing_provider_binding_fails_check(
-    import_line: &str,
-    replacement: &str,
+    module: &str,
+    binding: &str,
     missing_service_call: &str,
 ) {
     let tmp = copy_dsl_to_temp();
     let patterns = tmp.join("gunbc/auth/patterns.dag");
 
-    let original = std::fs::read_to_string(&patterns).expect("read patterns.dag");
-    let modified = original.replacen(import_line, replacement, 1);
-    assert_ne!(
-        original, modified,
-        "replacement did not match — patterns.dag import line may have changed"
-    );
+    let modified = source_with_removed_import_binding(&patterns, module, binding);
     std::fs::write(&patterns, &modified).expect("write modified patterns.dag");
 
     let context = DriverContext {
@@ -172,44 +221,44 @@ fn real_gunbc_auth_patterns_check_typechecks() {
 /// pipeline on the corresponding service call.
 #[test]
 fn removing_required_provider_bindings_from_auth_patterns_fails_check() {
-    for (import_line, replacement, missing_service_call) in [
+    for (module, binding, missing_service_call) in [
         (
-            "import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }\n",
-            "import extdeps.cloud.gcp.gcp { shell.GCloud }\n",
+            "extdeps.cloud.gcp.gcp",
+            "shell.OAuth2",
             "shell.OAuth2.RefreshToken",
         ),
         (
-            "import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }\n",
-            "import extdeps.cloud.gcp.gcp { shell.OAuth2 }\n",
+            "extdeps.cloud.gcp.gcp",
+            "shell.GCloud",
             "shell.GCloud.AuthPrintAccessToken",
         ),
         (
-            "import extdeps.cloud.gcp.secret_manager { gcp.SecretManager }\n",
-            "",
+            "extdeps.cloud.gcp.secret_manager",
+            "gcp.SecretManager",
             "gcp.SecretManager.AccessVersion",
         ),
         (
-            "import extdeps.cloud.gcp.iam { gcp.IAM }\n",
-            "",
+            "extdeps.cloud.gcp.iam",
+            "gcp.IAM",
             "gcp.IAM.GenerateAccessToken",
         ),
         (
-            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }\n",
-            "import extdeps.cloud.gcp.sts { github.OIDC, gcp.Metadata }\n",
+            "extdeps.cloud.gcp.sts",
+            "gcp.STS",
             "gcp.STS.Exchange",
         ),
         (
-            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }\n",
-            "import extdeps.cloud.gcp.sts { gcp.STS, gcp.Metadata }\n",
+            "extdeps.cloud.gcp.sts",
+            "github.OIDC",
             "github.OIDC.GetToken",
         ),
         (
-            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }\n",
-            "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC }\n",
+            "extdeps.cloud.gcp.sts",
+            "gcp.Metadata",
             "gcp.Metadata.GetIdentityToken",
         ),
-        ("import extdeps.shell { shell.Env }\n", "", "shell.Env.Get"),
+        ("extdeps.shell", "shell.Env", "shell.Env.Get"),
     ] {
-        assert_missing_provider_binding_fails_check(import_line, replacement, missing_service_call);
+        assert_missing_provider_binding_fails_check(module, binding, missing_service_call);
     }
 }
