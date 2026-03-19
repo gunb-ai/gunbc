@@ -16,7 +16,7 @@ use gunbc_ir::patterns::CollectionKind as CollectionOpKind;
 pub use crate::eval_core::{
     eval_binop, eval_conditional, eval_get_field, eval_list_construct, eval_literal,
     eval_null_coalesce, eval_record_construct, eval_string_interpolate, eval_unary_op,
-    eval_variant_construct, field_access, match_pattern, sort_key, value_to_string, value_truthy,
+    eval_variant_construct, match_pattern, sort_key, value_to_string, value_truthy,
     values_equal, EvalError,
 };
 
@@ -158,4 +158,58 @@ pub fn evaluate_collection(
 /// of truth (S11).
 pub fn is_intrinsic_call(name: &str) -> bool {
     gunbc_ir::patterns::is_eval_intrinsic(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::expr::{LoweredExpr, LoweredFnBody, LoweredLiteral, LoweredStmt};
+
+    fn call_and_return(name: &str) -> LoweredFnBody {
+        LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let(
+                    "__result".to_string(),
+                    LoweredExpr::Call {
+                        name: name.to_string(),
+                        args: vec![],
+                    },
+                ),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Ident("__result".to_string()),
+                )]),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn qualified_non_builtin_call_resolves_through_entrypoint_siblings() {
+        let entry = call_and_return("module.function");
+        let sibling = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Literal(LoweredLiteral::Int(99)),
+            )])],
+            ..Default::default()
+        };
+        let mut sibling_fns = HashMap::new();
+        sibling_fns.insert("module.function".to_string(), sibling);
+
+        let result = evaluate_fn_body(&entry, &HashMap::new(), &sibling_fns)
+            .expect("qualified sibling call should resolve through evaluate_fn_body");
+
+        assert_eq!(result["return"], Value::Int(99));
+    }
+
+    #[test]
+    fn qualified_non_builtin_call_surfaces_unknown_function_at_entrypoint() {
+        let entry = call_and_return("module.function");
+
+        let err = evaluate_fn_body(&entry, &HashMap::new(), &HashMap::new())
+            .expect_err("unknown qualified call should fail closed at evaluate_fn_body");
+
+        assert_eq!(err.message, "unknown function: module.function");
+    }
 }

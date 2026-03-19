@@ -13,6 +13,13 @@ pub use daglang_eval::expr::{
     LoweredPattern, LoweredStmt, LoweredStringPart, LoweredUnaryOp,
 };
 
+/// Built-in variant names that the language treats as variant constructors
+/// even though they are not defined as user-level sum type variants.
+///
+/// This is the single authority for which names are implicitly variant
+/// constructors. All variant-name sets must include these entries.
+pub const BUILTIN_VARIANT_NAMES: &[&str] = &["Some", "None"];
+
 // ── AST → LoweredExpr translation ──────────────────────────────────────────
 
 /// Controls how AST expressions are lowered — standard lowering vs. DAG port
@@ -179,9 +186,7 @@ fn lower_expr(
                 .collect(),
         ),
         // Named variant record (e.g., `Ok { value: "x" }`)
-        ast::Expr::Record(Some(name), fields)
-            if variant_names.contains(name.as_str()) || name == "Some" || name == "None" =>
-        {
+        ast::Expr::Record(Some(name), fields) if variant_names.contains(name.as_str()) => {
             LoweredExpr::VariantConstruct {
                 tag: name.clone(),
                 fields: fields

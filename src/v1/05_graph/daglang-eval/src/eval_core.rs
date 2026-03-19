@@ -61,32 +61,9 @@ pub fn eval_literal(lit: &LoweredLiteral) -> Value {
 
 // ── Field access ────────────────────────────────────────────────────────────
 
-pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
-    match base {
-        Value::Map(map) => map.get(field).cloned().ok_or_else(|| {
-            let keys: Vec<&String> = map.keys().collect();
-            EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
-        }),
-        Value::Json(json) => match json {
-            serde_json::Value::Object(obj) => Ok(obj
-                .get(field)
-                .map(|v| Value::Json(v.clone()))
-                .unwrap_or(Value::Json(serde_json::Value::Null))),
-            serde_json::Value::Null => Ok(Value::Json(serde_json::Value::Null)),
-            _ => Err(EvalError::new(format!(
-                "cannot access field '{field}' on JSON {:?}",
-                json
-            ))),
-        },
-        Value::Unit | Value::Skipped => Ok(Value::Unit),
-        _ => Err(EvalError::new(format!(
-            "cannot access field '{field}' on {:?}",
-            base
-        ))),
-    }
-}
-
-/// Detailed field access for DAG executor diagnostics.
+/// Field access on a Value — single implementation for both expression
+/// evaluator and DAG executor. Fails closed on missing fields, Skipped
+/// inputs, and non-record bases.
 pub fn eval_get_field(value: &Value, field: &str) -> Result<Value, EvalError> {
     match value {
         Value::Map(fields) => fields.get(field).cloned().ok_or_else(|| {
@@ -837,7 +814,44 @@ pub fn eval_builtin_call(
             }
             Ok(Value::Map(map))
         }
-        _ if name.contains('.') => Ok(Value::Unit),
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unrecognized_dotted_name_is_not_a_builtin() {
+        // Dotted names (qualified calls like `module.function`) must not be
+        // silently handled by the builtin table. They should fall through as
+        // `None` so the caller can resolve them through sibling functions or
+        // produce a clear "unknown function" error.
+        assert!(
+            eval_builtin_call("module.function", &[]).is_none(),
+            "dotted names must not be recognized as builtins"
+        );
+        assert!(
+            eval_builtin_call("deeply.nested.call", &[]).is_none(),
+            "multi-segment dotted names must not be recognized as builtins"
+        );
+    }
+
+    #[test]
+    fn recognized_builtin_returns_some() {
+        let args = vec![
+            (None, Value::Str("hello".into())),
+            (None, Value::Str(" world".into())),
+        ];
+        let result = eval_builtin_call("concat", &args);
+        assert!(
+            result.is_some(),
+            "known builtin `concat` should be recognized"
+        );
+        assert_eq!(
+            result.unwrap().unwrap(),
+            Value::Str("hello world".into()),
+        );
+    }
 }
