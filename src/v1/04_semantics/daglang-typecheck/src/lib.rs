@@ -1108,7 +1108,6 @@ fn typecheck_graph_modules_spanned(
     let _sum_type_variants = collect_sum_type_variants(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
-    let service_call_source = collect_service_call_source(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
     let resource_capability_registry = collect_resource_capabilities(&graph.modules);
@@ -1125,7 +1124,7 @@ fn typecheck_graph_modules_spanned(
         record_type_registry: &record_type_registry,
         callable_registry: &callable_registry,
         pattern_callable_names: &pattern_callable_names,
-        service_call_source: &service_call_source,
+        modules: &graph.modules,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
@@ -1741,7 +1740,7 @@ struct TypecheckContext<'a> {
     record_type_registry: &'a RecordTypeRegistry,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
     pattern_callable_names: &'a HashSet<String>,
-    service_call_source: &'a ServiceCallSource,
+    modules: &'a [ResolvedModule],
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
@@ -1790,8 +1789,7 @@ fn collect_signatures(
     let mut signatures = Vec::new();
     let mut callable_body_metadata = HashMap::new();
     let data_bindings = collect_local_data_bindings(module);
-    let module_service_registry =
-        scope_service_call_registry(module, context.service_call_source);
+    let module_service_registry = scope_service_call_registry(module, context.modules);
     let body_context = BodyInferenceContext {
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
@@ -2455,17 +2453,6 @@ struct ServiceCallRegistry {
 }
 
 #[derive(Debug, Clone)]
-struct ServiceCallSourceEntry {
-    service_name: String,
-    contract: ServiceCallContract,
-}
-
-#[derive(Debug, Clone, Default)]
-struct ServiceCallSource {
-    by_module: HashMap<String, HashMap<String, Option<ServiceCallSourceEntry>>>,
-}
-
-#[derive(Debug, Clone)]
 enum ServiceCallResolution {
     Resolved(ServiceCallContract),
     Ambiguous,
@@ -2788,64 +2775,16 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
     contracts
 }
 
-fn collect_service_call_source(modules: &[ResolvedModule]) -> ServiceCallSource {
-    let mut source = ServiceCallSource::default();
-    for module in modules {
-        let module_name = module.module_path.as_dotted();
-        let module_entries = source.by_module.entry(module_name.clone()).or_default();
-        for item in &module.ast.items {
-            let Item::ServiceDef(service) = &item.node else {
-                continue;
-            };
-            for operation in &service.operations {
-                let contract = ServiceCallContract {
-                    arity: required_field_arity(&operation.inputs),
-                    params: operation
-                        .inputs
-                        .iter()
-                        .map(|field| field.name.clone())
-                        .collect(),
-                    outputs: field_value_type_map(&operation.outputs),
-                };
-                let service_tail = service
-                    .name
-                    .rsplit('.')
-                    .next()
-                    .unwrap_or(service.name.as_str());
-                let entry = ServiceCallSourceEntry {
-                    service_name: service.name.clone(),
-                    contract,
-                };
-                let mut keys = HashSet::new();
-                keys.insert(format!("{}.{}", service.name, operation.name));
-                keys.insert(format!("{service_tail}.{}", operation.name));
-                keys.insert(format!(
-                    "{}.{}.{}",
-                    module_name, service.name, operation.name
-                ));
-                for key in keys {
-                    module_entries
-                        .entry(key)
-                        .and_modify(|existing| *existing = None)
-                        .or_insert_with(|| Some(entry.clone()));
-                }
-            }
-        }
-    }
-    source
-}
-
 fn scope_service_call_registry(
     module: &ResolvedModule,
-    source: &ServiceCallSource,
+    all_modules: &[ResolvedModule],
 ) -> ServiceCallRegistry {
     let mut registry = ServiceCallRegistry::default();
-    let module_path = module.module_path.as_dotted();
 
     // Own module: all services visible
-    add_source_contracts(&mut registry, &module_path, None, source);
+    register_module_service_contracts(&mut registry, module, None);
 
-    // Imports: all services visible (with or without alias), unless bindings filter
+    // Imports: services visible if they pass the selective-binding filter
     for import in &module.ast.imports {
         let import_path = import.node.path.as_dotted();
         let filter = import
@@ -2853,38 +2792,61 @@ fn scope_service_call_registry(
             .bindings
             .as_ref()
             .map(|b| b.iter().cloned().collect::<HashSet<_>>());
-        add_source_contracts(&mut registry, &import_path, filter.as_ref(), source);
+        if let Some(imported_module) = all_modules
+            .iter()
+            .find(|m| m.module_path.as_dotted() == import_path)
+        {
+            register_module_service_contracts(&mut registry, imported_module, filter.as_ref());
+        }
     }
 
     registry
 }
 
-fn add_source_contracts(
+/// Register service contracts from a single module into a scoped registry.
+///
+/// When `service_filter` is `Some`, only services whose name appears in the
+/// filter set are registered (selective-import bindings). When `None`, all
+/// services in the module are registered (own-module or unfiltered import).
+fn register_module_service_contracts(
     registry: &mut ServiceCallRegistry,
-    module_path: &str,
+    module: &ResolvedModule,
     service_filter: Option<&HashSet<String>>,
-    source: &ServiceCallSource,
 ) {
-    let Some(module_entries) = source.by_module.get(module_path) else {
-        return;
-    };
-    for (key, entry_opt) in module_entries {
-        match entry_opt {
-            Some(entry) => {
-                if let Some(filter) = service_filter {
-                    if !filter.contains(&entry.service_name) {
-                        continue;
-                    }
-                }
-                register_service_call_contract(registry, key.clone(), entry.contract.clone());
+    let module_name = module.module_path.as_dotted();
+    for item in &module.ast.items {
+        let Item::ServiceDef(service) = &item.node else {
+            continue;
+        };
+        if let Some(filter) = service_filter {
+            if !filter.contains(&service.name) {
+                continue;
             }
-            None => {
-                // Within-module ambiguity — propagate to scoped registry
-                registry
-                    .by_key
-                    .entry(key.clone())
-                    .and_modify(|existing| *existing = None)
-                    .or_insert(None);
+        }
+        let service_tail = service
+            .name
+            .rsplit('.')
+            .next()
+            .unwrap_or(service.name.as_str());
+        for operation in &service.operations {
+            let contract = ServiceCallContract {
+                arity: required_field_arity(&operation.inputs),
+                params: operation
+                    .inputs
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect(),
+                outputs: field_value_type_map(&operation.outputs),
+            };
+            let mut keys = HashSet::new();
+            keys.insert(format!("{}.{}", service.name, operation.name));
+            keys.insert(format!("{service_tail}.{}", operation.name));
+            keys.insert(format!(
+                "{}.{}.{}",
+                module_name, service.name, operation.name
+            ));
+            for key in keys {
+                register_service_call_contract(registry, key, contract.clone());
             }
         }
     }
