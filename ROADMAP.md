@@ -427,21 +427,15 @@ not by validation). The validation pass is marked for deletion when B3
 (Expr→Node) reworks pipeline boundary types — that's the natural moment to
 make resolved-vs-unresolved a type distinction rather than a runtime check.
 
-**TODO in B3:** delete `validate_no_unresolved()` and replace with structural
-type distinction (e.g., `ResolvedNode` wrapper or equivalent).
-
-**Review follow-up (2026-03-19):** two current bugs are symptoms of this
-same boundary problem, not separate one-off fixes:
-- `FuncSig` requires a concrete `return_type` too early, so
-  `build_func_env()` fabricates placeholders for unannotated functions and
-  `infer_expr(Call)` can observe the fake type instead of the resolved one.
-- `compile_sources_lenient()` exists to push a graph with unresolved
-  typecheck state across the typecheck → emit boundary during bootstrap.
-
-The sustainable fix is **not** best-effort typing. B3 Phase 2 should split
-declared-vs-resolved function signatures, resolve function return types
-before call inference can consume them, and make the emit boundary accept
-only a structurally resolved graph.
+**Concrete contracts frozen in B3 Phase 2a** (see that section for details):
+- Contract 1 splits `DeclaredFuncSig` / `ResolvedFuncSig` so fabricated
+  placeholders are structurally impossible at emit time.
+- Contract 2 resolves return types in SCC topological order so callers
+  never observe placeholder return types.
+- Contract 3 introduces `ResolvedGraph` / `ResolvedFuncEnv` as the
+  reconcile-to-emit boundary type.
+- Contract 4 retires `validate_no_unresolved()` and
+  `compile_sources_lenient()` once Contracts 1-3 land.
 
 ---
 
@@ -533,36 +527,98 @@ Also: delete `validate_no_unresolved()` (Blocker 4). When pipeline boundary
 types are reworked here, make resolved-vs-unresolved a type distinction
 rather than a runtime check. The validation pass violates Invariant 9.
 
-Concrete boundary work required here:
-- Split function signature state into declaration-time vs resolved-time
-  representations. `infer_expr(Call)` must not read from a signature that
-  can still contain a fabricated or placeholder return type.
-- Resolve function return types in dependency order over the call graph
-  (SCC-aware). Recursive SCCs without explicit return annotations must fail
-  closed instead of guessing.
-- Introduce a resolved reconcile/emit boundary type so emit only accepts
-  graphs where every item/expr type is already structurally resolved.
-- Delete `compile_sources_lenient()` once the remaining bootstrap false
-  positives are fixed. It currently exists only because the boundary type is
-  too permissive.
-- Do **not** weaken `typecheck_module()` into a partial/best-effort mode.
-  The fix is stronger output types, not more lenient control flow.
+#### Phase 2a: Boundary contracts for bootstrap (FROZEN)
+
+These contracts define the strict post-A4 boundary. Each makes a class of
+fabrication structurally unrepresentable.
+
+##### Contract 1 — Declared vs Resolved FuncSig
+
+```
+DeclaredFuncSig { return_type: Node? }   (parser output, None = must infer)
+ResolvedFuncSig { return_type: Node }    (always concrete, never placeholder)
+```
+
+**Why:** `build_func_env()` currently fabricates placeholder return types for
+unannotated functions. `infer_expr(Call)` can then observe the fake type
+instead of the resolved one. Splitting the types makes it impossible to read
+an unresolved signature where a resolved one is expected.
+
+**Implementation sketch:**
+- Parser produces `DeclaredFuncSig` with `return_type: Node?` (None when
+  not annotated)
+- `build_func_env` stores `DeclaredFuncSig` (no fabrication needed)
+- Resolution phase produces `ResolvedFuncSig` with `return_type: Node`
+  (always present)
+- Emit boundary accepts only `ResolvedFuncSig`
+
+##### Contract 2 — SCC-aware return type resolution
+
+- Build call graph from resolved module, compute SCCs, process in
+  topological order
+- Non-recursive functions: infer return type from body
+- Self-recursive without annotation: compile error (fail closed)
+- Mutual recursion without annotations: compile error
+
+**Why:** Current code fabricates placeholders because it doesn't process
+functions in dependency order. SCC-aware ordering means every callee's
+return type is resolved before any caller that depends on it.
+
+##### Contract 3 — Resolved boundary type
+
+- `ResolvedGraph` wraps `ResolvedFuncEnv` (not `DeclaredFuncEnv`)
+- Emit accepts only structurally resolved graphs
+- The type system enforces that unresolved state cannot reach emit
+
+**Why:** This is the structural replacement for `validate_no_unresolved()`.
+Instead of checking at runtime whether unresolved types leaked through,
+the pipeline boundary type makes it unrepresentable. Satisfies Invariant 9
+(correctness by construction, not by validation).
+
+##### Contract 4 — Retirement plans
+
+- `validate_no_unresolved`: debug-only assertion after Phase 2a lands,
+  then delete after Phase 2b confirms all paths produce resolved graphs.
+  Not a permanent validation pass.
+- `compile_sources_lenient`: measure false positive rate, fix root causes,
+  then delete. Not a permanent parallel code path.
+
+**Why:** Both exist because the boundary type is too permissive. Once
+Contracts 1-3 land, neither has a reason to exist.
+
+##### Design constraint
+
+Do **not** weaken `typecheck_module()` into a partial/best-effort mode.
+The fix is stronger output types, not more lenient control flow.
 
 Also: batch fix F2/F3/F4 (string-typed fields):
 - `ItemInfo.kind: String` → closed enum `ItemKind = Fn | Func | Other`
 - `SemanticsCtx` all-String fields → enums/newtypes
 - `PrimCost.op: String, model: String` → typed references
 
-**Acceptance:**
-- [x] `Typed*` family deleted (Phase 1)
+**Acceptance (Phase 2a — boundary contracts):**
+- [ ] `DeclaredFuncSig` and `ResolvedFuncSig` are distinct types
+      (Contract 1)
+- [ ] `build_func_env` produces `DeclaredFuncSig` with no fabricated
+      placeholder return types (Contract 1)
+- [ ] Emit boundary accepts only `ResolvedFuncSig` — compile error if
+      any signature is still declared-only (Contract 1)
+- [ ] Return types resolved in SCC topological order (Contract 2)
+- [ ] Self-recursive function without return annotation: compile error,
+      not placeholder (Contract 2)
+- [ ] Mutual recursion without annotations: compile error (Contract 2)
+- [ ] `ResolvedGraph` / `ResolvedFuncEnv` boundary type enforced at
+      reconcile-to-emit handoff (Contract 3)
+- [ ] `validate_no_unresolved()` demoted to debug-only assertion
+      (Contract 4)
+- [ ] `compile_sources_lenient()` false positive rate measured and
+      root causes identified (Contract 4)
+- [ ] 455+ tests pass, generated crate compiles clean
+
+**Acceptance (Phase 2b — full convergence, after 2a verified):**
 - [ ] `Expr` type deleted from `00_core.dag`
-- [ ] `validate_no_unresolved()` deleted; replaced with structural type boundary
-- [ ] Declared vs resolved function signatures are distinct; no fabricated
-      placeholder return types in `FuncEnv`
-- [ ] Call-graph/SCC return-type resolution fails closed for recursive
-      unannotated functions
-- [ ] `compile_sources_lenient()` deleted; bootstrap uses the strict
-      resolved type boundary
+- [ ] `validate_no_unresolved()` deleted entirely
+- [ ] `compile_sources_lenient()` deleted
 - [ ] pipeline shape is `Node → Node → Node → TextFile`
 - [ ] No String-typed fields where a closed enum is appropriate
 
