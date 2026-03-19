@@ -50,6 +50,8 @@ use gunbc_ir::code_ir::IrType;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 
 use crate::type_codegen::to_snake_case;
 
@@ -87,6 +89,46 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
     }
 }
 
+/// Shared immutable compile metadata with copy-on-write mutation.
+///
+/// Cloning a [`CompileContext`] should stay O(1) in the size of its read-only
+/// indexes. When a cloned context needs to mutate one of those indexes for a
+/// single function, `Rc::make_mut` preserves isolation by cloning on write.
+#[derive(Clone, Debug)]
+pub struct Shared<T>(Rc<T>);
+
+impl<T> Shared<T> {
+    pub fn new(value: T) -> Self {
+        Self(Rc::new(value))
+    }
+}
+
+impl<T: Default> Default for Shared<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T> From<T> for Shared<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<T> Deref for Shared<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl<T: Clone> DerefMut for Shared<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Rc::make_mut(&mut self.0)
+    }
+}
+
 /// Context for compiling DSL function bodies.
 ///
 /// Carries the set of data table names defined in the module so that
@@ -96,29 +138,29 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
 #[derive(Clone)]
 pub struct CompileContext {
     /// Names of `data` definitions visible in this module.
-    pub data_names: HashSet<String>,
+    pub data_names: Shared<HashSet<String>>,
     /// Data definition name → IrType for collection element inference.
-    pub data_ir_types: HashMap<String, IrType>,
+    pub data_ir_types: Shared<HashMap<String, IrType>>,
     /// Names of `data` definitions that are Map types (need `&` reference, not `.clone()`).
-    pub data_map_names: HashSet<String>,
+    pub data_map_names: Shared<HashSet<String>>,
     /// Map from struct name → set of field names that are `Option<T>`.
-    pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
+    pub optional_fields: Shared<std::collections::HashMap<String, HashSet<String>>>,
     /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
     /// Ambiguous variants (present in multiple enums) are excluded.
-    pub variant_to_enum: std::collections::HashMap<String, String>,
+    pub variant_to_enum: Shared<std::collections::HashMap<String, String>>,
     /// Map from struct name → (field name → field type name) for contextual resolution.
     pub struct_field_types:
-        std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+        Shared<std::collections::HashMap<String, std::collections::HashMap<String, String>>>,
     /// Map from enum name → set of variant names, for field-type-based disambiguation.
-    pub enum_variants: std::collections::HashMap<String, HashSet<String>>,
+    pub enum_variants: Shared<std::collections::HashMap<String, HashSet<String>>>,
     /// Set of (type_name, field_name) pairs that need Box<> wrapping (recursive types).
-    pub boxed_fields: HashSet<(String, String)>,
+    pub boxed_fields: Shared<HashSet<(String, String)>>,
     /// Map from function name → return type name (for v2 crate emit).
-    pub fn_return_types: std::collections::HashMap<String, String>,
+    pub fn_return_types: Shared<std::collections::HashMap<String, String>>,
     /// Map from function name → exact return IrType when only signature metadata is available.
-    pub fn_return_ir_types: HashMap<String, IrType>,
+    pub fn_return_ir_types: Shared<HashMap<String, IrType>>,
     /// Map from function name → ordered parameter names and their type names.
-    pub fn_param_types: std::collections::HashMap<String, Vec<(String, String)>>,
+    pub fn_param_types: Shared<std::collections::HashMap<String, Vec<(String, String)>>>,
     /// Set of parameter names that are Optional (for v2 crate emit).
     pub optional_params: HashSet<String>,
     /// Map from parameter name → type name (for v2 crate emit).
@@ -131,9 +173,9 @@ pub struct CompileContext {
     /// Current function's return type as IrType (for fold accumulator inference).
     pub current_return_ir_type: Option<IrType>,
     /// Struct/variant name → [(field_name, IrType)] for populating `Expr::Struct.field_types`.
-    pub struct_field_ir_types: HashMap<String, Vec<(String, IrType)>>,
+    pub struct_field_ir_types: Shared<HashMap<String, Vec<(String, IrType)>>>,
     /// Indexed field IrType lookup used by hot-path field/type inference helpers.
-    pub struct_field_ir_type_lookup: HashMap<String, HashMap<String, IrType>>,
+    pub struct_field_ir_type_lookup: Shared<HashMap<String, HashMap<String, IrType>>>,
     /// Variable name → number of `Ident` references in the current function body.
     /// Used to elide `.clone()` when a variable is referenced only once (move suffices).
     pub use_counts: HashMap<String, usize>,
@@ -144,29 +186,29 @@ pub struct CompileContext {
     /// Map from enum name → set of field names that exist on ALL variants (common fields).
     /// Field access on these fields compiles to accessor method calls instead of direct
     /// field access, since Rust enums don't support direct field access.
-    pub enum_accessor_fields: HashMap<String, HashSet<String>>,
+    pub enum_accessor_fields: Shared<HashMap<String, HashSet<String>>>,
     /// Set of function names whose return type is Optional (T?).
-    pub optional_return_fns: HashSet<String>,
+    pub optional_return_fns: Shared<HashSet<String>>,
     /// R3: Set of (fn_name, param_index) pairs where the param is exactly `String`
     /// (now `&str`). Used to elide `.to_string()` / `.clone()` when passing `&str`
     /// values to these params.
-    pub fn_str_params: HashSet<(String, usize)>,
+    pub fn_str_params: Shared<HashSet<(String, usize)>>,
     /// R3: Set of param names in the CURRENT function that are `String` (now `&str`).
     /// Unlike `param_types` which includes match bindings, this tracks only function
     /// params whose type was changed from String to &str.
     pub str_param_names: HashSet<String>,
     /// Typecheck-produced anonymous-record constructor targets keyed by stable AST identity.
-    pub anonymous_record_targets: HashMap<ExprIdentity, String>,
+    pub anonymous_record_targets: Shared<HashMap<ExprIdentity, String>>,
     /// Typecheck-produced synthesized anonymous-record types for this callable.
-    pub synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
+    pub synthesized_anonymous_record_types: Shared<Vec<SynthesizedAnonymousRecordType>>,
     /// Typecheck-produced resolved expression IrTypes keyed by stable AST identity.
-    pub expr_ir_types: HashMap<ExprIdentity, IrType>,
+    pub expr_ir_types: Shared<HashMap<ExprIdentity, IrType>>,
     /// Local mapping from this function body's structural expression paths back to
     /// stable identities produced by typecheck.
     pub(crate) expr_identities: HashMap<ExprPath, ExprIdentity>,
     pub(crate) expr_path: RefCell<ExprPath>,
     /// R8: Set of type names that are Rc-wrapped for O(1) clone.
-    pub rc_wrapped_types: HashSet<String>,
+    pub rc_wrapped_types: Shared<HashSet<String>>,
     /// R9: Set of variable names bound from match patterns on Rc-wrapped scrutinees.
     /// These are `&Rc<T>` references that must be cloned to convert to owned `Rc<T>`.
     pub match_bound_vars: HashSet<String>,
@@ -526,36 +568,36 @@ impl Default for CompileContext {
 impl CompileContext {
     pub fn new() -> Self {
         Self {
-            data_names: HashSet::new(),
-            data_ir_types: HashMap::new(),
-            data_map_names: HashSet::new(),
-            optional_fields: std::collections::HashMap::new(),
-            variant_to_enum: std::collections::HashMap::new(),
-            struct_field_types: std::collections::HashMap::new(),
-            enum_variants: std::collections::HashMap::new(),
-            boxed_fields: HashSet::new(),
-            fn_return_types: std::collections::HashMap::new(),
-            fn_return_ir_types: HashMap::new(),
-            fn_param_types: std::collections::HashMap::new(),
+            data_names: Shared::default(),
+            data_ir_types: Shared::default(),
+            data_map_names: Shared::default(),
+            optional_fields: Shared::default(),
+            variant_to_enum: Shared::default(),
+            struct_field_types: Shared::default(),
+            enum_variants: Shared::default(),
+            boxed_fields: Shared::default(),
+            fn_return_types: Shared::default(),
+            fn_return_ir_types: Shared::default(),
+            fn_param_types: Shared::default(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
             current_return_ir_type: None,
             ir_scope: HashMap::new(),
-            struct_field_ir_types: HashMap::new(),
-            struct_field_ir_type_lookup: HashMap::new(),
+            struct_field_ir_types: Shared::default(),
+            struct_field_ir_type_lookup: Shared::default(),
             use_counts: HashMap::new(),
             fold_accum_name: None,
-            enum_accessor_fields: HashMap::new(),
-            optional_return_fns: HashSet::new(),
-            fn_str_params: HashSet::new(),
+            enum_accessor_fields: Shared::default(),
+            optional_return_fns: Shared::default(),
+            fn_str_params: Shared::default(),
             str_param_names: HashSet::new(),
-            anonymous_record_targets: HashMap::new(),
-            synthesized_anonymous_record_types: Vec::new(),
-            expr_ir_types: HashMap::new(),
+            anonymous_record_targets: Shared::default(),
+            synthesized_anonymous_record_types: Shared::default(),
+            expr_ir_types: Shared::default(),
             expr_identities: HashMap::new(),
             expr_path: RefCell::new(ExprPath::default()),
-            rc_wrapped_types: HashSet::new(),
+            rc_wrapped_types: Shared::default(),
             match_bound_vars: HashSet::new(),
         }
     }
@@ -6708,6 +6750,29 @@ mod tests {
             expr_identity.expect("expected walked expression identity"),
             ir_type,
         );
+    }
+
+    #[test]
+    fn compile_context_clone_isolates_shared_metadata_writes() {
+        let mut original = CompileContext::new();
+        original.struct_field_types.insert(
+            "Base".to_string(),
+            [("field".to_string(), "Int".to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        let mut cloned = original.clone();
+        cloned.struct_field_types.insert(
+            "Derived".to_string(),
+            [("other".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        assert!(original.struct_field_types.contains_key("Base"));
+        assert!(!original.struct_field_types.contains_key("Derived"));
+        assert!(cloned.struct_field_types.contains_key("Derived"));
     }
 
     #[test]

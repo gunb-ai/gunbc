@@ -993,10 +993,15 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
 
     let ctx = {
         let mut augmented = analysis_ctx;
-        augmented.struct_field_types.extend(new_field_types);
-        augmented.struct_field_ir_types.extend(new_field_ir_types);
-        augmented.struct_field_ir_type_lookup =
-            fn_codegen::build_struct_field_ir_type_lookup(&augmented.struct_field_ir_types);
+        if !new_field_types.is_empty() {
+            augmented.struct_field_types.extend(new_field_types);
+        }
+        if !new_field_ir_types.is_empty() {
+            augmented.struct_field_ir_types.extend(new_field_ir_types);
+            augmented.struct_field_ir_type_lookup =
+                fn_codegen::build_struct_field_ir_type_lookup(&augmented.struct_field_ir_types)
+                    .into();
+        }
         augmented.optional_params = optional_params;
         std::borrow::Cow::Owned(augmented)
     };
@@ -1320,36 +1325,36 @@ pub fn typedefs_to_source_file(
     let struct_field_ir_type_lookup =
         fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
     let ctx = fn_codegen::CompileContext {
-        data_names,
-        data_map_names: std::collections::HashSet::new(),
-        optional_fields,
-        variant_to_enum,
-        struct_field_types,
-        enum_variants,
-        boxed_fields: std::collections::HashSet::new(),
-        fn_return_types: std::collections::HashMap::new(),
-        fn_param_types: std::collections::HashMap::new(),
+        data_names: data_names.into(),
+        data_map_names: std::collections::HashSet::new().into(),
+        optional_fields: optional_fields.into(),
+        variant_to_enum: variant_to_enum.into(),
+        struct_field_types: struct_field_types.into(),
+        enum_variants: enum_variants.into(),
+        boxed_fields: std::collections::HashSet::new().into(),
+        fn_return_types: std::collections::HashMap::new().into(),
+        fn_param_types: std::collections::HashMap::new().into(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
         current_return_ir_type: None,
         ir_scope: std::collections::HashMap::new(),
-        struct_field_ir_types,
-        struct_field_ir_type_lookup,
+        struct_field_ir_types: struct_field_ir_types.into(),
+        struct_field_ir_type_lookup: struct_field_ir_type_lookup.into(),
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
-        enum_accessor_fields: HashMap::new(),
-        data_ir_types: std::collections::HashMap::new(),
-        fn_return_ir_types: std::collections::HashMap::new(),
-        optional_return_fns: std::collections::HashSet::new(),
-        fn_str_params: std::collections::HashSet::new(),
+        enum_accessor_fields: HashMap::new().into(),
+        data_ir_types: std::collections::HashMap::new().into(),
+        fn_return_ir_types: std::collections::HashMap::new().into(),
+        optional_return_fns: std::collections::HashSet::new().into(),
+        fn_str_params: std::collections::HashSet::new().into(),
         str_param_names: std::collections::HashSet::new(),
-        anonymous_record_targets: std::collections::HashMap::new(),
-        synthesized_anonymous_record_types: Vec::new(),
-        expr_ir_types: std::collections::HashMap::new(),
+        anonymous_record_targets: std::collections::HashMap::new().into(),
+        synthesized_anonymous_record_types: Vec::new().into(),
+        expr_ir_types: std::collections::HashMap::new().into(),
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
-        rc_wrapped_types: std::collections::HashSet::new(),
+        rc_wrapped_types: std::collections::HashSet::new().into(),
         match_bound_vars: std::collections::HashSet::new(),
     };
     let mut code_items = Vec::new();
@@ -1447,6 +1452,58 @@ pub fn generate_types_for_modules(
         all_items.extend(datadef_to_code_ir_with_field_types(dd, &record_field_types));
     }
 
+    let fn_data_names: std::collections::HashSet<String> =
+        data_defs.iter().map(|dd| dd.name.clone()).collect();
+    let data_ir_types = collect_data_ir_types(data_defs.iter());
+    let mut optional_fields = std::collections::HashMap::new();
+    let mut variant_to_enum = std::collections::HashMap::new();
+    let mut ambiguous_variants = std::collections::HashSet::new();
+    let mut struct_field_types = std::collections::HashMap::new();
+    let mut struct_field_ir_types = std::collections::HashMap::new();
+    let mut enum_variants = std::collections::HashMap::new();
+    for td in &type_defs {
+        collect_optional_fields(td, &mut optional_fields);
+        collect_variant_to_enum(td, &mut variant_to_enum, &mut ambiguous_variants);
+        collect_struct_field_types(td, &mut struct_field_types);
+        collect_struct_field_ir_types(td, &mut struct_field_ir_types);
+        collect_enum_variants(td, &mut enum_variants);
+    }
+    let struct_field_ir_type_lookup =
+        fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
+    let base_fn_ctx = fn_codegen::CompileContext {
+        data_names: fn_data_names.into(),
+        data_ir_types: data_ir_types.into(),
+        data_map_names: std::collections::HashSet::new().into(),
+        optional_fields: optional_fields.into(),
+        variant_to_enum: variant_to_enum.into(),
+        struct_field_types: struct_field_types.into(),
+        enum_variants: enum_variants.into(),
+        boxed_fields: std::collections::HashSet::new().into(),
+        fn_return_types: global_fn_return_types.into(),
+        fn_return_ir_types: std::collections::HashMap::new().into(),
+        fn_param_types: global_fn_param_types.into(),
+        optional_params: std::collections::HashSet::new(),
+        param_types: std::collections::HashMap::new(),
+        current_return_type: None,
+        current_return_ir_type: None,
+        ir_scope: std::collections::HashMap::new(),
+        struct_field_ir_types: struct_field_ir_types.into(),
+        struct_field_ir_type_lookup: struct_field_ir_type_lookup.into(),
+        use_counts: std::collections::HashMap::new(),
+        fold_accum_name: None,
+        enum_accessor_fields: HashMap::new().into(),
+        optional_return_fns: std::collections::HashSet::new().into(),
+        fn_str_params: std::collections::HashSet::new().into(),
+        str_param_names: std::collections::HashSet::new(),
+        anonymous_record_targets: std::collections::HashMap::new().into(),
+        synthesized_anonymous_record_types: Vec::new().into(),
+        expr_ir_types: std::collections::HashMap::new().into(),
+        expr_identities: std::collections::HashMap::new(),
+        expr_path: std::cell::RefCell::new(Default::default()),
+        rc_wrapped_types: std::collections::HashSet::new().into(),
+        match_bound_vars: std::collections::HashSet::new(),
+    };
+
     for (module_index, item_index) in &fn_defs {
         let module = typed
             .module(*module_index)
@@ -1459,62 +1516,14 @@ pub fn generate_types_for_modules(
         let daglang_syntax::ast::Item::FnDef(fd) = &item.node else {
             panic!("collected fn item should still be a function");
         };
-        let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for dd in &data_defs {
-            fn_data_names.insert(dd.name.clone());
-        }
-        let data_ir_types = collect_data_ir_types(data_defs.iter());
-        let mut opt_fields = std::collections::HashMap::new();
-        let mut v2e = std::collections::HashMap::new();
-        let mut ambig = std::collections::HashSet::new();
-        let mut sft = std::collections::HashMap::new();
-        let mut sfit = std::collections::HashMap::new();
-        let mut ev = std::collections::HashMap::new();
-        for td in &type_defs {
-            collect_optional_fields(td, &mut opt_fields);
-            collect_variant_to_enum(td, &mut v2e, &mut ambig);
-            collect_struct_field_types(td, &mut sft);
-            collect_struct_field_ir_types(td, &mut sfit);
-            collect_enum_variants(td, &mut ev);
-        }
-        let sfit_lookup = fn_codegen::build_struct_field_ir_type_lookup(&sfit);
-        let fn_ctx = fn_codegen::CompileContext {
-            data_names: fn_data_names,
-            data_ir_types,
-            data_map_names: std::collections::HashSet::new(),
-            optional_fields: opt_fields,
-            variant_to_enum: v2e,
-            struct_field_types: sft,
-            enum_variants: ev,
-            boxed_fields: std::collections::HashSet::new(),
-            fn_return_types: global_fn_return_types.clone(),
-            fn_return_ir_types: std::collections::HashMap::new(),
-            fn_param_types: global_fn_param_types.clone(),
-            optional_params: std::collections::HashSet::new(),
-            param_types: std::collections::HashMap::new(),
-            current_return_type: None,
-            current_return_ir_type: None,
-            ir_scope: std::collections::HashMap::new(),
-            struct_field_ir_types: sfit,
-            struct_field_ir_type_lookup: sfit_lookup,
-            use_counts: std::collections::HashMap::new(),
-            fold_accum_name: None,
-            enum_accessor_fields: HashMap::new(),
-            optional_return_fns: std::collections::HashSet::new(),
-            fn_str_params: std::collections::HashSet::new(),
-            str_param_names: std::collections::HashSet::new(),
-            anonymous_record_targets: collect_anonymous_record_targets(
-                module.callable_body_metadata(&fd.name),
-            ),
-            synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
-                module.callable_body_metadata(&fd.name),
-            ),
-            expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(&fd.name)),
-            expr_identities: std::collections::HashMap::new(),
-            expr_path: std::cell::RefCell::new(Default::default()),
-            rc_wrapped_types: std::collections::HashSet::new(),
-            match_bound_vars: std::collections::HashSet::new(),
-        };
+        let mut fn_ctx = base_fn_ctx.clone();
+        fn_ctx.anonymous_record_targets =
+            collect_anonymous_record_targets(module.callable_body_metadata(&fd.name)).into();
+        fn_ctx.synthesized_anonymous_record_types =
+            collect_synthesized_anonymous_record_types(module.callable_body_metadata(&fd.name))
+                .into();
+        fn_ctx.expr_ir_types =
+            collect_expr_ir_types(module.callable_body_metadata(&fd.name)).into();
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
 
@@ -2057,40 +2066,46 @@ mod tests {
         (
             fd,
             fn_codegen::CompileContext {
-                data_names: data_defs.iter().map(|dd| dd.name.clone()).collect(),
-                data_ir_types: collect_data_ir_types(data_defs.iter().copied()),
-                data_map_names: HashSet::new(),
-                optional_fields,
-                variant_to_enum,
-                struct_field_types,
-                enum_variants,
-                boxed_fields: HashSet::new(),
-                fn_return_types,
-                fn_return_ir_types: HashMap::new(),
-                fn_param_types,
+                data_names: data_defs
+                    .iter()
+                    .map(|dd| dd.name.clone())
+                    .collect::<HashSet<_>>()
+                    .into(),
+                data_ir_types: collect_data_ir_types(data_defs.iter().copied()).into(),
+                data_map_names: HashSet::new().into(),
+                optional_fields: optional_fields.into(),
+                variant_to_enum: variant_to_enum.into(),
+                struct_field_types: struct_field_types.into(),
+                enum_variants: enum_variants.into(),
+                boxed_fields: HashSet::new().into(),
+                fn_return_types: fn_return_types.into(),
+                fn_return_ir_types: HashMap::new().into(),
+                fn_param_types: fn_param_types.into(),
                 optional_params: HashSet::new(),
                 param_types: HashMap::new(),
                 current_return_type: None,
                 current_return_ir_type: None,
                 ir_scope: HashMap::new(),
-                struct_field_ir_types,
-                struct_field_ir_type_lookup,
+                struct_field_ir_types: struct_field_ir_types.into(),
+                struct_field_ir_type_lookup: struct_field_ir_type_lookup.into(),
                 use_counts: HashMap::new(),
                 fold_accum_name: None,
                 anonymous_record_targets: collect_anonymous_record_targets(
                     module.callable_body_metadata(fn_name),
-                ),
+                )
+                .into(),
                 synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
                     module.callable_body_metadata(fn_name),
-                ),
-                expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fn_name)),
+                )
+                .into(),
+                expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fn_name)).into(),
                 expr_identities: HashMap::new(),
                 expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
-                enum_accessor_fields: HashMap::new(),
-                optional_return_fns: HashSet::new(),
-                fn_str_params: HashSet::new(),
+                enum_accessor_fields: HashMap::new().into(),
+                optional_return_fns: HashSet::new().into(),
+                fn_str_params: HashSet::new().into(),
                 str_param_names: HashSet::new(),
-                rc_wrapped_types: HashSet::new(),
+                rc_wrapped_types: HashSet::new().into(),
                 match_bound_vars: HashSet::new(),
             },
         )
@@ -2461,8 +2476,8 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
-        ctx.fn_return_types = fn_return_types;
-        ctx.fn_param_types = fn_param_types;
+        ctx.fn_return_types = fn_return_types.into();
+        ctx.fn_param_types = fn_param_types.into();
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2549,8 +2564,8 @@ mod tests {
             "Position".to_string(),
             vec![("pos".to_string(), gunbc_ir::code_ir::IrType::Int)],
         );
-        ctx.fn_return_types = fn_return_types;
-        ctx.fn_param_types = fn_param_types;
+        ctx.fn_return_types = fn_return_types.into();
+        ctx.fn_param_types = fn_param_types.into();
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2666,8 +2681,8 @@ mod tests {
                 gunbc_ir::code_ir::IrType::Named("ConfigB".to_string()),
             );
         }
-        ctx.fn_return_types = fn_return_types;
-        ctx.fn_param_types = fn_param_types;
+        ctx.fn_return_types = fn_return_types.into();
+        ctx.fn_param_types = fn_param_types.into();
 
         let items = fndef_to_code_ir(&fd, &ctx);
         match &items[0] {

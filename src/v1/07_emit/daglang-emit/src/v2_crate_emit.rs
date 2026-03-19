@@ -781,7 +781,7 @@ fn emit_module(
     let enum_variants_map = all_enum_variants.clone();
 
     let ctx = fn_codegen::CompileContext {
-        data_names,
+        data_names: data_names.into(),
         data_ir_types: items
             .iter()
             .filter_map(|item| match &item.node {
@@ -790,37 +790,39 @@ fn emit_module(
                 }
                 _ => None,
             })
-            .collect(),
-        data_map_names,
-        optional_fields: optional_fields.clone(),
-        variant_to_enum: variant_to_enum.clone(),
-        struct_field_types: struct_field_types.clone(),
-        enum_variants: enum_variants_map,
-        boxed_fields: recursive_fields.clone(),
-        fn_return_types: global_fn_return_types.clone(),
-        fn_return_ir_types: global_fn_return_ir_types.clone(),
-        fn_param_types: global_fn_param_types.clone(),
+            .collect::<HashMap<_, _>>()
+            .into(),
+        data_map_names: data_map_names.into(),
+        optional_fields: optional_fields.clone().into(),
+        variant_to_enum: variant_to_enum.clone().into(),
+        struct_field_types: struct_field_types.clone().into(),
+        enum_variants: enum_variants_map.into(),
+        boxed_fields: recursive_fields.clone().into(),
+        fn_return_types: global_fn_return_types.clone().into(),
+        fn_return_ir_types: global_fn_return_ir_types.clone().into(),
+        fn_param_types: global_fn_param_types.clone().into(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
         current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
-        struct_field_ir_types: struct_field_ir_types.clone(),
+        struct_field_ir_types: struct_field_ir_types.clone().into(),
         struct_field_ir_type_lookup: fn_codegen::build_struct_field_ir_type_lookup(
             struct_field_ir_types,
-        ),
+        )
+        .into(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
-        enum_accessor_fields: enum_accessor_fields.clone(),
-        optional_return_fns: optional_return_fns.clone(),
-        anonymous_record_targets: std::collections::HashMap::new(),
-        synthesized_anonymous_record_types: Vec::new(),
-        expr_ir_types: std::collections::HashMap::new(),
-        fn_str_params: global_fn_str_params.clone(),
+        enum_accessor_fields: enum_accessor_fields.clone().into(),
+        optional_return_fns: optional_return_fns.clone().into(),
+        anonymous_record_targets: std::collections::HashMap::new().into(),
+        synthesized_anonymous_record_types: Vec::new().into(),
+        expr_ir_types: std::collections::HashMap::new().into(),
+        fn_str_params: global_fn_str_params.clone().into(),
         str_param_names: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
-        rc_wrapped_types: type_codegen::current_rc_wrapped_types(),
+        rc_wrapped_types: type_codegen::current_rc_wrapped_types().into(),
         match_bound_vars: std::collections::HashSet::new(),
     };
 
