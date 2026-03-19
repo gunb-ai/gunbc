@@ -15,7 +15,7 @@ use gunbc_ir::patterns::CollectionKind as CollectionOpKind;
 pub use crate::eval_core::{
     eval_binop, eval_conditional, eval_get_field, eval_list_construct, eval_literal,
     eval_null_coalesce, eval_record_construct, eval_string_interpolate, eval_unary_op,
-    eval_variant_construct, field_access, match_pattern, sort_key, value_to_string, value_truthy,
+    eval_variant_construct, match_pattern, sort_key, value_to_string, value_truthy,
     values_equal, EvalError,
 };
 

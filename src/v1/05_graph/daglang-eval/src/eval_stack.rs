@@ -39,7 +39,7 @@ use gunbc_ir::value_compatible_with_type_id;
 use gunbc_ir::Value;
 
 use crate::eval_core::{
-    eval_binop, eval_builtin_call, eval_literal, field_access, match_pattern, sort_key,
+    eval_binop, eval_builtin_call, eval_get_field, eval_literal, match_pattern, sort_key,
     value_to_string, value_truthy, EvalError,
 };
 use crate::expr::{
@@ -1052,7 +1052,7 @@ fn eval_expr_inner(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<V
         LoweredExpr::Literal(lit) => Ok(eval_literal(lit)),
         LoweredExpr::Ident(name) => eval_ident(name, env, ctx),
         LoweredExpr::FieldAccess { expr, field } => {
-            field_access(&eval_expr(expr, env, ctx)?, field)
+            eval_get_field(&eval_expr(expr, env, ctx)?, field)
         }
         LoweredExpr::StringInterp(parts) => {
             let mut s = String::new();
