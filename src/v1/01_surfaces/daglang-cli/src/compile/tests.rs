@@ -3805,13 +3805,8 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn check_selective_import_disambiguates_same_name_services_hermetic() {
-    // Both modules export SharedService with incompatible shapes.
-    // vendor.alpha: read(path: String) -> { body: String }
-    // vendor.beta:  read(query: Int)   -> { count: Int }
-    // sample.main selectively imports SharedService from alpha only.
-    // If the binding filter leaks beta's SharedService, the call becomes
-    // ambiguous or resolves to the wrong contract, and typecheck rejects the
-    // parameter name or return field mismatch.
+    // Compile-level happy-path coverage for selective imports. The structural
+    // registry exclusion is asserted in daglang-typecheck tests.
     let graph = module_graph_from_sources(&[
         (
             "vendor/alpha.dag",

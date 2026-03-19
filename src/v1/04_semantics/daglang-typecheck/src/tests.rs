@@ -2626,14 +2626,61 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn selective_import_registers_only_requested_service_contracts() {
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
+"#,
+        ),
+    ]);
+    let main_module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "sample.main")
+        .expect("sample.main should exist");
+    let registry = scope_service_call_registry(main_module, &graph.modules);
+    let shared_service = registry
+        .by_key
+        .get("SharedService.read")
+        .expect("selective import should register SharedService.read")
+        .as_ref()
+        .expect("SharedService.read should resolve to a single provider");
+
+    assert_eq!(shared_service.arity, 1);
+    assert_eq!(shared_service.params.len(), 1);
+    assert!(shared_service.params.contains("path"));
+    assert_eq!(
+        shared_service.outputs.get("body"),
+        Some(&ValueType::Named("String".to_string()))
+    );
+    assert!(registry.by_key.contains_key("vendor.alpha.SharedService.read"));
+    assert!(!registry.by_key.contains_key("vendor.beta.SharedService.read"));
+}
+
+#[test]
 fn selective_import_disambiguates_same_name_services() {
-    // Both modules export SharedService with incompatible shapes.
-    // vendor.alpha: read(path: String) -> { body: String }
-    // vendor.beta:  read(query: Int)   -> { count: Int }
-    // sample.main selectively imports SharedService from alpha only.
-    // If the selective-import filter leaks beta's SharedService, the call
-    // binds to the wrong contract and typecheck rejects the parameter type
-    // or return field mismatch — not just an ambiguity error.
+    // Happy-path integration coverage for selective imports. The registry test
+    // above proves beta's SharedService is excluded structurally.
     let graph = module_graph_from_sources(&[
         (
             "vendor/alpha.dag",
