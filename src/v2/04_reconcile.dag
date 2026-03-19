@@ -723,19 +723,23 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 // Returns the list of Named type references this type-Node depends on.
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
-    [n.name]
+    // The referenced type is in return_type.value.name, not n.name.
+    // n.name is the field/alias name; return_type.value.name is the type.
+    [n.return_type.value.name]
   } else if node_is_leaf(n: n) {
     []
   } else if n.connective != none {
-    flat_map(n.children, child =>
-      if child.return_type != none {
-        node_type_deps(n: child.return_type.value)
-      } else {
-        []
-      }
-    )
-  } else {
+    // For both Conj and Disj: recurse into each child.
+    // Conj children are fields (named_ref catches their return_types).
+    // Disj children are variants (recursion walks their field children).
     flat_map(n.children, child => node_type_deps(n: child))
+  } else {
+    // Non-connective node with children: recurse into children AND return_type.
+    let child_deps = flat_map(n.children, child => node_type_deps(n: child))
+    let rt_deps = if n.return_type != none {
+      node_type_deps(n: n.return_type.value)
+    } else { [] }
+    concat(child_deps, rt_deps)
   }
 }
 
@@ -1790,37 +1794,14 @@ fn reaches_self_with_map(root: String, current: String, bindings: Map<String, Ty
 }
 
 // Detect all type names that participate in dependency cycles.
-// Uses a global visited map so each binding is explored at most once,
-// reducing total cost from O(K x V^2 x E_type) to O(K x (V + E_type)).
+// Each type independently checks for self-reachability via DFS.
+// No fold accumulator — avoids O(N^2) deep cloning of growing maps.
 fn detect_type_cycles(bindings: Map<String, TypeBinding>) -> List<String> {
   let all_names = map(map_values(bindings), b => b.name)
-  // Build a map of recursive flags, using global_visited to avoid redundant work.
-  let result = fold(all_names, init: CycleDetectState {
-    recursive_names: empty_map(),
-    global_visited: empty_map()
-  }, f: (acc, name) =>
-    if match map_get(acc.global_visited, name) { Some { value: _ } => true  _ => false } {
-      acc
-    } else {
-      let is_recursive = reaches_self_with_map(
-        root: name, current: name, bindings: bindings,
-        visited: empty_map()
-      )
-      let new_visited = map_insert(acc.global_visited, name, true)
-      if is_recursive {
-        CycleDetectState {
-          recursive_names: map_insert(acc.recursive_names, name, true),
-          global_visited: new_visited
-        }
-      } else {
-        CycleDetectState {
-          recursive_names: acc.recursive_names,
-          global_visited: new_visited
-        }
-      }
-    }
-  )
-  filter(all_names, name => map_contains_key(result.recursive_names, name))
+  filter(all_names, name => reaches_self_with_map(
+    root: name, current: name, bindings: bindings,
+    visited: empty_map()
+  ))
 }
 
 // =========================================================================
@@ -1878,6 +1859,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
   let import_env = import_result.env
+  let import_diags = import_result.diagnostics
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
@@ -1930,9 +1912,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
   let local_name_set = fold(map_values(local_bindings), init: empty_map(), f: (acc, b) => map_insert(acc, b.name, true))
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set)
+  let resolved_env_out = resolved.env
+  let resolved_diags = resolved.diagnostics
   BuildTypeEnvResult {
-    env: resolved.env,
-    diagnostics: concat(import_result.diagnostics, resolved.diagnostics)
+    env: resolved_env_out,
+    diagnostics: concat(import_diags, resolved_diags)
   }
 }
 
@@ -1962,9 +1946,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           match n.children |> first {
             Some { value: base } =>
               let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1)
+              let base_resolved = base_result.resolved
+              let base_diags = base_result.diagnostics
               NodeResolveResult {
-                resolved: Node { name: n.name, span: n.span, children: [base_result.resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
-                diagnostics: base_result.diagnostics
+                resolved: Node { name: n.name, span: n.span, children: [base_resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
+                diagnostics: base_diags
               }
             None => NodeResolveResult { resolved: n, diagnostics: [] }
           }
@@ -1975,9 +1961,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               NodeResolveResult { resolved: child, diagnostics: [] }
             } else {
               let rt_result = resolve_node_bounded(n: child.return_type.value, env: env, module_name: module_name, depth: depth + 1)
+              let rt_resolved = rt_result.resolved
+              let rt_diags = rt_result.diagnostics
               NodeResolveResult {
-                resolved: Node { name: child.name, span: child.span, children: child.children, connective: child.connective, params: child.params, return_type: Some { value: rt_result.resolved }, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, config: child.config, is_self_recursive: false, has_non_tail_self_call: false },
-                diagnostics: rt_result.diagnostics
+                resolved: Node { name: child.name, span: child.span, children: child.children, connective: child.connective, params: child.params, return_type: Some { value: rt_resolved }, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, config: child.config, is_self_recursive: false, has_non_tail_self_call: false },
+                diagnostics: rt_diags
               }
             }
           )
@@ -1994,13 +1982,15 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           match n.children |> first {
             Some { value: inner } =>
               let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1)
+              let inner_resolved = inner_result.resolved
+              let inner_diags = inner_result.diagnostics
               let none_node = match skip(n.children, 1) |> first {
                 Some { value: none_child } => none_child
                 None => leaf_node(name: "None")
               }
               NodeResolveResult {
-                resolved: Node { name: n.name, span: n.span, children: [inner_result.resolved, none_node], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
-                diagnostics: inner_result.diagnostics
+                resolved: Node { name: n.name, span: n.span, children: [inner_resolved, none_node], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
+                diagnostics: inner_diags
               }
             None => NodeResolveResult { resolved: n, diagnostics: [] }
           }
@@ -2012,9 +2002,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
                 NodeResolveResult { resolved: field_child, diagnostics: [] }
               } else {
                 let rt_result = resolve_node_bounded(n: field_child.return_type.value, env: env, module_name: module_name, depth: depth + 1)
+                let rt_resolved = rt_result.resolved
+                let rt_diags = rt_result.diagnostics
                 NodeResolveResult {
-                  resolved: Node { name: field_child.name, span: field_child.span, children: field_child.children, connective: field_child.connective, params: field_child.params, return_type: Some { value: rt_result.resolved }, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: field_child.properties, type_annotation: field_child.type_annotation, config: field_child.config, is_self_recursive: false, has_non_tail_self_call: false },
-                  diagnostics: rt_result.diagnostics
+                  resolved: Node { name: field_child.name, span: field_child.span, children: field_child.children, connective: field_child.connective, params: field_child.params, return_type: Some { value: rt_resolved }, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: field_child.properties, type_annotation: field_child.type_annotation, config: field_child.config, is_self_recursive: false, has_non_tail_self_call: false },
+                  diagnostics: rt_diags
                 }
               }
             )
@@ -2044,19 +2036,25 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       None => leaf_node(name: "Unit")
     }
     let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
+    let key_resolved = key_result.resolved
+    let key_diags = key_result.diagnostics
     let val_result = resolve_node_bounded(n: val_child, env: env, module_name: module_name, depth: depth + 1)
+    let val_resolved = val_result.resolved
+    let val_diags = val_result.diagnostics
     NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: [key_result.resolved, val_result.resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
-      diagnostics: concat(key_result.diagnostics, val_result.diagnostics)
+      resolved: Node { name: n.name, span: n.span, children: [key_resolved, val_resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
+      diagnostics: concat(key_diags, val_diags)
     }
   } else if n.children |> count == 1 {
     // Container (List, Set, etc.): recurse on single child (element type)
     match n.children |> first {
       Some { value: el } =>
         let el_result = resolve_node_bounded(n: el, env: env, module_name: module_name, depth: depth + 1)
+        let el_resolved = el_result.resolved
+        let el_diags = el_result.diagnostics
         NodeResolveResult {
-          resolved: Node { name: n.name, span: n.span, children: [el_result.resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
-          diagnostics: el_result.diagnostics
+          resolved: Node { name: n.name, span: n.span, children: [el_resolved], connective: n.connective, params: n.params, return_type: n.return_type, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false },
+          diagnostics: el_diags
         }
       None => NodeResolveResult { resolved: n, diagnostics: [] }
     }
@@ -2108,21 +2106,25 @@ fn resolve_optional_node(n: Node?, env: TypeEnv, module_name: String) -> NodeRes
 
 fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult {
   let type_result = resolve_node(n: field.type_expr, env: env, module_name: module_name)
+  let type_resolved = type_result.resolved
+  let type_diags = type_result.diagnostics
   let default_result = if field.default_value == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
     resolve_expr_types(expr: field.default_value.value, env: env, module_name: module_name)
   }
+  let default_expr = default_result.expr
+  let default_diags = default_result.diagnostics
   FieldResult {
     field: Field {
       name: field.name,
-      type_expr: type_result.resolved,
+      type_expr: type_resolved,
       optional: field.optional,
-      default_value: if field.default_value == none { none } else { Some { value: default_result.expr } },
+      default_value: if field.default_value == none { none } else { Some { value: default_expr } },
       from_key: field.from_key,
       span: field.span
     },
-    diagnostics: concat(type_result.diagnostics, default_result.diagnostics)
+    diagnostics: concat(type_diags, default_diags)
   }
 }
 
@@ -2132,19 +2134,23 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
 
 fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult {
   let type_result = resolve_node(n: param.type_expr, env: env, module_name: module_name)
+  let type_resolved = type_result.resolved
+  let type_diags = type_result.diagnostics
   let default_result = if param.default_value == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
     resolve_expr_types(expr: param.default_value.value, env: env, module_name: module_name)
   }
+  let default_expr = default_result.expr
+  let default_diags = default_result.diagnostics
   ParamResult {
     param: Param {
       name: param.name,
-      type_expr: type_result.resolved,
-      default_value: if param.default_value == none { none } else { Some { value: default_result.expr } },
+      type_expr: type_resolved,
+      default_value: if param.default_value == none { none } else { Some { value: default_expr } },
       span: param.span
     },
-    diagnostics: concat(type_result.diagnostics, default_result.diagnostics)
+    diagnostics: concat(type_diags, default_diags)
   }
 }
 
@@ -2158,29 +2164,35 @@ fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult
 
 fn resolve_resource_use(ru: ResourceUse, env: TypeEnv, module_name: String) -> ResourceUseResult {
   let type_result = resolve_node(n: ru.resource, env: env, module_name: module_name)
+  let type_resolved = type_result.resolved
+  let type_diags = type_result.diagnostics
   ResourceUseResult {
     resource_use: ResourceUse {
       name: ru.name,
-      resource: type_result.resolved,
+      resource: type_resolved,
       span: ru.span
     },
-    diagnostics: type_result.diagnostics
+    diagnostics: type_diags
   }
 }
 
 fn resolve_named_arg(arg: NamedArg, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
   let value_result = resolve_expr_types(expr: arg.value, env: env, module_name: module_name)
+  let value_expr = value_result.expr
+  let value_diags = value_result.diagnostics
   NamedArgResolveResult {
-    arg: NamedArg { name: arg.name, value: value_result.expr },
-    diagnostics: value_result.diagnostics
+    arg: NamedArg { name: arg.name, value: value_expr },
+    diagnostics: value_diags
   }
 }
 
 fn resolve_field_init(field_init: FieldInit, env: TypeEnv, module_name: String) -> FieldInitResolveResult {
   let value_result = resolve_expr_types(expr: field_init.value, env: env, module_name: module_name)
+  let value_expr = value_result.expr
+  let value_diags = value_result.diagnostics
   FieldInitResolveResult {
-    field_init: FieldInit { name: field_init.name, value: value_result.expr },
-    diagnostics: value_result.diagnostics
+    field_init: FieldInit { name: field_init.name, value: value_expr },
+    diagnostics: value_diags
   }
 }
 
@@ -2190,14 +2202,18 @@ fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchA
   } else {
     resolve_expr_types(expr: arm.guard.value, env: env, module_name: module_name)
   }
+  let guard_expr = guard_result.expr
+  let guard_diags = guard_result.diagnostics
   let body_result = resolve_expr_types(expr: arm.body, env: env, module_name: module_name)
+  let body_expr = body_result.expr
+  let body_diags = body_result.diagnostics
   MatchArmResolveResult {
     arm: MatchArm {
       pattern: arm.pattern,
-      guard: if arm.guard == none { none } else { Some { value: guard_result.expr } },
-      body: body_result.expr
+      guard: if arm.guard == none { none } else { Some { value: guard_expr } },
+      body: body_expr
     },
-    diagnostics: concat(guard_result.diagnostics, body_result.diagnostics)
+    diagnostics: concat(guard_diags, body_diags)
   }
 }
 
@@ -2210,66 +2226,82 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
       }
     Interpolation { expr: expr } =>
       let expr_result = resolve_expr_types(expr: expr, env: env, module_name: module_name)
+      let resolved_expr = expr_result.expr
+      let expr_diags = expr_result.diagnostics
       StringPartResolveResult {
-        part: Interpolation { expr: expr_result.expr },
-        diagnostics: expr_result.diagnostics
+        part: Interpolation { expr: resolved_expr },
+        diagnostics: expr_diags
       }
   }
 }
 
 fn resolve_header_def(header: HeaderDef, env: TypeEnv, module_name: String) -> HeaderResolveResult {
   let value_result = resolve_expr_types(expr: header.value, env: env, module_name: module_name)
+  let value_expr = value_result.expr
+  let value_diags = value_result.diagnostics
   HeaderResolveResult {
-    header: HeaderDef { name: header.name, value: value_result.expr },
-    diagnostics: value_result.diagnostics
+    header: HeaderDef { name: header.name, value: value_expr },
+    diagnostics: value_diags
   }
 }
 
 fn resolve_env_def(env_def: EnvDef, env: TypeEnv, module_name: String) -> EnvDefResolveResult {
   let value_result = resolve_expr_types(expr: env_def.value, env: env, module_name: module_name)
+  let value_expr = value_result.expr
+  let value_diags = value_result.diagnostics
   EnvDefResolveResult {
-    env_def: EnvDef { name: env_def.name, value: value_result.expr },
-    diagnostics: value_result.diagnostics
+    env_def: EnvDef { name: env_def.name, value: value_expr },
+    diagnostics: value_diags
   }
 }
 
 fn resolve_auth_config(config: AuthConfig, env: TypeEnv, module_name: String) -> AuthConfigResolveResult {
   let token_result = resolve_expr_types(expr: config.token_expr, env: env, module_name: module_name)
+  let token_expr = token_result.expr
+  let token_diags = token_result.diagnostics
   AuthConfigResolveResult {
     config: AuthConfig {
       scheme: config.scheme,
       header: config.header,
-      token_expr: token_result.expr
+      token_expr: token_expr
     },
-    diagnostics: token_result.diagnostics
+    diagnostics: token_diags
   }
 }
 
 fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: String) -> ServiceConfigResolveResult {
   let endpoint_result = resolve_expr_types(expr: config.endpoint, env: env, module_name: module_name)
+  let endpoint_expr = endpoint_result.expr
+  let endpoint_diags = endpoint_result.diagnostics
   let auth_result = if config.auth == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
     resolve_expr_types(expr: config.auth.value, env: env, module_name: module_name)
   }
+  let auth_expr = auth_result.expr
+  let auth_diags = auth_result.diagnostics
   let rate_result = if config.rate_limit == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
     resolve_expr_types(expr: config.rate_limit.value, env: env, module_name: module_name)
   }
+  let rate_expr = rate_result.expr
+  let rate_diags = rate_result.diagnostics
   let retry_result = if config.retry == none {
     ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
   } else {
     resolve_expr_types(expr: config.retry.value, env: env, module_name: module_name)
   }
+  let retry_expr = retry_result.expr
+  let retry_diags = retry_result.diagnostics
   ServiceConfigResolveResult {
     config: ServiceConfig {
-      endpoint: endpoint_result.expr,
-      auth: if config.auth == none { none } else { Some { value: auth_result.expr } },
-      rate_limit: if config.rate_limit == none { none } else { Some { value: rate_result.expr } },
-      retry: if config.retry == none { none } else { Some { value: retry_result.expr } }
+      endpoint: endpoint_expr,
+      auth: if config.auth == none { none } else { Some { value: auth_expr } },
+      rate_limit: if config.rate_limit == none { none } else { Some { value: rate_expr } },
+      retry: if config.retry == none { none } else { Some { value: retry_expr } }
     },
-    diagnostics: concat(endpoint_result.diagnostics, auth_result.diagnostics, rate_result.diagnostics, retry_result.diagnostics)
+    diagnostics: concat(endpoint_diags, auth_diags, rate_diags, retry_diags)
   }
 }
 
@@ -2277,6 +2309,8 @@ fn resolve_transport_binding(transport: TransportBinding, env: TypeEnv, module_n
   match transport {
     RestBinding { base_url: base_url, auth: auth, headers: headers } =>
       let base_result = resolve_expr_types(expr: base_url, env: env, module_name: module_name)
+      let base_expr = base_result.expr
+      let base_diags = base_result.diagnostics
       let auth_result = if auth == none {
         AuthConfigResolveResult {
           config: AuthConfig { scheme: "", header: "", token_expr: Literal { value: LitNull, span: no_span() } },
@@ -2285,16 +2319,18 @@ fn resolve_transport_binding(transport: TransportBinding, env: TypeEnv, module_n
       } else {
         resolve_auth_config(config: auth.value, env: env, module_name: module_name)
       }
+      let auth_config = auth_result.config
+      let auth_diags = auth_result.diagnostics
       let header_results = map(headers, h => resolve_header_def(header: h, env: env, module_name: module_name))
       let resolved_headers = map(header_results, hr => hr.header)
       let header_diags = flat_map(header_results, hr => hr.diagnostics)
       TransportResolveResult {
         transport: RestBinding {
-          base_url: base_result.expr,
-          auth: if auth == none { none } else { Some { value: auth_result.config } },
+          base_url: base_expr,
+          auth: if auth == none { none } else { Some { value: auth_config } },
           headers: resolved_headers
         },
-        diagnostics: concat(base_result.diagnostics, auth_result.diagnostics, header_diags)
+        diagnostics: concat(base_diags, auth_diags, header_diags)
       }
     ShellBinding { argv: argv, env: env_defs } =>
       let argv_results = map(argv, arg => resolve_expr_types(expr: arg, env: env, module_name: module_name))
@@ -2309,9 +2345,11 @@ fn resolve_transport_binding(transport: TransportBinding, env: TypeEnv, module_n
       }
     FileBinding { base_path: base_path } =>
       let base_result = resolve_expr_types(expr: base_path, env: env, module_name: module_name)
+      let base_expr = base_result.expr
+      let base_diags = base_result.diagnostics
       TransportResolveResult {
-        transport: FileBinding { base_path: base_result.expr },
-        diagnostics: base_result.diagnostics
+        transport: FileBinding { base_path: base_expr },
+        diagnostics: base_diags
       }
     LocalBinding =>
       TransportResolveResult { transport: LocalBinding, diagnostics: [] }
@@ -2327,9 +2365,11 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
 
     FieldAccess { base: base, field: field, span: span } =>
       let base_result = resolve_expr_types(expr: base, env: env, module_name: module_name)
+      let base_expr = base_result.expr
+      let base_diags = base_result.diagnostics
       ExprResolveResult {
-        expr: FieldAccess { base: base_result.expr, field: field, span: span },
-        diagnostics: base_result.diagnostics
+        expr: FieldAccess { base: base_expr, field: field, span: span },
+        diagnostics: base_diags
       }
 
     Call { func: func, args: args, span: span } =>
@@ -2343,57 +2383,71 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
 
     MethodCall { receiver: receiver, method: method, args: args, span: span } =>
       let recv_result = resolve_expr_types(expr: receiver, env: env, module_name: module_name)
+      let recv_expr = recv_result.expr
+      let recv_diags = recv_result.diagnostics
       let arg_results = map(args, arg => resolve_named_arg(arg: arg, env: env, module_name: module_name))
       let resolved_args = map(arg_results, ar => ar.arg)
       let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
       ExprResolveResult {
-        expr: MethodCall { receiver: recv_result.expr, method: method, args: resolved_args, span: span },
-        diagnostics: concat(recv_result.diagnostics, arg_diags)
+        expr: MethodCall { receiver: recv_expr, method: method, args: resolved_args, span: span },
+        diagnostics: concat(recv_diags, arg_diags)
       }
 
     Match { scrutinee: scrutinee, arms: arms, span: span } =>
       let scrutinee_result = resolve_expr_types(expr: scrutinee, env: env, module_name: module_name)
+      let scrutinee_expr = scrutinee_result.expr
+      let scrutinee_diags = scrutinee_result.diagnostics
       let arm_results = map(arms, arm => resolve_match_arm(arm: arm, env: env, module_name: module_name))
       let resolved_arms = map(arm_results, ar => ar.arm)
       let arm_diags = flat_map(arm_results, ar => ar.diagnostics)
       ExprResolveResult {
-        expr: Match { scrutinee: scrutinee_result.expr, arms: resolved_arms, span: span },
-        diagnostics: concat(scrutinee_result.diagnostics, arm_diags)
+        expr: Match { scrutinee: scrutinee_expr, arms: resolved_arms, span: span },
+        diagnostics: concat(scrutinee_diags, arm_diags)
       }
 
     If { condition: condition, then_branch: then_branch, else_branch: else_branch, span: span } =>
       let cond_result = resolve_expr_types(expr: condition, env: env, module_name: module_name)
+      let cond_expr = cond_result.expr
+      let cond_diags = cond_result.diagnostics
       let then_result = resolve_expr_types(expr: then_branch, env: env, module_name: module_name)
+      let then_expr = then_result.expr
+      let then_diags = then_result.diagnostics
       let else_result = if else_branch == none {
         ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
       } else {
         resolve_expr_types(expr: else_branch.value, env: env, module_name: module_name)
       }
+      let else_expr = else_result.expr
+      let else_diags = else_result.diagnostics
       ExprResolveResult {
         expr: If {
-          condition: cond_result.expr,
-          then_branch: then_result.expr,
-          else_branch: if else_branch == none { none } else { Some { value: else_result.expr } },
+          condition: cond_expr,
+          then_branch: then_expr,
+          else_branch: if else_branch == none { none } else { Some { value: else_expr } },
           span: span
         },
-        diagnostics: concat(cond_result.diagnostics, then_result.diagnostics, else_result.diagnostics)
+        diagnostics: concat(cond_diags, then_diags, else_diags)
       }
 
     Let { name: name, value: value, body: body, span: span } =>
       let value_result = resolve_expr_types(expr: value, env: env, module_name: module_name)
+      let value_expr = value_result.expr
+      let value_diags = value_result.diagnostics
       let body_result = if body == none {
         ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
       } else {
         resolve_expr_types(expr: body.value, env: env, module_name: module_name)
       }
+      let body_expr = body_result.expr
+      let body_diags = body_result.diagnostics
       ExprResolveResult {
         expr: Let {
           name: name,
-          value: value_result.expr,
-          body: if body == none { none } else { Some { value: body_result.expr } },
+          value: value_expr,
+          body: if body == none { none } else { Some { value: body_expr } },
           span: span
         },
-        diagnostics: concat(value_result.diagnostics, body_result.diagnostics)
+        diagnostics: concat(value_diags, body_diags)
       }
 
     RecordLit { type_name: type_name, fields: fields, span: span } =>
@@ -2416,24 +2470,32 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
 
     BinOp { op: op, left: left, right: right, span: span } =>
       let left_result = resolve_expr_types(expr: left, env: env, module_name: module_name)
+      let left_expr = left_result.expr
+      let left_diags = left_result.diagnostics
       let right_result = resolve_expr_types(expr: right, env: env, module_name: module_name)
+      let right_expr = right_result.expr
+      let right_diags = right_result.diagnostics
       ExprResolveResult {
-        expr: BinOp { op: op, left: left_result.expr, right: right_result.expr, span: span },
-        diagnostics: concat(left_result.diagnostics, right_result.diagnostics)
+        expr: BinOp { op: op, left: left_expr, right: right_expr, span: span },
+        diagnostics: concat(left_diags, right_diags)
       }
 
     UnaryOp { op: op, operand: operand, span: span } =>
       let operand_result = resolve_expr_types(expr: operand, env: env, module_name: module_name)
+      let operand_expr = operand_result.expr
+      let operand_diags = operand_result.diagnostics
       ExprResolveResult {
-        expr: UnaryOp { op: op, operand: operand_result.expr, span: span },
-        diagnostics: operand_result.diagnostics
+        expr: UnaryOp { op: op, operand: operand_expr, span: span },
+        diagnostics: operand_diags
       }
 
     Lambda { params: params, body: body, span: span } =>
       let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
+      let body_expr = body_result.expr
+      let body_diags = body_result.diagnostics
       ExprResolveResult {
-        expr: Lambda { params: params, body: body_result.expr, span: span },
-        diagnostics: body_result.diagnostics
+        expr: Lambda { params: params, body: body_expr, span: span },
+        diagnostics: body_diags
       }
 
     StringInterp { parts: parts, span: span } =>
@@ -2456,45 +2518,63 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
 
     Cast { expr: inner, target: target, span: span } =>
       let expr_result = resolve_expr_types(expr: inner, env: env, module_name: module_name)
+      let cast_expr = expr_result.expr
+      let cast_diags = expr_result.diagnostics
       let type_result = resolve_node(n: target, env: env, module_name: module_name)
+      let type_resolved = type_result.resolved
+      let type_diags = type_result.diagnostics
       ExprResolveResult {
-        expr: Cast { expr: expr_result.expr, target: type_result.resolved, span: span },
-        diagnostics: concat(expr_result.diagnostics, type_result.diagnostics)
+        expr: Cast { expr: cast_expr, target: type_resolved, span: span },
+        diagnostics: concat(cast_diags, type_diags)
       }
 
     ForEach { variable: variable, collection: collection, body: body, span: span } =>
       let collection_result = resolve_expr_types(expr: collection, env: env, module_name: module_name)
+      let collection_expr = collection_result.expr
+      let collection_diags = collection_result.diagnostics
       let body_result = resolve_expr_types(expr: body, env: env, module_name: module_name)
+      let body_expr = body_result.expr
+      let body_diags = body_result.diagnostics
       ExprResolveResult {
         expr: ForEach {
           variable: variable,
-          collection: collection_result.expr,
-          body: body_result.expr,
+          collection: collection_expr,
+          body: body_expr,
           span: span
         },
-        diagnostics: concat(collection_result.diagnostics, body_result.diagnostics)
+        diagnostics: concat(collection_diags, body_diags)
       }
 
     Index { base: base, index: index, span: span } =>
       let base_result = resolve_expr_types(expr: base, env: env, module_name: module_name)
+      let base_expr = base_result.expr
+      let base_diags = base_result.diagnostics
       let index_result = resolve_expr_types(expr: index, env: env, module_name: module_name)
+      let index_expr = index_result.expr
+      let index_diags = index_result.diagnostics
       ExprResolveResult {
-        expr: Index { base: base_result.expr, index: index_result.expr, span: span },
-        diagnostics: concat(base_result.diagnostics, index_result.diagnostics)
+        expr: Index { base: base_expr, index: index_expr, span: span },
+        diagnostics: concat(base_diags, index_diags)
       }
 
     Slice { base: base, start: start, end: end, span: span } =>
       let base_result = resolve_expr_types(expr: base, env: env, module_name: module_name)
+      let base_expr = base_result.expr
+      let base_diags = base_result.diagnostics
       let start_result = resolve_expr_types(expr: start, env: env, module_name: module_name)
+      let start_expr = start_result.expr
+      let start_diags = start_result.diagnostics
       let end_result = resolve_expr_types(expr: end, env: env, module_name: module_name)
+      let end_expr = end_result.expr
+      let end_diags = end_result.diagnostics
       ExprResolveResult {
         expr: Slice {
-          base: base_result.expr,
-          start: start_result.expr,
-          end: end_result.expr,
+          base: base_expr,
+          start: start_expr,
+          end: end_expr,
           span: span
         },
-        diagnostics: concat(base_result.diagnostics, start_result.diagnostics, end_result.diagnostics)
+        diagnostics: concat(base_diags, start_diags, end_diags)
       }
   }
 }
@@ -2514,7 +2594,9 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve return type
   let ret_result = resolve_optional_node(n: item.return_type, env: env, module_name: module_name)
-  let resolved_ret = if item.return_type == none { none } else { Some { value: ret_result.resolved } }
+  let ret_resolved = ret_result.resolved
+  let ret_diags = ret_result.diagnostics
+  let resolved_ret = if item.return_type == none { none } else { Some { value: ret_resolved } }
 
   // Resolve uses
   let use_results = map(item.uses, u => resolve_resource_use(ru: u, env: env, module_name: module_name))
@@ -2579,7 +2661,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       properties: resolved_props, type_annotation: resolved_anno,
       config: resolved_config, is_self_recursive: false, has_non_tail_self_call: false
     },
-    diagnostics: concat(param_diags, ret_result.diagnostics, use_diags, body_diags, anno_diags, transport_diags, config_diags, prop_diags, child_diags)
+    diagnostics: concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, config_diags, prop_diags, child_diags)
   }
 }
 
@@ -2901,11 +2983,13 @@ fn typecheck_modules(
     Some { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
+      let typed = tc_result.typed
+      let tc_diags = tc_result.diagnostics
       typecheck_modules(
         remaining: remaining |> skip(1),
-        modules: list_push(modules, tc_result.typed),
-        module_index: map_insert(module_index, tc_result.typed.module.name, tc_result.typed),
-        diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_result.diagnostics)
+        modules: list_push(modules, typed),
+        module_index: map_insert(module_index, typed.module.name, typed),
+        diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_diags)
       )
   }
 }
