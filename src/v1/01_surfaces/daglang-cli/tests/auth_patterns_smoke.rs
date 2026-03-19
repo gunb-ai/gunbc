@@ -5,8 +5,9 @@
 //
 // Replaces the synthetic-fixture unit tests that previously lived in
 // `src/compile/tests.rs` (check_target_file_gunbc_auth_patterns_requires_*).
-// The generic imported-service-module contract is covered by the hermetic
-// `check_target_file_requires_imported_service_modules_for_service_calls` test;
+// The generic imported-service-module contract is covered by the non-hermetic
+// `check_target_file_requires_imported_service_modules_for_service_calls` test
+// in `tests/provider_binding_contract.rs` (writes synthetic fixtures to a temp dir);
 // this test proves the real file's imports resolve and typecheck against the real
 // dsl/ tree, catching drift in provider bindings and service call signatures.
 #![allow(clippy::disallowed_methods)]
