@@ -57,6 +57,15 @@ pub fn render_expr_pub(expr: &Expr) -> String {
     render_expr(expr)
 }
 
+/// Public access to statement list rendering (for fn_codegen merged arm bodies).
+pub fn render_stmts_pub(stmts: &[Stmt]) -> String {
+    let mut out = String::new();
+    for stmt in stmts {
+        out.push_str(&render_stmt(stmt, 0));
+    }
+    out
+}
+
 /// Render a minimal Cargo.toml for a generated crate.
 pub fn render_cargo_toml(crate_name: &str, dependencies: &[(&str, &str)]) -> String {
     let mut out = String::new();
@@ -156,7 +165,7 @@ fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
         let inner_pad = "    ".repeat(indent + 1);
         writeln!(
             out,
-            "{}stacker::maybe_grow(32 * 1024, 2 * 1024 * 1024, || {{",
+            "{}stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {{",
             inner_pad
         )
         .unwrap();
@@ -472,6 +481,7 @@ fn needs_grouping_in_operator(expr: &Expr) -> bool {
             | Expr::Block(_)
             | Expr::Closure { .. }
             | Expr::Struct { .. }
+            | Expr::BinOp { .. }
     )
 }
 
@@ -552,12 +562,47 @@ fn render_expr(expr: &Expr) -> String {
             }
         }
         Expr::BinOp { left, op, right } => {
-            format!(
-                "{} {} {}",
-                render_operator_operand(left),
-                op,
-                render_operator_operand(right)
-            )
+            // Render `expr == None` / `expr != None` as `.is_none()` / `.is_some()`.
+            // This is both more idiomatic Rust and avoids type mismatches when the
+            // expression is `Box<Option<T>>` (auto-deref works for method calls but
+            // not for `==`/`!=` with a bare `None`).
+            if let (true, Some(method)) = (
+                matches!(right.as_ref(), Expr::Var(name) if name == "None"),
+                match op.as_str() {
+                    "==" => Some("is_none"),
+                    "!=" => Some("is_some"),
+                    _ => None,
+                },
+            ) {
+                // Strip Deref: `*expr` → `expr` because .is_none()/.is_some()
+                // auto-deref through Box<Option<T>>, and `*expr.is_none()`
+                // would incorrectly parse as `*(expr.is_none())`.
+                let inner = match left.as_ref() {
+                    Expr::Deref(inner) => inner.as_ref(),
+                    other => other,
+                };
+                format!("{}.{}()", render_expr(inner), method)
+            } else if let (true, Some(method)) = (
+                matches!(left.as_ref(), Expr::Var(name) if name == "None"),
+                match op.as_str() {
+                    "==" => Some("is_none"),
+                    "!=" => Some("is_some"),
+                    _ => None,
+                },
+            ) {
+                let inner = match right.as_ref() {
+                    Expr::Deref(inner) => inner.as_ref(),
+                    other => other,
+                };
+                format!("{}.{}()", render_expr(inner), method)
+            } else {
+                format!(
+                    "{} {} {}",
+                    render_operator_operand(left),
+                    op,
+                    render_operator_operand(right)
+                )
+            }
         }
         Expr::UnaryOp { op, expr } => {
             format!("{}{}", op, render_operator_operand(expr))

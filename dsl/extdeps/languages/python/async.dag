@@ -8,11 +8,11 @@
 //      aiohttp docs (docs.aiohttp.org)
 //
 // Consumers:
-//   v2/05_emit_python.dag — async func emission, service call awaiting
+//   v2/05_emit_python.dag -- async func emission, service call awaiting
 
 module extdeps.languages.python.async_
 
-// ── Async function syntax ───────────────────────────────────────────
+// -- Async function syntax -------------------------------------------
 // Ref: PEP 492 "Coroutines with async and await syntax"
 
 // "How does Python define an async function?"
@@ -23,22 +23,22 @@ data async_def_void_template: String = "async def \{name\}(\{params\}):\n    \{b
 // Prefix await syntax.
 data await_template: String = "await \{expr\}"
 
-// ── asyncio runtime ─────────────────────────────────────────────────
+// -- asyncio runtime -------------------------------------------------
 // Ref: asyncio (docs.python.org/3/library/asyncio.html)
 
 // "How does Python run async code from sync context?"
 data asyncio_run_template: String = "asyncio.run(\{coroutine\})"
 data asyncio_import: String = "import asyncio"
 
-// ── Task management ─────────────────────────────────────────────────
+// -- Task management -------------------------------------------------
 // Ref: asyncio.create_task, asyncio.gather
 
 data create_task_template: String = "asyncio.create_task(\{coroutine\})"
 data gather_template: String = "await asyncio.gather(\{coroutines\})"
 data wait_template: String = "await asyncio.wait(\{tasks\})"
 
-// ── aiohttp client ──────────────────────────────────────────────────
-// Ref: aiohttp (docs.aiohttp.org) — aiohttp 3.x
+// -- aiohttp client --------------------------------------------------
+// Ref: aiohttp (docs.aiohttp.org) -- aiohttp 3.x
 //
 // Used by service definitions with REST transport.
 
@@ -53,7 +53,7 @@ data response_json_template: String = "await response.json()"
 data response_text_template: String = "await response.text()"
 data response_status: String = "response.status"
 
-// ── Subprocess execution ────────────────────────────────────────────
+// -- Subprocess execution --------------------------------------------
 // Ref: asyncio.subprocess (docs.python.org/3/library/asyncio-subprocess.html)
 //
 // Used by service definitions with shell transport.
@@ -69,7 +69,7 @@ data subprocess_run_template: String = "subprocess.run(\{args\}, capture_output=
 data subprocess_result_stdout: String = "result.stdout"
 data subprocess_result_returncode: String = "result.returncode"
 
-// ── File I/O ────────────────────────────────────────────────────────
+// -- File I/O --------------------------------------------------------
 // Ref: Python built-in open(), pathlib
 
 data file_read_template: String = "open(\{path\}).read()"

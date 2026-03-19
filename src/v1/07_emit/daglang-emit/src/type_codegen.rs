@@ -15,6 +15,7 @@
 //! ## Fn mapping
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, TypeExpr, Variant};
@@ -25,6 +26,63 @@ use crate::fn_codegen;
 
 /// Default derives applied to every generated type.
 const DEFAULT_DERIVES: &[&str] = &["Debug", "Clone", "PartialEq", "Eq"];
+
+// ---------------------------------------------------------------------------
+// R8: Rc-wrapped types — DAG value semantics as shared ownership
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// Set of type names that should be Rc-wrapped in generated code.
+    /// Populated at crate assembly time in `assemble_v2_crate`.
+    static RC_WRAPPED_TYPES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+}
+
+/// Install the set of Rc-wrapped type names for the duration of `f`.
+/// All calls to `type_expr_to_rust` within `f` will Rc-wrap Named types
+/// whose names appear in this set.
+pub fn with_rc_wrapped_types<R>(types: &HashSet<String>, f: impl FnOnce() -> R) -> R {
+    RC_WRAPPED_TYPES.with(|cell| {
+        let prev = cell.replace(types.clone());
+        let result = f();
+        cell.replace(prev);
+        result
+    })
+}
+
+/// Check whether a type name is in the current Rc-wrapped set.
+pub fn is_rc_wrapped(name: &str) -> bool {
+    RC_WRAPPED_TYPES.with(|cell| cell.borrow().contains(name))
+}
+
+/// Get a clone of the current Rc-wrapped types set (for populating CompileContext).
+pub fn current_rc_wrapped_types() -> HashSet<String> {
+    RC_WRAPPED_TYPES.with(|cell| cell.borrow().clone())
+}
+
+/// Build the set of non-Copy type names that should be Rc-wrapped.
+///
+/// This includes all generated struct types and all non-simple enum types,
+/// excluding hardcoded/materialized types (SourceSpan, BindingPower).
+pub fn build_rc_wrapped_types(type_defs: &[&TypeDef]) -> HashSet<String> {
+    let hardcoded_exclude: HashSet<&str> =
+        ["SourceSpan", "BindingPower", "FilePath", "NonEmptyStr"]
+            .iter()
+            .copied()
+            .collect();
+    type_defs
+        .iter()
+        .filter_map(|td| {
+            if hardcoded_exclude.contains(td.name.as_str()) {
+                return None;
+            }
+            match &td.body {
+                TypeBody::Sum(variants) if is_simple_enum(variants) => None,
+                TypeBody::Alias(_) => None,
+                _ => Some(td.name.clone()),
+            }
+        })
+        .collect()
+}
 
 type CallableReturnTypes = std::collections::HashMap<String, String>;
 type CallableParamTypes = std::collections::HashMap<String, Vec<(String, String)>>;
@@ -147,11 +205,19 @@ pub fn type_expr_to_rust_with_registry(
     registry: Option<&gunbc_ir::TypeRegistry>,
 ) -> String {
     match expr {
-        TypeExpr::Named(name) => crate::type_mapping::resolve_and_emit(
-            name,
-            registry,
-            crate::type_mapping::Backend::Rust,
-        ),
+        TypeExpr::Named(name) => {
+            let resolved = crate::type_mapping::resolve_and_emit(
+                name,
+                registry,
+                crate::type_mapping::Backend::Rust,
+            );
+            // R8: Rc-wrap non-Copy generated types for O(1) clone
+            if is_rc_wrapped(name) {
+                format!("Rc<{}>", resolved)
+            } else {
+                resolved
+            }
+        }
         TypeExpr::AssociatedOutput(base) => {
             let resolved_base = crate::type_mapping::resolve_and_emit(
                 base,
@@ -433,6 +499,7 @@ pub fn typedef_to_static_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
 }
 
 /// Convert DSL type expr to Rust, mapping String → &'static str.
+/// NOTE: does NOT Rc-wrap types because static data requires Sync.
 fn type_expr_to_static_rust(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => {
@@ -530,9 +597,11 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
             )
         }
         // Map<K, V> data: emit as a LazyLock static (HashMap can't be const)
+        // R8: Don't Rc-wrap types in static context — Rc is not Sync.
+        // Strip Rc wrapping from the resolved types.
         TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
-            let key_type = type_expr_to_rust(&args[0]);
-            let val_type = type_expr_to_rust(&args[1]);
+            let key_type = strip_rc_wrapper(&type_expr_to_rust(&args[0]));
+            let val_type = strip_rc_wrapper(&type_expr_to_rust(&args[1]));
             let val_type_name = match &args[1] {
                 TypeExpr::Named(n) => n.as_str(),
                 _ => &val_type,
@@ -580,6 +649,16 @@ fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(
         _ => return vec![],
     };
     resolve_field_types(elem_type_name, struct_defs)
+}
+
+/// R8: Strip `Rc<...>` wrapper from a Rust type string.
+/// Used for static data tables where Rc is not Sync-compatible.
+fn strip_rc_wrapper(rust_type: &str) -> String {
+    if let Some(inner) = rust_type.strip_prefix("Rc<").and_then(|s| s.strip_suffix('>')) {
+        inner.to_string()
+    } else {
+        rust_type.to_string()
+    }
 }
 
 /// Get the simple type name (without Option wrapping) for field context resolution.
@@ -857,8 +936,17 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .map(|p| (p.name.clone(), fn_codegen::type_expr_to_ir_type(&p.ty)))
         .collect();
 
+    // R3: Track which params are exactly String (now &str) — not Optional<String>
+    let str_param_names: std::collections::HashSet<String> = fd
+        .params
+        .iter()
+        .filter(|p| matches!(&p.ty, TypeExpr::Named(n) if n == "String"))
+        .map(|p| p.name.clone())
+        .collect();
+
     let mut analysis_ctx = ctx.clone();
     analysis_ctx.param_types = param_types.clone();
+    analysis_ctx.str_param_names = str_param_names.clone();
     analysis_ctx.current_return_type = return_type_name.clone();
     analysis_ctx.current_return_ir_type = Some(fn_codegen::type_expr_to_ir_type(&fd.return_type));
     analysis_ctx.ir_scope = ir_scope.clone();
@@ -887,7 +975,11 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     let mut params: Vec<(String, String)> = fd
         .params
         .iter()
-        .map(|p| (p.name.clone(), type_expr_to_rust(&p.ty)))
+        .map(|p| {
+            let ty = type_expr_to_rust(&p.ty);
+            let ty = if ty == "String" { "&str".to_string() } else { ty };
+            (p.name.clone(), ty)
+        })
         .collect();
     let ret = type_expr_to_rust(&fd.return_type);
     let rename_todo_params = matches!(fd.name.as_str(), "box_top_line" | "box_bottom_line");
@@ -925,7 +1017,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
     // transform the function body to use a loop instead of recursion.
     let rust_fn_name = to_snake_case(&fd.name);
     let param_names: Vec<String> = fd.params.iter().map(|p| p.name.clone()).collect();
-    let body = match fn_codegen::apply_tco(&rust_fn_name, &param_names, &body) {
+    let body = match fn_codegen::apply_tco(&rust_fn_name, &param_names, &body, &str_param_names) {
         Some(tco_body) => tco_body,
         None => body,
     };
@@ -1197,11 +1289,15 @@ pub fn typedefs_to_source_file(
         data_ir_types: std::collections::HashMap::new(),
         fn_return_ir_types: std::collections::HashMap::new(),
         optional_return_fns: std::collections::HashSet::new(),
+        fn_str_params: std::collections::HashSet::new(),
+            str_param_names: std::collections::HashSet::new(),
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_ir_types: std::collections::HashMap::new(),
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
+        rc_wrapped_types: std::collections::HashSet::new(),
+        match_bound_vars: std::collections::HashSet::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1349,6 +1445,8 @@ pub fn generate_types_for_modules(
             fold_accum_name: None,
             enum_accessor_fields: HashMap::new(),
             optional_return_fns: std::collections::HashSet::new(),
+            fn_str_params: std::collections::HashSet::new(),
+            str_param_names: std::collections::HashSet::new(),
             anonymous_record_targets: collect_anonymous_record_targets(
                 module.callable_body_metadata(&fd.name),
             ),
@@ -1358,6 +1456,8 @@ pub fn generate_types_for_modules(
             expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(&fd.name)),
             expr_identities: std::collections::HashMap::new(),
             expr_path: std::cell::RefCell::new(Default::default()),
+            rc_wrapped_types: std::collections::HashSet::new(),
+            match_bound_vars: std::collections::HashSet::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -1554,11 +1654,15 @@ pub fn compute_recursive_fields(
         }
     }
 
+    // R2 size-based override removed: R8 Rc-wraps TransportBinding and
+    // ServiceConfig, so these fields are already heap-allocated via Rc.
+    // Box-wrapping on top of Rc is redundant and produces incorrect deref code.
+
     recursive_fields
 }
 
-/// Collect direct (non-List-wrapped) type references from a TypeExpr.
-/// Only direct references need boxing; List<T> is already heap-allocated.
+/// Collect direct (non-List-wrapped, non-Rc-wrapped) type references from a TypeExpr.
+/// Only direct references need boxing; List<T> and Rc-wrapped types are already heap-allocated.
 fn collect_direct_type_refs(
     ty: &TypeExpr,
     field_name: &str,
@@ -1567,7 +1671,8 @@ fn collect_direct_type_refs(
 ) {
     match ty {
         TypeExpr::Named(name) => {
-            if known_types.contains(name) {
+            // R8: Rc-wrapped types are heap-allocated, so they don't need Boxing
+            if known_types.contains(name) && !is_rc_wrapped(name) {
                 edges.push((field_name.to_string(), name.clone()));
             }
         }
@@ -1924,6 +2029,10 @@ mod tests {
                 expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
                 enum_accessor_fields: HashMap::new(),
                 optional_return_fns: HashSet::new(),
+                fn_str_params: HashSet::new(),
+                str_param_names: HashSet::new(),
+                rc_wrapped_types: HashSet::new(),
+                match_bound_vars: HashSet::new(),
             },
         )
     }
@@ -2414,7 +2523,7 @@ mod tests {
 
     #[test]
     fn explicit_anonymous_record_targets_drive_let_bound_codegen() {
-        let signatures = vec![TypedItemSignature::Fn(TypedCallableSignature {
+        let signatures = [TypedItemSignature::Fn(TypedCallableSignature {
             name: "consume".to_string(),
             params: vec![TypedBinding {
                 name: "cfg".to_string(),

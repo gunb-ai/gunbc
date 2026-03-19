@@ -9,6 +9,7 @@ use gunbc_exec::{BoundaryMocks, ExecutionLog};
 use gunbc_ir::{canonical_edge_order, Dag, NodeId, PortName, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::Arc;
 
 /// A windowed segment within a DAG.
 #[derive(Debug, Clone)]
@@ -278,7 +279,7 @@ pub fn apply_window_inputs<T>(
                 let bucket = fan_in.entry(key).or_default();
                 if from_cardinality.is_list() {
                     if let Value::List(items) = value {
-                        bucket.extend(items);
+                        bucket.extend(items.iter().cloned());
                     } else {
                         bucket.push(value);
                     }
@@ -292,7 +293,7 @@ pub fn apply_window_inputs<T>(
     }
 
     for ((node, port), values) in fan_in {
-        mocks.set_input(node, port, Value::List(values));
+        mocks.set_input(node, port, Value::List(Arc::new(values)));
     }
     for ((node, port), value) in scalars {
         mocks.set_input(node, port, value);
@@ -440,7 +441,7 @@ mod window_helper_tests {
         let input = mocks
             .get_input("z", "items")
             .expect("list input should be injected");
-        assert_eq!(input, &Value::List(vec![Value::Int(1), Value::Int(2)]));
+        assert_eq!(input, &Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])));
     }
 
     #[test]
@@ -464,7 +465,7 @@ mod window_helper_tests {
         let baseline = ExecutionLog {
             entries: vec![log_entry(
                 "a",
-                vec![("items", Value::List(vec![Value::Int(1), Value::Int(2)]))],
+                vec![("items", Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])))],
             )],
         };
         let mut mocks = BoundaryMocks::new();
@@ -475,7 +476,7 @@ mod window_helper_tests {
         let input = mocks
             .get_input("b", "items")
             .expect("list input should be injected");
-        assert_eq!(input, &Value::List(vec![Value::Int(1), Value::Int(2)]));
+        assert_eq!(input, &Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])));
     }
 }
 

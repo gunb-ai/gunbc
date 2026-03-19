@@ -38,6 +38,7 @@ use gunbc_ir::{
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -700,7 +701,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         for (port_name, mut groups) in list_buckets {
             groups.sort_by_key(|(idx, _)| *idx);
             let values: Vec<Value> = groups.into_iter().flat_map(|(_, elems)| elems).collect();
-            inputs.insert(port_name, Value::List(values));
+            inputs.insert(port_name, Value::List(Arc::new(values)));
         }
 
         // Inject input mocks for dangling input ports (DAG entry points).
@@ -741,7 +742,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 && port.cardinality.allows_empty()
                 && !inputs.contains_key(&port.name.0)
             {
-                inputs.insert(port.name.0.clone(), Value::List(vec![]));
+                inputs.insert(port.name.0.clone(), Value::List(Arc::new(vec![])));
             }
         }
 
@@ -898,7 +899,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 .collect();
 
             if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
-                unpack_out.insert(loop_info.element_port.clone(), Value::List(results));
+                unpack_out.insert(loop_info.element_port.clone(), Value::List(Arc::new(results)));
             }
 
             entries.extend(body_entries);
@@ -1125,7 +1126,7 @@ fn collect_file_write_ops_from_value(value: &Value, writes: &mut Vec<(FileOp, St
             writes.push((resp.operation, normalize_file_guard_path(&resp.path)));
         }
         Value::List(items) | Value::Set(items) => {
-            for item in items {
+            for item in items.iter() {
                 collect_file_write_ops_from_value(item, writes);
             }
         }
@@ -1223,7 +1224,7 @@ fn collect_fan_in(val: &Value, from_cardinality: Cardinality) -> Option<Vec<Valu
     if from_cardinality.is_list() {
         // List → list: flatten elements (Widen coercion)
         if let Value::List(items) = val {
-            Some(items.clone())
+            Some((**items).clone())
         } else {
             Some(vec![val.clone()])
         }
@@ -1308,7 +1309,7 @@ fn build_node_inputs<T>(
     for (port_name, mut groups) in list_buckets {
         groups.sort_by_key(|(idx, _)| *idx);
         let values: Vec<Value> = groups.into_iter().flat_map(|(_, elems)| elems).collect();
-        inputs.insert(port_name, Value::List(values));
+        inputs.insert(port_name, Value::List(Arc::new(values)));
     }
 
     if let Some(mocks) = input_mocks {
@@ -1345,7 +1346,7 @@ fn build_node_inputs<T>(
             && port.cardinality.allows_empty()
             && !inputs.contains_key(&port.name.0)
         {
-            inputs.insert(port.name.0.clone(), Value::List(vec![]));
+            inputs.insert(port.name.0.clone(), Value::List(Arc::new(vec![])));
         }
     }
 
@@ -1447,7 +1448,7 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
             .filter_map(|entry| entry.outputs.get("result").cloned())
             .collect();
         if let Some(unpack_out) = state.node_outputs.get_mut(&loop_info.unpack_id.0) {
-            unpack_out.insert(loop_info.element_port.clone(), Value::List(results));
+            unpack_out.insert(loop_info.element_port.clone(), Value::List(Arc::new(results)));
         }
 
         state.loop_entries[idx].extend(body_entries);
@@ -1912,7 +1913,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
     })?;
 
     let elements = match unpack_outputs.get(&loop_info.element_port) {
-        Some(Value::List(list)) => list.clone(),
+        Some(Value::List(list)) => (**list).clone(),
         Some(Value::Skipped) | None => vec![],
         Some(other) => vec![other.clone()],
     };

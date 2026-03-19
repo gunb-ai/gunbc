@@ -7,13 +7,13 @@
 //   3. Treating it uniformly with external deps simplifies composition
 //
 // Consumers:
-//   config/arch_rules.dag    — exemption scopes reference packages
-//   config/clippy_policy.dag — crate policies reference roles
-//   tools/codegen.dag        — codegen shell operations
+//   config/arch_rules.dag    -- exemption scopes reference packages
+//   config/clippy_policy.dag -- crate policies reference roles
+//   tools/codegen.dag        -- codegen shell operations
 
 module extdeps.gunbc
 
-// ── Package roles ───────────────────────────────────────────────────
+// -- Package roles ---------------------------------------------------
 // How a crate participates in the architecture.
 
 type CrateRole
@@ -25,7 +25,7 @@ type CrateRole
   | Library
   | Tool
 
-// ── Package declarations ────────────────────────────────────────────
+// -- Package declarations --------------------------------------------
 // Each package states its role and whether it's an I/O boundary.
 
 type WorkspacePackage {
@@ -36,7 +36,7 @@ type WorkspacePackage {
 }
 
 data packages: List<WorkspacePackage> = [
-  // Transport layer — the designated I/O boundary
+  // Transport layer -- the designated I/O boundary
   { name: "gunbc-lib-transport",
     role: TransportBoundary,
     description: "Designated I/O boundary: all filesystem, network, process I/O flows through here",
@@ -87,7 +87,7 @@ data packages: List<WorkspacePackage> = [
     io_boundary: false },
   { name: "daglang-driver",
     role: Compiler,
-    description: "Compiler driver: orchestrates parse → resolve → typecheck → lower → emit",
+    description: "Compiler driver: orchestrates parse -> resolve -> typecheck -> lower -> emit",
     io_boundary: false },
   { name: "daglang-cli",
     role: Compiler,
@@ -102,7 +102,7 @@ data packages: List<WorkspacePackage> = [
 
 ]
 
-// ── Service: codegen shell operations ───────────────────────────
+// -- Service: codegen shell operations ---------------------------
 
 service shell.Codegen {
   operation Check {

@@ -11,14 +11,14 @@ module tools.readme
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
 
-// ── Types ────────────────────────────────────────────────────────────
+// -- Types ------------------------------------------------------------
 
 type ReadmeTool {
   name: String
   description: String
 }
 
-// ── Rendering helpers ────────────────────────────────────────────────
+// -- Rendering helpers ------------------------------------------------
 
 fn render_tool_row(tool: ReadmeTool) -> String {
   "| `{tool.name}` | {tool.description} |"
@@ -72,7 +72,7 @@ fn render_readme(tools: List<ReadmeTool>) -> String {
   join(sections, "\n\n")
 }
 
-// ── Entry point ──────────────────────────────────────────────────────
+// -- Entry point ------------------------------------------------------
 
 func readme(tools: List<ReadmeTool>) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)

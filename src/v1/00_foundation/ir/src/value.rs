@@ -21,6 +21,7 @@ use crate::transport::{TransportRequest, TransportResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Write as _};
+use std::sync::Arc;
 
 /// Shared maximum line count for human-readable text truncation.
 pub const HUMAN_TEXT_MAX_LINES: usize = 40;
@@ -151,14 +152,18 @@ pub enum Value {
     Float(f64),
     /// Raw bytes (binary data)
     Bytes(Vec<u8>),
-    /// Homogeneous list of values (ordered, allows duplicates)
-    List(Vec<Value>),
-    /// Unordered collection of unique values (set semantics)
+    /// Homogeneous list of values (ordered, allows duplicates).
     ///
+    /// Wrapped in `Arc` for copy-on-write: `list_push` avoids cloning the
+    /// entire Vec when refcount is 1 (the common single-owner case).
+    List(Arc<Vec<Value>>),
+    /// Unordered collection of unique values (set semantics).
+    ///
+    /// Wrapped in `Arc` for consistency with `List` (both are collections).
     /// Internally stored as a `Vec<Value>` with uniqueness enforced at
     /// construction time via `PartialEq`. Order is not guaranteed.
     /// Use `Value::set()` or `Value::str_set()` to construct.
-    Set(Vec<Value>),
+    Set(Arc<Vec<Value>>),
     /// String-keyed map of values
     Map(BTreeMap<String, Value>),
     /// JSON value (for complex/dynamic data)
@@ -325,7 +330,7 @@ impl Value {
     /// This is the compositional replacement for the old `StrList` variant.
     /// Equivalent to `Value::List(strings.into_iter().map(Value::Str).collect())`.
     pub fn str_list(strings: Vec<String>) -> Self {
-        Value::List(strings.into_iter().map(Value::Str).collect())
+        Value::List(Arc::new(strings.into_iter().map(Value::Str).collect()))
     }
 
     /// Create a string-keyed map with string values.
@@ -350,7 +355,7 @@ impl Value {
                 }
             }
         }
-        Value::Set(unique)
+        Value::Set(Arc::new(unique))
     }
 
     /// Create a set of strings, deduplicating.
@@ -369,13 +374,13 @@ impl Value {
         match (self, other) {
             (Value::Set(a), Value::Set(b)) => {
                 let existing = value_index(a);
-                let mut result = a.clone();
-                for v in b {
+                let mut result: Vec<Value> = (**a).clone();
+                for v in b.iter() {
                     if !in_index(v, &existing) {
                         result.push(v.clone());
                     }
                 }
-                Some(Value::Set(result))
+                Some(Value::Set(Arc::new(result)))
             }
             _ => None,
         }
@@ -390,7 +395,7 @@ impl Value {
                 let b_idx = value_index(b);
                 let result: Vec<Value> =
                     a.iter().filter(|v| in_index(v, &b_idx)).cloned().collect();
-                Some(Value::Set(result))
+                Some(Value::Set(Arc::new(result)))
             }
             _ => None,
         }
@@ -405,7 +410,7 @@ impl Value {
                 let b_idx = value_index(b);
                 let result: Vec<Value> =
                     a.iter().filter(|v| !in_index(v, &b_idx)).cloned().collect();
-                Some(Value::Set(result))
+                Some(Value::Set(Arc::new(result)))
             }
             _ => None,
         }
@@ -421,12 +426,12 @@ impl Value {
                 let a_idx = value_index(a);
                 let mut result: Vec<Value> =
                     a.iter().filter(|v| !in_index(v, &b_idx)).cloned().collect();
-                for v in b {
+                for v in b.iter() {
                     if !in_index(v, &a_idx) {
                         result.push(v.clone());
                     }
                 }
-                Some(Value::Set(result))
+                Some(Value::Set(Arc::new(result)))
             }
             _ => None,
         }
@@ -596,7 +601,7 @@ impl Value {
         match self {
             Value::List(items) => {
                 let mut result = Vec::with_capacity(items.len());
-                for item in items {
+                for item in items.iter() {
                     match item {
                         Value::Str(s) => result.push(s.clone()),
                         _ => return None,
@@ -617,7 +622,7 @@ impl Value {
         match self {
             Value::Set(items) => {
                 let mut result = Vec::with_capacity(items.len());
-                for item in items {
+                for item in items.iter() {
                     match item {
                         Value::Str(s) => result.push(s.clone()),
                         _ => return None,
@@ -837,7 +842,7 @@ impl From<serde_json::Value> for Value {
             }
             serde_json::Value::String(s) => Value::Str(s),
             serde_json::Value::Array(arr) => {
-                Value::List(arr.into_iter().map(Value::from).collect())
+                Value::List(Arc::new(arr.into_iter().map(Value::from).collect()))
             }
             serde_json::Value::Object(obj) => {
                 let map = obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect();

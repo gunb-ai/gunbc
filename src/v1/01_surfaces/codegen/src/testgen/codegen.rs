@@ -6795,7 +6795,7 @@ fn mock_structural_override(type_id: &str, index: Option<u32>) -> Option<Value> 
             map.insert("scope".to_string(), Value::Str("read".to_string()));
             map.insert(
                 "targets".to_string(),
-                Value::List(vec![Value::Str("ext4".to_string())]),
+                Value::List(std::sync::Arc::new(vec![Value::Str("ext4".to_string())])),
             );
             map.insert("replacement".to_string(), Value::Str("-".to_string()));
             map.insert(
@@ -6850,7 +6850,7 @@ fn witness_value_for_count(
 
     if cardinality.is_list() {
         if count == 0 {
-            return Some(Value::List(vec![]));
+            return Some(Value::List(std::sync::Arc::new(vec![])));
         }
         let elem = nonzero?;
         // For coproduct element types, use variant-diverse elements
@@ -6862,7 +6862,7 @@ fn witness_value_for_count(
         } else {
             vec![elem; count as usize]
         };
-        return Some(Value::List(elements));
+        return Some(Value::List(std::sync::Arc::new(elements)));
     }
 
     if count == 0 {
@@ -6886,20 +6886,20 @@ fn try_mock_value_for_count(
     if count > 0 {
         if let Some(value) = gunbc_test::typed_witness_value(type_id, registry) {
             if cardinality.is_list() {
-                return Some(Value::List(vec![value; count as usize]));
+                return Some(Value::List(std::sync::Arc::new(vec![value; count as usize])));
             }
             return Some(value);
         }
     }
     if cardinality.is_list() {
         if count == 0 {
-            return Some(Value::List(vec![]));
+            return Some(Value::List(std::sync::Arc::new(vec![])));
         }
         let mut elements = Vec::new();
         for i in 1..=count {
             elements.push(try_mock_element_value(type_id, Some(i))?);
         }
-        return Some(Value::List(elements));
+        return Some(Value::List(std::sync::Arc::new(elements)));
     }
 
     match count {
@@ -6944,7 +6944,7 @@ fn candidate_values_for_guard(port: &gunbc_ir::Port, registry: &TypeRegistry) ->
                 elements.push(elem);
             }
             if !elements.is_empty() {
-                values.push(Value::List(elements));
+                values.push(Value::List(std::sync::Arc::new(elements)));
             }
         } else if let Some(elem) = try_mock_element_value(port.type_id.0.as_str(), Some(seed)) {
             values.push(elem);

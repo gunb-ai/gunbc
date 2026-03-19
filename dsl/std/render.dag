@@ -2,11 +2,11 @@
 //
 // The unified rendering layer. Two halves:
 //
-//   1. Terminal rendering IR — Span, Line, Frame, Viewport with
+//   1. Terminal rendering IR -- Span, Line, Frame, Viewport with
 //      width-constrained composition.  Mirrors Rust IR structs in
 //      core/ir/src/render_ir.rs.
 //
-//   2. File-format rendering — format-aware primitives derived from
+//   2. File-format rendering -- format-aware primitives derived from
 //      language models (languages.dag), plus generic structured-text
 //      building blocks (indentation, key-value pairs, list items,
 //      blocks) that format-specific modules parameterize.
@@ -22,9 +22,9 @@ import std.unicode { string_display_width }
 import std.symbols { SemanticColor, SymbolId, Tier, resolve_symbol }
 import std.languages { CommentSyntax, ConfigFormat, Language }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 // Terminal rendering IR
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 type SpanStyle {
   color: SemanticColor?
@@ -61,7 +61,7 @@ type Viewport {
   unit: ViewportUnit
 }
 
-// ── Width-constrained composition ──────────────────────────────────
+// -- Width-constrained composition ----------------------------------
 
 fn span_width(span: Span, tier: Tier) -> Int {
   let text_w = string_display_width(s: span.text)
@@ -105,11 +105,11 @@ fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Format-aware primitives (language model → rendering)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
+// Format-aware primitives (language model -> rendering)
+// ===================================================================
 
-// ── Comment-syntax extraction ──────────────────────────────────────
+// -- Comment-syntax extraction --------------------------------------
 
 fn comment_prefix_for(syntax: CommentSyntax) -> String {
   match syntax.line_prefix {
@@ -126,7 +126,7 @@ fn language_comment_prefix(lang: Language) -> String {
   comment_prefix_for(syntax: lang.comment)
 }
 
-// ── Format-aware header ────────────────────────────────────────────
+// -- Format-aware header --------------------------------------------
 
 fn format_header(syntax: CommentSyntax, generator: String, regen_command: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
@@ -141,14 +141,14 @@ fn language_format_header(lang: Language, generator: String, regen_command: Stri
   format_header(syntax: lang.comment, generator: generator, regen_command: regen_command)
 }
 
-// ── Format-aware comment ───────────────────────────────────────────
+// -- Format-aware comment -------------------------------------------
 
 fn format_comment(syntax: CommentSyntax, text: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
   "{prefix} {text}"
 }
 
-// ── Format-aware section header ────────────────────────────────────
+// -- Format-aware section header ------------------------------------
 
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
@@ -156,23 +156,23 @@ fn format_section_header(syntax: CommentSyntax, title: String) -> String {
   "{prefix} {separator}\n{prefix} {title}\n{prefix} {separator}"
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 // Structured-text primitives (format-agnostic)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //
 // Generic building blocks for indentation-based text formats.
 // Format-specific modules fix the parameters:
 //   YAML:     indent_unit = "  ", kv_sep = ": ",  list_prefix = "- "
 //   Makefile: indent_unit = "\t", kv_sep = " = ", list_prefix = ""
 
-// ── Indentation ────────────────────────────────────────────────────
+// -- Indentation ----------------------------------------------------
 
 fn indent_text(level: Int, unit: String, text: String) -> String {
   let pad = repeat(unit, level)
   "{pad}{text}"
 }
 
-// ── Key-value pairs ────────────────────────────────────────────────
+// -- Key-value pairs ------------------------------------------------
 
 fn kv_pair(key: String, sep: String, value: String) -> String {
   "{key}{sep}{value}"
@@ -182,7 +182,7 @@ fn indented_kv(level: Int, unit: String, key: String, sep: String, value: String
   indent_text(level: level, unit: unit, text: kv_pair(key: key, sep: sep, value: value))
 }
 
-// ── List items ─────────────────────────────────────────────────────
+// -- List items -----------------------------------------------------
 
 fn list_item(prefix: String, value: String) -> String {
   "{prefix}{value}"
@@ -192,7 +192,7 @@ fn indented_list_item(level: Int, unit: String, prefix: String, value: String) -
   indent_text(level: level, unit: unit, text: list_item(prefix: prefix, value: value))
 }
 
-// ── Blocks ─────────────────────────────────────────────────────────
+// -- Blocks ---------------------------------------------------------
 
 fn text_block(header: String, level: Int, unit: String, items: List<String>) -> String {
   let indented = map(items, item => indent_text(level: level, unit: unit, text: item))
@@ -219,9 +219,9 @@ fn kv_block(level: Int, unit: String, sep: String, entries: List<{ key: String, 
   join(indented, "\n")
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Fragment IR — format-agnostic renderable content
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
+// Fragment IR -- format-agnostic renderable content
+// ===================================================================
 //
 // Fragment is the universal intermediate representation between
 // "what I want to express" and "what text I emit." The same Fragment
@@ -229,7 +229,7 @@ fn kv_block(level: Int, unit: String, sep: String, entries: List<{ key: String, 
 //
 // No recursive variants. Indentation is a serializer concern (level
 // parameter), not a Fragment concern. Block/Section children are
-// List<Fragment> but serializers handle one level at a time —
+// List<Fragment> but serializers handle one level at a time --
 // callers pre-serialize children when depth > 1.
 
 type Fragment
@@ -256,7 +256,7 @@ type OutputFormat {
   trailing_newline: Bool
 }
 
-// GeneratorHeader: "Generated by X — DO NOT EDIT"
+// GeneratorHeader: "Generated by X -- DO NOT EDIT"
 type GeneratorHeader {
   generator: String
   regen_command: String
