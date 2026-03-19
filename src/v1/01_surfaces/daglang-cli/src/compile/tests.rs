@@ -2,9 +2,10 @@ use super::*;
 use crate::pipeline::PipelineContext;
 use daglang_derive::derive_artifacts;
 use daglang_lower::{
-    CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata, ServiceTransportClass,
-    TransportObligation,
+    lower_to_output, CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata,
+    ServiceTransportClass, TransportObligation,
 };
+use daglang_typecheck::TypecheckOptions;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
@@ -3775,4 +3776,93 @@ func run(path: String) -> { body: String } {
     ]);
     check_from_module_graph(graph)
         .expect("selective import should disambiguate same-name services at compile level");
+}
+
+// ---------------------------------------------------------------------------
+// Hermetic compile-path tests: typecheck → lower (proves downstream pipeline
+// agrees with the same service-call contract that typecheck accepts)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compile_module_qualified_service_call_lowers_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let typed = daglang_typecheck::typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified service call should typecheck");
+
+    let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
+    let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
+        gunbc_ir::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .is_some_and(|m| m.service == "FsStorage" && m.operation == "read"),
+        _ => false,
+    });
+    assert!(
+        has_fs_storage_transport,
+        "lowered DAG should contain a transport node for FsStorage.read"
+    );
+}
+
+#[test]
+fn compile_aliased_import_service_call_lowers_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let typed = daglang_typecheck::typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("aliased import service call should typecheck");
+
+    let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
+    let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
+        gunbc_ir::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .is_some_and(|m| m.service == "FsStorage" && m.operation == "read"),
+        _ => false,
+    });
+    assert!(
+        has_fs_storage_transport,
+        "lowered DAG should contain a transport node for FsStorage.read via aliased import"
+    );
 }
