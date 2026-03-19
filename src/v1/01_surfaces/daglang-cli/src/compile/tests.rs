@@ -5,6 +5,7 @@ use daglang_lower::{
     CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata, ServiceTransportClass,
     TransportObligation,
 };
+use daglang_resolve::{ModuleGraph, ResolvedModule};
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;
@@ -3559,4 +3560,134 @@ func run(path: String) -> { body: String } {
         .expect("module-qualified call should disambiguate same-name services at compile level");
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+// ---------------------------------------------------------------------------
+// Hermetic compile-path tests (in-memory ModuleGraph, no filesystem access)
+// ---------------------------------------------------------------------------
+
+/// Build a `ModuleGraph` from in-memory source pairs for hermetic tests.
+fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
+    let modules = sources
+        .iter()
+        .map(|(path, source)| {
+            let ast = daglang_syntax::parser::parse(source).expect("source should parse");
+            let module_path = ast
+                .module_path
+                .as_ref()
+                .map(|module| module.node.clone())
+                .expect("module declarations are required in tests");
+            ResolvedModule {
+                path: PathBuf::from(path),
+                ast,
+                module_path,
+                dependencies: Vec::new(),
+                source: source.to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let module_lookup: std::collections::HashMap<_, _> = modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect();
+    let mut modules = modules;
+    for module in &mut modules {
+        module.dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .collect::<Vec<_>>();
+    }
+    ModuleGraph { modules }
+}
+
+#[test]
+fn check_module_qualified_service_call_resolves_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("module-qualified service call should pass compile-level check");
+}
+
+#[test]
+fn check_aliased_import_service_call_resolves_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("aliased import should make services accessible at compile level");
+}
+
+#[test]
+fn check_module_qualified_call_disambiguates_same_name_services_hermetic() {
+    // Both modules export SharedService with incompatible shapes.
+    // vendor.alpha: read(path: String) -> { body: String }
+    // vendor.beta:  read(query: Int)   -> { count: Int }
+    // The module-qualified call vendor.alpha.SharedService.read(path: path)
+    // must resolve to alpha's contract. If the resolver picks the wrong one,
+    // typecheck rejects the parameter name or return field mismatch.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = vendor.alpha.SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("module-qualified call should disambiguate same-name services at compile level");
 }
