@@ -11,7 +11,7 @@ module extdeps.llm.anthropic
 import extdeps.llm.llm { Role, StopReason, TokenUsage }
 import std.errors { AnthropicErrorShape }
 
-// ── Models ────────────────────────────────────────────────────────
+// -- Models --------------------------------------------------------
 
 type AnthropicModel
   = ClaudeHaiku4_5
@@ -31,14 +31,14 @@ data models: List<AnthropicModelSpec> = [
   { model: ClaudeOpus4_6, model_id: "claude-opus-4-6-20251101", context_window: 200000, max_output_tokens: 64000 }
 ]
 
-// ── Content blocks ────────────────────────────────────────────────
+// -- Content blocks ------------------------------------------------
 
 type ContentBlock
   = TextBlock { text: String }
   | ToolUseBlock { id: String, name: String, input: Json }
   | ToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
 
-// ── System prompt ─────────────────────────────────────────────────
+// -- System prompt -------------------------------------------------
 
 type CacheControl = Ephemeral
 
@@ -47,14 +47,14 @@ type SystemPrompt {
   cache_control: CacheControl?
 }
 
-// ── Extended thinking ─────────────────────────────────────────────
+// -- Extended thinking ---------------------------------------------
 
 type ThinkingConfig {
   type: String
   budget_tokens: Int
 }
 
-// ── Tool definitions ──────────────────────────────────────────────
+// -- Tool definitions ----------------------------------------------
 
 type AnthropicToolDefinition {
   name: String
@@ -62,7 +62,7 @@ type AnthropicToolDefinition {
   input_schema: Json
 }
 
-// ── API versioning ────────────────────────────────────────────────
+// -- API versioning ------------------------------------------------
 
 type AnthropicApiVersion {
   version: String
@@ -74,7 +74,7 @@ data current_api_version: AnthropicApiVersion = {
   header: "anthropic-version"
 }
 
-// ── Service: REST transport wiring ──────────────────────────────
+// -- Service: REST transport wiring ------------------------------
 
 service llm.Anthropic {
   config {

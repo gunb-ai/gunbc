@@ -4,6 +4,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use std::sync::Arc;
 
 /// Set-theoretic cardinality for port values, modeled as a closed interval
 /// `[min, max]` on ℕ ∪ {∞}.
@@ -1695,10 +1696,10 @@ impl ValueBacking {
             },
             ValueBacking::Json => Value::Json(serde_json::Value::Null),
             ValueBacking::Map => Value::Map(std::collections::BTreeMap::new()),
-            ValueBacking::List => Value::List(vec![]),
-            ValueBacking::Set => Value::Set(vec![]),
+            ValueBacking::List => Value::List(Arc::new(vec![])),
+            ValueBacking::Set => Value::Set(Arc::new(vec![])),
             ValueBacking::Unit => Value::Unit,
-            ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
+            ValueBacking::Bytes => Value::List(Arc::new(vec![Value::Int(0)])),
         }
     }
 

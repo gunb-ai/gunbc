@@ -29,8 +29,8 @@ type Tier = Emoji | Unicode | Ascii
 //
 // What concept a symbol represents.  Grouped by domain.
 //
-// Each variant is a semantic role — the visual encoding depends on tier.
-// Mirrors TypeId — identifies a symbol by its meaning.
+// Each variant is a semantic role -- the visual encoding depends on tier.
+// Mirrors TypeId -- identifies a symbol by its meaning.
 
 type SymbolId
   // Node lifecycle
@@ -85,7 +85,7 @@ type SymbolId
 // --- Symbol entry ---
 //
 // A single symbol with all three tier encodings and a semantic color.
-// The data table below is a flat list of these entries — the "visual vocabulary".
+// The data table below is a flat list of these entries -- the "visual vocabulary".
 
 type SymbolEntry {
   id: SymbolId
@@ -102,60 +102,61 @@ type SymbolEntry {
 
 data standard_symbols: List<SymbolEntry> = [
   // Node lifecycle
-  { id: NodePending,      emoji: "⏳", unicode: "○",  ascii: "[ ]", color: Dim     },
-  { id: NodeRunning,      emoji: "🔄", unicode: "◐",  ascii: "[~]", color: Active  },
-  { id: NodeCompleted,    emoji: "✅", unicode: "●",  ascii: "[x]", color: Success },
-  { id: NodeFailed,       emoji: "❌", unicode: "✗",  ascii: "[!]", color: Error   },
-  { id: NodeSkipped,      emoji: "⏭️",  unicode: "◌",  ascii: "[-]", color: Dim     },
-  { id: NodeIntercepted,  emoji: "🔮", unicode: "◇",  ascii: "[m]", color: Info    },
+  // NOTE: emoji/unicode tiers collapsed to ASCII -- restore when tokenizer handles UTF-8
+  { id: NodePending,      emoji: "[ ]", unicode: "o",   ascii: "[ ]", color: Dim     },
+  { id: NodeRunning,      emoji: "[~]", unicode: "O",   ascii: "[~]", color: Active  },
+  { id: NodeCompleted,    emoji: "[x]", unicode: "*",   ascii: "[x]", color: Success },
+  { id: NodeFailed,       emoji: "[!]", unicode: "x",   ascii: "[!]", color: Error   },
+  { id: NodeSkipped,      emoji: "[-]", unicode: "o",   ascii: "[-]", color: Dim     },
+  { id: NodeIntercepted,  emoji: "[m]", unicode: "<>",  ascii: "[m]", color: Info    },
 
   // Edge states
-  { id: EdgeIdle,         emoji: "─",  unicode: "─",  ascii: "-",   color: Dim     },
-  { id: EdgeFlowing,      emoji: "⚡", unicode: "═",  ascii: "=",   color: Accent  },
-  { id: EdgeDone,         emoji: "─",  unicode: "─",  ascii: "-",   color: Success },
-  { id: EdgeDead,         emoji: "┄",  unicode: "┄",  ascii: ".",   color: Dim     },
+  { id: EdgeIdle,         emoji: "-",   unicode: "-",   ascii: "-",   color: Dim     },
+  { id: EdgeFlowing,      emoji: "=",   unicode: "=",   ascii: "=",   color: Accent  },
+  { id: EdgeDone,         emoji: "-",   unicode: "-",   ascii: "-",   color: Success },
+  { id: EdgeDead,         emoji: ".",   unicode: ".",   ascii: ".",   color: Dim     },
 
   // DAG phases
-  { id: DagNotStarted,    emoji: "🔲", unicode: "□",  ascii: "[ ]", color: Dim     },
-  { id: DagRunning,       emoji: "🚀", unicode: "▶",  ascii: "[>]", color: Active  },
-  { id: DagCompleted,     emoji: "🏁", unicode: "■",  ascii: "[X]", color: Success },
-  { id: DagFailed,        emoji: "💥", unicode: "■",  ascii: "[!]", color: Error   },
+  { id: DagNotStarted,    emoji: "[ ]", unicode: "[ ]", ascii: "[ ]", color: Dim     },
+  { id: DagRunning,       emoji: "[>]", unicode: ">",   ascii: "[>]", color: Active  },
+  { id: DagCompleted,     emoji: "[X]", unicode: "#",   ascii: "[X]", color: Success },
+  { id: DagFailed,        emoji: "[!]", unicode: "#",   ascii: "[!]", color: Error   },
 
   // Structural
-  { id: BoundaryMarker,   emoji: "🌐", unicode: "◈",  ascii: "[B]", color: Info    },
+  { id: BoundaryMarker,   emoji: "[B]", unicode: "<>",  ascii: "[B]", color: Info    },
 
-  // Spinners (braille dots — universally supported in modern terminals)
-  { id: Spinner0,         emoji: "⠋",  unicode: "⠋",  ascii: "|",   color: Active  },
-  { id: Spinner1,         emoji: "⠙",  unicode: "⠙",  ascii: "/",   color: Active  },
-  { id: Spinner2,         emoji: "⠹",  unicode: "⠹",  ascii: "-",   color: Active  },
-  { id: Spinner3,         emoji: "⠸",  unicode: "⠸",  ascii: "\\",  color: Active  },
-  { id: Spinner4,         emoji: "⠼",  unicode: "⠼",  ascii: "|",   color: Active  },
-  { id: Spinner5,         emoji: "⠴",  unicode: "⠴",  ascii: "/",   color: Active  },
-  { id: Spinner6,         emoji: "⠦",  unicode: "⠦",  ascii: "-",   color: Active  },
-  { id: Spinner7,         emoji: "⠧",  unicode: "⠧",  ascii: "\\",  color: Active  },
-  { id: Spinner8,         emoji: "⠇",  unicode: "⠇",  ascii: "|",   color: Active  },
-  { id: Spinner9,         emoji: "⠏",  unicode: "⠏",  ascii: "/",   color: Active  },
+  // Spinners (ASCII fallback -- restore braille when tokenizer handles UTF-8)
+  { id: Spinner0,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
+  { id: Spinner1,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
+  { id: Spinner2,         emoji: "-",   unicode: "-",   ascii: "-",   color: Active  },
+  { id: Spinner3,         emoji: "\\",  unicode: "\\",  ascii: "\\",  color: Active  },
+  { id: Spinner4,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
+  { id: Spinner5,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
+  { id: Spinner6,         emoji: "-",   unicode: "-",   ascii: "-",   color: Active  },
+  { id: Spinner7,         emoji: "\\",  unicode: "\\",  ascii: "\\",  color: Active  },
+  { id: Spinner8,         emoji: "|",   unicode: "|",   ascii: "|",   color: Active  },
+  { id: Spinner9,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
 
   // Status indicators
-  { id: Success,          emoji: "✅", unicode: "✓",  ascii: "OK",   color: Success },
-  { id: Failure,          emoji: "❌", unicode: "✗",  ascii: "FAIL", color: Error   },
-  { id: Warning,          emoji: "⚠️",  unicode: "⚠",  ascii: "WARN", color: Warning },
-  { id: Info,             emoji: "ℹ️",  unicode: "ℹ",  ascii: "INFO", color: Info    },
+  { id: Success,          emoji: "OK",   unicode: "v",    ascii: "OK",   color: Success },
+  { id: Failure,          emoji: "FAIL", unicode: "x",    ascii: "FAIL", color: Error   },
+  { id: Warning,          emoji: "WARN", unicode: "!",    ascii: "WARN", color: Warning },
+  { id: Info,             emoji: "INFO", unicode: "i",    ascii: "INFO", color: Info    },
 
   // Data type indicators
-  { id: DataList,         emoji: "📋", unicode: "≡",  ascii: "[L]",  color: Default },
-  { id: DataMap,          emoji: "🗂️",  unicode: "⊞",  ascii: "[M]",  color: Default },
-  { id: DataSecret,       emoji: "🔒", unicode: "▪",  ascii: "[*]",  color: Warning },
-  { id: DataUrl,          emoji: "🔗", unicode: "↗",  ascii: "[U]",  color: Info    },
-  { id: DataTimer,        emoji: "⏱️",  unicode: "⏱",  ascii: "[T]",  color: Dim     },
+  { id: DataList,         emoji: "[L]",  unicode: "=",    ascii: "[L]",  color: Default },
+  { id: DataMap,          emoji: "[M]",  unicode: "[+]",  ascii: "[M]",  color: Default },
+  { id: DataSecret,       emoji: "[*]",  unicode: "*",    ascii: "[*]",  color: Warning },
+  { id: DataUrl,          emoji: "[U]",  unicode: ">",    ascii: "[U]",  color: Info    },
+  { id: DataTimer,        emoji: "[T]",  unicode: "[T]",  ascii: "[T]",  color: Dim     },
 
   // Connectors
-  { id: ConnectorHorizontal,      emoji: "──", unicode: "──", ascii: "--", color: Dim },
-  { id: ConnectorVertical,        emoji: "│",  unicode: "│",  ascii: "|",  color: Dim },
-  { id: ConnectorTeeDown,         emoji: "┬",  unicode: "┬",  ascii: "+",  color: Dim },
-  { id: ConnectorTeeUp,           emoji: "┴",  unicode: "┴",  ascii: "+",  color: Dim },
-  { id: ConnectorCornerBottomLeft, emoji: "└",  unicode: "└",  ascii: "+",  color: Dim },
-  { id: ConnectorCornerTopLeft,    emoji: "┌",  unicode: "┌",  ascii: "+",  color: Dim }
+  { id: ConnectorHorizontal,      emoji: "--", unicode: "--", ascii: "--", color: Dim },
+  { id: ConnectorVertical,        emoji: "|",  unicode: "|",  ascii: "|",  color: Dim },
+  { id: ConnectorTeeDown,         emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
+  { id: ConnectorTeeUp,           emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
+  { id: ConnectorCornerBottomLeft, emoji: "+",  unicode: "+",  ascii: "+",  color: Dim },
+  { id: ConnectorCornerTopLeft,    emoji: "+",  unicode: "+",  ascii: "+",  color: Dim }
 ]
 
 // --- Resolution functions ---

@@ -96,11 +96,13 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_infer.dag"),
+            root.join("src/v2/04_reconcile.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/06_pipeline.dag"),
+            root.join("src/v2/08_artifact.dag"),
+            root.join("src/v2/07_complexity.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -191,11 +193,13 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_infer.dag"),
+            root.join("src/v2/04_reconcile.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/06_pipeline.dag"),
+            root.join("src/v2/08_artifact.dag"),
+            root.join("src/v2/07_complexity.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -287,12 +291,12 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "sources".to_string(),
-            gunbc_ir::Value::List(
+            gunbc_ir::Value::List(std::sync::Arc::new(
                 sources
                     .iter()
                     .map(|(path, content)| source_file_value(path, content))
                     .collect(),
-            ),
+            )),
         );
         inputs.insert("target".to_string(), render_target_value(target));
         let result =
@@ -322,14 +326,14 @@ mod tests {
         let mut map = std::collections::BTreeMap::new();
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
         map.insert("span".to_string(), zero_span_value());
-        map.insert("children".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("children".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("connective".to_string(), gunbc_ir::Value::Unit);
-        map.insert("params".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
-        map.insert("uses".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("body".to_string(), gunbc_ir::Value::Unit);
         map.insert("transport".to_string(), gunbc_ir::Value::Unit);
-        map.insert("properties".to_string(), gunbc_ir::Value::List(vec![]));
+        map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
         gunbc_ir::Value::Map(map)
@@ -407,7 +411,7 @@ mod tests {
                 None => gunbc_ir::Value::Unit,
             },
         );
-        map.insert("fields".to_string(), gunbc_ir::Value::List(fields));
+        map.insert("fields".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(fields)));
         map.insert("span".to_string(), zero_span_value());
         gunbc_ir::Value::Map(map)
     }
@@ -734,7 +738,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_typecheck_parses_strict() {
-        assert_parses_strict("src/v2/04_infer.dag");
+        assert_parses_strict("src/v2/04_reconcile.dag");
     }
 
     #[test]
@@ -748,8 +752,23 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    fn phase0_artifact_parses_strict() {
+        assert_parses_strict("src/v2/08_artifact.dag");
+    }
+
+    #[test]
+    fn phase0_complexity_parses_strict() {
+        assert_parses_strict("src/v2/07_complexity.dag");
+    }
+
+    #[test]
     fn phase0_shared_behavioral_parses_strict() {
         assert_parses_strict("dsl/std/behavioral.dag");
+    }
+
+    #[test]
+    fn phase0_shared_primitives_parses_strict() {
+        assert_parses_strict("dsl/std/primitives.dag");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -1258,10 +1277,10 @@ fn foo(item: String) -> String {
             t
         };
 
-        let tokens = gunbc_ir::Value::List(vec![
+        let tokens = gunbc_ir::Value::List(std::sync::Arc::new(vec![
             gunbc_ir::Value::Map(token),
             gunbc_ir::Value::Map(eof_token),
-        ]);
+        ]));
 
         let mut state = std::collections::BTreeMap::new();
         state.insert("pos".to_string(), gunbc_ir::Value::Int(0));
@@ -1485,7 +1504,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve_modules ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1529,7 +1548,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1584,7 +1603,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1661,7 +1680,7 @@ fn foo(item: String) -> String {
             module_val.clone()
         };
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -1881,12 +1900,12 @@ fn foo(item: String) -> String {
         // Verify the shared classification functions exist in 00_core.dag
         let core_source = read_v2_file("src/v2/00_core.dag");
         assert!(
-            core_source.contains("fn typed_expr_has_self_call"),
-            "core.dag should contain typed_expr_has_self_call for typed TCO classification"
+            core_source.contains("fn expr_has_self_call"),
+            "core.dag should contain expr_has_self_call for TCO classification"
         );
         assert!(
-            core_source.contains("fn typed_has_non_tail_self_call"),
-            "core.dag should contain typed_has_non_tail_self_call for typed TCO classification"
+            core_source.contains("fn expr_has_non_tail_self_call"),
+            "core.dag should contain expr_has_non_tail_self_call for TCO classification"
         );
     }
 
@@ -1921,7 +1940,7 @@ fn foo(item: String) -> String {
     /// Test that the typecheck.dag has mutual recursion cycle detection.
     #[test]
     fn phase4_typecheck_has_cycle_detection() {
-        let source = read_v2_file("src/v2/04_infer.dag");
+        let source = read_v2_file("src/v2/04_reconcile.dag");
         assert!(
             source.contains("detect_type_cycles"),
             "typecheck.dag should contain detect_type_cycles for SCC-based cycle detection"
@@ -1951,7 +1970,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase6_typecheck_resolves_and_validates_expression_tree_types() {
-        let source = read_v2_file("src/v2/04_infer.dag");
+        let source = read_v2_file("src/v2/04_reconcile.dag");
         assert!(
             source.contains("fn resolve_expr_types"),
             "typecheck.dag should walk expression trees during type resolution"
@@ -1993,20 +2012,20 @@ fn example(items: List<String>) -> Int {
         );
         let tokens = call_fn(&output, "tokenize", inputs).expect("tokenize ok");
         let token_list = tokens.get("return").cloned().unwrap_or_else(|| {
-            gunbc_ir::Value::List(
+            gunbc_ir::Value::List(std::sync::Arc::new(
                 tokens
                     .values()
                     .next()
                     .cloned()
                     .map(|v| {
                         if let gunbc_ir::Value::List(l) = v {
-                            l
+                            (*l).clone()
                         } else {
                             vec![v]
                         }
                     })
                     .unwrap_or_default(),
-            )
+            ))
         });
         // Just verify tokenization succeeds with pipe arrow
         let json = value_to_json(&token_list);
@@ -2222,20 +2241,20 @@ fn example(items: List<String>) -> Int {
             let tok_result = call_fn(&output, "tokenize", tok_inputs)
                 .unwrap_or_else(|e| panic!("{}: tokenize failed: {}", rel_path, e));
             let tokens = tok_result.get("return").cloned().unwrap_or_else(|| {
-                gunbc_ir::Value::List(
+                gunbc_ir::Value::List(std::sync::Arc::new(
                     tok_result
                         .values()
                         .next()
                         .cloned()
                         .map(|v| {
                             if let gunbc_ir::Value::List(l) = v {
-                                l
+                                (*l).clone()
                             } else {
                                 vec![v]
                             }
                         })
                         .unwrap_or_default(),
-                )
+                ))
             });
 
             // Parse via v2
@@ -2350,7 +2369,7 @@ fn example(items: List<String>) -> Int {
         let mut resolve_inputs = HashMap::new();
         resolve_inputs.insert(
             "modules".to_string(),
-            gunbc_ir::Value::List(vec![mod_types, mod_funcs]),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![mod_types, mod_funcs])),
         );
         let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
             .expect("resolve_modules should succeed");
@@ -2468,10 +2487,10 @@ fn example(items: List<String>) -> Int {
         let mut inputs = HashMap::new();
         inputs.insert(
             "sources".to_string(),
-            gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
                 source_file_value("good.dag", "module good\n"),
                 source_file_value("bad.dag", "fn orphan() -> Int { 42 }\n"),
-            ]),
+            ])),
         );
         // RenderTarget::Rust variant value
         let mut target_map = std::collections::BTreeMap::new();
@@ -2562,7 +2581,7 @@ fn example(items: List<String>) -> Int {
         inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
         inputs.insert(
             "fields".to_string(),
-            gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
                 field_init_value(
                     "name",
                     literal_expr_value(literal_value_string("demo"), span.clone()),
@@ -2571,7 +2590,7 @@ fn example(items: List<String>) -> Int {
                     "enabled",
                     literal_expr_value(literal_value_bool(true), span.clone()),
                 ),
-            ]),
+            ])),
         );
         inputs.insert("span".to_string(), span);
         inputs.insert(
@@ -2636,7 +2655,7 @@ fn example(items: List<String>) -> Int {
         inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
         inputs.insert(
             "fields".to_string(),
-            gunbc_ir::Value::List(vec![
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
                 field_init_value(
                     "name",
                     literal_expr_value(literal_value_string("demo"), span.clone()),
@@ -2645,7 +2664,7 @@ fn example(items: List<String>) -> Int {
                     "enabled",
                     literal_expr_value(literal_value_bool(true), span.clone()),
                 ),
-            ]),
+            ])),
         );
         inputs.insert("span".to_string(), span);
         inputs.insert(
@@ -2894,7 +2913,7 @@ fn example(items: List<String>) -> Int {
     }
 
     /// Focused test: func with return type goes through typecheck without error.
-    /// Exercises Optional<TypeExpr> handling in resolve_optional_type_expr.
+    /// Exercises Optional<Node> handling in resolve_optional_type_expr.
     #[test]
     fn phase6_func_return_type_typecheck() {
         let output = compile_all_modules().expect("compilation should succeed");
@@ -2902,7 +2921,7 @@ fn example(items: List<String>) -> Int {
         let module = v2_tokenize_and_parse(&output, src);
 
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(vec![module]));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![module])));
         let resolve_result =
             call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve should succeed");
         let graph = resolve_result
@@ -3093,7 +3112,7 @@ fn example(items: List<String>) -> Int {
 
         // Step 2: Resolve imports
         let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(modules));
+        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(modules)));
         let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
             .expect("resolve_modules should succeed");
         let graph = if let Some(ret) = resolve_result.get("return") {
@@ -3132,7 +3151,7 @@ fn example(items: List<String>) -> Int {
         );
 
         let mut emitted_files = Vec::new();
-        for typed_module in &typed_modules {
+        for typed_module in typed_modules.iter() {
             let mut emit_inputs = HashMap::new();
             emit_inputs.insert("typed_module".to_string(), typed_module.clone());
             emit_inputs.insert(
@@ -3219,7 +3238,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_infer", "src/v2/04_infer.dag"),
+            ("04_reconcile", "src/v2/04_reconcile.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3277,7 +3296,7 @@ fn example(items: List<String>) -> Int {
         }
     }
 
-    /// The recursive type detection should identify Expr and TypeExpr as needing Box<>.
+    /// The recursive type detection should identify Expr as needing Box<>.
     #[test]
     fn v2_recursive_types_detected() {
         let source = read_v2_file("src/v2/00_core.dag");
@@ -3301,14 +3320,6 @@ fn example(items: List<String>) -> Int {
         assert!(
             has_expr_recursive,
             "Expr should have recursive fields, got: {:?}",
-            recursive_fields
-        );
-
-        // TypeExpr should have recursive fields (e.g. Optional::inner is TypeExpr)
-        let has_type_expr_recursive = recursive_fields.iter().any(|(ty, _)| ty == "TypeExpr");
-        assert!(
-            has_type_expr_recursive,
-            "TypeExpr should have recursive fields, got: {:?}",
             recursive_fields
         );
     }
@@ -3347,7 +3358,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_infer", "src/v2/04_infer.dag"),
+            ("04_reconcile", "src/v2/04_reconcile.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3516,8 +3527,11 @@ fn example(items: List<String>) -> Int {
     fn v2_crate_gist_resolve() {
         let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-resolve");
 
-        let output = cargo_command(&tmp_dir)
+        // Run in release mode — debug mode is 20x+ slower due to stacker wrapping
+        // and unoptimized code, making 1,515 lines of gist source infeasible.
+        let output = std::process::Command::new("cargo")
             .arg("test")
+            .arg("--release")
             .arg("--")
             .arg("gist_resolve_all_modules")
             .output()
@@ -3553,6 +3567,7 @@ fn example(items: List<String>) -> Int {
 
         let output = cargo_command(&tmp_dir)
             .arg("test")
+            .arg("--release")
             .arg("--")
             .arg("gist_compile_all_modules")
             .output()
@@ -3578,6 +3593,45 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
+    /// Profile the gist pipeline by stage (tokenize/parse/resolve) in release mode.
+    /// Reports per-file and per-stage wall-clock times.
+    #[test]
+    #[ignore]
+    fn v2_crate_profile_gist() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-profile");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--release")
+            .arg("--")
+            .arg("profile_gist_pipeline")
+            .arg("--nocapture")
+            .arg("--ignored")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Always print output for profiling
+        #[allow(clippy::disallowed_macros)]
+        {
+            eprintln!("{}", stderr);
+            println!("{}", stdout);
+        }
+
+        if !output.status.success() {
+            panic!(
+                "profile_gist_pipeline failed (crate at {}):\nstderr:\n{}",
+                tmp_dir.display(),
+                stderr
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
     /// Generate the v2 crate to target/v2-compiler/ for inspection.
     /// Does not clean up — the crate persists for manual browsing/running.
     #[test]
@@ -3592,7 +3646,7 @@ fn example(items: List<String>) -> Int {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_infer", "src/v2/04_infer.dag"),
+            ("04_reconcile", "src/v2/04_reconcile.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3844,7 +3898,7 @@ fn example(items: List<String>) -> Int {
 
         // Collect emitted file paths and contents.
         let mut mod_names = Vec::new();
-        for file_val in file_list {
+        for file_val in file_list.iter() {
             if let gunbc_ir::Value::Map(map) = file_val {
                 let path = match map.get("path") {
                     Some(gunbc_ir::Value::Str(p)) => p.clone(),
@@ -3972,7 +4026,7 @@ path = "src/lib.rs"
         std::fs::create_dir_all(&tmp_dir).expect("failed to create temp dir");
 
         let mut py_files = Vec::new();
-        for file_val in file_list {
+        for file_val in file_list.iter() {
             if let gunbc_ir::Value::Map(map) = file_val {
                 let path = match map.get("path") {
                     Some(gunbc_ir::Value::Str(p)) => p.clone(),

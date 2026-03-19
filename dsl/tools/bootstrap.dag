@@ -17,7 +17,7 @@ import extdeps.gitignore {
 }
 import extdeps.gitignore_render { render_gitignore_file }
 
-// ── Entry point ─────────────────────────────────────────────────────
+// -- Entry point -----------------------------------------------------
 
 func bootstrap(check_mode: Bool?, gitignore_categories: List<GitignoreCategory>) -> { success: Bool, crate_count: Int, gitignore_written: Bool }
   uses fs: Filesystem(mode: ReadWrite)

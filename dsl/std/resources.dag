@@ -14,7 +14,7 @@ module std.resources
 import std.types { Timestamp, FilePath, TextFilePath, FileClassification }
 
 // Opaque proof of resource acquisition. Only the compiler's acquire
-// nodes can mint these — user code cannot construct handles directly.
+// nodes can mint these -- user code cannot construct handles directly.
 // The `cap` field is a per-process secret that prevents forgery.
 type ResourceHandle {
   type: String
@@ -45,10 +45,10 @@ resource Filesystem {
 
   // Read text content. Requires TextFilePath -- the compiler rejects
   // unclassified FilePath here. This is the key type-safety boundary:
-  //   ⟦FilePath⟧ ⊄ ⟦TextFilePath⟧  →  compile error
-  //   ⟦TextFilePath⟧ ⊆ ⟦TextFilePath⟧  →  ok
+  //   [FilePath] !<= [TextFilePath]  ->  compile error
+  //   [TextFilePath] <= [TextFilePath]  ->  ok
   //
-  // Guarantees: output content is valid String (Σ*). If the file
+  // Guarantees: output content is valid String (Sigma*). If the file
   // were binary, the probe step would have classified it as
   // BinaryFilePath and this capability would never be called.
   capability read {
@@ -57,7 +57,7 @@ resource Filesystem {
   }
 
   // Read raw bytes. Accepts any FilePath -- no encoding requirement.
-  // Returns Bytes ({0..255}*), not String (Σ*).
+  // Returns Bytes ({0..255}*), not String (Sigma*).
   // Use when content encoding doesn't matter or is handled downstream.
   capability read_bytes {
     input { path: FilePath }

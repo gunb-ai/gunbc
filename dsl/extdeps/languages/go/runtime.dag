@@ -6,7 +6,7 @@
 // Ref: Go Standard Library (pkg.go.dev/std)
 //
 // Consumers:
-//   v2/05_emit_go.dag — method call emission, pipe operator translation
+//   v2/05_emit_go.dag -- method call emission, pipe operator translation
 
 module extdeps.languages.go.runtime
 
@@ -14,7 +14,7 @@ import std.languages {
   NamingConvention, NamingCase
 }
 
-// ── String operations ───────────────────────────────────────────────
+// -- String operations -----------------------------------------------
 // Ref: pkg.go.dev/strings, pkg.go.dev/fmt
 
 // Go has no string interpolation; uses fmt.Sprintf.
@@ -33,7 +33,7 @@ data string_join_template: String = "strings.Join(\{recv\}, \{sep\})"
 // Ref: pkg.go.dev/strings#Contains
 data string_contains_template: String = "strings.Contains(\{recv\}, \{substr\})"
 
-// Ref: pkg.go.dev/strings#Split — splitting into characters
+// Ref: pkg.go.dev/strings#Split -- splitting into characters
 data string_chars_template: String = "strings.Split(\{recv\}, \"\")"
 
 // Go strings are UTF-8 byte sequences; indexing yields bytes, not chars.
@@ -43,7 +43,7 @@ data string_index_template: String = "string(\{recv\}[\{index\}])"
 // Ref: Go Spec "Slice expressions"
 data string_slice_template: String = "\{recv\}[\{start\}:\{end\}]"
 
-// ── Collection operations ───────────────────────────────────────────
+// -- Collection operations -------------------------------------------
 // Ref: Go Spec "Built-in functions"
 
 // DSL pipe method -> Go translation.
@@ -68,7 +68,7 @@ data make_map_template: String = "make(\{type\})"
 data len_func: String = "len(\{collection\})"
 data cap_func: String = "cap(\{collection\})"
 
-// ── Map operations ──────────────────────────────────────────────────
+// -- Map operations --------------------------------------------------
 // Ref: Go Spec "Map types", "Index expressions", "Deletion of map elements"
 
 data map_get_template: String = "\{map\}[\{key\}]"
@@ -76,14 +76,14 @@ data map_get_ok_template: String = "\{val\}, \{ok\} := \{map\}[\{key\}]"
 data map_set_template: String = "\{map\}[\{key\}] = \{value\}"
 data map_delete_template: String = "delete(\{map\}, \{key\})"
 
-// ── Null handling ───────────────────────────────────────────────────
+// -- Null handling ---------------------------------------------------
 // Ref: Go Spec "The zero value"
 //
 // Go has no null-coalesce operator. Nil checks use if statements.
 
 data nil_check_template: String = "if \{expr\} != nil \{\n\t\{body\}\n\}"
 
-// ── Prelude imports ─────────────────────────────────────────────────
+// -- Prelude imports -------------------------------------------------
 // Standard imports emitted at the top of generated Go files.
 
 data prelude_imports: List<String> = [
@@ -92,7 +92,7 @@ data prelude_imports: List<String> = [
   "\"encoding/json\""
 ]
 
-// ── Serialization ───────────────────────────────────────────────────
+// -- Serialization ---------------------------------------------------
 // Ref: pkg.go.dev/encoding/json
 
 data json_marshal_template: String = "json.Marshal(\{value\})"

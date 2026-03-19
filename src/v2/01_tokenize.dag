@@ -1,6 +1,6 @@
-// v2 tokenizer — pure function from source string to token list.
+// v2 tokenizer -- pure function from source string to token list.
 //
-// No I/O — file reading is handled by the pipeline.
+// No I/O -- file reading is handled by the pipeline.
 // Emits all token kinds declared in core.dag, including Newline tokens
 // (significant for the parser's statement separation).
 //
@@ -54,7 +54,7 @@ data keywords: Map<String, TokenKind> = {
 
 // === Single-char punctuation table ===
 //
-// Note: { and } are NOT in this table — they require special handling
+// Note: { and } are NOT in this table -- they require special handling
 // for string interpolation brace depth tracking.
 
 data single_punct: Map<String, TokenKind> = {
@@ -78,29 +78,41 @@ type TokenizerState {
   interp_depth: List<Int>
 }
 
+// TokPos: tokenizer position state without tokens.
+// By threading tokens as a standalone parameter (not inside an Rc-wrapped
+// struct), Rc::try_unwrap succeeds on each list_push -- O(1) per push
+// instead of O(N) clone.
+type TokPos {
+  pos: Int
+  interp_depth: List<Int>
+}
+
 // === Entry point ===
 
 fn tokenize(source: String) -> List<Token> {
-  let initial = TokenizerState { pos: 0, tokens: [], interp_depth: [] }
-  let final_state = tokenize_loop(source: source, state: initial)
+  let initial = TokPos { pos: 0, interp_depth: [] }
+  // Tokens are passed as a separate TCO parameter so that Rc::try_unwrap
+  // succeeds in the loop (the standalone Rc has refcount 1, unlike a field
+  // inside an Rc-wrapped struct which always has refcount >= 2).
+  let final_state = tokenize_loop(source: source, tokens: [], pos: initial)
   let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
   list_push(final_state.tokens, Token { kind: Eof, span: eof_span })
 }
 
 // === Main loop ===
 
-fn tokenize_loop(source: String, state: TokenizerState) -> TokenizerState {
-  let s = skip_spaces_and_comments(source: source, state: state)
+fn tokenize_loop(source: String, tokens: List<Token>, pos: TokPos) -> TokenizerState {
+  let s = skip_spaces_and_comments(source: source, pos: pos)
   if s.pos >= string_length(s: source) {
-    return s
+    return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
   }
   let ch = char_at(s: source, pos: s.pos)
 
   // Newlines are significant (statement separation)
   if ch == "\n" {
     let tok = Token { kind: Newline, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
-    return tokenize_loop(source: source, state: TokenizerState {
-      pos: s.pos + 1, tokens: list_push(s.tokens, tok), interp_depth: s.interp_depth
+    return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
+      pos: s.pos + 1, interp_depth: s.interp_depth
     })
   }
 
@@ -111,125 +123,125 @@ fn tokenize_loop(source: String, state: TokenizerState) -> TokenizerState {
     if top == 0 {
       // Pop the interpolation depth entry, advance past }, resume string scanning
       let popped = drop_last(stack: s.interp_depth)
-      let cont_state = TokenizerState {
-        pos: s.pos + 1, tokens: s.tokens, interp_depth: popped
+      let cont_pos = TokPos {
+        pos: s.pos + 1, interp_depth: popped
       }
-      let next = scan_str_cont(source: source, state: cont_state, span_start: s.pos)
-      return tokenize_loop(source: source, state: next)
+      let next = scan_str_cont(source: source, tokens: tokens, pos: cont_pos, span_start: s.pos)
+      return tokenize_loop(source: source, tokens: next.tokens, pos: TokPos { pos: next.pos, interp_depth: next.interp_depth })
     } else {
-      // Nested brace inside interpolation expression — decrement depth
+      // Nested brace inside interpolation expression -- decrement depth
       let new_depth = replace_last(stack: s.interp_depth, value: top - 1)
       let tok = Token { kind: RBrace, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
-      return tokenize_loop(source: source, state: TokenizerState {
-        pos: s.pos + 1, tokens: list_push(s.tokens, tok), interp_depth: new_depth
+      return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
+        pos: s.pos + 1, interp_depth: new_depth
       })
     }
   }
 
-  let next = scan_token(source: source, state: s, ch: ch)
-  tokenize_loop(source: source, state: next)
+  let next = scan_token(source: source, tokens: tokens, pos: s, ch: ch)
+  tokenize_loop(source: source, tokens: next.tokens, pos: TokPos { pos: next.pos, interp_depth: next.interp_depth })
 }
 
 // === Token scanning ===
 
-fn scan_token(source: String, state: TokenizerState, ch: String) -> TokenizerState {
-  if ch == "\"" { return scan_string(source: source, state: state) }
-  if is_digit(ch: ch) { return scan_number(source: source, state: state) }
-  if is_ident_start(ch: ch) { return scan_ident(source: source, state: state) }
+fn scan_token(source: String, tokens: List<Token>, pos: TokPos, ch: String) -> TokenizerState {
+  if ch == "\"" { return scan_string(source: source, tokens: tokens, pos: pos) }
+  if is_digit(ch: ch) { return scan_number(source: source, tokens: tokens, pos: pos) }
+  if is_ident_start(ch: ch) { return scan_ident(source: source, tokens: tokens, pos: pos) }
 
   // Two-character operators (guard against EOF lookahead)
-  let next_ch = if state.pos + 1 < string_length(s: source) {
-    char_at(s: source, pos: state.pos + 1)
+  let next_ch = if pos.pos + 1 < string_length(s: source) {
+    char_at(s: source, pos: pos.pos + 1)
   } else { "" }
 
-  if ch == "=" && next_ch == ">" { return emit(state: state, kind: FatArrow, len: 2) }
-  if ch == "-" && next_ch == ">" { return emit(state: state, kind: Arrow, len: 2) }
-  if ch == "=" && next_ch == "=" { return emit(state: state, kind: EqEq, len: 2) }
-  if ch == "!" && next_ch == "=" { return emit(state: state, kind: Ne, len: 2) }
-  if ch == "<" && next_ch == "=" { return emit(state: state, kind: Le, len: 2) }
-  if ch == ">" && next_ch == "=" { return emit(state: state, kind: Ge, len: 2) }
-  if ch == "&" && next_ch == "&" { return emit(state: state, kind: And, len: 2) }
-  if ch == "|" && next_ch == "|" { return emit(state: state, kind: Or, len: 2) }
-  if ch == "|" && next_ch == ">" { return emit(state: state, kind: PipeArrow, len: 2) }
-  if ch == "|" { return emit(state: state, kind: Pipe, len: 1) }
-  if ch == "?" && next_ch == "?" { return emit(state: state, kind: NullCoalesce, len: 2) }
-  if ch == "." && next_ch == "." { return emit(state: state, kind: DotDot, len: 2) }
+  if ch == "=" && next_ch == ">" { return emit(tokens: tokens, pos: pos, kind: FatArrow, len: 2) }
+  if ch == "-" && next_ch == ">" { return emit(tokens: tokens, pos: pos, kind: Arrow, len: 2) }
+  if ch == "=" && next_ch == "=" { return emit(tokens: tokens, pos: pos, kind: EqEq, len: 2) }
+  if ch == "!" && next_ch == "=" { return emit(tokens: tokens, pos: pos, kind: Ne, len: 2) }
+  if ch == "<" && next_ch == "=" { return emit(tokens: tokens, pos: pos, kind: Le, len: 2) }
+  if ch == ">" && next_ch == "=" { return emit(tokens: tokens, pos: pos, kind: Ge, len: 2) }
+  if ch == "&" && next_ch == "&" { return emit(tokens: tokens, pos: pos, kind: And, len: 2) }
+  if ch == "|" && next_ch == "|" { return emit(tokens: tokens, pos: pos, kind: Or, len: 2) }
+  if ch == "|" && next_ch == ">" { return emit(tokens: tokens, pos: pos, kind: PipeArrow, len: 2) }
+  if ch == "|" { return emit(tokens: tokens, pos: pos, kind: Pipe, len: 1) }
+  if ch == "?" && next_ch == "?" { return emit(tokens: tokens, pos: pos, kind: NullCoalesce, len: 2) }
+  if ch == "." && next_ch == "." { return emit(tokens: tokens, pos: pos, kind: DotDot, len: 2) }
 
   // Single-character operators not in the table
-  if ch == "=" { return emit(state: state, kind: Eq, len: 1) }
-  if ch == "<" { return emit(state: state, kind: Lt, len: 1) }
-  if ch == ">" { return emit(state: state, kind: Gt, len: 1) }
-  if ch == "-" { return emit(state: state, kind: Minus, len: 1) }
-  if ch == "!" { return emit(state: state, kind: Bang, len: 1) }
-  if ch == "?" { return emit(state: state, kind: Question, len: 1) }
+  if ch == "=" { return emit(tokens: tokens, pos: pos, kind: Eq, len: 1) }
+  if ch == "<" { return emit(tokens: tokens, pos: pos, kind: Lt, len: 1) }
+  if ch == ">" { return emit(tokens: tokens, pos: pos, kind: Gt, len: 1) }
+  if ch == "-" { return emit(tokens: tokens, pos: pos, kind: Minus, len: 1) }
+  if ch == "!" { return emit(tokens: tokens, pos: pos, kind: Bang, len: 1) }
+  if ch == "?" { return emit(tokens: tokens, pos: pos, kind: Question, len: 1) }
 
-  // Braces — need special handling for interpolation depth tracking
+  // Braces -- need special handling for interpolation depth tracking
   if ch == "{" {
-    let new_depth = if count(state.interp_depth) > 0 {
-      replace_last(stack: state.interp_depth, value: last(state.interp_depth).value + 1)
+    let new_depth = if count(pos.interp_depth) > 0 {
+      replace_last(stack: pos.interp_depth, value: last(pos.interp_depth).value + 1)
     } else {
-      state.interp_depth
+      pos.interp_depth
     }
-    let tok = Token { kind: LBrace, span: SourceSpan { start: state.pos, end: state.pos + 1 } }
+    let tok = Token { kind: LBrace, span: SourceSpan { start: pos.pos, end: pos.pos + 1 } }
     return TokenizerState {
-      pos: state.pos + 1, tokens: list_push(state.tokens, tok), interp_depth: new_depth
+      pos: pos.pos + 1, tokens: list_push(tokens, tok), interp_depth: new_depth
     }
   }
 
   if ch == "}" {
     // Not inside interpolation (that case handled in tokenize_loop).
     // This is a normal RBrace.
-    let tok = Token { kind: RBrace, span: SourceSpan { start: state.pos, end: state.pos + 1 } }
+    let tok = Token { kind: RBrace, span: SourceSpan { start: pos.pos, end: pos.pos + 1 } }
     return TokenizerState {
-      pos: state.pos + 1, tokens: list_push(state.tokens, tok), interp_depth: state.interp_depth
+      pos: pos.pos + 1, tokens: list_push(tokens, tok), interp_depth: pos.interp_depth
     }
   }
 
   // Single-char punctuation from table
   match lookup(single_punct, key: ch) {
-    Some { value: kind } => emit(state: state, kind: kind, len: 1)
-    None => emit(state: state, kind: Unknown { char: ch }, len: 1)
+    Some { value: kind } => emit(tokens: tokens, pos: pos, kind: kind, len: 1)
+    None => emit(tokens: tokens, pos: pos, kind: Unknown { char: ch }, len: 1)
   }
 }
 
 // === Helpers ===
 
-fn emit(state: TokenizerState, kind: TokenKind, len: Int) -> TokenizerState {
+fn emit(tokens: List<Token>, pos: TokPos, kind: TokenKind, len: Int) -> TokenizerState {
   let token = Token {
     kind: kind,
-    span: SourceSpan { start: state.pos, end: state.pos + len }
+    span: SourceSpan { start: pos.pos, end: pos.pos + len }
   }
   TokenizerState {
-    pos: state.pos + len,
-    tokens: list_push(state.tokens, token),
-    interp_depth: state.interp_depth
+    pos: pos.pos + len,
+    tokens: list_push(tokens, token),
+    interp_depth: pos.interp_depth
   }
 }
 
-fn scan_ident(source: String, state: TokenizerState) -> TokenizerState {
-  let end = scan_while(s: source, start: state.pos, pred: is_ident_char)
-  let text = substring(s: source, start: state.pos, end: end)
+fn scan_ident(source: String, tokens: List<Token>, pos: TokPos) -> TokenizerState {
+  let end = scan_while(s: source, start: pos.pos, pred: is_ident_char)
+  let text = substring(s: source, start: pos.pos, end: end)
   let kind = match lookup(keywords, key: text) {
     Some { value: kw } => kw
     None => Ident { name: text }
   }
-  let token = Token { kind: kind, span: SourceSpan { start: state.pos, end: end } }
-  TokenizerState { pos: end, tokens: list_push(state.tokens, token), interp_depth: state.interp_depth }
+  let token = Token { kind: kind, span: SourceSpan { start: pos.pos, end: end } }
+  TokenizerState { pos: end, tokens: list_push(tokens, token), interp_depth: pos.interp_depth }
 }
 
-fn scan_number(source: String, state: TokenizerState) -> TokenizerState {
-  let int_end = scan_while(s: source, start: state.pos, pred: is_digit)
-  // Check for decimal point → float (guard against EOF)
+fn scan_number(source: String, tokens: List<Token>, pos: TokPos) -> TokenizerState {
+  let int_end = scan_while(s: source, start: pos.pos, pred: is_digit)
+  // Check for decimal point -> float (guard against EOF)
   if int_end + 1 < string_length(s: source) && char_at(s: source, pos: int_end) == "." && is_digit(ch: char_at(s: source, pos: int_end + 1)) {
     let frac_end = scan_while(s: source, start: int_end + 1, pred: is_digit)
-    let text = substring(s: source, start: state.pos, end: frac_end)
+    let text = substring(s: source, start: pos.pos, end: frac_end)
     let token = Token {
       kind: LitFloat { value: text },
-      span: SourceSpan { start: state.pos, end: frac_end }
+      span: SourceSpan { start: pos.pos, end: frac_end }
     }
-    return TokenizerState { pos: frac_end, tokens: list_push(state.tokens, token), interp_depth: state.interp_depth }
+    return TokenizerState { pos: frac_end, tokens: list_push(tokens, token), interp_depth: pos.interp_depth }
   }
-  let text = substring(s: source, start: state.pos, end: int_end)
+  let text = substring(s: source, start: pos.pos, end: int_end)
   let parsed = parse_int(s: text)
   let kind = match parsed {
     Some { value: v } => LitInt { value: v }
@@ -237,9 +249,9 @@ fn scan_number(source: String, state: TokenizerState) -> TokenizerState {
   }
   let token = Token {
     kind: kind,
-    span: SourceSpan { start: state.pos, end: int_end }
+    span: SourceSpan { start: pos.pos, end: int_end }
   }
-  TokenizerState { pos: int_end, tokens: list_push(state.tokens, token), interp_depth: state.interp_depth }
+  TokenizerState { pos: int_end, tokens: list_push(tokens, token), interp_depth: pos.interp_depth }
 }
 
 // === String scanning ===
@@ -258,9 +270,9 @@ type StringScanResult
 
 // scan_string: called when we see opening " in the source.
 // Scans the string body looking for closing ", interpolation {, or escapes.
-fn scan_string(source: String, state: TokenizerState) -> TokenizerState {
-  let span_start = state.pos
-  let body_start = state.pos + 1
+fn scan_string(source: String, tokens: List<Token>, pos: TokPos) -> TokenizerState {
+  let span_start = pos.pos
+  let body_start = pos.pos + 1
   let result = scan_string_body(source: source, pos: body_start, acc: [])
   match result {
     ClosedString { content, end_pos } => {
@@ -270,8 +282,8 @@ fn scan_string(source: String, state: TokenizerState) -> TokenizerState {
         span: SourceSpan { start: span_start, end: end_pos + 1 }
       }
       TokenizerState {
-        pos: end_pos + 1, tokens: list_push(state.tokens, token),
-        interp_depth: state.interp_depth
+        pos: end_pos + 1, tokens: list_push(tokens, token),
+        interp_depth: pos.interp_depth
       }
     }
     InterpolationStart { content, end_pos } => {
@@ -282,8 +294,8 @@ fn scan_string(source: String, state: TokenizerState) -> TokenizerState {
       }
       TokenizerState {
         pos: end_pos + 1,
-        tokens: list_push(state.tokens, token),
-        interp_depth: state.interp_depth |> append(items: 0)
+        tokens: list_push(tokens, token),
+        interp_depth: pos.interp_depth |> append(items: 0)
       }
     }
     UnterminatedString { content, end_pos } => {
@@ -293,8 +305,8 @@ fn scan_string(source: String, state: TokenizerState) -> TokenizerState {
         span: SourceSpan { start: span_start, end: end_pos }
       }
       TokenizerState {
-        pos: end_pos, tokens: list_push(state.tokens, token),
-        interp_depth: state.interp_depth
+        pos: end_pos, tokens: list_push(tokens, token),
+        interp_depth: pos.interp_depth
       }
     }
   }
@@ -303,8 +315,8 @@ fn scan_string(source: String, state: TokenizerState) -> TokenizerState {
 // scan_str_cont: called after } closes an interpolation expression.
 // Resumes scanning the string body for more content, interpolation, or
 // the closing quote. Emits StrMid (if another { found) or StrEnd (if " found).
-fn scan_str_cont(source: String, state: TokenizerState, span_start: Int) -> TokenizerState {
-  let result = scan_string_body(source: source, pos: state.pos, acc: [])
+fn scan_str_cont(source: String, tokens: List<Token>, pos: TokPos, span_start: Int) -> TokenizerState {
+  let result = scan_string_body(source: source, pos: pos.pos, acc: [])
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
@@ -313,8 +325,8 @@ fn scan_str_cont(source: String, state: TokenizerState, span_start: Int) -> Toke
         span: SourceSpan { start: span_start, end: end_pos + 1 }
       }
       TokenizerState {
-        pos: end_pos + 1, tokens: list_push(state.tokens, token),
-        interp_depth: state.interp_depth
+        pos: end_pos + 1, tokens: list_push(tokens, token),
+        interp_depth: pos.interp_depth
       }
     }
     InterpolationStart { content, end_pos } => {
@@ -325,8 +337,8 @@ fn scan_str_cont(source: String, state: TokenizerState, span_start: Int) -> Toke
       }
       TokenizerState {
         pos: end_pos + 1,
-        tokens: list_push(state.tokens, token),
-        interp_depth: state.interp_depth |> append(items: 0)
+        tokens: list_push(tokens, token),
+        interp_depth: pos.interp_depth |> append(items: 0)
       }
     }
     UnterminatedString { content, end_pos } => {
@@ -336,8 +348,8 @@ fn scan_str_cont(source: String, state: TokenizerState, span_start: Int) -> Toke
         span: SourceSpan { start: span_start, end: end_pos }
       }
       TokenizerState {
-        pos: end_pos, tokens: list_push(state.tokens, token),
-        interp_depth: state.interp_depth
+        pos: end_pos, tokens: list_push(tokens, token),
+        interp_depth: pos.interp_depth
       }
     }
   }
@@ -347,7 +359,7 @@ fn scan_str_cont(source: String, state: TokenizerState, span_start: Int) -> Toke
 // Stops at closing " (ClosedString), interpolation { (InterpolationStart),
 // or end of input (UnterminatedString).
 // Escape sequences are preserved in the raw content and processed later.
-// Uses full if/else chains — return inside if-without-else does not
+// Uses full if/else chains -- return inside if-without-else does not
 // early-return in the DSL evaluator.
 fn scan_string_body(source: String, pos: Int, acc: List<String>) -> StringScanResult {
   if pos >= string_length(s: source) {
@@ -355,10 +367,10 @@ fn scan_string_body(source: String, pos: Int, acc: List<String>) -> StringScanRe
   } else {
     let ch = char_at(s: source, pos: pos)
     if ch == "\"" {
-      // Closing quote — end of string
+      // Closing quote -- end of string
       ClosedString { content: join(acc, separator: ""), end_pos: pos }
     } else if ch == "\\" {
-      // Backslash — escape sequence, consume two characters raw
+      // Backslash -- escape sequence, consume two characters raw
       if pos + 1 < string_length(s: source) {
         let escaped = char_at(s: source, pos: pos + 1)
         scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, "\\"), escaped))
@@ -367,7 +379,7 @@ fn scan_string_body(source: String, pos: Int, acc: List<String>) -> StringScanRe
         UnterminatedString { content: join(list_push(acc, "\\"), separator: ""), end_pos: pos + 1 }
       }
     } else if ch == "{" {
-      // Opening brace — potential interpolation start
+      // Opening brace -- potential interpolation start
       if should_start_interpolation(source: source, pos: pos) {
         InterpolationStart { content: join(acc, separator: ""), end_pos: pos }
       } else {
@@ -446,17 +458,17 @@ fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
   prefix |> append(items: value)
 }
 
-// Skip spaces and tabs (NOT newlines — those are tokens).
+// Skip spaces and tabs (NOT newlines -- those are tokens).
 // Also skip line comments (// to end of line).
-fn skip_spaces_and_comments(source: String, state: TokenizerState) -> TokenizerState {
-  let pos = skip_horizontal_ws(s: source, start: state.pos)
-  if pos + 1 < string_length(s: source) && char_at(s: source, pos: pos) == "/" && char_at(s: source, pos: pos + 1) == "/" {
-    let eol = scan_to_eol(s: source, start: pos)
-    return skip_spaces_and_comments(source: source, state: TokenizerState {
-      pos: eol, tokens: state.tokens, interp_depth: state.interp_depth
+fn skip_spaces_and_comments(source: String, pos: TokPos) -> TokPos {
+  let p = skip_horizontal_ws(s: source, start: pos.pos)
+  if p + 1 < string_length(s: source) && char_at(s: source, pos: p) == "/" && char_at(s: source, pos: p + 1) == "/" {
+    let eol = scan_to_eol(s: source, start: p)
+    return skip_spaces_and_comments(source: source, pos: TokPos {
+      pos: eol, interp_depth: pos.interp_depth
     })
   }
-  TokenizerState { pos: pos, tokens: state.tokens, interp_depth: state.interp_depth }
+  TokPos { pos: p, interp_depth: pos.interp_depth }
 }
 
 // === Character predicates ===

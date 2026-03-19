@@ -332,7 +332,7 @@ impl Executable for SubDagDispatchOp {
                 continue;
             }
             if port_name.0 == PortName::DEPS {
-                input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
+                input_mocks.set_input(node_id.0, port_name.0, Value::List(std::sync::Arc::new(Vec::new())));
             }
         }
         let execution = gunbc_test::boundary::execute_via_engine_with_inputs(
@@ -1962,20 +1962,20 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![
+            Value::List(std::sync::Arc::new(vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
-            ]),
+            ])),
         );
         let outputs = result
             .execute(inputs)
             .expect("collection map should execute");
         assert_eq!(
             outputs.get("items"),
-            Some(&Value::List(vec![
+            Some(&Value::List(std::sync::Arc::new(vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string())
-            ]))
+            ])))
         );
     }
 
@@ -1986,7 +1986,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            Value::List(std::sync::Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)])),
         );
         let outputs = result
             .execute(inputs)
@@ -2001,10 +2001,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![
+            Value::List(std::sync::Arc::new(vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
-            ]),
+            ])),
         );
         inputs.insert("needle".to_string(), Value::Str("b".to_string()));
         let outputs = result

@@ -262,6 +262,7 @@ fn response_to_value_expr(resp: &TransportResponse) -> ValueExpr {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     #[test]
     fn value_to_value_expr_is_total() {
@@ -271,7 +272,7 @@ mod tests {
             Value::Bool(true),
             Value::Str("hello".into()),
             Value::Int(42),
-            Value::List(vec![Value::Int(1), Value::Bool(true)]),
+            Value::List(Arc::new(vec![Value::Int(1), Value::Bool(true)])),
             Value::Map(BTreeMap::from([("k".into(), Value::Int(1))])),
             Value::Json(serde_json::json!({"a": 1})),
             Value::Skipped,
@@ -283,11 +284,11 @@ mod tests {
 
     #[test]
     fn list_preserves_heterogeneous_elements() {
-        let v = Value::List(vec![
+        let v = Value::List(Arc::new(vec![
             Value::Int(1),
             Value::Str("two".into()),
             Value::Bool(true),
-        ]);
+        ]));
         let expr = ValueExpr::from(&v);
         assert_eq!(
             expr,

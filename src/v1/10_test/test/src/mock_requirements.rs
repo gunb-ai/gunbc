@@ -734,7 +734,7 @@ mod tests {
         };
 
         let reqs = MockRequirements::new("test").add_slot(slot);
-        let value = Value::List(vec![Value::Int(1), Value::Int(2)]);
+        let value = Value::List(std::sync::Arc::new(vec![Value::Int(1), Value::Int(2)]));
 
         let result = reqs.boundary("node", "port", value);
 

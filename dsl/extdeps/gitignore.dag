@@ -36,7 +36,7 @@ data gitignore_output_format: OutputFormat = {
   trailing_newline: true
 }
 
-// ── Category filtering ───────────────────────────────────────────────
+// -- Category filtering -----------------------------------------------
 
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
   let by_build = filter(categories, c => match c.when_build_system {

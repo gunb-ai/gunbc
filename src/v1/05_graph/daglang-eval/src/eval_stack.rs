@@ -34,6 +34,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gunbc_ir::value_compatible_with_type_id;
 use gunbc_ir::Value;
@@ -1091,9 +1092,10 @@ fn eval_expr_inner(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<V
                 LoweredBinOp::Add => {
                     let rhs = eval_expr(right, env, ctx)?;
                     match (lhs, rhs) {
-                        (Value::List(mut a), Value::List(b)) => {
-                            a.extend(b);
-                            Ok(Value::List(a))
+                        (Value::List(a), Value::List(b)) => {
+                            let mut v = Arc::try_unwrap(a).unwrap_or_else(|rc| (*rc).clone());
+                            v.extend(b.iter().cloned());
+                            Ok(Value::List(Arc::new(v)))
                         }
                         (Value::Str(mut a), Value::Str(b)) => {
                             a.push_str(&b);
@@ -1162,7 +1164,7 @@ fn eval_expr_inner(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<V
             .iter()
             .map(|i| eval_expr(i, env, ctx))
             .collect::<Result<Vec<_>, _>>()
-            .map(Value::List),
+            .map(|v| Value::List(Arc::new(v))),
         // Non-suspendable block evaluation. Used for intrinsic lambda bodies
         // and standalone match arms where no continuation stack exists.
         // The suspendable path (eval_block_s) handles blocks at statement
@@ -1201,12 +1203,12 @@ fn eval_expr_inner(expr: &LoweredExpr, env: &Env, ctx: &EvalContext) -> Result<V
             match eval_expr(iterable, env, ctx)? {
                 Value::List(list) => {
                     let mut results = Vec::with_capacity(list.len());
-                    for item in &list {
+                    for item in list.iter() {
                         let mut iter_env = env.child();
                         iter_env.bind(binding.clone(), item.clone());
                         results.push(eval_expr(body, &iter_env, ctx)?);
                     }
-                    Ok(Value::List(results))
+                    Ok(Value::List(Arc::new(results)))
                 }
                 other => Err(EvalError::new(format!(
                     "for requires list, got {:?}",
@@ -1477,12 +1479,12 @@ fn eval_intrinsic_inner(
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
                     let mut out = Vec::new();
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
-                        c.bind(p.clone(), item);
+                        c.bind(p.clone(), item.clone());
                         out.push(eval_expr(body, &c, ctx)?);
                     }
-                    Ok(Value::List(out))
+                    Ok(Value::List(Arc::new(out)))
                 }
                 (Value::List(items), Some(LoweredExpr::Ident(fn_name)))
                     if ctx.sibling_fns.contains_key(fn_name.as_str()) =>
@@ -1493,12 +1495,12 @@ fn eval_intrinsic_inner(
                         args: vec![(None, LoweredExpr::Ident(p.clone()))],
                     };
                     let mut out = Vec::new();
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
-                        c.bind(p.clone(), item);
+                        c.bind(p.clone(), item.clone());
                         out.push(eval_expr(&call, &c, ctx)?);
                     }
-                    Ok(Value::List(out))
+                    Ok(Value::List(Arc::new(out)))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 (other, _) => Err(EvalError::new(format!(
@@ -1512,14 +1514,14 @@ fn eval_intrinsic_inner(
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
                     let mut out = Vec::new();
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
                         c.bind(p.clone(), item.clone());
                         if value_truthy(&eval_expr(body, &c, ctx)?) {
-                            out.push(item);
+                            out.push(item.clone());
                         }
                     }
-                    Ok(Value::List(out))
+                    Ok(Value::List(Arc::new(out)))
                 }
                 (Value::List(items), Some(LoweredExpr::Ident(fn_name)))
                     if ctx.sibling_fns.contains_key(fn_name.as_str()) =>
@@ -1530,14 +1532,14 @@ fn eval_intrinsic_inner(
                         args: vec![(None, LoweredExpr::Ident(p.clone()))],
                     };
                     let mut out = Vec::new();
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
                         c.bind(p.clone(), item.clone());
                         if value_truthy(&eval_expr(&call, &c, ctx)?) {
-                            out.push(item);
+                            out.push(item.clone());
                         }
                     }
-                    Ok(Value::List(out))
+                    Ok(Value::List(Arc::new(out)))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 _ => Err(EvalError::new("filter requires a list")),
@@ -1549,15 +1551,15 @@ fn eval_intrinsic_inner(
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
                     let mut out = Vec::new();
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
-                        c.bind(p.clone(), item);
+                        c.bind(p.clone(), item.clone());
                         let val = eval_expr(body, &c, ctx)?;
                         if !matches!(val, Value::Unit | Value::Skipped) {
                             out.push(val);
                         }
                     }
-                    Ok(Value::List(out))
+                    Ok(Value::List(Arc::new(out)))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 _ => Err(EvalError::new("filter_map requires a list")),
@@ -1569,15 +1571,15 @@ fn eval_intrinsic_inner(
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
                     let mut out = Vec::new();
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
-                        c.bind(p.clone(), item);
+                        c.bind(p.clone(), item.clone());
                         match eval_expr(body, &c, ctx)? {
-                            Value::List(inner) => out.extend(inner),
+                            Value::List(inner) => out.extend(inner.iter().cloned()),
                             other => out.push(other),
                         }
                     }
-                    Ok(Value::List(out))
+                    Ok(Value::List(Arc::new(out)))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 _ => Err(EvalError::new("flat_map requires a list")),
@@ -1595,10 +1597,10 @@ fn eval_intrinsic_inner(
                     let mut acc = eval_expr(init_e, env, ctx)?;
                     let ap = params.first().cloned().unwrap_or_else(|| "acc".into());
                     let ip = params.get(1).cloned().unwrap_or_else(|| "item".into());
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
                         c.bind(ap.clone(), acc);
-                        c.bind(ip.clone(), item);
+                        c.bind(ip.clone(), item.clone());
                         acc = eval_expr(body, &c, ctx)?;
                     }
                     Ok(acc)
@@ -1609,12 +1611,13 @@ fn eval_intrinsic_inner(
         "append" => {
             let new_items = rest.iter().find(|(k, _)| k.as_deref() == Some("items"));
             match (receiver, new_items) {
-                (Value::List(mut base), Some((_, e))) => {
+                (Value::List(base), Some((_, e))) => {
+                    let mut v = Arc::try_unwrap(base).unwrap_or_else(|rc| (*rc).clone());
                     match eval_expr(e, env, ctx)? {
-                        Value::List(more) => base.extend(more),
-                        other => base.push(other),
+                        Value::List(more) => v.extend(more.iter().cloned()),
+                        other => v.push(other),
                     }
-                    Ok(Value::List(base))
+                    Ok(Value::List(Arc::new(v)))
                 }
                 (other, _) => Err(EvalError::new(format!(
                     "append requires a list, got {other:?}"
@@ -1638,9 +1641,9 @@ fn eval_intrinsic_inner(
         "first" => match receiver {
             Value::List(items) => {
                 let mut m = BTreeMap::new();
-                if let Some(item) = items.into_iter().next() {
+                if let Some(item) = items.first() {
                     m.insert("_variant".into(), Value::Str("Some".into()));
-                    m.insert("value".into(), item);
+                    m.insert("value".into(), item.clone());
                 } else {
                     m.insert("_variant".into(), Value::Str("None".into()));
                 }
@@ -1661,9 +1664,9 @@ fn eval_intrinsic_inner(
                         }
                     };
                     let mut m = BTreeMap::new();
-                    if let Some(item) = items.into_iter().nth(idx) {
+                    if let Some(item) = items.get(idx) {
                         m.insert("_variant".into(), Value::Str("Some".into()));
-                        m.insert("value".into(), item);
+                        m.insert("value".into(), item.clone());
                     } else {
                         m.insert("_variant".into(), Value::Str("None".into()));
                     }
@@ -1675,9 +1678,9 @@ fn eval_intrinsic_inner(
         "last" => match receiver {
             Value::List(items) => {
                 let mut m = BTreeMap::new();
-                if let Some(item) = items.into_iter().last() {
+                if let Some(item) = items.last() {
                     m.insert("_variant".into(), Value::Str("Some".into()));
-                    m.insert("value".into(), item);
+                    m.insert("value".into(), item.clone());
                 } else {
                     m.insert("_variant".into(), Value::Str("None".into()));
                 }
@@ -1690,9 +1693,9 @@ fn eval_intrinsic_inner(
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
-                        c.bind(p.clone(), item);
+                        c.bind(p.clone(), item.clone());
                         if value_truthy(&eval_expr(body, &c, ctx)?) {
                             return Ok(Value::Bool(true));
                         }
@@ -1707,9 +1710,9 @@ fn eval_intrinsic_inner(
             match (receiver, lambda) {
                 (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
-                    for item in items {
+                    for item in items.iter() {
                         let mut c = env.child();
-                        c.bind(p.clone(), item);
+                        c.bind(p.clone(), item.clone());
                         if !value_truthy(&eval_expr(body, &c, ctx)?) {
                             return Ok(Value::Bool(false));
                         }
@@ -1732,38 +1735,39 @@ fn eval_intrinsic_inner(
             }
         }
         "sort" => match receiver {
-            Value::List(mut items) => {
-                items.sort_by_key(sort_key);
-                Ok(Value::List(items))
+            Value::List(items) => {
+                let mut v = Arc::try_unwrap(items).unwrap_or_else(|rc| (*rc).clone());
+                v.sort_by_key(sort_key);
+                Ok(Value::List(Arc::new(v)))
             }
             _ => Err(EvalError::new("sort requires a list")),
         },
         "dedup" => match receiver {
             Value::List(items) => {
                 let mut out = Vec::new();
-                for item in items {
-                    if !out.contains(&item) {
-                        out.push(item);
+                for item in items.iter() {
+                    if !out.contains(item) {
+                        out.push(item.clone());
                     }
                 }
-                Ok(Value::List(out))
+                Ok(Value::List(Arc::new(out)))
             }
             _ => Err(EvalError::new("dedup requires a list")),
         },
         "sort_by" => {
             let lambda = rest.first().map(|(_, e)| e);
             match (receiver, lambda) {
-                (Value::List(mut items), Some(LoweredExpr::Lambda { params, body })) => {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
                     let p = params.first().cloned().unwrap_or_else(|| "_".into());
                     let mut keyed: Vec<(String, Value)> = Vec::with_capacity(items.len());
-                    for item in items.drain(..) {
+                    for item in items.iter() {
                         let mut c = env.child();
                         c.bind(p.clone(), item.clone());
                         let key = eval_expr(body, &c, ctx).map(|v| value_to_string(&v))?;
-                        keyed.push((key, item));
+                        keyed.push((key, item.clone()));
                     }
                     keyed.sort_by(|a, b| a.0.cmp(&b.0));
-                    Ok(Value::List(keyed.into_iter().map(|(_, v)| v).collect()))
+                    Ok(Value::List(Arc::new(keyed.into_iter().map(|(_, v)| v).collect())))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 _ => Err(EvalError::new("sort_by requires a list")),
@@ -1815,13 +1819,13 @@ fn eval_intrinsic_inner(
             match (receiver, delim) {
                 (Value::Str(s), Some((_, e))) => {
                     let d = value_to_string(&eval_expr(e, env, ctx)?);
-                    Ok(Value::List(
+                    Ok(Value::List(Arc::new(
                         s.split(&d).map(|p| Value::Str(p.to_string())).collect(),
-                    ))
+                    )))
                 }
-                (Value::Str(s), None) => Ok(Value::List(
+                (Value::Str(s), None) => Ok(Value::List(Arc::new(
                     s.split(',').map(|p| Value::Str(p.to_string())).collect(),
-                )),
+                ))),
                 _ => Err(EvalError::new("split requires a string")),
             }
         }
@@ -1836,10 +1840,11 @@ fn eval_intrinsic_inner(
                         Value::List(l) => l,
                         _ => return Err(EvalError::new("zip requires a list for 'other'")),
                     };
-                    Ok(Value::List(
+                    Ok(Value::List(Arc::new(
                         items
-                            .into_iter()
-                            .zip(other)
+                            .iter()
+                            .cloned()
+                            .zip(other.iter().cloned())
                             .map(|(a, b)| {
                                 let mut m = BTreeMap::new();
                                 m.insert("first".into(), a);
@@ -1847,7 +1852,7 @@ fn eval_intrinsic_inner(
                                 Value::Map(m)
                             })
                             .collect(),
-                    ))
+                    )))
                 }
                 _ => Err(EvalError::new("zip requires a list")),
             }
@@ -1859,9 +1864,9 @@ fn eval_intrinsic_inner(
                 .or_else(|| rest.first());
             match (receiver, n_expr) {
                 (Value::List(items), Some((_, e))) => match eval_expr(e, env, ctx)? {
-                    Value::Int(count) => Ok(Value::List(
-                        items.into_iter().skip(count.max(0) as usize).collect(),
-                    )),
+                    Value::Int(count) => Ok(Value::List(Arc::new(
+                        items.iter().skip(count.max(0) as usize).cloned().collect(),
+                    ))),
                     _ => Err(EvalError::new("skip requires integer count")),
                 },
                 (Value::List(items), None) => Ok(Value::List(items)),
@@ -1869,18 +1874,18 @@ fn eval_intrinsic_inner(
             }
         }
         "enumerate" => match receiver {
-            Value::List(items) => Ok(Value::List(
+            Value::List(items) => Ok(Value::List(Arc::new(
                 items
-                    .into_iter()
+                    .iter()
                     .enumerate()
                     .map(|(i, v)| {
                         let mut m = BTreeMap::new();
                         m.insert("first".into(), Value::Int(i as i64));
-                        m.insert("second".into(), v);
+                        m.insert("second".into(), v.clone());
                         Value::Map(m)
                     })
                     .collect(),
-            )),
+            ))),
             _ => Err(EvalError::new("enumerate requires a list")),
         },
         "repeat" => {
@@ -1894,9 +1899,9 @@ fn eval_intrinsic_inner(
             }
         }
         "chars" => match &receiver {
-            Value::Str(s) => Ok(Value::List(
+            Value::Str(s) => Ok(Value::List(Arc::new(
                 s.chars().map(|c| Value::Str(c.to_string())).collect(),
-            )),
+            ))),
             _ => Err(EvalError::new(format!(
                 "chars: expected String, got {receiver:?}"
             ))),
@@ -2594,7 +2599,7 @@ mod tests {
         assert_eq!(
             evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap()
                 ["return"],
-            Value::List(vec![Value::Int(2), Value::Int(4), Value::Int(6)])
+            Value::List(Arc::new(vec![Value::Int(2), Value::Int(4), Value::Int(6)]))
         );
     }
 
@@ -2667,16 +2672,16 @@ mod tests {
             evaluate_stack(&body, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap();
         assert_eq!(
             result["sorted"],
-            Value::List(vec![
+            Value::List(Arc::new(vec![
                 Value::Int(1),
                 Value::Int(1),
                 Value::Int(2),
                 Value::Int(3)
-            ])
+            ]))
         );
         assert_eq!(
             result["deduped"],
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+            Value::List(Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)]))
         );
         assert_eq!(result["return"], Value::Int(3));
     }
@@ -2826,7 +2831,7 @@ mod tests {
         let r = evaluate_stack(&body, &inp, &HashMap::new(), &HashMap::new()).unwrap();
         assert_eq!(
             r["return"],
-            Value::List(vec![Value::Str("a".into()), Value::Str("b".into())])
+            Value::List(Arc::new(vec![Value::Str("a".into()), Value::Str("b".into())]))
         );
     }
 

@@ -28,6 +28,7 @@
 use crate::dag::Dag;
 use crate::node::NodeBody;
 use crate::type_op::{Predicate, TypeOp, WrapperKind};
+use std::sync::Arc;
 use crate::type_registry::TypeRegistry;
 use crate::types::Cardinality;
 use crate::value::Value;
@@ -218,17 +219,17 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
         let value = match count {
             0 => match &wrapper {
                 Some(WrapperKind::Optional) => Value::Unit,
-                Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
-                Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
+                Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(Arc::new(vec![])),
+                Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(Arc::new(vec![])),
                 Some(WrapperKind::Map) => Value::Map(std::collections::BTreeMap::new()),
                 None => Value::Unit, // Scalar empty = absent
             },
             1 => match &wrapper {
                 Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                    Value::List(vec![scalar_witness.clone()])
+                    Value::List(Arc::new(vec![scalar_witness.clone()]))
                 }
                 Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                    Value::Set(vec![scalar_witness.clone()])
+                    Value::Set(Arc::new(vec![scalar_witness.clone()]))
                 }
                 Some(WrapperKind::Map) => {
                     let mut map = std::collections::BTreeMap::new();
@@ -240,7 +241,7 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
             n => {
                 let witnesses = n_witnesses(&scalar_witness, n);
                 match &wrapper {
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(witnesses),
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(Arc::new(witnesses)),
                     Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
                     Some(WrapperKind::Map) => {
                         let mut map = std::collections::BTreeMap::new();
@@ -282,7 +283,7 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
                             // Collections: add single-element witnesses per boundary value
                             result.push(BoundaryWitness {
                                 count: 1,
-                                value: Value::List(vec![bv]),
+                                value: Value::List(Arc::new(vec![bv])),
                             });
                         }
                         Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
@@ -651,8 +652,8 @@ fn layer_witnesses(layer: &TypeLayer, depth_limit: usize, current_depth: usize) 
             0 => {
                 let empty = match &layer.wrapper {
                     Some(WrapperKind::Optional) => Value::Unit,
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
-                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(Arc::new(vec![])),
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(Arc::new(vec![])),
                     Some(WrapperKind::Map) => Value::Map(std::collections::BTreeMap::new()),
                     None => Value::Unit,
                 };
@@ -663,10 +664,10 @@ fn layer_witnesses(layer: &TypeLayer, depth_limit: usize, current_depth: usize) 
                 for iw in &inner_witnesses {
                     let value = match &layer.wrapper {
                         Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                            Value::List(vec![iw.clone()])
+                            Value::List(Arc::new(vec![iw.clone()]))
                         }
                         Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                            Value::Set(vec![iw.clone()])
+                            Value::Set(Arc::new(vec![iw.clone()]))
                         }
                         Some(WrapperKind::Map) => {
                             let mut map = std::collections::BTreeMap::new();
@@ -697,7 +698,7 @@ fn layer_witnesses(layer: &TypeLayer, depth_limit: usize, current_depth: usize) 
                     .collect();
                 match &layer.wrapper {
                     Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        result.push(Value::List(elements));
+                        result.push(Value::List(Arc::new(elements)));
                     }
                     Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
                         result.push(Value::set(elements));
@@ -2015,7 +2016,7 @@ mod tests {
         // List (cardinality [0,∞)) → count=0, count=1
         assert_eq!(w.len(), 2);
         assert_eq!(w[0].count, 0);
-        assert_eq!(w[0].value, Value::List(vec![]));
+        assert_eq!(w[0].value, Value::List(Arc::new(vec![])));
         assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::List(v) if v.len() == 1));
     }
@@ -2250,7 +2251,7 @@ mod tests {
         use crate::value::ValueKind;
 
         let contract = ShapeContract::new(ValueKind::List, "after scalar-to-list coercion");
-        assert!(contract.check(&Value::List(vec![Value::Int(1)])).is_ok());
+        assert!(contract.check(&Value::List(Arc::new(vec![Value::Int(1)]))).is_ok());
     }
 
     #[test]
@@ -2273,10 +2274,10 @@ mod tests {
             .with_cardinality(Cardinality::ONE_OR_MORE);
 
         // Non-empty list passes
-        assert!(contract.check(&Value::List(vec![Value::Int(1)])).is_ok());
+        assert!(contract.check(&Value::List(Arc::new(vec![Value::Int(1)]))).is_ok());
 
         // Empty list fails cardinality
-        let result = contract.check(&Value::List(vec![]));
+        let result = contract.check(&Value::List(Arc::new(vec![])));
         assert!(result.is_err());
         let violation = result.unwrap_err();
         assert_eq!(violation.actual_length, Some(0));
