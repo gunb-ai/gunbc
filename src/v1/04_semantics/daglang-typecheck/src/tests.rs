@@ -2670,3 +2670,84 @@ func run(path: String) -> { body: String } {
     )
     .expect("selective import should disambiguate same-name services");
 }
+
+#[test]
+fn alias_qualified_service_call_resolves_single_provider() {
+    // `storage.FsStorage.read` resolves when only one provider exists because
+    // the short lookup key `FsStorage.read` matches. The alias prefix `storage`
+    // is not registered as a disambiguation key — the call succeeds via the
+    // bare-name fallback, not alias resolution.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("alias-qualified spelling should resolve when only one provider exists");
+}
+
+#[test]
+fn alias_qualified_service_call_does_not_disambiguate_conflicting_providers() {
+    // Two modules export FsStorage with incompatible shapes. The alias-qualified
+    // call `storage.FsStorage.read` does NOT disambiguate because aliases are not
+    // registered as lookup key prefixes — only bare (`FsStorage.read`) and
+    // full-module-qualified (`extdeps.storage.FsStorage.read`) keys exist.
+    // With two providers, the bare key becomes ambiguous and the alias-qualified
+    // key `storage.FsStorage.read` has no registry entry.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let result = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    );
+    assert!(
+        result.is_err(),
+        "alias-qualified spelling must not disambiguate conflicting providers"
+    );
+}

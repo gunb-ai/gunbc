@@ -3697,6 +3697,74 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn check_alias_qualified_spelling_resolves_single_provider_hermetic() {
+    // `storage.FsStorage.read` resolves when only one provider exists because
+    // the short lookup key `FsStorage.read` matches. The alias prefix `storage`
+    // is not registered as a disambiguation key.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("alias-qualified spelling should resolve single provider at compile level");
+}
+
+#[test]
+fn check_alias_qualified_spelling_does_not_disambiguate_hermetic() {
+    // Two modules export FsStorage. The alias-qualified call
+    // `storage.FsStorage.read` does NOT disambiguate — the alias is not
+    // registered as a lookup key prefix, so the bare key collision causes
+    // failure.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let result = check_from_module_graph(graph);
+    assert!(
+        result.is_err(),
+        "alias-qualified spelling must not disambiguate conflicting providers at compile level"
+    );
+}
+
+#[test]
 fn check_module_qualified_call_disambiguates_same_name_services_hermetic() {
     // Both modules export SharedService with incompatible shapes.
     // vendor.alpha: read(path: String) -> { body: String }
@@ -3814,14 +3882,20 @@ func run(path: String) -> { body: String } {
 
     let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
     let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
-        gunbc_ir::NodeBody::Opaque(op) => op
-            .service_call_metadata()
-            .is_some_and(|m| m.service == "FsStorage" && m.operation == "read"),
+        gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
+            module,
+            service_metadata,
+            ..
+        }) => {
+            module == "extdeps.storage"
+                && service_metadata.service == "FsStorage"
+                && service_metadata.operation == "read"
+        }
         _ => false,
     });
     assert!(
         has_fs_storage_transport,
-        "lowered DAG should contain a transport node for FsStorage.read"
+        "lowered DAG should contain a transport node for extdeps.storage FsStorage.read"
     );
 }
 
@@ -3856,13 +3930,83 @@ func run(path: String) -> { body: String } {
 
     let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
     let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
-        gunbc_ir::NodeBody::Opaque(op) => op
-            .service_call_metadata()
-            .is_some_and(|m| m.service == "FsStorage" && m.operation == "read"),
+        gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
+            module,
+            service_metadata,
+            ..
+        }) => {
+            module == "extdeps.storage"
+                && service_metadata.service == "FsStorage"
+                && service_metadata.operation == "read"
+        }
         _ => false,
     });
     assert!(
         has_fs_storage_transport,
-        "lowered DAG should contain a transport node for FsStorage.read via aliased import"
+        "lowered DAG should contain a transport node for extdeps.storage FsStorage.read via aliased import"
+    );
+}
+
+#[test]
+fn compile_module_qualified_lowers_correct_provider_with_conflicting_fsstorage_hermetic() {
+    // Two modules export FsStorage with incompatible shapes.
+    // Module-qualified call `extdeps.storage.FsStorage.read` disambiguates
+    // through both typecheck and lowering. The lowered transport node must
+    // carry module = "extdeps.storage". If lowering drops the import binding
+    // and merely emits some `FsStorage.read` transport, the module assertion
+    // catches it.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let typed = daglang_typecheck::typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified call should disambiguate conflicting FsStorage providers");
+
+    let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
+
+    // Assert the correct provider's transport was emitted.
+    let has_correct_provider_transport = output.dag.nodes.iter().any(|node| match &node.body {
+        gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
+            module,
+            service_metadata,
+            ..
+        }) => {
+            module == "extdeps.storage"
+                && service_metadata.service == "FsStorage"
+                && service_metadata.operation == "read"
+        }
+        _ => false,
+    });
+    assert!(
+        has_correct_provider_transport,
+        "lowered transport must come from extdeps.storage, not extdeps.legacy"
     );
 }
