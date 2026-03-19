@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeDef,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
@@ -6407,6 +6407,236 @@ fn validate_rest_output_field_paths(
     Ok(())
 }
 
+fn validate_sts_exchange_body_against_typed_schema(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    type_defs: &HashMap<String, &TypeDef>,
+) -> Result<(), LowerError> {
+    const STS_SERVICE: &str = "gcp.STS";
+    const STS_OPERATION: &str = "Exchange";
+    const REQUEST_TYPE: &str = "StsTokenExchange";
+    const GRANT_TYPE: &str = "StsGrantType";
+    const SUBJECT_TOKEN_TYPE: &str = "SubjectTokenType";
+    const REQUESTED_TOKEN_TYPE: &str = "RequestedTokenType";
+    const TOKEN_EXCHANGE_URN: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
+    const JWT_URN: &str = "urn:ietf:params:oauth:token-type:jwt";
+    const ACCESS_TOKEN_URN: &str = "urn:ietf:params:oauth:token-type:access_token";
+
+    if service.name != STS_SERVICE || operation.name != STS_OPERATION {
+        return Ok(());
+    }
+
+    let body = match &operation.transport {
+        Some(TransportBinding::Rest {
+            body: Some(body), ..
+        }) => body,
+        Some(TransportBinding::Rest { body: None, .. }) => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} requires an explicit REST body so lowering can validate it against `{REQUEST_TYPE}`"
+                ),
+            });
+        }
+        _ => return Ok(()),
+    };
+
+    let request_fields = match type_defs.get(REQUEST_TYPE) {
+        Some(TypeDef {
+            body: TypeBody::Record(fields),
+            ..
+        }) => fields.as_slice(),
+        Some(_) => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("`{REQUEST_TYPE}` must remain a record type"),
+            });
+        }
+        None => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} requires local `{REQUEST_TYPE}` / `{GRANT_TYPE}` / `{SUBJECT_TOKEN_TYPE}` / `{REQUESTED_TOKEN_TYPE}` type definitions so the literal OAuth body cannot drift from the typed STS schema"
+                ),
+            });
+        }
+    };
+
+    let body_fields = match body {
+        Expr::Record(_, fields) => fields
+            .iter()
+            .map(|(key, value)| (key.as_str(), value))
+            .collect(),
+        Expr::Map(entries) => {
+            let mut out = HashMap::new();
+            for (key_expr, value) in entries {
+                let Expr::Literal(Literal::String(key)) = key_expr else {
+                    return Err(LowerError::InvalidTransportSpec {
+                        service: service.name.clone(),
+                        operation: operation.name.clone(),
+                        detail: format!(
+                            "{STS_SERVICE}.{STS_OPERATION} REST body keys must stay string-literal fields from `{REQUEST_TYPE}`"
+                        ),
+                    });
+                };
+                out.insert(key.as_str(), value);
+            }
+            out
+        }
+        _ => {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} REST body must stay a record/map matching `{REQUEST_TYPE}`"
+                ),
+            });
+        }
+    };
+
+    let request_field_types = request_fields
+        .iter()
+        .map(|field| (field.name.as_str(), &field.ty))
+        .collect::<HashMap<_, _>>();
+
+    for key in body_fields.keys() {
+        if !request_field_types.contains_key(key) {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("STS body field `{key}` is not declared on `{REQUEST_TYPE}`"),
+            });
+        }
+    }
+
+    for field in request_fields {
+        if !is_type_expr_optional(&field.ty) && !body_fields.contains_key(field.name.as_str()) {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body is missing required `{REQUEST_TYPE}.{}` field",
+                    field.name
+                ),
+            });
+        }
+    }
+
+    let expect_field_type = |field_name: &str, expected: &str| -> Result<(), LowerError> {
+        let Some(field_ty) = request_field_types.get(field_name) else {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("STS request schema is missing `{REQUEST_TYPE}.{field_name}`"),
+            });
+        };
+        let actual = type_expr_to_string(field_ty);
+        let normalized = actual.strip_suffix('?').unwrap_or(actual.as_str());
+        if normalized != expected {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "`{REQUEST_TYPE}.{field_name}` must keep type `{expected}`, found `{actual}`"
+                ),
+            });
+        }
+        Ok(())
+    };
+    expect_field_type("grant_type", GRANT_TYPE)?;
+    expect_field_type("subject_token_type", SUBJECT_TOKEN_TYPE)?;
+    expect_field_type("requested_token_type", REQUESTED_TOKEN_TYPE)?;
+
+    let expect_unit_variant = |enum_name: &str, variant_name: &str| -> Result<(), LowerError> {
+        let Some(type_def) = type_defs.get(enum_name) else {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "{STS_SERVICE}.{STS_OPERATION} requires local `{enum_name}` so lowering can validate the REST body literals"
+                ),
+            });
+        };
+        let TypeBody::Sum(variants) = &type_def.body else {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!("`{enum_name}` must remain a sum type"),
+            });
+        };
+        if !variants
+            .iter()
+            .any(|variant| variant.name == variant_name && variant.fields.is_empty())
+        {
+            return Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "`{enum_name}` must keep unit variant `{variant_name}` for `{STS_SERVICE}.{STS_OPERATION}`"
+                ),
+            });
+        }
+        Ok(())
+    };
+    expect_unit_variant(GRANT_TYPE, "TokenExchange")?;
+    expect_unit_variant(SUBJECT_TOKEN_TYPE, "Jwt")?;
+    expect_unit_variant(REQUESTED_TOKEN_TYPE, "RequestAccessToken")?;
+
+    let expect_input_ref = |field_name: &str| -> Result<(), LowerError> {
+        match body_fields.get(field_name) {
+            Some(Expr::Ident(name)) if name == field_name => Ok(()),
+            _ => Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body field `{field_name}` must remain wired from operation input `{field_name}`"
+                ),
+            }),
+        }
+    };
+    expect_input_ref("subject_token")?;
+    expect_input_ref("audience")?;
+
+    let expect_literal = |field_name: &str,
+                          expected: &str,
+                          source: &str|
+     -> Result<(), LowerError> {
+        match body_fields.get(field_name) {
+            Some(Expr::Literal(Literal::String(value))) if value == expected => Ok(()),
+            Some(Expr::Literal(Literal::String(value))) => Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body field `{field_name}` must stay aligned with `{source}` and use `{expected}`, found `{value}`"
+                ),
+            }),
+            _ => Err(LowerError::InvalidTransportSpec {
+                service: service.name.clone(),
+                operation: operation.name.clone(),
+                detail: format!(
+                    "STS body field `{field_name}` must stay a literal derived from `{source}`"
+                ),
+            }),
+        }
+    };
+    expect_literal(
+        "grant_type",
+        TOKEN_EXCHANGE_URN,
+        "StsGrantType::TokenExchange",
+    )?;
+    expect_literal("subject_token_type", JWT_URN, "SubjectTokenType::Jwt")?;
+    expect_literal(
+        "requested_token_type",
+        ACCESS_TOKEN_URN,
+        "RequestedTokenType::RequestAccessToken",
+    )?;
+
+    Ok(())
+}
+
 // ============================================================================
 // ServiceOperationSpec extraction from annotations
 // ============================================================================
@@ -7401,6 +7631,15 @@ fn derive_service_transport_triplets(
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let source_file = module.path.display().to_string();
+        let module_type_defs = module
+            .ast
+            .items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::TypeDef(type_def) => Some((type_def.name.clone(), type_def)),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -7429,6 +7668,11 @@ fn derive_service_transport_triplets(
                     }
                 }
                 validate_rest_output_field_paths(service, operation)?;
+                validate_sts_exchange_body_against_typed_schema(
+                    service,
+                    operation,
+                    &module_type_defs,
+                )?;
                 let service_metadata =
                     derive_service_call_metadata(service, operation, &data_registry)?;
                 // RT4: Fail-closed when a service operation has no transport

@@ -62,7 +62,8 @@ service gcp.STS {
       expires_in: Int from "expires_in"
     }
     // Keep OAuth2 wire values literal here until transport-body serialization
-    // can derive them generically from resolved type metadata.
+    // can derive them generically from resolved type metadata; lowering
+    // validates these literals against the typed STS schema.
     idempotent
     transport rest {
       method: POST,

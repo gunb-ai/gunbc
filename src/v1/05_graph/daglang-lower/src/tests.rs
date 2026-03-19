@@ -3981,8 +3981,19 @@ func run() -> { result: String } {
 }
 
 #[test]
-fn sts_exchange_body_template_uses_literal_wire_values_from_dsl() {
+fn sts_exchange_body_template_literals_are_validated_against_sts_schema() {
     let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: String
+  subject_token_type: SubjectTokenType
+  audience: String
+  scope: String?
+  requested_token_type: RequestedTokenType?
+}
 type StsTokenResponse {
   access_token: String
 }
@@ -4017,11 +4028,6 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
   token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
   return { access_token: token.access_token }
 }"#;
-    assert!(
-        source.contains("urn:ietf:params:oauth"),
-        "fixture should keep STS wire-format URNs in the DSL until generic typed serialization exists"
-    );
-
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
     let prepare_node = dag
@@ -4060,8 +4066,74 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
                 "urn:ietf:params:oauth:token-type:access_token".to_string()
             ),
         ]),
-        "lowered STS request body should preserve the OAuth wire values declared in the DSL"
+        "lowered STS request body should preserve the OAuth wire values after validating them against the typed STS schema"
     );
+}
+
+#[test]
+fn sts_exchange_body_template_rejects_requested_token_type_drift() {
+    let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: String
+  subject_token_type: SubjectTokenType
+  audience: String
+  scope: String?
+  requested_token_type: RequestedTokenType?
+}
+type StsTokenResponse {
+  access_token: String
+}
+service gcp.STS {
+  config { endpoint: "https://sts.googleapis.com" }
+  operation Exchange {
+    input {
+      subject_token: String
+      audience: String
+    }
+    output {
+      access_token: String from "access_token"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: subject_token,
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        audience: audience,
+        requested_token_type: "urn:ietf:params:oauth:token-type:id_token"
+      }
+    }
+    response {
+      200 => StsTokenResponse
+    }
+  }
+}
+func run(subject_token: String, audience: String) -> { access_token: String } {
+  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
+  return { access_token: token.access_token }
+}"#;
+
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
+    let error =
+        lower_typed_project(&typed).expect_err("lowering should fail when STS wire literals drift");
+
+    assert!(matches!(
+        error,
+        LowerError::InvalidTransportSpec {
+            ref service,
+            ref operation,
+            ref detail,
+        } if service == "gcp.STS"
+            && operation == "Exchange"
+            && detail.contains("requested_token_type")
+            && detail.contains("RequestedTokenType::RequestAccessToken")
+    ));
 }
 
 // ============================================================================
