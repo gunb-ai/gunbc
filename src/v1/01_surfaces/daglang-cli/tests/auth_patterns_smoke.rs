@@ -90,7 +90,7 @@ fn real_gunbc_auth_patterns_check_typechecks() {
     let target = root.join("gunbc/auth/patterns.dag");
 
     let context = DriverContext {
-        roots: vec![root],
+        roots: vec![root.clone()],
         target_file: Some(target),
     };
 
@@ -105,6 +105,23 @@ fn real_gunbc_auth_patterns_check_typechecks() {
         output.parsed_files, 9,
         "expected exactly 9 parsed files (target + 8 imports); \
          if a provider module was added or removed, update this count"
+    );
+
+    // Assert explicit imported provider symbols for multi-provider modules.
+    // The parsed_files count above is module-level; these assertions pin the exact
+    // provider bindings so that adding or removing a symbol from a multi-provider
+    // import is caught even when the module count stays the same.  Combined with
+    // the per-symbol removal test below, this proves the complete symbol set is
+    // both present and compiler-enforced.
+    let content = std::fs::read_to_string(root.join("gunbc/auth/patterns.dag"))
+        .expect("read patterns.dag");
+    assert!(
+        content.contains("import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }"),
+        "extdeps.cloud.gcp.gcp must import exactly shell.OAuth2 and shell.GCloud"
+    );
+    assert!(
+        content.contains("import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }"),
+        "extdeps.cloud.gcp.sts must import exactly gcp.STS, github.OIDC, and gcp.Metadata"
     );
 }
 
