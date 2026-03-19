@@ -80,7 +80,7 @@ type TokenizerState {
 
 // TokPos: tokenizer position state without tokens.
 // By threading tokens as a standalone parameter (not inside an Rc-wrapped
-// struct), Rc::try_unwrap succeeds on each list_push — O(1) per push
+// struct), Rc::try_unwrap succeeds on each list_push -- O(1) per push
 // instead of O(N) clone.
 type TokPos {
   pos: Int

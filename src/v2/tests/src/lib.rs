@@ -1893,12 +1893,12 @@ fn foo(item: String) -> String {
         // Verify the shared classification functions exist in 00_core.dag
         let core_source = read_v2_file("src/v2/00_core.dag");
         assert!(
-            core_source.contains("fn typed_expr_has_self_call"),
-            "core.dag should contain typed_expr_has_self_call for typed TCO classification"
+            core_source.contains("fn expr_has_self_call"),
+            "core.dag should contain expr_has_self_call for TCO classification"
         );
         assert!(
-            core_source.contains("fn typed_has_non_tail_self_call"),
-            "core.dag should contain typed_has_non_tail_self_call for typed TCO classification"
+            core_source.contains("fn expr_has_non_tail_self_call"),
+            "core.dag should contain expr_has_non_tail_self_call for TCO classification"
         );
     }
 
@@ -3608,8 +3608,11 @@ fn example(items: List<String>) -> Int {
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         // Always print output for profiling
-        eprintln!("{}", stderr);
-        println!("{}", stdout);
+        #[allow(clippy::disallowed_macros)]
+        {
+            eprintln!("{}", stderr);
+            println!("{}", stdout);
+        }
 
         if !output.status.success() {
             panic!(

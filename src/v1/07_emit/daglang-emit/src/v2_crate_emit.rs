@@ -455,6 +455,20 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         .flatten()
         .collect();
 
+    // SG-10: Register v2 runtime functions that accept &str (impl AsRef<str>)
+    // so call sites strip .to_string() from &str arguments. Without this,
+    // passing source.to_string() to scan_while/skip_horizontal_ws copies
+    // the entire source string per call — O(N) per token.
+    let mut global_fn_str_params = global_fn_str_params;
+    for (fn_name, param_idx) in [
+        ("scan_while", 0usize),
+        ("skip_horizontal_ws", 0),
+        ("scan_to_eol", 0),
+        ("scan_ident_rest", 0),
+    ] {
+        global_fn_str_params.insert((fn_name.to_string(), param_idx));
+    }
+
     // 4b. Build enum accessor fields (common fields across all variants)
     let enum_accessor_fields = type_codegen::build_enum_accessor_fields(&all_type_defs);
 
@@ -1407,20 +1421,20 @@ mod generated_tests {{
         // Prevent silent type size regressions in generated v2 types.
         // These bounds assume Node.transport and Node.config are boxed (R2).
         let node_size = std::mem::size_of::<crate::v2_core::Node>();
-        let typed_expr_size = std::mem::size_of::<crate::v2_core::TypedExpr>();
+        let expr_size = std::mem::size_of::<crate::v2_core::Expr>();
         assert!(
-            node_size <= 160,
-            "Node size regression: {{}} bytes (limit: 160). Check for unboxed rare fields.",
+            node_size <= 176,
+            "Node size regression: {{}} bytes (limit: 176). Check for unboxed rare fields.",
             node_size
         );
         assert!(
-            typed_expr_size <= 800,
-            "TypedExpr size regression: {{}} bytes (limit: 800). Node size likely regressed.",
-            typed_expr_size
+            expr_size <= 800,
+            "Expr size regression: {{}} bytes (limit: 800). Node size likely regressed.",
+            expr_size
         );
         // Print sizes for audit trail
         eprintln!("  Node: {{}} bytes", node_size);
-        eprintln!("  TypedExpr: {{}} bytes", typed_expr_size);
+        eprintln!("  Expr: {{}} bytes", expr_size);
     }}
 
     /// Profile the gist pipeline by stage: tokenize, parse, resolve.

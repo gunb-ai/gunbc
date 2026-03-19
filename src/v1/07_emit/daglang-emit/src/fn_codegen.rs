@@ -741,7 +741,7 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
                 arm_counts.push(arm_map);
             }
             for arm_map in &arm_counts {
-                for (name, &arm_count) in arm_map {
+                for (name, &_arm_count) in arm_map {
                     let current = counts.get(name).copied().unwrap_or(0);
                     let max_in_arms = arm_counts.iter()
                         .map(|m| m.get(name).copied().unwrap_or(0))
@@ -1260,6 +1260,7 @@ fn compile_resolved_record_expr(
 
 struct FunctionalUpdatePlan {
     source_var: String,
+    #[allow(dead_code)]
     identity_fields: Vec<String>,
     modified_fields: Vec<String>,
 }
@@ -1347,7 +1348,7 @@ fn detect_functional_update(
     let source_type_matches = ctx
         .ir_scope
         .get(source_var)
-        .and_then(|ty| named_type_from_ir(ty))
+        .and_then(named_type_from_ir)
         .or_else(|| ctx.param_types.get(source_var).cloned())
         .is_some_and(|ty_name| ty_name == struct_name);
     if !source_type_matches {
@@ -1702,8 +1703,8 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                         .any(|fields| fields.contains_key(field.as_str()));
                     // When the field name is ambiguous (exists on both enum and struct),
                     // use method call for chained field access where the intermediate
-                    // field returns a TypedExpr (e.g., x.typed.resolved_type,
-                    // ta.value.resolved_type for TypedNamedArg).
+                    // field returns an Expr (e.g., x.typed.resolved_type,
+                    // ta.value.resolved_type for NamedArg).
                     let use_accessor = !is_struct_field
                         || (matches!(receiver.as_ref(), ast::Expr::FieldAccess(_, inner) if inner == "typed" || inner == "value"));
                     if use_accessor {
@@ -2185,7 +2186,7 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             // - Non-Rc multi-use: clone
             let ir_type = ctx.ir_scope.get(name);
             let named = ir_type
-                .and_then(|ty| named_type_from_ir(ty))
+                .and_then(named_type_from_ir)
                 .or_else(|| ctx.param_types.get(name).cloned());
             let is_rc_named = named
                 .as_ref()
@@ -2228,6 +2229,8 @@ fn strip_clone(expr: code_ir::Expr) -> code_ir::Expr {
 
 /// SG-10: Strip trailing `.to_string()` from a compiled expression.
 /// Used in equality comparisons where &str == &str works directly.
+/// Context-free: strips from any expression (used for == operands where both
+/// sides can be &str).
 fn strip_to_string(expr: code_ir::Expr) -> code_ir::Expr {
     match expr {
         code_ir::Expr::MethodCall {
@@ -2237,6 +2240,48 @@ fn strip_to_string(expr: code_ir::Expr) -> code_ir::Expr {
         } if method == "to_string" && args.is_empty() => *receiver,
         other => other,
     }
+}
+
+/// SG-10: Convert a string arg from `s.to_string()` or `s.clone()` to `&s`.
+/// Used for runtime intrinsics that accept `impl AsRef<str>`.
+/// Strips the copy/clone and wraps in `&` to avoid O(N) string allocation.
+fn ref_string_arg(expr: code_ir::Expr) -> code_ir::Expr {
+    match expr {
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } if (method == "to_string" || method == "clone") && args.is_empty() => {
+            code_ir::Expr::Ref(receiver)
+        }
+        other => other,
+    }
+}
+
+/// SG-10: Strip .to_string() only when the variable is a known &str param.
+/// Used for runtime intrinsic args where we know the callee accepts &str.
+#[allow(dead_code)]
+fn strip_to_string_if_str_param(expr: code_ir::Expr, ctx: &CompileContext) -> code_ir::Expr {
+    if let code_ir::Expr::MethodCall {
+        ref receiver,
+        ref method,
+        ref args,
+    } = expr
+    {
+        if method == "to_string" && args.is_empty() {
+            if let code_ir::Expr::Var(ref name) = **receiver {
+                // Only strip if this variable is a known &str parameter
+                let raw_name = name.strip_prefix("r#").unwrap_or(name);
+                if ctx.str_param_names.contains(raw_name) {
+                    return match expr {
+                        code_ir::Expr::MethodCall { receiver, .. } => *receiver,
+                        _ => unreachable!(),
+                    };
+                }
+            }
+        }
+    }
+    expr
 }
 
 /// R8: Check if an AST expression evaluates to an Rc-wrapped type.
@@ -2690,7 +2735,9 @@ fn compile_intrinsic_call(
         }
         // v2 compiler intrinsics: string builtins
         "char_at" if args.len() == 2 => {
-            let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
+            // SG-10: Pass &s instead of s.to_string()/s.clone() — runtime accepts impl AsRef<str>.
+            // Strips .to_string()/.clone() and wraps in & to avoid O(N) string copy per call.
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
             let pos = resolve_named_or_positional(args, "pos", 1, ctx, counter);
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
@@ -2702,7 +2749,7 @@ fn compile_intrinsic_call(
             })
         }
         "string_length" if args.len() == 1 => {
-            let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2713,7 +2760,7 @@ fn compile_intrinsic_call(
             })
         }
         "substring" if args.len() == 3 => {
-            let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
             let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
             let end = resolve_named_or_positional(args, "end", 2, ctx, counter);
             Some(code_ir::Expr::Call {
@@ -2726,8 +2773,8 @@ fn compile_intrinsic_call(
             })
         }
         "string_contains" if args.len() == 2 => {
-            let s = resolve_named_or_positional(args, "s", 0, ctx, counter);
-            let substring = resolve_named_or_positional(args, "substring", 1, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let substring = ref_string_arg(resolve_named_or_positional(args, "substring", 1, ctx, counter));
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -6184,7 +6231,10 @@ fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashS
         .iter()
         .zip(loop_vars.iter())
         .map(|(param, lv)| {
-            // R3: &str params need .to_string() since TCO loop vars must own data
+            // R3: &str params convert to owned String for TCO loop variable.
+            // The one-time .to_string() is O(N) but runs once per function call.
+            // Per-iteration string copies are eliminated by ref_string_arg and
+            // fn_str_params at call sites.
             let init_expr = if str_param_names.contains(param) {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Var(param.clone())),
@@ -6203,6 +6253,15 @@ fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashS
         })
         .collect();
 
+    // SG-10: Detect which &str params are pass-through in ALL tail calls.
+    // Only these get the &String borrow optimization (avoids per-iteration clone).
+    let str_passthrough: HashSet<usize> = (0..param_names.len())
+        .filter(|&i| {
+            str_param_names.contains(&param_names[i])
+                && is_tco_param_passthrough(&plan.body, i, &param_names[i])
+        })
+        .collect();
+
     // Move (not clone) the loop variable into an immutable binding.
     // The tail-call path always reassigns __tco_p_X before `continue`,
     // so Rust allows moving it here. This keeps Rc refcount at 1,
@@ -6210,44 +6269,87 @@ fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashS
     // instead of falling back to a full clone.
     let rebind_stmts: Vec<code_ir::Stmt> = param_names
         .iter()
+        .enumerate()
         .zip(loop_vars.iter())
-        .map(|(param, lv)| code_ir::Stmt::Let {
+        .map(|((i, param), lv)| code_ir::Stmt::Let {
             name: param.clone(),
             mutable: false,
-            expr: code_ir::Expr::Var(lv.clone()),
+            // SG-10: For pass-through &str params, borrow from the String loop
+            // variable. Makes `source` a `&String` (deref to &str), avoiding
+            // per-iteration String clone. Only safe when the param is never
+            // modified in any tail call.
+            expr: if str_passthrough.contains(&i) {
+                code_ir::Expr::Ref(Box::new(code_ir::Expr::Var(lv.clone())))
+            } else {
+                code_ir::Expr::Var(lv.clone())
+            },
             ir_type: None,
         })
         .collect();
 
     let mut loop_body = rebind_stmts;
-    loop_body.extend(lower_tco_plan_stmts(&plan.body, &loop_vars));
+    loop_body.extend(lower_tco_plan_stmts(&plan.body, &loop_vars, param_names, str_param_names));
     preamble.push(code_ir::Stmt::Loop { body: loop_body });
     preamble
 }
 
-fn lower_tco_plan_stmts(stmts: &[TcoPlanStmt], loop_vars: &[String]) -> Vec<code_ir::Stmt> {
+/// Check if param at index `i` is always passed through unchanged in all Recur sites.
+/// Returns false if no Recur is found (can't determine passthrough without evidence).
+fn is_tco_param_passthrough(stmts: &[TcoPlanStmt], param_idx: usize, param_name: &str) -> bool {
+    let mut found_recur = false;
+    let result = is_tco_param_passthrough_inner(stmts, param_idx, param_name, &mut found_recur);
+    result && found_recur
+}
+
+fn is_tco_param_passthrough_inner(stmts: &[TcoPlanStmt], param_idx: usize, param_name: &str, found_recur: &mut bool) -> bool {
+    stmts.iter().all(|stmt| match stmt {
+        TcoPlanStmt::Recur(args) => {
+            *found_recur = true;
+            args.get(param_idx).is_some_and(|arg| {
+                matches!(arg, code_ir::Expr::Var(name) if name == param_name)
+                    || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
+                        if method == "to_string" && margs.is_empty()
+                        && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
+            })
+        }
+        TcoPlanStmt::Raw(_) | TcoPlanStmt::Expr(_) | TcoPlanStmt::Break(_) => true,
+        TcoPlanStmt::TailExpr(expr) => match expr {
+            TcoPlanExpr::If { then_body, else_body, .. } => {
+                is_tco_param_passthrough_inner(then_body, param_idx, param_name, found_recur)
+                    && else_body.as_ref().is_none_or(|b| is_tco_param_passthrough_inner(b, param_idx, param_name, found_recur))
+            }
+            TcoPlanExpr::Match { arms, .. } => {
+                arms.iter().all(|arm| is_tco_param_passthrough_inner(&arm.body, param_idx, param_name, found_recur))
+            }
+            TcoPlanExpr::Block(body) => is_tco_param_passthrough_inner(body, param_idx, param_name, found_recur),
+        },
+        TcoPlanStmt::BlockScope(body) => is_tco_param_passthrough_inner(body, param_idx, param_name, found_recur),
+    })
+}
+
+fn lower_tco_plan_stmts(stmts: &[TcoPlanStmt], loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
     stmts
         .iter()
-        .map(|stmt| lower_tco_plan_stmt(stmt, loop_vars))
+        .map(|stmt| lower_tco_plan_stmt(stmt, loop_vars, param_names, str_param_names))
         .collect()
 }
 
-fn lower_tco_plan_stmt(stmt: &TcoPlanStmt, loop_vars: &[String]) -> code_ir::Stmt {
+fn lower_tco_plan_stmt(stmt: &TcoPlanStmt, loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> code_ir::Stmt {
     match stmt {
         TcoPlanStmt::Raw(stmt) => stmt.clone(),
-        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(expr, loop_vars)),
+        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(expr, loop_vars, param_names, str_param_names)),
         TcoPlanStmt::TailExpr(expr) => {
-            code_ir::Stmt::TailExpr(lower_tco_plan_expr(expr, loop_vars))
+            code_ir::Stmt::TailExpr(lower_tco_plan_expr(expr, loop_vars, param_names, str_param_names))
         }
         TcoPlanStmt::BlockScope(body) => {
-            code_ir::Stmt::BlockScope(lower_tco_plan_stmts(body, loop_vars))
+            code_ir::Stmt::BlockScope(lower_tco_plan_stmts(body, loop_vars, param_names, str_param_names))
         }
         TcoPlanStmt::Break(expr) => code_ir::Stmt::Break(expr.clone()),
-        TcoPlanStmt::Recur(args) => lower_tco_recur(args, loop_vars),
+        TcoPlanStmt::Recur(args) => lower_tco_recur(args, loop_vars, param_names, str_param_names),
     }
 }
 
-fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String]) -> code_ir::Expr {
+fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> code_ir::Expr {
     match expr {
         TcoPlanExpr::If {
             cond,
@@ -6255,10 +6357,10 @@ fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String]) -> code_ir::Exp
             else_body,
         } => code_ir::Expr::If {
             cond: cond.clone(),
-            then_body: lower_tco_plan_stmts(then_body, loop_vars),
+            then_body: lower_tco_plan_stmts(then_body, loop_vars, param_names, str_param_names),
             else_body: else_body
                 .as_ref()
-                .map(|body| lower_tco_plan_stmts(body, loop_vars)),
+                .map(|body| lower_tco_plan_stmts(body, loop_vars, param_names, str_param_names)),
         },
         TcoPlanExpr::Match { expr, arms } => code_ir::Expr::Match {
             expr: expr.clone(),
@@ -6266,20 +6368,45 @@ fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String]) -> code_ir::Exp
                 .iter()
                 .map(|arm| code_ir::MatchArm {
                     pattern: arm.pattern.clone(),
-                    body: lower_tco_plan_stmts(&arm.body, loop_vars),
+                    body: lower_tco_plan_stmts(&arm.body, loop_vars, param_names, str_param_names),
                 })
                 .collect(),
         },
-        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(stmts, loop_vars)),
+        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(stmts, loop_vars, param_names, str_param_names)),
     }
 }
 
-fn lower_tco_recur(args: &[code_ir::Expr], loop_vars: &[String]) -> code_ir::Stmt {
+fn lower_tco_recur(
+    args: &[code_ir::Expr],
+    loop_vars: &[String],
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> code_ir::Stmt {
     let mut stmts = Vec::with_capacity(loop_vars.len() * 2 + 1);
     let temps: Vec<String> = (0..loop_vars.len()).map(|i| format!("__tco_{i}")).collect();
 
     for (i, arg) in args.iter().enumerate() {
         if i < loop_vars.len() {
+            // SG-10: Skip reassignment for passthrough &str params.
+            // The loop variable already holds the correct value — reassigning
+            // would copy the String via .to_string() on every iteration.
+            // SG-10: Skip reassignment for passthrough &str params.
+            // Matches both Var("source") and source.to_string() patterns.
+            if param_names.get(i).is_some_and(|p| str_param_names.contains(p)) {
+                let is_passthrough = match arg {
+                    code_ir::Expr::Var(name) => name == &param_names[i],
+                    code_ir::Expr::MethodCall { receiver, method, args: margs }
+                        if method == "to_string" && margs.is_empty() =>
+                    {
+                        matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
+                    }
+                    _ => false,
+                };
+                if is_passthrough {
+                    continue;
+                }
+            }
+
             // R3: Strip Ref(&) from TCO args — loop vars own their values,
             // so we need owned String, not &str references to temporaries.
             let owned_arg = match arg {
@@ -6297,6 +6424,21 @@ fn lower_tco_recur(args: &[code_ir::Expr], loop_vars: &[String]) -> code_ir::Stm
 
     for (i, loop_var) in loop_vars.iter().enumerate() {
         if i < args.len() {
+            // Skip passthrough &str params (no temp was created)
+            if param_names.get(i).is_some_and(|p| str_param_names.contains(p)) {
+                let is_passthrough = match &args[i] {
+                    code_ir::Expr::Var(name) => name == &param_names[i],
+                    code_ir::Expr::MethodCall { receiver, method, args: margs }
+                        if method == "to_string" && margs.is_empty() =>
+                    {
+                        matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
+                    }
+                    _ => false,
+                };
+                if is_passthrough {
+                    continue;
+                }
+            }
             stmts.push(code_ir::Stmt::Assign {
                 dest: code_ir::Expr::Var(loop_var.clone()),
                 value: code_ir::Expr::Var(temps[i].clone()),

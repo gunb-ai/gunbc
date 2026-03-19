@@ -10,36 +10,47 @@ should always be able to see through the name to the structure underneath.
 
 ---
 
-## Current State (2026-03-18)
+## Current State (2026-03-19)
 
 ### What works
 
 - **455 tests pass** — 363 daglang-emit + 92 v2-compiler-tests (10 ignored)
 - **Generated crate compiles** — `v2_crate_cargo_check` passes in <7s
+- **B3 Phase 1 complete** — TypedExpr (19 variants) eliminated. Expr carries
+  `resolved_type: Node?` directly. TypedNode merged into Node. One AST
+  instead of two halves expression memory for self-compile.
 - **A1 gist compile** — reconcile 0 errors, 30ms
-- **Cross-module func_env merging** — imported function signatures resolve
-- **Resource type registration** — service operations typed correctly
-- **Service operation field-name preservation** — Conj output types
 - **Self-parse + self-resolve** — compiled v2 compiler tokenizes, parses, and
   resolves all 9 .dag modules with zero errors
+- **R9 codegen ownership done** — force_clone removed, V5 functional record
+  update, SG-10 string comparison, type-directed clone
 - **String operations are O(1)** — char_at, string_length, substring, scan_*
 - **String params don't clone** — &str in generated code, Copy semantics
 - **Node shrunk from ~544b to ~120b** — transport/config boxed
 - **Interpreter list_push is O(1)** — Arc COW via try_unwrap
 - **TCO loops don't leak** — state moved, not cloned
 
-### What's blocked
+### What's next
 
-**Track A (self-hosting) needs R9 verification.** V5 (functional record
-update) and SG-10 (string comparison) landed. The v1 compiler now detects
-`Struct { f1: old.f1, f2: g(old.f2) }` and compiles to
-`Rc::try_unwrap + std::mem::take` for O(1) collection mutation. String
-equality comparisons no longer heap-allocate.
+**A4 (full self-compile pipeline)** is the next item on the critical path.
+B3 Phase 1 eliminated the TypedExpr parallel AST that caused the 4GB OOM
+during self-compile. The self-compile pipeline should now be testable:
 
-**Not yet verified:** `self_compile_all_modules` hasn't been run since V5
-landed. The `force_clone` flag is still active for non-V5 patterns, and
-SG-9 workarounds haven't been reverted yet. Next step: run the ignored
-integration tests to measure actual performance impact.
+1. **Verify self-compile completes** — run `self_compile_all_modules` to
+   confirm the OOM is fixed. If it still hangs, profile for the algorithmic
+   bottleneck (O(N^2) concat-accumulator patterns in .dag code, documented
+   in the postmortem below).
+2. **Verify emitted output** — the self-compiled Rust should `cargo check`.
+3. **If perf is acceptable:** proceed to A5 (bootstrap stage 0→1).
+
+### Known remaining risks for A4
+
+- **Algorithmic O(N^2) in .dag code** — `concat(acc, [x])` in folds,
+  `filter` lookups instead of `map_get`. These cause quadratic behavior
+  on the 15K-line self-compile workload. Documented in postmortem.
+- **Tokenizer 5.3s per module** — known slow path, separate from OOM.
+- **SG-9 workarounds not yet reverted** — TokPos extraction, branch-aware
+  use counting. Can be reverted after A4 verification.
 
 ### Baseline tests
 
@@ -68,28 +79,32 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
               ┌────────────────────┤
               │                    │
    ┌──────────▼──────────┐  ┌─────▼───────────────────────┐
-   │  Result<T,E> in DSL │  │  R9: Codegen Ownership      │
-   │  (Blocker 2)        │  │  V5+SG-10 DONE, verify     │
-   │  ← before A6        │  │  at scale, then SG-11/12   │
+   │  Result<T,E> in DSL │  │  B3 Ph1: DONE ✓             │
+   │  (Blocker 2)        │  │  TypedExpr eliminated,      │
+   │  ← before A6        │  │  Expr has resolved_type     │
    └─────────────────────┘  └──────────────┬──────────────┘
                                            │
                               ┌────────────▼────────────┐
-                              │  A1: Gist Compilation   │
-                              │  DONE ✓ (0 errors, 30ms)│
+                              │  R9: DONE ✓              │
+                              │  V5+SG-10+force_clone rm │
+                              └──────────────┬──────────┘
+                                             │
+                              ┌──────────────▼──────────┐
+                              │  A1: DONE ✓              │
+                              │  Gist compile 0 err 30ms │
                               └──────────────┬──────────┘
                                              │
                               ┌──────────────▼──────────┐
                               │  R8: DONE ✓              │
                               │  Rc-wrap + SG-6/7/8 fix  │
-                              │  (was >20min, now 30ms)  │
                               └─────────────────────────┘
 
 Parallel (no dependencies on critical path):
 
    ┌──────────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-   │ Namespace rename:    │  │ C3/C4: Language  │  │ D2-D4: Cost      │
-   │ Typed*→Reconciled*   │  │ emission from    │  │ analysis on real │
-   │ (~655 refs, mech.)   │  │ extdeps + CLI    │  │ code             │
+   │ B3 Phase 2:          │  │ C3/C4: Language  │  │ D2-D4: Cost      │
+   │ Expr→Node patterns   │  │ emission from    │  │ analysis on real │
+   │ (after A4 verified)  │  │ extdeps + CLI    │  │ code             │
    └──────────────────────┘  └──────────────────┘  └──────────────────┘
 
    ┌──────────────────────────────────────────────────────────────────┐
@@ -101,18 +116,18 @@ Parallel (no dependencies on critical path):
 
 Deferred (decided, waiting on prerequisites):
 
-   ┌──────────────────────┐  ┌──────────────────┐
-   │ Blocker 1: shared    │  │ B3: Expr→Node +  │
-   │ emitter walk (A →    │  │ delete validate_ │
-   │ needs v2 self-host)  │  │ no_unresolved()  │
-   └──────────────────────┘  └──────────────────┘
+   ┌──────────────────────┐
+   │ Blocker 1: shared    │
+   │ emitter walk (needs  │
+   │ v2 self-host)        │
+   └──────────────────────┘
 ```
 
-**Critical path:** A1 (done) → R9 verify → B3 → A4 → A5 → A6 (needs Blocker 2) → A7
+**Critical path:** A1 (done) → R9 (done) → B3 Ph1 (done) → **A4 (NOW)** → A5 → A6 (needs Blocker 2) → A7
 
 ---
 
-## Immediate Priority: R9 — Codegen Ownership (blocks A4)
+## R9 — Codegen Ownership (MOSTLY DONE)
 
 ### Done
 
@@ -123,18 +138,20 @@ Deferred (decided, waiting on prerequisites):
   Default for take). Debug assertion on sole ownership.
 - **SG-10 (string comparison):** `.to_string()` stripped from Eq/Ne
   operands. `&str == &str` comparisons are now zero-allocation.
+- **force_clone removed:** Replaced with type-directed clone (Rc-named,
+  Rc-collection, match-bound). No more global flag inflating refcounts.
 
-### Remaining
+### Remaining (parallel with A4, not blocking)
 
-- **Verify at scale:** Run `self_compile_all_modules` and `gist_compile`
-  with V5 active. Measure whether try_unwrap actually succeeds (the
-  debug_assert will tell us).
+- **Verify at scale:** Run `self_compile_all_modules` with V5 + B3 Phase 1.
+  B3 eliminated the OOM root cause; V5 + force_clone removal should give
+  O(1) collection mutations. First A4 run will verify both.
 - **SG-11:** `stacker::maybe_grow(512KB, 2MB)` on every function — 530
   calls. Fix: only wrap genuinely recursive functions (reuse TCO detection).
 - **SG-12:** Rc-wrapping Copy-sized types (SourceSpan = 16 bytes). Fix:
   extend `is_simple_enum` detection to small all-Copy structs.
-- **Revert SG-9 workarounds:** After verification, revert TokPos
-  extraction, fold_accum exemption, branch-aware use counting.
+- **Revert SG-9 workarounds:** After A4 verification, revert TokPos
+  extraction, branch-aware use counting.
 - **Widen V5:** Currently limited to all-takeable modified fields. Extend
   to handle non-takeable fields (e.g., by substituting source ident with
   __owned in compile context).
@@ -237,7 +254,7 @@ sources with 0 reconciler errors in 30ms. Emitted Rust compiles with
 
 | # | Violation | When | Notes |
 |---|-----------|------|-------|
-| F2 | `ItemInfo.kind` is String (`"fn"`, `"func"`, `"other"`) | B3 timeframe | Should be a closed enum `ItemKind = Fn \| Func \| Other`. Adding a kind = updating match arms (feature, not cost). |
+| F2 | `ItemInfo.kind` is String (`"fn"`, `"func"`, `"other"`) | B3 Phase 2 | Should be a closed enum `ItemKind = Fn \| Func \| Other`. Adding a kind = updating match arms (feature, not cost). |
 | F3 | `SemanticsCtx` uses all-String fields (backend, exec_model, etc.) | D2 timeframe | The comment "so new backends can be added without modifying this type" is exactly what the invariants warn against. Should be enums/newtypes. |
 | F4 | `PrimCost.op: String, model: String` in 07_complexity.dag | D2 timeframe | Typo in op name = silent wrong cost. Should be typed references. |
 | B4-val | `validate_no_unresolved()` is post-hoc validation (Invariant 9) | B3 | Already tracked. Delete when pipeline boundary types make unresolved structurally unrepresentable. |
@@ -339,7 +356,7 @@ or removed after R8 lands.
 
 | Item | What | Impact |
 |------|------|--------|
-| R1 | Type size assertions in generated tests | Node ≤ 160b, TypedExpr ≤ 800b enforced |
+| R1 | Type size assertions in generated tests | Node ≤ 176b, Expr ≤ 800b enforced |
 | R2 | Box Node.transport + Node.config | Node: ~544b → ~120b |
 | R3 | String params → &str in generated code | Eliminates ~4GB string clone traffic |
 | R4 | Interpreter list_push Arc COW | O(1) amortized append (30 files) |
@@ -365,8 +382,11 @@ or removed after R8 lands.
 - **E0:** Monolith artifact wrapper defined
 - **P0:** Stack overflow mitigated via stacker at re-entrant call sites
 - **Streams 2+3:** PortContract dissolved, Shape → Connective, dead code removed
-- **Node convergence (partial):** Field/Param/ResourceUse/TypedExpr/FuncSig/
-  TypedNode type fields are Node; all three emitters have node-based readers
+- **B3 Phase 1:** TypedExpr eliminated (19 variants + 5 helper types deleted).
+  Expr carries `resolved_type: Node?`. TypedNode merged into Node. Self-call
+  walkers rewritten. ~770 LOC across 8 .dag files.
+- **Node convergence (partial):** Field/Param/ResourceUse/FuncSig type fields
+  are Node; all three emitters have node-based readers
 
 ---
 
@@ -414,7 +434,7 @@ type distinction (e.g., `ResolvedNode` wrapper or equivalent).
 
 ## Track A: Self-Hosting
 
-**Dependencies:** R8 → A1 (done) → R9 verify → B3 → A4 → A5 → A6 (Blocker 2) → A7
+**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → **A4 (NOW)** → A5 → A6 (Blocker 2) → A7
 
 ### A1: Gist compilation
 
@@ -476,10 +496,25 @@ conversion.
 
 ### B2: Rename typecheck → infer (DONE)
 
-### B3: Expr → Node (NEXT ON CRITICAL PATH — blocks A4)
+### B3: Expr → Node
 
-Dissolve `Expr` and `Typed*` family into node patterns. After this, "typed"
-just means "return_type is filled in."
+#### Phase 1: Eliminate TypedExpr (DONE — unblocks A4)
+
+Added `resolved_type: Node?` to every Expr variant. Merged TypedNode into
+Node (added `is_self_recursive: Bool`, `has_non_tail_self_call: Bool`).
+Deleted TypedExpr (19 variants), TypedNamedArg, TypedMatchArm, TypedFieldInit,
+TypedStringPart, TypedNode. Rewrote self-call walkers to operate on Expr.
+
+~770 LOC across 8 .dag files + v1 bootstrap. Parser fills `resolved_type: none`,
+reconciler fills `Some { value: inferred_type }`. Emitters read `resolved_type.value`.
+
+**Impact:** Halves expression memory (one AST, not two). Eliminates the 4GB OOM
+root cause documented in the postmortem below.
+
+#### Phase 2: Expr → Node patterns (after A4 verified)
+
+Convert Expr variants to Node patterns. After this, "typed" just means
+"return_type is filled in" and the pipeline shape is `Node → Node → Node → TextFile`.
 
 Also: delete `validate_no_unresolved()` (Blocker 4). When pipeline boundary
 types are reworked here, make resolved-vs-unresolved a type distinction
@@ -491,8 +526,8 @@ Also: batch fix F2/F3/F4 (string-typed fields):
 - `PrimCost.op: String, model: String` → typed references
 
 **Acceptance:**
+- [x] `Typed*` family deleted (Phase 1)
 - [ ] `Expr` type deleted from `00_core.dag`
-- [ ] `Typed*` family deleted
 - [ ] `validate_no_unresolved()` deleted; replaced with structural type boundary
 - [ ] pipeline shape is `Node → Node → Node → TextFile`
 - [ ] No String-typed fields where a closed enum is appropriate
@@ -735,6 +770,57 @@ positions back to `.dag` spans.
 good enough for logic debugging, the only remaining need for cross-language
 mapping is production error tracing — which the source map + error
 remapper handles without a full debugger.
+
+---
+
+## Postmortem: Self-Compile OOM (2026-03-19)
+
+### Symptoms
+- `self_compile_all_modules`: SIGKILL at ~4GB, >60s
+- `gist_compile_all_modules`: 40ms, <100MB
+- Individual module compile: <3.5s each, no OOM
+- 13 modules together via `compile_sources_lenient`: OOM
+
+### Root causes found and fixed
+1. **Tokenizer infinite loop on non-ASCII** — em dash (U+2014) in comments
+   caused byte/char index mismatch in `char_at` runtime. Fix: replaced all
+   non-ASCII in .dag comments with ASCII equivalents. The `char_at` function
+   uses byte indexing for fast path but character indexing for fallback —
+   this is a known bug class (see `feedback_byte_char_position.md`).
+
+2. **Recursive types lost across imports** — `merge_envs` and `build_type_env`
+   set `recursive_types: []` when merging parent environments. Imported
+   recursive types (Node, Expr, TypedExpr) weren't in the merged
+   `recursive_type_set`, so `resolve_node_bounded` expanded them up to
+   depth 50 instead of stopping at the cycle marker. Fix: preserve
+   `recursive_types` and `recursive_type_set` during merges.
+
+3. **O(N^2) parent module traversals** — `typecheck_module` walked ALL
+   entries in `parent_index` (every previously typed module) to build
+   service_registry, service_locals, and variant_locals. With 13 modules,
+   this was 78 full walks × hundreds of items each. Fix: scope walks to
+   direct imports only (`resolved.resolved_imports`), matching the existing
+   func_env pattern.
+
+4. **Re-resolving already-resolved types** — `resolve_env_bindings` resolved
+   EVERY binding including imports already resolved by their parent module.
+   Fix: `local_names` parameter limits resolution to current module's types.
+
+### Root cause FIXED (B3 Phase 1)
+- **Cross-module reconcile memory explosion** — the reconciler created a
+  parallel typed AST (TypedExpr) mirroring every Expr node but adding
+  `resolved_type: Node` (~160 bytes) to each. For 13 modules with ~50K
+  expressions, this doubled the AST memory → 4GB OOM.
+
+  **Fix (2026-03-19):** Added `resolved_type: Node?` directly to Expr.
+  Deleted TypedExpr entirely. The reconciler fills in resolved_type on Expr
+  in-place. One AST instead of two. Memory drops from
+  O(expressions × type_size × 2) to O(expressions × type_size).
+
+  **Remaining risk:** algorithmic O(N^2) in .dag code (concat-accumulator
+  pattern, filter-based lookups) may still cause hangs on self-compile.
+  This is a CPU time issue, not a memory issue. Will be visible on first
+  A4 attempt.
 
 ---
 

@@ -19,23 +19,20 @@ module v2.compiler.emit
 
 import v2.std.core {
   Import,
-  Node, TypedNode,
+  Node,
   Connective, Conj, Disj,
   Field, Param, Expr,
+  Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
+  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp,
+  Block, Cast, ForEach, Index, Slice,
+  NamedArg, MatchArm, FieldInit,
+  StringPart, Text, Interpolation,
   LiteralValue, TransportBinding,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
-  NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  FuncSig,
-  TypedExpr, TypedLiteral, TypedVar, TypedFieldAccess, TypedCall,
-  TypedMethodCall, TypedMatch, TypedIf, TypedLet, TypedRecordLit,
-  TypedListLit, TypedBinOp, TypedUnaryOp, TypedLambda,
-  TypedStringInterp, TypedBlock, TypedCast, TypedForEach,
-  TypedIndex, TypedSlice,
-  TypedNamedArg, TypedMatchArm, TypedFieldInit,
-  TypedStringPart, TypedText, TypedInterpolation
+  FuncSig
 }
 
 import v2.compiler.reconcile {
@@ -108,12 +105,12 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 }
 
 // scope_after_expr: extend scope with let-binding type for bodyless lets.
-// With TypedExpr, the resolved type is read directly from the sub-expression.
-fn scope_after_expr(texpr: TypedExpr, scope: InferScope) -> InferScope {
+// With Expr, the resolved type is read directly from the sub-expression.
+fn scope_after_expr(texpr: Expr, scope: InferScope) -> InferScope {
   match texpr {
-    TypedLet { name: name, value: value, body: body, resolved_type: _, span: _ } =>
+    Let { name: name, value: value, body: body, resolved_type: _, span: _ } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: value.resolved_type)
+        extend_scope(scope: scope, name: name, resolved: value.resolved_type.value)
       } else {
         scope
       }
@@ -125,7 +122,7 @@ fn scope_after_expr(texpr: TypedExpr, scope: InferScope) -> InferScope {
 // Item registry
 // =========================================================================
 
-fn build_item_registry(items: List<TypedNode>) -> Map<String, ItemInfo> {
+fn build_item_registry(items: List<Node>) -> Map<String, ItemInfo> {
   let info_list = items |> map(item =>
     if item.body != none && item.uses |> count > 0 {
       // func or pattern (async, has uses)
@@ -155,7 +152,7 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> FuncSig? {
   map_get(scope.func_env.signatures, name)
 }
 
-fn typed_named_arg_matches(arg: TypedNamedArg, name: String) -> Bool {
+fn typed_named_arg_matches(arg: NamedArg, name: String) -> Bool {
   if arg.name == none {
     false
   } else {
@@ -163,7 +160,7 @@ fn typed_named_arg_matches(arg: TypedNamedArg, name: String) -> Bool {
   }
 }
 
-fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferScope) -> List<TypedNamedArg> {
+fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
   let has_unnamed = args |> any(arg => arg.name == none)
   if has_unnamed {
     return args
@@ -195,12 +192,12 @@ fn order_typed_call_args(args: List<TypedNamedArg>, func: String, scope: InferSc
   }
 }
 
-// Typed-receiver versions of service call detection -- for TypedExpr emit paths.
-fn is_typed_service_call_receiver(receiver: TypedExpr) -> Bool {
+// Typed-receiver versions of service call detection -- for Expr emit paths.
+fn is_typed_service_call_receiver(receiver: Expr) -> Bool {
   match receiver {
-    TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
+    FieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
       match b {
-        TypedVar { name: _, resolved_type: _, span: _ } => {
+        Var { name: _, resolved_type: _, span: _ } => {
           match f |> chars |> first {
             Some { value: ch } => is_upper(ch: ch)
             None => false
@@ -212,11 +209,11 @@ fn is_typed_service_call_receiver(receiver: TypedExpr) -> Bool {
   }
 }
 
-fn extract_typed_service_name(receiver: TypedExpr) -> String? {
+fn extract_typed_service_name(receiver: Expr) -> String? {
   match receiver {
-    TypedFieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
+    FieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
       match b {
-        TypedVar { name: ns, resolved_type: _, span: _ } => Some { value: concat(ns, ".", f) }
+        Var { name: ns, resolved_type: _, span: _ } => Some { value: concat(ns, ".", f) }
         _ => none
       }
     _ => none
@@ -240,20 +237,20 @@ fn unique_strings(items: List<String>) -> List<String> {
 }
 
 // =========================================================================
-// Typed service call collection -- TypedExpr walker
+// Typed service call collection -- Expr walker
 //
-// Same logic as collect_service_calls but operates on TypedExpr trees
+// Same logic as collect_service_calls but operates on Expr trees
 // directly, eliminating the need for typed_expr_to_expr conversion.
 // =========================================================================
 
-fn collect_typed_service_calls(texpr: TypedExpr) -> List<String> {
+fn collect_typed_service_calls(texpr: Expr) -> List<String> {
   let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
   result.result
 }
 
-fn collect_typed_service_calls_into(texpr: TypedExpr, acc: UniqueAccum) -> UniqueAccum {
+fn collect_typed_service_calls_into(texpr: Expr, acc: UniqueAccum) -> UniqueAccum {
   match texpr {
-    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } => {
+    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } => {
       let acc2 = if is_typed_service_call_receiver(receiver: r) {
         match extract_typed_service_name(receiver: r) {
           Some { value: service_name } =>
@@ -266,11 +263,11 @@ fn collect_typed_service_calls_into(texpr: TypedExpr, acc: UniqueAccum) -> Uniqu
       }
       collect_typed_service_calls_from_args_into(args: a, acc: acc2)
     }
-    TypedCall { func: _, args: a, resolved_type: _, span: _ } =>
+    Call { func: _, args: a, resolved_type: _, span: _ } =>
       collect_typed_service_calls_from_args_into(args: a, acc: acc)
-    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+    FieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
       collect_typed_service_calls_into(texpr: b, acc: acc)
-    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } => {
+    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } => {
       let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
       let acc3 = collect_typed_service_calls_into(texpr: t, acc: acc2)
       match e {
@@ -278,43 +275,43 @@ fn collect_typed_service_calls_into(texpr: TypedExpr, acc: UniqueAccum) -> Uniqu
         None => acc3
       }
     }
-    TypedLet { name: _, value: v, body: b, resolved_type: _, span: _ } => {
+    Let { name: _, value: v, body: b, resolved_type: _, span: _ } => {
       let acc2 = collect_typed_service_calls_into(texpr: v, acc: acc)
       match b {
         Some { value: bd } => collect_typed_service_calls_into(texpr: bd, acc: acc2)
         None => acc2
       }
     }
-    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+    Block { stmts: ss, resolved_type: _, span: _ } =>
       ss |> fold(init: acc, f: (a, s) => collect_typed_service_calls_into(texpr: s, acc: a))
-    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
+    Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
       let acc2 = collect_typed_service_calls_into(texpr: s, acc: acc)
       arm_list |> fold(init: acc2, f: (a, arm) => collect_typed_service_calls_into(texpr: arm.body, acc: a))
     }
-    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } => {
+    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } => {
       let acc2 = collect_typed_service_calls_into(texpr: l, acc: acc)
       collect_typed_service_calls_into(texpr: r, acc: acc2)
     }
-    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+    UnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
       collect_typed_service_calls_into(texpr: e, acc: acc)
-    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+    Lambda { params: _, body: bd, resolved_type: _, span: _ } =>
       collect_typed_service_calls_into(texpr: bd, acc: acc)
-    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
       fs |> fold(init: acc, f: (a, f) => collect_typed_service_calls_into(texpr: f.value, acc: a))
-    TypedListLit { elements: els, resolved_type: _, span: _ } =>
+    ListLit { elements: els, resolved_type: _, span: _ } =>
       els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
-    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
+    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
       collect_typed_service_calls_into(texpr: e, acc: acc)
-    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+    StringInterp { parts: ps, resolved_type: _, span: _ } =>
       ps |> fold(init: acc, f: (a, p) => match p {
-        TypedInterpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
+        Interpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
         _ => a
       })
     _ => acc
   }
 }
 
-fn collect_typed_service_calls_from_args_into(args: List<TypedNamedArg>, acc: UniqueAccum) -> UniqueAccum {
+fn collect_typed_service_calls_from_args_into(args: List<NamedArg>, acc: UniqueAccum) -> UniqueAccum {
   args |> fold(init: acc, f: (a, arg) => collect_typed_service_calls_into(texpr: arg.value, acc: a))
 }
 
@@ -382,27 +379,27 @@ fn emit_data_value_json(value: Expr) -> String {
   }
 }
 
-// Typed variant -- operates on TypedExpr directly, no typed_expr_to_expr needed.
-fn emit_typed_data_value_json(value: TypedExpr) -> String {
+// Typed variant -- operates on Expr directly, no typed_expr_to_expr needed.
+fn emit_typed_data_value_json(value: Expr) -> String {
   match value {
-    TypedLiteral { value: v, resolved_type: _, span: _ } => match v {
+    Literal { value: v, resolved_type: _, span: _ } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
       LitNull => "null"
     }
-    TypedListLit { elements: els, resolved_type: _, span: _ } => {
+    ListLit { elements: els, resolved_type: _, span: _ } => {
       let el_strs = els |> map(e => emit_typed_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } => {
+    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_typed_data_value_json(value: f.value))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    TypedVar { name: n, resolved_type: _, span: _ } => concat("\"", escape_json_string(s: n), "\"")
+    Var { name: n, resolved_type: _, span: _ } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }
@@ -820,7 +817,7 @@ fn is_type_alias_return_node(n: Node) -> Bool {
 }
 
 // Check if a typed node is a service item.
-fn is_service_item(item: TypedNode) -> Bool {
+fn is_service_item(item: Node) -> Bool {
   item.transport != none && item.children |> count > 0
 }
 
@@ -844,10 +841,10 @@ fn has_service_items(typed: TypedGraph) -> Bool {
 // Returns: "type_def", "type_alias", "function", "data_def",
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
-fn classify_typed_item(item: TypedNode) -> String {
+fn classify_typed_item(item: Node) -> String {
   if item.connective != none && item.transport == none {
     "type_def"
-  } else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type) {
+  } else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
     "type_alias"
   } else if item.body != none && item.type_annotation == none {
     "function"

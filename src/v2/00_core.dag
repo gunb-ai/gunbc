@@ -144,25 +144,25 @@ type ResourceUse {
 // =========================================================================
 
 type Expr
-  = Literal { value: LiteralValue, span: SourceSpan }
-  | Var { name: String, span: SourceSpan }
-  | FieldAccess { base: Expr, field: String, span: SourceSpan }
-  | Call { func: String, args: List<NamedArg>, span: SourceSpan }
-  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, span: SourceSpan }
-  | Match { scrutinee: Expr, arms: List<MatchArm>, span: SourceSpan }
-  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, span: SourceSpan }
-  | Let { name: String, value: Expr, body: Expr?, span: SourceSpan }
-  | RecordLit { type_name: String?, fields: List<FieldInit>, span: SourceSpan }
-  | ListLit { elements: List<Expr>, span: SourceSpan }
-  | BinOp { op: BinOpKind, left: Expr, right: Expr, span: SourceSpan }
-  | UnaryOp { op: UnaryOpKind, operand: Expr, span: SourceSpan }
-  | Lambda { params: List<String>, body: Expr, span: SourceSpan }
-  | StringInterp { parts: List<StringPart>, span: SourceSpan }
-  | Block { stmts: List<Expr>, span: SourceSpan }
-  | Cast { expr: Expr, target: Node, span: SourceSpan }
-  | ForEach { variable: String, collection: Expr, body: Expr, span: SourceSpan }
-  | Index { base: Expr, index: Expr, span: SourceSpan }
-  | Slice { base: Expr, start: Expr, end: Expr, span: SourceSpan }
+  = Literal { value: LiteralValue, resolved_type: Node?, span: SourceSpan }
+  | Var { name: String, resolved_type: Node?, span: SourceSpan }
+  | FieldAccess { base: Expr, field: String, resolved_type: Node?, span: SourceSpan }
+  | Call { func: String, args: List<NamedArg>, resolved_type: Node?, span: SourceSpan }
+  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, resolved_type: Node?, span: SourceSpan }
+  | Match { scrutinee: Expr, arms: List<MatchArm>, resolved_type: Node?, span: SourceSpan }
+  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, resolved_type: Node?, span: SourceSpan }
+  | Let { name: String, value: Expr, body: Expr?, resolved_type: Node?, span: SourceSpan }
+  | RecordLit { type_name: String?, fields: List<FieldInit>, resolved_type: Node?, span: SourceSpan }
+  | ListLit { elements: List<Expr>, resolved_type: Node?, span: SourceSpan }
+  | BinOp { op: BinOpKind, left: Expr, right: Expr, resolved_type: Node?, span: SourceSpan }
+  | UnaryOp { op: UnaryOpKind, operand: Expr, resolved_type: Node?, span: SourceSpan }
+  | Lambda { params: List<String>, body: Expr, resolved_type: Node?, span: SourceSpan }
+  | StringInterp { parts: List<StringPart>, resolved_type: Node?, span: SourceSpan }
+  | Block { stmts: List<Expr>, resolved_type: Node?, span: SourceSpan }
+  | Cast { expr: Expr, target: Node, resolved_type: Node?, span: SourceSpan }
+  | ForEach { variable: String, collection: Expr, body: Expr, resolved_type: Node?, span: SourceSpan }
+  | Index { base: Expr, index: Expr, resolved_type: Node?, span: SourceSpan }
+  | Slice { base: Expr, start: Expr, end: Expr, resolved_type: Node?, span: SourceSpan }
 
 type NamedArg { name: String?, value: Expr }
 type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
@@ -280,37 +280,6 @@ type Diagnostic {
 
 type Severity = Error | Warning
 
-// =========================================================================
-// Typed AST -- produced by the typechecker after expression-level inference.
-// Every expression carries its resolved type as a Node.
-// =========================================================================
-
-type TypedExpr
-  = TypedLiteral { value: LiteralValue, resolved_type: Node, span: SourceSpan }
-  | TypedVar { name: String, resolved_type: Node, span: SourceSpan }
-  | TypedFieldAccess { base: TypedExpr, field: String, resolved_type: Node, span: SourceSpan }
-  | TypedCall { func: String, args: List<TypedNamedArg>, resolved_type: Node, span: SourceSpan }
-  | TypedMethodCall { receiver: TypedExpr, method: String, args: List<TypedNamedArg>, resolved_type: Node, span: SourceSpan }
-  | TypedMatch { scrutinee: TypedExpr, arms: List<TypedMatchArm>, resolved_type: Node, span: SourceSpan }
-  | TypedIf { condition: TypedExpr, then_branch: TypedExpr, else_branch: TypedExpr?, resolved_type: Node, span: SourceSpan }
-  | TypedLet { name: String, value: TypedExpr, body: TypedExpr?, resolved_type: Node, span: SourceSpan }
-  | TypedRecordLit { type_name: String?, fields: List<TypedFieldInit>, resolved_type: Node, span: SourceSpan }
-  | TypedListLit { elements: List<TypedExpr>, resolved_type: Node, span: SourceSpan }
-  | TypedBinOp { op: BinOpKind, left: TypedExpr, right: TypedExpr, resolved_type: Node, span: SourceSpan }
-  | TypedUnaryOp { op: UnaryOpKind, operand: TypedExpr, resolved_type: Node, span: SourceSpan }
-  | TypedLambda { params: List<String>, body: TypedExpr, resolved_type: Node, span: SourceSpan }
-  | TypedStringInterp { parts: List<TypedStringPart>, resolved_type: Node, span: SourceSpan }
-  | TypedBlock { stmts: List<TypedExpr>, resolved_type: Node, span: SourceSpan }
-  | TypedCast { expr: TypedExpr, target: Node, resolved_type: Node, span: SourceSpan }
-  | TypedForEach { variable: String, collection: TypedExpr, body: TypedExpr, resolved_type: Node, span: SourceSpan }
-  | TypedIndex { base: TypedExpr, index: TypedExpr, resolved_type: Node, span: SourceSpan }
-  | TypedSlice { base: TypedExpr, start: TypedExpr, end: TypedExpr, resolved_type: Node, span: SourceSpan }
-
-type TypedNamedArg { name: String?, value: TypedExpr }
-type TypedMatchArm { pattern: MatchPattern, guard: TypedExpr?, body: TypedExpr }
-type TypedFieldInit { name: String, value: TypedExpr }
-type TypedStringPart = TypedText { value: String } | TypedInterpolation { expr: TypedExpr }
-
 type FuncSig {
   name: String
   params: List<Param>
@@ -354,173 +323,158 @@ type Node {
   properties: List<FieldInit>
   type_annotation: Node?
   config: ServiceConfig?
-}
-
-type TypedNode {
-  name: String
-  span: SourceSpan
-  children: List<TypedNode>
-  connective: Connective?
-  params: List<Param>
-  return_type: Node
-  uses: List<ResourceUse>
-  body: TypedExpr?
-  transport: TransportBinding?
-  properties: List<FieldInit>
-  type_annotation: Node?
-  config: ServiceConfig?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 }
 
 // =========================================================================
-// Typed self-call detection -- TypedExpr walkers
+// Self-call detection -- Expr walkers
 //
-// These functions walk TypedExpr trees to detect self-recursive calls
-// and non-tail self-calls. Used by the typechecker to pre-compute
-// is_self_recursive and has_non_tail_self_call on TypedNode.
+// These functions walk Expr trees to detect self-recursive calls
+// and non-tail self-calls. Used by the reconciler to compute
+// is_self_recursive and has_non_tail_self_call on Node.
 // =========================================================================
 
-fn typed_expr_has_self_call(texpr: TypedExpr, fn_name: String) -> Bool {
-  match texpr {
-    TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
+fn expr_has_self_call(expr: Expr, fn_name: String) -> Bool {
+  match expr {
+    Call { func: f, args: a, resolved_type: _, span: _ } =>
       if f == fn_name { true }
-      else { a |> any(na => typed_expr_has_self_call(texpr: na.value, fn_name: fn_name)) }
-    TypedVar { name: _, resolved_type: _, span: _ } => false
-    TypedLiteral { value: _, resolved_type: _, span: _ } => false
-    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
-    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: r, fn_name: fn_name)
-        || a |> any(na => typed_expr_has_self_call(texpr: na.value, fn_name: fn_name))
-    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: s, fn_name: fn_name)
-        || arm_list |> any(arm => typed_expr_has_self_call(texpr: arm.body, fn_name: fn_name))
-    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: c, fn_name: fn_name)
-        || typed_expr_has_self_call(texpr: t, fn_name: fn_name)
+      else { a |> any(na => expr_has_self_call(expr: na.value, fn_name: fn_name)) }
+    Var { name: _, resolved_type: _, span: _ } => false
+    Literal { value: _, resolved_type: _, span: _ } => false
+    FieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: r, fn_name: fn_name)
+        || a |> any(na => expr_has_self_call(expr: na.value, fn_name: fn_name))
+    Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: s, fn_name: fn_name)
+        || arm_list |> any(arm => expr_has_self_call(expr: arm.body, fn_name: fn_name))
+    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: c, fn_name: fn_name)
+        || expr_has_self_call(expr: t, fn_name: fn_name)
         || match e {
-          Some { value: eb } => typed_expr_has_self_call(texpr: eb, fn_name: fn_name)
+          Some { value: eb } => expr_has_self_call(expr: eb, fn_name: fn_name)
           None => false
         }
-    TypedLet { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: v, fn_name: fn_name)
+    Let { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: v, fn_name: fn_name)
         || match bd {
-          Some { value: b } => typed_expr_has_self_call(texpr: b, fn_name: fn_name)
+          Some { value: b } => expr_has_self_call(expr: b, fn_name: fn_name)
           None => false
         }
-    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
-      ss |> any(s => typed_expr_has_self_call(texpr: s, fn_name: fn_name))
-    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: l, fn_name: fn_name)
-        || typed_expr_has_self_call(texpr: r, fn_name: fn_name)
-    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: e, fn_name: fn_name)
-    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: bd, fn_name: fn_name)
-    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
-      fs |> any(fi => typed_expr_has_self_call(texpr: fi.value, fn_name: fn_name))
-    TypedListLit { elements: els, resolved_type: _, span: _ } =>
-      els |> any(el => typed_expr_has_self_call(texpr: el, fn_name: fn_name))
-    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+    Block { stmts: ss, resolved_type: _, span: _ } =>
+      ss |> any(s => expr_has_self_call(expr: s, fn_name: fn_name))
+    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: l, fn_name: fn_name)
+        || expr_has_self_call(expr: r, fn_name: fn_name)
+    UnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: e, fn_name: fn_name)
+    Lambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: bd, fn_name: fn_name)
+    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> any(fi => expr_has_self_call(expr: fi.value, fn_name: fn_name))
+    ListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> any(el => expr_has_self_call(expr: el, fn_name: fn_name))
+    StringInterp { parts: ps, resolved_type: _, span: _ } =>
       ps |> any(p => match p {
-        TypedInterpolation { expr: e } => typed_expr_has_self_call(texpr: e, fn_name: fn_name)
-        TypedText { value: _ } => false
+        Interpolation { expr: e } => expr_has_self_call(expr: e, fn_name: fn_name)
+        Text { value: _ } => false
       })
-    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: e, fn_name: fn_name)
-    TypedForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: c, fn_name: fn_name)
-        || typed_expr_has_self_call(texpr: bd, fn_name: fn_name)
-    TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
-        || typed_expr_has_self_call(texpr: i, fn_name: fn_name)
-    TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
-      typed_expr_has_self_call(texpr: b, fn_name: fn_name)
-        || typed_expr_has_self_call(texpr: s, fn_name: fn_name)
-        || typed_expr_has_self_call(texpr: e, fn_name: fn_name)
+    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: e, fn_name: fn_name)
+    ForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: c, fn_name: fn_name)
+        || expr_has_self_call(expr: bd, fn_name: fn_name)
+    Index { base: b, index: i, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+        || expr_has_self_call(expr: i, fn_name: fn_name)
+    Slice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: b, fn_name: fn_name)
+        || expr_has_self_call(expr: s, fn_name: fn_name)
+        || expr_has_self_call(expr: e, fn_name: fn_name)
   }
 }
 
-fn typed_has_non_tail_self_call(texpr: TypedExpr, fn_name: String, in_tail: Bool) -> Bool {
-  match texpr {
-    TypedCall { func: f, args: a, resolved_type: _, span: _ } =>
+fn expr_has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bool {
+  match expr {
+    Call { func: f, args: a, resolved_type: _, span: _ } =>
       if f == fn_name {
         if in_tail == false { true }
-        else { a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false)) }
+        else { a |> any(na => expr_has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false)) }
       } else {
-        a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
+        a |> any(na => expr_has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false))
       }
-    TypedVar { name: _, resolved_type: _, span: _ } => false
-    TypedLiteral { value: _, resolved_type: _, span: _ } => false
-    TypedFieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-    TypedMethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
-        || a |> any(na => typed_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
-    TypedIf { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+    Var { name: _, resolved_type: _, span: _ } => false
+    Literal { value: _, resolved_type: _, span: _ } => false
+    FieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: r, fn_name: fn_name, in_tail: false)
+        || a |> any(na => expr_has_non_tail_self_call(expr: na.value, fn_name: fn_name, in_tail: false))
+    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
       // Condition is never tail; branches inherit tail context.
-      typed_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
-        || typed_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)
+      expr_has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
+        || expr_has_non_tail_self_call(expr: t, fn_name: fn_name, in_tail: in_tail)
         || match e {
-          Some { value: eb } => typed_has_non_tail_self_call(texpr: eb, fn_name: fn_name, in_tail: in_tail)
+          Some { value: eb } => expr_has_non_tail_self_call(expr: eb, fn_name: fn_name, in_tail: in_tail)
           None => false
         }
-    TypedMatch { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
+    Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
       // Scrutinee is never tail; arm bodies inherit tail context.
-      typed_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
+      expr_has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
         || arm_list |> any(arm =>
-          typed_has_non_tail_self_call(texpr: arm.body, fn_name: fn_name, in_tail: in_tail))
-    TypedLet { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
+          expr_has_non_tail_self_call(expr: arm.body, fn_name: fn_name, in_tail: in_tail))
+    Let { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
       // Value is never tail; body (continuation) inherits tail context.
-      typed_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
+      expr_has_non_tail_self_call(expr: v, fn_name: fn_name, in_tail: false)
         || match bd {
-          Some { value: b } => typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)
+          Some { value: b } => expr_has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: in_tail)
           None => false
         }
-    TypedBlock { stmts: ss, resolved_type: _, span: _ } =>
+    Block { stmts: ss, resolved_type: _, span: _ } =>
       // Only the last statement in a block is in tail position.
       let ss_count = ss |> count
       if ss_count == 0 { false }
       else {
         let init_bad = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
-          |> any(p => typed_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false))
+          |> any(p => expr_has_non_tail_self_call(expr: p.second, fn_name: fn_name, in_tail: false))
         let last_bad = match ss |> last {
           Some { value: last_expr } =>
-            typed_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail)
+            expr_has_non_tail_self_call(expr: last_expr, fn_name: fn_name, in_tail: in_tail)
           None => false
         }
         init_bad || last_bad
       }
-    TypedBinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: l, fn_name: fn_name, in_tail: false)
-        || typed_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
-    TypedUnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-    TypedLambda { params: _, body: bd, resolved_type: _, span: _ } =>
+    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: l, fn_name: fn_name, in_tail: false)
+        || expr_has_non_tail_self_call(expr: r, fn_name: fn_name, in_tail: false)
+    UnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    Lambda { params: _, body: bd, resolved_type: _, span: _ } =>
       // Lambda bodies are separate contexts -- self-calls inside are non-tail.
-      typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
-    TypedRecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
-      fs |> any(fi => typed_has_non_tail_self_call(texpr: fi.value, fn_name: fn_name, in_tail: false))
-    TypedListLit { elements: els, resolved_type: _, span: _ } =>
-      els |> any(el => typed_has_non_tail_self_call(texpr: el, fn_name: fn_name, in_tail: false))
-    TypedStringInterp { parts: ps, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: bd, fn_name: fn_name, in_tail: false)
+    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> any(fi => expr_has_non_tail_self_call(expr: fi.value, fn_name: fn_name, in_tail: false))
+    ListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> any(el => expr_has_non_tail_self_call(expr: el, fn_name: fn_name, in_tail: false))
+    StringInterp { parts: ps, resolved_type: _, span: _ } =>
       ps |> any(p => match p {
-        TypedInterpolation { expr: e } => typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-        TypedText { value: _ } => false
+        Interpolation { expr: e } => expr_has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+        Text { value: _ } => false
       })
-    TypedCast { expr: e, target: _, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-    TypedForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
-        || typed_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
-    TypedIndex { base: b, index: i, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-        || typed_has_non_tail_self_call(texpr: i, fn_name: fn_name, in_tail: false)
-    TypedSlice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
-      typed_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-        || typed_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
-        || typed_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
+    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    ForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
+        || expr_has_non_tail_self_call(expr: bd, fn_name: fn_name, in_tail: false)
+    Index { base: b, index: i, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+        || expr_has_non_tail_self_call(expr: i, fn_name: fn_name, in_tail: false)
+    Slice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
+        || expr_has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
+        || expr_has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
   }
 }
