@@ -798,6 +798,8 @@ fn emit_module(
         struct_field_ir_types: struct_field_ir_types.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
+        fold_accum_fresh_name: None,
+        fold_accum_is_rc: false,
         enum_accessor_fields: enum_accessor_fields.clone(),
         optional_return_fns: optional_return_fns.clone(),
         anonymous_record_targets: std::collections::HashMap::new(),
