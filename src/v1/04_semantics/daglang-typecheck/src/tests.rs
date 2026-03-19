@@ -1340,6 +1340,9 @@ service SharedService {
         (
             "sample/main.dag",
             r#"module sample.main
+import sample.first
+import sample.second
+
 func run(path: String) -> { body: String } {
   let response = SharedService.read(path: path)
   return { body: response.body }
@@ -2573,4 +2576,284 @@ pipeline ci {
         TypeError::PipelineStageWhenTypeMismatch { pipeline, stage, got }
             if pipeline == "ci" && stage == "build" && got == "Int"
     )));
+}
+
+#[test]
+fn aliased_module_import_makes_services_accessible() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("aliased import should make services accessible");
+}
+
+#[test]
+fn module_qualified_service_call_resolves() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified service call should resolve");
+}
+
+#[test]
+fn module_qualified_call_disambiguates_same_name_services() {
+    // Both modules export SharedService with incompatible shapes.
+    // vendor.alpha: read(path: String) -> { body: String }
+    // vendor.beta:  read(query: Int)   -> { count: Int }
+    // The module-qualified call vendor.alpha.SharedService.read(path: path)
+    // must resolve to alpha's contract. If the resolver picks the wrong one,
+    // typecheck rejects the parameter name or return field mismatch.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = vendor.alpha.SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified call should disambiguate same-name services from both imports");
+}
+
+#[test]
+fn selective_import_registers_only_requested_service_contracts() {
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
+"#,
+        ),
+    ]);
+    let main_module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "sample.main")
+        .expect("sample.main should exist");
+    let registry = scope_service_call_registry(main_module, &graph.modules);
+    let shared_service = registry
+        .by_key
+        .get("SharedService.read")
+        .expect("selective import should register SharedService.read")
+        .as_ref()
+        .expect("SharedService.read should resolve to a single provider");
+
+    assert_eq!(shared_service.arity, 1);
+    assert_eq!(shared_service.params.len(), 1);
+    assert!(shared_service.params.contains("path"));
+    assert_eq!(
+        shared_service.outputs.get("body"),
+        Some(&ValueType::Named("String".to_string()))
+    );
+    assert!(registry.by_key.contains_key("vendor.alpha.SharedService.read"));
+    assert!(!registry.by_key.contains_key("vendor.beta.SharedService.read"));
+}
+
+#[test]
+fn selective_import_disambiguates_same_name_services() {
+    // Happy-path integration coverage for selective imports. The registry test
+    // above proves beta's SharedService is excluded structurally.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("selective import should disambiguate same-name services");
+}
+
+#[test]
+fn alias_qualified_service_call_resolves_single_provider() {
+    // `storage.FsStorage.read` resolves when only one provider exists because
+    // the short lookup key `FsStorage.read` matches. The alias prefix `storage`
+    // is not registered as a disambiguation key — the call succeeds via the
+    // bare-name fallback, not alias resolution.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("alias-qualified spelling should resolve when only one provider exists");
+}
+
+#[test]
+fn alias_qualified_service_call_does_not_disambiguate_conflicting_providers() {
+    // Two modules export FsStorage with incompatible shapes. The alias-qualified
+    // call `storage.FsStorage.read` does NOT disambiguate because aliases are not
+    // registered as lookup key prefixes — only bare (`FsStorage.read`) and
+    // full-module-qualified (`extdeps.storage.FsStorage.read`) keys exist.
+    // With two providers, the bare key becomes ambiguous and the alias-qualified
+    // key `storage.FsStorage.read` has no registry entry.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let result = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    );
+    assert!(
+        result.is_err(),
+        "alias-qualified spelling must not disambiguate conflicting providers"
+    );
 }

@@ -283,6 +283,37 @@ pub enum PrimitiveOpKind {
     },
 }
 
+impl PrimitiveOpKind {
+    /// Returns the required input port names for expression-primitive kinds.
+    ///
+    /// This is the single authority for which ports each pure-value primitive
+    /// requires. Non-expression kinds (source nodes, I/O, metadata) return
+    /// `None` — they have their own dedicated resolvers.
+    ///
+    /// `GetField` also returns `None` because its single input port is
+    /// validated by name from the node schema at resolve time (it cannot be
+    /// named statically).
+    pub fn required_input_ports(&self) -> Option<Vec<String>> {
+        match self {
+            PrimitiveOpKind::BinaryOp { .. } => Some(vec!["left".into(), "right".into()]),
+            PrimitiveOpKind::UnaryOp { .. } => Some(vec!["operand".into()]),
+            PrimitiveOpKind::Conditional => Some(vec!["condition".into(), "then".into()]),
+            PrimitiveOpKind::NullCoalesce => Some(vec!["value".into(), "default".into()]),
+            PrimitiveOpKind::MatchDispatch { .. } => Some(vec!["scrutinee".into()]),
+            PrimitiveOpKind::StringInterpolate { input_ports, .. } => Some(input_ports.clone()),
+            PrimitiveOpKind::RecordConstruct { fields } => Some(fields.clone()),
+            PrimitiveOpKind::VariantConstruct { fields, .. } => Some(fields.clone()),
+            PrimitiveOpKind::ListConstruct { count } => {
+                Some((0..*count).map(|i| format!("elem_{i}")).collect())
+            }
+            // GetField: validated separately (single input from node schema)
+            PrimitiveOpKind::GetField { .. } => None,
+            // Non-expression kinds: source, I/O, metadata
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrimitiveLiteral {
     String(String),

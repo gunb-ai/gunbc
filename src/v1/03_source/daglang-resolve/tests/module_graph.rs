@@ -1484,17 +1484,20 @@ fn real_corpus_has_no_unused_imports() {
 
     let mut violations = Vec::new();
     for module in &graph.modules {
+        let module_path = module.module_path.as_dotted();
         let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
         for u in unused {
             let binding_desc = match &u.binding {
                 Some(name) => format!("binding `{name}` from `{}`", u.module_path),
                 None => format!("module `{}`", u.module_path),
             };
-            violations.push(format!(
-                "{}: unused import {}",
-                module.module_path.as_dotted(),
-                binding_desc,
-            ));
+            if module_path.starts_with("extdeps.languages.") {
+                violations.push(format!(
+                    "{module_path} should not carry unused imports after std.languages cleanup: unused import {binding_desc}",
+                ));
+            } else {
+                violations.push(format!("{module_path}: unused import {binding_desc}"));
+            }
         }
     }
     assert!(

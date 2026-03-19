@@ -20,7 +20,7 @@ type RequestedTokenType = RequestAccessToken | RequestIdToken
 
 // -- Grant type ----------------------------------------------------
 
-type StsGrantType = TokenExchange
+type StsGrantType = TokenExchange {}
 
 // -- Token exchange request ----------------------------------------
 
@@ -45,8 +45,6 @@ type StsTokenResponse {
 // -- Constants -----------------------------------------------------
 
 data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
-
-data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 
 data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
 

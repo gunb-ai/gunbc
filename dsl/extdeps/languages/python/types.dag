@@ -15,11 +15,6 @@
 
 module extdeps.languages.python.types
 
-import std.languages {
-  TypeMapping, NamingConvention, NamingCase,
-  TypeDefinitionSyntax, LiteralSyntax
-}
-
 // -- Type system model -----------------------------------------------
 // Ref: Python Reference 3 "Data model"
 

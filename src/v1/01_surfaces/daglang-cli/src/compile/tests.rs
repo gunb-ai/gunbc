@@ -2,9 +2,11 @@ use super::*;
 use crate::pipeline::PipelineContext;
 use daglang_derive::derive_artifacts;
 use daglang_lower::{
-    CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata, ServiceTransportClass,
-    TransportObligation,
+    lower_to_output, CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata,
+    ServiceTransportClass, TransportObligation,
 };
+use daglang_typecheck::TypecheckOptions;
+use daglang_resolve::{ModuleGraph, ResolvedModule};
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;
@@ -3455,6 +3457,9 @@ service SharedService {
     std::fs::write(
         root.join("sample/main.dag"),
         r#"module sample.main
+import sample.first
+import sample.second
+
 func run(path: String) -> { body: String } {
   let response = SharedService.read(path: path)
   return { body: response.body }
@@ -3503,4 +3508,497 @@ fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
     assert!(error.contains("ambiguous call target `render`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_disambiguates_same_name_services_with_explicit_bindings_or_qualification() {
+    let root = unique_temp_root("disambiguate_same_name_services");
+    let write_source = |relative: &str, content: &str| {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("fixture file should have parent"))
+            .expect("failed to create fixture parent directory");
+        std::fs::write(path, content).expect("failed to write fixture source");
+    };
+
+    write_source(
+        "vendor/alpha.dag",
+        r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}
+"#,
+    );
+    write_source(
+        "vendor/beta.dag",
+        r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}
+"#,
+    );
+    write_source(
+        "sample/ambiguous.dag",
+        r#"module sample.ambiguous
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}
+"#,
+    );
+    write_source(
+        "sample/selective.dag",
+        r#"module sample.selective
+import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}
+"#,
+    );
+    write_source(
+        "sample/qualified.dag",
+        r#"module sample.qualified
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = vendor.alpha.SharedService.read(path: path)
+  return { body: response.body }
+}
+"#,
+    );
+
+    let ambiguous = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("sample/ambiguous.dag")),
+    };
+    let error =
+        check_from_context(&ambiguous).expect_err("bare service spelling should stay ambiguous");
+    assert_typecheck_stage_error(&error);
+    assert!(error.contains("ambiguous service call `SharedService.read`"));
+
+    let selective = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("sample/selective.dag")),
+    };
+    check_from_context(&selective)
+        .expect("selective binding should disambiguate same-name services at compile level");
+
+    let qualified = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("sample/qualified.dag")),
+    };
+    check_from_context(&qualified)
+        .expect("module-qualified call should disambiguate same-name services at compile level");
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+// ---------------------------------------------------------------------------
+// Hermetic compile-path tests (in-memory ModuleGraph, no filesystem access)
+// ---------------------------------------------------------------------------
+
+/// Build a `ModuleGraph` from in-memory source pairs for hermetic tests.
+fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
+    let modules = sources
+        .iter()
+        .map(|(path, source)| {
+            let ast = daglang_syntax::parser::parse(source).expect("source should parse");
+            let module_path = ast
+                .module_path
+                .as_ref()
+                .map(|module| module.node.clone())
+                .expect("module declarations are required in tests");
+            ResolvedModule {
+                path: PathBuf::from(path),
+                ast,
+                module_path,
+                dependencies: Vec::new(),
+                source: source.to_string(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let module_lookup: std::collections::HashMap<_, _> = modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect();
+    let mut modules = modules;
+    for module in &mut modules {
+        module.dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .collect::<Vec<_>>();
+    }
+    ModuleGraph { modules }
+}
+
+#[test]
+fn check_module_qualified_service_call_resolves_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("module-qualified service call should pass compile-level check");
+}
+
+#[test]
+fn check_aliased_import_service_call_resolves_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("aliased import should make services accessible at compile level");
+}
+
+#[test]
+fn check_alias_qualified_spelling_resolves_single_provider_hermetic() {
+    // `storage.FsStorage.read` resolves when only one provider exists because
+    // the short lookup key `FsStorage.read` matches. The alias prefix `storage`
+    // is not registered as a disambiguation key.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("alias-qualified spelling should resolve single provider at compile level");
+}
+
+#[test]
+fn check_alias_qualified_spelling_does_not_disambiguate_hermetic() {
+    // Two modules export FsStorage. The alias-qualified call
+    // `storage.FsStorage.read` does NOT disambiguate — the alias is not
+    // registered as a lookup key prefix, so the bare key collision causes
+    // failure.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let result = check_from_module_graph(graph);
+    assert!(
+        result.is_err(),
+        "alias-qualified spelling must not disambiguate conflicting providers at compile level"
+    );
+}
+
+#[test]
+fn check_module_qualified_call_disambiguates_same_name_services_hermetic() {
+    // Both modules export SharedService with incompatible shapes.
+    // vendor.alpha: read(path: String) -> { body: String }
+    // vendor.beta:  read(query: Int)   -> { count: Int }
+    // The module-qualified call vendor.alpha.SharedService.read(path: path)
+    // must resolve to alpha's contract. If the resolver picks the wrong one,
+    // typecheck rejects the parameter name or return field mismatch.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = vendor.alpha.SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("module-qualified call should disambiguate same-name services at compile level");
+}
+
+#[test]
+fn check_selective_import_disambiguates_same_name_services_hermetic() {
+    // Compile-level happy-path coverage for selective imports. The structural
+    // registry exclusion is asserted in daglang-typecheck tests.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(query: Int) -> { count: Int }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    check_from_module_graph(graph)
+        .expect("selective import should disambiguate same-name services at compile level");
+}
+
+// ---------------------------------------------------------------------------
+// Hermetic compile-path tests: typecheck → lower (proves downstream pipeline
+// agrees with the same service-call contract that typecheck accepts)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn compile_module_qualified_service_call_lowers_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let typed = daglang_typecheck::typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified service call should typecheck");
+
+    let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
+    let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
+        gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
+            module,
+            service_metadata,
+            ..
+        }) => {
+            module == "extdeps.storage"
+                && service_metadata.service == "FsStorage"
+                && service_metadata.operation == "read"
+        }
+        _ => false,
+    });
+    assert!(
+        has_fs_storage_transport,
+        "lowered DAG should contain a transport node for extdeps.storage FsStorage.read"
+    );
+}
+
+#[test]
+fn compile_aliased_import_service_call_lowers_hermetic() {
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let typed = daglang_typecheck::typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("aliased import service call should typecheck");
+
+    let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
+    let has_fs_storage_transport = output.dag.nodes.iter().any(|node| match &node.body {
+        gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
+            module,
+            service_metadata,
+            ..
+        }) => {
+            module == "extdeps.storage"
+                && service_metadata.service == "FsStorage"
+                && service_metadata.operation == "read"
+        }
+        _ => false,
+    });
+    assert!(
+        has_fs_storage_transport,
+        "lowered DAG should contain a transport node for extdeps.storage FsStorage.read via aliased import"
+    );
+}
+
+#[test]
+fn compile_module_qualified_lowers_correct_provider_with_conflicting_fsstorage_hermetic() {
+    // Two modules export FsStorage with incompatible shapes.
+    // Module-qualified call `extdeps.storage.FsStorage.read` disambiguates
+    // through both typecheck and lowering. The lowered transport node must
+    // carry module = "extdeps.storage". If lowering drops the import binding
+    // and merely emits some `FsStorage.read` transport, the module assertion
+    // catches it.
+    let graph = module_graph_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = extdeps.storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let typed = daglang_typecheck::typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("module-qualified call should disambiguate conflicting FsStorage providers");
+
+    let output = lower_to_output(&typed).expect("lowered DAG should build from typed project");
+
+    // Assert the correct provider's transport was emitted.
+    let has_correct_provider_transport = output.dag.nodes.iter().any(|node| match &node.body {
+        gunbc_ir::NodeBody::Opaque(LoweredOp::Transport {
+            module,
+            service_metadata,
+            ..
+        }) => {
+            module == "extdeps.storage"
+                && service_metadata.service == "FsStorage"
+                && service_metadata.operation == "read"
+        }
+        _ => false,
+    });
+    assert!(
+        has_correct_provider_transport,
+        "lowered transport must come from extdeps.storage, not extdeps.legacy"
+    );
 }
