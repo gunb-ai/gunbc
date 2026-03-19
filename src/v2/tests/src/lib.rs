@@ -3392,6 +3392,7 @@ fn example(items: List<String>) -> Int {
 
         let output = std::process::Command::new("cargo")
             .arg("check")
+            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
