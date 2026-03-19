@@ -5252,11 +5252,9 @@ fn infer_expr_type(
             }),
         // list_push(list, item) → same type as the list argument
         Expr::Call(name, args) if name == "list_push" && args.len() == 2 => {
-            let (list_ty, list_errors) =
-                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            let (list_ty, list_errors) = infer_expr_type(&args[0].1, local_bindings, infer_context);
             errors.extend(list_errors);
-            let (_, item_errors) =
-                infer_expr_type(&args[1].1, local_bindings, infer_context);
+            let (_, item_errors) = infer_expr_type(&args[1].1, local_bindings, infer_context);
             errors.extend(item_errors);
             list_ty
         }

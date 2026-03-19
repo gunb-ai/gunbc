@@ -67,7 +67,10 @@ func run() -> { token: String, url: String } {
 
     let output =
         check_from_context(&context).expect("check should succeed with imported service modules");
-    assert_eq!(output.parsed_files, 3, "expected target file plus imported service modules");
+    assert_eq!(
+        output.parsed_files, 3,
+        "expected target file plus imported service modules"
+    );
 
     write_source(
         "sample/main.dag",
@@ -81,7 +84,8 @@ func run() -> { token: String, url: String } {
 "#,
     );
 
-    let error = check_from_context(&context).expect_err("check should fail without service modules");
+    let error =
+        check_from_context(&context).expect_err("check should fail without service modules");
     assert!(
         matches!(error, CompileError::Diagnostics(_)),
         "expected CompileError::Diagnostics, got: {error}"

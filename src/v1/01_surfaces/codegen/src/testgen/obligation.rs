@@ -1505,13 +1505,8 @@ mod tests {
     fn test_resource_obligations() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(
-            Node::opaque(
-                "env",
-                vec![],
-                vec![clippy_tool_port()],
-                (),
-            )
-            .with_kind(NodeKind::ToolEnvironment),
+            Node::opaque("env", vec![], vec![clippy_tool_port()], ())
+                .with_kind(NodeKind::ToolEnvironment),
         );
         dag.add_node(
             Node::opaque(
