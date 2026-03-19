@@ -146,7 +146,7 @@ pub fn validate_conflicting_claims(spec: &WorkflowSpec) -> Vec<WorkflowAdmission
             errors.extend(
                 resource_errors
                     .into_iter()
-                    .map(WorkflowAdmissionError::ResourceAccess),
+                    .map(workflow_resource_access_error),
             );
             return errors;
         }
@@ -216,6 +216,10 @@ fn derive_declared_claims(
         claims.dedup();
     }
     Ok(claims_by_node)
+}
+
+fn workflow_resource_access_error(error: ResourceAccessError) -> WorkflowAdmissionError {
+    WorkflowAdmissionError::ResourceAccessMetadataInvalid { error }
 }
 
 fn mode_rank(mode: gunbc_ir::AccessMode) -> u8 {
@@ -484,8 +488,8 @@ mod tests {
 
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
         let registry = registry_for_two_nodes(vec![UnitClaim::write("db")], vec![]);
-        let errors =
-            validate_workflow_admission(&spec, &registry).expect_err("missing resource_id must fail");
+        let errors = validate_workflow_admission(&spec, &registry)
+            .expect_err("missing resource_id must fail");
 
         assert!(errors.iter().any(|error| matches!(
             error,
@@ -562,10 +566,9 @@ mod tests {
         let errors = validate_conflicting_claims(&spec);
         assert_eq!(errors.len(), 1);
         match &errors[0] {
-            WorkflowAdmissionError::ResourceAccess(ResourceAccessError::MissingResourceId {
-                node_id,
-                port_name,
-            }) => {
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
+                error: ResourceAccessError::MissingResourceId { node_id, port_name },
+            } => {
                 assert_eq!(node_id.0, "wf.a");
                 assert_eq!(port_name, "db_conn");
                 assert_eq!(
@@ -573,9 +576,9 @@ mod tests {
                     "resource input 'db_conn' on node 'wf.a' has resource_access but no resource_id"
                 );
             }
-            other => panic!(
-                "expected ResourceAccessMetadataInvalid(MissingResourceId), got {other:?}"
-            ),
+            other => {
+                panic!("expected ResourceAccessMetadataInvalid(MissingResourceId), got {other:?}")
+            }
         }
     }
 

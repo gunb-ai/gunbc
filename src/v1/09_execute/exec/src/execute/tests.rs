@@ -2630,6 +2630,45 @@ fn validate_node_kinds_accepts_pure_kindless_node() {
 }
 
 #[test]
+fn validate_node_kinds_accepts_pure_platform_ports() {
+    let mut dag: Dag<Produce> = Dag::new();
+    dag.add_node(Node::opaque(
+        "pure_platform",
+        vec![port("platform", "Platform")],
+        vec![port("platform", "Platform")],
+        Produce::echo(),
+    ));
+    let result = validate_node_kinds_for_interception(&dag);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_node_kinds_accepts_pure_timestamp_ports() {
+    let mut dag: Dag<Produce> = Dag::new();
+    dag.add_node(Node::opaque(
+        "pure_timestamp",
+        vec![port("timestamp", "Timestamp")],
+        vec![port("timestamp", "Timestamp")],
+        Produce::echo(),
+    ));
+    let result = validate_node_kinds_for_interception(&dag);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_node_kinds_accepts_pure_credential_ports() {
+    let mut dag: Dag<Produce> = Dag::new();
+    dag.add_node(Node::opaque(
+        "pure_credential",
+        vec![port("credential", "Credential")],
+        vec![port("credential", "Credential")],
+        Produce::echo(),
+    ));
+    let result = validate_node_kinds_for_interception(&dag);
+    assert!(result.is_ok());
+}
+
+#[test]
 fn validate_node_kinds_accepts_classified_transport_node() {
     let mut dag: Dag<Produce> = Dag::new();
     dag.add_node(

@@ -564,7 +564,9 @@ pub fn eval_builtin_call(
             }
         }
         "map_values" => match args.first() {
-            Some((_, Value::Map(map))) => Ok(Value::List(Arc::new(map.values().cloned().collect()))),
+            Some((_, Value::Map(map))) => {
+                Ok(Value::List(Arc::new(map.values().cloned().collect())))
+            }
             _ => Err(EvalError::new("'map_values' requires a map")),
         },
         "map_keys" => match args.first() {
@@ -794,8 +796,8 @@ pub fn eval_builtin_call(
             if args.len() >= 2 {
                 match &args[0].1 {
                     Value::List(list) => {
-                        let mut v = Arc::try_unwrap(list.clone())
-                            .unwrap_or_else(|rc| (*rc).clone());
+                        let mut v =
+                            Arc::try_unwrap(list.clone()).unwrap_or_else(|rc| (*rc).clone());
                         v.push(args[1].1.clone());
                         Ok(Value::List(Arc::new(v)))
                     }
@@ -849,9 +851,6 @@ mod tests {
             result.is_some(),
             "known builtin `concat` should be recognized"
         );
-        assert_eq!(
-            result.unwrap().unwrap(),
-            Value::Str("hello world".into()),
-        );
+        assert_eq!(result.unwrap().unwrap(), Value::Str("hello world".into()),);
     }
 }

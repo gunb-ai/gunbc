@@ -356,8 +356,14 @@ mod tests {
             },
         };
         let inputs = [
-            ("record".to_string(), Value::Map(std::collections::BTreeMap::new())),
-            ("other".to_string(), Value::Map(std::collections::BTreeMap::new())),
+            (
+                "record".to_string(),
+                Value::Map(std::collections::BTreeMap::new()),
+            ),
+            (
+                "other".to_string(),
+                Value::Map(std::collections::BTreeMap::new()),
+            ),
         ]
         .into_iter()
         .collect();
@@ -598,11 +604,10 @@ mod tests {
                     "string_interpolate",
                     PrimitiveOpKind::StringInterpolate {
                         parts: vec!["hello ".to_string(), String::new()],
-                        input_ports: vec!["name".to_string()],
                     },
                 ),
                 HashMap::new(),
-                "StringInterpolate: missing required input port `name`; available inputs: []",
+                "StringInterpolate: missing required input port `interp_0`; available inputs: []",
             ),
             (
                 primitive_op(

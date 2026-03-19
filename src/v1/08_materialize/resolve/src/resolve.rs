@@ -81,19 +81,6 @@ fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
         .collect()
 }
 
-fn missing_declared_input_ports<'a>(
-    referenced_ports: impl IntoIterator<Item = &'a str>,
-    inputs: &[Port],
-) -> Vec<&'a str> {
-    let mut missing = referenced_ports
-        .into_iter()
-        .filter(|port| !inputs.iter().any(|input| input.name.0 == *port))
-        .collect::<Vec<_>>();
-    missing.sort_unstable();
-    missing.dedup();
-    missing
-}
-
 fn declared_input_port_names(inputs: &[Port]) -> Vec<&str> {
     let mut declared = inputs
         .iter()
@@ -354,7 +341,11 @@ impl Executable for SubDagDispatchOp {
                 continue;
             }
             if port_name.0 == PortName::DEPS {
-                input_mocks.set_input(node_id.0, port_name.0, Value::List(std::sync::Arc::new(Vec::new())));
+                input_mocks.set_input(
+                    node_id.0,
+                    port_name.0,
+                    Value::List(std::sync::Arc::new(Vec::new())),
+                );
             }
         }
         let execution = gunbc_test::boundary::execute_via_engine_with_inputs(
@@ -1069,6 +1060,7 @@ fn resolve_primitive(
                 kind: kind.clone(),
                 output_port,
                 has_else,
+                input_port: None,
             }))
         }
     }
@@ -2128,7 +2120,11 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(std::sync::Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)])),
+            Value::List(std::sync::Arc::new(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])),
         );
         let outputs = result
             .execute(inputs)
@@ -2514,7 +2510,10 @@ mod tests {
         // parts has 3 entries → ports are interp_0, interp_1 (derived, not stored)
         let node = Node::opaque(
             "interp",
-            vec![Port::new("interp_0", "String"), Port::new("interp_1", "Int")],
+            vec![
+                Port::new("interp_0", "String"),
+                Port::new("interp_1", "Int"),
+            ],
             vec![Port::new("result", "String")],
             LoweredOp::Primitive {
                 module: "test".to_string(),

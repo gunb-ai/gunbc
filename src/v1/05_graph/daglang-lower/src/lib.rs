@@ -302,7 +302,11 @@ impl PrimitiveOpKind {
             PrimitiveOpKind::Conditional => Some(vec!["condition".into(), "then".into()]),
             PrimitiveOpKind::NullCoalesce => Some(vec!["value".into(), "default".into()]),
             PrimitiveOpKind::MatchDispatch { .. } => Some(vec!["scrutinee".into()]),
-            PrimitiveOpKind::StringInterpolate { input_ports, .. } => Some(input_ports.clone()),
+            PrimitiveOpKind::StringInterpolate { parts } => Some(
+                (0..parts.len().saturating_sub(1))
+                    .map(|i| format!("interp_{i}"))
+                    .collect(),
+            ),
             PrimitiveOpKind::RecordConstruct { fields } => Some(fields.clone()),
             PrimitiveOpKind::VariantConstruct { fields, .. } => Some(fields.clone()),
             PrimitiveOpKind::ListConstruct { count } => {
@@ -12037,9 +12041,7 @@ fn synthesize_string_interpolate(
         LoweredOp::Primitive {
             module: ctx.module_name.to_string(),
             name: format!("string_interpolate::{}::{}", ctx.item_name, output_name),
-            kind: PrimitiveOpKind::StringInterpolate {
-                parts,
-            },
+            kind: PrimitiveOpKind::StringInterpolate { parts },
         },
     ));
 

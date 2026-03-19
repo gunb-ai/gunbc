@@ -4,7 +4,8 @@
 //!
 //! DryRun mode intercepts **transport execution nodes** (nodes that consume
 //! `TransportRequest` values), **environment nodes** (nodes that emit
-//! types classified as effectful by `SemanticCarrierKind::is_effectful()`),
+//! handle-style outputs such as `FilesystemHandle`, `NetworkHandle`, or
+//! `ToolHandle`),
 //! **tool consumer nodes** (nodes that consume `ToolHandle`), and
 //! **nodes with explicit mocks for all outputs**.
 //! Intercepted nodes require **explicit mocks for every output port** — there
@@ -903,7 +904,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 .collect();
 
             if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
-                unpack_out.insert(loop_info.element_port.clone(), Value::List(Arc::new(results)));
+                unpack_out.insert(
+                    loop_info.element_port.clone(),
+                    Value::List(Arc::new(results)),
+                );
             }
 
             entries.extend(body_entries);
@@ -1452,7 +1456,10 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
             .filter_map(|entry| entry.outputs.get("result").cloned())
             .collect();
         if let Some(unpack_out) = state.node_outputs.get_mut(&loop_info.unpack_id.0) {
-            unpack_out.insert(loop_info.element_port.clone(), Value::List(Arc::new(results)));
+            unpack_out.insert(
+                loop_info.element_port.clone(),
+                Value::List(Arc::new(results)),
+            );
         }
 
         state.loop_entries[idx].extend(body_entries);
@@ -2109,19 +2116,33 @@ fn semantic_carrier_kind(type_id: &TypeId) -> gunbc_ir::SemanticCarrierKind {
         .semantic_carrier_kind(type_id)
 }
 
-/// Pre-flight check: error if any `Pure` node has effectful port patterns.
+fn pure_node_effectful_port_requires_non_pure_kind(kind: gunbc_ir::SemanticCarrierKind) -> bool {
+    kind.is_effectful()
+        && !matches!(
+            kind,
+            gunbc_ir::SemanticCarrierKind::Credential
+                | gunbc_ir::SemanticCarrierKind::Platform
+                | gunbc_ir::SemanticCarrierKind::Timestamp
+        )
+}
+
+/// Pre-flight check: error if any `Pure` node has port patterns that imply a
+/// missing non-pure node classification under the current lowering rules.
 ///
 /// This is only a guardrail for nodes left at `kind: Pure`; DryRun
 /// interception itself is still driven by `NodeKind`. Semantic carrier
 /// classification here goes through the core `TypeRegistry` so
-/// container-wrapped core types resolve before checking `is_effectful()`.
+/// container-wrapped core types resolve before checking whether a port should
+/// force a non-pure node kind. Scalar semantic carriers like `Timestamp`,
+/// `Platform`, and `Credential` remain valid on pure nodes.
 fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
     for node in &dag.nodes {
         if node.kind != NodeKind::Pure {
             continue;
         }
         for port in &node.inputs {
-            if semantic_carrier_kind(&port.type_id).is_effectful() {
+            if pure_node_effectful_port_requires_non_pure_kind(semantic_carrier_kind(&port.type_id))
+            {
                 return Err(ExecError::new(format!(
                     "node '{}' has kind: Pure but has effectful input '{}' (type: {})",
                     node.id.0, port.name.0, port.type_id.0
@@ -2135,7 +2156,8 @@ fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError
             }
         }
         for port in &node.outputs {
-            if semantic_carrier_kind(&port.type_id).is_effectful() {
+            if pure_node_effectful_port_requires_non_pure_kind(semantic_carrier_kind(&port.type_id))
+            {
                 return Err(ExecError::new(format!(
                     "node '{}' has kind: Pure but has effectful output '{}' (type: {})",
                     node.id.0, port.name.0, port.type_id.0

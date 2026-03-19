@@ -207,7 +207,10 @@ pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
         .collect();
 
     let mut inputs = HashMap::new();
-    inputs.insert("transports".to_string(), Value::List(std::sync::Arc::new(transports)));
+    inputs.insert(
+        "transports".to_string(),
+        Value::List(std::sync::Arc::new(transports)),
+    );
 
     let result = stdlib.eval_fn("classify_transports", &inputs);
 

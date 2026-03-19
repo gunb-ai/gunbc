@@ -5,9 +5,9 @@ use daglang_lower::{
     lower_to_output, CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata,
     ServiceTransportClass, TransportObligation,
 };
-use daglang_typecheck::TypecheckOptions;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
-use gunbc_exec::{lower, ExecutionMode};
+use daglang_typecheck::TypecheckOptions;
+use gunbc_exec::{lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;
 use gunbc_test::{unique_temp_dir, unique_temp_file};
@@ -413,6 +413,34 @@ fn resolve_lowered_dag_skips_pipeline_nodes() {
 }
 
 #[test]
+fn compile_resolve_dry_run_pure_platform_helper_succeeds() {
+    let (context, root) = temp_dag_context(
+        "pure_platform_helper_dir",
+        r#"module sample.main
+fn normalize(platform: Platform) -> Platform { platform }
+
+func run() -> { platform: Platform } {
+  platform = normalize(platform: "Linux")
+  return { platform: platform }
+}
+"#,
+    );
+
+    let output = compile_from_context(&context).expect("compile should succeed");
+    let lowered = lower(&output.lowered_dag).expect("lowered DAG should flatten function subdags");
+    let resolved =
+        resolve_lowered_dag(&lowered.dag).expect("resolved DAG should build from lowered graph");
+    let result = execute_resolved_dag(&resolved, ExecutionMode::DryRun(BoundaryMocks::new()), None);
+    assert!(
+        result.is_ok(),
+        "dry run should execute pure Platform helper without preflight failure: {:?}",
+        result.err()
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_resolve_execute_end_to_end_function_body_expressions() {
     let (context, root) = temp_dag_context(
         "function_body_e2e_dir",
@@ -573,22 +601,32 @@ fn string_interpolate_ir_through_resolve_execute() {
             module: "test".into(),
             name: "string_interpolate::greeting".into(),
             kind: PrimitiveOpKind::StringInterpolate {
-                parts: vec![
-                    "hello ".into(),
-                    ", you have ".into(),
-                    " items".into(),
-                ],
+                parts: vec!["hello ".into(), ", you have ".into(), " items".into()],
             },
         },
     ));
 
     // Edges: lit_name.value → interp.interp_0, lit_count.value → interp.interp_1
-    dag.add_edge(Edge::new("lit_name", "value", "string_interpolate_greeting", "interp_0"));
-    dag.add_edge(Edge::new("lit_count", "value", "string_interpolate_greeting", "interp_1"));
+    dag.add_edge(Edge::new(
+        "lit_name",
+        "value",
+        "string_interpolate_greeting",
+        "interp_0",
+    ));
+    dag.add_edge(Edge::new(
+        "lit_count",
+        "value",
+        "string_interpolate_greeting",
+        "interp_1",
+    ));
 
     let resolved = resolve_lowered_dag(&dag).expect("resolve should succeed");
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
-    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "execution should succeed: {:?}",
+        result.err()
+    );
 
     let log = result.unwrap();
     let entry = log
@@ -597,7 +635,10 @@ fn string_interpolate_ir_through_resolve_execute() {
         .find(|e| e.node_id == "string_interpolate_greeting")
         .expect("StringInterpolate node should have executed");
     assert_eq!(
-        entry.outputs.get("result").and_then(gunbc_ir::Value::as_str),
+        entry
+            .outputs
+            .get("result")
+            .and_then(gunbc_ir::Value::as_str),
         Some("hello Alice, you have 42 items"),
         "StringInterpolate must produce correct output via derived port names"
     );
