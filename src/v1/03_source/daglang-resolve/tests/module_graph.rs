@@ -1503,3 +1503,30 @@ fn real_corpus_has_no_unused_imports() {
         violations.join("\n  ")
     );
 }
+
+#[test]
+fn language_extdep_std_language_cleanup_has_no_unused_imports() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
+
+    for module_path in [
+        "extdeps.languages.go.runtime",
+        "extdeps.languages.go.types",
+        "extdeps.languages.python.types",
+        "extdeps.languages.rust.runtime",
+        "extdeps.languages.rust.types",
+    ] {
+        let module = graph
+            .modules
+            .iter()
+            .find(|module| module.module_path.as_dotted() == module_path)
+            .unwrap_or_else(|| panic!("expected {module_path} in real dsl graph"));
+        let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
+        assert!(
+            unused.is_empty(),
+            "{module_path} should not carry unused imports after std.languages cleanup: {unused:?}"
+        );
+    }
+}
