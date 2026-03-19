@@ -3424,7 +3424,7 @@ fn example(items: List<String>) -> Int {
 
         let output = generated_crate_cargo(&tmp_dir)
             .arg("check")
-            .arg("--locked")
+            .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
 

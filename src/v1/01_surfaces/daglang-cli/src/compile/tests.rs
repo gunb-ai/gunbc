@@ -517,6 +517,92 @@ func run() -> { report: String } {
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+/// End-to-end regression: StringInterpolate IR through resolve → execute.
+///
+/// Constructs a multi-node DAG matching the exact IR that `synthesize_string_interpolate`
+/// produces: upstream literal-source nodes feed into a `PrimitiveOpKind::StringInterpolate`
+/// node whose input ports are named `interp_0`, `interp_1`, …  Port names are derived
+/// from `parts.len()` (single authority) — no redundant `input_ports` field.
+///
+/// Ref: https://github.com/gunb-ai/gunbc/pull/168#issuecomment-4082964551
+#[test]
+fn string_interpolate_ir_through_resolve_execute() {
+    use daglang_lower::PrimitiveOpKind;
+
+    // Build a 3-node DAG: two literal sources → one StringInterpolate → output.
+    let mut dag = Dag::new();
+
+    // Upstream: literal "Alice"
+    dag.add_node(Node::opaque(
+        "lit_name",
+        vec![],
+        vec![Port::scalar("value", "String")],
+        LoweredOp::Primitive {
+            module: "test".into(),
+            name: "literal::name".into(),
+            kind: PrimitiveOpKind::CallLiteralSource {
+                literal: daglang_lower::PrimitiveLiteral::String("Alice".into()),
+            },
+        },
+    ));
+
+    // Upstream: literal 42
+    dag.add_node(Node::opaque(
+        "lit_count",
+        vec![],
+        vec![Port::scalar("value", "String")],
+        LoweredOp::Primitive {
+            module: "test".into(),
+            name: "literal::count".into(),
+            kind: PrimitiveOpKind::CallLiteralSource {
+                literal: daglang_lower::PrimitiveLiteral::Int(42),
+            },
+        },
+    ));
+
+    // StringInterpolate: "hello {interp_0}, you have {interp_1} items"
+    // parts has 3 entries → 2 input ports: interp_0, interp_1 (derived, not stored).
+    dag.add_node(Node::opaque(
+        "string_interpolate_greeting",
+        vec![
+            Port::scalar("interp_0", "Any"),
+            Port::scalar("interp_1", "Any"),
+        ],
+        vec![Port::scalar("result", "String")],
+        LoweredOp::Primitive {
+            module: "test".into(),
+            name: "string_interpolate::greeting".into(),
+            kind: PrimitiveOpKind::StringInterpolate {
+                parts: vec![
+                    "hello ".into(),
+                    ", you have ".into(),
+                    " items".into(),
+                ],
+            },
+        },
+    ));
+
+    // Edges: lit_name.value → interp.interp_0, lit_count.value → interp.interp_1
+    dag.add_edge(Edge::new("lit_name", "value", "string_interpolate_greeting", "interp_0"));
+    dag.add_edge(Edge::new("lit_count", "value", "string_interpolate_greeting", "interp_1"));
+
+    let resolved = resolve_lowered_dag(&dag).expect("resolve should succeed");
+    let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
+    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+
+    let log = result.unwrap();
+    let entry = log
+        .entries
+        .iter()
+        .find(|e| e.node_id == "string_interpolate_greeting")
+        .expect("StringInterpolate node should have executed");
+    assert_eq!(
+        entry.outputs.get("result").and_then(gunbc_ir::Value::as_str),
+        Some("hello Alice, you have 42 items"),
+        "StringInterpolate must produce correct output via derived port names"
+    );
+}
+
 #[test]
 fn render_triplets_json_includes_service_semantic_metadata_when_present() {
     let mut dag = Dag::new();
