@@ -132,6 +132,8 @@ pub struct CompileContext {
     pub current_return_ir_type: Option<IrType>,
     /// Struct/variant name → [(field_name, IrType)] for populating `Expr::Struct.field_types`.
     pub struct_field_ir_types: HashMap<String, Vec<(String, IrType)>>,
+    /// Indexed field IrType lookup used by hot-path field/type inference helpers.
+    pub struct_field_ir_type_lookup: HashMap<String, HashMap<String, IrType>>,
     /// Variable name → number of `Ident` references in the current function body.
     /// Used to elide `.clone()` when a variable is referenced only once (move suffices).
     pub use_counts: HashMap<String, usize>,
@@ -541,6 +543,7 @@ impl CompileContext {
             current_return_ir_type: None,
             ir_scope: HashMap::new(),
             struct_field_ir_types: HashMap::new(),
+            struct_field_ir_type_lookup: HashMap::new(),
             use_counts: HashMap::new(),
             fold_accum_name: None,
             enum_accessor_fields: HashMap::new(),
@@ -1380,14 +1383,7 @@ fn detect_functional_update(
 /// Check if a field type supports std::mem::take (has Default).
 /// Rc<Vec<T>> and Rc<HashMap<K,V>> do; other Rc<T> types generally don't.
 fn field_supports_take(struct_name: &str, field_name: &str, ctx: &CompileContext) -> bool {
-    ctx.struct_field_ir_types
-        .get(struct_name)
-        .and_then(|fields| {
-            fields
-                .iter()
-                .find(|(n, _)| n == field_name)
-                .map(|(_, ty)| ty)
-        })
+    struct_field_ir_type(struct_name, field_name, ctx)
         .is_some_and(|ty| matches!(ty, IrType::Generic(name, _) if name == "List" || name == "Map"))
 }
 
@@ -4769,10 +4765,8 @@ fn compile_match_arm(
                         type_bindings.push((bind_name.clone(), ft.clone()));
                     }
                 }
-                if let Some(field_types) = ctx.struct_field_ir_types.get(variant_name.as_str()) {
-                    if let Some((_, ty)) = field_types.iter().find(|(name, _)| name == field_name) {
-                        ir_type_bindings.push((bind_name.clone(), ty.clone()));
-                    }
+                if let Some(ty) = struct_field_ir_type(variant_name, field_name, ctx) {
+                    ir_type_bindings.push((bind_name.clone(), ty.clone()));
                 }
             }
         }
@@ -5646,11 +5640,7 @@ fn infer_known_field_ir_type(
 ) -> Option<IrType> {
     match receiver_type {
         IrType::Optional(inner) if field == "value" => Some((**inner).clone()),
-        IrType::Named(name) => ctx
-            .struct_field_ir_types
-            .get(name)
-            .and_then(|fields| fields.iter().find(|(field_name, _)| field_name == field))
-            .map(|(_, ty)| ty.clone()),
+        IrType::Named(name) => struct_field_ir_type(name, field, ctx).cloned(),
         IrType::Record(fields) => fields
             .iter()
             .find(|(field_name, _)| field_name == field)
@@ -5884,6 +5874,39 @@ pub fn materialize_synthesized_anonymous_record_types(
         }));
     }
     (items, new_field_types, new_field_ir_types)
+}
+
+pub(crate) fn build_struct_field_ir_type_lookup(
+    struct_field_ir_types: &HashMap<String, Vec<(String, IrType)>>,
+) -> HashMap<String, HashMap<String, IrType>> {
+    struct_field_ir_types
+        .iter()
+        .map(|(struct_name, fields)| {
+            (
+                struct_name.clone(),
+                fields
+                    .iter()
+                    .map(|(field_name, ty)| (field_name.clone(), ty.clone()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn struct_field_ir_type<'a>(
+    struct_name: &str,
+    field_name: &str,
+    ctx: &'a CompileContext,
+) -> Option<&'a IrType> {
+    ctx.struct_field_ir_type_lookup
+        .get(struct_name)
+        .and_then(|fields| fields.get(field_name))
+        .or_else(|| {
+            ctx.struct_field_ir_types
+                .get(struct_name)
+                .and_then(|fields| fields.iter().find(|(name, _)| name == field_name))
+                .map(|(_, ty)| ty)
+        })
 }
 
 // ---------------------------------------------------------------------------

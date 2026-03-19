@@ -806,6 +806,9 @@ fn emit_module(
         current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
         struct_field_ir_types: struct_field_ir_types.clone(),
+        struct_field_ir_type_lookup: fn_codegen::build_struct_field_ir_type_lookup(
+            struct_field_ir_types,
+        ),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
         enum_accessor_fields: enum_accessor_fields.clone(),

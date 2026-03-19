@@ -995,6 +995,8 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         let mut augmented = analysis_ctx;
         augmented.struct_field_types.extend(new_field_types);
         augmented.struct_field_ir_types.extend(new_field_ir_types);
+        augmented.struct_field_ir_type_lookup =
+            fn_codegen::build_struct_field_ir_type_lookup(&augmented.struct_field_ir_types);
         augmented.optional_params = optional_params;
         std::borrow::Cow::Owned(augmented)
     };
@@ -1315,6 +1317,8 @@ pub fn typedefs_to_source_file(
             _ => {}
         }
     }
+    let struct_field_ir_type_lookup =
+        fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
     let ctx = fn_codegen::CompileContext {
         data_names,
         data_map_names: std::collections::HashSet::new(),
@@ -1331,6 +1335,7 @@ pub fn typedefs_to_source_file(
         current_return_ir_type: None,
         ir_scope: std::collections::HashMap::new(),
         struct_field_ir_types,
+        struct_field_ir_type_lookup,
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
         enum_accessor_fields: HashMap::new(),
@@ -1472,6 +1477,7 @@ pub fn generate_types_for_modules(
             collect_struct_field_ir_types(td, &mut sfit);
             collect_enum_variants(td, &mut ev);
         }
+        let sfit_lookup = fn_codegen::build_struct_field_ir_type_lookup(&sfit);
         let fn_ctx = fn_codegen::CompileContext {
             data_names: fn_data_names,
             data_ir_types,
@@ -1490,6 +1496,7 @@ pub fn generate_types_for_modules(
             current_return_ir_type: None,
             ir_scope: std::collections::HashMap::new(),
             struct_field_ir_types: sfit,
+            struct_field_ir_type_lookup: sfit_lookup,
             use_counts: std::collections::HashMap::new(),
             fold_accum_name: None,
             enum_accessor_fields: HashMap::new(),
@@ -2044,6 +2051,8 @@ mod tests {
             collect_struct_field_ir_types(td, &mut struct_field_ir_types);
             collect_enum_variants(td, &mut enum_variants);
         }
+        let struct_field_ir_type_lookup =
+            fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
 
         (
             fd,
@@ -2065,6 +2074,7 @@ mod tests {
                 current_return_ir_type: None,
                 ir_scope: HashMap::new(),
                 struct_field_ir_types,
+                struct_field_ir_type_lookup,
                 use_counts: HashMap::new(),
                 fold_accum_name: None,
                 anonymous_record_targets: collect_anonymous_record_targets(
