@@ -3983,18 +3983,18 @@ func run() -> { result: String } {
 #[test]
 fn sts_exchange_body_template_literals_are_validated_against_sts_schema() {
     let source = r#"module extdeps.cloud.gcp.sts
-type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenType = RequestAccessToken | RequestIdToken
-type StsGrantType = TokenExchange {}
-type StsTokenExchange {
-  grant_type: StsGrantType
+type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenKind = RequestAccessToken | RequestIdToken
+type GrantKind = TokenExchange {}
+type ExchangeRequest {
+  grant_type: GrantKind
   subject_token: String
-  subject_token_type: SubjectTokenType
+  subject_token_type: SubjectTokenKind
   audience: String
   scope: String?
-  requested_token_type: RequestedTokenType?
+  requested_token_type: RequestedTokenKind?
 }
-type StsTokenResponse {
+type ExchangeResponse {
   access_token: String
 }
 service gcp.STS {
@@ -4011,7 +4011,7 @@ service gcp.STS {
     transport rest {
       method: POST,
       path: "/v1/token",
-      body: {
+      body: ExchangeRequest {
         grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
         subject_token: subject_token,
         subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
@@ -4020,7 +4020,7 @@ service gcp.STS {
       }
     }
     response {
-      200 => StsTokenResponse
+      200 => ExchangeResponse
     }
   }
 }
@@ -4073,18 +4073,18 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
 #[test]
 fn sts_exchange_body_template_rejects_requested_token_type_drift() {
     let source = r#"module extdeps.cloud.gcp.sts
-type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenType = RequestAccessToken | RequestIdToken
-type StsGrantType = TokenExchange {}
-type StsTokenExchange {
-  grant_type: StsGrantType
+type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenKind = RequestAccessToken | RequestIdToken
+type GrantKind = TokenExchange {}
+type ExchangeRequest {
+  grant_type: GrantKind
   subject_token: String
-  subject_token_type: SubjectTokenType
+  subject_token_type: SubjectTokenKind
   audience: String
   scope: String?
-  requested_token_type: RequestedTokenType?
+  requested_token_type: RequestedTokenKind?
 }
-type StsTokenResponse {
+type ExchangeResponse {
   access_token: String
 }
 service gcp.STS {
@@ -4101,7 +4101,7 @@ service gcp.STS {
     transport rest {
       method: POST,
       path: "/v1/token",
-      body: {
+      body: ExchangeRequest {
         grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
         subject_token: subject_token,
         subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
@@ -4110,7 +4110,7 @@ service gcp.STS {
       }
     }
     response {
-      200 => StsTokenResponse
+      200 => ExchangeResponse
     }
   }
 }
@@ -4132,7 +4132,7 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
         } if service == "gcp.STS"
             && operation == "Exchange"
             && detail.contains("requested_token_type")
-            && detail.contains("RequestedTokenType::RequestAccessToken")
+            && detail.contains("RequestedTokenKind::RequestAccessToken")
     ));
 }
 

@@ -62,13 +62,13 @@ service gcp.STS {
       expires_in: Int from "expires_in"
     }
     // Keep OAuth2 wire values literal here until transport-body serialization
-    // can derive them generically from resolved type metadata; lowering
-    // validates these literals against the typed STS schema.
+    // can derive them generically from resolved type metadata; the typed
+    // request record remains the schema authority for lowering-time checks.
     idempotent
     transport rest {
       method: POST,
       path: "/v1/token",
-      body: {
+      body: StsTokenExchange {
         grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
         subject_token: subject_token,
         subject_token_type: "urn:ietf:params:oauth:token-type:jwt",

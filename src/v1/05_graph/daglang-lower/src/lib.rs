@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeDef,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeDef, TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
@@ -6414,10 +6414,6 @@ fn validate_sts_exchange_body_against_typed_schema(
 ) -> Result<(), LowerError> {
     const STS_SERVICE: &str = "gcp.STS";
     const STS_OPERATION: &str = "Exchange";
-    const REQUEST_TYPE: &str = "StsTokenExchange";
-    const GRANT_TYPE: &str = "StsGrantType";
-    const SUBJECT_TOKEN_TYPE: &str = "SubjectTokenType";
-    const REQUESTED_TOKEN_TYPE: &str = "RequestedTokenType";
     const TOKEN_EXCHANGE_URN: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
     const JWT_URN: &str = "urn:ietf:params:oauth:token-type:jwt";
     const ACCESS_TOKEN_URN: &str = "urn:ietf:params:oauth:token-type:access_token";
@@ -6426,23 +6422,49 @@ fn validate_sts_exchange_body_against_typed_schema(
         return Ok(());
     }
 
-    let body = match &operation.transport {
+    let (request_type_name, body_fields) = match &operation.transport {
         Some(TransportBinding::Rest {
             body: Some(body), ..
-        }) => body,
+        }) => match body {
+            Expr::Record(Some(type_name), fields) => (
+                type_name.as_str(),
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value))
+                    .collect::<HashMap<_, _>>(),
+            ),
+            Expr::Record(None, _) | Expr::Map(_) => {
+                return Err(LowerError::InvalidTransportSpec {
+                    service: service.name.clone(),
+                    operation: operation.name.clone(),
+                    detail: format!(
+                        "{STS_SERVICE}.{STS_OPERATION} requires a typed REST body record so lowering can resolve the request schema from DSL metadata"
+                    ),
+                });
+            }
+            _ => {
+                return Err(LowerError::InvalidTransportSpec {
+                    service: service.name.clone(),
+                    operation: operation.name.clone(),
+                    detail: format!(
+                        "{STS_SERVICE}.{STS_OPERATION} REST body must stay a typed record matching the declared request schema"
+                    ),
+                });
+            }
+        },
         Some(TransportBinding::Rest { body: None, .. }) => {
             return Err(LowerError::InvalidTransportSpec {
                 service: service.name.clone(),
                 operation: operation.name.clone(),
                 detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires an explicit REST body so lowering can validate it against `{REQUEST_TYPE}`"
+                    "{STS_SERVICE}.{STS_OPERATION} requires an explicit typed REST body so lowering can validate it against the declared request schema"
                 ),
             });
         }
         _ => return Ok(()),
     };
 
-    let request_fields = match type_defs.get(REQUEST_TYPE) {
+    let request_fields = match type_defs.get(request_type_name) {
         Some(TypeDef {
             body: TypeBody::Record(fields),
             ..
@@ -6451,7 +6473,7 @@ fn validate_sts_exchange_body_against_typed_schema(
             return Err(LowerError::InvalidTransportSpec {
                 service: service.name.clone(),
                 operation: operation.name.clone(),
-                detail: format!("`{REQUEST_TYPE}` must remain a record type"),
+                detail: format!("`{request_type_name}` must remain a record type"),
             });
         }
         None => {
@@ -6459,39 +6481,7 @@ fn validate_sts_exchange_body_against_typed_schema(
                 service: service.name.clone(),
                 operation: operation.name.clone(),
                 detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires local `{REQUEST_TYPE}` / `{GRANT_TYPE}` / `{SUBJECT_TOKEN_TYPE}` / `{REQUESTED_TOKEN_TYPE}` type definitions so the literal OAuth body cannot drift from the typed STS schema"
-                ),
-            });
-        }
-    };
-
-    let body_fields = match body {
-        Expr::Record(_, fields) => fields
-            .iter()
-            .map(|(key, value)| (key.as_str(), value))
-            .collect(),
-        Expr::Map(entries) => {
-            let mut out = HashMap::new();
-            for (key_expr, value) in entries {
-                let Expr::Literal(Literal::String(key)) = key_expr else {
-                    return Err(LowerError::InvalidTransportSpec {
-                        service: service.name.clone(),
-                        operation: operation.name.clone(),
-                        detail: format!(
-                            "{STS_SERVICE}.{STS_OPERATION} REST body keys must stay string-literal fields from `{REQUEST_TYPE}`"
-                        ),
-                    });
-                };
-                out.insert(key.as_str(), value);
-            }
-            out
-        }
-        _ => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} REST body must stay a record/map matching `{REQUEST_TYPE}`"
+                    "{STS_SERVICE}.{STS_OPERATION} requires the typed REST body record `{request_type_name}` to resolve to a local request schema"
                 ),
             });
         }
@@ -6507,7 +6497,7 @@ fn validate_sts_exchange_body_against_typed_schema(
             return Err(LowerError::InvalidTransportSpec {
                 service: service.name.clone(),
                 operation: operation.name.clone(),
-                detail: format!("STS body field `{key}` is not declared on `{REQUEST_TYPE}`"),
+                detail: format!("STS body field `{key}` is not declared on `{request_type_name}`"),
             });
         }
     }
@@ -6518,37 +6508,30 @@ fn validate_sts_exchange_body_against_typed_schema(
                 service: service.name.clone(),
                 operation: operation.name.clone(),
                 detail: format!(
-                    "STS body is missing required `{REQUEST_TYPE}.{}` field",
+                    "STS body is missing required `{request_type_name}.{}` field",
                     field.name
                 ),
             });
         }
     }
 
-    let expect_field_type = |field_name: &str, expected: &str| -> Result<(), LowerError> {
+    let named_type_name = |field_name: &str| -> Result<&str, LowerError> {
         let Some(field_ty) = request_field_types.get(field_name) else {
             return Err(LowerError::InvalidTransportSpec {
                 service: service.name.clone(),
                 operation: operation.name.clone(),
-                detail: format!("STS request schema is missing `{REQUEST_TYPE}.{field_name}`"),
+                detail: format!("STS request schema is missing `{request_type_name}.{field_name}`"),
             });
         };
-        let actual = type_expr_to_string(field_ty);
-        let normalized = actual.strip_suffix('?').unwrap_or(actual.as_str());
-        if normalized != expected {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "`{REQUEST_TYPE}.{field_name}` must keep type `{expected}`, found `{actual}`"
-                ),
-            });
-        }
-        Ok(())
+        named_type_expr_name(field_ty).ok_or_else(|| LowerError::InvalidTransportSpec {
+            service: service.name.clone(),
+            operation: operation.name.clone(),
+            detail: format!("`{request_type_name}.{field_name}` must resolve to a named enum type"),
+        })
     };
-    expect_field_type("grant_type", GRANT_TYPE)?;
-    expect_field_type("subject_token_type", SUBJECT_TOKEN_TYPE)?;
-    expect_field_type("requested_token_type", REQUESTED_TOKEN_TYPE)?;
+    let grant_type_name = named_type_name("grant_type")?;
+    let subject_token_type_name = named_type_name("subject_token_type")?;
+    let requested_token_type_name = named_type_name("requested_token_type")?;
 
     let expect_unit_variant = |enum_name: &str, variant_name: &str| -> Result<(), LowerError> {
         let Some(type_def) = type_defs.get(enum_name) else {
@@ -6581,9 +6564,9 @@ fn validate_sts_exchange_body_against_typed_schema(
         }
         Ok(())
     };
-    expect_unit_variant(GRANT_TYPE, "TokenExchange")?;
-    expect_unit_variant(SUBJECT_TOKEN_TYPE, "Jwt")?;
-    expect_unit_variant(REQUESTED_TOKEN_TYPE, "RequestAccessToken")?;
+    expect_unit_variant(grant_type_name, "TokenExchange")?;
+    expect_unit_variant(subject_token_type_name, "Jwt")?;
+    expect_unit_variant(requested_token_type_name, "RequestAccessToken")?;
 
     let expect_input_ref = |field_name: &str| -> Result<(), LowerError> {
         match body_fields.get(field_name) {
@@ -6625,16 +6608,28 @@ fn validate_sts_exchange_body_against_typed_schema(
     expect_literal(
         "grant_type",
         TOKEN_EXCHANGE_URN,
-        "StsGrantType::TokenExchange",
+        &format!("{grant_type_name}::TokenExchange"),
     )?;
-    expect_literal("subject_token_type", JWT_URN, "SubjectTokenType::Jwt")?;
+    expect_literal(
+        "subject_token_type",
+        JWT_URN,
+        &format!("{subject_token_type_name}::Jwt"),
+    )?;
     expect_literal(
         "requested_token_type",
         ACCESS_TOKEN_URN,
-        "RequestedTokenType::RequestAccessToken",
+        &format!("{requested_token_type_name}::RequestAccessToken"),
     )?;
 
     Ok(())
+}
+
+fn named_type_expr_name(ty: &TypeExpr) -> Option<&str> {
+    match ty {
+        TypeExpr::Named(name) => Some(name.as_str()),
+        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => named_type_expr_name(inner),
+        _ => None,
+    }
 }
 
 // ============================================================================
