@@ -3075,9 +3075,22 @@ fn compile_intrinsic_call(
         }
         // append(list, item) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.push(item); Rc::new(v) }
         "append" if args.len() == 2 => {
-            // Strip outer .clone() so Rc::try_unwrap succeeds for in-place push.
-            let list = strip_outer_clone(collection.clone());
             let item = compile_call_arg(args, 1, ctx, counter);
+            // When the list is a field on the fold accumulator (e.g., acc.text),
+            // extract it via std::mem::take so Rc::try_unwrap sees refcount=1.
+            let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        strip_outer_clone(collection.clone())
+                    }
+                } else {
+                    strip_outer_clone(collection.clone())
+                }
+            } else {
+                strip_outer_clone(collection.clone())
+            };
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -3175,7 +3188,7 @@ fn compile_intrinsic_call(
         "sort_by" if args.len() == 2 => {
             let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
                 if ctx.fold_accum_is_rc {
-                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                    if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
                         compile_fold_accum_field_extract(fresh_name, &field)
                     } else {
                         collection.clone()
@@ -3209,7 +3222,7 @@ fn compile_intrinsic_call(
         "replace_last" if args.len() == 2 => {
             let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
                 if ctx.fold_accum_is_rc {
-                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                    if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
                         compile_fold_accum_field_extract(fresh_name, &field)
                     } else {
                         collection.clone()
@@ -3268,7 +3281,7 @@ fn compile_intrinsic_call(
             let v = fresh(counter, "reversed");
             let list_expr = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
                 if ctx.fold_accum_is_rc {
-                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                    if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
                         compile_fold_accum_field_extract(fresh_name, &field)
                     } else {
                         collection.clone()
@@ -3295,8 +3308,9 @@ fn compile_intrinsic_call(
             // When the list is a field on the fold accumulator (e.g., acc.text),
             // extract it via std::mem::take so Rc::try_unwrap sees refcount=1.
             let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
-                if ctx.fold_accum_is_rc {
-                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                let field_match = try_fold_accum_field_access(&collection, ctx);
+                if let Some(field) = field_match {
+                    if ctx.fold_accum_is_rc {
                         compile_fold_accum_field_extract(fresh_name, &field)
                     } else {
                         strip_outer_clone(collection.clone())
@@ -3463,7 +3477,7 @@ fn compile_intrinsic_call(
         "map_insert" if args.len() == 3 => {
             let map = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
                 if ctx.fold_accum_is_rc {
-                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                    if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
                         compile_fold_accum_field_extract(fresh_name, &field)
                     } else {
                         strip_outer_clone(collection.clone())
@@ -3491,7 +3505,7 @@ fn compile_intrinsic_call(
         "map_merge" if args.len() == 2 => {
             let base = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
                 if ctx.fold_accum_is_rc {
-                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                    if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
                         compile_fold_accum_field_extract(fresh_name, &field)
                     } else {
                         strip_outer_clone(collection.clone())
@@ -3688,9 +3702,9 @@ fn compile_fold_intrinsic(
                         _ => None,
                     })
                 });
-            fold_ctx.fold_accum_is_rc = accum_type_name
-                .as_ref()
-                .is_some_and(|name| ctx.rc_wrapped_types.contains(name));
+            // All generated struct types are Rc-wrapped at construction (Rc::new(T {...})).
+            // If the init is a named record, the accumulator is always Rc-wrapped.
+            fold_ctx.fold_accum_is_rc = accum_type_name.is_some();
             if let (Some(param), Some(ty)) = (params.get(1), infer_list_element_ir_type(collection_expr, ctx)) {
                 fold_ctx.ir_scope.insert(param.clone(), ty);
             }
@@ -4273,13 +4287,38 @@ fn strip_outer_clone(expr: code_ir::Expr) -> code_ir::Expr {
     }
 }
 
-/// Check if an expression is a field access on the fold accumulator's fresh variable.
-/// Returns the field name if it matches `accum_fresh.field` or `accum_fresh.field.clone()`.
+/// Check if an expression is a field access on the fold accumulator.
+/// Returns the field name if it matches `accum.field` or `accum.field.clone()`.
+/// Checks against both the fresh name (post-substitute_var) and the original
+/// param name (pre-substitute_var) since this is called during lambda body
+/// compilation before substitute_var runs.
 fn is_fold_accum_field_access(expr: &code_ir::Expr, fold_accum_fresh: &str) -> Option<String> {
+    is_fold_accum_field_access_inner(expr, fold_accum_fresh)
+}
+
+/// Try both the fresh name and the original param name.
+fn try_fold_accum_field_access(
+    expr: &code_ir::Expr,
+    ctx: &CompileContext,
+) -> Option<String> {
+    if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+        if let Some(field) = is_fold_accum_field_access(expr, fresh_name) {
+            return Some(field);
+        }
+    }
+    if let Some(ref orig_name) = ctx.fold_accum_name {
+        if let Some(field) = is_fold_accum_field_access(expr, orig_name) {
+            return Some(field);
+        }
+    }
+    None
+}
+
+fn is_fold_accum_field_access_inner(expr: &code_ir::Expr, accum_name: &str) -> Option<String> {
     match expr {
         // accum.field (no clone)
         code_ir::Expr::Field(receiver, field) => {
-            if matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == fold_accum_fresh) {
+            if matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == accum_name) {
                 Some(field.clone())
             } else {
                 None
@@ -4289,7 +4328,7 @@ fn is_fold_accum_field_access(expr: &code_ir::Expr, fold_accum_fresh: &str) -> O
         code_ir::Expr::MethodCall {
             receiver, method, args,
         } if method == "clone" && args.is_empty() => {
-            is_fold_accum_field_access(receiver, fold_accum_fresh)
+            is_fold_accum_field_access_inner(receiver, accum_name)
         }
         _ => None,
     }

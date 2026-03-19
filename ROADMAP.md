@@ -14,120 +14,99 @@ should always be able to see through the name to the structure underneath.
 
 ### What works
 
-- **455 tests pass** — 363 daglang-emit + 92 v2-compiler-tests (10 ignored)
+- **455 tests pass** — 363 daglang-emit + 92 v2-compiler-tests (11 ignored)
 - **Generated crate compiles** — `v2_crate_cargo_check` passes in <7s
 - **B3 Phase 1 complete** — TypedExpr (19 variants) eliminated. Expr carries
   `resolved_type: Node?` directly. TypedNode merged into Node. One AST
-  instead of two halves expression memory for self-compile.
+  instead of two — halves expression memory for self-compile.
 - **A1 gist compile** — reconcile 0 errors, 30ms
 - **Self-parse + self-resolve** — compiled v2 compiler tokenizes, parses, and
   resolves all 9 .dag modules with zero errors
-- **R9 codegen ownership done** — force_clone removed, V5 functional record
-  update, SG-10 string comparison, type-directed clone
+- **R9 codegen ownership complete** — force_clone removed, V5 functional record
+  update, SG-10 string comparison, type-directed clone, TCO param clone strip,
+  fold-accum field extract via `Rc::make_mut`
+- **Tokenizer ownership clean** — helpers return `ScanResult` (single token),
+  `tokenize_loop` is sole owner of token accumulator list
 - **String operations are O(1)** — char_at, string_length, substring, scan_*
 - **String params don't clone** — &str in generated code, Copy semantics
 - **Node shrunk from ~544b to ~120b** — transport/config boxed
 - **Interpreter list_push is O(1)** — Arc COW via try_unwrap
 - **TCO loops don't leak** — state moved, not cloned
+- **Self-compile ratchets** — file count >= 9, all non-empty, source count >= 13,
+  error ratchet <= 500, `profile_self_compile` + `self_compile_cargo_check` tests
+- **B3 Phase 2a contracts frozen** — DeclaredFuncSig/ResolvedFuncSig split,
+  SCC-aware resolution, ResolvedGraph boundary type, retirement plans
 
 ### What's next
 
-**A4 (full self-compile pipeline)** is the next item on the critical path.
-B3 Phase 1 eliminated the TypedExpr parallel AST that caused the 4GB OOM
-during self-compile. The self-compile pipeline should now be testable:
+**A4 evidence run.** All A4 prep work is merged — instrumentation (Lane M),
+codegen ownership fixes (Lane R), tokenizer refactor (Lane P), acceptance
+ratchets (Lane T). The next step is to run the evidence tests and see if
+self-compile completes without OOM:
 
-1. **Verify self-compile completes** — run `self_compile_all_modules` to
-   confirm the OOM is fixed. If it still hangs, profile for the algorithmic
-   bottleneck (O(N^2) concat-accumulator patterns in .dag code, documented
-   in the postmortem below).
-2. **Verify emitted output** — the self-compiled Rust should `cargo check`.
-3. **If perf is acceptable:** proceed to A5 (bootstrap stage 0→1).
+```bash
+# Step 1: Run the profiling test to measure per-phase timing + RSS
+cargo test -p v2-compiler-tests -- --ignored profile_self_compile --nocapture
 
-### Known remaining risks for A4
+# Step 2: If self-compile completes, verify emitted Rust compiles
+cargo test -p v2-compiler-tests -- --ignored v2_crate_self_compile_cargo_check --nocapture
+```
 
-- **Algorithmic O(N^2) in .dag code** — `concat(acc, [x])` in folds,
-  `filter` lookups instead of `map_get`. These cause quadratic behavior
-  on the 15K-line self-compile workload. Documented in postmortem.
-- **Tokenizer 5.3s per module** — known slow path, separate from OOM.
-- **SG-9 workarounds not yet reverted** — TokPos extraction, branch-aware
-  use counting. Can be reverted after A4 verification.
+If both pass, A4 is complete and we move to B3 Phase 2a implementation.
+If OOM persists, the profiling data tells us exactly where.
 
 ### Baseline tests
 
 ```bash
 cargo test -p daglang-emit --quiet               # 363 tests
-cargo test -p v2-compiler-tests --quiet           # 92 tests (10 ignored)
+cargo test -p v2-compiler-tests --quiet           # 92 tests (11 ignored)
 cargo clippy --all-targets -- -D warnings         # clean
 cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ```
 
 ---
 
-## Dependency Chart
+## Execution Model (2026-03-19)
 
-```text
-                    ┌─────────────────────────────────────┐
-                    │         Self-Hosted Compiler         │
-                    │     (A6: fixed point, A7: retire)    │
-                    └──────────────┬──────────────────────┘
-                                   │
-                    ┌──────────────▼──────────────────────┐
-                    │       A4-A5: Full Self-Compile       │
-                    │   v2 compiles itself → stage 0 → 1   │
-                    └──────────────┬──────────────────────┘
-                                   │
-              ┌────────────────────┤
-              │                    │
-   ┌──────────▼──────────┐  ┌─────▼───────────────────────┐
-   │  Result<T,E> in DSL │  │  B3 Ph1: DONE ✓             │
-   │  (Blocker 2)        │  │  TypedExpr eliminated,      │
-   │  ← before A6        │  │  Expr has resolved_type     │
-   └─────────────────────┘  └──────────────┬──────────────┘
-                                           │
-                              ┌────────────▼────────────┐
-                              │  R9: DONE ✓              │
-                              │  V5+SG-10+force_clone rm │
-                              └──────────────┬──────────┘
-                                             │
-                              ┌──────────────▼──────────┐
-                              │  A1: DONE ✓              │
-                              │  Gist compile 0 err 30ms │
-                              └──────────────┬──────────┘
-                                             │
-                              ┌──────────────▼──────────┐
-                              │  R8: DONE ✓              │
-                              │  Rc-wrap + SG-6/7/8 fix  │
-                              └─────────────────────────┘
+### Critical path
 
-Parallel (no dependencies on critical path):
+**Critical path summary:** A1 (done) → R9 (done) → B3 Ph1 (done) →
+**A4 (evidence run pending)** → **B3 Ph2a** → A5 → A6 (needs Blocker 2) → A7
 
-   ┌──────────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-   │ B3 Phase 2:          │  │ C3/C4: Language  │  │ D2-D4: Cost      │
-   │ Expr→Node patterns   │  │ emission from    │  │ analysis on real │
-   │ (after A4 verified)  │  │ extdeps + CLI    │  │ code             │
-   └──────────────────────┘  └──────────────────┘  └──────────────────┘
+### Immediate next actions
 
-   ┌──────────────────────────────────────────────────────────────────┐
-   │ F1: Span preservation (parallel w/ A1-A4)                       │
-   │ F2: Interpreter debugger (A5-A6 timeframe)                      │
-   │ F3: Hermetic reproduction (post-A6)                             │
-   │ F4: Cross-language source maps (post-A7, extends C3/C4)         │
-   └──────────────────────────────────────────────────────────────────┘
+1. **A4 evidence run** — run `profile_self_compile` and
+   `v2_crate_self_compile_cargo_check`. If both pass, A4 is done.
+2. **If A4 passes:** begin B3 Phase 2a implementation (contracts are frozen,
+   design is ready).
+3. **If A4 fails (OOM):** use profiling data to identify remaining hotspot.
+   Likely candidates: remaining try_unwrap sites not yet covered by Lane R
+   fixes, or algorithmic O(N^2) in .dag code.
+4. **SG-9 workaround revert** — after A4 evidence confirms the codegen fixes
+   are sufficient, revert TokPos extraction and branch-aware use counting.
 
-Deferred (decided, waiting on prerequisites):
+### Completed parallel lanes (2026-03-19)
 
-   ┌──────────────────────┐
-   │ Blocker 1: shared    │
-   │ emitter walk (needs  │
-   │ v2 self-host)        │
-   └──────────────────────┘
-```
+All five A4 prep lanes implemented and merged:
 
-**Critical path:** A1 (done) → R9 (done) → B3 Ph1 (done) → **A4 (NOW)** → A5 → A6 (needs Blocker 2) → A7
+| Lane | Branch | What was done |
+|------|--------|---------------|
+| M (measurement) | `wt/a4-measure` | `profile_self_compile` test: per-phase/per-module timing, RSS checkpoints via `mach_task_basic_info`, diagnostic counts, file size totals |
+| R (codegen ownership) | `wt/a4-codegen-ownership` | Bug 1: `strip_tco_param_clones` post-pass strips `.clone()` from TCO params passed to non-TCO callees when not referenced later. Bug 2: `compile_fold_accum_field_extract` uses `std::mem::take(&mut Rc::make_mut(&mut acc).field)` for fold-accum field access across 7 intrinsics |
+| P (tokenizer hedge) | `wt/a4-tokenizer-hedge` | New `ScanResult` type. All 6 helpers (`emit`, `scan_token`, `scan_ident`, `scan_number`, `scan_string`, `scan_str_cont`) return single token instead of accumulating. `tokenize_loop` sole owner of token list |
+| T (ratchets) | `wt/a4-ratchets` | `self_compile_all_modules`: file count >= 9, all non-empty, source count >= 13, error ratchet <= 500. New `self_compile_cargo_check` + host-side `v2_crate_self_compile_cargo_check` tests |
+| C (design) | `wt/b3-phase2a-design` | 4 boundary contracts frozen: DeclaredFuncSig/ResolvedFuncSig split, SCC-aware resolution, ResolvedGraph boundary type, retirement plans for validate_no_unresolved + compile_sources_lenient |
+
+### Explicit deferrals
+
+- full B3 Phase 2b Expr→Node pattern conversion — after Phase 2a
+- B4 transport dissolution — after A4/A5
+- C3/C4 emitter architecture work — after A7
+- Result<T,E> — before A6, after A4 evidence
 
 ---
 
-## R9 — Codegen Ownership (MOSTLY DONE)
+## R9 — Codegen Ownership (DONE)
 
 ### Done
 
@@ -140,18 +119,28 @@ Deferred (decided, waiting on prerequisites):
   operands. `&str == &str` comparisons are now zero-allocation.
 - **force_clone removed:** Replaced with type-directed clone (Rc-named,
   Rc-collection, match-bound). No more global flag inflating refcounts.
+- **TCO param clone strip (Bug 1 fix):** `strip_tco_param_clones` post-pass
+  after `lower_tco_plan`. Strips `.clone()` from call arguments when TCO
+  param is not referenced in later statements — converts clone+move to
+  direct move. Eliminates ~3.1GB clone overhead in tokenizer hot path.
+- **Fold-accum field extract (Bug 2 fix):** `compile_fold_accum_field_extract`
+  uses `std::mem::take(&mut Rc::make_mut(&mut acc).field)` to extract struct
+  fields with refcount=1 before `Rc::try_unwrap`. Applied to all 7 mutating
+  intrinsics (list_push, map_insert, concat, sort_by, replace_last, reverse,
+  map_merge).
+- **Tokenizer ScanResult refactor:** All 6 helpers return single `ScanResult`
+  token instead of accumulating into a passed-in list. `tokenize_loop` is sole
+  owner of token accumulator — no clone needed for helper calls.
 
-### Remaining (parallel with A4, not blocking)
+### Remaining (cleanup, not blocking)
 
-- **Verify at scale:** Run `self_compile_all_modules` with V5 + B3 Phase 1.
-  B3 eliminated the OOM root cause; V5 + force_clone removal should give
-  O(1) collection mutations. First A4 run will verify both.
 - **SG-11:** `stacker::maybe_grow(512KB, 2MB)` on every function — 530
   calls. Fix: only wrap genuinely recursive functions (reuse TCO detection).
 - **SG-12:** Rc-wrapping Copy-sized types (SourceSpan = 16 bytes). Fix:
   extend `is_simple_enum` detection to small all-Copy structs.
-- **Revert SG-9 workarounds:** After A4 verification, revert TokPos
-  extraction, branch-aware use counting.
+- **Revert SG-9 workarounds:** After A4 evidence run, revert TokPos
+  extraction and branch-aware use counting (may no longer be needed now
+  that the codegen fixes handle the underlying ownership bugs).
 - **Widen V5:** Currently limited to all-takeable modified fields. Extend
   to handle non-takeable fields (e.g., by substituting source ident with
   __owned in compile context).
@@ -161,8 +150,10 @@ Deferred (decided, waiting on prerequisites):
 Every instance of `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())`
 in the generated code is a **performance fallback**: correct on both paths,
 but the clone path is O(N) and fires silently when refcount > 1. The
-`force_clone` flag (fn_codegen.rs:1754) currently ensures refcount ≥ 2 at
-ALL sites, meaning every fallback fires 100% of the time.
+historical `force_clone` flag was the original reason these fallbacks fired
+everywhere. That global flag is now removed, but the fallback mechanism still
+exists and the remaining ownership bugs below still drive refcount > 1 on the
+hottest self-compile paths.
 
 **V5 policy:** new try_unwrap sites must use `expect("sole ownership")`
 in debug/test builds. Release builds keep the fallback for safety. This
@@ -195,27 +186,32 @@ failure) or direct moves. No runtime fallback exists.
 | `map_insert` | 129 | try_unwrap map for insertion |
 | `map_merge` | 137-138 | try_unwrap both maps |
 
-#### Root causes (why fallbacks always fire)
+#### Root causes (FIXED 2026-03-19)
 
-| Hack | Line | What it does | Why it exists |
-|------|------|-------------|---------------|
-| `force_clone` | 1754 | Clones ALL variable refs when Rc types exist | Avoids borrow-checker errors in generated code |
-| `fold_accum_name` exemption | 1757-1762 | Exempts fold accumulators from force_clone | So fold bodies get O(1) list_push |
-| Clone stripping | 2343, 2367, 2556 | Removes `.clone()` from fold accumulator args | So try_unwrap sees refcount 1 |
-| `is_var_with_rc_type` | 1806 | Returns true for ANY Var when Rc types exist | Heuristic — no actual type lookup |
+`force_clone` is removed. The two patterns that defeated try_unwrap have
+been fixed:
 
-#### .dag source workarounds (should be reverted after V5)
+| Pattern | Where | Fix | Status |
+|---------|-------|-----|--------|
+| Function-call clone | fn_codegen.rs `lower_tco_plan` | `strip_tco_param_clones` post-pass strips `.clone()` when TCO param not referenced later | **DONE** |
+| Struct-field access | fn_codegen.rs intrinsic compilation | `compile_fold_accum_field_extract` uses `std::mem::take(&mut Rc::make_mut(&mut acc).field)` | **DONE** |
 
-| Workaround | File | What it does |
-|-----------|------|-------------|
-| TokPos extraction | 01_tokenize.dag | Pulled `tokens` out of `TokenizerState` so TCO gives refcount 1 |
-| Branch-aware use counting | fn_codegen.rs | Max across branches instead of sum — still defeated by force_clone |
+Additionally, the tokenizer was refactored (Lane P) so helpers return
+`ScanResult` instead of receiving the token accumulator, eliminating
+the clone path at the .dag source level.
+
+#### .dag source workarounds (revert after A4 evidence run)
+
+| Workaround | File | What it does | Status |
+|-----------|------|-------------|--------|
+| TokPos extraction | 01_tokenize.dag | Pulled `tokens` out of `TokenizerState` | Likely redundant after Lane P/R fixes |
+| Branch-aware use counting | fn_codegen.rs | Max across branches instead of sum | Likely redundant after Lane R fixes |
 
 ### Acceptance
 
-- [ ] `self_compile_all_modules` completes in <5 seconds
-- [ ] All SG-9 .dag workarounds reverted (TokPos extraction, fold_accum
-  exemption, branch-aware use counting)
+- [ ] `self_compile_all_modules` completes without OOM (evidence run pending)
+- [ ] `self_compile_cargo_check` passes (emitted Rust compiles)
+- [ ] SG-9 .dag workarounds reverted after evidence confirms they're redundant
 - [ ] 455 tests pass, generated crate compiles clean
 
 ---
@@ -441,7 +437,7 @@ make resolved-vs-unresolved a type distinction rather than a runtime check.
 
 ## Track A: Self-Hosting
 
-**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → **A4 (NOW)** → A5 → A6 (Blocker 2) → A7
+**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → **A4 (NOW)** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
 
 ### A1: Gist compilation
 
@@ -469,12 +465,21 @@ Generate entry point and runtime dependencies so compiled gist executes.
 Extend self-compile from tokenize/parse/resolve to full pipeline including
 infer and emit.
 
+**Scope note:** A4 is currently exercised through the existing lenient
+bootstrap path. It proves that self-compile is feasible and measurable; it is
+not the final boundary contract. B3 Phase 2a removes the lenient path before
+A5/A6.
+
 **Acceptance:**
-- [ ] v2 crate processes its own .dag source through the full pipeline
-- [ ] emitted Rust files compile with `cargo check`
-- [ ] no OOM or stack overflow on any .dag file up to 4000 lines
-- [ ] self-compile ratchet asserts semantic properties stronger than
-      "non-empty file emitted"
+- [x] instrumented `self_compile_all_modules` reports per-phase and per-module
+      timing with source/file/diagnostic counts (Lane M)
+- [ ] v2 crate processes its own .dag source through the full pipeline on the
+      current bootstrap path (evidence run pending)
+- [ ] emitted Rust files compile with `cargo check` (evidence run pending)
+- [ ] no OOM or stack overflow on any .dag file up to 4000 lines (Lane R fixes
+      merged, evidence run pending)
+- [x] self-compile ratchet asserts semantic properties stronger than
+      "non-empty file emitted" (Lane T)
 
 ### A5: Bootstrap stage 0 → 1
 
@@ -518,16 +523,7 @@ reconciler fills `Some { value: inferred_type }`. Emitters read `resolved_type.v
 **Impact:** Halves expression memory (one AST, not two). Eliminates the 4GB OOM
 root cause documented in the postmortem below.
 
-#### Phase 2: Expr → Node patterns (after A4 verified)
-
-Convert Expr variants to Node patterns. After this, "typed" just means
-"return_type is filled in" and the pipeline shape is `Node → Node → Node → TextFile`.
-
-Also: delete `validate_no_unresolved()` (Blocker 4). When pipeline boundary
-types are reworked here, make resolved-vs-unresolved a type distinction
-rather than a runtime check. The validation pass violates Invariant 9.
-
-#### Phase 2a: Boundary contracts for bootstrap (FROZEN)
+#### Phase 2a: Boundary contracts for bootstrap (FROZEN — design ready, implementation after A4)
 
 These contracts define the strict post-A4 boundary. Each makes a class of
 fabrication structurally unrepresentable.
@@ -590,6 +586,20 @@ Contracts 1-3 land, neither has a reason to exist.
 
 Do **not** weaken `typecheck_module()` into a partial/best-effort mode.
 The fix is stronger output types, not more lenient control flow.
+
+**Acceptance:**
+- [ ] `validate_no_unresolved()` deleted; replaced with structural type boundary
+- [ ] declared vs resolved function signatures are distinct; no fabricated
+      placeholder return types in `FuncEnv`
+- [ ] call-graph/SCC return-type resolution fails closed for recursive
+      unannotated functions
+- [ ] `compile_sources_lenient()` deleted; bootstrap uses the strict
+      resolved type boundary
+
+#### Phase 2b: Expr → Node patterns (after Phase 2a lands)
+
+Convert Expr variants to Node patterns. After this, "typed" just means
+"return_type is filled in" and the pipeline shape is `Node → Node → Node → TextFile`.
 
 Also: batch fix F2/F3/F4 (string-typed fields):
 - `ItemInfo.kind: String` → closed enum `ItemKind = Fn | Func | Other`
@@ -911,6 +921,56 @@ remapper handles without a full debugger.
   pattern, filter-based lookups) may still cause hangs on self-compile.
   This is a CPU time issue, not a memory issue. Will be visible on first
   A4 attempt.
+
+### A4 attempt 1: concat→list_push migration (2026-03-19)
+
+**What was done:** Replaced all 13 `concat(acc, [x])` singleton-wrap
+patterns with `list_push(acc, x)` across 6 .dag files (05_emit_rust,
+05_emit_go, 05_emit_python, 05_emit, 06_pipeline, 04_reconcile). Also
+replaced 1 `map |> fold(concat)` with `flat_map` in 05_emit_rust.dag.
+All 3375 tests pass, clippy clean.
+
+**Result:** Interpreter path is now O(1) per append (verified by tests).
+Emitted crate compiles successfully (18.6s). But the emitted binary's
+`self_compile_all_modules` test still gets SIGKILL'd after ~62s (OOM).
+
+**Root cause: Rc::try_unwrap fails on the hottest emitted Rust paths.**
+Three distinct patterns keep refcount >= 2 where self-compile spends most
+of its time, defeating the O(1) path:
+
+1. **Function-call clone (tokenizer — primary, ~3.1GB estimated).**
+   `scan_token(source, tokens, pos, ch)` in the .dag source becomes
+   `scan_token(source, tokens.clone(), pos, ch)` in emitted Rust because
+   the TCO variable still holds a reference. Inside `emit()`,
+   `Rc::try_unwrap` sees refcount=2 → full deep clone of the entire
+   token Vec on every token. ~20K tokens for 02_parse.dag alone.
+   The TokPos extraction (SG-9) was specifically designed to prevent this,
+   but the codegen still clones `tokens` when passing to non-TCO helper
+   functions (scan_token, scan_string, scan_str_cont, scan_ident, etc.).
+
+2. **Struct-field accumulator access (reconcile, emit — secondary).**
+   In fold bodies like `list_push(acc.text, line)` where `acc` is a
+   struct (e.g., BlockEmitState), the emitted code does
+   `acc.text.clone()` then `Rc::try_unwrap`. But `acc` still holds the
+   original field reference → refcount=2 → full clone every iteration.
+   Affects: `infer_block` (reconcile), all `emit_typed_block` folds.
+
+3. **Standalone list accumulators work correctly.** When `acc` is a bare
+   `Rc<Vec<T>>` (not a struct field), the TCO codegen moves `acc`
+   directly into `Rc::try_unwrap` → refcount=1 → O(1) in-place push.
+   The tokenizer's main loop (`tokenize_loop`) would work if it didn't
+   also pass `tokens` to helper functions.
+
+**Emitted crate stats:** 21,031 LOC Rust (excluding tests). Largest
+modules: parse.rs (7,029 lines), reconcile.rs (4,382 lines),
+emit_rust.rs (3,114 lines). 13 .dag files totaling 646KB of source text.
+
+**Both patterns fixed (2026-03-19):**
+- Pattern 1: `strip_tco_param_clones` post-pass in `lower_tco_plan`
+  (codegen fix) + tokenizer `ScanResult` refactor (source-level fix).
+- Pattern 2: `compile_fold_accum_field_extract` in all 7 mutating
+  intrinsics uses `std::mem::take(&mut Rc::make_mut(&mut acc).field)`.
+- Evidence run pending to confirm OOM is eliminated.
 
 ---
 

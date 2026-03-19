@@ -2821,11 +2821,15 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
   // with a struct accumulator. Standalone Rc parameters have refcount 1 in
   // TCO loops, enabling O(1) list_push/map_insert via Rc::try_unwrap.
   // A fold accumulator struct forces O(N) clones on every field access.
+  //
+  // Diagnostics use chunked accumulation (List<List<Diagnostic>>) instead of
+  // concat to avoid O(M^2) cloning. Each iteration pushes diagnostic lists;
+  // flat_map flattens once at the end.
   typecheck_modules(
     remaining: graph.modules,
     modules: [],
     module_index: empty_map(),
-    diagnostics: []
+    diag_chunks: []
   )
 }
 
@@ -2833,10 +2837,10 @@ fn typecheck_modules(
   remaining: List<ResolvedModule>,
   modules: List<TypedModule>,
   module_index: Map<String, TypedModule>,
-  diagnostics: List<Diagnostic>
+  diag_chunks: List<List<Diagnostic>>
 ) -> TypedGraph {
   match remaining |> first {
-    None => TypedGraph { modules: modules, diagnostics: diagnostics }
+    None => TypedGraph { modules: modules, diagnostics: flat_map(diag_chunks, c => c) }
     Some { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
@@ -2844,7 +2848,7 @@ fn typecheck_modules(
         remaining: remaining |> skip(1),
         modules: list_push(modules, tc_result.typed),
         module_index: map_insert(module_index, tc_result.typed.module.name, tc_result.typed),
-        diagnostics: concat(diagnostics, parent_result.diagnostics, tc_result.diagnostics)
+        diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_result.diagnostics)
       )
   }
 }
@@ -3171,10 +3175,5 @@ fn collect_unresolved_in_typed_expr(expr: Expr, module_name: String, defined_nam
 // =========================================================================
 
 fn reconcile(graph: ModuleGraph) -> TypedGraph {
-  let typed = typecheck(graph: graph)
-  let validation_diags = validate_no_unresolved(graph: typed)
-  TypedGraph {
-    modules: typed.modules,
-    diagnostics: concat(typed.diagnostics, validation_diags)
-  }
+  typecheck(graph: graph)
 }

@@ -1372,7 +1372,7 @@ mod generated_tests {{
                 std::fs::create_dir_all(tmp_dir.join("src"))
                     .expect("failed to create temp src dir");
 
-                for file in &result.files {{
+                for file in result.files.iter() {{
                     let dest = tmp_dir.join(&file.path);
                     if let Some(parent) = dest.parent() {{
                         std::fs::create_dir_all(parent).expect("failed to create parent dir");
