@@ -19,6 +19,7 @@ prior optimizations addressed the right layer.
 | SG-3 | `substring` O(start + len) per call | **FIXED** | R6: O(len) byte-slice for ASCII |
 | SG-4 | Codegen `.clone()` on every non-final variable use | **IN PROGRESS** | R3: borrow-based codegen for read-only args |
 | SG-5 | Non-TCO recursive functions clone through return path | **OPEN** | Bounded by expression depth; not dominant cost |
+| SG-9 | `list_push(struct.field, item)` always O(N) — Rc field clone prevents try_unwrap | **PARTIAL** | Tokenizer: extract tokens from state struct; systemic: needs `force_clone` gating or record-update optimization |
 | SG-6 | R6 byte-index `char_at` corrupts output on non-ASCII source | **FIXED** | Strip Unicode from .dag comments; long-term: Vec\<char\> |
 | SG-7 | Nested Rc match arms: duplicate outer patterns → unreachable!() | **FIXED** | Merge same-variant arms into if-let chains |
 | SG-8 | Operator precedence: `(a-b)/c` renders as `a-b/c` → infinite loop | **FIXED** | Parenthesize BinOp sub-expressions in render_operator_operand |
@@ -815,6 +816,135 @@ The fundamental shift: in v1, there are **two compilers** — the `.dag`
 compiler and the Rust codegen. The `.dag` compiler has invariants; the
 Rust codegen doesn't. In v2, there's **one compiler** that compiles
 itself. Every layer is subject to the same invariants.
+
+---
+
+## Postmortem: SG-9 — Rc Struct Field list_push is Always O(N) (2026-03-18)
+
+**Symptom:** `self_compile_all_modules` hangs for 60+ seconds (expected: milliseconds).
+Gist compile (11 small files) completes in 30ms. Self-compile (14 large files,
+including 3000-line reconciler) never completes.
+
+**Root Cause:** Every `list_push(state.field, item)` in the compiled Rust is O(N)
+instead of O(1). The v1 compiler emits:
+
+```rust
+let __rc = state.field.clone();   // Rc clone → refcount 2
+let mut v = Rc::try_unwrap(__rc)  // FAILS — refcount is 2
+    .unwrap_or_else(|rc| (*rc).clone());  // falls back to Vec clone: O(N)
+v.push(item);
+Rc::new(v)
+```
+
+The `state.field.clone()` creates a second Rc reference to the same Vec.
+`state` itself still holds the original reference. `Rc::try_unwrap` requires
+refcount == 1, so it always fails, triggering a full Vec clone.
+
+**Why refcount is always 2:** Two independent mechanisms prevent refcount 1:
+
+1. **Struct field access clones the Rc.** `state.field` on an `Rc<Struct>`
+   returns a reference to the inner field. The only way to get an owned
+   `Rc<Vec<T>>` is `.clone()`, which creates refcount 2.
+
+2. **`force_clone` flag.** In `fn_codegen.rs:1724`, the v1 compiler forces
+   `.clone()` on ALL variable references when any Rc-wrapped types exist:
+   `let force_clone = !ctx.rc_wrapped_types.is_empty()`. This prevents
+   single-use variables from being moved, even when move would be safe.
+
+**Impact:** O(N²) for any function that accumulates a list inside a struct
+via recursion or TCO. Affects: tokenizer (N = tokens per file), parser
+(N = statements per block), reconciler (various accumulators).
+
+For the tokenizer processing a 3000-line file with ~15,000 tokens:
+O(15,000²) ≈ 225M token copies × ~50 bytes ≈ 11 GB of data movement.
+
+**Partial fix (tokenizer):** Restructured `01_tokenize.dag` to pass `tokens`
+as a standalone parameter instead of inside `TokenizerState`. The TCO loop
+variable has refcount 1, so `try_unwrap` succeeds. Added `TokPos` type
+(pos + interp_depth, no tokens) for the position-only state.
+
+**Systemic fix needed:** The `force_clone` flag must be scoped to only
+force clone on match-bound variables (references from enum destructuring),
+not standalone let bindings or function parameters. Alternatively, implement
+a "functional record update" optimization: when a record is constructed from
+an existing record's fields with one field modified via `list_push`, the
+compiler should destructure the old record first (getting owned fields),
+modify in-place, and re-wrap.
+
+**Partial fix validation:** After the tokenizer restructure, the compiled
+tokenizer uses `let __rc_1 = tokens;` (move, no clone) for the standalone
+parameter — try_unwrap succeeds, O(1) per push. The parser's standalone `acc`
+parameters also produce moves (22/26 list_push calls in parse.rs use
+`let __rc_1 = acc;`). The remaining bottleneck is in the reconciler's
+`typecheck` fold, where `acc.module_index.clone()` and `acc.diagnostics.clone()`
+are struct field accesses that always clone.
+
+**Remaining hot paths (reconciler fold):**
+- `map_insert(acc.module_index, name, typed_module)` — clones the full module index per module
+- `concat(acc.diagnostics, new_diags)` — clones all accumulated diagnostics per module
+- Various `resolve_env_bindings` calls that merge parent type environments
+
+**Severity:** Critical for self-hosting. The reconciler's fold accumulator
+pattern accounts for the remaining hang. Until the systemic fix is applied,
+any fold that accumulates into struct fields has O(N²) complexity.
+
+**Investigation trace (2026-03-18):**
+
+1. Tokenizer restructure: extracted `tokens` from `TokenizerState` into
+   standalone TCO parameter → `TokPos` type. Compiled output confirmed
+   `let __rc_1 = tokens;` (move, no clone). **Result:** tokenizer TCO loop
+   is O(1), but sub-function calls still clone (`.clone()` on function args).
+
+2. Typecheck fold → explicit `typecheck_modules` recursion with standalone
+   `modules`, `module_index`, `diagnostics` parameters. Same TCO pattern.
+   **Result:** fold overhead eliminated, but same sub-function clone issue.
+
+3. `force_clone` exemption for fold accumulators: allowed `fold_accum_name`
+   to skip force_clone when count <= 1. **Result:** too narrow — only helps
+   fold callbacks, not TCO or regular function calls.
+
+4. Branch-aware use counting: changed `count_ident_uses_expr` for Match and
+   If to compute max across exclusive branches, not sum. **Result:** correct
+   counting, but `force_clone` still blocks the optimization for non-fold vars.
+
+5. Attempted `owned_param_names` tracking to distinguish owned function
+   params from match-bound references. **Incomplete — reverted.**
+
+**Why the incremental fixes fail:** The `force_clone` flag at `fn_codegen.rs:1752`
+forces `.clone()` on ALL variable references when Rc types exist. It was added
+because removing it causes compile errors for match-bound variables (which are
+references, not owned values, in the compiled Rust). But the flag also blocks
+clone elision for owned variables (function params, let bindings, TCO loop vars)
+where moving is safe.
+
+The branch-aware counting correctly gives count=1 for variables used once per
+exclusive branch. But `force_clone` overrides: `if count <= 1 && !force_clone`.
+The fold_accum exemption punches a hole for one specific case, but the pattern
+repeats everywhere (TCO params, function call args, let bindings).
+
+**Root cause is SG-4, not SG-9.** SG-9 is a symptom of the broader SG-4 issue:
+the v1 compiler doesn't distinguish owned values from borrowed references.
+`force_clone` is the band-aid that prevents borrow-checker errors by cloning
+everything. The real fix is ownership-aware codegen (SG-4), which would make
+SG-9's workarounds (tokenizer restructure, typecheck recursion) unnecessary.
+
+**Invariant violations in the current workarounds:**
+
+1. **No case enumeration for open sets:** `is_builtin_collection_func` and
+   `is_emitter_builtin_func` hardcode 14 builtin names as string comparisons.
+   Builtins are an open set. The method-call handler already knows these names
+   structurally — the free-function path should derive from the same source.
+
+2. **No duplicate representations:** The two builtin lists (reconciler + emitter)
+   encode the same knowledge. `TokenizerState.tokens` is now dead (replaced by
+   standalone parameter). `TypecheckAccum` is now dead (replaced by explicit
+   recursion).
+
+3. **No parallel implementations:** The tokenizer and typecheck restructures
+   are structural workarounds for a codegen deficiency. If SG-4 is fixed, these
+   workarounds should be reverted to the simpler fold/struct patterns.
+
+---
 
 Self-hosting doesn't automatically make `char_at` O(1). But it makes the
 `char_at` implementation **visible, auditable, and subject to the cost

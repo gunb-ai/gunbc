@@ -725,18 +725,48 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
         }
         ast::Expr::Match(scrutinee, arms) => {
             count_ident_uses_expr(scrutinee, counts, weight);
+            // SG-9: Match arms are exclusive — a variable used once per arm
+            // is consumed only once at runtime. Use max across arms, not sum.
+            let mut arm_counts: Vec<HashMap<String, usize>> = Vec::new();
             for arm in arms {
+                let mut arm_map = HashMap::new();
                 if let Some(guard) = &arm.guard {
-                    count_ident_uses_expr(guard, counts, weight);
+                    count_ident_uses_expr(guard, &mut arm_map, weight);
                 }
-                count_ident_uses_expr(&arm.body, counts, weight);
+                count_ident_uses_expr(&arm.body, &mut arm_map, weight);
+                arm_counts.push(arm_map);
+            }
+            for arm_map in &arm_counts {
+                for (name, &arm_count) in arm_map {
+                    let current = counts.get(name).copied().unwrap_or(0);
+                    let max_in_arms = arm_counts.iter()
+                        .map(|m| m.get(name).copied().unwrap_or(0))
+                        .max()
+                        .unwrap_or(0);
+                    // Only add the max (not sum) since arms are exclusive
+                    counts.insert(name.clone(), current.max(max_in_arms));
+                }
             }
         }
         ast::Expr::If(cond, then_expr, else_expr) => {
             count_ident_uses_expr(cond, counts, weight);
-            count_ident_uses_expr(then_expr, counts, weight);
+            // SG-9: If/else branches are exclusive — use max, not sum.
+            let mut then_counts = HashMap::new();
+            count_ident_uses_expr(then_expr, &mut then_counts, weight);
+            let mut else_counts = HashMap::new();
             if let Some(e) = else_expr {
-                count_ident_uses_expr(e, counts, weight);
+                count_ident_uses_expr(e, &mut else_counts, weight);
+            }
+            for (name, &then_c) in &then_counts {
+                let else_c = else_counts.get(name).copied().unwrap_or(0);
+                let current = counts.get(name).copied().unwrap_or(0);
+                counts.insert(name.clone(), current + then_c.max(else_c));
+            }
+            for (name, &else_c) in &else_counts {
+                if !then_counts.contains_key(name) {
+                    let current = counts.get(name).copied().unwrap_or(0);
+                    counts.insert(name.clone(), current + else_c);
+                }
             }
         }
         ast::Expr::For(_, iterable, _, body) => {
@@ -1722,7 +1752,14 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
         } else {
             let count = ctx.use_counts.get(name).copied().unwrap_or(2);
             let force_clone = !ctx.rc_wrapped_types.is_empty();
-            if count <= 1 && !force_clone {
+            // SG-9: Allow fold accumulators to move (not clone) when single-use.
+            // The fold_accum_name is reassigned each iteration, so moving is safe
+            // and enables O(1) list_push/map_insert via Rc::try_unwrap.
+            let is_fold_accum = ctx
+                .fold_accum_name
+                .as_ref()
+                .is_some_and(|acc| acc == name);
+            if count <= 1 && (!force_clone || is_fold_accum) {
                 code_ir::Expr::Var(escaped)
             } else {
                 code_ir::Expr::MethodCall {

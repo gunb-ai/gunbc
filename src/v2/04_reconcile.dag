@@ -2793,22 +2793,35 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 // =========================================================================
 
 fn typecheck(graph: ModuleGraph) -> TypedGraph {
-  // Process modules in dependency order. Each iteration adds one
-  // TypedModule to the accumulator, making its types available to
-  // subsequent modules. The module_index provides O(1) lookup by name.
-  let result = fold(graph.modules, init: TypecheckAccum { modules: [], module_index: empty_map(), diagnostics: [] }, f: (acc, resolved) =>
-    let parent_result = collect_parent_envs(resolved: resolved, module_index: acc.module_index)
-    let tc_result = typecheck_module(resolved: resolved, parent_index: acc.module_index)
-    TypecheckAccum {
-      modules: concat(acc.modules, [tc_result.typed]),
-      module_index: map_insert(acc.module_index, tc_result.typed.module.name, tc_result.typed),
-      diagnostics: concat(acc.diagnostics, parent_result.diagnostics, tc_result.diagnostics)
-    }
+  // SG-9: Use explicit recursion with standalone parameters instead of fold
+  // with a struct accumulator. Standalone Rc parameters have refcount 1 in
+  // TCO loops, enabling O(1) list_push/map_insert via Rc::try_unwrap.
+  // A fold accumulator struct forces O(N) clones on every field access.
+  typecheck_modules(
+    remaining: graph.modules,
+    modules: [],
+    module_index: empty_map(),
+    diagnostics: []
   )
+}
 
-  TypedGraph {
-    modules: result.modules,
-    diagnostics: result.diagnostics
+fn typecheck_modules(
+  remaining: List<ResolvedModule>,
+  modules: List<TypedModule>,
+  module_index: Map<String, TypedModule>,
+  diagnostics: List<Diagnostic>
+) -> TypedGraph {
+  match remaining |> first {
+    None => TypedGraph { modules: modules, diagnostics: diagnostics }
+    Some { value: resolved } =>
+      let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
+      let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
+      typecheck_modules(
+        remaining: remaining |> skip(1),
+        modules: list_push(modules, tc_result.typed),
+        module_index: map_insert(module_index, tc_result.typed.module.name, tc_result.typed),
+        diagnostics: concat(diagnostics, parent_result.diagnostics, tc_result.diagnostics)
+      )
   }
 }
 
