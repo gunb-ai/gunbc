@@ -4,16 +4,16 @@
 // Facts about Git's data model, not how we invoke it (that's services/git.dag).
 //
 // Consumers:
-//   gunbc/tools/gist.dag           — branch name
-//   shared/gist_modes.dag             — git operations
-//   extdeps/github/pull_requests.dag — PR branch refs
-//   tools/build.dag                — branch detection
+//   gunbc/tools/gist.dag           -- branch name
+//   shared/gist_modes.dag             -- git operations
+//   extdeps/github/pull_requests.dag -- PR branch refs
+//   tools/build.dag                -- branch detection
 
 module extdeps.git
 
 import std.types { CommitSha, FilePath, GitRef, Timestamp }
 
-// ── Object model ──────────────────────────────────────────────────
+// -- Object model --------------------------------------------------
 
 type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
@@ -24,7 +24,7 @@ type GitAuthor {
 }
 
 // Git separates author (who wrote the patch) from committer (who applied
-// it to the tree — e.g., merge queue, bot, maintainer). Both are needed
+// it to the tree -- e.g., merge queue, bot, maintainer). Both are needed
 // for SLSA provenance and accurate attribution in automated workflows.
 type GitCommit {
   sha: CommitSha
@@ -34,7 +34,7 @@ type GitCommit {
   parent_shas: List<CommitSha>
 }
 
-// ── Refs ──────────────────────────────────────────────────────────
+// -- Refs ----------------------------------------------------------
 
 type GitRef
   = BranchRef { name: String }
@@ -53,11 +53,11 @@ type GitRemote {
   fetch_refspec: String
 }
 
-// ── Merge strategies ──────────────────────────────────────────────
+// -- Merge strategies ----------------------------------------------
 
 type GitMergeStrategy = GitMerge | GitSquash | GitRebase | GitFastForward
 
-// ── Diff model ────────────────────────────────────────────────────
+// -- Diff model ----------------------------------------------------
 
 type DiffStat {
   files_changed: Int
@@ -77,17 +77,17 @@ type DiffHunk {
   lines: List<DiffLine>
 }
 
-// ── Working tree status ───────────────────────────────────────────
+// -- Working tree status -------------------------------------------
 
 type GitFileStatus = GitClean | GitModified | GitAdded | GitDeleted | GitRenamed | GitUntracked
 
-// ── Constants ─────────────────────────────────────────────────────
+// -- Constants -----------------------------------------------------
 
 data default_remote: String = "origin"
 
 data default_branch_names: List<String> = ["main", "master"]
 
-// ── Service: shell transport wiring ─────────────────────────────
+// -- Service: shell transport wiring -----------------------------
 
 service git.Core {
   operation CurrentBranch {

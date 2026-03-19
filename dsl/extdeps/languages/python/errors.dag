@@ -7,11 +7,11 @@
 //      Python Standard Library (docs.python.org/3/library/exceptions.html)
 //
 // Consumers:
-//   v2/05_emit_python.dag — error handling emission, service call wrapping
+//   v2/05_emit_python.dag -- error handling emission, service call wrapping
 
 module extdeps.languages.python.errors
 
-// ── Exception syntax ────────────────────────────────────────────────
+// -- Exception syntax ------------------------------------------------
 // Ref: Python Reference 8.4 "The try statement"
 
 // "How does Python handle errors?"
@@ -24,14 +24,14 @@ data else_template: String = "else:\n    \{body\}"
 // Full try/except/else/finally block.
 data try_except_full_template: String = "try:\n    \{body\}\nexcept \{type\} as \{name\}:\n    \{handler\}\nfinally:\n    \{cleanup\}"
 
-// ── Raise syntax ────────────────────────────────────────────────────
+// -- Raise syntax ----------------------------------------------------
 // Ref: Python Reference 7.8 "The raise statement"
 
 data raise_template: String = "raise \{exception\}"
 data raise_from_template: String = "raise \{exception\} from \{cause\}"
 data reraise_template: String = "raise"
 
-// ── Exception hierarchy ─────────────────────────────────────────────
+// -- Exception hierarchy ---------------------------------------------
 // Ref: docs.python.org/3/library/exceptions.html
 //
 // Only the exceptions commonly needed by generated code are listed.
@@ -62,7 +62,7 @@ data http_exceptions: List<String> = [
   "aiohttp.ClientConnectionError"
 ]
 
-// ── Custom exception pattern ────────────────────────────────────────
+// -- Custom exception pattern ----------------------------------------
 // Ref: Python Tutorial 8.5 "User-defined Exceptions"
 
 data custom_exception_template: String = "class \{name\}(Exception):\n    def __init__(self, message: str):\n        super().__init__(message)\n        self.message = message"
@@ -70,13 +70,13 @@ data custom_exception_template: String = "class \{name\}(Exception):\n    def __
 // Service error wrapping: each service gets a custom exception class.
 data service_error_template: String = "class \{service\}Error(Exception):\n    pass"
 
-// ── Return semantics ────────────────────────────────────────────────
+// -- Return semantics ------------------------------------------------
 // Python functions return None implicitly if no return statement.
 // No Result type equivalent; errors are raised as exceptions.
 
 data implicit_return: String = "None"
 
-// ── Subprocess error handling ───────────────────────────────────────
+// -- Subprocess error handling ---------------------------------------
 // Ref: subprocess module (docs.python.org/3/library/subprocess.html)
 
 data subprocess_error: String = "subprocess.CalledProcessError"

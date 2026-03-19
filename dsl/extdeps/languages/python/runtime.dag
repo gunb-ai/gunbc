@@ -1,21 +1,21 @@
 // extdeps/languages/python/runtime.dag -- "How does Python operate on values at runtime?"
 //
 // Collection operations, string operations, dict operations, list
-// comprehensions, and truthiness — all from the Python standard library.
+// comprehensions, and truthiness -- all from the Python standard library.
 //
 // Ref: Python Standard Library (docs.python.org/3/library)
 //      Python Language Reference (docs.python.org/3/reference)
 //
 // Consumers:
-//   v2/05_emit_python.dag — method call emission, pipe operator translation
+//   v2/05_emit_python.dag -- method call emission, pipe operator translation
 
 module extdeps.languages.python.runtime
 
-// ── String operations ───────────────────────────────────────────────
+// -- String operations -----------------------------------------------
 // Ref: str type (docs.python.org/3/library/stdtypes.html#text-sequence-type-str)
 
 // "How does Python create a string literal?"
-// Python strings need no suffix — str is the native string type.
+// Python strings need no suffix -- str is the native string type.
 data string_literal_prefix: String = ""
 
 // "How does Python do string interpolation?"
@@ -42,7 +42,7 @@ data string_join_template: String = "\{sep\}.join(\{recv\})"
 // list(s) converts a string to a list of single-character strings.
 data string_chars_template: String = "list(\{recv\})"
 
-// ── Collection operations ───────────────────────────────────────────
+// -- Collection operations -------------------------------------------
 // Ref: list, tuple, set (docs.python.org/3/library/stdtypes.html)
 
 // DSL pipe method -> Python translation.
@@ -64,14 +64,14 @@ data collection_method_translations: List<MethodTranslation> = [
 // "How does Python iterate?"
 data for_each_template: String = "for \{var\} in \{collection\}:\n    \{body\}"
 
-// ── List comprehensions ─────────────────────────────────────────────
+// -- List comprehensions ---------------------------------------------
 // Ref: Python Reference 6.2.4 "Displays for lists, sets and dictionaries"
 
 data list_comp_template: String = "[\{expr\} for \{var\} in \{iter\}]"
 data list_comp_filter_template: String = "[\{expr\} for \{var\} in \{iter\} if \{cond\}]"
 data dict_comp_template: String = "\{\{\{key\}: \{value\} for \{var\} in \{iter\}\}\}"
 
-// ── Dict operations ─────────────────────────────────────────────────
+// -- Dict operations -------------------------------------------------
 // Ref: dict (docs.python.org/3/library/stdtypes.html#mapping-types-dict)
 
 data dict_get_template: String = "\{dict\}.get(\{key\})"
@@ -79,19 +79,19 @@ data dict_set_template: String = "\{dict\}[\{key\}] = \{value\}"
 data dict_contains_template: String = "\{key\} in \{dict\}"
 data dict_literal_template: String = "\{\{\{entries\}\}\}"
 
-// ── Null coalescing ─────────────────────────────────────────────────
+// -- Null coalescing -------------------------------------------------
 // Python has no ?? operator. Use ternary expression.
 
 // DAG ?? operator -> Python conditional expression.
 data null_coalesce_template: String = "\{lhs\} if \{lhs\} is not None else \{rhs\}"
 
-// ── Truthiness ──────────────────────────────────────────────────────
+// -- Truthiness ------------------------------------------------------
 // Ref: Python Reference 5.10 "Boolean operations"
 
 // Python considers these falsy: None, False, 0, 0.0, "", [], {}, set(), b""
 data falsy_values: List<String> = ["None", "False", "0", "0.0", "\"\"", "[]", "{}", "set()", "b\"\""]
 
-// ── Built-in functions used in emission ─────────────────────────────
+// -- Built-in functions used in emission -----------------------------
 // Ref: Python Built-in Functions (docs.python.org/3/library/functions.html)
 
 data len_function: String = "len"
@@ -105,14 +105,14 @@ data enumerate_function: String = "enumerate"
 data range_function: String = "range"
 data isinstance_function: String = "isinstance"
 
-// ── JSON serialization ──────────────────────────────────────────────
+// -- JSON serialization ----------------------------------------------
 // Ref: json module (docs.python.org/3/library/json.html)
 
 data json_import: String = "import json"
 data json_dumps_template: String = "json.dumps(\{value\}, indent=2)"
 data json_loads_template: String = "json.loads(\{text\})"
 
-// ── Numeric casting ─────────────────────────────────────────────────
+// -- Numeric casting -------------------------------------------------
 // Python uses constructor functions, not cast operators.
 data int_cast_template: String = "int(\{expr\})"
 data float_cast_template: String = "float(\{expr\})"

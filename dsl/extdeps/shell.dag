@@ -5,9 +5,9 @@
 // external service.
 //
 // Consumers:
-//   tools/bootstrap.dag     — find directories
-//   tools/clippy.dag        — which command
-//   tools/deps.dag          — run install scripts, check commands
+//   tools/bootstrap.dag     -- find directories
+//   tools/clippy.dag        -- which command
+//   tools/deps.dag          -- run install scripts, check commands
 
 module extdeps.shell
 

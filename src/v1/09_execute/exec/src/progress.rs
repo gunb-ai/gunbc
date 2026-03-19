@@ -1046,7 +1046,7 @@ mod tests {
         );
         outputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Int(1), Value::Int(2)]),
+            Value::List(std::sync::Arc::new(vec![Value::Int(1), Value::Int(2)])),
         );
         outputs.insert(
             "secret".to_string(),

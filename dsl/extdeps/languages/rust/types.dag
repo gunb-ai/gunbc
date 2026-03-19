@@ -7,7 +7,7 @@
 //      The Rustonomicon (doc.rust-lang.org/nomicon)
 //
 // Consumers:
-//   v2/05_emit_rust.dag — type emission, parameter passing, derive macros
+//   v2/05_emit_rust.dag -- type emission, parameter passing, derive macros
 
 module extdeps.languages.rust.types
 
@@ -16,14 +16,14 @@ import std.languages {
   TypeDefinitionSyntax, LiteralSyntax
 }
 
-// ── Ownership model ─────────────────────────────────────────────────
+// -- Ownership model -------------------------------------------------
 // Ref: Rust Reference 10 "Ownership"
 
 type OwnershipKind
-  = Owned                              // T — sole owner, dropped at scope exit
-  | SharedRef                          // &T — immutable borrow
-  | MutRef                             // &mut T — exclusive mutable borrow
-  | RawPtr                             // *const T / *mut T — unsafe, no borrow rules
+  = Owned                              // T -- sole owner, dropped at scope exit
+  | SharedRef                          // &T -- immutable borrow
+  | MutRef                             // &mut T -- exclusive mutable borrow
+  | RawPtr                             // *const T / *mut T -- unsafe, no borrow rules
 
 // "Which types are Copy?"
 // Ref: Rust Reference 10.1.2 "Copy and Clone"
@@ -52,7 +52,7 @@ data rust_primitives: List<RustPrimitiveInfo> = [
   { dag_name: "Json",   rust_name: "serde_json::Value", copy: IsNotCopy, default_value: "serde_json::Value::Null" }
 ]
 
-// ── Reference passing ───────────────────────────────────────────────
+// -- Reference passing -----------------------------------------------
 // Ref: Rust Reference 8.2.4 "Borrow expressions"
 //
 // "How does Rust pass parameters?"
@@ -64,7 +64,7 @@ data pass_non_copy_by_ref: Bool = true
 data ref_prefix: String = "&"
 data mut_ref_prefix: String = "&mut "
 
-// ── Derive macros ───────────────────────────────────────────────────
+// -- Derive macros ---------------------------------------------------
 // Ref: Rust Reference 19.2 "Derive macros"
 
 // Standard derives for generated struct/enum types.
@@ -73,7 +73,7 @@ data struct_derives: List<String> = ["Debug", "Clone", "PartialEq", "Serialize",
 // Derives for service client structs (no Serialize/Deserialize).
 data service_derives: List<String> = ["Debug", "Clone"]
 
-// ── Serde attributes ────────────────────────────────────────────────
+// -- Serde attributes ------------------------------------------------
 // Ref: serde.rs/attributes.html (serde 1.x)
 
 // Tag encoding for enums: serde represents variants with a discriminant field.
@@ -82,19 +82,19 @@ data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
 // Field renaming attribute template.
 data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"
 
-// ── Smart pointer types ─────────────────────────────────────────────
+// -- Smart pointer types ---------------------------------------------
 // Ref: Rust Reference 11 "Special types and traits"
 
 type SmartPointerKind
-  = BoxPtr                             // Box<T> — heap-allocated, single owner
-  | RcPtr                              // Rc<T> — reference-counted, single-thread
-  | ArcPtr                             // Arc<T> — reference-counted, thread-safe
+  = BoxPtr                             // Box<T> -- heap-allocated, single owner
+  | RcPtr                              // Rc<T> -- reference-counted, single-thread
+  | ArcPtr                             // Arc<T> -- reference-counted, thread-safe
 
 data box_template: String = "Box<{0}>"
 data rc_template: String = "Rc<{0}>"
 data arc_template: String = "Arc<{0}>"
 
-// ── Trait bounds ────────────────────────────────────────────────────
+// -- Trait bounds ----------------------------------------------------
 // Ref: Rust Reference 10.1.1 "Trait and lifetime bounds"
 
 data common_trait_bounds: List<String> = [
@@ -110,7 +110,7 @@ data common_trait_bounds: List<String> = [
 data where_clause_template: String = "where\n    \{constraints\}"
 data trait_bound_template: String = "\{type\}: \{bound\}"
 
-// ── Numeric types ───────────────────────────────────────────────────
+// -- Numeric types ---------------------------------------------------
 // Ref: Rust Reference 8.2.1 "Literal expressions"
 
 data integer_types: List<String> = [
@@ -123,3 +123,30 @@ data float_types: List<String> = ["f32", "f64"]
 // Cast syntax: valid only between numeric primitives.
 // Ref: Rust Reference 8.2.13 "Type cast expressions"
 data numeric_cast_template: String = "\{expr\} as \{type\}"
+
+// -- Emission-facing maps --------------------------------------------
+// These provide the Map<String, String> format that the v2 emitter
+// consumes. Derived from the facts above and from the Rust Reference.
+// When the language gains map-from-list primitives, these become computed.
+
+// DAG primitive name -> Rust type name.
+// Derived from: rust_primitives[].dag_name -> rust_primitives[].rust_name
+data emit_type_map: Map<String, String> = {
+  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
+  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
+}
+
+// Literal and operator keyword translations.
+// Ref: Rust Reference 8.2.1 "Literal expressions", 8.2.6 "Operator expressions"
+data emit_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "None",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+// Container type templates. {0} = element type, {1} = second type (maps).
+// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::BTreeMap
+data emit_container_templates: Map<String, String> = {
+  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
+  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
+}

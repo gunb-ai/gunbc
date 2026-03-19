@@ -1840,11 +1840,11 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::from([(
                     "result".to_string(),
-                    Value::List(vec![
+                    Value::List(std::sync::Arc::new(vec![
                         stage("build", true, false, ""),
                         stage("test", false, false, "tests failed"),
                         stage("clippy", true, false, ""),
-                    ]),
+                    ])),
                 )]),
                 was_intercepted: false,
                 coercions_applied: vec![],

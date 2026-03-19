@@ -1,11 +1,11 @@
 // extdeps/github/gists.dag -- "What is a GitHub Gist?"
 //
 // Gist resource model: files, visibility, versions.
-// Simpler than issues/PRs — gists are standalone code snippets.
+// Simpler than issues/PRs -- gists are standalone code snippets.
 //
 // Consumers:
-//   shared/gist_modes.dag     — gist operations
-//   gunbc/tools/gist.dag  — gist creation workflow
+//   shared/gist_modes.dag     -- gist operations
+//   gunbc/tools/gist.dag  -- gist creation workflow
 
 module extdeps.github.gists
 
@@ -13,7 +13,7 @@ import extdeps.github.github { GitHubUser }
 import std.types { Timestamp, GistId, Url }
 import std.errors { GitHubErrorShape }
 
-// ── Gist model ────────────────────────────────────────────────────
+// -- Gist model ----------------------------------------------------
 
 type GistVisibility = Public | GistSecret
 
@@ -35,7 +35,7 @@ type Gist {
   url: String
 }
 
-// ── Service: REST transport wiring ──────────────────────────────
+// -- Service: REST transport wiring ------------------------------
 
 service github.Gist {
   config {
