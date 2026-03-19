@@ -139,6 +139,13 @@ pub struct CompileContext {
     /// Used by concat codegen to strip the accumulator's `.clone()` (safe because the
     /// accumulator is reassigned each iteration, so try_unwrap succeeds → in-place extend).
     pub fold_accum_name: Option<String>,
+    /// The fresh variable name used for the fold accumulator (e.g., `__acc_0`).
+    /// Used to detect field accesses on the accumulator in mutating intrinsics
+    /// so `std::mem::take` can extract fields with refcount=1.
+    pub fold_accum_fresh_name: Option<String>,
+    /// Whether the fold accumulator is Rc-wrapped. When true, mutating intrinsics
+    /// use `Rc::make_mut` to extract fields.
+    pub fold_accum_is_rc: bool,
     /// Map from enum name → set of field names that exist on ALL variants (common fields).
     /// Field access on these fields compiles to accessor method calls instead of direct
     /// field access, since Rust enums don't support direct field access.
@@ -543,6 +550,8 @@ impl CompileContext {
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
             fold_accum_name: None,
+            fold_accum_fresh_name: None,
+            fold_accum_is_rc: false,
             enum_accessor_fields: HashMap::new(),
             optional_return_fns: HashSet::new(),
             fn_str_params: HashSet::new(),
@@ -2845,7 +2854,19 @@ fn compile_intrinsic_call(
             if args.len() == 2 {
                 if let ast::Expr::List(elements) = &args[1].1 {
                     if elements.len() == 1 {
-                        let list = strip_outer_clone(collection.clone());
+                        let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                            if ctx.fold_accum_is_rc {
+                                if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                                    compile_fold_accum_field_extract(fresh_name, &field)
+                                } else {
+                                    strip_outer_clone(collection.clone())
+                                }
+                            } else {
+                                strip_outer_clone(collection.clone())
+                            }
+                        } else {
+                            strip_outer_clone(collection.clone())
+                        };
                         let item = with_call_arg_path(ctx, 1, || {
                             ctx.with_child_expr_path(ExprPathStep::ListItem(0), || {
                                 compile_expr(&elements[0], ctx, counter)
@@ -3152,7 +3173,19 @@ fn compile_intrinsic_call(
         }
         // sort_by(list, key_fn) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.sort_by_key(key_fn); Rc::new(v) }
         "sort_by" if args.len() == 2 => {
-            let list = collection.clone();
+            let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        collection.clone()
+                    }
+                } else {
+                    collection.clone()
+                }
+            } else {
+                collection.clone()
+            };
             let key_fn = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "sorted");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
@@ -3174,7 +3207,19 @@ fn compile_intrinsic_call(
         }
         // replace_last(list, value) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; if let Some(last) = v.last_mut() { *last = value; } Rc::new(v) }
         "replace_last" if args.len() == 2 => {
-            let list = collection.clone();
+            let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        collection.clone()
+                    }
+                } else {
+                    collection.clone()
+                }
+            } else {
+                collection.clone()
+            };
             let value = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "replaced");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
@@ -3221,7 +3266,20 @@ fn compile_intrinsic_call(
         // reverse(list) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.reverse(); Rc::new(v) }
         "reverse" if args.len() == 1 => {
             let v = fresh(counter, "reversed");
-            let mut stmts = rc_unwrap_stmts(&v, collection.clone(), counter);
+            let list_expr = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        collection.clone()
+                    }
+                } else {
+                    collection.clone()
+                }
+            } else {
+                collection.clone()
+            };
+            let mut stmts = rc_unwrap_stmts(&v, list_expr, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::Var(v.clone())),
                 method: "reverse".to_string(),
@@ -3234,7 +3292,21 @@ fn compile_intrinsic_call(
         // O(1) amortized append — avoids O(n) concat([item], list) + reverse.
         "list_push" if args.len() == 2 => {
             let item = compile_call_arg(args, 1, ctx, counter);
-            let list = strip_outer_clone(collection.clone());
+            // When the list is a field on the fold accumulator (e.g., acc.text),
+            // extract it via std::mem::take so Rc::try_unwrap sees refcount=1.
+            let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        strip_outer_clone(collection.clone())
+                    }
+                } else {
+                    strip_outer_clone(collection.clone())
+                }
+            } else {
+                strip_outer_clone(collection.clone())
+            };
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -3389,7 +3461,19 @@ fn compile_intrinsic_call(
         // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.
         // O(1) amortized when refcount=1 (true in fold accumulators).
         "map_insert" if args.len() == 3 => {
-            let map = strip_outer_clone(collection.clone());
+            let map = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        strip_outer_clone(collection.clone())
+                    }
+                } else {
+                    strip_outer_clone(collection.clone())
+                }
+            } else {
+                strip_outer_clone(collection.clone())
+            };
             let key = compile_expr(&args[1].1, ctx, counter);
             let value = compile_expr(&args[2].1, ctx, counter);
             let v = fresh(counter, "map_ins");
@@ -3405,7 +3489,19 @@ fn compile_intrinsic_call(
         // map_merge(base, overlay) → unwrap base, extend with overlay, re-wrap.
         // O(|overlay|) amortized.
         "map_merge" if args.len() == 2 => {
-            let base = strip_outer_clone(collection.clone());
+            let base = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+                if ctx.fold_accum_is_rc {
+                    if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                        compile_fold_accum_field_extract(fresh_name, &field)
+                    } else {
+                        strip_outer_clone(collection.clone())
+                    }
+                } else {
+                    strip_outer_clone(collection.clone())
+                }
+            } else {
+                strip_outer_clone(collection.clone())
+            };
             let overlay = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "map_merged");
             let mut stmts = rc_unwrap_stmts(&v, base, counter);
@@ -3569,6 +3665,32 @@ fn compile_fold_intrinsic(
             if let Some(p) = params.first() {
                 fold_ctx.fold_accum_name = Some(p.clone());
             }
+            // Track the accumulator's fresh variable name and Rc-wrapped status
+            // so mutating intrinsics (list_push, map_insert, etc.) can use
+            // std::mem::take to extract fields with refcount=1.
+            fold_ctx.fold_accum_fresh_name = Some(acc.clone());
+            let accum_type_name = fold
+                .init
+                .as_ref()
+                .and_then(|(expr, _)| match expr {
+                    ast::Expr::Record(Some(name), _) => Some(name.clone()),
+                    ast::Expr::Ident(name) => {
+                        ctx.ir_scope.get(name).and_then(|ty| match ty {
+                            IrType::Named(n) => Some(n.clone()),
+                            _ => None,
+                        })
+                    }
+                    _ => None,
+                })
+                .or_else(|| {
+                    ctx.current_return_ir_type.as_ref().and_then(|ty| match ty {
+                        IrType::Named(n) => Some(n.clone()),
+                        _ => None,
+                    })
+                });
+            fold_ctx.fold_accum_is_rc = accum_type_name
+                .as_ref()
+                .is_some_and(|name| ctx.rc_wrapped_types.contains(name));
             if let (Some(param), Some(ty)) = (params.get(1), infer_list_element_ir_type(collection_expr, ctx)) {
                 fold_ctx.ir_scope.insert(param.clone(), ty);
             }
@@ -4149,6 +4271,38 @@ fn strip_outer_clone(expr: code_ir::Expr) -> code_ir::Expr {
     } else {
         expr
     }
+}
+
+/// Check if an expression is a field access on the fold accumulator's fresh variable.
+/// Returns the field name if it matches `accum_fresh.field` or `accum_fresh.field.clone()`.
+fn is_fold_accum_field_access(expr: &code_ir::Expr, fold_accum_fresh: &str) -> Option<String> {
+    match expr {
+        // accum.field (no clone)
+        code_ir::Expr::Field(receiver, field) => {
+            if matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == fold_accum_fresh) {
+                Some(field.clone())
+            } else {
+                None
+            }
+        }
+        // accum.field.clone()
+        code_ir::Expr::MethodCall {
+            receiver, method, args,
+        } if method == "clone" && args.is_empty() => {
+            is_fold_accum_field_access(receiver, fold_accum_fresh)
+        }
+        _ => None,
+    }
+}
+
+/// Produce an expression that extracts a field from a fold accumulator with refcount=1.
+/// Uses `std::mem::take(&mut Rc::make_mut(&mut accum).field)` to extract the field
+/// value, replacing it with Default::default(). This ensures the extracted Rc<Vec<T>>
+/// has refcount=1 so Rc::try_unwrap succeeds in-place.
+fn compile_fold_accum_field_extract(accum_fresh: &str, field_name: &str) -> code_ir::Expr {
+    code_ir::Expr::RawCode(format!(
+        "std::mem::take(&mut Rc::make_mut(&mut {accum_fresh}).{field_name})"
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -6224,6 +6378,260 @@ fn plan_embedded_expr(
     }
 }
 
+/// Check if a variable name appears in a code_ir expression.
+fn var_referenced_in_expr(expr: &code_ir::Expr, var_name: &str) -> bool {
+    match expr {
+        code_ir::Expr::Var(name) => name == var_name,
+        code_ir::Expr::Value(_)
+        | code_ir::Expr::Str(_)
+        | code_ir::Expr::IntLit(_)
+        | code_ir::Expr::BoolLit(_)
+        | code_ir::Expr::Path(_)
+        | code_ir::Expr::RawCode(_) => false,
+        code_ir::Expr::Call { func, args, .. } => {
+            var_referenced_in_expr(func, var_name)
+                || args.iter().any(|a| var_referenced_in_expr(a, var_name))
+        }
+        code_ir::Expr::MethodCall { receiver, args, .. } => {
+            var_referenced_in_expr(receiver, var_name)
+                || args.iter().any(|a| var_referenced_in_expr(a, var_name))
+        }
+        code_ir::Expr::Field(receiver, _) => var_referenced_in_expr(receiver, var_name),
+        code_ir::Expr::Deref(inner) | code_ir::Expr::Ref(inner) | code_ir::Expr::RefMut(inner) => {
+            var_referenced_in_expr(inner, var_name)
+        }
+        code_ir::Expr::Struct { fields, rest, .. } => {
+            fields.iter().any(|(_, e)| var_referenced_in_expr(e, var_name))
+                || rest.as_ref().is_some_and(|r| var_referenced_in_expr(r, var_name))
+        }
+        code_ir::Expr::Closure { body, .. } => var_referenced_in_expr(body, var_name),
+        code_ir::Expr::BinOp { left, right, .. } => {
+            var_referenced_in_expr(left, var_name) || var_referenced_in_expr(right, var_name)
+        }
+        code_ir::Expr::UnaryOp { expr: inner, .. } => var_referenced_in_expr(inner, var_name),
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
+            var_referenced_in_expr(scrutinee, var_name)
+                || arms.iter().any(|arm| var_referenced_in_stmts(&arm.body, var_name))
+        }
+        code_ir::Expr::If { cond, then_body, else_body } => {
+            var_referenced_in_expr(cond, var_name)
+                || var_referenced_in_stmts(then_body, var_name)
+                || else_body.as_ref().is_some_and(|b| var_referenced_in_stmts(b, var_name))
+        }
+        code_ir::Expr::Block(stmts) => var_referenced_in_stmts(stmts, var_name),
+        code_ir::Expr::FormatStr { args, .. } => {
+            args.iter().any(|a| var_referenced_in_expr(a, var_name))
+        }
+        code_ir::Expr::MacroCall { args, .. } => {
+            args.iter().any(|a| var_referenced_in_expr(a, var_name))
+        }
+        code_ir::Expr::Tuple(items) | code_ir::Expr::Array(items) => {
+            items.iter().any(|e| var_referenced_in_expr(e, var_name))
+        }
+    }
+}
+
+/// Check if a variable name appears in a slice of code_ir statements.
+fn var_referenced_in_stmts(stmts: &[code_ir::Stmt], var_name: &str) -> bool {
+    stmts.iter().any(|stmt| var_referenced_in_stmt(stmt, var_name))
+}
+
+/// Check if a variable name appears in a single code_ir statement.
+fn var_referenced_in_stmt(stmt: &code_ir::Stmt, var_name: &str) -> bool {
+    match stmt {
+        code_ir::Stmt::Let { expr, .. } => var_referenced_in_expr(expr, var_name),
+        code_ir::Stmt::Bind { expr, .. } => var_referenced_in_expr(expr, var_name),
+        code_ir::Stmt::Assign { dest, value } => {
+            var_referenced_in_expr(dest, var_name) || var_referenced_in_expr(value, var_name)
+        }
+        code_ir::Stmt::Expr(e) | code_ir::Stmt::TailExpr(e) | code_ir::Stmt::Return(e) | code_ir::Stmt::Break(e) => {
+            var_referenced_in_expr(e, var_name)
+        }
+        code_ir::Stmt::For { iter, body, .. } => {
+            var_referenced_in_expr(iter, var_name) || var_referenced_in_stmts(body, var_name)
+        }
+        code_ir::Stmt::Loop { body } | code_ir::Stmt::BlockScope(body) => {
+            var_referenced_in_stmts(body, var_name)
+        }
+        code_ir::Stmt::Item(_) | code_ir::Stmt::Comment(_) | code_ir::Stmt::Blank | code_ir::Stmt::Continue => false,
+        code_ir::Stmt::Assert(a) => match a {
+            code_ir::Assert::Eq { left, right, .. } => {
+                var_referenced_in_expr(left, var_name) || var_referenced_in_expr(right, var_name)
+            }
+            code_ir::Assert::True { expr, .. }
+            | code_ir::Assert::NonEmpty { expr, .. }
+            | code_ir::Assert::Contains { expr, .. } => {
+                var_referenced_in_expr(expr, var_name)
+            }
+        },
+    }
+}
+
+/// Strip `.clone()` from TCO loop parameter arguments in call expressions
+/// when the parameter is not referenced in any later statement in the same block
+/// and is only used once in the current statement.
+///
+/// In a TCO loop, parameters like `tokens` are rebound from `__tco_p_tokens` at
+/// the start of each iteration. When passed to a non-TCO callee, codegen adds
+/// `.clone()` because the loop still holds a reference. But if the parameter is
+/// not referenced after the call (only in the final Recur), the clone is
+/// unnecessary — the value can be moved.
+///
+/// Conservative: only strips clones from direct Let/Expr-level call arguments,
+/// not inside nested if/match conditions or branches. Also requires that the
+/// parameter appears exactly once in the current statement (to avoid stripping
+/// one clone while another reference in the same statement still needs the value).
+fn strip_tco_param_clones(body: &mut [code_ir::Stmt], tco_param_names: &[String]) {
+    // Work on the lowered body portion only (skip rebind stmts at the start).
+    // Rebind stmts are `let param = __tco_p_param;` for each param.
+    let rebind_count = tco_param_names.len();
+    if body.len() <= rebind_count {
+        return;
+    }
+
+    // For each statement in the body (after rebinds), check for Call expressions
+    // with param.clone() arguments where param is not used later.
+    for i in rebind_count..body.len() {
+        let later_stmts = &body[i + 1..];
+        // Collect which params can have their clone stripped at this position:
+        // 1. Not referenced in any later statement in the block
+        // 2. Referenced exactly once in the current statement (the clone we'll strip)
+        let strippable: Vec<String> = tco_param_names
+            .iter()
+            .filter(|param| {
+                !var_referenced_in_stmts(later_stmts, param)
+                    && count_var_refs_in_stmt(&body[i], param) == 1
+            })
+            .cloned()
+            .collect();
+        if strippable.is_empty() {
+            continue;
+        }
+        // Only strip at the top-level call in this statement, not inside
+        // nested control flow (if/match conditions or branches).
+        strip_toplevel_call_clones(&mut body[i], &strippable);
+    }
+}
+
+/// Count how many times a variable is referenced in a statement.
+fn count_var_refs_in_stmt(stmt: &code_ir::Stmt, var_name: &str) -> usize {
+    match stmt {
+        code_ir::Stmt::Let { expr, .. } => count_var_refs_in_expr(expr, var_name),
+        code_ir::Stmt::Bind { expr, .. } => count_var_refs_in_expr(expr, var_name),
+        code_ir::Stmt::Assign { dest, value } => {
+            count_var_refs_in_expr(dest, var_name) + count_var_refs_in_expr(value, var_name)
+        }
+        code_ir::Stmt::Expr(e) | code_ir::Stmt::TailExpr(e) | code_ir::Stmt::Return(e) | code_ir::Stmt::Break(e) => {
+            count_var_refs_in_expr(e, var_name)
+        }
+        code_ir::Stmt::For { iter, body, .. } => {
+            count_var_refs_in_expr(iter, var_name) + body.iter().map(|s| count_var_refs_in_stmt(s, var_name)).sum::<usize>()
+        }
+        code_ir::Stmt::Loop { body } | code_ir::Stmt::BlockScope(body) => {
+            body.iter().map(|s| count_var_refs_in_stmt(s, var_name)).sum()
+        }
+        _ => 0,
+    }
+}
+
+/// Count variable references in an expression.
+fn count_var_refs_in_expr(expr: &code_ir::Expr, var_name: &str) -> usize {
+    match expr {
+        code_ir::Expr::Var(name) => if name == var_name { 1 } else { 0 },
+        code_ir::Expr::Call { func, args, .. } => {
+            count_var_refs_in_expr(func, var_name) + args.iter().map(|a| count_var_refs_in_expr(a, var_name)).sum::<usize>()
+        }
+        code_ir::Expr::MethodCall { receiver, args, .. } => {
+            count_var_refs_in_expr(receiver, var_name) + args.iter().map(|a| count_var_refs_in_expr(a, var_name)).sum::<usize>()
+        }
+        code_ir::Expr::Field(receiver, _) => count_var_refs_in_expr(receiver, var_name),
+        code_ir::Expr::Deref(inner) | code_ir::Expr::Ref(inner) | code_ir::Expr::RefMut(inner) => {
+            count_var_refs_in_expr(inner, var_name)
+        }
+        code_ir::Expr::BinOp { left, right, .. } => {
+            count_var_refs_in_expr(left, var_name) + count_var_refs_in_expr(right, var_name)
+        }
+        code_ir::Expr::UnaryOp { expr: inner, .. } => count_var_refs_in_expr(inner, var_name),
+        code_ir::Expr::If { cond, then_body, else_body } => {
+            count_var_refs_in_expr(cond, var_name)
+                + then_body.iter().map(|s| count_var_refs_in_stmt(s, var_name)).sum::<usize>()
+                + else_body.as_ref().map_or(0, |b| b.iter().map(|s| count_var_refs_in_stmt(s, var_name)).sum::<usize>())
+        }
+        code_ir::Expr::Block(stmts) => stmts.iter().map(|s| count_var_refs_in_stmt(s, var_name)).sum(),
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
+            count_var_refs_in_expr(scrutinee, var_name)
+                + arms.iter().map(|arm| arm.body.iter().map(|s| count_var_refs_in_stmt(s, var_name)).sum::<usize>()).sum::<usize>()
+        }
+        code_ir::Expr::Struct { fields, rest, .. } => {
+            fields.iter().map(|(_, e)| count_var_refs_in_expr(e, var_name)).sum::<usize>()
+                + rest.as_ref().map_or(0, |r| count_var_refs_in_expr(r, var_name))
+        }
+        code_ir::Expr::Closure { body, .. } => count_var_refs_in_expr(body, var_name),
+        code_ir::Expr::FormatStr { args, .. } | code_ir::Expr::MacroCall { args, .. } => {
+            args.iter().map(|a| count_var_refs_in_expr(a, var_name)).sum()
+        }
+        code_ir::Expr::Tuple(items) | code_ir::Expr::Array(items) => {
+            items.iter().map(|e| count_var_refs_in_expr(e, var_name)).sum()
+        }
+        _ => 0,
+    }
+}
+
+/// Strip `.clone()` only from direct call arguments at the top level of a statement.
+/// Does NOT recurse into nested if/match/block structures to avoid stripping
+/// clones from conditions whose values are used in branches.
+fn strip_toplevel_call_clones(stmt: &mut code_ir::Stmt, strippable: &[String]) {
+    let expr = match stmt {
+        code_ir::Stmt::Let { expr, .. } => expr,
+        code_ir::Stmt::Expr(e) | code_ir::Stmt::TailExpr(e) => e,
+        _ => return,
+    };
+    strip_toplevel_expr_clones(expr, strippable);
+}
+
+/// Strip `.clone()` from call arguments at the top level of an expression.
+/// For Call/MethodCall, strip matching clones. For Block, recurse into stmts.
+/// Does NOT recurse into If/Match conditions or branches.
+fn strip_toplevel_expr_clones(expr: &mut code_ir::Expr, strippable: &[String]) {
+    match expr {
+        code_ir::Expr::Call { args, .. } => {
+            for arg in args.iter_mut() {
+                try_strip_param_clone(arg, strippable);
+            }
+        }
+        code_ir::Expr::MethodCall { args, .. } => {
+            for arg in args.iter_mut() {
+                try_strip_param_clone(arg, strippable);
+            }
+        }
+        code_ir::Expr::Block(stmts) => {
+            for s in stmts.iter_mut() {
+                strip_toplevel_call_clones(s, strippable);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// If the expression is `param.clone()` where `param` is in the strippable set,
+/// replace it with just `param` (move instead of clone).
+fn try_strip_param_clone(expr: &mut code_ir::Expr, strippable: &[String]) {
+    let is_strippable_clone = matches!(
+        expr,
+        code_ir::Expr::MethodCall { receiver, method, args }
+            if method == "clone" && args.is_empty()
+            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if strippable.contains(name))
+    );
+    if is_strippable_clone {
+        // Replace param.clone() with param (move)
+        let var = match std::mem::replace(expr, code_ir::Expr::IntLit(0)) {
+            code_ir::Expr::MethodCall { receiver, .. } => *receiver,
+            _ => unreachable!(),
+        };
+        *expr = var;
+    }
+}
+
 fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
     let loop_vars: Vec<String> = param_names.iter().map(|p| format!("__tco_p_{p}")).collect();
 
@@ -6289,6 +6697,10 @@ fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashS
 
     let mut loop_body = rebind_stmts;
     loop_body.extend(lower_tco_plan_stmts(&plan.body, &loop_vars, param_names, str_param_names));
+    // Strip unnecessary .clone() from TCO param arguments passed to non-TCO callees.
+    // When a param is not referenced after the call (only in the final Recur),
+    // it can be moved instead of cloned, keeping Rc refcount=1 for in-place mutation.
+    strip_tco_param_clones(&mut loop_body, param_names);
     preamble.push(code_ir::Stmt::Loop { body: loop_body });
     preamble
 }
