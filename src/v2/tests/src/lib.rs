@@ -3509,6 +3509,44 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
+    /// Run the generated v2 crate's self_compile_cargo_check test — proves
+    /// the self-compiled output passes `cargo check` (type-correct Rust).
+    #[test]
+    #[ignore] // Requires cargo build + full pipeline + cargo check; run with --ignored
+    fn v2_crate_self_compile_cargo_check() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-self-compile-cargo-check");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--release")
+            .arg("--")
+            .arg("--ignored")
+            .arg("self_compile_cargo_check")
+            .arg("--nocapture")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            panic!(
+                "self_compile_cargo_check failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
+                tmp_dir.display(),
+                stdout,
+                stderr
+            );
+        }
+
+        assert!(
+            stdout.contains("self_compile_cargo_check"),
+            "expected self_compile_cargo_check to appear in test output:\n{}",
+            stdout
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
     /// Run the generated v2 crate's gist_resolve_all_modules test -- proves
     /// the compiled v2 compiler can tokenize, parse, and resolve the 12
     /// gist transitive dependencies (real-world DSL modules with services,
