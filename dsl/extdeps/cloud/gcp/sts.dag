@@ -61,18 +61,18 @@ service gcp.STS {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
-    // Body includes grant_type and token_type fields -- the compiler
-    // generates the full OAuth2 token exchange request from these inputs.
+    // Keep OAuth2 wire values literal here until transport-body serialization
+    // can derive them generically from resolved type metadata.
     idempotent
     transport rest {
       method: POST,
       path: "/v1/token",
-      body: StsTokenExchange {
-        grant_type: TokenExchange {},
+      body: {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
         subject_token: subject_token,
-        subject_token_type: Jwt,
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
         audience: audience,
-        requested_token_type: RequestAccessToken
+        requested_token_type: "urn:ietf:params:oauth:token-type:access_token"
       }
     }
     response {

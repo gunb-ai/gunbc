@@ -3981,18 +3981,8 @@ func run() -> { result: String } {
 }
 
 #[test]
-fn sts_exchange_body_template_derives_urns_from_typed_dsl_structure() {
+fn sts_exchange_body_template_uses_literal_wire_values_from_dsl() {
     let source = r#"module extdeps.cloud.gcp.sts
-type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenType = RequestAccessToken | RequestIdToken
-type StsGrantType = TokenExchange {}
-type StsTokenExchange {
-  grant_type: StsGrantType
-  subject_token: String
-  subject_token_type: SubjectTokenType
-  audience: String
-  requested_token_type: RequestedTokenType?
-}
 type StsTokenResponse {
   access_token: String
 }
@@ -4010,12 +4000,12 @@ service gcp.STS {
     transport rest {
       method: POST,
       path: "/v1/token",
-      body: StsTokenExchange {
-        grant_type: TokenExchange {},
+      body: {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
         subject_token: subject_token,
-        subject_token_type: Jwt,
+        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
         audience: audience,
-        requested_token_type: RequestAccessToken
+        requested_token_type: "urn:ietf:params:oauth:token-type:access_token"
       }
     }
     response {
@@ -4028,8 +4018,8 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
   return { access_token: token.access_token }
 }"#;
     assert!(
-        !source.contains("urn:ietf:params:oauth"),
-        "fixture should express STS request fields structurally, not as wire-format URNs"
+        source.contains("urn:ietf:params:oauth"),
+        "fixture should keep STS wire-format URNs in the DSL until generic typed serialization exists"
     );
 
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
@@ -4070,7 +4060,7 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
                 "urn:ietf:params:oauth:token-type:access_token".to_string()
             ),
         ]),
-        "lowered STS request body should derive OAuth wire values from typed DSL constructors"
+        "lowered STS request body should preserve the OAuth wire values declared in the DSL"
     );
 }
 
