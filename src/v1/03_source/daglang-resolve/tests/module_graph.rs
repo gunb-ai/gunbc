@@ -1491,13 +1491,7 @@ fn real_corpus_has_no_unused_imports() {
                 Some(name) => format!("binding `{name}` from `{}`", u.module_path),
                 None => format!("module `{}`", u.module_path),
             };
-            if module_path.starts_with("extdeps.languages.") {
-                violations.push(format!(
-                    "{module_path} should not carry unused imports after std.languages cleanup: unused import {binding_desc}",
-                ));
-            } else {
-                violations.push(format!("{module_path}: unused import {binding_desc}"));
-            }
+            violations.push(format!("{module_path}: unused import {binding_desc}"));
         }
     }
     assert!(
