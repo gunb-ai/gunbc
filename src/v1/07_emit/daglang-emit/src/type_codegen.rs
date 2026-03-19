@@ -1297,6 +1297,7 @@ pub fn typedefs_to_source_file(
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
         rc_wrapped_types: std::collections::HashSet::new(),
+        match_bound_vars: std::collections::HashSet::new(),
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -1456,6 +1457,7 @@ pub fn generate_types_for_modules(
             expr_identities: std::collections::HashMap::new(),
             expr_path: std::cell::RefCell::new(Default::default()),
             rc_wrapped_types: std::collections::HashSet::new(),
+            match_bound_vars: std::collections::HashSet::new(),
         };
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
@@ -2030,6 +2032,7 @@ mod tests {
                 fn_str_params: HashSet::new(),
                 str_param_names: HashSet::new(),
                 rc_wrapped_types: HashSet::new(),
+                match_bound_vars: HashSet::new(),
             },
         )
     }

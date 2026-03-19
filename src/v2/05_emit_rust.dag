@@ -800,43 +800,24 @@ fn emit_typed_expr(texpr: TypedExpr, registry: Map<String, ItemInfo>, scope: Inf
   }
 }
 
-fn is_emitter_builtin_func(name: String) -> Bool {
-  name == "split" || name == "join" || name == "count" || name == "last" ||
-  name == "map" || name == "filter" || name == "enumerate" || name == "any" ||
-  name == "fold" || name == "flat_map" || name == "reverse" || name == "skip" ||
-  name == "first"
-}
-
 fn emit_typed_call(func: String, args: List<TypedNamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  // Bridge builtin collection functions from free-function to method-call form:
-  // split(s, delim) → s.split(delim), count(list) → list.len(), etc.
-  if is_emitter_builtin_func(name: func) && args |> count > 0 {
-    match args |> first {
-      Some { value: first_tna } =>
-        let remaining = args |> skip(1)
-        emit_typed_method_call(receiver: first_tna.value, method: func, args: remaining, registry: registry, scope: scope, depth: depth)
-      None =>
-        "panic!(\"internal: builtin with no args\")"
-    }
-  } else {
-    let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-    let arg_strs = ordered_args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
-    let callee = lookup_item(registry: registry, name: func)
-    let extra_args = match callee {
-      Some { value: info } =>
-        if info.kind == "func" {
-          info.service_names |> map(sn => service_var_name(service_name: sn))
-        } else { [] }
-      None => []
-    }
-    let all_args = concat(arg_strs, extra_args)
-    let args_str = all_args |> join(separator: ", ")
-    let call_str = concat(rust_ident(name: func), "(", args_str, ")")
-    match callee {
-      Some { value: info } =>
-        if info.kind == "func" { concat(call_str, ".await?") } else { call_str }
-      None => call_str
-    }
+  let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
+  let arg_strs = ordered_args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+  let callee = lookup_item(registry: registry, name: func)
+  let extra_args = match callee {
+    Some { value: info } =>
+      if info.kind == "func" {
+        info.service_names |> map(sn => service_var_name(service_name: sn))
+      } else { [] }
+    None => []
+  }
+  let all_args = concat(arg_strs, extra_args)
+  let args_str = all_args |> join(separator: ", ")
+  let call_str = concat(rust_ident(name: func), "(", args_str, ")")
+  match callee {
+    Some { value: info } =>
+      if info.kind == "func" { concat(call_str, ".await?") } else { call_str }
+    None => call_str
   }
 }
 
@@ -905,6 +886,10 @@ fn emit_typed_method_call(receiver: TypedExpr, method: String, args: List<TypedN
       concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
     } else if method == "string_contains" {
       concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
+    } else if method == "concat" {
+      let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+      let all_arg_strs = concat([recv_str], arg_strs)
+      concat("concat(", all_arg_strs |> join(separator: ", "), ")")
     } else {
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
       let args_str = arg_strs |> join(separator: ", ")

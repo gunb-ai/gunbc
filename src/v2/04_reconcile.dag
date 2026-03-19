@@ -215,14 +215,6 @@ type ParentModulesResult {
   diagnostics: List<Diagnostic>
 }
 
-// Accumulator for the main typecheck loop, carrying both a list (for output)
-// and a map index (for O(1) module lookup by name).
-type TypecheckAccum {
-  modules: List<TypedModule>
-  module_index: Map<String, TypedModule>
-  diagnostics: List<Diagnostic>
-}
-
 // Internal result type for field-level resolution.
 type FieldResult {
   field: Field
@@ -342,27 +334,25 @@ fn build_func_env(items: List<Node>) -> FuncEnv {
 }
 
 // =========================================================================
-// Service namespace locals -- S86 heuristic bridge
+// Service namespace locals
 //
 // Service names are dotted (e.g., "git.Core", "github.Gist"). Expressions
-// reference the namespace root ("git") as a variable. This extracts
-// namespace roots from service Node items and registers them as locals
-// with a synthetic Named type so they're in scope during inference.
-//
-// This is a per-kind special case (debt per S86). Terminal fix: unified
-// DAG node model where services participate in the expression namespace
-// like any other node.
+// reference the namespace root ("git") as a variable. The parser stores
+// the namespace root as a structural property on the service Node, so
+// downstream stages read it directly instead of string-splitting.
 // =========================================================================
 
-// find_dot_index: find the first "." in a string, or -1 if none.
-// Used for extracting service namespace roots.
-fn find_dot_index(name: String, index: Int) -> Int {
-  if index >= string_length(name) {
-    -1
-  } else if char_at(name, index) == "." {
-    index
-  } else {
-    find_dot_index(name: name, index: index + 1)
+// Read the namespace root from a service item's properties.
+// The parser stores it as FieldInit { name: "namespace_root", value: LitStr(root) }.
+// Falls back to the full name if the property is absent.
+// Takes properties and name separately so it works for both Node and TypedNode.
+fn namespace_root_from_properties(properties: List<FieldInit>, name: String) -> String {
+  match properties |> filter(p => p.name == "namespace_root") |> first {
+    Some { value: ns_prop } => match ns_prop.value {
+      Literal { value: LitStr { value: root }, span: _ } => root
+      _ => name
+    }
+    None => name
   }
 }
 
@@ -816,7 +806,7 @@ fn extract_optional_inner_node(n: Node) -> Node {
 // infer_method_call_type: compute result type for pipe methods
 // -------------------------------------------------------------------------
 
-fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node {
+fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
   let normed = normalize_access_type_node(n: receiver_type)
   let elem_node = if normed.connective == none && normed.children |> count == 1 {
     match normed.children |> first {
@@ -825,31 +815,24 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node {
     }
   } else { receiver_type }
   if method == "map" || method == "filter" || method == "enumerate" {
-    receiver_type
+    Some { value: receiver_type }
   } else if method == "fold" {
-    leaf_node(name: "Unit")
+    Some { value: leaf_node(name: "Unit") }
   } else if method == "first" || method == "last" {
-    optional_node(inner: elem_node)
+    Some { value: optional_node(inner: elem_node) }
   } else if method == "count" {
-    leaf_node(name: "Int")
+    Some { value: leaf_node(name: "Int") }
   } else if method == "join" {
-    leaf_node(name: "String")
+    Some { value: leaf_node(name: "String") }
   } else if method == "any" || method == "contains" || method == "all" {
-    leaf_node(name: "Bool")
+    Some { value: leaf_node(name: "Bool") }
   } else if method == "split" || method == "chars" {
-    container_node(kind_name: "List", element: leaf_node(name: "String"))
+    Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
   } else if method == "flat_map" || method == "reverse" || method == "skip" || method == "concat" {
-    receiver_type
+    Some { value: receiver_type }
   } else {
-    leaf_node(name: "Unit")
+    none
   }
-}
-
-fn is_builtin_collection_func(name: String) -> Bool {
-  name == "split" || name == "join" || name == "count" || name == "last" ||
-  name == "map" || name == "filter" || name == "enumerate" || name == "any" ||
-  name == "fold" || name == "flat_map" || name == "reverse" || name == "skip" ||
-  name == "concat" || name == "first"
 }
 
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
@@ -979,7 +962,7 @@ fn lookup_field_in_variant(variant: Node, field_name: String, module_name: Strin
       let resolved = child_return_type_or_name(ch: field_child)
       NodeLookupResult { resolved: resolved, diagnostics: [] }
     None => NodeLookupResult {
-      resolved: leaf_node(name: field_name),
+      resolved: leaf_node(name: "<error:field_not_found>"),
       diagnostics: [Diagnostic {
         severity: Error,
         message: concat("field '", concat(field_name, concat("' not found in variant '", concat(variant.name, "'")))),
@@ -1053,7 +1036,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         Some { value: resolved } =>
           ok_infer(texpr: TypedVar { name: name, resolved_type: resolved, span: span })
         None =>
-          let texpr = TypedVar { name: name, resolved_type: leaf_node(name: name), span: span }
+          let texpr = TypedVar { name: name, resolved_type: leaf_node(name: "<error:unresolved_var>"), span: span }
           InferResult {
             typed: texpr,
             diagnostics: [inference_error(
@@ -1095,7 +1078,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
                   module_name: scope.module_name
                 )]
               }
-              let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: leaf_node(name: field_name), span: span }
+              let texpr = TypedFieldAccess { base: base_result.typed, field: field_name, resolved_type: leaf_node(name: "Dynamic"), span: span }
               InferResult {
                 typed: texpr,
                 diagnostics: concat(base_result.diagnostics, field_diags)
@@ -1111,42 +1094,54 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
-      let builtin = is_builtin_collection_func(name: func_name)
-      let resolved_type = if sig != none {
-        match sig {
+      if sig != none {
+        // Tier 1: known function signature
+        let resolved_type = match sig {
           Some { value: s } => s.return_type
-          None => leaf_node(name: func_name)
+          None => leaf_node(name: "<error:unreachable>")
         }
-      } else if builtin {
+        InferResult {
+          typed: TypedCall { func: func_name, args: typed_args, resolved_type: resolved_type, span: span },
+          diagnostics: arg_diags
+        }
+      } else {
+        // Tier 2: try bridging to method call on first argument
         let first_arg_type = match typed_args |> first {
           Some { value: ta } => ta.value.resolved_type
           None => leaf_node(name: "Unit")
         }
-        infer_method_call_type_node(receiver_type: first_arg_type, method: func_name)
-      } else {
-        let type_match = lookup_type(env: scope.type_env, name: func_name)
-        match type_match {
-          Some { value: tn } => tn
-          None => leaf_node(name: func_name)
+        let method_type = infer_method_call_type_node(receiver_type: first_arg_type, method: func_name)
+        if method_type != none && typed_args |> count > 0 {
+          // Known collection method — bridge Call to TypedMethodCall
+          let receiver = match typed_args |> first {
+            Some { value: ta } => ta.value
+            None => TypedLiteral { value: LitNull, resolved_type: leaf_node(name: "Unit"), span: span }
+          }
+          let remaining = typed_args |> skip(1)
+          InferResult {
+            typed: TypedMethodCall { receiver: receiver, method: func_name, args: remaining, resolved_type: method_type.value, span: span },
+            diagnostics: arg_diags
+          }
+        } else {
+          // Tier 3: type constructor or unknown
+          let type_match = lookup_type(env: scope.type_env, name: func_name)
+          let resolved_type = match type_match {
+            Some { value: tn } => tn
+            None => leaf_node(name: "<error:unknown_function>")
+          }
+          let call_diags = match type_match {
+            Some { value: _ } => []
+            None => [inference_error(
+              message: concat("function '", func_name, "' not found in scope"),
+              span: span,
+              module_name: scope.module_name
+            )]
+          }
+          InferResult {
+            typed: TypedCall { func: func_name, args: typed_args, resolved_type: resolved_type, span: span },
+            diagnostics: concat(arg_diags, call_diags)
+          }
         }
-      }
-      let call_diags = if sig != none || builtin {
-        []
-      } else {
-        let type_match = lookup_type(env: scope.type_env, name: func_name)
-        match type_match {
-          Some { value: _ } => []
-          None => [inference_error(
-            message: concat("function '", func_name, "' not found in scope"),
-            span: span,
-            module_name: scope.module_name
-          )]
-        }
-      }
-      let texpr = TypedCall { func: func_name, args: typed_args, resolved_type: resolved_type, span: span }
-      InferResult {
-        typed: texpr,
-        diagnostics: concat(arg_diags, call_diags)
       }
 
     MethodCall { receiver: recv, method: method_name, args: mc_args, span: span } =>
@@ -1159,7 +1154,10 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let result_type = match check_service_method_call_node(receiver_type: recv_result.typed.resolved_type, method: method_name, scope: scope) {
         Some { value: svc_type } => svc_type
-        None => infer_method_call_type_node(receiver_type: recv_result.typed.resolved_type, method: method_name)
+        None => match infer_method_call_type_node(receiver_type: recv_result.typed.resolved_type, method: method_name) {
+          Some { value: rt } => rt
+          None => recv_result.typed.resolved_type
+        }
       }
       let texpr = TypedMethodCall { receiver: recv_result.typed, method: method_name, args: typed_mc_args, resolved_type: result_type, span: span }
       InferResult {
@@ -1434,7 +1432,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     _ =>
       let span = expr_span(expr: expr)
       InferResult {
-        typed: TypedLiteral { value: LitNull, resolved_type: leaf_node(name: "Unknown"), span: span },
+        typed: TypedLiteral { value: LitNull, resolved_type: leaf_node(name: "<error:unhandled>"), span: span },
         diagnostics: [inference_error(
           message: "unhandled expression variant in infer_expr",
           span: span,
@@ -1485,14 +1483,23 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     }
   } else {
     // Named record -- look up type in env
-    let resolved_node = match lookup_type(env: scope.type_env, name: type_name.value) {
+    let type_lookup = lookup_type(env: scope.type_env, name: type_name.value)
+    let resolved_node = match type_lookup {
       Some { value: tn } => tn
-      None => leaf_node(name: type_name.value)
+      None => leaf_node(name: "<error:unknown_type>")
+    }
+    let type_diags = match type_lookup {
+      Some { value: _ } => []
+      None => [inference_error(
+        message: concat("type '", type_name.value, "' not found in scope"),
+        span: span,
+        module_name: scope.module_name
+      )]
     }
     let texpr = TypedRecordLit { type_name: type_name, fields: typed_fields, resolved_type: resolved_node, span: span }
     InferResult {
       typed: texpr,
-      diagnostics: fi_diags
+      diagnostics: concat(fi_diags, type_diags)
     }
   }
 }
@@ -2606,10 +2613,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // git.Core.CurrentBranch() can typecheck.
   let local_svc_locals = fold(resolved_items, init: empty_map(), f: (acc, item) =>
     if item.transport != none && item.children |> count > 0 {
-      let svc_name = item.name
-      let span = item.span
-      let dot_pos = find_dot_index(name: svc_name, index: 0)
-      let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
+      let root = namespace_root_from_properties(properties: item.properties, name: item.name)
       map_insert(acc, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
     } else {
       acc
@@ -2618,10 +2622,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let service_locals = fold(map_values(parent_index), init: local_svc_locals, f: (acc, typed_parent) =>
     fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
       if titem.transport != none && titem.children |> count > 0 {
-        let svc_name = titem.name
-        let span = titem.span
-        let dot_pos = find_dot_index(name: svc_name, index: 0)
-        let root = if dot_pos < 0 { svc_name } else { substring(svc_name, 0, dot_pos) }
+        let root = namespace_root_from_properties(properties: titem.properties, name: titem.name)
         map_insert(inner_acc, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
       } else {
         inner_acc

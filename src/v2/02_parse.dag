@@ -906,7 +906,14 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: FieldInit { name: "Range", value: Literal { value: LitStr { value: "range" }, span: zero_span } }, state: r3.state, err: none }
+        // Preserve min/max values as structured record fields
+        let min_fields = if r2.min_val != none {
+          [FieldInit { name: "min", value: Literal { value: LitInt { value: r2.min_val.value }, span: zero_span } }]
+        } else { [] }
+        let max_fields = if r2.max_val != none {
+          [FieldInit { name: "max", value: Literal { value: LitInt { value: r2.max_val.value }, span: zero_span } }]
+        } else { [] }
+        let result = PredResult { predicate: FieldInit { name: "Range", value: RecordLit { type_name: none, fields: concat(min_fields, max_fields), span: zero_span } }, state: r3.state, err: none }
         result
       }
       _ => {
@@ -1339,8 +1346,10 @@ fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = expect(tokens: tokens, state: state, tag: "KwService")
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
-  let r = parse_dotted_ident(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  let r_ns = expect_name(tokens: tokens, state: r.state)
+  if has_err(err: r_ns.err) { return ItemResult { item: dummy, state: r_ns.state, err: r_ns.err } }
+  let namespace_root = r_ns.name
+  let r = parse_dotted_ident_rest(tokens: tokens, state: r_ns.state, acc: namespace_root)
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none }
 
@@ -1372,11 +1381,14 @@ fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
       properties: all_props, type_annotation: none,
       config: none    }
   )
+  // Preserve namespace root as a structural property so downstream stages
+  // don't need to reverse-engineer it by string-splitting.
+  let ns_prop = FieldInit { name: "namespace_root", value: Literal { value: LitStr { value: namespace_root }, span: start_span } }
   let item = Node {
     name: name, span: start_span,
     children: op_children,
     params: [], return_type: none, uses: [], body: none, connective: none,
-    transport: Some { value: r.transport }, properties: [],
+    transport: Some { value: r.transport }, properties: [ns_prop],
     type_annotation: none,
     config: r.config  }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }

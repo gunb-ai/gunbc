@@ -794,6 +794,7 @@ fn emit_module(
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
         rc_wrapped_types: type_codegen::current_rc_wrapped_types(),
+        match_bound_vars: std::collections::HashSet::new(),
     };
 
     for item in items {

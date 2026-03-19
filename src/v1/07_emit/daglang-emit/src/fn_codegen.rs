@@ -165,6 +165,9 @@ pub struct CompileContext {
     pub(crate) expr_path: RefCell<ExprPath>,
     /// R8: Set of type names that are Rc-wrapped for O(1) clone.
     pub rc_wrapped_types: HashSet<String>,
+    /// R9: Set of variable names bound from match patterns on Rc-wrapped scrutinees.
+    /// These are `&Rc<T>` references that must be cloned to convert to owned `Rc<T>`.
+    pub match_bound_vars: HashSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -550,6 +553,7 @@ impl CompileContext {
             expr_identities: HashMap::new(),
             expr_path: RefCell::new(ExprPath::default()),
             rc_wrapped_types: HashSet::new(),
+            match_bound_vars: HashSet::new(),
         }
     }
 
@@ -1242,6 +1246,406 @@ fn compile_resolved_record_expr(
 }
 
 // ---------------------------------------------------------------------------
+// V5: Functional record update optimization
+//
+// Detects record constructions where all fields copy from the same source:
+//   StructType { field1: old.field1, field2: f(old.field2), field3: old.field3 }
+// Compiles to:
+//   { let mut __owned = Rc::try_unwrap(old).expect("V5: sole ownership");
+//     __owned.field2 = f(std::mem::take(&mut __owned.field2));
+//     Rc::new(__owned) }
+// This gives each field refcount 1 after destructuring, so downstream
+// try_unwrap in list_push/map_insert succeeds for O(1) mutations.
+// ---------------------------------------------------------------------------
+
+struct FunctionalUpdatePlan {
+    source_var: String,
+    identity_fields: Vec<String>,
+    modified_fields: Vec<String>,
+}
+
+/// Count references to a named identifier in an AST expression.
+fn count_ident_refs(expr: &ast::Expr, name: &str) -> usize {
+    match expr {
+        ast::Expr::Ident(n) if n == name => 1,
+        ast::Expr::FieldAccess(recv, _) => count_ident_refs(recv, name),
+        ast::Expr::Call(_, args) => args
+            .iter()
+            .map(|(_, e)| count_ident_refs(e, name))
+            .sum(),
+        ast::Expr::BinOp(l, _, r) => count_ident_refs(l, name) + count_ident_refs(r, name),
+        ast::Expr::UnaryOp(_, e) => count_ident_refs(e, name),
+        ast::Expr::Record(_, fields) => fields
+            .iter()
+            .map(|(_, e)| count_ident_refs(e, name))
+            .sum(),
+        ast::Expr::If(c, t, e) => {
+            count_ident_refs(c, name)
+                + count_ident_refs(t, name)
+                + e.as_ref().map_or(0, |e| count_ident_refs(e, name))
+        }
+        ast::Expr::Lambda(_, body) => count_ident_refs(body, name),
+        ast::Expr::List(items) => items.iter().map(|e| count_ident_refs(e, name)).sum(),
+        ast::Expr::Match(scrut, arms) => {
+            count_ident_refs(scrut, name)
+                + arms
+                    .iter()
+                    .map(|arm| {
+                        count_ident_refs(&arm.body, name)
+                            + arm.guard.as_ref().map_or(0, |g| count_ident_refs(g, name))
+                    })
+                    .sum::<usize>()
+        }
+        _ => 0,
+    }
+}
+
+/// Detect if a Record construction is a functional update of a single source variable.
+/// Returns None if the pattern doesn't match or isn't worth optimizing.
+fn detect_functional_update(
+    struct_name: &str,
+    fields: &[(String, ast::Expr)],
+    ctx: &CompileContext,
+) -> Option<FunctionalUpdatePlan> {
+    // Only optimize Rc-wrapped types (otherwise no try_unwrap benefit)
+    let result_type = ctx
+        .variant_to_enum
+        .get(struct_name)
+        .map(|s| s.as_str())
+        .unwrap_or(struct_name);
+    if !ctx.rc_wrapped_types.contains(result_type) {
+        return None;
+    }
+
+    let mut source_var: Option<&str> = None;
+    let mut identity_fields = Vec::new();
+    let mut modified_fields = Vec::new();
+
+    for (field_name, field_expr) in fields {
+        // Identity copy: source.field_name where field_name matches record field
+        if let ast::Expr::FieldAccess(receiver, access_field) = field_expr {
+            if access_field == field_name {
+                if let ast::Expr::Ident(src) = receiver.as_ref() {
+                    match source_var {
+                        None => source_var = Some(src.as_str()),
+                        Some(existing) if existing == src.as_str() => {}
+                        Some(_) => return None, // Multiple sources
+                    }
+                    identity_fields.push(field_name.clone());
+                    continue;
+                }
+            }
+        }
+        modified_fields.push(field_name.clone());
+    }
+
+    // Need a source variable (at least one identity field to identify it)
+    let source_var = source_var?;
+
+    // Source variable's type must match the target struct (otherwise the
+    // fields we'd take don't exist on the source). Check via ir_scope.
+    let source_type_matches = ctx
+        .ir_scope
+        .get(source_var)
+        .and_then(|ty| named_type_from_ir(ty))
+        .or_else(|| ctx.param_types.get(source_var).cloned())
+        .is_some_and(|ty_name| ty_name == struct_name);
+    if !source_type_matches {
+        return None;
+    }
+
+    // Source must be consumed by this record construction (not used elsewhere).
+    // Count ident references to source_var in the record's field expressions,
+    // and compare with total use_count. If there are external uses, we can't
+    // move the source into try_unwrap.
+    let record_refs: usize = fields
+        .iter()
+        .map(|(_, expr)| count_ident_refs(expr, source_var))
+        .sum();
+    let total_refs = ctx.use_counts.get(source_var).copied().unwrap_or(0);
+    if total_refs > record_refs {
+        return None; // Source used outside this record — can't consume it
+    }
+    // Need at least one modified field (otherwise just a copy, not worth optimizing)
+    if modified_fields.is_empty() {
+        return None;
+    }
+
+    // All modified fields must support std::mem::take (List or Map type).
+    // Without take, we can't extract the field with refcount 1, and the
+    // source variable reference in the compiled expression would fail after move.
+    let all_takeable = modified_fields
+        .iter()
+        .all(|f| field_supports_take(struct_name, f, ctx));
+    if !all_takeable {
+        return None;
+    }
+
+    Some(FunctionalUpdatePlan {
+        source_var: source_var.to_string(),
+        identity_fields,
+        modified_fields,
+    })
+}
+
+/// Check if a field type supports std::mem::take (has Default).
+/// Rc<Vec<T>> and Rc<HashMap<K,V>> do; other Rc<T> types generally don't.
+fn field_supports_take(struct_name: &str, field_name: &str, ctx: &CompileContext) -> bool {
+    ctx.struct_field_ir_types
+        .get(struct_name)
+        .and_then(|fields| {
+            fields
+                .iter()
+                .find(|(n, _)| n == field_name)
+                .map(|(_, ty)| ty)
+        })
+        .is_some_and(|ty| matches!(ty, IrType::Generic(name, _) if name == "List" || name == "Map"))
+}
+
+/// Replace `source_var.field_name.clone()` in a compiled code_ir expression
+/// with `Var(replacement_var)`. Recurses into Call/MethodCall/BinOp args.
+fn replace_source_field_clone(
+    expr: code_ir::Expr,
+    source_var: &str,
+    field_name: &str,
+    replacement_var: &str,
+) -> (code_ir::Expr, bool) {
+    // Direct match: source.field.clone()
+    if let code_ir::Expr::MethodCall {
+        ref receiver,
+        ref method,
+        ref args,
+    } = expr
+    {
+        if method == "clone" && args.is_empty() {
+            if let code_ir::Expr::Field(ref base, ref fname) = **receiver {
+                if fname == field_name {
+                    if let code_ir::Expr::Var(ref name) = **base {
+                        if name == &escape_rust_keyword(source_var) {
+                            return (
+                                code_ir::Expr::Var(replacement_var.to_string()),
+                                true,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Recurse into common expression types
+    match expr {
+        code_ir::Expr::Call {
+            func,
+            args,
+            obligation,
+        } => {
+            let mut found = false;
+            let new_func = {
+                let (f, hit) =
+                    replace_source_field_clone(*func, source_var, field_name, replacement_var);
+                found |= hit;
+                Box::new(f)
+            };
+            let new_args: Vec<_> = args
+                .into_iter()
+                .map(|a| {
+                    let (a, hit) =
+                        replace_source_field_clone(a, source_var, field_name, replacement_var);
+                    found |= hit;
+                    a
+                })
+                .collect();
+            (
+                code_ir::Expr::Call {
+                    func: new_func,
+                    args: new_args,
+                    obligation,
+                },
+                found,
+            )
+        }
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } => {
+            let mut found = false;
+            let (new_recv, hit) =
+                replace_source_field_clone(*receiver, source_var, field_name, replacement_var);
+            found |= hit;
+            let new_args: Vec<_> = args
+                .into_iter()
+                .map(|a| {
+                    let (a, hit) =
+                        replace_source_field_clone(a, source_var, field_name, replacement_var);
+                    found |= hit;
+                    a
+                })
+                .collect();
+            (
+                code_ir::Expr::MethodCall {
+                    receiver: Box::new(new_recv),
+                    method,
+                    args: new_args,
+                },
+                found,
+            )
+        }
+        code_ir::Expr::BinOp { left, op, right } => {
+            let (new_left, hit_l) =
+                replace_source_field_clone(*left, source_var, field_name, replacement_var);
+            let (new_right, hit_r) =
+                replace_source_field_clone(*right, source_var, field_name, replacement_var);
+            (
+                code_ir::Expr::BinOp {
+                    left: Box::new(new_left),
+                    op,
+                    right: Box::new(new_right),
+                },
+                hit_l || hit_r,
+            )
+        }
+        code_ir::Expr::Block(stmts) => {
+            let mut found = false;
+            let new_stmts: Vec<_> = stmts
+                .into_iter()
+                .map(|stmt| {
+                    let (s, hit) =
+                        replace_in_stmt(stmt, source_var, field_name, replacement_var);
+                    found |= hit;
+                    s
+                })
+                .collect();
+            (code_ir::Expr::Block(new_stmts), found)
+        }
+        other => (other, false),
+    }
+}
+
+/// Replace source field access within a code_ir statement (for Block recursion).
+fn replace_in_stmt(
+    stmt: code_ir::Stmt,
+    source_var: &str,
+    field_name: &str,
+    replacement_var: &str,
+) -> (code_ir::Stmt, bool) {
+    match stmt {
+        code_ir::Stmt::Let {
+            name,
+            mutable,
+            expr,
+            ir_type,
+        } => {
+            let (new_expr, hit) =
+                replace_source_field_clone(expr, source_var, field_name, replacement_var);
+            (
+                code_ir::Stmt::Let {
+                    name,
+                    mutable,
+                    expr: new_expr,
+                    ir_type,
+                },
+                hit,
+            )
+        }
+        code_ir::Stmt::Expr(expr) => {
+            let (new_expr, hit) =
+                replace_source_field_clone(expr, source_var, field_name, replacement_var);
+            (code_ir::Stmt::Expr(new_expr), hit)
+        }
+        code_ir::Stmt::TailExpr(expr) => {
+            let (new_expr, hit) =
+                replace_source_field_clone(expr, source_var, field_name, replacement_var);
+            (code_ir::Stmt::TailExpr(new_expr), hit)
+        }
+        code_ir::Stmt::Return(expr) => {
+            let (new_expr, hit) =
+                replace_source_field_clone(expr, source_var, field_name, replacement_var);
+            (code_ir::Stmt::Return(new_expr), hit)
+        }
+        other => (other, false),
+    }
+}
+
+/// Compile a functional record update as a block expression:
+///   { let mut __owned = Rc::try_unwrap(source).expect("...");
+///     __owned.modified_field = compiled_expr_with_take;
+///     Rc::new(__owned) }
+fn compile_functional_record_update(
+    struct_name: &str,
+    fields: &[(String, ast::Expr)],
+    plan: &FunctionalUpdatePlan,
+    field_path: impl Fn(usize) -> ExprPath,
+    ctx: &CompileContext,
+    counter: &mut usize,
+) -> code_ir::Expr {
+    let source_escaped = escape_rust_keyword(&plan.source_var);
+    let owned_var = fresh(counter, "owned");
+
+    let mut stmts = Vec::new();
+
+    // Step 1: Destructure source via try_unwrap
+    // Debug builds: expect (panics if refcount > 1, surfacing degradation)
+    // Release builds: fallback to clone (correct but O(N))
+    let rc_var = fresh(counter, "rc");
+    stmts.push(code_ir::Stmt::let_bind(&rc_var, code_ir::Expr::Var(source_escaped.clone())));
+    stmts.push(code_ir::Stmt::let_mut(
+        &owned_var,
+        code_ir::Expr::RawCode(format!(
+            "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| {{ debug_assert!(false, \"V5: expected sole ownership of `{}`\"); (*rc).clone() }})",
+            plan.source_var
+        )),
+    ));
+
+    // Step 2: For each modified field, take + compile + assign back
+    for (index, (field_name, field_expr)) in fields.iter().enumerate() {
+        if !plan.modified_fields.contains(field_name) {
+            continue;
+        }
+
+        let rust_field = escape_rust_keyword(field_name);
+
+        if field_supports_take(struct_name, field_name, ctx) {
+            // Take the field out (refcount 1), compile the expression with the taken value,
+            // then assign the result back.
+            let taken_var = fresh(counter, "taken");
+            stmts.push(code_ir::Stmt::let_bind(
+                &taken_var,
+                code_ir::Expr::RawCode(format!(
+                    "std::mem::take(&mut {owned_var}.{rust_field})"
+                )),
+            ));
+
+            // Compile the field expression normally
+            let compiled = ctx.with_expr_path(field_path(index), || {
+                compile_expr(field_expr, ctx, counter)
+            });
+
+            // Replace source.field.clone() with the taken variable
+            let (replaced, _found) = replace_source_field_clone(
+                compiled,
+                &plan.source_var,
+                field_name,
+                &taken_var,
+            );
+
+            stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                "{owned_var}.{rust_field} = {}",
+                crate::render_rust::render_expr_pub(&replaced)
+            ))));
+        }
+    }
+
+    // Step 3: Re-wrap in Rc
+    stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(
+        owned_var,
+    ))));
+
+    code_ir::Expr::Block(stmts)
+}
+
+// ---------------------------------------------------------------------------
 // Expressions
 // ---------------------------------------------------------------------------
 
@@ -1380,14 +1784,24 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // All binary operators (including +) emit directly.
                 // + is now exclusively arithmetic — string/list concat uses
                 // the `concat()` intrinsic function instead.
+                let compiled_left = ctx.with_child_expr_path(ExprPathStep::BinOpLeft, || {
+                    compile_expr(left, ctx, counter)
+                });
+                let compiled_right = ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
+                    compile_expr(right, ctx, counter)
+                });
+                // SG-10: For equality/inequality, strip .to_string() from operands.
+                // &str == &str and String == &str both work in Rust via PartialEq,
+                // so the .to_string() heap allocation is unnecessary.
+                let (compiled_left, compiled_right) = if matches!(op, ast::BinOp::Eq | ast::BinOp::Ne) {
+                    (strip_to_string(compiled_left), strip_to_string(compiled_right))
+                } else {
+                    (compiled_left, compiled_right)
+                };
                 code_ir::Expr::BinOp {
-                    left: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpLeft, || {
-                        compile_expr(left, ctx, counter)
-                    })),
+                    left: Box::new(compiled_left),
                     op: compile_binop(op),
-                    right: Box::new(ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
-                        compile_expr(right, ctx, counter)
-                    })),
+                    right: Box::new(compiled_right),
                 }
             }
         }
@@ -1414,6 +1828,18 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 return code_ir::Expr::Var("None".to_string());
             }
             if let Some(struct_name) = name.as_deref() {
+                // V5: Try functional record update optimization
+                if let Some(plan) = detect_functional_update(struct_name, fields, ctx) {
+                    let current_path = ctx.current_expr_path();
+                    return compile_functional_record_update(
+                        struct_name,
+                        fields,
+                        &plan,
+                        |index| record_field_path(&current_path, index),
+                        ctx,
+                        counter,
+                    );
+                }
                 let current_path = ctx.current_expr_path();
                 compile_resolved_record_expr(
                     struct_name,
@@ -1751,22 +2177,37 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             }
         } else {
             let count = ctx.use_counts.get(name).copied().unwrap_or(2);
-            let force_clone = !ctx.rc_wrapped_types.is_empty();
-            // SG-9: Allow fold accumulators to move (not clone) when single-use.
-            // The fold_accum_name is reassigned each iteration, so moving is safe
-            // and enables O(1) list_push/map_insert via Rc::try_unwrap.
-            let is_fold_accum = ctx
-                .fold_accum_name
+            // R9: Type-directed clone decision (replaces blanket force_clone flag).
+            // - Match-bound variables from Rc scrutinees: always clone (&Rc<T> → Rc<T>)
+            // - Rc-typed variables: always clone (O(1) refcount bump, avoids
+            //   move-across-branch errors from branch-aware use counting)
+            // - Non-Rc single-use: move (zero cost)
+            // - Non-Rc multi-use: clone
+            let ir_type = ctx.ir_scope.get(name);
+            let named = ir_type
+                .and_then(|ty| named_type_from_ir(ty))
+                .or_else(|| ctx.param_types.get(name).cloned());
+            let is_rc_named = named
                 .as_ref()
-                .is_some_and(|acc| acc == name);
-            if count <= 1 && (!force_clone || is_fold_accum) {
-                code_ir::Expr::Var(escaped)
-            } else {
+                .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(ty_name));
+            // List and Map types are always Rc-wrapped (Rc<Vec<T>>, Rc<HashMap<K,V>>).
+            let is_rc_collection = ir_type
+                .is_some_and(|ty| matches!(ty, IrType::Generic(n, _) if n == "List" || n == "Map"));
+            // If type is completely unknown and Rc types exist, assume Rc (conservative).
+            let assume_rc = named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
+            let needs_clone = count > 1
+                || ctx.match_bound_vars.contains(name)
+                || is_rc_named
+                || is_rc_collection
+                || assume_rc;
+            if needs_clone {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Var(escaped)),
                     method: "clone".to_string(),
                     args: vec![],
                 }
+            } else {
+                code_ir::Expr::Var(escaped)
             }
         }
     }
@@ -1781,6 +2222,19 @@ fn strip_clone(expr: code_ir::Expr) -> code_ir::Expr {
             method,
             args,
         } if method == "clone" && args.is_empty() => *receiver,
+        other => other,
+    }
+}
+
+/// SG-10: Strip trailing `.to_string()` from a compiled expression.
+/// Used in equality comparisons where &str == &str works directly.
+fn strip_to_string(expr: code_ir::Expr) -> code_ir::Expr {
+    match expr {
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } if method == "to_string" && args.is_empty() => *receiver,
         other => other,
     }
 }
@@ -4279,7 +4733,18 @@ fn compile_match_arm(
             }
         }
 
-        if opt_bindings.is_empty() && type_bindings.is_empty() && ir_type_bindings.is_empty() {
+        // R9: Collect all binding names from this pattern. When the scrutinee
+        // is Rc-wrapped, bindings are &Rc<T> references that need .clone().
+        let scrutinee_is_rc = expected_type
+            .is_some_and(|t| ctx.rc_wrapped_types.contains(t));
+        let mut match_bindings = Vec::new();
+        if scrutinee_is_rc {
+            collect_pattern_bindings(&arm.pattern, &mut match_bindings);
+        }
+
+        if opt_bindings.is_empty() && type_bindings.is_empty()
+            && ir_type_bindings.is_empty() && match_bindings.is_empty()
+        {
             std::borrow::Cow::Borrowed(ctx)
         } else {
             let mut augmented = ctx.clone();
@@ -4291,6 +4756,9 @@ fn compile_match_arm(
             }
             for (name, ty) in ir_type_bindings {
                 augmented.ir_scope.insert(name, ty);
+            }
+            for name in match_bindings {
+                augmented.match_bound_vars.insert(name);
             }
             std::borrow::Cow::Owned(augmented)
         }
@@ -4304,6 +4772,23 @@ fn compile_match_arm(
         || compile_expr_typed(&arm.body, &body_ctx, result_expected_type, counter),
     )));
     code_ir::MatchArm { pattern, body }
+}
+
+/// Collect all variable binding names from a match pattern (recursive).
+fn collect_pattern_bindings(pat: &ast::Pattern, out: &mut Vec<String>) {
+    match pat {
+        ast::Pattern::Ident(name) => {
+            if name != "null" && name != "_" {
+                out.push(name.clone());
+            }
+        }
+        ast::Pattern::Variant(_, fields) => {
+            for (_, field_pat) in fields {
+                collect_pattern_bindings(field_pat, out);
+            }
+        }
+        ast::Pattern::Wildcard | ast::Pattern::Literal(_) => {}
+    }
 }
 
 fn is_null_pattern(pat: &ast::Pattern) -> bool {
