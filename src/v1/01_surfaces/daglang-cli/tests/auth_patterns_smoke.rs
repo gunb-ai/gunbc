@@ -11,9 +11,11 @@
 // dsl/ tree, catching drift in provider bindings and service call signatures.
 #![allow(clippy::disallowed_methods)]
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use daglang_driver::{check_from_context, DriverContext};
+use daglang_syntax::parser::parse;
 
 fn dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl")
@@ -40,6 +42,27 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
             std::fs::copy(entry.path(), dest).expect("copy file");
         }
     }
+}
+
+fn parsed_import_binding_sets(path: &std::path::Path) -> BTreeMap<String, BTreeSet<String>> {
+    let source = std::fs::read_to_string(path).expect("read dag source");
+    let ast = parse(&source).unwrap_or_else(|errors| panic!("failed to parse {}: {errors:#?}", path.display()));
+    let mut imports = BTreeMap::new();
+
+    for import in ast.imports {
+        let import = import.node;
+        let Some(bindings) = import.bindings else {
+            continue;
+        };
+        let module = import.path.as_dotted();
+        let previous = imports.insert(module.clone(), bindings.into_iter().collect());
+        assert!(
+            previous.is_none(),
+            "expected a single import entry for {module}"
+        );
+    }
+
+    imports
 }
 
 fn assert_missing_provider_binding_fails_check(
@@ -108,19 +131,23 @@ fn real_gunbc_auth_patterns_check_typechecks() {
     );
 
     // Assert explicit imported provider symbols for multi-provider modules.
-    // The parsed_files count above is module-level; these assertions pin the exact
-    // provider bindings so that adding or removing a symbol from a multi-provider
-    // import is caught even when the module count stays the same.  Combined with
-    // the per-symbol removal test below, this proves the complete symbol set is
-    // both present and compiler-enforced.
-    let content = std::fs::read_to_string(root.join("gunbc/auth/patterns.dag"))
-        .expect("read patterns.dag");
+    // The parsed_files count above is module-level; these parsed-import assertions
+    // pin the exact provider bindings that the compiler sees without depending on
+    // source formatting. Combined with the per-symbol removal test below, this
+    // proves the complete symbol set is both present and compiler-enforced.
+    let import_bindings = parsed_import_binding_sets(&root.join("gunbc/auth/patterns.dag"));
     assert!(
-        content.contains("import extdeps.cloud.gcp.gcp { shell.OAuth2, shell.GCloud }"),
+        import_bindings.get("extdeps.cloud.gcp.gcp")
+            == Some(&BTreeSet::from(["shell.OAuth2".to_string(), "shell.GCloud".to_string()])),
         "extdeps.cloud.gcp.gcp must import exactly shell.OAuth2 and shell.GCloud"
     );
     assert!(
-        content.contains("import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC, gcp.Metadata }"),
+        import_bindings.get("extdeps.cloud.gcp.sts")
+            == Some(&BTreeSet::from([
+                "gcp.STS".to_string(),
+                "github.OIDC".to_string(),
+                "gcp.Metadata".to_string(),
+            ])),
         "extdeps.cloud.gcp.sts must import exactly gcp.STS, github.OIDC, and gcp.Metadata"
     );
 }
