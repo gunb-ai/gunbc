@@ -353,15 +353,17 @@ fn expr_has_self_call(expr: Expr, fn_name: String) -> Bool {
     If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
       expr_has_self_call(expr: c, fn_name: fn_name)
         || expr_has_self_call(expr: t, fn_name: fn_name)
-        || match e {
-          Some { value: eb } => expr_has_self_call(expr: eb, fn_name: fn_name)
-          None => false
+        || if e == none {
+          false
+        } else {
+          expr_has_self_call(expr: e.value, fn_name: fn_name)
         }
     Let { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
       expr_has_self_call(expr: v, fn_name: fn_name)
-        || match bd {
-          Some { value: b } => expr_has_self_call(expr: b, fn_name: fn_name)
-          None => false
+        || if bd == none {
+          false
+        } else {
+          expr_has_self_call(expr: bd.value, fn_name: fn_name)
         }
     Block { stmts: ss, resolved_type: _, span: _ } =>
       ss |> any(s => expr_has_self_call(expr: s, fn_name: fn_name))
@@ -416,9 +418,10 @@ fn expr_has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bo
       // Condition is never tail; branches inherit tail context.
       expr_has_non_tail_self_call(expr: c, fn_name: fn_name, in_tail: false)
         || expr_has_non_tail_self_call(expr: t, fn_name: fn_name, in_tail: in_tail)
-        || match e {
-          Some { value: eb } => expr_has_non_tail_self_call(expr: eb, fn_name: fn_name, in_tail: in_tail)
-          None => false
+        || if e == none {
+          false
+        } else {
+          expr_has_non_tail_self_call(expr: e.value, fn_name: fn_name, in_tail: in_tail)
         }
     Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } =>
       // Scrutinee is never tail; arm bodies inherit tail context.
@@ -428,9 +431,10 @@ fn expr_has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bo
     Let { name: _, value: v, body: bd, resolved_type: _, span: _ } =>
       // Value is never tail; body (continuation) inherits tail context.
       expr_has_non_tail_self_call(expr: v, fn_name: fn_name, in_tail: false)
-        || match bd {
-          Some { value: b } => expr_has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: in_tail)
-          None => false
+        || if bd == none {
+          false
+        } else {
+          expr_has_non_tail_self_call(expr: bd.value, fn_name: fn_name, in_tail: in_tail)
         }
     Block { stmts: ss, resolved_type: _, span: _ } =>
       // Only the last statement in a block is in tail position.
@@ -440,10 +444,10 @@ fn expr_has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bo
         let init_bad = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
           |> any(p => expr_has_non_tail_self_call(expr: p.second, fn_name: fn_name, in_tail: false))
-        let last_bad = match ss |> last {
-          Some { value: last_expr } =>
-            expr_has_non_tail_self_call(expr: last_expr, fn_name: fn_name, in_tail: in_tail)
-          None => false
+        let last_bad = if ss |> last == none {
+          false
+        } else {
+          expr_has_non_tail_self_call(expr: (ss |> last).value, fn_name: fn_name, in_tail: in_tail)
         }
         init_bad || last_bad
       }

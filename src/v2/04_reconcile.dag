@@ -1212,38 +1212,37 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
     If { condition: cond, then_branch: then_expr, else_branch: else_expr, span: span } =>
       let cond_result = infer_expr(expr: cond, scope: scope)
       let then_result = infer_expr(expr: then_expr, scope: scope)
-      match else_expr {
-        Some { value: else_branch } =>
-          let else_result = infer_expr(expr: else_branch, scope: scope)
-          let branch_diags = if node_type_equals(
-            left: then_result.typed.resolved_type.value,
-            right: else_result.typed.resolved_type.value
-          ) {
-            []
-          } else {
-            [inference_error(
-              message: concat(
-                "if branches resolve to incompatible types: ",
-                node_type_shape(n: then_result.typed.resolved_type.value),
-                " vs ",
-                node_type_shape(n: else_result.typed.resolved_type.value)
-              ),
-              span: span,
-              module_name: scope.module_name
-            )]
-          }
-          let resolved_type = then_result.typed.resolved_type.value
-          let texpr = If { condition: cond_result.typed, then_branch: then_result.typed, else_branch: Some { value: else_result.typed }, resolved_type: Some { value: resolved_type }, span: span }
-          InferResult {
-            typed: texpr,
-            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics, else_result.diagnostics, branch_diags)
-          }
-        None =>
-          let texpr = If { condition: cond_result.typed, then_branch: then_result.typed, else_branch: none, resolved_type: Some { value: leaf_node(name: "Unit") }, span: span }
-          InferResult {
-            typed: texpr,
-            diagnostics: concat(cond_result.diagnostics, then_result.diagnostics)
-          }
+      if else_expr == none {
+        let texpr = If { condition: cond_result.typed, then_branch: then_result.typed, else_branch: none, resolved_type: Some { value: leaf_node(name: "Unit") }, span: span }
+        InferResult {
+          typed: texpr,
+          diagnostics: concat(cond_result.diagnostics, then_result.diagnostics)
+        }
+      } else {
+        let else_result = infer_expr(expr: else_expr.value, scope: scope)
+        let branch_diags = if node_type_equals(
+          left: then_result.typed.resolved_type.value,
+          right: else_result.typed.resolved_type.value
+        ) {
+          []
+        } else {
+          [inference_error(
+            message: concat(
+              "if branches resolve to incompatible types: ",
+              node_type_shape(n: then_result.typed.resolved_type.value),
+              " vs ",
+              node_type_shape(n: else_result.typed.resolved_type.value)
+            ),
+            span: span,
+            module_name: scope.module_name
+          )]
+        }
+        let resolved_type = then_result.typed.resolved_type.value
+        let texpr = If { condition: cond_result.typed, then_branch: then_result.typed, else_branch: Some { value: else_result.typed }, resolved_type: Some { value: resolved_type }, span: span }
+        InferResult {
+          typed: texpr,
+          diagnostics: concat(cond_result.diagnostics, then_result.diagnostics, else_result.diagnostics, branch_diags)
+        }
       }
 
     Let { name: let_name, value: let_value, body: let_body, span: span } =>
