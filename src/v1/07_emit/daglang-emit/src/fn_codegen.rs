@@ -727,27 +727,23 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
         ast::Expr::Match(scrutinee, arms) => {
             count_ident_uses_expr(scrutinee, counts, weight);
             // SG-9: Match arms are exclusive — a variable used once per arm
-            // is consumed only once at runtime. Use max across arms, not sum.
-            let mut arm_counts: Vec<HashMap<String, usize>> = Vec::new();
+            // is consumed only once at runtime. Merge per-arm maxima in one
+            // pass instead of rescanning every arm map for every variable.
+            let mut arm_map = HashMap::new();
+            let mut max_in_arms = HashMap::new();
             for arm in arms {
-                let mut arm_map = HashMap::new();
+                arm_map.clear();
                 if let Some(guard) = &arm.guard {
                     count_ident_uses_expr(guard, &mut arm_map, weight);
                 }
                 count_ident_uses_expr(&arm.body, &mut arm_map, weight);
-                arm_counts.push(arm_map);
-            }
-            for arm_map in &arm_counts {
-                for (name, &_arm_count) in arm_map {
-                    let current = counts.get(name).copied().unwrap_or(0);
-                    let max_in_arms = arm_counts
-                        .iter()
-                        .map(|m| m.get(name).copied().unwrap_or(0))
-                        .max()
-                        .unwrap_or(0);
-                    // Only add the max (not sum) since arms are exclusive
-                    counts.insert(name.clone(), current.max(max_in_arms));
+                for (name, &arm_count) in &arm_map {
+                    let max_count = max_in_arms.entry(name.clone()).or_insert(0);
+                    *max_count = (*max_count).max(arm_count);
                 }
+            }
+            for (name, arm_count) in max_in_arms {
+                *counts.entry(name).or_insert(0) += arm_count;
             }
         }
         ast::Expr::If(cond, then_expr, else_expr) => {
@@ -6689,6 +6685,40 @@ mod tests {
             expr_identity.expect("expected walked expression identity"),
             ir_type,
         );
+    }
+
+    #[test]
+    fn count_ident_uses_match_adds_scrutinee_and_max_arm_usage() {
+        let expr = Expr::Match(
+            Box::new(Expr::Ident("shared".into())),
+            vec![
+                MatchArm {
+                    pattern: Pattern::Literal(Literal::Int(0)),
+                    guard: Some(Expr::Ident("only_a".into())),
+                    body: Expr::Ident("shared".into()),
+                },
+                MatchArm {
+                    pattern: Pattern::Literal(Literal::Int(1)),
+                    guard: None,
+                    body: Expr::BinOp(
+                        Box::new(Expr::Ident("shared".into())),
+                        BinOp::Add,
+                        Box::new(Expr::Ident("shared".into())),
+                    ),
+                },
+                MatchArm {
+                    pattern: Pattern::Wildcard,
+                    guard: None,
+                    body: Expr::Ident("only_a".into()),
+                },
+            ],
+        );
+
+        let mut counts = HashMap::new();
+        count_ident_uses_expr(&expr, &mut counts, 1);
+
+        assert_eq!(counts.get("shared"), Some(&3));
+        assert_eq!(counts.get("only_a"), Some(&1));
     }
 
     #[test]
