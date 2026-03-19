@@ -810,7 +810,44 @@ pub fn eval_builtin_call(
             }
             Ok(Value::Map(map))
         }
-        _ if name.contains('.') => Ok(Value::Unit),
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unrecognized_dotted_name_is_not_a_builtin() {
+        // Dotted names (qualified calls like `module.function`) must not be
+        // silently handled by the builtin table. They should fall through as
+        // `None` so the caller can resolve them through sibling functions or
+        // produce a clear "unknown function" error.
+        assert!(
+            eval_builtin_call("module.function", &[]).is_none(),
+            "dotted names must not be recognized as builtins"
+        );
+        assert!(
+            eval_builtin_call("deeply.nested.call", &[]).is_none(),
+            "multi-segment dotted names must not be recognized as builtins"
+        );
+    }
+
+    #[test]
+    fn recognized_builtin_returns_some() {
+        let args = vec![
+            (None, Value::Str("hello".into())),
+            (None, Value::Str(" world".into())),
+        ];
+        let result = eval_builtin_call("concat", &args);
+        assert!(
+            result.is_some(),
+            "known builtin `concat` should be recognized"
+        );
+        assert_eq!(
+            result.unwrap().unwrap(),
+            Value::Str("hello world".into()),
+        );
+    }
 }
