@@ -35,8 +35,9 @@ import v2.std.core {
 }
 
 import v2.compiler.reconcile {
-  TypedGraph, TypedModule,
-  TypeEnv, FuncEnv, TypeBinding, InferScope,
+  ResolvedGraph, TypedModule,
+  ResolvedFuncEnv,
+  TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   infer_record_lit,
   normalize_access_type_node, for_each_element_type_node,
@@ -142,7 +143,7 @@ fn emit_rust_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // Entry point -- Rust target
 // =========================================================================
 
-fn emit_rust(typed: TypedGraph) -> EmitResult {
+fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     map_merge(acc, tm.item_registry)
   )

@@ -24,7 +24,7 @@ import v2.std.core {
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   ForEach, Index, Slice,
-  FuncSig,
+  DeclaredFuncSig,
   Literal, Var, FieldAccess, Call,
   MethodCall, Match, If, Let, RecordLit,
   ListLit, BinOp, UnaryOp, Lambda,
@@ -34,8 +34,9 @@ import v2.std.core {
 }
 
 import v2.compiler.reconcile {
-  TypedGraph, TypedModule,
-  TypeEnv, FuncEnv, TypeBinding, InferScope,
+  ResolvedGraph, TypedModule,
+  ResolvedFuncSig, ResolvedFuncEnv,
+  TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   for_each_element_type_node,
   expr_span,
@@ -132,7 +133,7 @@ fn emit_py_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // Entry point -- Python target
 // =========================================================================
 
-fn emit_python(typed: TypedGraph) -> EmitResult {
+fn emit_python(typed: ResolvedGraph) -> EmitResult {
   let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     map_merge(acc, tm.item_registry)
   )

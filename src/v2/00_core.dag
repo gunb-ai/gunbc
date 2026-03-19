@@ -280,15 +280,15 @@ type Diagnostic {
 
 type Severity = Error | Warning
 
-type FuncSig {
+type DeclaredFuncSig {
   name: String
   params: List<Param>
-  return_type: Node
+  return_type: Node?
   is_async: Bool
 }
 
-type FuncEnv {
-  signatures: Map<String, FuncSig>
+type DeclaredFuncEnv {
+  signatures: Map<String, DeclaredFuncSig>
 }
 
 // =========================================================================

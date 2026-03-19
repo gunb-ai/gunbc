@@ -1043,8 +1043,8 @@ current implementation and each stage's lower bound.
 - [x] `validate_no_unresolved()` demoted (B3 Phase 2a — not deleted, B3 Phase 2b)
 - [x] No SG-9 struct-field accumulator sites remain in compiler hot paths
       (10 sites converted: infer_block_stmts + 3 emitters × 3 block patterns)
-- [ ] Emitter registry/service-call summaries computed once upstream
-      (Deferred: circular dependency between reconcile↔emit prevents hoisting ItemInfo)
+- [x] Emitter registry/service-call summaries computed once upstream
+      (item_registry built inline in typecheck_module, emitters merge via fold+map_merge)
 - [ ] Resolver dependency ordering is O(M + E) end-to-end
       (Blocked: v1 emitter cannot codegen Map<String, List<String>>; existing O(E) edge partition retained)
 - [ ] Parser lookahead no longer rescans brace regions
