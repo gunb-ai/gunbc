@@ -430,6 +430,19 @@ make resolved-vs-unresolved a type distinction rather than a runtime check.
 **TODO in B3:** delete `validate_no_unresolved()` and replace with structural
 type distinction (e.g., `ResolvedNode` wrapper or equivalent).
 
+**Review follow-up (2026-03-19):** two current bugs are symptoms of this
+same boundary problem, not separate one-off fixes:
+- `FuncSig` requires a concrete `return_type` too early, so
+  `build_func_env()` fabricates placeholders for unannotated functions and
+  `infer_expr(Call)` can observe the fake type instead of the resolved one.
+- `compile_sources_lenient()` exists to push a graph with unresolved
+  typecheck state across the typecheck → emit boundary during bootstrap.
+
+The sustainable fix is **not** best-effort typing. B3 Phase 2 should split
+declared-vs-resolved function signatures, resolve function return types
+before call inference can consume them, and make the emit boundary accept
+only a structurally resolved graph.
+
 ---
 
 ## Track A: Self-Hosting
@@ -520,6 +533,21 @@ Also: delete `validate_no_unresolved()` (Blocker 4). When pipeline boundary
 types are reworked here, make resolved-vs-unresolved a type distinction
 rather than a runtime check. The validation pass violates Invariant 9.
 
+Concrete boundary work required here:
+- Split function signature state into declaration-time vs resolved-time
+  representations. `infer_expr(Call)` must not read from a signature that
+  can still contain a fabricated or placeholder return type.
+- Resolve function return types in dependency order over the call graph
+  (SCC-aware). Recursive SCCs without explicit return annotations must fail
+  closed instead of guessing.
+- Introduce a resolved reconcile/emit boundary type so emit only accepts
+  graphs where every item/expr type is already structurally resolved.
+- Delete `compile_sources_lenient()` once the remaining bootstrap false
+  positives are fixed. It currently exists only because the boundary type is
+  too permissive.
+- Do **not** weaken `typecheck_module()` into a partial/best-effort mode.
+  The fix is stronger output types, not more lenient control flow.
+
 Also: batch fix F2/F3/F4 (string-typed fields):
 - `ItemInfo.kind: String` → closed enum `ItemKind = Fn | Func | Other`
 - `SemanticsCtx` all-String fields → enums/newtypes
@@ -529,6 +557,12 @@ Also: batch fix F2/F3/F4 (string-typed fields):
 - [x] `Typed*` family deleted (Phase 1)
 - [ ] `Expr` type deleted from `00_core.dag`
 - [ ] `validate_no_unresolved()` deleted; replaced with structural type boundary
+- [ ] Declared vs resolved function signatures are distinct; no fabricated
+      placeholder return types in `FuncEnv`
+- [ ] Call-graph/SCC return-type resolution fails closed for recursive
+      unannotated functions
+- [ ] `compile_sources_lenient()` deleted; bootstrap uses the strict
+      resolved type boundary
 - [ ] pipeline shape is `Node → Node → Node → TextFile`
 - [ ] No String-typed fields where a closed enum is appropriate
 

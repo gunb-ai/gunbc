@@ -1812,12 +1812,12 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       None =>
         BuildTypeEnvResult {
           env: acc.env,
-          diagnostics: concat(acc.diagnostics, [Diagnostic {
+          diagnostics: list_push(acc.diagnostics, Diagnostic {
             severity: Error,
             message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"),
             span: imp.target_module.value.span,
             module_name: module.module.name
-          }])
+          })
         }
     }
   )

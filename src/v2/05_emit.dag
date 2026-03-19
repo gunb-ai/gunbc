@@ -231,7 +231,7 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
 fn unique_strings(items: List<String>) -> List<String> {
   let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
-    else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: concat(acc.result, [item]) } }
+    else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
   result.result
 }
@@ -255,7 +255,7 @@ fn collect_typed_service_calls_into(texpr: Expr, acc: UniqueAccum) -> UniqueAccu
         match extract_typed_service_name(receiver: r) {
           Some { value: service_name } =>
             if emit_map_has(m: acc.seen, key: service_name) { acc }
-            else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: concat(acc.result, [service_name]) } }
+            else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
           None => acc
         }
       } else {

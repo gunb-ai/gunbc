@@ -42,7 +42,7 @@ type SourceFile {
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
-      Some { value: diag } => concat(acc, [diag])
+      Some { value: diag } => list_push(acc, diag)
       None => acc
     }
   )

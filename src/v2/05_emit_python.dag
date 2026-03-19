@@ -729,7 +729,7 @@ fn emit_py_typed_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope
   let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
     let line = emit_py_typed_expr(texpr: stmt, registry: registry, scope: acc.scope, depth: depth)
     let next_scope = scope_after_expr(texpr: stmt, scope: acc.scope)
-    let new_text = concat(acc.text, [line])
+    let new_text = list_push(acc.text, line)
     BlockEmitState { text: new_text, scope: next_scope }
   })
   state.text |> join(separator: "\n")
@@ -766,7 +766,7 @@ fn emit_py_typed_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: I
           |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
             let line = emit_py_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = concat(acc.text, [line])
+            let new_text = list_push(acc.text, line)
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_stmt = ss |> last
@@ -839,7 +839,7 @@ fn emit_py_typed_tco_expr(texpr: Expr, fn_name: String, params: List<Param>, reg
           |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
             let line = emit_py_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
             let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = concat(acc.text, [line])
+            let new_text = list_push(acc.text, line)
             BlockEmitState { text: new_text, scope: next_scope }
           })
         let last_str = match ss |> last {
