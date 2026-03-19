@@ -2917,7 +2917,8 @@ mod tests {
         let err = resolve_node(&node)
             .expect_err("GetField with no declared inputs must fail at resolve time");
         assert!(
-            err.reason.contains("expected exactly 1 declared input port"),
+            err.reason
+                .contains("expected exactly 1 declared input port"),
             "error should mention input count: {}",
             err.reason
         );
@@ -2943,7 +2944,8 @@ mod tests {
         let err = resolve_node(&node)
             .expect_err("GetField with multiple declared inputs must fail at resolve time");
         assert!(
-            err.reason.contains("expected exactly 1 declared input port"),
+            err.reason
+                .contains("expected exactly 1 declared input port"),
             "error should mention input count: {}",
             err.reason
         );
@@ -2965,8 +2967,7 @@ mod tests {
                 },
             },
         );
-        let op = resolve_node(&node)
-            .expect("GetField with one declared input should resolve");
+        let op = resolve_node(&node).expect("GetField with one declared input should resolve");
 
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -2981,9 +2982,6 @@ mod tests {
         let outputs = op
             .execute(inputs)
             .expect("GetField should execute using schema-derived input port");
-        assert_eq!(
-            outputs.get("value").and_then(Value::as_str),
-            Some("alice"),
-        );
+        assert_eq!(outputs.get("value").and_then(Value::as_str), Some("alice"),);
     }
 }

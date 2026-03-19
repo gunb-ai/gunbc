@@ -74,10 +74,7 @@ fn strict_typecheck_dsl_std_types_and_resources() {
 
     assert_eq!(typed.module_count(), 2);
 
-    let module_names: Vec<_> = typed
-        .modules()
-        .map(|m| m.module_path.as_dotted())
-        .collect();
+    let module_names: Vec<_> = typed.modules().map(|m| m.module_path.as_dotted()).collect();
     assert!(
         module_names.contains(&"std.types".to_string()),
         "expected std.types in typechecked modules"

@@ -928,7 +928,9 @@ mod tests {
     #[test]
     fn render_expr_method_call_parenthesizes_deref_receiver() {
         let expr = Expr::MethodCall {
-            receiver: Box::new(Expr::Field(Box::new(Expr::var("item")), "return_type".to_string()).deref()),
+            receiver: Box::new(
+                Expr::Field(Box::new(Expr::var("item")), "return_type".to_string()).deref(),
+            ),
             method: "unwrap".to_string(),
             args: vec![],
         };

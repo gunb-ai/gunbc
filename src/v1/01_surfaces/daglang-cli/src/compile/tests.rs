@@ -3513,7 +3513,7 @@ fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
 }
 
 #[test]
-fn check_disambiguates_same_name_services_via_module_qualified_call() {
+fn check_disambiguates_same_name_services_with_explicit_bindings_or_qualification() {
     let root = unique_temp_root("disambiguate_same_name_services");
     let write_source = |relative: &str, content: &str| {
         let path = root.join(relative);
@@ -3534,13 +3534,40 @@ service SharedService {
         "vendor/beta.dag",
         r#"module vendor.beta
 service SharedService {
-  operation read(path: String) -> { body: String }
+  operation read(query: Int) -> { count: Int }
+}
+service BetaOnly {
+  operation ping(msg: String) -> { ok: Bool }
 }
 "#,
     );
     write_source(
-        "sample/main.dag",
-        r#"module sample.main
+        "sample/ambiguous.dag",
+        r#"module sample.ambiguous
+import vendor.alpha
+import vendor.beta
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}
+"#,
+    );
+    write_source(
+        "sample/selective.dag",
+        r#"module sample.selective
+import vendor.alpha { SharedService }
+import vendor.beta { BetaOnly }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}
+"#,
+    );
+    write_source(
+        "sample/qualified.dag",
+        r#"module sample.qualified
 import vendor.alpha
 import vendor.beta
 
@@ -3551,12 +3578,27 @@ func run(path: String) -> { body: String } {
 "#,
     );
 
-    let context = PipelineContext {
+    let ambiguous = PipelineContext {
         roots: vec![root.clone()],
-        target_file: Some(root.join("sample/main.dag")),
+        target_file: Some(root.join("sample/ambiguous.dag")),
     };
+    let error =
+        check_from_context(&ambiguous).expect_err("bare service spelling should stay ambiguous");
+    assert_typecheck_stage_error(&error);
+    assert!(error.contains("ambiguous service call `SharedService.read`"));
 
-    check_from_context(&context)
+    let selective = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("sample/selective.dag")),
+    };
+    check_from_context(&selective)
+        .expect("selective binding should disambiguate same-name services at compile level");
+
+    let qualified = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: Some(root.join("sample/qualified.dag")),
+    };
+    check_from_context(&qualified)
         .expect("module-qualified call should disambiguate same-name services at compile level");
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");

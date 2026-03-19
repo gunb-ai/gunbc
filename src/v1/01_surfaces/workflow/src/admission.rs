@@ -143,7 +143,11 @@ pub fn validate_conflicting_claims(spec: &WorkflowSpec) -> Vec<WorkflowAdmission
     let accesses = match derive_resource_accesses(&spec.dag) {
         Ok(accesses) => accesses,
         Err(resource_errors) => {
-            errors.extend(resource_errors.into_iter().map(WorkflowAdmissionError::ResourceAccess));
+            errors.extend(
+                resource_errors
+                    .into_iter()
+                    .map(WorkflowAdmissionError::ResourceAccess),
+            );
             return errors;
         }
     };
@@ -213,7 +217,6 @@ fn derive_declared_claims(
     }
     Ok(claims_by_node)
 }
-
 
 fn mode_rank(mode: gunbc_ir::AccessMode) -> u8 {
     match mode {
@@ -514,19 +517,19 @@ mod tests {
             "wf.a",
             inputs,
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new("wf", "a"))),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "a",
+            ))),
         ));
 
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
         let errors = validate_conflicting_claims(&spec);
         assert_eq!(errors.len(), 1);
         match &errors[0] {
-            WorkflowAdmissionError::ResourceAccess(
-                ResourceAccessError::MissingResourceId {
-                    node_id,
-                    port_name,
-                },
-            ) => {
+            WorkflowAdmissionError::ResourceAccess(ResourceAccessError::MissingResourceId {
+                node_id,
+                port_name,
+            }) => {
                 assert_eq!(node_id.0, "wf.a");
                 assert_eq!(port_name, "db_conn");
                 assert_eq!(
@@ -553,7 +556,9 @@ mod tests {
             "wf.a",
             inputs,
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new("wf", "a"))),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "a",
+            ))),
         ));
 
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);

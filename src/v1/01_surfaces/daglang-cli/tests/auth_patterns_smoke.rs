@@ -47,7 +47,8 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
 
 fn parsed_import_binding_sets(path: &std::path::Path) -> BTreeMap<String, BTreeSet<String>> {
     let source = std::fs::read_to_string(path).expect("read dag source");
-    let ast = parse(&source).unwrap_or_else(|errors| panic!("failed to parse {}: {errors:#?}", path.display()));
+    let ast = parse(&source)
+        .unwrap_or_else(|errors| panic!("failed to parse {}: {errors:#?}", path.display()));
     let mut imports = BTreeMap::new();
 
     for import in ast.imports {
@@ -139,7 +140,10 @@ fn real_gunbc_auth_patterns_check_typechecks() {
     let import_bindings = parsed_import_binding_sets(&root.join("gunbc/auth/patterns.dag"));
     assert!(
         import_bindings.get("extdeps.cloud.gcp.gcp")
-            == Some(&BTreeSet::from(["shell.OAuth2".to_string(), "shell.GCloud".to_string()])),
+            == Some(&BTreeSet::from([
+                "shell.OAuth2".to_string(),
+                "shell.GCloud".to_string()
+            ])),
         "extdeps.cloud.gcp.gcp must import exactly shell.OAuth2 and shell.GCloud"
     );
     assert!(
@@ -194,16 +198,8 @@ fn removing_required_provider_bindings_from_auth_patterns_fails_check() {
             "import extdeps.cloud.gcp.sts { gcp.STS, github.OIDC }\n",
             "gcp.Metadata.GetIdentityToken",
         ),
-        (
-            "import extdeps.shell { shell.Env }\n",
-            "",
-            "shell.Env.Get",
-        ),
+        ("import extdeps.shell { shell.Env }\n", "", "shell.Env.Get"),
     ] {
-        assert_missing_provider_binding_fails_check(
-            import_line,
-            replacement,
-            missing_service_call,
-        );
+        assert_missing_provider_binding_fails_check(import_line, replacement, missing_service_call);
     }
 }

@@ -1872,24 +1872,22 @@ mod tests {
         let (comp_node, comp_port) = completeness
             .iter()
             .find_map(|v| match v {
-                ResourceCompletenessViolation::IncompleteResourcePort {
-                    node_id,
-                    port_name,
-                } => Some((node_id.0.as_str(), port_name.as_str())),
+                ResourceCompletenessViolation::IncompleteResourcePort { node_id, port_name } => {
+                    Some((node_id.0.as_str(), port_name.as_str()))
+                }
                 _ => None,
             })
             .expect("completeness must report IncompleteResourcePort");
 
         // Derivation also rejects with concrete port details.
-        let errors = derive_resource_accesses(&dag)
-            .expect_err("derivation must reject missing resource_id");
+        let errors =
+            derive_resource_accesses(&dag).expect_err("derivation must reject missing resource_id");
         let (deriv_node, deriv_port) = errors
             .iter()
             .find_map(|e| match e {
-                ResourceAccessError::MissingResourceId {
-                    node_id,
-                    port_name,
-                } => Some((node_id.0.as_str(), port_name.as_str())),
+                ResourceAccessError::MissingResourceId { node_id, port_name } => {
+                    Some((node_id.0.as_str(), port_name.as_str()))
+                }
                 _ => None,
             })
             .expect("derivation must report MissingResourceId");
