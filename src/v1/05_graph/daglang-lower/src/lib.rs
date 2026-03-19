@@ -6420,7 +6420,7 @@ fn derive_operation_spec(
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation)
+            Ok(derive_rest_spec(service, operation)?
                 .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
@@ -6623,11 +6623,14 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
         .collect()
 }
 
-fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
+fn derive_rest_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
         Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
-        _ => return None,
+        _ => return Ok(None),
     };
 
     let headers = match &operation.transport {
@@ -6645,7 +6648,9 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     );
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
-        Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(b),
+        Some(TransportBinding::Rest { body: Some(b), .. }) => {
+            body_template_entries_from_expr(b, &service.name, &operation.name)?
+        }
         _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
@@ -6694,7 +6699,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         })
     };
 
-    Some(RestOperationSpec {
+    Ok(Some(RestOperationSpec {
         endpoint,
         method,
         path_template,
@@ -6708,7 +6713,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         response_mapping,
         output_shape,
         mock_responses,
-    })
+    }))
 }
 
 /// Convert a list of argv expressions from `shell(["cmd", "{param}"])` to ArgvSegments.
@@ -6856,41 +6861,126 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
 }
 
 /// Recursively convert an expression (Record or Map) to body template entries.
-fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
+fn body_template_entries_from_expr(
+    expr: &Expr,
+    service: &str,
+    operation: &str,
+) -> Result<Option<Vec<BodyEntry>>, LowerError> {
     match expr {
-        Expr::Record(_, fields) => {
+        Expr::Record(record_type, fields) => {
             let mut entries = Vec::new();
             for (key, value) in fields {
-                if let Some(entry) = body_template_entry(key, value) {
+                if let Some(entry) =
+                    body_template_entry(record_type.as_deref(), key, value, service, operation)?
+                {
                     entries.push(entry);
                 }
             }
-            Some(entries)
+            Ok(Some(entries))
         }
         Expr::Map(map_entries) => {
             let mut entries = Vec::new();
             for (key_expr, value) in map_entries {
                 if let Expr::Literal(Literal::String(key)) = key_expr {
-                    if let Some(entry) = body_template_entry(key, value) {
+                    if let Some(entry) = body_template_entry(None, key, value, service, operation)?
+                    {
                         entries.push(entry);
                     }
                 }
             }
-            Some(entries)
+            Ok(Some(entries))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Convert a single key-value pair to a BodyEntry.
+fn body_template_entry(
+    container_type: Option<&str>,
+    key: &str,
+    value: &Expr,
+    service: &str,
+    operation: &str,
+) -> Result<Option<BodyEntry>, LowerError> {
+    if container_type == Some("StsTokenExchange") {
+        if let Some(entry) = sts_token_exchange_body_entry(key, value, service, operation)? {
+            return Ok(Some(entry));
+        }
+    }
+
+    match value {
+        Expr::Ident(field_name) => Ok(Some(BodyEntry::InputRef(
+            key.to_string(),
+            field_name.clone(),
+        ))),
+        Expr::Literal(Literal::String(s)) => {
+            Ok(Some(BodyEntry::Literal(key.to_string(), s.clone())))
+        }
+        Expr::Record(_, _) | Expr::Map(_) => {
+            let inner = body_template_entries_from_expr(value, service, operation)?;
+            Ok(inner.map(|entries| BodyEntry::Nested(key.to_string(), entries)))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn sts_token_exchange_body_entry(
+    key: &str,
+    value: &Expr,
+    service: &str,
+    operation: &str,
+) -> Result<Option<BodyEntry>, LowerError> {
+    let literal = match key {
+        "grant_type" => {
+            sts_grant_type_urn(value).ok_or_else(|| LowerError::InvalidTransportSpec {
+                service: service.to_string(),
+                operation: operation.to_string(),
+                detail: "STS token exchange body field `grant_type` must use a \
+                     `StsGrantType` constructor such as `TokenExchange {}`"
+                    .to_string(),
+            })?
+        }
+        "subject_token_type" | "requested_token_type" => sts_token_type_urn(key, value)
+            .ok_or_else(|| LowerError::InvalidTransportSpec {
+                service: service.to_string(),
+                operation: operation.to_string(),
+                detail: format!(
+                    "STS token exchange body field `{key}` must use the typed STS token enums"
+                ),
+            })?,
+        _ => return Ok(None),
+    };
+
+    Ok(Some(BodyEntry::Literal(
+        key.to_string(),
+        literal.to_string(),
+    )))
+}
+
+fn sts_grant_type_urn(value: &Expr) -> Option<&'static str> {
+    match value {
+        Expr::Record(Some(variant), fields) if variant == "TokenExchange" && fields.is_empty() => {
+            Some("urn:ietf:params:oauth:grant-type:token-exchange")
         }
         _ => None,
     }
 }
 
-/// Convert a single key-value pair to a BodyEntry.
-fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
-    match value {
-        Expr::Ident(field_name) => Some(BodyEntry::InputRef(key.to_string(), field_name.clone())),
-        Expr::Literal(Literal::String(s)) => Some(BodyEntry::Literal(key.to_string(), s.clone())),
-        Expr::Record(_, _) | Expr::Map(_) => {
-            let inner = body_template_entries_from_expr(value)?;
-            Some(BodyEntry::Nested(key.to_string(), inner))
+fn sts_token_type_urn(field_name: &str, value: &Expr) -> Option<&'static str> {
+    let Expr::Ident(variant) = value else {
+        return None;
+    };
+
+    match (field_name, variant.as_str()) {
+        ("subject_token_type", "Jwt") => Some("urn:ietf:params:oauth:token-type:jwt"),
+        ("subject_token_type", "StsAccessToken")
+        | ("requested_token_type", "RequestAccessToken") => {
+            Some("urn:ietf:params:oauth:token-type:access_token")
         }
+        ("subject_token_type", "IdToken") | ("requested_token_type", "RequestIdToken") => {
+            Some("urn:ietf:params:oauth:token-type:id_token")
+        }
+        ("subject_token_type", "Saml2") => Some("urn:ietf:params:oauth:token-type:saml2"),
         _ => None,
     }
 }

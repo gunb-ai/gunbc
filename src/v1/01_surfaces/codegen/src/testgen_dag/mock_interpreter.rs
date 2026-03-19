@@ -43,7 +43,9 @@ pub fn interpret_expr(expr: &Expr) -> Value {
 
         Expr::Record(name, fields) => interpret_record(name.as_deref(), fields),
 
-        Expr::List(items) => Value::List(std::sync::Arc::new(items.iter().map(interpret_expr).collect())),
+        Expr::List(items) => Value::List(std::sync::Arc::new(
+            items.iter().map(interpret_expr).collect(),
+        )),
 
         Expr::Map(entries) => Value::Json(serde_json::Value::Object(
             entries

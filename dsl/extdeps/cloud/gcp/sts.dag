@@ -64,7 +64,17 @@ service gcp.STS {
     // Body includes grant_type and token_type fields -- the compiler
     // generates the full OAuth2 token exchange request from these inputs.
     idempotent
-    transport rest { method: POST, path: "/v1/token" }
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: StsTokenExchange {
+        grant_type: TokenExchange {},
+        subject_token: subject_token,
+        subject_token_type: Jwt,
+        audience: audience,
+        requested_token_type: RequestAccessToken
+      }
+    }
     response {
       200 => StsTokenResponse
       400 => GcpErrorShape

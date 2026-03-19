@@ -3980,6 +3980,100 @@ func run() -> { result: String } {
     assert_eq!(body["error"], "unauthorized");
 }
 
+#[test]
+fn sts_exchange_body_template_derives_urns_from_typed_dsl_structure() {
+    let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: String
+  subject_token_type: SubjectTokenType
+  audience: String
+  requested_token_type: RequestedTokenType?
+}
+type StsTokenResponse {
+  access_token: String
+}
+service gcp.STS {
+  config { endpoint: "https://sts.googleapis.com" }
+  operation Exchange {
+    input {
+      subject_token: String
+      audience: String
+    }
+    output {
+      access_token: String from "access_token"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: StsTokenExchange {
+        grant_type: TokenExchange {},
+        subject_token: subject_token,
+        subject_token_type: Jwt,
+        audience: audience,
+        requested_token_type: RequestAccessToken
+      }
+    }
+    response {
+      200 => StsTokenResponse
+    }
+  }
+}
+func run(subject_token: String, audience: String) -> { access_token: String } {
+  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
+  return { access_token: token.access_token }
+}"#;
+    assert!(
+        !source.contains("urn:ietf:params:oauth"),
+        "fixture should express STS request fields structurally, not as wire-format URNs"
+    );
+
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let prepare_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("prepare_transport") && node.id.0.contains("Exchange"))
+        .expect("prepare transport node for STS.Exchange should exist");
+
+    let metadata = match &prepare_node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be preserved"),
+        _ => panic!("expected opaque lowered node"),
+    };
+
+    let spec = metadata.spec.as_ref().expect("spec should be present");
+    let ServiceOperationSpec::Rest(rest_spec) = spec else {
+        panic!("expected REST spec");
+    };
+
+    assert_eq!(
+        rest_spec.body_template,
+        Some(vec![
+            BodyEntry::Literal(
+                "grant_type".to_string(),
+                "urn:ietf:params:oauth:grant-type:token-exchange".to_string()
+            ),
+            BodyEntry::InputRef("subject_token".to_string(), "subject_token".to_string()),
+            BodyEntry::Literal(
+                "subject_token_type".to_string(),
+                "urn:ietf:params:oauth:token-type:jwt".to_string()
+            ),
+            BodyEntry::InputRef("audience".to_string(), "audience".to_string()),
+            BodyEntry::Literal(
+                "requested_token_type".to_string(),
+                "urn:ietf:params:oauth:token-type:access_token".to_string()
+            ),
+        ]),
+        "lowered STS request body should derive OAuth wire values from typed DSL constructors"
+    );
+}
+
 // ============================================================================
 // S44: ShellOutputParsing::from_str (was parse_shell_output_parsing)
 // ============================================================================

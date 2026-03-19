@@ -499,7 +499,10 @@ mod tests {
             vec![CliParam::new("extensions", ParamType::Str)
                 .with_cardinality(Cardinality::ZERO_OR_MORE)];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
-        assert_eq!(result.values["extensions"], Value::List(std::sync::Arc::new(Vec::new())));
+        assert_eq!(
+            result.values["extensions"],
+            Value::List(std::sync::Arc::new(Vec::new()))
+        );
     }
 
     #[test]
