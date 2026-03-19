@@ -1323,16 +1323,98 @@ mod generated_tests {{
                 // The v2 typechecker's incomplete inference produces false positives.
                 // Self-compile succeeds if files are emitted and Rust compiles them.
 
-                let has_content = result.files.iter().any(|f| !f.content.is_empty());
-                assert!(
-                    has_content,
-                    "self-compile should produce at least one non-empty output file (got {{}} errors, {{}} files)",
-                    error_count, result.files.len()
-                );
+                // Output-shape assertions
+                assert!(result.files.len() >= 9,
+                    "self-compile should produce at least 9 files, got {{}}",
+                    result.files.len());
+
+                // All files must have content
+                assert!(result.files.iter().all(|f| !f.content.is_empty()),
+                    "all self-compiled output files must have non-empty content");
+
+                // Source count floor
+                assert!(source_count >= 13,
+                    "self-compile should process at least 13 sources, got {{}}",
+                    source_count);
+
+                // Diagnostic error ratchet (tracked, not yet tight)
+                const SELF_COMPILE_ERROR_RATCHET: usize = 500;
+                assert!(error_count <= SELF_COMPILE_ERROR_RATCHET,
+                    "self-compile error count regression: {{}} > {{}} ratchet",
+                    error_count, SELF_COMPILE_ERROR_RATCHET);
             }})
             .expect("failed to spawn thread")
             .join();
         result.expect("self-compile-all test panicked");
+    }}
+
+    /// Bootstrap self-compile cargo check: runs the full pipeline, writes
+    /// emitted files to a temp dir, and runs `cargo check` on them.
+    #[test]
+    #[ignore]
+    fn self_compile_cargo_check() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+{self_compile_source_files}                ];
+
+                let result = crate::pipeline::compile_sources_lenient(
+                    std::rc::Rc::new(sources),
+                    crate::v2_core::RenderTarget::Rust,
+                );
+
+                assert!(!result.files.is_empty(), "self-compile produced no files");
+
+                // Write emitted files to a temp directory
+                let tmp_dir = std::env::temp_dir().join("v2-self-compile-check");
+                let _ = std::fs::remove_dir_all(&tmp_dir);
+                std::fs::create_dir_all(tmp_dir.join("src"))
+                    .expect("failed to create temp src dir");
+
+                for file in &result.files {{
+                    let dest = tmp_dir.join(&file.path);
+                    if let Some(parent) = dest.parent() {{
+                        std::fs::create_dir_all(parent).expect("failed to create parent dir");
+                    }}
+                    std::fs::write(&dest, &file.content)
+                        .expect(&format!("failed to write {{}}", file.path));
+                }}
+
+                // Write a minimal Cargo.toml if not emitted
+                let cargo_toml = tmp_dir.join("Cargo.toml");
+                if !cargo_toml.exists() {{
+                    std::fs::write(&cargo_toml,
+                        "[package]\nname = \"v2-self-compile-check\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+                    ).expect("failed to write Cargo.toml");
+                }}
+
+                eprintln!("self-compile-cargo-check: wrote {{}} files to {{}}",
+                    result.files.len(), tmp_dir.display());
+
+                // Run cargo check
+                let output = std::process::Command::new("cargo")
+                    .arg("check")
+                    .current_dir(&tmp_dir)
+                    .output()
+                    .expect("failed to run cargo check");
+
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("cargo check stderr:\n{{}}", stderr);
+
+                if !output.status.success() {{
+                    panic!(
+                        "cargo check failed on self-compiled output (dir: {{}}):\n{{}}",
+                        tmp_dir.display(),
+                        stderr
+                    );
+                }}
+
+                let _ = std::fs::remove_dir_all(&tmp_dir);
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("self-compile-cargo-check test panicked");
     }}
 
     /// Gist resolve: feed gist.dag's transitive source closure through
