@@ -4,8 +4,8 @@
 // This module provides:
 //   - The `emit` entry point that dispatches to per-target renderers
 //   - Scope management helpers (module_emit_scope, empty_emit_scope)
-//   - Item registry (build_item_registry, lookup_item, lookup_func_sig_in_scope)
-//   - Service call detection and collection
+//   - Item registry lookup (lookup_item, lookup_func_sig_in_scope)
+//   - Service call detection (re-exported from reconcile)
 //   - Name conversion utilities (to_snake, to_screaming_snake, etc.)
 //   - Indentation and string formatting utilities
 //
@@ -38,7 +38,8 @@ import v2.std.core {
 import v2.compiler.reconcile {
   TypedGraph, TypedModule,
   TypeEnv, FuncEnv, TypeBinding, InferScope,
-  build_params_scope, extend_scope
+  build_params_scope, extend_scope,
+  ItemInfo, UniqueAccum, emit_map_has
 }
 
 // =========================================================================
@@ -55,29 +56,10 @@ type BlockEmitState {
   scope: InferScope
 }
 
-// Accumulator for map-based deduplication in unique_strings.
-type UniqueAccum {
-  seen: Map<String, Bool>
-  result: List<String>
-}
-
 // Intermediate type for string interpolation segments
 type InterpPart {
   format_segment: String
   arg_expr: String
-}
-
-// =========================================================================
-// Item registry -- maps item names to their kind and service dependencies.
-// Used by emit_call to forward service params to func callees (S54 fix).
-// =========================================================================
-
-type ItemInfo {
-  name: String
-  kind: String
-  service_names: List<String>
-  is_self_recursive: Bool
-  has_non_tail_self_call: Bool
 }
 
 // =========================================================================
@@ -116,32 +98,6 @@ fn scope_after_expr(texpr: Expr, scope: InferScope) -> InferScope {
       }
     _ => scope
   }
-}
-
-// =========================================================================
-// Item registry
-// =========================================================================
-
-fn build_item_registry(items: List<Node>) -> Map<String, ItemInfo> {
-  let info_list = items |> map(item =>
-    if item.body != none && item.uses |> count > 0 {
-      // func or pattern (async, has uses)
-      ItemInfo { name: item.name, kind: "func",
-        service_names: collect_typed_service_calls(texpr: item.body.value),
-        is_self_recursive: false, has_non_tail_self_call: false }
-    } else if item.body != none && item.params |> count > 0 {
-      // fn (pure function)
-      ItemInfo { name: item.name, kind: "fn", service_names: [],
-        is_self_recursive: item.is_self_recursive,
-        has_non_tail_self_call: item.has_non_tail_self_call }
-    } else {
-      ItemInfo { name: item.name, kind: "other", service_names: [],
-        is_self_recursive: false, has_non_tail_self_call: false }
-    }
-  )
-  info_list |> fold(init: empty_map(), f: (acc, i) =>
-    map_insert(acc, i.name, i)
-  )
 }
 
 fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
@@ -192,127 +148,12 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
   }
 }
 
-// Typed-receiver versions of service call detection -- for Expr emit paths.
-fn is_typed_service_call_receiver(receiver: Expr) -> Bool {
-  match receiver {
-    FieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
-      match b {
-        Var { name: _, resolved_type: _, span: _ } => {
-          match f |> chars |> first {
-            Some { value: ch } => is_upper(ch: ch)
-            None => false
-          }
-        }
-        _ => false
-      }
-    _ => false
-  }
-}
-
-fn extract_typed_service_name(receiver: Expr) -> String? {
-  match receiver {
-    FieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
-      match b {
-        Var { name: ns, resolved_type: _, span: _ } => Some { value: concat(ns, ".", f) }
-        _ => none
-      }
-    _ => none
-  }
-}
-
-// Map membership check -- returns true if key is present in the map.
-fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
-  match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
 fn unique_strings(items: List<String>) -> List<String> {
   let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
   result.result
-}
-
-// =========================================================================
-// Typed service call collection -- Expr walker
-//
-// Same logic as collect_service_calls but operates on Expr trees
-// directly, eliminating the need for typed_expr_to_expr conversion.
-// =========================================================================
-
-fn collect_typed_service_calls(texpr: Expr) -> List<String> {
-  let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
-  result.result
-}
-
-fn collect_typed_service_calls_into(texpr: Expr, acc: UniqueAccum) -> UniqueAccum {
-  match texpr {
-    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } => {
-      let acc2 = if is_typed_service_call_receiver(receiver: r) {
-        match extract_typed_service_name(receiver: r) {
-          Some { value: service_name } =>
-            if emit_map_has(m: acc.seen, key: service_name) { acc }
-            else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
-          None => acc
-        }
-      } else {
-        collect_typed_service_calls_into(texpr: r, acc: acc)
-      }
-      collect_typed_service_calls_from_args_into(args: a, acc: acc2)
-    }
-    Call { func: _, args: a, resolved_type: _, span: _ } =>
-      collect_typed_service_calls_from_args_into(args: a, acc: acc)
-    FieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
-      collect_typed_service_calls_into(texpr: b, acc: acc)
-    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } => {
-      let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
-      let acc3 = collect_typed_service_calls_into(texpr: t, acc: acc2)
-      match e {
-        Some { value: eb } => collect_typed_service_calls_into(texpr: eb, acc: acc3)
-        None => acc3
-      }
-    }
-    Let { name: _, value: v, body: b, resolved_type: _, span: _ } => {
-      let acc2 = collect_typed_service_calls_into(texpr: v, acc: acc)
-      match b {
-        Some { value: bd } => collect_typed_service_calls_into(texpr: bd, acc: acc2)
-        None => acc2
-      }
-    }
-    Block { stmts: ss, resolved_type: _, span: _ } =>
-      ss |> fold(init: acc, f: (a, s) => collect_typed_service_calls_into(texpr: s, acc: a))
-    Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
-      let acc2 = collect_typed_service_calls_into(texpr: s, acc: acc)
-      arm_list |> fold(init: acc2, f: (a, arm) => collect_typed_service_calls_into(texpr: arm.body, acc: a))
-    }
-    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } => {
-      let acc2 = collect_typed_service_calls_into(texpr: l, acc: acc)
-      collect_typed_service_calls_into(texpr: r, acc: acc2)
-    }
-    UnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
-      collect_typed_service_calls_into(texpr: e, acc: acc)
-    Lambda { params: _, body: bd, resolved_type: _, span: _ } =>
-      collect_typed_service_calls_into(texpr: bd, acc: acc)
-    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
-      fs |> fold(init: acc, f: (a, f) => collect_typed_service_calls_into(texpr: f.value, acc: a))
-    ListLit { elements: els, resolved_type: _, span: _ } =>
-      els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
-    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
-      collect_typed_service_calls_into(texpr: e, acc: acc)
-    StringInterp { parts: ps, resolved_type: _, span: _ } =>
-      ps |> fold(init: acc, f: (a, p) => match p {
-        Interpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
-        _ => a
-      })
-    _ => acc
-  }
-}
-
-fn collect_typed_service_calls_from_args_into(args: List<NamedArg>, acc: UniqueAccum) -> UniqueAccum {
-  args |> fold(init: acc, f: (a, arg) => collect_typed_service_calls_into(texpr: arg.value, acc: a))
 }
 
 // =========================================================================

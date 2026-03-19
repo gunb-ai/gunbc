@@ -38,20 +38,20 @@ import v2.compiler.reconcile {
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   for_each_element_type_node,
-  expr_span
+  expr_span,
+  ItemInfo,
+  is_typed_service_call_receiver, extract_typed_service_name
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, ItemInfo, InterpPart,
+  EmitResult, BlockEmitState, InterpPart,
   python_keyword, python_container, python_primitive_type,
   python_literal, python_bin_op_symbol, python_map_template,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
-  build_item_registry, lookup_item,
+  lookup_item,
   typed_named_arg_matches, order_typed_call_args,
-  is_typed_service_call_receiver, extract_typed_service_name,
   unique_strings,
-  collect_typed_service_calls,
   has_nested_records_node,
   escape_json_string,
   module_to_filename,
@@ -133,8 +133,9 @@ fn emit_py_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // =========================================================================
 
 fn emit_python(typed: TypedGraph) -> EmitResult {
-  let all_items = typed.modules |> flat_map(tm => tm.items)
-  let registry = build_item_registry(items: all_items)
+  let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
+    map_merge(acc, tm.item_registry)
+  )
   let module_files = typed.modules |> map(tm => emit_py_module(typed_module: tm, registry: registry))
   let init_file = emit_init_py(modules: typed.modules)
   let requirements = emit_requirements_txt(has_services: has_service_items(typed: typed))
@@ -450,7 +451,7 @@ fn emit_py_func_def(
   let depth = 0
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => collect_typed_service_calls(texpr: body)
+    None => []
   }
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_py_return_type(return_type: return_type)

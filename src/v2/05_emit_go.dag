@@ -47,21 +47,22 @@ import v2.compiler.reconcile {
   TypeEnv, FuncEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   for_each_element_type_node,
-  expr_span
+  expr_span,
+  ItemInfo,
+  is_typed_service_call_receiver, extract_typed_service_name
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, ItemInfo, InterpPart,
+  EmitResult, BlockEmitState, InterpPart,
   go_keyword, go_container, go_primitive_type,
   go_literal, go_bin_op_symbol, go_map_template,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
-  build_item_registry, lookup_item,
+  lookup_item,
   unique_strings,
-  collect_typed_service_calls,
   escape_json_string,
   module_to_filename,
-  indent, make_indent, to_string, to_string_helper,
+  make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   apply_type_template1, apply_type_template2,
@@ -69,7 +70,6 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  is_typed_service_call_receiver, extract_typed_service_name,
   classify_typed_item, classify_type_structure, classify_transport_kind
 }
 // =========================================================================
@@ -140,8 +140,9 @@ fn emit_go_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // =========================================================================
 
 fn emit_go(typed: TypedGraph) -> EmitResult {
-  let all_items = typed.modules |> flat_map(tm => tm.items)
-  let registry = build_item_registry(items: all_items)
+  let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
+    map_merge(acc, tm.item_registry)
+  )
   let module_files = typed.modules |> map(tm => emit_go_module(typed_module: tm, registry: registry))
   let go_mod = emit_go_mod(module_name: "generated")
   let files = concat([go_mod], module_files)
@@ -454,7 +455,7 @@ fn emit_go_func_def(
 ) -> String {
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => collect_typed_service_calls(texpr: body)
+    None => []
   }
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
   let ret_type = emit_go_node_type(n: return_type)

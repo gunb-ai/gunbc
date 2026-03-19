@@ -61,6 +61,7 @@ type TypedModule {
   items: List<Node>
   type_env: TypeEnv
   func_env: FuncEnv
+  item_registry: Map<String, ItemInfo>
 }
 
 type TypeEnv {
@@ -68,6 +69,138 @@ type TypeEnv {
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
 }
+
+// =========================================================================
+// Item registry -- maps item names to their kind and service dependencies.
+// Built during typecheck_module and stored in TypedModule so emitters
+// don't need to re-walk every body AST.
+// =========================================================================
+
+type ItemInfo {
+  name: String
+  kind: String
+  service_names: List<String>
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+}
+
+// Accumulator for map-based deduplication.
+type UniqueAccum {
+  seen: Map<String, Bool>
+  result: List<String>
+}
+
+// Map membership check -- returns true if key is present in the map.
+fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
+// Typed-receiver versions of service call detection -- for Expr trees.
+fn is_typed_service_call_receiver(receiver: Expr) -> Bool {
+  match receiver {
+    FieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
+      match b {
+        Var { name: _, resolved_type: _, span: _ } => {
+          match f |> chars |> first {
+            Some { value: ch } => ch >= "A" && ch <= "Z"
+            None => false
+          }
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn extract_typed_service_name(receiver: Expr) -> String? {
+  match receiver {
+    FieldAccess { base: b, field: f, resolved_type: _, span: _ } =>
+      match b {
+        Var { name: ns, resolved_type: _, span: _ } => Some { value: concat(ns, ".", f) }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn collect_typed_service_calls(texpr: Expr) -> List<String> {
+  let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+  result.result
+}
+
+fn collect_typed_service_calls_into(texpr: Expr, acc: UniqueAccum) -> UniqueAccum {
+  match texpr {
+    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } => {
+      let acc2 = if is_typed_service_call_receiver(receiver: r) {
+        match extract_typed_service_name(receiver: r) {
+          Some { value: service_name } =>
+            if emit_map_has(m: acc.seen, key: service_name) { acc }
+            else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
+          None => acc
+        }
+      } else {
+        collect_typed_service_calls_into(texpr: r, acc: acc)
+      }
+      collect_typed_service_calls_from_args_into(args: a, acc: acc2)
+    }
+    Call { func: _, args: a, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_from_args_into(args: a, acc: acc)
+    FieldAccess { base: b, field: _, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_into(texpr: b, acc: acc)
+    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
+      let acc3 = collect_typed_service_calls_into(texpr: t, acc: acc2)
+      match e {
+        Some { value: eb } => collect_typed_service_calls_into(texpr: eb, acc: acc3)
+        None => acc3
+      }
+    }
+    Let { name: _, value: v, body: b, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: v, acc: acc)
+      match b {
+        Some { value: bd } => collect_typed_service_calls_into(texpr: bd, acc: acc2)
+        None => acc2
+      }
+    }
+    Block { stmts: ss, resolved_type: _, span: _ } =>
+      ss |> fold(init: acc, f: (a, s) => collect_typed_service_calls_into(texpr: s, acc: a))
+    Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: s, acc: acc)
+      arm_list |> fold(init: acc2, f: (a, arm) => collect_typed_service_calls_into(texpr: arm.body, acc: a))
+    }
+    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: l, acc: acc)
+      collect_typed_service_calls_into(texpr: r, acc: acc2)
+    }
+    UnaryOp { op: _, operand: e, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_into(texpr: e, acc: acc)
+    Lambda { params: _, body: bd, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_into(texpr: bd, acc: acc)
+    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      fs |> fold(init: acc, f: (a, f) => collect_typed_service_calls_into(texpr: f.value, acc: a))
+    ListLit { elements: els, resolved_type: _, span: _ } =>
+      els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
+    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_into(texpr: e, acc: acc)
+    StringInterp { parts: ps, resolved_type: _, span: _ } =>
+      ps |> fold(init: acc, f: (a, p) => match p {
+        Interpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
+        _ => a
+      })
+    _ => acc
+  }
+}
+
+fn collect_typed_service_calls_from_args_into(args: List<NamedArg>, acc: UniqueAccum) -> UniqueAccum {
+  args |> fold(init: acc, f: (a, arg) => collect_typed_service_calls_into(texpr: arg.value, acc: a))
+}
+
+
+
+
 
 fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
   match map_get(env.recursive_type_set, name) {
@@ -2836,7 +2969,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         module: resolved.module,
         items: [],
         type_env: env,
-        func_env: FuncEnv { signatures: empty_map() }
+        func_env: FuncEnv { signatures: empty_map() },
+        item_registry: empty_map()
       },
       diagnostics: env_diags
     }
@@ -2916,13 +3050,28 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
+  let item_registry = typed_items |> fold(init: empty_map(), f: (acc, item) =>
+    if item.body != none && item.uses |> count > 0 {
+      map_insert(acc, item.name, ItemInfo { name: item.name, kind: "func",
+        service_names: collect_typed_service_calls(texpr: item.body.value),
+        is_self_recursive: false, has_non_tail_self_call: false })
+    } else if item.body != none && item.params |> count > 0 {
+      map_insert(acc, item.name, ItemInfo { name: item.name, kind: "fn", service_names: [],
+        is_self_recursive: item.is_self_recursive,
+        has_non_tail_self_call: item.has_non_tail_self_call })
+    } else {
+      map_insert(acc, item.name, ItemInfo { name: item.name, kind: "other", service_names: [],
+        is_self_recursive: false, has_non_tail_self_call: false })
+    }
+  )
 
   TypecheckModuleResult {
     typed: TypedModule {
       module: typed_module,
       items: typed_items,
       type_env: env,
-      func_env: func_env
+      func_env: func_env,
+      item_registry: item_registry
     },
     diagnostics: concat(env_diags, item_diags, infer_diags)
   }

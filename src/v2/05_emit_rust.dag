@@ -40,18 +40,19 @@ import v2.compiler.reconcile {
   build_params_scope, extend_scope,
   infer_record_lit,
   normalize_access_type_node, for_each_element_type_node,
-  expr_span
+  expr_span,
+  ItemInfo,
+  is_typed_service_call_receiver, extract_typed_service_name
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, ItemInfo, InterpPart,
+  EmitResult, BlockEmitState, InterpPart,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_bin_op_symbol, rust_map_template,
   module_emit_scope,
   scope_after_expr,
-  build_item_registry, lookup_item,
+  lookup_item,
   unique_strings,
-  collect_typed_service_calls,
   has_nested_records_node, emit_data_value_json, emit_typed_data_value_json, escape_json_string,
   module_to_filename,
   make_indent, to_string, to_string_helper,
@@ -61,7 +62,6 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  is_typed_service_call_receiver, extract_typed_service_name,
   classify_typed_item, classify_type_structure, classify_transport_kind
 }
 
@@ -143,14 +143,15 @@ fn emit_rust_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // =========================================================================
 
 fn emit_rust(typed: TypedGraph) -> EmitResult {
-  let all_items = typed.modules |> flat_map(tm => tm.items)
-  let registry = build_item_registry(items: all_items)
+  let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
+    map_merge(acc, tm.item_registry)
+  )
   let module_files = typed.modules |> map(tm => emit_module(typed_module: tm, registry: registry))
   let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
     |> filter(f => f.content != "")
   let has_services = has_service_items(typed: typed)
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
   let lib_file = emit_lib_rs(modules: typed.modules, has_services: has_services)
   let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_services)
   let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services)
@@ -538,7 +539,7 @@ fn emit_func_def(
   let depth = 0
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => collect_typed_service_calls(texpr: body)
+    None => []
   }
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_func_return_type(return_type: return_type)
@@ -1605,8 +1606,11 @@ type WorkflowFunc {
   service_names: List<String>
 }
 
-fn to_workflow_func(item: Node, module_name: String) -> WorkflowFunc {
-  let svc_names = collect_typed_service_calls(texpr: item.body.value)
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>) -> WorkflowFunc {
+  let svc_names = match lookup_item(registry: registry, name: item.name) {
+    Some { value: info } => info.service_names
+    None => []
+  }
   WorkflowFunc {
     name: item.name,
     module_name: module_name,
@@ -1617,11 +1621,11 @@ fn to_workflow_func(item: Node, module_name: String) -> WorkflowFunc {
   }
 }
 
-fn collect_workflow_funcs(modules: List<TypedModule>) -> List<WorkflowFunc> {
+fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> List<WorkflowFunc> {
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => item.body != none && item.uses |> count > 0)
-      |> map(item => to_workflow_func(item: item, module_name: tm.module.name))
+      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry))
   )
 }
 
