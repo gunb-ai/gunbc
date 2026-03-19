@@ -150,6 +150,33 @@ type BlockInferState {
   typed_stmts: List<Expr>
 }
 
+// SG-9: Tail-recursive block inference. Each accumulated list is a standalone
+// parameter (Rc refcount=1) so list_push avoids deep clone.
+fn infer_block_stmts(remaining: List<Expr>, scope: InferScope,
+    typed_stmts: List<Expr>, diag_chunks: List<List<Diagnostic>>,
+    last_type: Node) -> BlockInferState {
+  match remaining |> first {
+    None => BlockInferState { scope: scope, diag_chunks: diag_chunks,
+                              last_type: last_type, typed_stmts: typed_stmts }
+    Some { value: stmt } =>
+      let stmt_result = infer_expr(expr: stmt, scope: scope)
+      let stmt_typed = stmt_result.typed
+      let stmt_diags = stmt_result.diagnostics
+      let next_scope = scope_after_stmt_node(
+        stmt: stmt,
+        stmt_type: stmt_typed.resolved_type.value,
+        scope: scope
+      )
+      infer_block_stmts(
+        remaining: remaining |> skip(1),
+        scope: next_scope,
+        typed_stmts: list_push(typed_stmts, stmt_typed),
+        diag_chunks: list_push(diag_chunks, stmt_diags),
+        last_type: stmt_typed.resolved_type.value
+      )
+  }
+}
+
 type TypedItemResult {
   item: Node
   diagnostics: List<Diagnostic>
@@ -324,6 +351,138 @@ fn build_func_env(items: List<Node>) -> FuncEnv {
     }
   )
   FuncEnv { signatures: sigs }
+}
+
+// =========================================================================
+// Pass B: Fused scope builder (SG-9 safe — standalone map parameters).
+//
+// Single walk over resolved_items builds func_sigs, svc_registry,
+// svc_locals, and variant_locals simultaneously. Then a single walk
+// over imports merges from parents.
+// =========================================================================
+
+type InferScopeComponents {
+  func_sigs: Map<String, FuncSig>
+  svc_registry: Map<String, List<OpEntry>>
+  svc_locals: Map<String, TypeBinding>
+  variant_locals: Map<String, TypeBinding>
+}
+
+fn build_scope_from_items(remaining: List<Node>, env: TypeEnv,
+    func_sigs: Map<String, FuncSig>,
+    svc_registry: Map<String, List<OpEntry>>,
+    svc_locals: Map<String, TypeBinding>,
+    variant_locals: Map<String, TypeBinding>) -> InferScopeComponents {
+  match remaining |> first {
+    None => InferScopeComponents {
+      func_sigs: func_sigs, svc_registry: svc_registry,
+      svc_locals: svc_locals, variant_locals: variant_locals
+    }
+    Some { value: item } =>
+      // func_sigs: items with params
+      let next_func_sigs = if item.params |> count > 0 {
+        let is_async = item.uses |> count > 0
+        let rt_node = if item.return_type == none { leaf_node(name: item.name) } else { item.return_type.value }
+        map_insert(func_sigs, item.name, FuncSig { name: item.name, params: item.params, return_type: rt_node, is_async: is_async })
+      } else {
+        func_sigs
+      }
+      // svc_registry + svc_locals: items with transport and children
+      let next_svc_registry = if item.transport != none && item.children |> count > 0 {
+        let entries = item.children |> map(c => service_op_entry(child: c))
+        map_insert(svc_registry, item.name, entries)
+      } else {
+        svc_registry
+      }
+      let next_svc_locals = if item.transport != none && item.children |> count > 0 {
+        let root = namespace_root_from_properties(properties: item.properties, name: item.name)
+        map_insert(svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
+      } else {
+        svc_locals
+      }
+      // variant_locals: Disj items (recursive types checked from items)
+      let next_variant_locals = match item.connective {
+        Some { value: Disj } =>
+          if is_recursive_type(env: env, name: item.name) {
+            fold(item.children, init: variant_locals, f: (vacc, child) =>
+              map_insert(vacc, child.name, TypeBinding {
+                name: child.name,
+                resolved: leaf_node(name: item.name)
+              })
+            )
+          } else {
+            variant_locals
+          }
+        _ => variant_locals
+      }
+      build_scope_from_items(remaining: remaining |> skip(1), env: env,
+        func_sigs: next_func_sigs, svc_registry: next_svc_registry,
+        svc_locals: next_svc_locals, variant_locals: next_variant_locals)
+  }
+}
+
+fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
+    func_sigs: Map<String, FuncSig>,
+    svc_registry: Map<String, List<OpEntry>>,
+    svc_locals: Map<String, TypeBinding>,
+    variant_locals: Map<String, TypeBinding>) -> InferScopeComponents {
+  match remaining |> first {
+    None => InferScopeComponents {
+      func_sigs: func_sigs, svc_registry: svc_registry,
+      svc_locals: svc_locals, variant_locals: variant_locals
+    }
+    Some { value: imp } =>
+      match map_get(parent_index, imp.module_path) {
+        Some { value: typed_parent } =>
+          // func_sigs from parent
+          let next_func_sigs = map_merge(func_sigs, typed_parent.func_env.signatures)
+          // svc_registry + svc_locals + variant_locals from parent items
+          let parent_result = fold(typed_parent.items, init: InferScopeComponents {
+            func_sigs: next_func_sigs, svc_registry: svc_registry,
+            svc_locals: svc_locals, variant_locals: variant_locals
+          }, f: (acc, titem) =>
+            let r1 = if titem.transport != none && titem.children |> count > 0 {
+              let entries = titem.children |> map(c =>
+                OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span) }
+              )
+              let root = namespace_root_from_properties(properties: titem.properties, name: titem.name)
+              InferScopeComponents {
+                func_sigs: acc.func_sigs,
+                svc_registry: map_insert(acc.svc_registry, titem.name, entries),
+                svc_locals: map_insert(acc.svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) }),
+                variant_locals: acc.variant_locals
+              }
+            } else {
+              acc
+            }
+            match titem.connective {
+              Some { value: Disj } =>
+                if is_recursive_type(env: env, name: titem.name) {
+                  InferScopeComponents {
+                    func_sigs: r1.func_sigs, svc_registry: r1.svc_registry,
+                    svc_locals: r1.svc_locals,
+                    variant_locals: fold(titem.children, init: r1.variant_locals, f: (vacc, child) =>
+                      map_insert(vacc, child.name, TypeBinding {
+                        name: child.name,
+                        resolved: leaf_node(name: titem.name)
+                      })
+                    )
+                  }
+                } else {
+                  r1
+                }
+              _ => r1
+            }
+          )
+          merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
+            func_sigs: parent_result.func_sigs, svc_registry: parent_result.svc_registry,
+            svc_locals: parent_result.svc_locals, variant_locals: parent_result.variant_locals)
+        None =>
+          merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
+            func_sigs: func_sigs, svc_registry: svc_registry,
+            svc_locals: svc_locals, variant_locals: variant_locals)
+      }
+  }
 }
 
 // =========================================================================
@@ -1376,26 +1535,10 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
 
     Block { stmts: stmts, span: span } =>
       if count(stmts) > 0 {
-        let state = fold(stmts, init: BlockInferState {
-          scope: scope,
-          diag_chunks: [],
+        let state = infer_block_stmts(
+          remaining: stmts, scope: scope,
+          typed_stmts: [], diag_chunks: [],
           last_type: leaf_node(name: "Unit")
-          typed_stmts: []
-        }, f: (acc, stmt) =>
-          let stmt_result = infer_expr(expr: stmt, scope: acc.scope)
-          let stmt_typed = stmt_result.typed
-          let stmt_diags = stmt_result.diagnostics
-          let next_scope = scope_after_stmt_node(
-            stmt: stmt,
-            stmt_type: stmt_typed.resolved_type.value,
-            scope: acc.scope
-          )
-          BlockInferState {
-            scope: next_scope,
-            diag_chunks: list_push(acc.diag_chunks, stmt_diags),
-            last_type: stmt_typed.resolved_type.value
-            typed_stmts: list_push(acc.typed_stmts, stmt_typed)
-          }
         )
         let texpr = Block { stmts: state.typed_stmts, resolved_type: Some { value: state.last_type }, span: span }
         InferResult {
@@ -2714,76 +2857,9 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     span: resolved.module.span
   }
 
-  // env is already fully resolved (build_type_env resolves bindings in-place).
-  // Wrap in the result type expected by downstream code.
-  let resolved_env = EnvResolveResult { env: env, diagnostics: [] }
-
-  // Build func_env from the resolved items (return types resolved by now).
-  // Merge parent func_env signatures so cross-module functions are in scope.
-  let local_func_env = build_func_env(items: resolved_items)
-  let parent_func_sigs = fold(resolved.resolved_imports, init: empty_map(),
-    f: (acc, imp) =>
-      match map_get(parent_index, imp.module_path) {
-        Some { value: typed_parent } => map_merge(acc, typed_parent.func_env.signatures)
-        None => acc
-      }
-  )
-  let func_env = FuncEnv { signatures: map_merge(parent_func_sigs, local_func_env.signatures) }
-
-  // Build service registry: map service paths to OpEntry lists from children.
-  let local_svc_registry = fold(resolved_items, init: empty_map(), f: (acc, item) =>
-    if item.transport != none && item.children |> count > 0 {
-      let entries = item.children |> map(c => service_op_entry(child: c))
-      map_insert(acc, item.name, entries)
-    } else {
-      acc
-    }
-  )
-  let service_registry = fold(resolved.resolved_imports, init: local_svc_registry, f: (acc, imp) =>
-    match map_get(parent_index, imp.module_path) {
-      Some { value: typed_parent } =>
-        fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
-          if titem.transport != none && titem.children |> count > 0 {
-            let entries = titem.children |> map(c =>
-              OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span) }
-            )
-            map_insert(inner_acc, titem.name, entries)
-          } else {
-            inner_acc
-          }
-        )
-      None => acc
-    }
-  )
-
-  // Register service namespace roots as locals so expressions like
-  // git.Core.CurrentBranch() can typecheck.
-  let local_svc_locals = fold(resolved_items, init: empty_map(), f: (acc, item) =>
-    if item.transport != none && item.children |> count > 0 {
-      let root = namespace_root_from_properties(properties: item.properties, name: item.name)
-      map_insert(acc, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
-    } else {
-      acc
-    }
-  )
-  let service_locals = fold(resolved.resolved_imports, init: local_svc_locals, f: (acc, imp) =>
-    match map_get(parent_index, imp.module_path) {
-      Some { value: typed_parent } =>
-        fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
-          if titem.transport != none && titem.children |> count > 0 {
-            let root = namespace_root_from_properties(properties: titem.properties, name: titem.name)
-            map_insert(inner_acc, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
-          } else {
-            inner_acc
-          }
-        )
-      None => acc
-    }
-  )
-
-  // Register variant constructors from Coproduct types so enum variant names
-  // (LitNull, None, Conj, Error, etc.) are resolvable as variables.
-  let variant_locals = fold(map_values(resolved_env.env.bindings), init: service_locals, f: (acc, binding) =>
+  // Pass B: Fused scope construction -- single walk over items, single walk over imports.
+  // Variant constructors from resolved env bindings (non-recursive Disj types).
+  let env_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
     if binding.resolved.connective != none {
       match binding.resolved.connective.value {
         Disj =>
@@ -2798,66 +2874,44 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     } else { acc }
   )
 
-  // Recursive types have binding.resolved = Named (cycle-breaking), so the
-  // Coproduct match above misses them. Walk original Node definitions to
-  // find coproduct (Disj) nodes and register their children as variants.
-  let variant_locals = fold(resolved_items, init: variant_locals, f: (acc, item) =>
-    match item.connective {
-      Some { value: Disj } =>
-        if is_recursive_type(env: resolved_env.env, name: item.name) {
-          fold(item.children, init: acc, f: (vacc, child) =>
-            map_insert(vacc, child.name, TypeBinding {
-              name: child.name,
-              resolved: leaf_node(name: item.name)
-            })
-          )
-        } else {
-          acc
-        }
-      _ => acc
-    }
-  )
-  // Also check imported parent modules for recursive coproduct types.
-  let variant_locals = fold(resolved.resolved_imports, init: variant_locals, f: (acc, imp) =>
-    match map_get(parent_index, imp.module_path) {
-      Some { value: typed_parent } =>
-        fold(typed_parent.items, init: acc, f: (inner_acc, titem) =>
-          match titem.connective {
-            Some { value: Disj } =>
-              if is_recursive_type(env: resolved_env.env, name: titem.name) {
-                fold(titem.children, init: inner_acc, f: (vacc, child) =>
-                  map_insert(vacc, child.name, TypeBinding {
-                    name: child.name,
-                    resolved: leaf_node(name: titem.name)
-                  })
-                )
-              } else {
-                inner_acc
-              }
-            _ => inner_acc
-          }
-        )
-      None => acc
-    }
+  // Single walk over resolved_items: builds func_sigs, svc_registry, svc_locals, variant_locals
+  let local_scope = build_scope_from_items(
+    remaining: resolved_items, env: env,
+    func_sigs: empty_map(), svc_registry: empty_map(),
+    svc_locals: empty_map(), variant_locals: env_variant_locals
   )
 
+  // Single walk over imports: merges all four maps from parent modules.
+  // For func_sigs, pass empty so we accumulate only parent sigs, then merge locals on top.
+  let merged_scope = merge_scope_from_imports(
+    remaining: resolved.resolved_imports, parent_index: parent_index, env: env,
+    func_sigs: empty_map(), svc_registry: local_scope.svc_registry,
+    svc_locals: local_scope.svc_locals, variant_locals: local_scope.variant_locals
+  )
+
+  // Merge func_sigs: parents first, locals override (map_merge second arg wins)
+  let func_env = FuncEnv { signatures: map_merge(merged_scope.func_sigs, local_scope.func_sigs) }
+
   // Register built-in optional constructors (Some, None).
-  // Optional is a built-in type, not a user-defined coproduct, so
-  // these are not in the type environment's bindings.
-  let optional_locals = map_insert(variant_locals, "Some", TypeBinding {
+  let optional_locals = map_insert(merged_scope.variant_locals, "Some", TypeBinding {
     name: "Some", resolved: leaf_node(name: "Optional")
   })
   let optional_locals = map_insert(optional_locals, "None", TypeBinding {
     name: "None", resolved: leaf_node(name: "Optional")
   })
 
+  // Merge svc_locals into optional_locals for the final locals map.
+  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
+    map_insert(acc, binding.name, binding)
+  )
+
   // Build the InferScope and infer all items to produce Nodes with inferred types.
   let infer_scope = InferScope {
-    type_env: resolved_env.env,
+    type_env: env,
     func_env: func_env,
-    locals: optional_locals,
+    locals: all_locals,
     module_name: resolved.module.name,
-    service_registry: service_registry
+    service_registry: merged_scope.svc_registry
   }
   let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
@@ -2867,10 +2921,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     typed: TypedModule {
       module: typed_module,
       items: typed_items,
-      type_env: resolved_env.env,
+      type_env: env,
       func_env: func_env
     },
-    diagnostics: concat(env_diags, item_diags, resolved_env.diagnostics, infer_diags)
+    diagnostics: concat(env_diags, item_diags, infer_diags)
   }
 }
 
@@ -3000,6 +3054,11 @@ fn typecheck_modules(
 // Post-typecheck invariant checker. Walks every type in every item
 // of every module and reports any remaining Named references (which
 // indicate a bug in the type checker).
+//
+// DEPRECATED (B3 Phase 2a): This function and its 13 helpers are dead code.
+// reconcile() does not call validate_no_unresolved — the env-error gate in
+// typecheck_module (Pass A) makes unresolved nodes structurally impossible
+// downstream. Retained for B3 Phase 2b deletion.
 // =========================================================================
 
 fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {

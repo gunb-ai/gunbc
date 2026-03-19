@@ -101,6 +101,44 @@ data rust_reserved: List<String> = [
 // emit_container -- imported from v2.compiler.emit
 
 // =========================================================================
+// SG-9: Tail-recursive block statement emitters.
+// Standalone list parameters avoid Rc refcount>1 deep clone on list_push.
+// =========================================================================
+
+// Process ALL statements in a block.
+fn emit_rust_block_stmts(remaining: List<Expr>, text: List<String>,
+    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth)
+      let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+      emit_rust_block_stmts(remaining: remaining |> skip(1),
+        text: list_push(text, line), scope: next_scope,
+        registry: registry, depth: depth)
+  }
+}
+
+// Process all but the last statement in a block.
+fn emit_rust_init_block_stmts(remaining: List<Expr>, text: List<String>,
+    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let rest = remaining |> skip(1)
+      match rest |> first {
+        None => BlockEmitState { text: text, scope: scope }
+        Some { value: _ } =>
+          let line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth)
+          let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+          emit_rust_init_block_stmts(remaining: rest,
+            text: list_push(text, line), scope: next_scope,
+            registry: registry, depth: depth)
+      }
+  }
+}
+
+// =========================================================================
 // Entry point -- Rust target
 // =========================================================================
 
@@ -530,14 +568,8 @@ fn emit_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: InferScope
       if ss |> count == 0 {
         "Ok(())"
       } else {
-        let init_state = ss |> enumerate
-          |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
-            let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = list_push(acc.text, line)
-            BlockEmitState { text: new_text, scope: next_scope }
-          })
+        let init_state = emit_rust_init_block_stmts(
+          remaining: ss, text: [], scope: scope, registry: registry, depth: depth)
         let last_stmt = ss |> last
         let last_str = match last_stmt {
           Some { value: s } => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: depth), ")")
@@ -1040,12 +1072,8 @@ fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, s
 }
 
 fn emit_typed_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
-    let line = emit_typed_expr(texpr: stmt, registry: registry, scope: acc.scope, depth: depth + 1)
-    let next_scope = scope_after_expr(texpr: stmt, scope: acc.scope)
-    let new_text = list_push(acc.text, line)
-    BlockEmitState { text: new_text, scope: next_scope }
-  })
+  let state = emit_rust_block_stmts(
+    remaining: stmts, text: [], scope: scope, registry: registry, depth: depth + 1)
   concat("{\n", make_indent(level: depth + 1),(state.text |> join(separator: "\n")), "\n}")
 }
 
@@ -1112,14 +1140,8 @@ fn emit_typed_tco_expr(texpr: Expr, fn_name: String, params: List<Param>, regist
       if ss |> count == 0 {
         "break;"
       } else {
-        let init_state = ss |> enumerate
-          |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
-            let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = list_push(acc.text, line)
-            BlockEmitState { text: new_text, scope: next_scope }
-          })
+        let init_state = emit_rust_init_block_stmts(
+          remaining: ss, text: [], scope: scope, registry: registry, depth: depth)
         let last_str = match ss |> last {
           Some { value: last_expr } =>
             emit_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: depth)

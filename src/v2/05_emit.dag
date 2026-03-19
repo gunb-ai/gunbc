@@ -425,20 +425,6 @@ fn module_to_filename(name: String) -> String {
 // Indentation utility
 // =========================================================================
 
-// Indent each line of text by level * 4 spaces.
-fn indent(text: String, level: Int) -> String {
-  let prefix = make_indent(level: level)
-  let lines = text |> split(delimiter: "\n")
-  let indented = lines |> map(line =>
-    if line == "" {
-      ""
-    } else {
-      concat(prefix, line)
-    }
-  )
-  indented |> join(separator: "\n")
-}
-
 // Build an indent string of level * 4 spaces.
 fn make_indent(level: Int) -> String {
   if level <= 0 {

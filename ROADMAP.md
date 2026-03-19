@@ -974,6 +974,89 @@ emit_rust.rs (3,114 lines). 13 .dag files totaling 646KB of source text.
 
 ---
 
+## Interface Lower-Bound Program (2026-03-19)
+
+This section turns the Interface Performance Catalog into a concrete plan.
+"Lower bound" here means: one unavoidable walk over the owned input for a
+stage, plus work proportional to emitted output. Re-walking the same
+module/body/block without learning new facts needs an explicit reason or
+should be removed.
+
+**Execution rule:** this does **not** replace A4. Run the A4 evidence tests
+first. Then use this list to remove the largest remaining gaps between the
+current implementation and each stage's lower bound.
+
+### Catalog check against current source
+
+- **Validated:** `typecheck_module()` still does 8 whole-module/item passes;
+  `validate_no_unresolved()` still walks both raw and typed items;
+  `infer_expr(Block)` and all three block emitters still have SG-9
+  `list_push(acc.field, ...)` patterns; `scan_braces_depth()` still rescans
+  forward; `rust_ident()` still linearly scans reserved words.
+- **Adjusted from the catalog:**
+  - `indent()` is currently unused in `src/v2`, so this is cleanup, not a
+    hot-path blocker.
+  - `build_item_registry()` is still redundant whole-body work, but it runs
+    once for the selected target, not literally 3 times per compile.
+  - `resolve_expr_types()` and tokenization are already at their asymptotic
+    floor; work there is pass fusion / ownership discipline, not a new big-O.
+
+### Interface-by-interface target
+
+| Interface | Lower-bound target | Current gap | Planned work |
+|-----------|--------------------|-------------|--------------|
+| `00_core.dag` | O(N) tree walks, O(1) type construction | None found | Keep stable. No perf work unless profiling disproves this. |
+| `01_tokenize.dag` | O(C) time, O(T) space | No algorithmic gap after `ScanResult` refactor | Preserve single-owner accumulator discipline. Reject new struct-field push sites in hot loops. |
+| `02_parse.dag` | O(T) total parse | `scan_braces_depth()` can rescan nested regions | Replace match-arm brace lookahead with single-pass depth tracking or cached boundaries. |
+| `03_resolve.dag` | O(M + E) dependency ordering | `kahn_step()` still filters edges per step | Rework topo sort around adjacency + indegree decrement so the whole sort is truly O(M + E). |
+| `04_reconcile.dag` | 3 passes max: env build, item resolve, item infer | `typecheck_module()` still spends 8 passes; block inference still has SG-9; `validate_no_unresolved()` duplicates finished work | Fuse passes 2-7b of `typecheck_module()`. Rewrite `infer_expr(Block)` around standalone accumulators or explicit recursion. Retire `validate_no_unresolved()` via B3 Phase 2a boundary types. |
+| `05_emit.dag` | One metadata walk per compile, no dead helpers on hot path | `build_item_registry()` recomputes service-call summaries from bodies; `indent()` is dead code | Hoist item registry / service-call summaries into reconciler output or `TypedGraph`. Delete `indent()` if it stays unused. |
+| `05_emit_rust.dag` | O(N + B) per item/module | SG-9 in block + func-body emission; `rust_ident()` does list scan per name | Rewrite block builders around standalone accumulators. Replace reserved-word list scan with a map-backed membership check. |
+| `05_emit_python.dag` | O(N + B) per item/module | SG-9 in block + func-body emission | Same block rewrite as Rust. Consume shared upstream registry instead of rebuilding. |
+| `05_emit_go.dag` | O(N + B) per item/module | SG-9 in block + func-body emission | Same block rewrite as Rust. Consume shared upstream registry instead of rebuilding. |
+| `06_pipeline.dag` | One strict pipeline path | Strict path still coexists with lenient/bootstrap scaffolding | After B3 Phase 2a, delete `compile_sources_lenient()` and remove release-path dependence on `validate_no_unresolved()`. |
+| `07_complexity.dag` / `08_artifact.dag` | O(1) | None found | No performance work planned. |
+
+### Priority order after A4 evidence run
+
+1. **Fuse `typecheck_module()` to 3 passes.** This is the largest confirmed
+   whole-module gap and dominates the self-compile catalog.
+2. **Retire `validate_no_unresolved()` from the release path.** This is
+   already the B3 Phase 2a direction and removes a full duplicate graph walk.
+3. **Eliminate SG-9 block accumulators in reconcile + all emitters.** The
+   lower-bound rule is: no hot-path `list_push(acc.field, ...)` or
+   `map_insert(acc.field, ...)` on struct fields.
+4. **Hoist emitter registry/service-call summaries upstream.** Compute once
+   during reconcile, reuse in every backend.
+5. **Make resolver topo sort truly O(M + E).** Current constants are small,
+   but the interface should still match the graph lower bound.
+6. **Replace parser brace rescans with linear lookahead.** Important for
+   pathological nesting, lower priority than reconcile/emitter work.
+7. **Clean up cold linear scans and dead helpers.** `rust_ident()` reserved
+   words should use a map; `indent()` should be deleted if it remains unused.
+
+### Acceptance
+
+- [ ] A4 evidence run completes and produces a fresh hotspot ranking
+- [x] `typecheck_module()` reduced to 3 module-scale passes max
+      (Pass A: build_type_env + resolve_item_types; Pass B: fused build_scope_from_items + merge_scope_from_imports; Pass C: infer_items)
+- [x] `validate_no_unresolved()` demoted (B3 Phase 2a — not deleted, B3 Phase 2b)
+- [x] No SG-9 struct-field accumulator sites remain in compiler hot paths
+      (10 sites converted: infer_block_stmts + 3 emitters × 3 block patterns)
+- [ ] Emitter registry/service-call summaries computed once upstream
+      (Deferred: circular dependency between reconcile↔emit prevents hoisting ItemInfo)
+- [ ] Resolver dependency ordering is O(M + E) end-to-end
+      (Blocked: v1 emitter cannot codegen Map<String, List<String>>; existing O(E) edge partition retained)
+- [ ] Parser lookahead no longer rescans brace regions
+      (Deferred: v1 emitter cannot codegen Map<Int, Int>; current scan bounded by pattern depth)
+- [ ] `rust_ident()` uses map lookup
+      (Deferred: v1 emitter type mismatch on data-literal fold to map; O(50) scan retained)
+- [x] `indent()` deleted from `05_emit.dag`
+- [ ] Interfaces already at their lower bound remain unchanged unless a new
+      profile shows regression
+
+---
+
 ## Backlog
 
 - Anonymous record target resolution — ambiguous cases must fail closed
