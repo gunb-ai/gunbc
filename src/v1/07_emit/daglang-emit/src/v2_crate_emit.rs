@@ -26,6 +26,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::fn_codegen;
 use crate::render_rust;
@@ -54,7 +55,7 @@ struct EmbeddedDagSource {
     include_in_gist_resolve: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct LoadedDagSource {
     rel_path: String,
     module_name: String,
@@ -141,13 +142,15 @@ fn load_dag_source(workspace_root: &Path, rel_path: &str) -> LoadedDagSource {
 fn load_dag_source_cached(
     workspace_root: &Path,
     rel_path: &str,
-    cache: &mut HashMap<String, LoadedDagSource>,
-) -> LoadedDagSource {
+    cache: &mut HashMap<String, Rc<LoadedDagSource>>,
+) -> Rc<LoadedDagSource> {
     if let Some(loaded) = cache.get(rel_path) {
-        return loaded.clone();
+        return Rc::clone(loaded);
     }
-    let loaded = load_dag_source(workspace_root, rel_path);
-    cache.insert(rel_path.to_string(), loaded.clone());
+    // Cache the parsed source behind shared ownership so repeated lookups stay O(1)
+    // instead of cloning the full source text and import list back out of the cache.
+    let loaded = Rc::new(load_dag_source(workspace_root, rel_path));
+    cache.insert(rel_path.to_string(), Rc::clone(&loaded));
     loaded
 }
 
@@ -201,7 +204,7 @@ fn collect_import_closure(
     compiler_module_paths: &HashMap<String, String>,
     seed_rel_paths: &[String],
     marks: EmbeddedDagMarks,
-    cache: &mut HashMap<String, LoadedDagSource>,
+    cache: &mut HashMap<String, Rc<LoadedDagSource>>,
     sources: &mut BTreeMap<String, EmbeddedDagSource>,
 ) {
     let mut stack = seed_rel_paths.to_vec();
@@ -211,7 +214,7 @@ fn collect_import_closure(
             continue;
         }
         let loaded = load_dag_source_cached(workspace_root, &rel_path, cache);
-        mark_embedded_dag_source(sources, &loaded, marks);
+        mark_embedded_dag_source(sources, loaded.as_ref(), marks);
         for import_path in &loaded.imports {
             stack.push(resolve_import_rel_path(import_path, compiler_module_paths));
         }
