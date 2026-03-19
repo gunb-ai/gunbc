@@ -46,8 +46,6 @@ type StsTokenResponse {
 
 data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
 
-data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
-
 data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
 
 data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
