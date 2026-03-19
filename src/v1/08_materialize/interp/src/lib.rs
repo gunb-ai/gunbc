@@ -223,7 +223,7 @@ fn execute_collection(
         .get("items")
         .ok_or_else(|| ExecError::new("collection operation missing `items` input"))?;
     let items = match items_value {
-        Value::List(items) => items.clone(),
+        Value::List(items) => (**items).clone(),
         other => {
             return Err(ExecError::new(format!(
                 "collection `items` input must be List, got {}",

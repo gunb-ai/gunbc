@@ -9,11 +9,11 @@
 //      pkg.go.dev/context
 //
 // Consumers:
-//   v2/05_emit_go.dag — concurrent service calls, context propagation
+//   v2/05_emit_go.dag -- concurrent service calls, context propagation
 
 module extdeps.languages.go.async
 
-// ── Goroutines ──────────────────────────────────────────────────────
+// -- Goroutines ------------------------------------------------------
 // Ref: Go Spec "Go statements"
 //
 // A goroutine is a lightweight thread managed by the Go runtime.
@@ -21,7 +21,7 @@ module extdeps.languages.go.async
 data go_statement_template: String = "go \{call\}"
 data goroutine_func_template: String = "go func() \{\n\t\{body\}\n\}()"
 
-// ── Channels ────────────────────────────────────────────────────────
+// -- Channels --------------------------------------------------------
 // Ref: Go Spec "Channel types"
 //
 // Channels are typed conduits for goroutine communication.
@@ -34,14 +34,14 @@ data make_buffered_chan_template: String = "make(chan \{type\}, \{size\})"
 data chan_send_template: String = "\{chan\} <- \{value\}"
 data chan_recv_template: String = "<-\{chan\}"
 
-// ── Select ──────────────────────────────────────────────────────────
+// -- Select ----------------------------------------------------------
 // Ref: Go Spec "Select statements"
 
 data select_template: String = "select \{\n\{cases\}\n\}"
 data select_case_template: String = "case \{assignment\}:\n\t\{body\}"
 data select_default_template: String = "default:\n\t\{body\}"
 
-// ── Synchronization ─────────────────────────────────────────────────
+// -- Synchronization -------------------------------------------------
 // Ref: pkg.go.dev/sync
 
 data mutex_type: String = "sync.Mutex"
@@ -55,7 +55,7 @@ data waitgroup_add_template: String = "\{wg\}.Add(\{n\})"
 data waitgroup_done_template: String = "\{wg\}.Done()"
 data waitgroup_wait_template: String = "\{wg\}.Wait()"
 
-// ── Context ─────────────────────────────────────────────────────────
+// -- Context ---------------------------------------------------------
 // Ref: pkg.go.dev/context
 //
 // context.Context carries deadlines, cancellation signals, and
@@ -67,7 +67,7 @@ data context_todo: String = "context.TODO()"
 data context_with_cancel_template: String = "context.WithCancel(\{parent\})"
 data context_with_timeout_template: String = "context.WithTimeout(\{parent\}, \{duration\})"
 
-// ── HTTP client ─────────────────────────────────────────────────────
+// -- HTTP client -----------------------------------------------------
 // Ref: pkg.go.dev/net/http
 //
 // Go's standard library HTTP client is used for service calls.

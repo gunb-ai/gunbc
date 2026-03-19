@@ -7,11 +7,16 @@
 //      Effective Go (go.dev/doc/effective_go)
 //
 // Consumers:
-//   v2/05_emit_go.dag — type emission, struct definition, interface satisfaction
+//   v2/05_emit_go.dag -- type emission, struct definition, interface satisfaction
 
 module extdeps.languages.go.types
 
-// ── Zero values ─────────────────────────────────────────────────────
+import std.languages {
+  TypeMapping, NamingConvention, NamingCase,
+  TypeDefinitionSyntax
+}
+
+// -- Zero values -----------------------------------------------------
 // Ref: Go Spec "The zero value"
 //
 // Every Go variable is initialized to its zero value when declared
@@ -34,7 +39,7 @@ data go_primitives: List<GoZeroValue> = [
   { dag_name: "Json",   go_name: "interface{}", zero_value: "nil" }
 ]
 
-// ── Pointer types ───────────────────────────────────────────────────
+// -- Pointer types ---------------------------------------------------
 // Ref: Go Spec "Pointer types"
 //
 // Go uses pointer types (*T) for optional values and to avoid copying
@@ -44,7 +49,7 @@ data pointer_template: String = "*{0}"
 data address_of_template: String = "&\{value\}"
 data nil_literal: String = "nil"
 
-// ── Visibility ──────────────────────────────────────────────────────
+// -- Visibility ------------------------------------------------------
 // Ref: Go Spec "Exported identifiers"
 //
 // An identifier is exported if its first character is uppercase (Unicode
@@ -52,8 +57,8 @@ data nil_literal: String = "nil"
 
 data visibility_by_case: Bool = true
 
-// ── Struct embedding ────────────────────────────────────────────────
-// Ref: Go Spec "Struct types" — embedded fields
+// -- Struct embedding ------------------------------------------------
+// Ref: Go Spec "Struct types" -- embedded fields
 //
 // Go has no inheritance. A struct may embed another type by declaring a
 // field with no explicit name; the embedded type's methods and fields
@@ -61,17 +66,17 @@ data visibility_by_case: Bool = true
 
 data embedded_field_syntax: String = "\{type\}"
 
-// ── Interface types ─────────────────────────────────────────────────
+// -- Interface types -------------------------------------------------
 // Ref: Go Spec "Interface types"
 //
 // An interface defines a method set. A type satisfies an interface
-// implicitly — no "implements" declaration.
+// implicitly -- no "implements" declaration.
 
 data empty_interface: String = "interface{}"
 data any_type: String = "any"          // Go 1.18+ alias for interface{}
 data interface_def_template: String = "type \{name\} interface \{\n\{methods\}\n\}"
 
-// ── Numeric types ───────────────────────────────────────────────────
+// -- Numeric types ---------------------------------------------------
 // Ref: Go Spec "Numeric types"
 
 data integer_types: List<String> = [
@@ -81,10 +86,37 @@ data integer_types: List<String> = [
 
 data float_types: List<String> = ["float32", "float64"]
 
-// ── Type conversions ────────────────────────────────────────────────
+// -- Type conversions ------------------------------------------------
 // Ref: Go Spec "Conversions"
 //
 // Go has no implicit type conversions. All conversions are explicit
 // with function-call syntax: Type(expr).
 
 data type_conversion_template: String = "\{type\}(\{expr\})"
+
+// -- Emission-facing maps --------------------------------------------
+// These provide the Map<String, String> format that the v2 emitter
+// consumes. Derived from the facts above and from the Go Spec.
+// When the language gains map-from-list primitives, these become computed.
+
+// DAG primitive name -> Go type name.
+// Derived from: go_primitives[].dag_name -> go_primitives[].go_name
+data emit_type_map: Map<String, String> = {
+  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
+  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
+}
+
+// Literal and operator keyword translations.
+// Ref: Go Spec "Keywords", "Operators and punctuation"
+data emit_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "nil",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+// Container type templates. {0} = element type, {1} = second type (maps).
+// Ref: Go Spec "Slice types", "Map types"
+data emit_container_templates: Map<String, String> = {
+  "list": "[]{0}", "set": "map[{0}]struct{}",
+  "optional": "*{0}", "map": "map[{0}]{1}"
+}

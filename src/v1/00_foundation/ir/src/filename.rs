@@ -45,6 +45,7 @@ use crate::resource::{
 };
 use crate::Value;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 // ============================================================================
 // Filesystem Model
@@ -683,7 +684,7 @@ impl From<FilesystemHandle> for Value {
         );
         map.insert(
             "targets".to_string(),
-            Value::List(targets.into_iter().map(Value::Str).collect()),
+            Value::List(Arc::new(targets.into_iter().map(Value::Str).collect())),
         );
         map.insert(
             "replacement".to_string(),
@@ -770,7 +771,7 @@ mod capability_tests {
             Value::Str("filesystem_handle".to_string()),
         );
         map.insert("scope".to_string(), Value::Str("write".to_string()));
-        map.insert("targets".to_string(), Value::List(vec![]));
+        map.insert("targets".to_string(), Value::List(Arc::new(vec![])));
         map.insert("replacement".to_string(), Value::Str("-".to_string()));
 
         let err = FilesystemHandle::try_from(Value::Map(map))

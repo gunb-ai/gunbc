@@ -1,6 +1,6 @@
-// v2 module resolver — pure function from parsed modules to dependency-ordered graph.
+// v2 module resolver -- pure function from parsed modules to dependency-ordered graph.
 //
-// No I/O — file discovery and parsing are handled by the pipeline.
+// No I/O -- file discovery and parsing are handled by the pipeline.
 // Takes a list of parsed Module values and:
 //   1. Validates there are no duplicate module declarations
 //   2. Resolves each import to its target module
@@ -37,7 +37,7 @@ type ResolvedImport {
 }
 
 // =========================================================================
-// Internal types — used by the topological sort and cycle detection
+// Internal types -- used by the topological sort and cycle detection
 // =========================================================================
 
 // An edge in the import graph: from_module imports to_module.
@@ -56,7 +56,9 @@ type KahnState {
   in_degree_map: Map<String, Int>
   // Module names list (for iteration).
   module_names: List<String>
-  // Adjacency: list of edges (dep -> dependant).
+  // Remaining unprocessed edges. Shrinks each round as edges from
+  // zero-degree nodes are consumed. Total work across all rounds
+  // is O(E) since each edge is processed exactly once.
   edges: List<DepEdge>
 }
 
@@ -66,13 +68,13 @@ type KahnStepResult {
   progress: Bool
 }
 
-// Accumulator for Phase 2 — builds imports-by-name map and collects diagnostics.
+// Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
   imports_by_name: Map<String, List<ResolvedImport>>
   diagnostics: List<Diagnostic>
 }
 
-// Map membership check — returns true if key is present, false otherwise.
+// Map membership check -- returns true if key is present, false otherwise.
 // Uses match on map_get since the evaluator represents None as a variant map,
 // not as the none literal (Value::Unit), so direct == / != comparisons fail.
 fn map_has(m: Map<String, Bool>, key: String) -> Bool {
@@ -130,7 +132,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     match map_get(sorted_order_map, m.name) {
       Some { value: order } =>
         match map_get(imports_by_name, m.name) {
-          // imports_by_name should contain every module — None is
+          // imports_by_name should contain every module -- None is
           // unreachable. Default to [] only as a safe fallback.
           Some { value: imps } =>
             [ResolvedModule {
@@ -313,7 +315,7 @@ fn get_module_deps(module: Module) -> List<String> {
 // =========================================================================
 
 // Check for duplicate module declarations (same name appearing twice).
-// DuplicateCheckState — fold accumulator for seen-set duplicate detection.
+// DuplicateCheckState -- fold accumulator for seen-set duplicate detection.
 type DuplicateCheckState {
   seen_names: Map<String, Bool>
   diagnostics: List<Diagnostic>
@@ -349,7 +351,7 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
 }
 
 // =========================================================================
-// Topological sort — Kahn's algorithm
+// Topological sort -- Kahn's algorithm
 //
 // Iterative approach using fold over a bounded number of steps.
 // Each step finds all zero-in-degree nodes, removes them, and
@@ -425,7 +427,7 @@ fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
   }
   let step = kahn_step(state: state)
   if step.progress == false {
-    // No progress — either done or stuck on a cycle
+    // No progress -- either done or stuck on a cycle
     return step.state
   }
   kahn_iterate(state: step.state, remaining: remaining - 1)
@@ -461,17 +463,21 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
     map_insert(acc, name, true)
   )
 
-  // Decrement in-degrees: for each edge from a zero_node, decrement target.
+  // Partition edges: edges from zero_nodes are processed this round,
+  // remaining edges carry forward. Each edge is processed exactly once
+  // across all rounds, so total work is O(E).
+  let processed_edges = state.edges |> filter(e => map_has(m: zero_set, key: e.from_module))
+  let remaining_edges = state.edges |> filter(e => map_has(m: zero_set, key: e.from_module) == false)
+
+  // Decrement in-degrees for targets of processed edges.
+  let decremented = processed_edges |> fold(init: state.in_degree_map, f: (acc, e) =>
+    let current = match map_get(acc, e.to_module) {
+      Some { value: d } => d
+      None => -1
+    }
+    map_insert(acc, e.to_module, current - 1)
+  )
   // Mark zero_nodes themselves as -1 so they aren't picked again.
-  let decremented = state.edges
-    |> filter(e => map_has(m: zero_set, key: e.from_module))
-    |> fold(init: state.in_degree_map, f: (acc, e) =>
-      let current = match map_get(acc, e.to_module) {
-        Some { value: d } => d
-        None => -1
-      }
-      map_insert(acc, e.to_module, current - 1)
-    )
   let new_in_degree_map = zero_nodes |> fold(init: decremented, f: (acc, name) =>
     map_insert(acc, name, -1)
   )
@@ -482,7 +488,7 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
       sorted_set: new_sorted_set,
       in_degree_map: new_in_degree_map,
       module_names: state.module_names,
-      edges: state.edges
+      edges: remaining_edges
     },
     progress: true
   }

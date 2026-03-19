@@ -4,25 +4,25 @@
 // token responses. Used for Workload Identity Federation.
 //
 // Consumers:
-//   gunbc/auth/patterns.dag    — credential_chain pattern
-//   gunbc/auth/patterns.dag    — credential_chain pattern
+//   gunbc/auth/patterns.dag    -- credential_chain pattern
+//   gunbc/auth/patterns.dag    -- credential_chain pattern
 
 module extdeps.cloud.gcp.sts
 
 import std.types { Url }
 import std.errors { GcpErrorShape, GitHubErrorShape }
 
-// ── Token types ───────────────────────────────────────────────────
+// -- Token types ---------------------------------------------------
 
 type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
 
 type RequestedTokenType = RequestAccessToken | RequestIdToken
 
-// ── Grant type ────────────────────────────────────────────────────
+// -- Grant type ----------------------------------------------------
 
 type StsGrantType = TokenExchange {}
 
-// ── Token exchange request ────────────────────────────────────────
+// -- Token exchange request ----------------------------------------
 
 type StsTokenExchange {
   grant_type: StsGrantType
@@ -33,7 +33,7 @@ type StsTokenExchange {
   requested_token_type: RequestedTokenType?
 }
 
-// ── Token exchange response ───────────────────────────────────────
+// -- Token exchange response ---------------------------------------
 
 type StsTokenResponse {
   access_token: String
@@ -42,7 +42,7 @@ type StsTokenResponse {
   expires_in: Int
 }
 
-// ── Constants ─────────────────────────────────────────────────────
+// -- Constants -----------------------------------------------------
 
 data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
 
@@ -50,7 +50,7 @@ data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
 
 data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
 
-// ── Service: REST transport wiring ──────────────────────────────
+// -- Service: REST transport wiring ------------------------------
 
 service gcp.STS {
   config {

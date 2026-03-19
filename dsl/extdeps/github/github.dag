@@ -4,16 +4,16 @@
 // Complements extdeps/api/github_ops.dag (which covers rate limits and tiers).
 //
 // Consumers:
-//   extdeps/github/issues.dag        — issue resource model
-//   extdeps/github/pull_requests.dag — PR resource model
-//   extdeps/github/gists.dag         — gist resource model
-//   services/github/*                — transport wiring
+//   extdeps/github/issues.dag        -- issue resource model
+//   extdeps/github/pull_requests.dag -- PR resource model
+//   extdeps/github/gists.dag         -- gist resource model
+//   services/github/*                -- transport wiring
 
 module extdeps.github.github
 
 import std.types { Timestamp }
 
-// ── Users ─────────────────────────────────────────────────────────
+// -- Users ---------------------------------------------------------
 
 type UserType = HumanUser | Bot | Organization
 
@@ -23,7 +23,7 @@ type GitHubUser {
   type: UserType
 }
 
-// ── Repositories ──────────────────────────────────────────────────
+// -- Repositories --------------------------------------------------
 
 type Repository {
   owner: String
@@ -33,7 +33,7 @@ type Repository {
   default_branch: String
 }
 
-// ── Authentication ────────────────────────────────────────────────
+// -- Authentication ------------------------------------------------
 
 type GitHubAuthToken {
   token: Secret
@@ -48,7 +48,7 @@ type GitHubScope
   | ScopeReadOrg
   | ScopeReadUser
 
-// ── Pagination ────────────────────────────────────────────────────
+// -- Pagination ----------------------------------------------------
 // GitHub uses Link-header cursor-based pagination.
 
 type Pagination {
@@ -57,11 +57,11 @@ type Pagination {
   has_next: Bool
 }
 
-// ── Permissions ───────────────────────────────────────────────────
+// -- Permissions ---------------------------------------------------
 
 type GitHubPermission = PermRead | PermWrite | PermAdmin
 
-// ── Constants ─────────────────────────────────────────────────────
+// -- Constants -----------------------------------------------------
 
 data default_api_base: String = "https://api.github.com"
 

@@ -1,0 +1,129 @@
+// v2 complexity analysis -- cost algebra and proof vocabulary.
+//
+// Defines the symbolic types for runtime complexity analysis of DAG
+// execution structure. The analyzer walks authoritative program structure
+// and produces symbolic cost terms. Program IR and cost IR are separate:
+// these types are proof objects, not program nodes.
+//
+// Two metrics are first-class:
+//   work  -- total operations performed
+//   span  -- critical path length under DAG dependency structure
+//
+// Costs are parameterized by SemanticsCtx so that the same surface
+// operation can have different faithful costs in the bootstrap
+// interpreter vs emitted/native code.
+//
+// This module is type definitions only. Analysis implementation
+// (D2-D4) will be added in later tracks.
+
+module v2.compiler.complexity
+
+// =========================================================================
+// Size expressions -- symbolic sizes for analysis
+//
+// A SizeExpr represents a symbolic size: a constant, a named variable
+// (n, m, k), the length of a named collection, or arithmetic over
+// sizes. Used as loop bounds, collection cardinalities, and cost
+// function arguments.
+// =========================================================================
+
+type SizeExpr
+  = SizeConst { value: Int }
+  | SizeVar { name: String }
+  | SizeLen { collection: String }
+  | SizeAdd { left: SizeExpr, right: SizeExpr }
+  | SizeMax { left: SizeExpr, right: SizeExpr }
+
+// =========================================================================
+// Cost expressions -- symbolic costs
+//
+// A CostExpr represents the cost of a computation symbolically.
+// Supports constant costs, arithmetic composition, bounded summation
+// (for loops), parameterized primitive costs (for backend-specific
+// operation costs), and Unknown (when the system cannot prove a
+// tighter bound).
+//
+// PrimCost references a cost model by name (e.g., "list_push",
+// "concat") with symbolic size arguments. The model string identifies
+// the cost rule to apply given the SemanticsCtx.
+// =========================================================================
+
+type CostExpr
+  = CostConst { value: Int }
+  | CostAdd { left: CostExpr, right: CostExpr }
+  | CostMul { left: CostExpr, right: CostExpr }
+  | CostMax { left: CostExpr, right: CostExpr }
+  | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
+  | PrimCost { op: String, args: List<SizeExpr>, model: String }
+  | CostUnknown { reason: String }
+
+// =========================================================================
+// Constraints on sizes
+//
+// Constraints express assumptions about symbolic sizes: equality,
+// ordering, and non-negativity. These are carried alongside cost
+// expressions so that simplification and reporting can reason about
+// the conditions under which a cost formula holds.
+// =========================================================================
+
+type Constraint
+  = ConstraintEq { left: SizeExpr, right: SizeExpr }
+  | ConstraintLeq { left: SizeExpr, right: SizeExpr }
+  | NonNegative { expr: SizeExpr }
+
+// =========================================================================
+// Certainty of a proof
+//
+// Proven      -- the bound is exact or tight under stated assumptions.
+// Conservative -- the bound is valid but may not be tight.
+// Unknown     -- the system could not derive a useful bound.
+// =========================================================================
+
+type Certainty = Proven | Conservative | Unknown
+
+// =========================================================================
+// Runtime semantics context
+//
+// Parameterizes cost analysis by backend and data structure
+// representation. The same surface operation (e.g., list append)
+// has different costs under different models:
+//
+//   PrimCost("list_push", [n], "PersistentList") = n + 1
+//   PrimCost("list_push", [n], "RcVec")          = 1  (amortized)
+//
+// Fields use strings rather than a closed enum so that new backends
+// and models can be added without modifying this type.
+// =========================================================================
+
+type SemanticsCtx {
+  backend: String
+  exec_model: String
+  list_model: String
+  map_model: String
+  string_model: String
+}
+
+// =========================================================================
+// Complexity summary -- the main output type
+//
+// Attaches to a function, expression, or DAG node to describe its
+// runtime behavior:
+//
+//   work        -- total operations (sequential cost)
+//   span        -- critical path (parallel cost)
+//   output_size -- symbolic size of each named output
+//   assumptions -- constraints under which the formula holds
+//   certainty   -- how confident the proof is
+//
+// The reporting rule: compute exact symbolic formulas first, then
+// derive asymptotic summaries from those formulas. Do not discard
+// representation or backend assumptions early.
+// =========================================================================
+
+type ComplexitySummary {
+  work: CostExpr
+  span: CostExpr
+  output_size: Map<String, CostExpr>
+  assumptions: List<Constraint>
+  certainty: Certainty
+}

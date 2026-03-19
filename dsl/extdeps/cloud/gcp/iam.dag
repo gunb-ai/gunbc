@@ -4,14 +4,14 @@
 // chains, token lifetimes.
 //
 // Consumers:
-//   gunbc/auth/patterns.dag        — credential_chain pattern
-//   gunbc/auth/patterns.dag        — credential_chain pattern
+//   gunbc/auth/patterns.dag        -- credential_chain pattern
+//   gunbc/auth/patterns.dag        -- credential_chain pattern
 
 module extdeps.cloud.gcp.iam
 
 import std.errors { GcpErrorShape }
 
-// ── Roles ─────────────────────────────────────────────────────────
+// -- Roles ---------------------------------------------------------
 
 type GcpRole {
   name: String
@@ -31,7 +31,7 @@ data common_roles: List<GcpRole> = [
   { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
 ]
 
-// ── Bindings & policies ───────────────────────────────────────────
+// -- Bindings & policies -------------------------------------------
 
 type IamCondition {
   title: String
@@ -51,7 +51,7 @@ type GcpPolicy {
   version: Int
 }
 
-// ── Impersonation ─────────────────────────────────────────────────
+// -- Impersonation -------------------------------------------------
 
 type ImpersonationChain {
   source: String
@@ -59,7 +59,7 @@ type ImpersonationChain {
   delegates: List<String>
 }
 
-// ── Token lifetimes ───────────────────────────────────────────────
+// -- Token lifetimes -----------------------------------------------
 
 type TokenLifetime {
   default_seconds: Int
@@ -71,7 +71,7 @@ data default_token_lifetime: TokenLifetime = {
   max_seconds: 43200
 }
 
-// ── Service: REST transport wiring ──────────────────────────────
+// -- Service: REST transport wiring ------------------------------
 
 service gcp.IAM {
   config {
