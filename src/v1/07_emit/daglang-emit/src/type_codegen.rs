@@ -86,6 +86,7 @@ pub fn build_rc_wrapped_types(type_defs: &[&TypeDef]) -> HashSet<String> {
 
 type CallableReturnTypes = std::collections::HashMap<String, String>;
 type CallableParamTypes = std::collections::HashMap<String, Vec<(String, String)>>;
+type RecordFieldTypes = HashMap<String, Vec<(String, String)>>;
 
 fn register_unique_callable_type<T>(
     map: &mut std::collections::HashMap<String, Option<T>>,
@@ -566,6 +567,30 @@ pub fn datadef_to_code_ir(dd: &DataDef) -> Vec<code_ir::Item> {
 
 /// Convert data def to code IR with struct definitions for field-type resolution.
 pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<code_ir::Item> {
+    let record_field_types = build_record_field_type_index(struct_defs);
+    datadef_to_code_ir_with_field_types(dd, &record_field_types)
+}
+
+pub(crate) fn build_record_field_type_index(struct_defs: &[&TypeDef]) -> RecordFieldTypes {
+    let mut record_field_types = HashMap::with_capacity(struct_defs.len());
+    for td in struct_defs {
+        if let TypeBody::Record(fields) = &td.body {
+            record_field_types.insert(
+                td.name.clone(),
+                fields
+                    .iter()
+                    .map(|f| (f.name.clone(), type_expr_to_rust_name(&f.ty)))
+                    .collect(),
+            );
+        }
+    }
+    record_field_types
+}
+
+pub(crate) fn datadef_to_code_ir_with_field_types(
+    dd: &DataDef,
+    record_field_types: &RecordFieldTypes,
+) -> Vec<code_ir::Item> {
     let rust_name = to_screaming_snake(&dd.name);
     let (rust_type, rust_value) = match &dd.ty {
         TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => {
@@ -582,11 +607,11 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                 TypeExpr::Named(n) => n.as_str(),
                 _ => &elem_type,
             };
-            let field_types = resolve_field_types(elem_type_name, struct_defs);
+            let field_types = resolve_field_types(elem_type_name, record_field_types);
             let items = match &dd.value {
                 Expr::List(elements) => elements
                     .iter()
-                    .map(|e| render_data_record(e, &elem_type, &field_types))
+                    .map(|e| render_data_record(e, &elem_type, field_types))
                     .collect::<Vec<_>>()
                     .join(",\n    "),
                 _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
@@ -625,36 +650,38 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
 }
 
 /// Build a field-name → Rust-type-name map from struct definitions.
-fn resolve_field_types(struct_name: &str, struct_defs: &[&TypeDef]) -> Vec<(String, String)> {
-    for td in struct_defs {
-        if td.name == struct_name {
-            if let TypeBody::Record(fields) = &td.body {
-                return fields
-                    .iter()
-                    .map(|f| (f.name.clone(), type_expr_to_rust_name(&f.ty)))
-                    .collect();
-            }
-        }
-    }
-    vec![]
+fn resolve_field_types<'a>(
+    struct_name: &str,
+    record_field_types: &'a RecordFieldTypes,
+) -> &'a [(String, String)] {
+    record_field_types
+        .get(struct_name)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 /// Extract field types for a data table's element type.
-fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(String, String)> {
+fn resolve_field_types_for_data<'a>(
+    dd: &DataDef,
+    record_field_types: &'a RecordFieldTypes,
+) -> &'a [(String, String)] {
     let elem_type_name = match &dd.ty {
         TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => match &args[0] {
             TypeExpr::Named(n) => n.as_str(),
-            _ => return vec![],
+            _ => return &[],
         },
-        _ => return vec![],
+        _ => return &[],
     };
-    resolve_field_types(elem_type_name, struct_defs)
+    resolve_field_types(elem_type_name, record_field_types)
 }
 
 /// R8: Strip `Rc<...>` wrapper from a Rust type string.
 /// Used for static data tables where Rc is not Sync-compatible.
 fn strip_rc_wrapper(rust_type: &str) -> String {
-    if let Some(inner) = rust_type.strip_prefix("Rc<").and_then(|s| s.strip_suffix('>')) {
+    if let Some(inner) = rust_type
+        .strip_prefix("Rc<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
         inner.to_string()
     } else {
         rust_type.to_string()
@@ -977,7 +1004,11 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .iter()
         .map(|p| {
             let ty = type_expr_to_rust(&p.ty);
-            let ty = if ty == "String" { "&str".to_string() } else { ty };
+            let ty = if ty == "String" {
+                "&str".to_string()
+            } else {
+                ty
+            };
             (p.name.clone(), ty)
         })
         .collect();
@@ -1184,6 +1215,23 @@ pub fn impl_from_data_table(
     method_name: &str,
     struct_defs: &[&TypeDef],
 ) -> Option<code_ir::Item> {
+    let record_field_types = build_record_field_type_index(struct_defs);
+    impl_from_data_table_with_field_types(
+        data,
+        key_field,
+        value_field,
+        method_name,
+        &record_field_types,
+    )
+}
+
+fn impl_from_data_table_with_field_types(
+    data: &DataDef,
+    key_field: &str,
+    value_field: &str,
+    method_name: &str,
+    record_field_types: &RecordFieldTypes,
+) -> Option<code_ir::Item> {
     let (elem_type_name, elements) = match (&data.ty, &data.value) {
         (TypeExpr::Generic(name, args), Expr::List(elems)) if name == "List" && args.len() == 1 => {
             let elem_name = match &args[0] {
@@ -1195,7 +1243,7 @@ pub fn impl_from_data_table(
         _ => return None,
     };
 
-    let field_types = resolve_field_types(elem_type_name, struct_defs);
+    let field_types = resolve_field_types(elem_type_name, record_field_types);
     let key_type = field_types
         .iter()
         .find(|(n, _)| n == key_field)
@@ -1290,7 +1338,7 @@ pub fn typedefs_to_source_file(
         fn_return_ir_types: std::collections::HashMap::new(),
         optional_return_fns: std::collections::HashSet::new(),
         fn_str_params: std::collections::HashSet::new(),
-            str_param_names: std::collections::HashSet::new(),
+        str_param_names: std::collections::HashSet::new(),
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_ir_types: std::collections::HashMap::new(),
@@ -1379,6 +1427,7 @@ pub fn generate_types_for_modules(
 
     // Pass 2: generate all items, using type info for data tables.
     let type_def_refs: Vec<&TypeDef> = type_defs.iter().collect();
+    let record_field_types = build_record_field_type_index(&type_def_refs);
     let mut all_items = Vec::new();
 
     for td in &type_defs {
@@ -1390,7 +1439,7 @@ pub fn generate_types_for_modules(
     }
 
     for dd in &data_defs {
-        all_items.extend(datadef_to_code_ir_with(dd, &type_def_refs));
+        all_items.extend(datadef_to_code_ir_with_field_types(dd, &record_field_types));
     }
 
     for (module_index, item_index) in &fn_defs {
@@ -1466,7 +1515,7 @@ pub fn generate_types_for_modules(
     // Detect DSL functions that are "lookup field in table" and generate
     // match-based impl methods instead of standalone todo!() stubs.
     for dd in &data_defs {
-        let field_types = resolve_field_types_for_data(dd, &type_def_refs);
+        let field_types = resolve_field_types_for_data(dd, &record_field_types);
         if field_types.len() < 2 {
             continue;
         }
@@ -1477,12 +1526,12 @@ pub fn generate_types_for_modules(
             if value_type == key_type {
                 continue;
             }
-            if let Some(item) = impl_from_data_table(
+            if let Some(item) = impl_from_data_table_with_field_types(
                 dd,
                 key_field,
                 value_name,
                 &to_snake_case(value_name),
-                &type_def_refs,
+                &record_field_types,
             ) {
                 all_items.push(item);
             }
@@ -2220,9 +2269,22 @@ mod tests {
                 ],
             )]),
         };
-        let items = datadef_to_code_ir_with(&dd, &[&entry_td]);
-        assert_eq!(items.len(), 1);
-        match &items[0] {
+        let record_field_types = build_record_field_type_index(&[&entry_td]);
+        let indexed_items = datadef_to_code_ir_with_field_types(&dd, &record_field_types);
+        let wrapper_items = datadef_to_code_ir_with(&dd, &[&entry_td]);
+
+        assert_eq!(indexed_items.len(), 1);
+        assert_eq!(wrapper_items.len(), 1);
+
+        let code_ir::Item::Raw(indexed) = &indexed_items[0] else {
+            panic!("expected Raw");
+        };
+        let code_ir::Item::Raw(wrapper) = &wrapper_items[0] else {
+            panic!("expected Raw");
+        };
+        assert_eq!(indexed, wrapper, "indexed and wrapper paths should agree");
+
+        match &indexed_items[0] {
             code_ir::Item::Raw(s) => {
                 assert!(s.contains("pub static TEST_DATA: &[Entry]"), "got: {s}");
                 assert!(
