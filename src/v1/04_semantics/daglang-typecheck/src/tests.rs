@@ -2589,6 +2589,12 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn module_qualified_call_disambiguates_same_name_services() {
+    // Both modules export SharedService with incompatible shapes.
+    // vendor.alpha: read(path: String) -> { body: String }
+    // vendor.beta:  read(query: Int)   -> { count: Int }
+    // The module-qualified call vendor.alpha.SharedService.read(path: path)
+    // must resolve to alpha's contract. If the resolver picks the wrong one,
+    // typecheck rejects the parameter name or return field mismatch.
     let graph = module_graph_from_sources(&[
         (
             "vendor/alpha.dag",
@@ -2601,7 +2607,7 @@ service SharedService {
             "vendor/beta.dag",
             r#"module vendor.beta
 service SharedService {
-  operation read(path: String) -> { body: String }
+  operation read(query: Int) -> { count: Int }
 }"#,
         ),
         (
