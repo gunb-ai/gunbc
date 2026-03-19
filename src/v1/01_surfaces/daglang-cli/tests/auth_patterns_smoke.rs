@@ -15,7 +15,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use daglang_driver::{check_from_context, DriverContext};
+use daglang_contract::DiagnosticContext;
+use daglang_driver::{check_from_context, CompileError, DriverContext};
 use daglang_syntax::parser::parse;
 
 fn dsl_root() -> PathBuf {
@@ -92,13 +93,22 @@ fn assert_missing_provider_binding_fails_check(
     let _ = std::fs::remove_dir_all(&tmp);
     let error = result.expect_err("check should fail when a required provider binding is removed");
 
+    let diagnostics = match &error {
+        CompileError::Diagnostics(d) => &d.errors,
+        other => panic!("expected Diagnostics error, got: {other}"),
+    };
+
+    let has_unresolved = diagnostics.iter().any(|d| {
+        d.code == "TC026"
+            && matches!(
+                &d.context,
+                DiagnosticContext::Missing { name, .. } if name == missing_service_call
+            )
+    });
     assert!(
-        error.contains("unresolved service call"),
-        "expected unresolved service call error, got: {error}"
-    );
-    assert!(
-        error.contains(missing_service_call),
-        "expected missing binding error to mention {missing_service_call}: {error}"
+        has_unresolved,
+        "expected a TC026 (UnresolvedServiceCall) diagnostic for `{missing_service_call}`, \
+         got diagnostics: {diagnostics:#?}"
     );
 }
 
