@@ -32,12 +32,6 @@ mod tests {
             .to_path_buf()
     }
 
-    fn cargo_command(dir: &std::path::Path) -> std::process::Command {
-        let mut cmd = std::process::Command::new("cargo");
-        cmd.current_dir(dir).env("CARGO_NET_OFFLINE", "true");
-        cmd
-    }
-
     fn value_to_json(val: &gunbc_ir::Value) -> serde_json::Value {
         match val {
             gunbc_ir::Value::Str(s) => serde_json::Value::String(s.clone()),
