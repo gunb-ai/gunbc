@@ -7,11 +7,11 @@
 //      Go Modules Reference (go.dev/ref/mod)
 //
 // Consumers:
-//   v2/05_emit_go.dag — import emission, package declaration, file layout
+//   v2/05_emit_go.dag -- import emission, package declaration, file layout
 
 module extdeps.languages.go.imports
 
-// ── Package declaration ─────────────────────────────────────────────
+// -- Package declaration ---------------------------------------------
 // Ref: Go Spec "Package clause"
 //
 // Every Go source file begins with a package clause. The package name
@@ -20,27 +20,27 @@ module extdeps.languages.go.imports
 data package_clause_template: String = "package \{name\}"
 data main_package: String = "package main"
 
-// ── Import syntax ───────────────────────────────────────────────────
+// -- Import syntax ---------------------------------------------------
 // Ref: Go Spec "Import declarations"
 
 data import_single_template: String = "import \"\{path\}\""
 data import_group_template: String = "import (\n\{imports\}\n)"
 data import_alias_template: String = "\{alias\} \"\{path\}\""
 
-// ── Module system ───────────────────────────────────────────────────
+// -- Module system ---------------------------------------------------
 // Ref: Go Modules Reference "go.mod file"
 
 data go_mod_template: String = "module \{module\}\n\ngo \{version\}\n"
 data go_mod_require_template: String = "require \{path\} \{version\}"
 data minimum_go_version: String = "1.21"
 
-// ── File layout ─────────────────────────────────────────────────────
+// -- File layout -----------------------------------------------------
 // Ref: Go convention: one package per directory
 
 data file_extension: String = ".go"
 data test_file_suffix: String = "_test.go"
 
-// ── Standard library packages ───────────────────────────────────────
+// -- Standard library packages ---------------------------------------
 // Ref: pkg.go.dev/std
 //
 // Packages commonly needed by generated code.

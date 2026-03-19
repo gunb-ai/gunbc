@@ -363,7 +363,7 @@ fn declared_output_paths(
         return Err("data output_paths must be a List<String>".to_string());
     };
     let mut output_paths = Vec::with_capacity(items.len());
-    for item in items {
+    for item in items.iter() {
         match item {
             gunbc_ir::Value::Str(path) => output_paths.push(path.clone()),
             _ => return Err("data output_paths must contain only strings".to_string()),

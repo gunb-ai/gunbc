@@ -10,7 +10,7 @@ module extdeps.llm.openai
 
 import std.errors { OpenAiErrorShape }
 
-// ── Models ────────────────────────────────────────────────────────
+// -- Models --------------------------------------------------------
 
 type OpenAiModel
   = Gpt4o
@@ -36,14 +36,14 @@ data models: List<OpenAiModelSpec> = [
   { model: O4Mini, model_id: "o4-mini", context_window: 200000, max_output_tokens: 100000 }
 ]
 
-// ── Response format ───────────────────────────────────────────────
+// -- Response format -----------------------------------------------
 
 type ResponseFormat
   = TextFormat
   | JsonObjectFormat
   | JsonSchemaFormat { schema: Json }
 
-// ── Tool choice ───────────────────────────────────────────────────
+// -- Tool choice ---------------------------------------------------
 
 type ToolChoice
   = ToolChoiceAuto
@@ -51,11 +51,11 @@ type ToolChoice
   | ToolChoiceRequired
   | ToolChoiceNamed { name: String }
 
-// ── Finish reasons ────────────────────────────────────────────────
+// -- Finish reasons ------------------------------------------------
 
 type OpenAiFinishReason = Stop | Length | ToolCalls | ContentFilter
 
-// ── Function calling ──────────────────────────────────────────────
+// -- Function calling ----------------------------------------------
 
 type FunctionCall {
   name: String
@@ -68,7 +68,7 @@ type ToolCall {
   function: FunctionCall
 }
 
-// ── Service: REST transport wiring ──────────────────────────────
+// -- Service: REST transport wiring ------------------------------
 
 service llm.OpenAI {
   config {
@@ -147,7 +147,7 @@ service llm.OpenAI {
   }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────
+// -- Tests ----------------------------------------------------------
 //
 // Multiple test cases for different scenarios: basic, code review,
 // and provider variants (OpenAI, Anthropic).

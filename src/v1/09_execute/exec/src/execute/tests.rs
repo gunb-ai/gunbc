@@ -1138,7 +1138,7 @@ fn test_coercion_trace_exposes_coerced_input_value() {
     let received = b_entry.input_value("items").unwrap();
     assert!(
         matches!(received, Value::List(values)
-            if values == &vec![Value::Str("alpha".to_string())]),
+            if **values == vec![Value::Str("alpha".to_string())]),
         "fan-in should wrap scalar as single-element list, got {received:?}"
     );
 }
@@ -1153,10 +1153,10 @@ fn test_list_output_to_list_input_passes_through() {
         vec![list("items", "List<String>")],
         TestOp::produce(
             "items",
-            Value::List(vec![
+            Value::List(Arc::new(vec![
                 Value::Str("alpha".to_string()),
                 Value::Str("beta".to_string()),
-            ]),
+            ])),
         ),
     ));
     dag.add_node(Node::opaque(
@@ -1328,7 +1328,7 @@ fn test_optional_to_list_skips_unit() {
 
     let b_entry = log.get("B").unwrap();
     match b_entry.outputs.get("items") {
-        Some(Value::List(items)) => assert_eq!(items, &vec![Value::Unit]),
+        Some(Value::List(items)) => assert_eq!(**items, vec![Value::Unit]),
         other => panic!("expected Value::List([Unit]), got {:?}", other),
     }
 }
@@ -1394,11 +1394,11 @@ fn fan_in_wraps_present_optional() {
 #[test]
 fn fan_in_flattens_list() {
     // Widen: list [2,5] value → flattened elements
-    let val = Value::List(vec![
+    let val = Value::List(Arc::new(vec![
         Value::Str("a".into()),
         Value::Str("b".into()),
         Value::Str("c".into()),
-    ]);
+    ]));
     let elements = collect_fan_in(&val, Cardinality::new(2, Some(5))).unwrap();
     assert_eq!(
         elements,
@@ -1673,11 +1673,11 @@ fn test_loop_body_executes_per_element() {
     mocks.set_input(
         "test_loop",
         "items",
-        Value::List(vec![
+        Value::List(Arc::new(vec![
             Value::Str("alpha".to_string()),
             Value::Str("beta".to_string()),
             Value::Str("gamma".to_string()),
-        ]),
+        ])),
     );
 
     let log = execute_dag(
@@ -1768,7 +1768,7 @@ fn test_loop_empty_list_produces_empty_output() {
 
     // Inject empty list (set_input for DAG entry injection)
     let mut mocks = BoundaryMocks::new();
-    mocks.set_input("empty_loop", "items", Value::List(vec![]));
+    mocks.set_input("empty_loop", "items", Value::List(Arc::new(vec![])));
 
     let log = execute_dag(
         &dag,
@@ -1859,10 +1859,10 @@ fn test_loop_resource_input_flows_to_body_iterations() {
     mocks.set_input(
         "token_loop",
         "items",
-        Value::List(vec![
+        Value::List(Arc::new(vec![
             Value::Str("alpha".to_string()),
             Value::Str("beta".to_string()),
-        ]),
+        ])),
     );
     mocks.set_input("token_loop", "res:token", Value::Str("t".to_string()));
 
@@ -1885,7 +1885,7 @@ fn test_loop_resource_input_flows_to_body_iterations() {
     match pack_entry.outputs.get("results") {
         Some(Value::List(items)) => {
             assert_eq!(
-                items,
+                &**items,
                 &vec![
                     Value::Str("alpha@t".to_string()),
                     Value::Str("beta@t".to_string()),

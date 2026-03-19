@@ -16,6 +16,7 @@ use gunbc_ir::{
     NodeBody, NodeId, PortName, TypeId, TypeOp, TypeRegistry, Value, ValueBacking,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::{
     extract_mock_requirements, MockProvider, MockResponseSynthesis, MockSpec, NodeExample,
@@ -103,14 +104,14 @@ fn typed_witness_value_depth(type_id: &str, registry: &TypeRegistry, depth: u8) 
         .or_else(|| parse_container_alias_inner(type_id, "List"))
     {
         return typed_witness_value_depth(inner, registry, depth + 1)
-            .map(|value| Value::List(vec![value]));
+            .map(|value| Value::List(Arc::new(vec![value])));
     }
 
     if let Some(inner) = parse_unary_generic_type_id(type_id, "Set")
         .or_else(|| parse_container_alias_inner(type_id, "Set"))
     {
         return typed_witness_value_depth(inner, registry, depth + 1)
-            .map(|value| Value::Set(vec![value]));
+            .map(|value| Value::Set(Arc::new(vec![value])));
     }
 
     if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
@@ -184,10 +185,10 @@ fn product_witness(type_dag: &Dag<TypeOp>, registry: &TypeRegistry, depth: u8) -
             // expected runtime shape.
             match gunbc_ir::contract::wrapper_kind(fdag) {
                 Some(gunbc_ir::WrapperKind::List | gunbc_ir::WrapperKind::NonEmptyList) => {
-                    Value::List(vec![inner])
+                    Value::List(Arc::new(vec![inner]))
                 }
                 Some(gunbc_ir::WrapperKind::Set | gunbc_ir::WrapperKind::NonEmptySet) => {
-                    Value::Set(vec![inner])
+                    Value::Set(Arc::new(vec![inner]))
                 }
                 Some(gunbc_ir::WrapperKind::Optional) => Value::Unit,
                 Some(gunbc_ir::WrapperKind::Map) => {
@@ -229,10 +230,10 @@ fn default_value_for_type(type_id: &str, registry: &TypeRegistry) -> Value {
                 ValueBacking::Int | ValueBacking::Float => Value::Int(1),
                 ValueBacking::Json => Value::Json(serde_json::json!({"mock": true})),
                 ValueBacking::Map => Value::Map(BTreeMap::new()),
-                ValueBacking::List => Value::List(vec![Value::Str("mock".to_string())]),
-                ValueBacking::Set => Value::Set(vec![Value::Str("mock".to_string())]),
+                ValueBacking::List => Value::List(Arc::new(vec![Value::Str("mock".to_string())])),
+                ValueBacking::Set => Value::Set(Arc::new(vec![Value::Str("mock".to_string())])),
                 ValueBacking::Unit => Value::Unit,
-                ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
+                ValueBacking::Bytes => Value::List(Arc::new(vec![Value::Int(0)])),
             }
         }
     }
@@ -245,7 +246,7 @@ fn default_value_for_port(
 ) -> Value {
     if type_id == "Any" && cardinality.max != Some(1) {
         let count = cardinality.min.max(1) as usize;
-        return Value::List(vec![Value::Str("mock".to_string()); count]);
+        return Value::List(Arc::new(vec![Value::Str("mock".to_string()); count]));
     }
 
     let base = default_value_for_type(type_id, registry);
@@ -258,7 +259,7 @@ fn default_value_for_port(
         Value::Set(values) => Value::List(values),
         value => {
             let count = cardinality.min.max(1) as usize;
-            Value::List(vec![value; count])
+            Value::List(Arc::new(vec![value; count]))
         }
     }
 }
@@ -1015,10 +1016,10 @@ mod tests {
         let registry = TypeRegistry::with_core_types();
         assert_eq!(
             default_value_for_type("List<Platform>", &registry),
-            Value::List(vec![Value::Enum {
+            Value::List(Arc::new(vec![Value::Enum {
                 ty: "Platform".to_string(),
                 variant: "Linux".to_string()
-            }])
+            }]))
         );
     }
 

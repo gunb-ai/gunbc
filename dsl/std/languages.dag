@@ -27,7 +27,7 @@ module std.languages
 
 import std.types { LanguageId }
 
-// ── Layer 0: Primitives ──────────────────────────────────────────────
+// -- Layer 0: Primitives ----------------------------------------------
 
 // "How are identifiers cased?" -- universal across all languages.
 type NamingCase
@@ -72,7 +72,7 @@ type TypeMapping {
   map_template: String
 }
 
-// ── Layer 0b: Rendering syntax primitives ────────────────────────────
+// -- Layer 0b: Rendering syntax primitives ----------------------------
 //
 // Structural facts about how each language writes code. Every field
 // value is a template string derivable from the language's specification.
@@ -232,7 +232,7 @@ type AsyncSyntax
       select_stmt: String          // e.g. "select {\n{cases}\n}"
     }
 
-// ── Layer 0c: Runtime operation mappings ────────────────────────────
+// -- Layer 0c: Runtime operation mappings ----------------------------
 //
 // "How does a language implement DSL builtin operations?"
 // Each field is a template mapping a DSL pipe method / builtin
@@ -319,7 +319,7 @@ type ValueSemantics
   = OwnershipBased {
       reference_prefix: String   // e.g. "&" for Rust
       mutable_prefix: String     // e.g. "mut " for Rust
-      copy_primitives: List<String>  // e.g. ["Int", "Bool", "Float", "Unit"] — passed by value
+      copy_primitives: List<String>  // e.g. ["Int", "Bool", "Float", "Unit"] -- passed by value
     }
   | ReferenceBased               // Python: all objects are references
   | ValueBased {
@@ -358,15 +358,15 @@ type ProjectScaffold {
 // Ref: Rust `.await?`, Python `await`, Go multi-return error check
 type ServiceCallSemantics
   = AwaitQuestion {
-      template: String           // e.g. "{call}.await?" — Rust: Result-returning async
+      template: String           // e.g. "{call}.await?" -- Rust: Result-returning async
     }
   | AwaitPrefix {
-      template: String           // e.g. "await {call}" — Python: exception-based async
+      template: String           // e.g. "await {call}" -- Python: exception-based async
     }
   | MultiReturnError {
-      template: String           // e.g. "{result}, {err} := {call}" — Go: multi-return
+      template: String           // e.g. "{result}, {err} := {call}" -- Go: multi-return
     }
-// ── Layer 1: Categories ──────────────────────────────────────────────
+// -- Layer 1: Categories ----------------------------------------------
 
 // "What is a language?" -- the baseline identity facts.
 // This captures what a language IS: its name, extensions, comment syntax,
@@ -387,7 +387,7 @@ type Language {
 // target-language source files. A language extdep must fill in every
 // field of this type to be a valid emit target.
 //
-// This is layer 1 — the interface. Layer 2 (language extdeps) provides
+// This is layer 1 -- the interface. Layer 2 (language extdeps) provides
 // the concrete data for each target language.
 //
 // Design principle: every hardcoded fact in the emitters
@@ -396,10 +396,10 @@ type Language {
 // language requires changing the emitter rather than just providing a
 // new LanguageSpec value, a field is missing from this type.
 type LanguageSpec {
-  // ── Identity ──
+  // -- Identity --
   language: Language
 
-  // ── Syntax (Layer 0b) ──
+  // -- Syntax (Layer 0b) --
   statements: StatementSyntax
   expressions: ExpressionSyntax
   control_flow: ControlFlowSyntax
@@ -411,25 +411,25 @@ type LanguageSpec {
   patterns: PatternMatchSyntax
   async_model: AsyncSyntax?      // null for languages without async (C, etc.)
 
-  // ── Runtime operations (Layer 0c) ──
+  // -- Runtime operations (Layer 0c) --
   collection_ops: CollectionOps
   string_ops: StringOps
   map_ops: MapOps
   null_coalesce: NullCoalesceStrategy
 
-  // ── Identifier handling ──
+  // -- Identifier handling --
   reserved_words: ReservedWords
 
-  // ── Value semantics ──
+  // -- Value semantics --
   value_semantics: ValueSemantics
 
-  // ── Serialization ──
+  // -- Serialization --
   serialization: SerializationFramework
 
-  // ── Project structure ──
+  // -- Project structure --
   scaffold: ProjectScaffold
 
-  // ── Service calls ──
+  // -- Service calls --
   service_calls: ServiceCallSemantics
 }
 
@@ -450,7 +450,7 @@ type ConfigFormat {
   comment: CommentSyntax
 }
 
-// ── Layer 2: Language data declarations ──────────────────────────────
+// -- Layer 2: Language data declarations ------------------------------
 
 // "What is Rust?"
 data rust_language: Language = {
@@ -584,12 +584,12 @@ data typescript_language: Language = {
   }
 }
 
-// ── Layer 2b: Rendering syntax data ──────────────────────────────────
+// -- Layer 2b: Rendering syntax data ----------------------------------
 //
 // Each data declaration answers "how does language X write construct Y?"
 // Every template is a tautology derivable from the language's specification.
 
-// ── Rust rendering syntax ────────────────────────────────────────────
+// -- Rust rendering syntax --------------------------------------------
 // Ref: The Rust Reference (doc.rust-lang.org/reference)
 
 // "How does Rust write statements?"
@@ -708,7 +708,7 @@ data rust_async: AsyncSyntax = AwaitBased {
   gather: "futures::join!({exprs})"
 }
 
-// ── Go rendering syntax ─────────────────────────────────────────────
+// -- Go rendering syntax ---------------------------------------------
 // Ref: The Go Programming Language Specification (go.dev/ref/spec)
 
 // "How does Go write statements?"
@@ -805,7 +805,7 @@ data go_type_defs: TypeDefinitionSyntax = {
 }
 
 // "How does Go destructure values?"
-// Ref: Go Spec "Switch statements" — Go has type switches, not structural
+// Ref: Go Spec "Switch statements" -- Go has type switches, not structural
 // pattern matching. Templates model what Go actually provides.
 data go_patterns: PatternMatchSyntax = {
   match_expr: "switch {expr} {\n{arms}\n}",
@@ -828,7 +828,7 @@ data go_async: AsyncSyntax = GoroutineBased {
   select_stmt: "select {\n{cases}\n}"
 }
 
-// ── Python rendering syntax ─────────────────────────────────────────
+// -- Python rendering syntax -----------------------------------------
 // Ref: The Python Language Reference (docs.python.org/3/reference)
 
 // "How does Python write statements?"
@@ -949,13 +949,13 @@ data python_async: AsyncSyntax = AwaitBased {
   gather: "asyncio.gather({exprs})"
 }
 
-// ── Layer 2c: Runtime operation data ─────────────────────────────────
+// -- Layer 2c: Runtime operation data ---------------------------------
 //
 // How each language implements DSL builtin operations.
 // Each data declaration maps DSL pipe methods / builtins to the
 // target language's idiomatic equivalent.
 
-// ── Rust runtime ops ─────────────────────────────────────────────────
+// -- Rust runtime ops -------------------------------------------------
 // Ref: Rust std::iter, std::collections, std::string
 
 data rust_collection_ops: CollectionOps = {
@@ -1038,7 +1038,7 @@ data rust_service_calls: ServiceCallSemantics = AwaitQuestion {
   template: "{call}.await?"
 }
 
-// ── Go runtime ops ───────────────────────────────────────────────────
+// -- Go runtime ops ---------------------------------------------------
 // Ref: Go slices package, strings package, fmt package
 
 data go_collection_ops: CollectionOps = {
@@ -1123,7 +1123,7 @@ data go_service_calls: ServiceCallSemantics = MultiReturnError {
   template: "{result}, {err} := {call}"
 }
 
-// ── Python runtime ops ───────────────────────────────────────────────
+// -- Python runtime ops -----------------------------------------------
 // Ref: Python builtins, itertools, functools
 
 data python_collection_ops: CollectionOps = {
@@ -1200,7 +1200,7 @@ data python_service_calls: ServiceCallSemantics = AwaitPrefix {
   template: "await {call}"
 }
 
-// ── Layer 2d: LanguageSpec compositions ──────────────────────────────
+// -- Layer 2d: LanguageSpec compositions ------------------------------
 //
 // Each LanguageSpec value composes all the Layer 0/0b/0c/2/2b/2c data
 // for a single target language. This is the value the emitter receives.
@@ -1276,7 +1276,7 @@ data python_spec: LanguageSpec = {
   scaffold: python_scaffold,
   service_calls: python_service_calls
 }
-// ── Markup formats ───────────────────────────────────────────────────
+// -- Markup formats ---------------------------------------------------
 
 // "What is Markdown?"
 data markdown_format: MarkupFormat = {
@@ -1306,7 +1306,7 @@ data html_format: MarkupFormat = {
   code_fence: null
 }
 
-// ── Config formats ───────────────────────────────────────────────────
+// -- Config formats ---------------------------------------------------
 
 // "What is YAML?"
 data yaml_format: ConfigFormat = {
@@ -1373,7 +1373,7 @@ data css_format: ConfigFormat = {
   }
 }
 
-// ── Utility fn signatures ────────────────────────────────────────────
+// -- Utility fn signatures --------------------------------------------
 //
 // These fns are not defined here as DSL fn items because the lowerer
 // creates standalone nodes for all fn items in a module, causing

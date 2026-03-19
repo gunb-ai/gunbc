@@ -7,13 +7,13 @@
 // Complements extdeps/llm/pricing.dag (which covers model specs and pricing).
 //
 // Consumers:
-//   extdeps/llm/anthropic.dag — Anthropic-specific content blocks, tools
-//   extdeps/llm/openai.dag    — OpenAI-specific response formats, tool choice
-//   services/llm/*            — transport wiring
+//   extdeps/llm/anthropic.dag -- Anthropic-specific content blocks, tools
+//   extdeps/llm/openai.dag    -- OpenAI-specific response formats, tool choice
+//   services/llm/*            -- transport wiring
 
 module extdeps.llm.llm
 
-// ── Message protocol ──────────────────────────────────────────────
+// -- Message protocol ----------------------------------------------
 
 type Role = LlmSystem | LlmUser | LlmAssistant | LlmTool
 
@@ -22,7 +22,7 @@ type LlmMessage {
   content: String
 }
 
-// ── Token accounting ──────────────────────────────────────────────
+// -- Token accounting ----------------------------------------------
 
 type TokenUsage {
   input_tokens: Int
@@ -30,18 +30,18 @@ type TokenUsage {
   total_tokens: Int
 }
 
-// ── Stop reasons ──────────────────────────────────────────────────
+// -- Stop reasons --------------------------------------------------
 
 type StopReason = EndTurn | MaxTokens | StopSequence | ToolUse
 
-// ── Streaming ─────────────────────────────────────────────────────
+// -- Streaming -----------------------------------------------------
 
 type StreamEvent
   = StreamStart
   | StreamDelta { text: String }
   | StreamStop { reason: StopReason }
 
-// ── Defaults ──────────────────────────────────────────────────────
+// -- Defaults ------------------------------------------------------
 
 data default_temperature: Float = 1.0
 

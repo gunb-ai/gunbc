@@ -1,16 +1,20 @@
 // extdeps/languages/rust/runtime.dag -- "How does Rust operate on values at runtime?"
 //
 // Collection operations, string operations, map operations, iterator
-// pipeline methods, and null coalescing — all from the Rust standard library.
+// pipeline methods, and null coalescing -- all from the Rust standard library.
 //
 // Ref: Rust Standard Library docs (doc.rust-lang.org/std)
 //
 // Consumers:
-//   v2/05_emit_rust.dag — method call emission, pipe operator translation
+//   v2/05_emit_rust.dag -- method call emission, pipe operator translation
 
 module extdeps.languages.rust.runtime
 
-// ── String operations ───────────────────────────────────────────────
+import std.languages {
+  NamingConvention, NamingCase
+}
+
+// -- String operations -----------------------------------------------
 // Ref: std::string::String, std::str
 
 // "How does Rust create a string literal?"
@@ -48,7 +52,7 @@ data string_chars_template: String = "\{recv\}.chars().map(|c| c.to_string()).co
 // "How does Rust escape strings?"
 data string_escape_chars: List<String> = ["\\", "\""]
 
-// ── Collection operations ───────────────────────────────────────────
+// -- Collection operations -------------------------------------------
 // Ref: std::vec::Vec, std::iter::Iterator
 
 // DSL pipe method -> Rust method translation.
@@ -73,7 +77,7 @@ data collection_method_translations: List<MethodTranslation> = [
 data for_each_template: String = "for \{var\} in \{collection\}.into_iter() \{\n    \{body\};\n\}"
 data iterator_method: String = ".into_iter()"
 
-// ── Map operations ──────────────────────────────────────────────────
+// -- Map operations --------------------------------------------------
 // Ref: std::collections::BTreeMap
 
 // BTreeMap is used instead of HashMap for deterministic ordering.
@@ -82,7 +86,7 @@ data map_import: String = "use std::collections::BTreeMap;"
 data map_get_template: String = "(\{map\}).get(&\{key\}).cloned()"
 data map_insert_template: String = "(\{map\}).insert(\{key\}, \{value\})"
 
-// ── Null coalescing ─────────────────────────────────────────────────
+// -- Null coalescing -------------------------------------------------
 // Ref: std::option::Option methods
 
 // DAG ?? operator -> Rust Option::unwrap_or_else
@@ -92,14 +96,14 @@ data null_coalesce_template: String = "\{lhs\}.unwrap_or_else(|| \{rhs\})"
 data some_constructor: String = "Some(\{value\})"
 data none_literal: String = "None"
 
-// ── NonEmpty wrappers ───────────────────────────────────────────────
+// -- NonEmpty wrappers -----------------------------------------------
 // Custom newtype wrappers generated in the prelude.
 // Ref: project convention, not std library
 
 data non_empty_vec_type: String = "NonEmptyVec"
 data non_empty_set_type: String = "NonEmptyBTreeSet"
 
-// ── Prelude imports ─────────────────────────────────────────────────
+// -- Prelude imports -------------------------------------------------
 // Standard imports emitted at the top of every generated module.
 
 data prelude_imports: List<String> = [
@@ -107,8 +111,8 @@ data prelude_imports: List<String> = [
   "use serde::\{Serialize, Deserialize\};"
 ]
 
-// ── Serialization framework ─────────────────────────────────────────
-// Ref: serde.rs — serde 1.x
+// -- Serialization framework -----------------------------------------
+// Ref: serde.rs -- serde 1.x
 
 data serialization_crate: String = "serde"
 data serialization_version: String = "1"
@@ -116,7 +120,7 @@ data json_crate: String = "serde_json"
 data json_value_type: String = "serde_json::Value"
 data json_macro: String = "serde_json::json!(\{value\})"
 
-// ── Lazy initialization ────────────────────────────────────────────
+// -- Lazy initialization --------------------------------------------
 // Ref: crate lazy_static 1.x
 
 data lazy_static_crate: String = "lazy_static"

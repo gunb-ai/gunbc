@@ -412,7 +412,7 @@ fn prepare_shell_request(
         }
         if field.type_id.starts_with("List<") || field.type_id.starts_with("List ") {
             if let Some(Value::List(items)) = inputs.get(&field.name) {
-                for item in items {
+                for item in items.iter() {
                     if let Some(s) = item.as_str() {
                         argv.push(s.to_string());
                     }
@@ -675,7 +675,7 @@ fn parse_file_response(
                             .filter(|l| !l.is_empty())
                             .map(|l| Value::Str(l.to_string()))
                             .collect();
-                        out = out.value("paths", Value::List(paths));
+                        out = out.value("paths", Value::List(std::sync::Arc::new(paths)));
                     }
                     other => {
                         let content = file_resp.content.as_deref().unwrap_or_default();
@@ -1099,9 +1099,9 @@ fn extract_output_field(
             .unwrap_or_default();
         let bytes = base64_decode(&b64)
             .map_err(|e| ExecError::new(format!("base64 decode for {}: {e}", field.name)))?;
-        return Ok(Value::List(
+        return Ok(Value::List(std::sync::Arc::new(
             bytes.into_iter().map(|b| Value::Int(b as i64)).collect(),
-        ));
+        )));
     }
 
     // C30: Type-aware JSON bridging — delegate to from_bridge_json_typed
@@ -1179,7 +1179,7 @@ fn default_output_value(field: &OutputFieldSpec) -> Value {
         "Secret" => Value::Secret(SecretString::new("")),
         "Int" => Value::Int(0),
         "Bool" => Value::Bool(false),
-        "Bytes" => Value::List(Vec::new()),
+        "Bytes" => Value::List(std::sync::Arc::new(Vec::new())),
         "Json" => Value::Json(serde_json::Value::Null),
         _ => {
             if field.is_secret {
