@@ -2689,7 +2689,9 @@ import vendor.beta { BetaOnly }
 
 #[test]
 fn selective_import_disambiguates_same_name_services() {
-    // Happy-path integration coverage for selective imports. The registry test
+    // Happy-path integration coverage for selective imports. Both providers use
+    // the same parameter and field names, so choosing beta would fail on
+    // incompatible types rather than on a name mismatch. The registry test
     // above proves beta's SharedService is excluded structurally.
     let graph = module_graph_from_sources(&[
         (
@@ -2703,7 +2705,7 @@ service SharedService {
             "vendor/beta.dag",
             r#"module vendor.beta
 service SharedService {
-  operation read(query: Int) -> { count: Int }
+  operation read(path: Int) -> { body: Int }
 }
 service BetaOnly {
   operation ping(msg: String) -> { ok: Bool }
