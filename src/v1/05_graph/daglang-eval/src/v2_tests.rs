@@ -11,8 +11,10 @@
 //! extensions.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use crate::expr::{LoweredExpr, LoweredFnBody, LoweredLiteral, LoweredStmt};
+use daglang_syntax::parser::ParseResult;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,48 @@ const V2_PIPELINE_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../../src/v2/06_pipeline.dag"
 ));
+
+fn parsed_source(
+    cache: &'static OnceLock<ParseResult>,
+    source: &'static str,
+) -> &'static ParseResult {
+    cache.get_or_init(|| daglang_syntax::parser::parse_to_result(source))
+}
+
+fn parsed_v2_core_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_CORE_DAG)
+}
+
+fn parsed_v2_tokenize_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_TOKENIZE_DAG)
+}
+
+fn parsed_v2_parse_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_PARSE_DAG)
+}
+
+fn parsed_v2_resolve_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_RESOLVE_DAG)
+}
+
+fn parsed_v2_typecheck_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_TYPECHECK_DAG)
+}
+
+fn parsed_v2_emit_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_EMIT_DAG)
+}
+
+fn parsed_v2_pipeline_dag() -> &'static ParseResult {
+    static PARSED: OnceLock<ParseResult> = OnceLock::new();
+    parsed_source(&PARSED, V2_PIPELINE_DAG)
+}
 
 fn empty_siblings() -> HashMap<String, LoweredFnBody> {
     HashMap::new()
@@ -81,7 +125,7 @@ fn call_and_return(name: &str, args: Vec<(Option<String>, LoweredExpr)>) -> Lowe
 
 #[test]
 fn v2_core_dag_parses_cleanly() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(
         result.is_ok(),
         "src/v2/00_core.dag should parse without errors, got: {:?}",
@@ -98,7 +142,7 @@ fn v2_tokenize_dag_partial_parse_recovers_items() {
     // tokenize.dag uses v2 syntax that v1 cannot fully parse, but the
     // partial-recovery parser should still extract the module path and
     // some top-level items.
-    let result = daglang_syntax::parser::parse_to_result(V2_TOKENIZE_DAG);
+    let result = parsed_v2_tokenize_dag();
 
     // Module path should be recovered even if fn bodies fail.
     let module_path = result
@@ -117,7 +161,7 @@ fn v2_tokenize_dag_partial_parse_recovers_items() {
 
 #[test]
 fn v2_resolve_dag_partial_parse_recovers_module_path() {
-    let result = daglang_syntax::parser::parse_to_result(V2_RESOLVE_DAG);
+    let result = parsed_v2_resolve_dag();
 
     let module_path = result
         .ast
@@ -129,7 +173,7 @@ fn v2_resolve_dag_partial_parse_recovers_module_path() {
 
 #[test]
 fn v2_pipeline_dag_partial_parse_recovers_module_path() {
-    let result = daglang_syntax::parser::parse_to_result(V2_PIPELINE_DAG);
+    let result = parsed_v2_pipeline_dag();
 
     let module_path = result
         .ast
@@ -141,7 +185,7 @@ fn v2_pipeline_dag_partial_parse_recovers_module_path() {
 
 #[test]
 fn v2_parse_dag_parses() {
-    let result = daglang_syntax::parser::parse_to_result(V2_PARSE_DAG);
+    let result = parsed_v2_parse_dag();
     let module_path = result
         .ast
         .module_path
@@ -152,7 +196,7 @@ fn v2_parse_dag_parses() {
 
 #[test]
 fn v2_typecheck_dag_parses() {
-    let result = daglang_syntax::parser::parse_to_result(V2_TYPECHECK_DAG);
+    let result = parsed_v2_typecheck_dag();
     let module_path = result
         .ast
         .module_path
@@ -163,7 +207,7 @@ fn v2_typecheck_dag_parses() {
 
 #[test]
 fn v2_emit_dag_parses() {
-    let result = daglang_syntax::parser::parse_to_result(V2_EMIT_DAG);
+    let result = parsed_v2_emit_dag();
     let module_path = result
         .ast
         .module_path
@@ -178,7 +222,7 @@ fn v2_emit_dag_parses() {
 
 #[test]
 fn v2_core_dag_has_module_declaration() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
     let module_path = result
         .ast
@@ -194,7 +238,7 @@ fn v2_core_dag_has_module_declaration() {
 
 #[test]
 fn v2_core_dag_defines_token_type() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
 
     let has_token_type = result.ast.items.iter().any(|item| {
@@ -208,7 +252,7 @@ fn v2_core_dag_defines_token_type() {
 
 #[test]
 fn v2_core_dag_defines_token_kind_sum_type() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
 
     let token_kind = result.ast.items.iter().find_map(|item| {
@@ -252,7 +296,7 @@ fn v2_core_dag_defines_token_kind_sum_type() {
 
 #[test]
 fn v2_core_dag_defines_expr_type() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
 
     let has_expr = result.ast.items.iter().any(|item| {
@@ -266,7 +310,7 @@ fn v2_core_dag_defines_expr_type() {
 
 #[test]
 fn v2_core_dag_defines_module_type() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
 
     let has_module = result.ast.items.iter().any(|item| {
@@ -280,7 +324,7 @@ fn v2_core_dag_defines_module_type() {
 
 #[test]
 fn v2_core_dag_defines_compile_result_type() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
 
     let has_compile_result = result.ast.items.iter().any(|item| {
@@ -297,7 +341,7 @@ fn v2_core_dag_defines_compile_result_type() {
 
 #[test]
 fn v2_core_dag_imports_std_types() {
-    let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
+    let result = parsed_v2_core_dag();
     assert!(result.is_ok());
 
     let imports_std = result
@@ -312,7 +356,7 @@ fn v2_core_dag_imports_std_types() {
 fn v2_tokenize_dag_imports_core_types() {
     // Even though tokenize.dag has parse errors, the partial parser should
     // recover the imports section.
-    let result = daglang_syntax::parser::parse_to_result(V2_TOKENIZE_DAG);
+    let result = parsed_v2_tokenize_dag();
 
     let imports_core = result
         .ast
@@ -326,7 +370,7 @@ fn v2_tokenize_dag_imports_core_types() {
 fn v2_tokenize_dag_has_data_declarations() {
     // Data declarations (keywords, single_punct) appear before fn bodies,
     // so the partial parser should recover them.
-    let result = daglang_syntax::parser::parse_to_result(V2_TOKENIZE_DAG);
+    let result = parsed_v2_tokenize_dag();
 
     let data_names: Vec<&str> = result
         .ast
@@ -357,7 +401,7 @@ fn v2_tokenize_dag_has_data_declarations() {
 fn v2_resolve_dag_partial_parse_recovers_types() {
     // The type declarations at the top of resolve.dag should be recoverable
     // even though the fn bodies may fail.
-    let result = daglang_syntax::parser::parse_to_result(V2_RESOLVE_DAG);
+    let result = parsed_v2_resolve_dag();
 
     let type_names: Vec<&str> = result
         .ast
