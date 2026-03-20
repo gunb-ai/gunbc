@@ -2797,6 +2797,36 @@ fn example(items: List<String>) -> Int {
     }
 
     #[test]
+    fn phase6_service_calls_under_return_inject_service_params() {
+        let main_rs = read_v2_file("src/v2/04_reconcile.dag");
+        assert!(
+            main_rs.contains("Return { value: v"),
+            "service dependency walk should recurse through Return expressions:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("ForEach { variable: _, collection: c, body: bd"),
+            "service dependency walk should recurse through ForEach expressions:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("Index { base: b, index: i"),
+            "service dependency walk should recurse through Index expressions:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("Slice { base: b, start: s, end: e"),
+            "service dependency walk should recurse through Slice expressions:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("match arm.guard"),
+            "service dependency walk should recurse through match guards:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
     fn phase6_string_index_and_slice_emit_string_runtime_calls() {
         let output = compile_all_modules().expect("compilation should succeed");
         let result = compile_sources_with(
