@@ -157,6 +157,10 @@ pub struct CompileContext {
     pub struct_field_names: Shared<HashSet<String>>,
     /// Map from enum name → set of variant names, for field-type-based disambiguation.
     pub enum_variants: Shared<std::collections::HashMap<String, HashSet<String>>>,
+    /// Reverse index from variant name → enums containing it.
+    /// This lets ambiguous match inference touch only relevant enums instead of
+    /// rescanning the entire enum registry for every match.
+    pub variant_enum_memberships: Shared<HashMap<String, Vec<String>>>,
     /// Set of (type_name, field_name) pairs that need Box<> wrapping (recursive types).
     pub boxed_fields: Shared<HashSet<(String, String)>>,
     /// Map from function name → return type name (for v2 crate emit).
@@ -587,6 +591,7 @@ impl CompileContext {
             struct_field_types: Shared::default(),
             struct_field_names: Shared::default(),
             enum_variants: Shared::default(),
+            variant_enum_memberships: Shared::default(),
             boxed_fields: Shared::default(),
             fn_return_types: Shared::default(),
             fn_return_ir_types: Shared::default(),
@@ -4709,38 +4714,14 @@ fn infer_type_from_arms(arms: &[ast::MatchArm], ctx: &CompileContext) -> Option<
             _ => None,
         })
         .collect();
-    if variant_names.is_empty() {
-        return None;
-    }
-    let matches: Vec<(&String, usize)> = ctx
-        .enum_variants
-        .iter()
-        .filter_map(|(enum_name, variants)| {
-            let count = variant_names
-                .iter()
-                .filter(|v| variants.contains(**v))
-                .count();
-            (count > 0).then_some((enum_name, count))
-        })
-        .collect();
-    let best_count = matches.iter().map(|(_, count)| *count).max()?;
-    let winners: Vec<&String> = matches
-        .into_iter()
-        .filter(|(_, count)| *count == best_count)
-        .map(|(enum_name, _)| enum_name)
-        .collect();
-    if winners.len() == 1 {
-        Some(winners[0].clone())
-    } else {
-        None
-    }
+    infer_best_enum_for_variant_names(&variant_names, ctx)
 }
 
-fn collect_result_variant_names(expr: &ast::Expr, out: &mut Vec<String>) {
+fn collect_result_variant_names<'a>(expr: &'a ast::Expr, out: &mut Vec<&'a str>) {
     match expr {
-        ast::Expr::Ident(name) if name != "null" && name != "None" => out.push(name.clone()),
+        ast::Expr::Ident(name) if name != "null" && name != "None" => out.push(name.as_str()),
         ast::Expr::Record(Some(name), _) if name != "Some" && name != "None" => {
-            out.push(name.clone())
+            out.push(name.as_str())
         }
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
             collect_result_variant_names(then_expr, out);
@@ -4766,31 +4747,7 @@ fn infer_type_from_result_exprs(exprs: &[&ast::Expr], ctx: &CompileContext) -> O
     for expr in exprs {
         collect_result_variant_names(expr, &mut variant_names);
     }
-    if variant_names.is_empty() {
-        return None;
-    }
-    let matches: Vec<(&String, usize)> = ctx
-        .enum_variants
-        .iter()
-        .filter_map(|(enum_name, variants)| {
-            let count = variant_names
-                .iter()
-                .filter(|variant| variants.contains(variant.as_str()))
-                .count();
-            (count > 0).then_some((enum_name, count))
-        })
-        .collect();
-    let best_count = matches.iter().map(|(_, count)| *count).max()?;
-    let winners: Vec<&String> = matches
-        .into_iter()
-        .filter(|(_, count)| *count == best_count)
-        .map(|(enum_name, _)| enum_name)
-        .collect();
-    if winners.len() == 1 {
-        Some(winners[0].clone())
-    } else {
-        None
-    }
+    infer_best_enum_for_variant_names(&variant_names, ctx)
 }
 
 fn infer_match_result_type(arms: &[ast::MatchArm], ctx: &CompileContext) -> Option<String> {
@@ -6033,6 +5990,75 @@ pub(crate) fn build_fn_param_name_indexes(
             )
         })
         .collect()
+}
+
+pub(crate) fn build_variant_enum_memberships(
+    enum_variants: &HashMap<String, HashSet<String>>,
+) -> HashMap<String, Vec<String>> {
+    let mut memberships = HashMap::new();
+    for (enum_name, variants) in enum_variants {
+        for variant_name in variants {
+            memberships
+                .entry(variant_name.clone())
+                .or_insert_with(Vec::new)
+                .push(enum_name.clone());
+        }
+    }
+    memberships
+}
+
+fn infer_best_enum_for_variant_names(
+    variant_names: &[&str],
+    ctx: &CompileContext,
+) -> Option<String> {
+    if variant_names.is_empty() {
+        return None;
+    }
+
+    if ctx.variant_enum_memberships.is_empty() {
+        return infer_best_enum_for_variant_names_by_full_scan(variant_names, ctx);
+    }
+
+    let mut counts: HashMap<&String, usize> = HashMap::new();
+    for variant_name in variant_names {
+        if let Some(enum_names) = ctx.variant_enum_memberships.get(*variant_name) {
+            for enum_name in enum_names {
+                *counts.entry(enum_name).or_insert(0) += 1;
+            }
+        }
+    }
+    unique_best_enum_name(counts)
+}
+
+fn infer_best_enum_for_variant_names_by_full_scan(
+    variant_names: &[&str],
+    ctx: &CompileContext,
+) -> Option<String> {
+    let mut counts: HashMap<&String, usize> = HashMap::new();
+    for (enum_name, variants) in ctx.enum_variants.iter() {
+        let count = variant_names
+            .iter()
+            .filter(|variant_name| variants.contains(**variant_name))
+            .count();
+        if count > 0 {
+            counts.insert(enum_name, count);
+        }
+    }
+    unique_best_enum_name(counts)
+}
+
+fn unique_best_enum_name(counts: HashMap<&String, usize>) -> Option<String> {
+    let best_count = counts.values().copied().max()?;
+    let mut winners = counts
+        .into_iter()
+        .filter(|(_, count)| *count == best_count)
+        .map(|(enum_name, _)| enum_name);
+    let winner = winners.next()?;
+    if winners.next().is_some() {
+        None
+    } else {
+        Some(winner.clone())
+    }
 }
 
 fn struct_field_ir_type<'a>(
@@ -8199,6 +8225,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
+        ctx.variant_enum_memberships = build_variant_enum_memberships(&ctx.enum_variants).into();
 
         let arms = vec![
             MatchArm {
@@ -8229,6 +8256,7 @@ mod tests {
             "LiteralValue".to_string(),
             ["LitInt".to_string()].into_iter().collect(),
         );
+        ctx.variant_enum_memberships = build_variant_enum_memberships(&ctx.enum_variants).into();
 
         let arms = vec![
             MatchArm {
@@ -8338,6 +8366,7 @@ mod tests {
             "SymbolId".to_string(),
             ["Info".to_string()].into_iter().collect(),
         );
+        ctx.variant_enum_memberships = build_variant_enum_memberships(&ctx.enum_variants).into();
 
         let arms = vec![
             MatchArm {

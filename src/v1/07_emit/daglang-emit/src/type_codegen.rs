@@ -1328,6 +1328,7 @@ pub fn typedefs_to_source_file(
     let struct_field_ir_type_lookup =
         fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
     let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
+    let variant_enum_memberships = fn_codegen::build_variant_enum_memberships(&enum_variants);
     let ctx = fn_codegen::CompileContext {
         data_names: data_names.into(),
         data_map_names: std::collections::HashSet::new().into(),
@@ -1337,6 +1338,7 @@ pub fn typedefs_to_source_file(
         struct_field_types: struct_field_types.into(),
         struct_field_names: std::collections::HashSet::new().into(),
         enum_variants: enum_variants.into(),
+        variant_enum_memberships: variant_enum_memberships.into(),
         boxed_fields: std::collections::HashSet::new().into(),
         fn_return_types: std::collections::HashMap::new().into(),
         fn_param_types: std::collections::HashMap::new().into(),
@@ -1481,6 +1483,7 @@ pub fn generate_types_for_modules(
         fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
     let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&global_fn_param_types);
     let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
+    let variant_enum_memberships = fn_codegen::build_variant_enum_memberships(&enum_variants);
     let base_fn_ctx = fn_codegen::CompileContext {
         data_names: fn_data_names.into(),
         data_ir_types: data_ir_types.into(),
@@ -1491,6 +1494,7 @@ pub fn generate_types_for_modules(
         struct_field_types: struct_field_types.into(),
         struct_field_names: std::collections::HashSet::new().into(),
         enum_variants: enum_variants.into(),
+        variant_enum_memberships: variant_enum_memberships.into(),
         boxed_fields: std::collections::HashSet::new().into(),
         fn_return_types: global_fn_return_types.into(),
         fn_return_ir_types: std::collections::HashMap::new().into(),
@@ -2080,6 +2084,7 @@ mod tests {
             fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
         let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&fn_param_types);
         let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
+        let variant_enum_memberships = fn_codegen::build_variant_enum_memberships(&enum_variants);
 
         (
             fd,
@@ -2097,6 +2102,7 @@ mod tests {
                 struct_field_types: struct_field_types.into(),
                 struct_field_names: HashSet::new().into(),
                 enum_variants: enum_variants.into(),
+                variant_enum_memberships: variant_enum_memberships.into(),
                 boxed_fields: HashSet::new().into(),
                 fn_return_types: fn_return_types.into(),
                 fn_return_ir_types: HashMap::new().into(),

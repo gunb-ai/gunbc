@@ -82,6 +82,7 @@ struct ModuleEmitSharedContext {
     struct_field_types: fn_codegen::Shared<StructFieldTypes>,
     struct_field_names: fn_codegen::Shared<HashSet<String>>,
     enum_variants: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    variant_enum_memberships: fn_codegen::Shared<HashMap<String, Vec<String>>>,
     boxed_fields: fn_codegen::Shared<HashSet<(String, String)>>,
     fn_return_types: fn_codegen::Shared<HashMap<String, String>>,
     fn_return_ir_types: fn_codegen::Shared<HashMap<String, gunbc_ir::code_ir::IrType>>,
@@ -137,6 +138,7 @@ impl ModuleEmitSharedContext {
         let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
         let enum_accessor_field_names =
             fn_codegen::build_enum_accessor_field_names(&enum_accessor_fields);
+        let variant_enum_memberships = fn_codegen::build_variant_enum_memberships(&enum_variants);
         Self {
             optional_fields: optional_fields.into(),
             optional_field_names: optional_field_names.into(),
@@ -144,6 +146,7 @@ impl ModuleEmitSharedContext {
             struct_field_types: StructFieldTypes::new().into(),
             struct_field_names: HashSet::new().into(),
             enum_variants: enum_variants.into(),
+            variant_enum_memberships: variant_enum_memberships.into(),
             boxed_fields: boxed_fields.into(),
             fn_return_types: fn_return_types.into(),
             fn_return_ir_types: fn_return_ir_types.into(),
@@ -814,6 +817,7 @@ fn emit_module(
         struct_field_types: shared_ctx.struct_field_types.clone(),
         struct_field_names: shared_ctx.struct_field_names.clone(),
         enum_variants: shared_ctx.enum_variants.clone(),
+        variant_enum_memberships: shared_ctx.variant_enum_memberships.clone(),
         boxed_fields: shared_ctx.boxed_fields.clone(),
         fn_return_types: shared_ctx.fn_return_types.clone(),
         fn_return_ir_types: shared_ctx.fn_return_ir_types.clone(),
