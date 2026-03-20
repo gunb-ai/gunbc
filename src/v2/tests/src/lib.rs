@@ -353,6 +353,11 @@ mod tests {
         );
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
+        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert(
+            "has_non_tail_self_call".to_string(),
+            gunbc_ir::Value::Bool(false),
+        );
         gunbc_ir::Value::Map(map)
     }
 
@@ -376,6 +381,14 @@ mod tests {
             })
             .collect();
         map.insert("bindings".to_string(), gunbc_ir::Value::Map(binding_map));
+        map.insert(
+            "recursive_types".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        map.insert(
+            "recursive_type_set".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         gunbc_ir::Value::Map(map)
     }
 
@@ -2027,6 +2040,53 @@ fn foo(item: String) -> String {
         );
     }
 
+    #[test]
+    fn phase6_dry_run_without_mock_response_fails_closed() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "op_name".to_string(),
+            gunbc_ir::Value::Str("fetch_user".to_string()),
+        );
+        inputs.insert("return_type".to_string(), named_type_value("String"));
+        inputs.insert(
+            "mock_props".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+
+        let rendered = returned_value(
+            call_fn(&output, "emit_dry_run_branch_from_props", inputs)
+                .expect("emit_dry_run_branch_from_props should succeed"),
+        );
+        let branch = match rendered {
+            gunbc_ir::Value::Str(rendered) => rendered,
+            other => panic!(
+                "emit_dry_run_branch_from_props should return a string, got: {:?}",
+                other
+            ),
+        };
+
+        assert!(
+            branch.contains("dry-run requires explicit mock_response data for operation fetch_user"),
+            "dry-run emission should require explicit mock fixtures:\n{}",
+            branch
+        );
+        assert!(
+            branch.contains("Err(std::io::Error::new(std::io::ErrorKind::Other"),
+            "dry-run emission should return an explicit error when fixtures are missing:\n{}",
+            branch
+        );
+        assert!(
+            !branch.contains("Default::default()"),
+            "dry-run emission should not fabricate defaults when fixtures are missing:\n{}",
+            branch
+        );
+    }
+
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
@@ -3068,6 +3128,52 @@ fn example(items: List<String>) -> Int {
         assert!(
             messages.is_empty(),
             "for-each loop variables should be available inside the loop body: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase4_resolve_node_depth_overflow_fails_closed() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut bindings = Vec::new();
+        for depth in 0..55 {
+            let next = if depth == 54 {
+                "Int".to_string()
+            } else {
+                format!("T{}", depth + 1)
+            };
+            bindings.push(type_binding_value(
+                &format!("T{depth}"),
+                named_type_value(&next),
+            ));
+        }
+
+        let mut inputs = HashMap::new();
+        inputs.insert("n".to_string(), named_type_value("T0"));
+        inputs.insert("env".to_string(), type_env_value(bindings));
+        inputs.insert(
+            "module_name".to_string(),
+            gunbc_ir::Value::Str("main".to_string()),
+        );
+
+        let result = returned_value(
+            call_fn(&output, "resolve_node", inputs).expect("resolve_node should succeed"),
+        );
+
+        let diagnostics = match result {
+            gunbc_ir::Value::Map(ref map) => map
+                .get("diagnostics")
+                .expect("resolve_node should return diagnostics"),
+            other => panic!("resolve_node should return a result map, got: {other:?}"),
+        };
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.iter().any(|message| {
+                message.contains(
+                    "type resolution exceeded recursion bound before reaching a fully structural type",
+                )
+            }),
+            "depth overflow should surface an explicit reconcile error: {:?}",
             messages
         );
     }

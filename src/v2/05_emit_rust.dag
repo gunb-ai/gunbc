@@ -1321,7 +1321,8 @@ fn emit_operation_method(service_name: String, transport: TransportBinding, op_n
 }
 
 // Emit the dry-run branch for an operation method.
-// If mock data is available, use it. Otherwise, return Default::default().
+// If mock data is available, use it. Otherwise, fail clearly instead of
+// fabricating a valid-looking default.
 fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props: List<FieldInit>, registry: Map<String, ItemInfo>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
@@ -1334,11 +1335,15 @@ fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props
           "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
           "Ok(serde_json::from_value(mock_value)?)")
       }
-      None => concat(log_line, "\nOk(Default::default())")
+      None => concat(log_line, "\n",
+        "Err(std::io::Error::new(std::io::ErrorKind::Other, \"dry-run requires explicit mock_response data for operation ",
+        op_name, "\").into())")
     }
   } else {
-    // No mock data available -- return a serde default
-    concat(log_line, "\nOk(serde_json::from_value(serde_json::Value::Object(Default::default()))?)")
+    // No mock data available -- fail closed so dry-run fixtures stay explicit.
+    concat(log_line, "\n",
+      "Err(std::io::Error::new(std::io::ErrorKind::Other, \"dry-run requires explicit mock_response data for operation ",
+      op_name, "\").into())")
   }
 }
 

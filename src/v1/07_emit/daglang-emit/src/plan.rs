@@ -18,7 +18,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::computation::{classify_computation, Computation};
+use crate::computation::{classify_computation, Computation, PureBody};
 use daglang_derive::DerivedArtifacts;
 use daglang_lower::LoweredOp;
 use gunbc_ir::{Dag, PortName};
@@ -132,6 +132,8 @@ pub enum PlanError {
         port: String,
         direction: &'static str,
     },
+    /// A structurally required internal input had no producer edge.
+    MissingInternalInputBinding { node_id: String, port: String },
     /// The DAG contains a cycle (should be impossible after topo sort).
     CycleDetected,
 }
@@ -151,6 +153,12 @@ impl std::fmt::Display for PlanError {
                 direction,
             } => {
                 write!(f, "node `{node_id}` has no {direction} port `{port}`")
+            }
+            Self::MissingInternalInputBinding { node_id, port } => {
+                write!(
+                    f,
+                    "node `{node_id}` is missing a data edge for required internal input `{port}`"
+                )
             }
             Self::CycleDetected => write!(f, "DAG contains a cycle"),
         }
@@ -223,29 +231,34 @@ pub fn build_emit_plan(
         let input_sources: Vec<InputBinding> = node
             .inputs
             .iter()
-            .filter(|p| is_user_input_port(&p.name.0))
-            .map(|port| {
+            .filter(|p| should_bind_input_port(&p.name.0, &computation))
+            .map(|port| -> Result<InputBinding, PlanError> {
                 let key = (node_id_str.clone(), port.name.0.clone());
                 if let Some((from_node, from_port)) = edge_source.get(&key) {
                     if let Some(&src_step) = id_to_step.get(from_node) {
-                        InputBinding::FromStep {
+                        Ok(InputBinding::FromStep {
                             step_index: src_step,
                             port: from_port.clone(),
-                        }
+                        })
                     } else {
                         // Source node not yet in plan (shouldn't happen after topo sort).
-                        InputBinding::FromEntrypoint {
+                        Ok(InputBinding::FromEntrypoint {
                             port: port.name.0.clone(),
-                        }
+                        })
                     }
-                } else {
+                } else if is_user_input_port(&port.name.0) {
                     // No incoming edge → entrypoint.
-                    InputBinding::FromEntrypoint {
+                    Ok(InputBinding::FromEntrypoint {
                         port: port.name.0.clone(),
-                    }
+                    })
+                } else {
+                    Err(PlanError::MissingInternalInputBinding {
+                        node_id: node_id_str.clone(),
+                        port: port.name.0.clone(),
+                    })
                 }
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         // Placeholder output bindings (consumers filled in pass 2).
         let output_bindings: Vec<OutputBinding> = node
@@ -321,6 +334,19 @@ pub fn build_emit_plan(
 fn is_user_input_port(name: &str) -> bool {
     let pn = PortName::from(name);
     pn.is_user()
+}
+
+fn should_bind_input_port(name: &str, computation: &Computation) -> bool {
+    if is_user_input_port(name) {
+        return true;
+    }
+    matches!(
+        computation,
+        Computation::Pure {
+            body: PureBody::Passthrough,
+            ..
+        }
+    ) && name.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX)
 }
 
 /// Kahn's algorithm topo sort over a `Dag<LoweredOp>`.
@@ -588,7 +614,11 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "makegen",
-            vec![Port::scalar("path", "String")],
+            vec![
+                Port::scalar("path", "String"),
+                Port::scalar("__out:path_out", "String"),
+                Port::scalar("__out:written", "Bool"),
+            ],
             vec![
                 Port::scalar("path_out", "String"),
                 Port::scalar("written", "Bool"),
@@ -669,6 +699,18 @@ mod tests {
             "registry",
             "render_makefile",
             "registry",
+        ));
+        dag.add_edge(Edge::new(
+            "load_registry",
+            "registry",
+            "makegen",
+            "__out:path_out",
+        ));
+        dag.add_edge(Edge::new(
+            "load_registry",
+            "registry",
+            "makegen",
+            "__out:written",
         ));
         dag.add_edge(Edge::new(
             "makegen",
@@ -802,6 +844,38 @@ mod tests {
     }
 
     #[test]
+    fn build_emit_plan_rejects_unwired_internal_passthrough_inputs() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "surface",
+            vec![
+                Port::scalar("path", "String"),
+                Port::scalar("__out:path_out", "String"),
+            ],
+            vec![Port::scalar("path_out", "String")],
+            LoweredOp::Callable {
+                module: "test".into(),
+                kind: CallableKind::Func,
+                name: "surface".into(),
+                obligation: CallableObligation::None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+
+        let error =
+            build_emit_plan(&dag, &artifacts).expect_err("missing __out: binding must fail");
+
+        assert!(matches!(
+            error,
+            PlanError::MissingInternalInputBinding { ref node_id, ref port }
+                if node_id == "surface" && port == "__out:path_out"
+        ));
+    }
+
+    #[test]
     fn build_makegen_plan_data_flow_wiring() {
         let dag = build_makegen_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
@@ -872,7 +946,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
-                obligation: CallableObligation::None,
+                obligation: CallableObligation::PureDataLoad,
                 is_interactive: false,
                 resource_target: None,
                 fn_body: None,
@@ -895,7 +969,7 @@ mod tests {
                     module: "pragma".into(),
                     kind: CallableKind::Fn,
                     name: render_id.clone(),
-                    obligation: CallableObligation::None,
+                    obligation: CallableObligation::PureRender,
                     is_interactive: false,
                     resource_target: None,
                     fn_body: None,

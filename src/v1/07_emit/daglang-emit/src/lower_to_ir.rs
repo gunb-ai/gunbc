@@ -14,6 +14,7 @@ use crate::computation::{
 };
 use crate::plan::{EmitPlan, EmitStep, InputBinding};
 use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
+use gunbc_ir::PortName;
 use gunbc_ir::ValueExpr;
 
 /// Lower an [`EmitPlan`] into AbstractIR (`SourceFile`) with a single `main`.
@@ -200,6 +201,17 @@ fn lower_pure_step(
         PureBody::Literal(value) => {
             assign_outputs(step_index, step, json_value_to_expr(value), output_vars)
         }
+        PureBody::Passthrough => step
+            .output_bindings
+            .iter()
+            .map(|output| {
+                let input_name = format!("{}{}", PortName::OUTPUT_PASSTHROUGH_PREFIX, output.port);
+                Stmt::let_bind(
+                    output_var_name(step_index, &output.port, output_vars),
+                    resolve_input(&input_name, input_name_to_expr),
+                )
+            })
+            .collect(),
         PureBody::PrepareTransport { kind } => assign_outputs(
             step_index,
             step,
@@ -802,5 +814,72 @@ mod tests {
         assert!(produced_vars.contains(&"step_0_content".to_string()));
         assert!(produced_vars.contains(&"step_1_content".to_string()));
         assert!(produced_vars.contains(&"step_2_content".to_string()));
+    }
+
+    #[test]
+    fn lower_passthrough_step_forwards_internal_output_bindings() {
+        let plan = EmitPlan {
+            steps: vec![
+                EmitStep {
+                    node_id: "literal_written".to_string(),
+                    computation: Computation::Pure {
+                        inputs: vec![],
+                        outputs: vec![TypedPort {
+                            name: "written".to_string(),
+                            abstract_type: "Bool".to_string(),
+                            cardinality: Cardinality::Scalar,
+                        }],
+                        body: PureBody::Literal(json!(true)),
+                    },
+                    input_sources: vec![],
+                    output_bindings: vec![OutputBinding {
+                        port: "written".to_string(),
+                        consumers: vec![(1, "__out:written".to_string())],
+                    }],
+                },
+                EmitStep {
+                    node_id: "surface".to_string(),
+                    computation: Computation::Pure {
+                        inputs: vec![TypedPort {
+                            name: "__out:written".to_string(),
+                            abstract_type: "Bool".to_string(),
+                            cardinality: Cardinality::Scalar,
+                        }],
+                        outputs: vec![TypedPort {
+                            name: "written".to_string(),
+                            abstract_type: "Bool".to_string(),
+                            cardinality: Cardinality::Scalar,
+                        }],
+                        body: PureBody::Passthrough,
+                    },
+                    input_sources: vec![InputBinding::FromStep {
+                        step_index: 0,
+                        port: "written".to_string(),
+                    }],
+                    output_bindings: vec![OutputBinding {
+                        port: "written".to_string(),
+                        consumers: vec![],
+                    }],
+                },
+            ],
+            entrypoints: vec![],
+            transport_nodes: vec![],
+        };
+
+        let source = lower_plan_to_abstract_ir(&plan);
+        let Item::Fn(main_fn) = &source.items[0] else {
+            panic!("expected generated item to be fn main");
+        };
+
+        assert!(main_fn.body.iter().any(|stmt| {
+            matches!(
+                stmt,
+                Stmt::Let {
+                    name,
+                    expr: Expr::Var(var),
+                    ..
+                } if name == "step_1_written" && var == "step_0_written"
+            )
+        }));
     }
 }
