@@ -1500,3 +1500,57 @@ fn real_corpus_has_no_unused_imports() {
         violations.join("\n  ")
     );
 }
+
+#[test]
+fn real_corpus_does_not_treat_removed_sts_data_exports_as_public_api() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+    let export_index = build_module_export_index(&graph.modules);
+    let removed_exports = HashSet::from([
+        "sts_endpoint",
+        "default_grant_type",
+        "jwt_subject_token_type",
+        "access_token_type",
+        "operation_behaviors",
+    ]);
+
+    let sts_exports = export_index
+        .get("extdeps.cloud.gcp.sts")
+        .expect("expected extdeps.cloud.gcp.sts in real corpus export index");
+    let still_exported: Vec<_> = removed_exports
+        .iter()
+        .copied()
+        .filter(|name| sts_exports.contains(*name))
+        .collect();
+    assert!(
+        still_exported.is_empty(),
+        "removed STS top-level data exports must stay out of the module surface: {still_exported:?}"
+    );
+
+    let mut import_violations = Vec::new();
+    for module in &graph.modules {
+        for import in &module.ast.imports {
+            if import.node.path.as_dotted() != "extdeps.cloud.gcp.sts" {
+                continue;
+            }
+            let Some(bindings) = &import.node.bindings else {
+                continue;
+            };
+            for binding in bindings {
+                if removed_exports.contains(binding.as_str()) {
+                    import_violations.push(format!(
+                        "{} imports removed STS data binding `{binding}`",
+                        module.module_path.as_dotted()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        import_violations.is_empty(),
+        "real dsl corpus must not import removed STS top-level data exports:\n  {}",
+        import_violations.join("\n  ")
+    );
+}
