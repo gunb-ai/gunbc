@@ -46,6 +46,9 @@ import v2.compiler.reconcile {
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart,
+  IntrinsicMethod,
+  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
+  MethodEnumerate, MethodChars,
   python_keyword, python_container, python_primitive_type,
   python_literal, python_bin_op_symbol, python_map_template,
   empty_emit_scope, module_emit_scope,
@@ -62,6 +65,7 @@ import v2.compiler.emit {
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
+  classify_intrinsic_method,
   classify_typed_item, classify_type_structure, classify_transport_kind
 }
 
@@ -599,6 +603,21 @@ fn emit_py_typed_slice(base: Expr, start: Expr, end: Expr, registry: Map<String,
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
+fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Expr, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String? {
+  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+  let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
+  match intrinsic {
+    MethodCount => Some { value: concat("len(", recv_str, ")") }
+    MethodJoin => Some { value: concat(first_arg_str, ".join(", recv_str, ")") }
+    MethodSplit => Some { value: concat(recv_str, ".split(", first_arg_str, ")") }
+    MethodLast => Some { value: concat(recv_str, "[-1] if ", recv_str, " else None") }
+    MethodFirst => Some { value: concat(recv_str, "[0] if ", recv_str, " else None") }
+    MethodEnumerate => Some { value: concat("list(enumerate(", recv_str, "))") }
+    MethodChars => Some { value: concat("list(", recv_str, ")") }
+    _ => none
+  }
+}
+
 fn emit_py_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   if is_typed_service_call_receiver(receiver: receiver) {
     match extract_typed_service_name(receiver: receiver) {
@@ -612,26 +631,23 @@ fn emit_py_typed_method_call(receiver: Expr, method: String, args: List<NamedArg
         "raise NotImplementedError(\"unsupported service receiver\")"
     }
   } else {
-    let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-    let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-    if method == "count" {
-      concat("len(", recv_str, ")")
-    } else if method == "join" {
-      concat(first_arg_str, ".join(", recv_str, ")")
-    } else if method == "split" {
-      concat(recv_str, ".split(", first_arg_str, ")")
-    } else if method == "last" {
-      concat(recv_str, "[-1] if ", recv_str, " else None")
-    } else if method == "first" {
-      concat(recv_str, "[0] if ", recv_str, " else None")
-    } else if method == "enumerate" {
-      concat("list(enumerate(", recv_str, "))")
-    } else if method == "chars" {
-      concat("list(", recv_str, ")")
-    } else {
-      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
-      let args_str = arg_strs |> join(separator: ", ")
-      concat(recv_str, ".", py_ident(name: method), "(", args_str, ")")
+    match classify_intrinsic_method(method: method) {
+      Some { value: intrinsic } =>
+        match emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth) {
+          Some { value: lowered } => lowered
+          None => {
+            let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+            let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+            let args_str = arg_strs |> join(separator: ", ")
+            concat(recv_str, ".", py_ident(name: method), "(", args_str, ")")
+          }
+        }
+      None => {
+        let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+        let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+        let args_str = arg_strs |> join(separator: ", ")
+        concat(recv_str, ".", py_ident(name: method), "(", args_str, ")")
+      }
     }
   }
 }

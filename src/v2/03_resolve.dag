@@ -68,12 +68,6 @@ type KahnStepResult {
   progress: Bool
 }
 
-// Accumulator for neighbor degree updates in kahn_process.
-type DegreeUpdate {
-  degrees: Map<String, Int>
-  new_zeros: List<String>
-}
-
 // Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
   imports_by_name: Map<String, List<ResolvedImport>>
@@ -490,4 +484,3 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
     progress: true
   }
 }
-

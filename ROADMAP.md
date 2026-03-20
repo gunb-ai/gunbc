@@ -10,19 +10,14 @@ should always be able to see through the name to the structure underneath.
 
 ---
 
-## Current State (2026-03-19)
+## Current State (2026-03-20)
 
 ### What works
 
-- **455 tests pass** — 363 daglang-emit + 92 v2-compiler-tests (12 ignored)
+- **455 tests pass** — 363 daglang-emit + 95 v2-compiler-tests (12 ignored)
 - **Generated crate compiles** — `v2_crate_cargo_check` passes in <7s
-- **Self-compile error count: 3,928** (down from 3,917 baseline, with RC1/RC2/RC3 fixes)
-  - RC1: per-enum variant imports (resolves E0432 flat import errors)
-  - RC2: struct Rc wrapping with `Rc::new()` construction + type rendering
-  - RC3: `.as_str()` string comparison for `==`/`!=`
-  - Pattern `..` for non-exhaustive variant field binding
-  - Match deref (`&*`) for Rc-wrapped scrutinees
-  - serde `rc` feature for Rc serialization
+- **A4 ACHIEVED** — self-compiled output passes `cargo check` with 0 errors
+  (error reduction: 7118 → 3917 → 58 → 0)
 - **B3 Phase 1 complete** — TypedExpr (19 variants) eliminated. Expr carries
   `resolved_type: Node?` directly. TypedNode merged into Node. One AST
   instead of two — halves expression memory for self-compile.
@@ -46,32 +41,28 @@ should always be able to see through the name to the structure underneath.
 
 ### What's next
 
-**A4 evidence run, then the multi-walk refactor.** All A4 prep work is
-merged — instrumentation (Lane M), codegen ownership fixes (Lane R),
-tokenizer refactor (Lane P), acceptance ratchets (Lane T). The next step is
-to run the evidence tests and see if self-compile completes without OOM:
+**PERF gate, then Wave 1.** A4 cargo check passes (0 errors), but the
+self-compiled binary cannot yet self-compile — level-3 compile hangs after
+~312s. Without this, A5 bootstrap is impossible.
+
+**P0-a (stacker):** v2 emitter now wraps recursive non-TCO functions in
+`stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || { ... })`. Only
+genuinely recursive functions are wrapped (better than v1's blanket wrapping).
+
+**P0-b (Copy derive):** v2 emitter now derives `Copy` for simple enums
+(all unit variants), avoiding unnecessary Rc wrapping and clone overhead.
+
+**P0-c (hang diagnosis):** If P0-a + P0-b don't resolve the hang, build
+the self-compiled binary and run `profile_self_compile` to identify the
+bottleneck phase/module.
 
 ```bash
-# Step 1: Run the profiling test to measure per-phase timing + RSS
-cargo test -p v2-compiler-tests -- --ignored profile_self_compile --nocapture
-
-# Step 2: If self-compile completes, verify emitted Rust compiles
+# Verify P0 fixes:
+cargo test -p v2-compiler-tests --lib --quiet
 cargo test -p v2-compiler-tests -- --ignored v2_crate_self_compile_cargo_check --nocapture
 ```
 
-If both pass, A4 is complete. The next stage is B3 Phase 2a implementation
-with a narrower focus than before:
-
-1. fuse `typecheck_module()` around wider contribution/context types so
-   one walk over items/imports produces all sibling facts needed downstream
-2. eliminate result-unpack re-walks in reconcile hot paths
-   (`resolve_expr_types`, `infer_expr`, `resolve_item_types`,
-   `resolve_node_bounded`)
-3. widen the reconcile-to-emit boundary so shared metadata is computed once
-   and carried forward instead of rediscovered in each backend
-
-If OOM persists, the profiling data tells us whether the remaining blocker is
-still ownership fallback or the multi-walk hot paths identified below.
+After PERF gate passes, proceed to Wave 1 (parallel multi-walk refactor lanes).
 
 ### Baseline tests
 
@@ -89,27 +80,20 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ### Critical path
 
 **Critical path summary:** A1 (done) → R9 (done) → B3 Ph1 (done) →
-**A4 (evidence run pending)** → **B3 Ph2a (multi-walk + wider boundaries)** →
-A5 → A6 (needs Blocker 2) → A7
+A4 (done) → P0-a/P0-b (done) → **Wave 1 (reconcile optimization — PERF
+gate blocker)** → P0-c retest → **B3 Ph2a** → A5 → A6 → A7
 
 ### Immediate next actions
 
-1. **A4 evidence run** — run `profile_self_compile` and
-   `v2_crate_self_compile_cargo_check`. If both pass, A4 is done.
-2. **If A4 passes: start P0/P1 immediately.** First fuse
-   `typecheck_module()` around wider contribution/context types
-   (`ItemContribution` / `ModuleContext` shape), then rewrite
-   `resolve_expr_types()` to accumulate split outputs in one walk.
-3. **Follow with P2/P3.** Remove the systematic result-unpack pattern from
-   `infer_expr()`, `resolve_item_types()`, and `resolve_node_bounded()`.
-   Prefer direct accumulation or wider batch result types; use a mechanical
-   `fold_unpack` helper only where it meaningfully reduces churn.
-4. **Then widen the emit boundary.** Carry shared registry/summary metadata on
-   `TypedGraph` / `ResolvedGraph` so emitters stop rebuilding it from
-   `typed.modules`, and collapse `order_typed_call_args()` to a single pass.
-5. **If A4 fails (OOM):** use profiling data to decide whether the remaining
-   blocker is ownership fallback or the multi-walk refactor above.
-6. **SG-9 workaround revert** — after A4 evidence confirms the codegen fixes
+1. **PERF gate (P0)** — P0-a (stacker wrapping) and P0-b (Copy derive) are
+   implemented in `05_emit_rust.dag`. Run the self-compile test to verify
+   the hang resolves. If not, diagnose per P0-c.
+2. **Wave 1 (parallel lanes)** — after PERF gate passes, run W1-A through
+   W1-F in parallel (disjoint ownership zones in reconcile/resolve/emit).
+3. **Wave 2 (B3 Ph2a boundary)** — single ownership surface for
+   DeclaredFuncSig/ResolvedFuncSig split, SCC resolution, ResolvedGraph
+   boundary, retirement of `validate_no_unresolved` + `compile_sources_lenient`.
+4. **SG-9 workaround revert** — after PERF gate confirms the codegen fixes
    are sufficient, revert TokPos extraction and branch-aware use counting.
 
 ### Completed parallel lanes (2026-03-19)
@@ -282,6 +266,8 @@ sources with 0 reconciler errors in 30ms. Emitted Rust compiles with
 | F4 | `PrimCost.op: String, model: String` in 07_complexity.dag | D2 timeframe | Typo in op name = silent wrong cost. Should be typed references. |
 | B4-val | `validate_no_unresolved()` is post-hoc validation (Invariant 9) | B3 | Already tracked. Delete when pipeline boundary types make unresolved structurally unrepresentable. |
 | F5 | `infer → reconcile` rename lacks contract justification | Documentation | Rename already done. Needs documented rationale tied to contract change (reconciliation = bidirectional, not just inference). |
+| F6 | `05_emit_rust.dag` re-discovers structural facts through string heuristic lists (`known_opt_fields`, `types_with_value_field`, `known_struct_with_accessor_field`, `is_rc_exclude`) | Post-B3 emitter cleanup | The reconciler/boundary already knows these facts structurally. Push them through metadata or type summaries instead of maintaining name lists in the emitter. |
+| F7 | `emit_typed_method_call` in `05_emit_rust.dag` is a growing string-dispatch ladder for special lowerings | Post-B3 emitter cleanup | Keep the fallback `.method(...)` path, but move special lowerings behind a clearer lowering table / metadata boundary so adding one lowering does not require editing a long `if method == ...` chain. |
 
 ---
 
@@ -500,7 +486,7 @@ Practical implication:
 
 ## Track A: Self-Hosting
 
-**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → **A4 (NOW)** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
+**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → A4 (done) → **PERF gate (P0)** → **Wave 1** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
 
 ### A1: Gist compilation
 
@@ -536,13 +522,47 @@ A5/A6.
 **Acceptance:**
 - [x] instrumented `self_compile_all_modules` reports per-phase and per-module
       timing with source/file/diagnostic counts (Lane M)
-- [ ] v2 crate processes its own .dag source through the full pipeline on the
-      current bootstrap path (evidence run pending)
-- [ ] emitted Rust files compile with `cargo check` (evidence run pending)
-- [ ] no OOM or stack overflow on any .dag file up to 4000 lines (Lane R fixes
-      merged, evidence run pending)
+- [x] v2 crate processes its own .dag source through the full pipeline on the
+      current bootstrap path (self-compile completes, 0 cargo check errors)
+- [x] emitted Rust files compile with `cargo check` (0 errors as of 2026-03-20)
+- [x] no OOM or stack overflow on any .dag file up to 4000 lines (Lane R fixes
+      merged, codegen ownership fixes confirmed sufficient)
 - [x] self-compile ratchet asserts semantic properties stronger than
       "non-empty file emitted" (Lane T)
+
+### PERF gate (P0): Self-compiled binary must not hang
+
+The self-compiled binary must complete a level-3 self-compile (or at least
+not hang). Without this, A5 bootstrap is impossible. The level-2 binary
+(compiled by v2-stage0's emitter) hangs after ~312s on recursive descent
+without stack growth.
+
+**P0-a (DONE):** v2 emitter wraps recursive non-TCO functions in
+`stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || { ... })` via
+`emit_fn_def_non_tco` in `05_emit_rust.dag`. Only genuinely recursive
+functions are wrapped (better than v1's blanket SG-11 wrapping).
+
+**P0-b (DONE):** v2 emitter derives `Copy` for simple enums (all unit
+variants) via `enum_derives()` in `05_emit_rust.dag`. Avoids unnecessary
+Rc wrapping and clone overhead. Emitted Cargo.toml includes `stacker = "0.1"`.
+
+**P0-c (IN PROGRESS):** Self-compile test runs but does not complete in
+reasonable time. After P0-a/P0-b, the v2-stage0 binary no longer stack
+overflows — but the reconcile phase is O(N²) on large modules, causing
+linear memory growth (~1 MB/s) and infeasible runtime. At 15 minutes the
+process reached 1 GB RSS with no sign of finishing.
+
+**Root cause:** The multi-walk bottleneck in `04_reconcile.dag` — repeated
+inference passes, list-based lookups, append-by-concat. This is the same
+issue identified in `PERF_AUDIT.md`. **Wave 1 multi-walk refactor is now
+the PERF gate blocker**, not stacker or Copy.
+
+**Revised critical path:** P0-a/P0-b (DONE) → **Wave 1 (reconcile
+optimization)** → P0-c retest → Wave 2 → A5 → A6 → A7
+
+**Acceptance:**
+- [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
+- [x] 96+ tests pass, generated crate compiles clean
 
 ### A5: Bootstrap stage 0 → 1
 
@@ -551,13 +571,31 @@ v1 compiles v2 .dag → Rust → rustc → v2-stage0
 v2-stage0 compiles v2 .dag → Rust → rustc → v2-stage1
 ```
 
+**Acceptance:**
+- [ ] v2-stage0 compiles v2 .dag → Rust → `rustc` → v2-stage1 builds
+- [ ] v2-stage1 passes its own test suite (basic smoke tests)
+- [ ] stage0→stage1 bootstrap harness exists as a test
+
 ### A6: Fixed point
 
-`stage1 output == stage2 output`
+```text
+v2-stage1 compiles v2 .dag → Rust → rustc → v2-stage2
+stage1 output == stage2 output
+```
+
+**Acceptance:**
+- [ ] deterministic ordering of all emitted output (modules, items, fields)
+- [ ] artifact normalization strips non-deterministic content (timestamps, paths)
+- [ ] `stage1_output == stage2_output` byte-for-byte comparison passes
 
 ### A7: v1 retirement
 
 v2 builds and tests without v1 in the dependency chain.
+
+**Acceptance:**
+- [ ] v1 removed from build/test dependency chain
+- [ ] all tests pass with only v2 compiler
+- [ ] v1-era docs, workflows, ratchets cleaned up
 
 ### Remaining work: branchable lanes
 
@@ -566,11 +604,12 @@ branches**, not as one long serial refactor. The rule is simple: parallelize
 by **write scope**, not by conceptual topic. If two tasks need the same top-level
 types or the same orchestration function, they are not independent lanes.
 
-#### Wave 0 — serial gate
+#### Wave 0 — serial gate (DONE + PERF gate)
 
-| Lane | Branch | Ownership | Files |
-|------|--------|-----------|-------|
-| G0 | `wt/a4-evidence` | Run/record the A4 evidence tests, establish the fresh hotspot ranking | tests + docs only |
+| Lane | Branch | Ownership | Files | Status |
+|------|--------|-----------|-------|--------|
+| G0 | `wt/a4-evidence` | Run/record the A4 evidence tests | tests + docs only | **DONE** — 0 cargo check errors |
+| P0 | `v2-compiler-convergence` | Stacker wrapping (P0-a), Copy derive (P0-b), hang diagnosis (P0-c) | `src/v2/05_emit_rust.dag` | **P0-a/P0-b DONE**, P0-c pending |
 
 #### Wave 1 — clean post-A4 lanes
 
@@ -609,12 +648,108 @@ cleanly again:
 | W3-B | `wt/a6-determinism` | Deterministic file/module/item ordering, artifact normalization, stable output comparison helpers | emitters + artifact helpers | Needed for fixed-point equality; separate from harness mechanics. |
 | W3-C | `wt/result-special-case` | Special-case `Result<T,E>` support before A6 | parser + reconcile + tests | Required for fail-closed error paths, but distinct from stage harness and determinism work. |
 
+##### W3-A: A5 stage harness design
+
+The bootstrap chain is:
+
+```text
+v1 (Rust) → assemble_v2_crate → v2-stage0 crate
+v2-stage0 → compile_sources_lenient(.dag) → stage1 Rust files
+stage1 Rust → cargo build → v2-stage1 binary
+v2-stage1 → compile_sources_lenient(.dag) → stage2 Rust files  [A5]
+stage1 output == stage2 output                                  [A6]
+```
+
+**Current state:** `v2_crate_self_compile_cargo_check` proves stage0→stage1
+produces valid Rust (0 cargo check errors). But stage1 output doesn't include
+test infrastructure — it can't self-compile via tests.
+
+**What A5 needs:**
+
+1. **Stage1 must include self-compile capability.** Two options:
+   - (a) Add a `self_compile` entry point to `06_pipeline.dag` that reads
+     .dag files from disk and writes compiled output. The v2 emitter's
+     `main.rs` emission already handles CLI — extend with a `compile`
+     subcommand.
+   - (b) The A5 test harness injects test infrastructure (embedded .dag
+     sources + self-compile test) into the stage1 output before building.
+     Simpler but less clean.
+
+2. **File I/O for self-compile.** Currently `compile_sources_lenient` takes
+   `List<SourceFile>` with in-memory content. Stage1 needs `filesystem_read`
+   (already in `v2_rt.rs`) wired to a CLI that loads .dag files from a
+   directory.
+
+3. **Generated Cargo.toml must be complete.** The v2 emitter's
+   `emit_cargo_toml` produces deps but no `[workspace]`. The stage1 output
+   must compile standalone in a temp directory (not under the main workspace).
+
+4. **Level-3 self-compile must complete.** This is gated on the PERF gate
+   (P0). Without stacker wrapping and Copy derives in the stage1 output,
+   the stage1 binary would overflow the stack on large .dag files.
+
+**Recommended approach:** Option (a) — add a `compile` CLI subcommand to the
+v2 pipeline. This is the clean path because stage1 becomes a real compiler
+binary, not a test-only artifact. The subcommand reads `--source-dir` and
+writes to `--output-dir`.
+
+##### W3-B: A6 determinism requirements
+
+Fixed-point equality (`stage1 output == stage2 output`) requires:
+
+1. **Module emission order** — must be topological (by import deps), not
+   iteration-order dependent. Currently `emit_rust` maps over `typed.modules`
+   which comes from `resolve_modules` — verify this is deterministic.
+
+2. **Item emission order within modules** — must follow source order. The
+   v2 parser preserves source order; verify reconciler/emitter don't reorder.
+
+3. **Map iteration order** — v2 uses `BTreeMap` in emitted Rust (sorted
+   keys). The `.dag` `Map` type must also have deterministic iteration.
+   `fold(map_values(...))` iterates in key order for BTreeMap.
+
+4. **Artifact normalization** — strip anything non-deterministic from output:
+   no timestamps, no absolute paths, no random seeds. Current output is
+   likely already deterministic since the pipeline is pure.
+
+5. **Byte-for-byte comparison** — the test compares `stage1_files` vs
+   `stage2_files` content. Any whitespace or formatting difference fails.
+
 #### Wave 4 — A7 retirement lanes
 
 | Lane | Branch | Ownership | Files |
 |------|--------|-----------|-------|
 | W4-A | `wt/a7-runtime-retire` | Remove remaining v1 runtime/bootstrap dependency from build/test path | manifests, pipeline, harness |
 | W4-B | `wt/a7-docs-retire` | Docs, workflows, cleanup of v1-era instructions/ratchets | docs + CI/workflow files |
+
+##### W4-A: v1 retirement checklist
+
+1. Remove `daglang-eval` (v1 interpreter) from workspace members
+2. Remove `daglang-emit` v1 codegen paths (`fn_codegen.rs`, `type_codegen.rs`,
+   `render_rust.rs`, `v2_crate_emit.rs`)
+3. Remove `daglang-syntax` dependency on v1 AST types (or keep as shared parser)
+4. Update `v2-compiler-tests` to use v2-stage1 binary instead of v1 interpreter
+5. Remove v1-era `Cargo.toml` workspace members, CI workflows
+6. Verify: `cargo test --workspace` passes with only v2 crate + shared parser
+
+#### R9 cleanup (parallel with any wave)
+
+- **SG-11 (v1):** Trim stacker to recursive-only in `render_rust.rs` — P0-a does
+  the v2-side fix; this is the v1-side equivalent
+- **SG-12 (v1):** Copy detection for small structs in `type_codegen.rs` — P0-b does
+  the v2-side fix; this is the v1-side equivalent
+- **SG-9 revert:** After PERF gate passes, revert TokPos extraction and branch-aware
+  use counting if confirmed redundant
+
+#### Deferred (post-A7)
+
+- General generic syntax (`type Foo<T> = ...`)
+- Full linear type checking in v2 compiler
+- C3/C4 emitter extdep imports + CLI target selection
+- B4 transport dissolution
+- Track D complexity analysis (D2-D4)
+- Track E artifact planning (E1-E4)
+- Track F debuggability (F1-F4)
 
 #### Merge discipline
 

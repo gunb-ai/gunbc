@@ -54,6 +54,7 @@ import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
+  emit_info: EmitGraphInfo
   diagnostics: List<Diagnostic>
 }
 
@@ -76,6 +77,7 @@ type ResolvedFuncEnv {
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
+  emit_info: EmitGraphInfo
   diagnostics: List<Diagnostic>
 }
 
@@ -91,6 +93,36 @@ type TypeEnv {
   bindings: Map<String, TypeBinding>
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
+}
+
+type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
+
+type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap
+
+type FieldValueShape = PlainValue | OptionalValue
+
+type FieldSummary {
+  access_style: FieldAccessStyle
+  value_shape: FieldValueShape
+}
+
+type TypeSummary {
+  name: String
+  repr: TypeRepr
+  field_summaries: Map<String, FieldSummary>
+  rc_wrapped: Bool
+}
+
+type EmitGraphInfo {
+  type_summaries: Map<String, TypeSummary>
+  variant_to_enum: Map<String, String>
+  rc_wrapped_types: Map<String, Bool>
+}
+
+type EmitInfoBuildState {
+  type_summaries: Map<String, TypeSummary>
+  variant_to_enum: Map<String, String>
+  rc_wrapped_types: Map<String, Bool>
 }
 
 // =========================================================================
@@ -1013,6 +1045,153 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   }
   else {
     false
+  }
+}
+
+fn empty_emit_graph_info() -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map(),
+    rc_wrapped_types: empty_map()
+  }
+}
+
+fn normalize_emit_type_name(type_name: String) -> String {
+  normalize_type_name(name: type_name)
+}
+
+fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
+  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
+}
+
+fn emit_info_is_enum_type(emit_info: EmitGraphInfo, type_name: String) -> Bool {
+  match lookup_emit_type_summary(emit_info: emit_info, type_name: type_name) {
+    Some { value: summary } =>
+      match summary.repr {
+        EnumRepr { unit_only: _ } => true
+        _ => false
+      }
+    None => false
+  }
+}
+
+fn emit_info_is_rc_wrapped_type(emit_info: EmitGraphInfo, type_name: String) -> Bool {
+  emit_map_has(m: emit_info.rc_wrapped_types, key: normalize_emit_type_name(type_name: type_name))
+}
+
+fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
+  let normed = normalize_access_type_node(n: type_node)
+  if node_is_optional(n: normed) { OptionalValue }
+  else { PlainValue }
+}
+
+fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
+  fold(children, init: empty_map(), f: (acc, child) =>
+    if child.return_type == none {
+      acc
+    } else {
+      map_insert(acc, child.name, FieldSummary {
+        access_style: StoredField,
+        value_shape: field_value_shape_from_type_node(type_node: child.return_type.value)
+      })
+    }
+  )
+}
+
+fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
+  match variants |> first {
+    Some { value: variant } =>
+      match variant.children |> filter(f => f.name == field_name) |> first {
+        Some { value: field_child } => Some { value: field_child }
+        None => none
+      }
+    None => none
+  }
+}
+
+fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
+  variants |> all(variant =>
+    variant.children |> any(field_child => field_child.name == field_name)
+  )
+}
+
+fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
+  variants |> all(variant =>
+    match variant.children |> filter(f => f.name == field_name) |> first {
+      Some { value: field_child } => node_type_equals(left: child_return_type_or_name(ch: field_child), right: expected)
+      None => false
+    }
+  )
+}
+
+fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary> {
+  let first_field_names = match variants |> first {
+    Some { value: first_variant } => first_variant.children |> map(f => f.name)
+    None => []
+  }
+  let shared = first_field_names |> filter(field_name =>
+    enum_field_present_in_all_variants(variants: variants, field_name: field_name)
+  )
+  let consistent = shared |> filter(field_name =>
+    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+      Some { value: first_field } =>
+        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_return_type_or_name(ch: first_field))
+      None => false
+    }
+  )
+  fold(consistent, init: empty_map(), f: (acc, field_name) =>
+    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+      Some { value: first_field } =>
+        map_insert(acc, field_name, FieldSummary {
+          access_style: EnumAccessor,
+          value_shape: field_value_shape_from_type_node(type_node: child_return_type_or_name(ch: first_field))
+        })
+      None => acc
+    }
+  )
+}
+
+fn build_type_summary(item: Node) -> TypeSummary? {
+  if item.connective == none || item.transport != none {
+    return none
+  }
+  match item.connective.value {
+    Conj =>
+      Some { value: TypeSummary {
+        name: normalize_emit_type_name(type_name: item.name),
+        repr: StructRepr,
+        field_summaries: build_struct_field_summaries(children: item.children),
+        rc_wrapped: true
+      } }
+    Disj =>
+      let unit_only = item.children |> all(child => child.children |> count == 0)
+      Some { value: TypeSummary {
+        name: normalize_emit_type_name(type_name: item.name),
+        repr: EnumRepr { unit_only: unit_only },
+        field_summaries: build_enum_field_summaries(variants: item.children),
+        rc_wrapped: unit_only == false
+      } }
+  }
+}
+
+fn lookup_emit_field_summary(emit_info: EmitGraphInfo, base_type: Node, field: String) -> FieldSummary? {
+  let normed = normalize_access_type_node(n: base_type)
+  if field == "value" && node_is_optional(n: normed) {
+    Some { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
+  } else {
+    match lookup_emit_type_summary(emit_info: emit_info, type_name: normed.name) {
+      Some { value: summary } => map_get(summary.field_summaries, field)
+      None => none
+    }
+  }
+}
+
+fn lookup_emit_field_summary_in_scope(emit_info: EmitGraphInfo, scope: InferScope, base_type: Node?, field: String) -> FieldSummary? {
+  match base_type {
+    Some { value: raw_base } =>
+      let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: raw_base)
+      lookup_emit_field_summary(emit_info: emit_info, base_type: resolved_base, field: field)
+    None => none
   }
 }
 
@@ -2077,35 +2256,82 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
 // Named references to cycle members are kept as-is; all others expand.
 // =========================================================================
 
-// Check if a type name can reach itself through the dependency graph.
-// Uses Map<String, Bool> for O(1) visited checks instead of O(n) list scans.
-fn reaches_self_with_map(root: String, current: String, bindings: Map<String, TypeBinding>, visited: Map<String, Bool>) -> Bool {
-  let already_visited = match map_get(visited, current) { Some { value: _ } => true  _ => false }
-  if already_visited {
-    false
-  } else {
-    match map_get(bindings, current) {
-      Some { value: binding } =>
-        let deps = node_type_deps(n: binding.resolved)
-        let next_visited = map_insert(visited, current, true)
-        any(deps, d =>
-          if d == root { true }
-          else { reaches_self_with_map(root: root, current: d, bindings: bindings, visited: next_visited) }
-        )
-      None => false
+// Filter each binding's deps to only names present in the binding set.
+// Primitives and external names are excluded — they can't participate in cycles.
+fn compute_in_graph_deps(
+    all_names: List<String>,
+    deps_map: Map<String, List<String>>,
+    name_set: Map<String, Bool>
+) -> Map<String, List<String>> {
+  let result = fold(all_names, init: empty_map(), f: (acc, name) =>
+    match map_get(deps_map, name) {
+      Some { value: deps } =>
+        let local = filter(deps, d => d != name && emit_map_has(m: name_set, key: d))
+        map_insert(acc, name, local)
+      None => map_insert(acc, name, [])
     }
+  )
+  result
+}
+
+// Count how many of a name's local_deps are in the removed_set.
+fn kahn_count_removed_deps(
+    name: String,
+    local_deps: Map<String, List<String>>,
+    removed_set: Map<String, Bool>
+) -> Int {
+  match map_get(local_deps, name) {
+    Some { value: deps } => filter(deps, d => emit_map_has(m: removed_set, key: d)) |> count
+    None => 0
   }
 }
 
-// Detect all type names that participate in dependency cycles.
-// Each type independently checks for self-reachability via DFS.
-// No fold accumulator -- avoids O(N^2) deep cloning of growing maps.
-fn detect_type_cycles(bindings: Map<String, TypeBinding>) -> List<String> {
+// Check if a name has zero in-degree (no remaining deps in the current set).
+fn kahn_is_ready(name: String, local_deps: Map<String, List<String>>, remaining_set: Map<String, Bool>) -> Bool {
+  kahn_count_removed_deps(name: name, local_deps: local_deps, removed_set: remaining_set) == 0
+}
+
+// Iterative Kahn's removal: peel off zero-in-degree nodes until stuck.
+// Whatever remains is in cycles. Recomputes readiness each iteration
+// from local_deps, avoiding the need for a reverse adjacency map.
+fn kahn_remove_loop(
+    remaining: List<String>,
+    local_deps: Map<String, List<String>>
+) -> List<String> {
+  let remaining_set = fold(remaining, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let ready = filter(remaining, name => kahn_is_ready(name: name, local_deps: local_deps, remaining_set: remaining_set))
+  if ready |> count == 0 {
+    return remaining
+  }
+  let ready_set = fold(ready, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let next_remaining = filter(remaining, n => emit_map_has(m: ready_set, key: n) == false)
+  kahn_remove_loop(remaining: next_remaining, local_deps: local_deps)
+}
+
+// Detect cycle-participating types using Kahn's topological removal — O(V+E).
+// Replaces per-type DFS which was O(N²×D).
+fn detect_type_cycles_kahn(
+    deps_map: Map<String, List<String>>,
+    bindings: Map<String, TypeBinding>
+) -> List<String> {
   let all_names = map(map_values(bindings), b => b.name)
-  filter(all_names, name => reaches_self_with_map(
-    root: name, current: name, bindings: bindings,
-    visited: empty_map()
-  ))
+  let name_set = fold(all_names, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let local_deps = compute_in_graph_deps(all_names: all_names, deps_map: deps_map, name_set: name_set)
+  // Self-referencing types (SCC of size 1): Kahn's excludes self-loops from
+  // local_deps (d != name filter), so self-referencing types would get removed.
+  // Detect them separately.
+  let self_refs = filter(all_names, name =>
+    match map_get(deps_map, name) {
+      Some { value: deps } => any(deps, d => d == name)
+      None => false
+    }
+  )
+  let cycle_members = kahn_remove_loop(remaining: all_names, local_deps: local_deps)
+  // Union: multi-node cycles + self-referencing types
+  let sr_set = fold(self_refs, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let cm_set = fold(cycle_members, init: sr_set, f: (acc, n) => map_insert(acc, n, true))
+  // Extract names from the union set, preserving original order
+  filter(all_names, n => emit_map_has(m: cm_set, key: n))
 }
 
 // =========================================================================
@@ -2190,14 +2416,19 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, local_env])
+  // Precompute deps once per binding — avoids repeated tree walks in cycle
+  // detection and topological resolution (was O(N²×D), now O(B)).
+  let all_deps_map = fold(map_values(merged.bindings), init: empty_map(), f: (acc, b) =>
+    map_insert(acc, b.name, node_type_deps(n: b.resolved))
+  )
   // Precompute which types participate in cycles. Used by resolve_node
   // to break recursive expansion without threading a growing resolving list.
-  let cycle_set = detect_type_cycles(bindings: merged.bindings)
+  let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
   let local_name_set = fold(map_values(local_bindings), init: empty_map(), f: (acc, b) => map_insert(acc, b.name, true))
-  let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set)
+  let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
   BuildTypeEnvResult {
@@ -2240,7 +2471,10 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map() }
   let merged = merge_envs(envs: [kernel, import_env, local_env])
-  let cycle_set = detect_type_cycles(bindings: merged.bindings)
+  let all_deps_map = fold(map_values(merged.bindings), init: empty_map(), f: (acc, b) =>
+    map_insert(acc, b.name, node_type_deps(n: b.resolved))
+  )
+  let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
   let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
@@ -3384,7 +3618,11 @@ fn topo_resolve_loop(
 ) -> ResolveFuncSigsResult {
   if remaining |> count == 0 {
     // Include non-local (parent) sigs -- they have return_type: Some from conversion.
-    let all_resolved = merge_remaining_declared(declared_sigs: declared_sigs, resolved: resolved)
+    let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
+      if dsig.return_type != none {
+        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+      } else { acc }
+    )
     return ResolveFuncSigsResult {
       func_env: ResolvedFuncEnv { signatures: all_resolved },
       diagnostics: diagnostics
@@ -3426,7 +3664,11 @@ fn topo_resolve_loop(
       }
     )
     // Terminate with cycle results
-    let all_resolved = merge_remaining_declared(declared_sigs: declared_sigs, resolved: cycle_resolved)
+    let all_resolved = fold(map_values(declared_sigs), init: cycle_resolved, f: (acc, dsig) =>
+      if dsig.return_type != none {
+        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+      } else { acc }
+    )
     return ResolveFuncSigsResult {
       func_env: ResolvedFuncEnv { signatures: all_resolved },
       diagnostics: concat(diagnostics, cycle_diags)
@@ -3485,12 +3727,31 @@ fn resolve_func_sigs(
     items: List<Node>,
     module_name: String
 ) -> ResolveFuncSigsResult {
-  let resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
-    if dsig.return_type != none {
-      map_insert(acc, dsig.name, ResolvedFuncSig { name: dsig.name, params: dsig.params, return_type: dsig.return_type.value, is_async: dsig.is_async })
-    } else { acc }
+  let local_func_names = items
+    |> filter(item => item.params |> count > 0)
+    |> map(item => item.name)
+  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
+    map_insert(acc, fn_name, true)
   )
-  ResolveFuncSigsResult { func_env: ResolvedFuncEnv { signatures: resolved }, diagnostics: [] }
+  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
+  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
+    if emit_map_has(m: local_func_set, key: dsig.name) {
+      acc
+    } else if dsig.return_type != none {
+      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+    } else {
+      acc
+    }
+  )
+  topo_resolve_loop(
+    remaining: local_func_names,
+    resolved: parent_resolved,
+    declared_sigs: declared_sigs,
+    call_edges: call_edges,
+    local_func_set: local_func_set,
+    module_name: module_name,
+    diagnostics: []
+  )
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>) -> TypecheckModuleResult {
@@ -3575,7 +3836,7 @@ type BindingResult {
   diagnostics: List<Diagnostic>
 }
 
-fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>) -> EnvResolveResult {
+fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
   // Resolve local types in topological (dependency) order. Each type is
   // resolved exactly once, with all its dependencies already resolved in
   // the environment. This is O(N * avg_fields) instead of O(B^D).
@@ -3584,7 +3845,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Stri
     filter(map_values(env.bindings), b => emit_map_has(m: local_names, key: b.name)),
     b => b.name
   )
-  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names)
+  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map)
 }
 
 // Topological resolution loop for type bindings.
@@ -3596,7 +3857,8 @@ fn topo_resolve_types(
     env: TypeEnv,
     module_name: String,
     diagnostics: List<Diagnostic>,
-    local_names: Map<String, Bool>
+    local_names: Map<String, Bool>,
+    deps_map: Map<String, List<String>>
 ) -> EnvResolveResult {
   if remaining |> count == 0 {
     return EnvResolveResult { env: env, diagnostics: diagnostics }
@@ -3606,9 +3868,9 @@ fn topo_resolve_types(
   // (not in remaining), primitive, or recursive (cycle-breaker).
   let remaining_set = fold(remaining, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let ready = filter(remaining, name =>
-    match map_get(env.bindings, name) {
-      Some { value: binding } =>
-        all(node_type_deps(n: binding.resolved), dep => dep == "String" || dep == "Int" || dep == "Bool" || dep == "Float" || dep == "Secret" || dep == "Json" || dep == "Unit" || dep == "Bytes" || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
+    match map_get(deps_map, name) {
+      Some { value: deps } =>
+        all(deps, dep => is_primitive_name(name: dep) || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
       None => true
     }
   )
@@ -3668,7 +3930,8 @@ fn topo_resolve_types(
     env: TypeEnv { bindings: next_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
     module_name: module_name,
     diagnostics: concat(diagnostics, next_diags),
-    local_names: local_names
+    local_names: local_names,
+    deps_map: deps_map
   )
 }
 
@@ -3698,6 +3961,49 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
     }
   )
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
+}
+
+fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
+  match build_type_summary(item: item) {
+    Some { value: summary } =>
+      let next_summaries = map_insert(state.type_summaries, summary.name, summary)
+      let next_variants = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
+            map_insert(acc, child.name, summary.name)
+          )
+        _ => state.variant_to_enum
+      }
+      let next_rc_types = if summary.rc_wrapped {
+        map_insert(state.rc_wrapped_types, summary.name, true)
+      } else {
+        state.rc_wrapped_types
+      }
+      EmitInfoBuildState {
+        type_summaries: next_summaries,
+        variant_to_enum: next_variants,
+        rc_wrapped_types: next_rc_types
+      }
+    None => state
+  }
+}
+
+fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
+  let init = EmitInfoBuildState {
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map(),
+    rc_wrapped_types: empty_map()
+  }
+  let built = modules |> fold(init: init, f: (state, typed_module) =>
+    typed_module.items |> fold(init: state, f: (inner_state, item) =>
+      add_emit_item_summary(state: inner_state, item: item)
+    )
+  )
+  EmitGraphInfo {
+    type_summaries: built.type_summaries,
+    variant_to_enum: built.variant_to_enum,
+    rc_wrapped_types: built.rc_wrapped_types
+  }
 }
 
 // =========================================================================
@@ -3737,7 +4043,9 @@ fn typecheck_modules(
   diag_chunks: List<List<Diagnostic>>
 ) -> TypedGraph {
   match remaining |> first {
-    None => TypedGraph { modules: modules, item_registry: item_registry, diagnostics: flat_map(diag_chunks, c => c) }
+    None =>
+      let emit_info = build_emit_graph_info(modules: modules)
+      TypedGraph { modules: modules, item_registry: item_registry, emit_info: emit_info, diagnostics: flat_map(diag_chunks, c => c) }
     Some { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
@@ -3764,5 +4072,5 @@ fn typecheck_modules(
 
 fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
   let typed = typecheck(graph: graph)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, emit_info: typed.emit_info, diagnostics: typed.diagnostics }
 }
