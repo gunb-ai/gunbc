@@ -492,20 +492,6 @@ type CycleDetectState {
   global_visited: Map<String, Bool>
 }
 
-// =========================================================================
-// Build function environment from module items.
-// Extracts signatures from Node items that have params.
-// =========================================================================
-
-// Unwrap an optional return type at a function boundary.
-// The v1 codegen tracks optionality from field declarations and rejects
-// assigning optional values to non-optional struct fields. This function
-// boundary resets the tracking.
-fn unwrap_return_type(rt: Node?) -> Node {
-  if rt == none { leaf_node(name: "Unit") }
-  else { rt.value }
-}
-
 fn child_return_type_or_name(ch: Node) -> Node {
   if ch.return_type == none { leaf_node(name: ch.name) }
   else { ch.return_type.value }
@@ -515,27 +501,11 @@ fn service_op_entry(child: Node) -> OpEntry {
   OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span) }
 }
 
-fn build_func_env(items: List<Node>) -> DeclaredFuncEnv {
-  // Called with resolved items (after resolve_item_types), so return_type
-  // fields have already been resolved by resolve_optional_node.
-  // Stores return_type as-is (None when unannotated) -- no fabrication.
-  let sigs = fold(items, init: empty_map(), f: (acc, item) =>
-    if item.params |> count > 0 {
-      let is_async = item.uses |> count > 0
-      map_insert(acc, item.name, DeclaredFuncSig { name: item.name, params: item.params, return_type: item.return_type, is_async: is_async })
-    } else {
-      acc
-    }
-  )
-  DeclaredFuncEnv { signatures: sigs }
-}
-
 // =========================================================================
-// Pass B: Fused scope builder (SG-9 safe -- standalone map parameters).
+// Scope merge helpers
 //
-// Single walk over resolved_items builds func_sigs, svc_registry,
-// svc_locals, and variant_locals simultaneously. Then a single walk
-// over imports merges from parents.
+// Parent imports still merge separately because they operate on already-
+// typed parent modules rather than the current module's raw items.
 // =========================================================================
 
 type InferScopeComponents {
@@ -553,58 +523,6 @@ type LocalContributionState {
   variant_locals: Map<String, TypeBinding>
   item_registry: Map<String, ItemInfo>
   diag_chunks: List<List<Diagnostic>>
-}
-
-fn build_scope_from_items(remaining: List<Node>, env: TypeEnv,
-    func_sigs: Map<String, DeclaredFuncSig>,
-    svc_registry: Map<String, List<OpEntry>>,
-    svc_locals: Map<String, TypeBinding>,
-    variant_locals: Map<String, TypeBinding>) -> InferScopeComponents {
-  match remaining |> first {
-    None => InferScopeComponents {
-      func_sigs: func_sigs, svc_registry: svc_registry,
-      svc_locals: svc_locals, variant_locals: variant_locals
-    }
-    Some { value: item } =>
-      // func_sigs: items with params -- stores return_type as-is (no fabrication)
-      let next_func_sigs = if item.params |> count > 0 {
-        let is_async = item.uses |> count > 0
-        map_insert(func_sigs, item.name, DeclaredFuncSig { name: item.name, params: item.params, return_type: item.return_type, is_async: is_async })
-      } else {
-        func_sigs
-      }
-      // svc_registry + svc_locals: items with transport and children
-      let next_svc_registry = if item.transport != none && item.children |> count > 0 {
-        let entries = item.children |> map(c => service_op_entry(child: c))
-        map_insert(svc_registry, item.name, entries)
-      } else {
-        svc_registry
-      }
-      let next_svc_locals = if item.transport != none && item.children |> count > 0 {
-        let root = namespace_root_from_properties(properties: item.properties, name: item.name)
-        map_insert(svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
-      } else {
-        svc_locals
-      }
-      // variant_locals: Disj items (recursive types checked from items)
-      let next_variant_locals = match item.connective {
-        Some { value: Disj } =>
-          if is_recursive_type(env: env, name: item.name) {
-            fold(item.children, init: variant_locals, f: (vacc, child) =>
-              map_insert(vacc, child.name, TypeBinding {
-                name: child.name,
-                resolved: leaf_node(name: item.name)
-              })
-            )
-          } else {
-            variant_locals
-          }
-        _ => variant_locals
-      }
-      build_scope_from_items(remaining: remaining |> skip(1), env: env,
-        func_sigs: next_func_sigs, svc_registry: next_svc_registry,
-        svc_locals: next_svc_locals, variant_locals: next_variant_locals)
-  }
 }
 
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
@@ -1093,24 +1011,13 @@ fn node_type_deps(n: Node) -> List<String> {
     // Simple field reference: return_type is a bare type name leaf.
     [n.return_type.value.name]
   } else if n.connective != none {
-    match n.connective.value {
-      Disj =>
-        flat_map(n.children, child =>
-          if child.return_type != none {
-            node_type_deps(n: child.return_type.value)
-          } else {
-            node_type_deps(n: child)
-          }
-        )
-      _ =>
-        flat_map(n.children, child =>
-          if child.return_type != none {
-            node_type_deps(n: child.return_type.value)
-          } else {
-            node_type_deps(n: child)
-          }
-        )
-    }
+    flat_map(n.children, child =>
+      if child.return_type != none {
+        node_type_deps(n: child.return_type.value)
+      } else {
+        node_type_deps(n: child)
+      }
+    )
   } else if n.return_type != none {
     // Field with complex return type (List<T>, Optional<T>, Map<K,V>).
     // Recurse into the type tree to capture transitive deps.
