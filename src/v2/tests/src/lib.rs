@@ -336,6 +336,11 @@ mod tests {
         map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
+        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert(
+            "has_non_tail_self_call".to_string(),
+            gunbc_ir::Value::Bool(false),
+        );
         gunbc_ir::Value::Map(map)
     }
 
@@ -359,6 +364,14 @@ mod tests {
             })
             .collect();
         map.insert("bindings".to_string(), gunbc_ir::Value::Map(binding_map));
+        map.insert(
+            "recursive_types".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        map.insert(
+            "recursive_type_set".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         gunbc_ir::Value::Map(map)
     }
 
@@ -3080,6 +3093,52 @@ fn example(items: List<String>) -> Int {
         assert!(
             messages.is_empty(),
             "for-each loop variables should be available inside the loop body: {:?}",
+            messages
+        );
+    }
+
+    #[test]
+    fn phase4_resolve_node_depth_overflow_fails_closed() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut bindings = Vec::new();
+        for depth in 0..55 {
+            let next = if depth == 54 {
+                "Int".to_string()
+            } else {
+                format!("T{}", depth + 1)
+            };
+            bindings.push(type_binding_value(
+                &format!("T{depth}"),
+                named_type_value(&next),
+            ));
+        }
+
+        let mut inputs = HashMap::new();
+        inputs.insert("n".to_string(), named_type_value("T0"));
+        inputs.insert("env".to_string(), type_env_value(bindings));
+        inputs.insert(
+            "module_name".to_string(),
+            gunbc_ir::Value::Str("main".to_string()),
+        );
+
+        let result = returned_value(
+            call_fn(&output, "resolve_node", inputs).expect("resolve_node should succeed"),
+        );
+
+        let diagnostics = match result {
+            gunbc_ir::Value::Map(ref map) => map
+                .get("diagnostics")
+                .expect("resolve_node should return diagnostics"),
+            other => panic!("resolve_node should return a result map, got: {other:?}"),
+        };
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.iter().any(|message| {
+                message.contains(
+                    "type resolution exceeded recursion bound before reaching a fully structural type",
+                )
+            }),
+            "depth overflow should surface an explicit reconcile error: {:?}",
             messages
         );
     }

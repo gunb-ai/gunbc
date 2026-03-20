@@ -767,6 +767,15 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Di
   }
 }
 
+fn type_resolution_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
+  Diagnostic {
+    severity: Error,
+    message: message,
+    span: Some { value: span },
+    module_name: Some { value: module_name }
+  }
+}
+
 fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
   match op {
     BinEq => leaf_node(name: "Bool")
@@ -1887,6 +1896,72 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 // structure (connective, children).
 // =========================================================================
 
+data max_type_resolution_depth: Int = 50
+
+fn type_leaf_is_structural_boundary(name: String, env: TypeEnv) -> Bool {
+  name == "String"
+    || name == "Int"
+    || name == "Bool"
+    || name == "Float"
+    || name == "Secret"
+    || name == "Json"
+    || name == "Unit"
+    || name == "Bytes"
+    || name == "None"
+    || name == ""
+    || is_recursive_type(env: env, name: name)
+}
+
+fn node_has_unresolved_type_refs(n: Node, env: TypeEnv) -> Bool {
+  if n.connective != none {
+    match n.connective.value {
+      Conj =>
+        if n.name == "Refined" {
+          match n.children |> first {
+            Some { value: base } => node_has_unresolved_type_refs(n: base, env: env)
+            None => false
+          }
+        } else {
+          any(n.children, child =>
+            child.return_type != none && node_has_unresolved_type_refs(n: child.return_type.value, env: env)
+          )
+        }
+      Disj =>
+        if n.name == "Optional" {
+          match n.children |> first {
+            Some { value: inner } => node_has_unresolved_type_refs(n: inner, env: env)
+            None => false
+          }
+        } else {
+          any(n.children, variant_child =>
+            any(variant_child.children, field_child =>
+              field_child.return_type != none && node_has_unresolved_type_refs(n: field_child.return_type.value, env: env)
+            )
+          )
+        }
+    }
+  } else if n.name == "Map" && n.children |> count == 2 {
+    let key_has_refs = match n.children |> first {
+      Some { value: key_child } => node_has_unresolved_type_refs(n: key_child, env: env)
+      None => false
+    }
+    let value_has_refs = match skip(n.children, 1) |> first {
+      Some { value: value_child } => node_has_unresolved_type_refs(n: value_child, env: env)
+      None => false
+    }
+    key_has_refs || value_has_refs
+  } else if n.children |> count == 1 {
+    match n.children |> first {
+      Some { value: child } => node_has_unresolved_type_refs(n: child, env: env)
+      None => false
+    }
+  } else if n.children |> count == 0 {
+    type_leaf_is_structural_boundary(name: n.name, env: env) == false
+  } else {
+    false
+  }
+}
+
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
   resolve_node_bounded(n: n, env: env, module_name: module_name, depth: 0)
 }
@@ -1894,8 +1969,17 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {
   // Depth limit prevents infinite recursion through structural type expansion.
   // In practice, type nesting rarely exceeds 10 levels. A limit of 50 is generous.
-  if depth > 50 {
-    return NodeResolveResult { resolved: n, diagnostics: [] }
+  if depth > max_type_resolution_depth {
+    let depth_diagnostics = if node_has_unresolved_type_refs(n: n, env: env) {
+      [type_resolution_error(
+        message: "type resolution exceeded recursion bound before reaching a fully structural type",
+        span: n.span,
+        module_name: module_name
+      )]
+    } else {
+      []
+    }
+    return NodeResolveResult { resolved: n, diagnostics: depth_diagnostics }
   }
   if n.connective != none {
     match n.connective.value {
