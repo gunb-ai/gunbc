@@ -21,6 +21,14 @@ type RequestedTokenType = RequestAccessToken | RequestIdToken
 
 type StsGrantType = TokenExchange {}
 
+// -- OAuth wire values ---------------------------------------------
+
+// These data constants are the single source of truth for STS OAuth URNs.
+// Generic REST body lowering resolves them into request-wire literals.
+data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
+data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
+
 // -- Token exchange request ----------------------------------------
 
 type StsTokenExchange {
@@ -61,19 +69,16 @@ service gcp.STS {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
-    // Keep OAuth2 wire values literal here until transport-body serialization
-    // can derive them generically from resolved type metadata; the typed
-    // request record remains the schema authority for lowering-time checks.
     idempotent
     transport rest {
       method: POST,
       path: "/v1/token",
       body: StsTokenExchange {
-        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        grant_type: token_exchange_grant_type_wire,
         subject_token: subject_token,
-        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        subject_token_type: jwt_subject_token_type_wire,
         audience: audience,
-        requested_token_type: "urn:ietf:params:oauth:token-type:access_token"
+        requested_token_type: access_token_requested_token_type_wire
       }
     }
     response {

@@ -3981,27 +3981,7 @@ func run() -> { result: String } {
 }
 
 #[test]
-fn sts_token_type_urns_are_derived_from_structural_variants() {
-    assert_eq!(
-        sts_token_type_urn("subject_token_type", "Jwt"),
-        "urn:ietf:params:oauth:token-type:jwt"
-    );
-    assert_eq!(
-        sts_token_type_urn("subject_token_type", "StsAccessToken"),
-        "urn:ietf:params:oauth:token-type:access_token"
-    );
-    assert_eq!(
-        sts_token_type_urn("requested_token_type", "RequestAccessToken"),
-        "urn:ietf:params:oauth:token-type:access_token"
-    );
-    assert_eq!(
-        sts_token_type_urn("requested_token_type", "RequestIdToken"),
-        "urn:ietf:params:oauth:token-type:id_token"
-    );
-}
-
-#[test]
-fn sts_exchange_body_template_literals_are_validated_against_sts_schema() {
+fn rest_body_template_resolves_string_data_refs_to_literals() {
     let source = r#"module extdeps.cloud.gcp.sts
 type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
 type RequestedTokenKind = RequestAccessToken | RequestIdToken
@@ -4017,6 +3997,9 @@ type ExchangeRequest {
 type ExchangeResponse {
   access_token: String
 }
+data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
+data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
 service gcp.STS {
   config { endpoint: "https://sts.googleapis.com" }
   operation Exchange {
@@ -4032,11 +4015,11 @@ service gcp.STS {
       method: POST,
       path: "/v1/token",
       body: ExchangeRequest {
-        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        grant_type: token_exchange_grant_type_wire,
         subject_token: subject_token,
-        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        subject_token_type: jwt_subject_token_type_wire,
         audience: audience,
-        requested_token_type: "urn:ietf:params:oauth:token-type:access_token"
+        requested_token_type: access_token_requested_token_type_wire
       }
     }
     response {
@@ -4086,74 +4069,8 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
                 "urn:ietf:params:oauth:token-type:access_token".to_string()
             ),
         ]),
-        "lowered STS request body should preserve the OAuth wire values after validating them against the typed STS schema"
+        "lowered REST body should inline string-valued data metadata as wire literals"
     );
-}
-
-#[test]
-fn sts_exchange_body_template_rejects_requested_token_type_drift() {
-    let source = r#"module extdeps.cloud.gcp.sts
-type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenKind = RequestAccessToken | RequestIdToken
-type GrantKind = TokenExchange {}
-type ExchangeRequest {
-  grant_type: GrantKind
-  subject_token: String
-  subject_token_type: SubjectTokenKind
-  audience: String
-  scope: String?
-  requested_token_type: RequestedTokenKind?
-}
-type ExchangeResponse {
-  access_token: String
-}
-service gcp.STS {
-  config { endpoint: "https://sts.googleapis.com" }
-  operation Exchange {
-    input {
-      subject_token: String
-      audience: String
-    }
-    output {
-      access_token: String from "access_token"
-    }
-    idempotent
-    transport rest {
-      method: POST,
-      path: "/v1/token",
-      body: ExchangeRequest {
-        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-        subject_token: subject_token,
-        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
-        audience: audience,
-        requested_token_type: "urn:ietf:params:oauth:token-type:id_token"
-      }
-    }
-    response {
-      200 => ExchangeResponse
-    }
-  }
-}
-func run(subject_token: String, audience: String) -> { access_token: String } {
-  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
-  return { access_token: token.access_token }
-}"#;
-
-    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
-    let error =
-        lower_typed_project(&typed).expect_err("lowering should fail when STS wire literals drift");
-
-    assert!(matches!(
-        error,
-        LowerError::InvalidTransportSpec {
-            ref service,
-            ref operation,
-            ref detail,
-        } if service == "gcp.STS"
-            && operation == "Exchange"
-            && detail.contains("requested_token_type")
-            && detail.contains("RequestedTokenKind::RequestAccessToken")
-    ));
 }
 
 // ============================================================================

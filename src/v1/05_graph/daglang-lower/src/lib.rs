@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeDef, TypeExpr,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
@@ -51,8 +51,8 @@ use gunbc_ir::transport::middleware::{
     RetryConfig, TransportMiddlewareConfig,
 };
 use gunbc_ir::{
-    Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, NamingCase, Node, NodeId,
-    NodeKind, NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, Node, NodeId, NodeKind,
+    NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,
 };
 use serde::{Deserialize, Serialize};
 
@@ -6540,245 +6540,6 @@ fn validate_rest_output_field_paths(
     Ok(())
 }
 
-fn validate_sts_exchange_body_against_typed_schema(
-    service: &ServiceDef,
-    operation: &OperationDef,
-    type_defs: &HashMap<String, &TypeDef>,
-) -> Result<(), LowerError> {
-    const STS_SERVICE: &str = "gcp.STS";
-    const STS_OPERATION: &str = "Exchange";
-    const TOKEN_EXCHANGE_URN: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
-
-    if service.name != STS_SERVICE || operation.name != STS_OPERATION {
-        return Ok(());
-    }
-
-    let (request_type_name, body_fields) = match &operation.transport {
-        Some(TransportBinding::Rest {
-            body: Some(body), ..
-        }) => match body {
-            Expr::Record(Some(type_name), fields) => (
-                type_name.as_str(),
-                fields
-                    .iter()
-                    .map(|(key, value)| (key.as_str(), value))
-                    .collect::<HashMap<_, _>>(),
-            ),
-            Expr::Record(None, _) | Expr::Map(_) => {
-                return Err(LowerError::InvalidTransportSpec {
-                    service: service.name.clone(),
-                    operation: operation.name.clone(),
-                    detail: format!(
-                        "{STS_SERVICE}.{STS_OPERATION} requires a typed REST body record so lowering can resolve the request schema from DSL metadata"
-                    ),
-                });
-            }
-            _ => {
-                return Err(LowerError::InvalidTransportSpec {
-                    service: service.name.clone(),
-                    operation: operation.name.clone(),
-                    detail: format!(
-                        "{STS_SERVICE}.{STS_OPERATION} REST body must stay a typed record matching the declared request schema"
-                    ),
-                });
-            }
-        },
-        Some(TransportBinding::Rest { body: None, .. }) => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires an explicit typed REST body so lowering can validate it against the declared request schema"
-                ),
-            });
-        }
-        _ => return Ok(()),
-    };
-
-    let request_fields = match type_defs.get(request_type_name) {
-        Some(TypeDef {
-            body: TypeBody::Record(fields),
-            ..
-        }) => fields.as_slice(),
-        Some(_) => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("`{request_type_name}` must remain a record type"),
-            });
-        }
-        None => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires the typed REST body record `{request_type_name}` to resolve to a local request schema"
-                ),
-            });
-        }
-    };
-
-    let request_field_types = request_fields
-        .iter()
-        .map(|field| (field.name.as_str(), &field.ty))
-        .collect::<HashMap<_, _>>();
-
-    for key in body_fields.keys() {
-        if !request_field_types.contains_key(key) {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("STS body field `{key}` is not declared on `{request_type_name}`"),
-            });
-        }
-    }
-
-    for field in request_fields {
-        if !is_type_expr_optional(&field.ty) && !body_fields.contains_key(field.name.as_str()) {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body is missing required `{request_type_name}.{}` field",
-                    field.name
-                ),
-            });
-        }
-    }
-
-    let named_type_name = |field_name: &str| -> Result<&str, LowerError> {
-        let Some(field_ty) = request_field_types.get(field_name) else {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("STS request schema is missing `{request_type_name}.{field_name}`"),
-            });
-        };
-        named_type_expr_name(field_ty).ok_or_else(|| LowerError::InvalidTransportSpec {
-            service: service.name.clone(),
-            operation: operation.name.clone(),
-            detail: format!("`{request_type_name}.{field_name}` must resolve to a named enum type"),
-        })
-    };
-    let grant_type_name = named_type_name("grant_type")?;
-    let subject_token_type_name = named_type_name("subject_token_type")?;
-    let requested_token_type_name = named_type_name("requested_token_type")?;
-
-    let expect_unit_variant = |enum_name: &str, variant_name: &str| -> Result<(), LowerError> {
-        let Some(type_def) = type_defs.get(enum_name) else {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires local `{enum_name}` so lowering can validate the REST body literals"
-                ),
-            });
-        };
-        let TypeBody::Sum(variants) = &type_def.body else {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("`{enum_name}` must remain a sum type"),
-            });
-        };
-        if !variants
-            .iter()
-            .any(|variant| variant.name == variant_name && variant.fields.is_empty())
-        {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "`{enum_name}` must keep unit variant `{variant_name}` for `{STS_SERVICE}.{STS_OPERATION}`"
-                ),
-            });
-        }
-        Ok(())
-    };
-    expect_unit_variant(grant_type_name, "TokenExchange")?;
-    expect_unit_variant(subject_token_type_name, "Jwt")?;
-    expect_unit_variant(requested_token_type_name, "RequestAccessToken")?;
-
-    let expect_input_ref = |field_name: &str| -> Result<(), LowerError> {
-        match body_fields.get(field_name) {
-            Some(Expr::Ident(name)) if name == field_name => Ok(()),
-            _ => Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body field `{field_name}` must remain wired from operation input `{field_name}`"
-                ),
-            }),
-        }
-    };
-    expect_input_ref("subject_token")?;
-    expect_input_ref("audience")?;
-
-    let expect_literal = |field_name: &str,
-                          expected: &str,
-                          source: &str|
-     -> Result<(), LowerError> {
-        match body_fields.get(field_name) {
-            Some(Expr::Literal(Literal::String(value))) if value == expected => Ok(()),
-            Some(Expr::Literal(Literal::String(value))) => Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body field `{field_name}` must stay aligned with `{source}` and use `{expected}`, found `{value}`"
-                ),
-            }),
-            _ => Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body field `{field_name}` must stay a literal derived from `{source}`"
-                ),
-            }),
-        }
-    };
-    expect_literal(
-        "grant_type",
-        TOKEN_EXCHANGE_URN,
-        &format!("{grant_type_name}::TokenExchange"),
-    )?;
-    let subject_token_type_urn = sts_token_type_urn("subject_token_type", "Jwt");
-    expect_literal(
-        "subject_token_type",
-        &subject_token_type_urn,
-        &format!("{subject_token_type_name}::Jwt"),
-    )?;
-    let requested_token_type_urn = sts_token_type_urn("requested_token_type", "RequestAccessToken");
-    expect_literal(
-        "requested_token_type",
-        &requested_token_type_urn,
-        &format!("{requested_token_type_name}::RequestAccessToken"),
-    )?;
-
-    Ok(())
-}
-
-fn sts_token_type_urn(field_name: &str, variant_name: &str) -> String {
-    // The DSL enum variants carry role-specific prefixes to keep the type-level
-    // names unambiguous; the OAuth wire value comes from the normalized variant.
-    let normalized_variant = match field_name {
-        "requested_token_type" => variant_name.strip_prefix("Request").unwrap_or(variant_name),
-        "subject_token_type" => variant_name.strip_prefix("Sts").unwrap_or(variant_name),
-        _ => variant_name,
-    };
-    format!(
-        "urn:ietf:params:oauth:token-type:{}",
-        NamingCase::SnakeCase.apply(normalized_variant)
-    )
-}
-
-fn named_type_expr_name(ty: &TypeExpr) -> Option<&str> {
-    match ty {
-        TypeExpr::Named(name) => Some(name.as_str()),
-        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => named_type_expr_name(inner),
-        _ => None,
-    }
-}
-
 // ============================================================================
 // ServiceOperationSpec extraction from annotations
 // ============================================================================
@@ -6792,7 +6553,7 @@ fn derive_operation_spec(
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation)
+            Ok(derive_rest_spec(service, operation, data_registry)
                 .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
@@ -6995,7 +6756,11 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
         .collect()
 }
 
-fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
+fn derive_rest_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    data_registry: &DataRegistry<'_>,
+) -> Option<RestOperationSpec> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
         Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
@@ -7015,9 +6780,16 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         &headers,
         auth_input.as_deref(),
     );
+    let operation_input_names = operation
+        .inputs
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect::<HashSet<_>>();
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
-        Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(b),
+        Some(TransportBinding::Rest { body: Some(b), .. }) => {
+            body_template_entries_from_expr(b, &operation_input_names, data_registry)
+        }
         _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
@@ -7228,12 +7000,18 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
 }
 
 /// Recursively convert an expression (Record or Map) to body template entries.
-fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
+fn body_template_entries_from_expr(
+    expr: &Expr,
+    operation_input_names: &HashSet<&str>,
+    data_registry: &DataRegistry<'_>,
+) -> Option<Vec<BodyEntry>> {
     match expr {
         Expr::Record(_, fields) => {
             let mut entries = Vec::new();
             for (key, value) in fields {
-                if let Some(entry) = body_template_entry(key, value) {
+                if let Some(entry) =
+                    body_template_entry(key, value, operation_input_names, data_registry)
+                {
                     entries.push(entry);
                 }
             }
@@ -7243,7 +7021,9 @@ fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
             let mut entries = Vec::new();
             for (key_expr, value) in map_entries {
                 if let Expr::Literal(Literal::String(key)) = key_expr {
-                    if let Some(entry) = body_template_entry(key, value) {
+                    if let Some(entry) =
+                        body_template_entry(key, value, operation_input_names, data_registry)
+                    {
                         entries.push(entry);
                     }
                 }
@@ -7255,14 +7035,33 @@ fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
 }
 
 /// Convert a single key-value pair to a BodyEntry.
-fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
+fn body_template_entry(
+    key: &str,
+    value: &Expr,
+    operation_input_names: &HashSet<&str>,
+    data_registry: &DataRegistry<'_>,
+) -> Option<BodyEntry> {
     match value {
-        Expr::Ident(field_name) => Some(BodyEntry::InputRef(key.to_string(), field_name.clone())),
+        Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => {
+            Some(BodyEntry::InputRef(key.to_string(), field_name.clone()))
+        }
         Expr::Literal(Literal::String(s)) => Some(BodyEntry::Literal(key.to_string(), s.clone())),
+        Expr::Ident(name) => resolve_const_string(name, data_registry)
+            .map(|value| BodyEntry::Literal(key.to_string(), value)),
         Expr::Record(_, _) | Expr::Map(_) => {
-            let inner = body_template_entries_from_expr(value)?;
+            let inner =
+                body_template_entries_from_expr(value, operation_input_names, data_registry)?;
             Some(BodyEntry::Nested(key.to_string(), inner))
         }
+        _ => None,
+    }
+}
+
+fn resolve_const_string(name: &str, data_registry: &DataRegistry<'_>) -> Option<String> {
+    let def = data_registry.get(name)?;
+    match &def.value {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        Expr::Ident(next) if next != name => resolve_const_string(next, data_registry),
         _ => None,
     }
 }
@@ -7773,15 +7572,6 @@ fn derive_service_transport_triplets(
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let source_file = module.path.display().to_string();
-        let module_type_defs = module
-            .ast
-            .items
-            .iter()
-            .filter_map(|item| match &item.node {
-                Item::TypeDef(type_def) => Some((type_def.name.clone(), type_def)),
-                _ => None,
-            })
-            .collect::<HashMap<_, _>>();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -7810,11 +7600,6 @@ fn derive_service_transport_triplets(
                     }
                 }
                 validate_rest_output_field_paths(service, operation)?;
-                validate_sts_exchange_body_against_typed_schema(
-                    service,
-                    operation,
-                    &module_type_defs,
-                )?;
                 let service_metadata =
                     derive_service_call_metadata(service, operation, &data_registry)?;
                 // RT4: Fail-closed when a service operation has no transport
