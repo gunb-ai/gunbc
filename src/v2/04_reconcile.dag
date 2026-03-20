@@ -53,6 +53,7 @@ import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 
 type TypedGraph {
   modules: List<TypedModule>
+  item_registry: Map<String, ItemInfo>
   diagnostics: List<Diagnostic>
 }
 
@@ -74,6 +75,7 @@ type ResolvedFuncEnv {
 // structurally impossible for unresolved signatures to reach emit.
 type ResolvedGraph {
   modules: List<TypedModule>
+  item_registry: Map<String, ItemInfo>
   diagnostics: List<Diagnostic>
 }
 
@@ -93,16 +95,37 @@ type TypeEnv {
 
 // =========================================================================
 // Item registry -- maps item names to their kind and service dependencies.
-// Built during typecheck_module and stored in TypedModule so emitters
-// don't need to re-walk every body AST.
+// Built during typecheck_module and stored on both TypedModule and the
+// graph boundary so emitters can consume it directly.
 // =========================================================================
+
+type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
 
 type ItemInfo {
   name: String
-  kind: String
+  kind: ItemKind
   service_names: List<String>
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
+}
+
+type ItemContribution {
+  resolved_item: Node
+  resolve_diagnostics: List<Diagnostic>
+  func_sig: DeclaredFuncSig?
+  svc_entries: List<OpEntry>
+  svc_local: TypeBinding?
+  variant_locals: List<TypeBinding>
+  item_info: ItemInfo
+}
+
+type ModuleContext {
+  resolved_items: List<Node>
+  func_env: ResolvedFuncEnv
+  svc_registry: Map<String, List<OpEntry>>
+  locals: Map<String, TypeBinding>
+  item_registry: Map<String, ItemInfo>
+  diagnostics: List<Diagnostic>
 }
 
 // Accumulator for map-based deduplication.
@@ -469,20 +492,6 @@ type CycleDetectState {
   global_visited: Map<String, Bool>
 }
 
-// =========================================================================
-// Build function environment from module items.
-// Extracts signatures from Node items that have params.
-// =========================================================================
-
-// Unwrap an optional return type at a function boundary.
-// The v1 codegen tracks optionality from field declarations and rejects
-// assigning optional values to non-optional struct fields. This function
-// boundary resets the tracking.
-fn unwrap_return_type(rt: Node?) -> Node {
-  if rt == none { leaf_node(name: "Unit") }
-  else { rt.value }
-}
-
 fn child_return_type_or_name(ch: Node) -> Node {
   if ch.return_type == none { leaf_node(name: ch.name) }
   else { ch.return_type.value }
@@ -492,27 +501,11 @@ fn service_op_entry(child: Node) -> OpEntry {
   OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span) }
 }
 
-fn build_func_env(items: List<Node>) -> DeclaredFuncEnv {
-  // Called with resolved items (after resolve_item_types), so return_type
-  // fields have already been resolved by resolve_optional_node.
-  // Stores return_type as-is (None when unannotated) -- no fabrication.
-  let sigs = fold(items, init: empty_map(), f: (acc, item) =>
-    if item.params |> count > 0 {
-      let is_async = item.uses |> count > 0
-      map_insert(acc, item.name, DeclaredFuncSig { name: item.name, params: item.params, return_type: item.return_type, is_async: is_async })
-    } else {
-      acc
-    }
-  )
-  DeclaredFuncEnv { signatures: sigs }
-}
-
 // =========================================================================
-// Pass B: Fused scope builder (SG-9 safe -- standalone map parameters).
+// Scope merge helpers
 //
-// Single walk over resolved_items builds func_sigs, svc_registry,
-// svc_locals, and variant_locals simultaneously. Then a single walk
-// over imports merges from parents.
+// Parent imports still merge separately because they operate on already-
+// typed parent modules rather than the current module's raw items.
 // =========================================================================
 
 type InferScopeComponents {
@@ -522,56 +515,14 @@ type InferScopeComponents {
   variant_locals: Map<String, TypeBinding>
 }
 
-fn build_scope_from_items(remaining: List<Node>, env: TypeEnv,
-    func_sigs: Map<String, DeclaredFuncSig>,
-    svc_registry: Map<String, List<OpEntry>>,
-    svc_locals: Map<String, TypeBinding>,
-    variant_locals: Map<String, TypeBinding>) -> InferScopeComponents {
-  match remaining |> first {
-    None => InferScopeComponents {
-      func_sigs: func_sigs, svc_registry: svc_registry,
-      svc_locals: svc_locals, variant_locals: variant_locals
-    }
-    Some { value: item } =>
-      // func_sigs: items with params -- stores return_type as-is (no fabrication)
-      let next_func_sigs = if item.params |> count > 0 {
-        let is_async = item.uses |> count > 0
-        map_insert(func_sigs, item.name, DeclaredFuncSig { name: item.name, params: item.params, return_type: item.return_type, is_async: is_async })
-      } else {
-        func_sigs
-      }
-      // svc_registry + svc_locals: items with transport and children
-      let next_svc_registry = if item.transport != none && item.children |> count > 0 {
-        let entries = item.children |> map(c => service_op_entry(child: c))
-        map_insert(svc_registry, item.name, entries)
-      } else {
-        svc_registry
-      }
-      let next_svc_locals = if item.transport != none && item.children |> count > 0 {
-        let root = namespace_root_from_properties(properties: item.properties, name: item.name)
-        map_insert(svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
-      } else {
-        svc_locals
-      }
-      // variant_locals: Disj items (recursive types checked from items)
-      let next_variant_locals = match item.connective {
-        Some { value: Disj } =>
-          if is_recursive_type(env: env, name: item.name) {
-            fold(item.children, init: variant_locals, f: (vacc, child) =>
-              map_insert(vacc, child.name, TypeBinding {
-                name: child.name,
-                resolved: leaf_node(name: item.name)
-              })
-            )
-          } else {
-            variant_locals
-          }
-        _ => variant_locals
-      }
-      build_scope_from_items(remaining: remaining |> skip(1), env: env,
-        func_sigs: next_func_sigs, svc_registry: next_svc_registry,
-        svc_locals: next_svc_locals, variant_locals: next_variant_locals)
-  }
+type LocalContributionState {
+  resolved_items: List<Node>
+  func_sigs: Map<String, DeclaredFuncSig>
+  svc_registry: Map<String, List<OpEntry>>
+  svc_locals: Map<String, TypeBinding>
+  variant_locals: Map<String, TypeBinding>
+  item_registry: Map<String, ItemInfo>
+  diag_chunks: List<List<Diagnostic>>
 }
 
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
@@ -1049,30 +1000,36 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 // Must recurse through container wrappers (List<T>, T?, Map<K,V>) to find
 // all referenced type names -- otherwise cycle detection misses cycles
 // that pass through containers (e.g. Expr -> resolved_type: Node? -> Node).
+fn is_primitive_name(name: String) -> Bool {
+  name == "String" || name == "Int" || name == "Bool" || name == "Float"
+    || name == "Secret" || name == "Json" || name == "Unit" || name == "Bytes"
+    || name == "None" || name == ""
+}
+
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
     // Simple field reference: return_type is a bare type name leaf.
     [n.return_type.value.name]
+  } else if n.connective != none {
+    flat_map(n.children, child =>
+      if child.return_type != none {
+        node_type_deps(n: child.return_type.value)
+      } else {
+        node_type_deps(n: child)
+      }
+    )
   } else if n.return_type != none {
     // Field with complex return type (List<T>, Optional<T>, Map<K,V>).
     // Recurse into the type tree to capture transitive deps.
     node_type_deps(n: n.return_type.value)
-  } else if n.connective != none {
-    // Product/Coproduct: recurse into children (fields or variants).
-    flat_map(n.children, child => node_type_deps(n: child))
   } else if n.children |> count > 0 {
     // Container or compound node: recurse into children.
     flat_map(n.children, child => node_type_deps(n: child))
+  } else if is_primitive_name(name: n.name) {
+    []
   } else {
     // Bare type name leaf (e.g. "Node" inside List<Node>).
-    // Return it as a dep unless it is a primitive or sentinel.
-    if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float"
-      || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes"
-      || n.name == "None" || n.name == "" {
-      []
-    } else {
-      [n.name]
-    }
+    [n.name]
   }
 }
 
@@ -3028,6 +2985,213 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
 }
 
+fn item_kind(item: Node) -> ItemKind {
+  if item.connective != none && item.transport == none {
+    TypeItem
+  } else if item.transport != none {
+    ServiceItem
+  } else if item.body != none && item.uses |> count > 0 {
+    FuncItem
+  } else if item.body != none && item.params |> count > 0 {
+    FnItem
+  } else if item.body != none {
+    DataItem
+  } else {
+    OtherItem
+  }
+}
+
+fn build_item_info(item: Node) -> ItemInfo {
+  let kind = item_kind(item: item)
+  match kind {
+    FuncItem =>
+      ItemInfo {
+        name: item.name,
+        kind: kind,
+        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
+        is_self_recursive: false,
+        has_non_tail_self_call: false
+      }
+    FnItem =>
+      ItemInfo {
+        name: item.name,
+        kind: kind,
+        service_names: [],
+        is_self_recursive: if item.body == none { false } else { expr_has_self_call(expr: item.body.value, fn_name: item.name) },
+        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(expr: item.body.value, fn_name: item.name, in_tail: true) }
+      }
+    _ =>
+      ItemInfo {
+        name: item.name,
+        kind: kind,
+        service_names: [],
+        is_self_recursive: false,
+        has_non_tail_self_call: false
+      }
+  }
+}
+
+fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContribution {
+  let resolved = resolve_item_types(item: item, env: env, module_name: module_name)
+  let ritem = resolved.item
+  let func_sig = if ritem.params |> count > 0 {
+    Some { value: DeclaredFuncSig {
+      name: ritem.name,
+      params: ritem.params,
+      return_type: ritem.return_type,
+      is_async: ritem.uses |> count > 0
+    } }
+  } else {
+    none
+  }
+  let svc_entries = if ritem.transport != none && ritem.children |> count > 0 {
+    ritem.children |> map(c => service_op_entry(child: c))
+  } else {
+    []
+  }
+  let svc_local = if ritem.transport != none && ritem.children |> count > 0 {
+    let root = namespace_root_from_properties(properties: ritem.properties, name: ritem.name)
+    Some { value: TypeBinding { name: root, resolved: leaf_node(name: root) } }
+  } else {
+    none
+  }
+  let variant_locals = match ritem.connective {
+    Some { value: Disj } =>
+      if is_recursive_type(env: env, name: ritem.name) {
+        ritem.children |> map(child =>
+          TypeBinding {
+            name: child.name,
+            resolved: leaf_node(name: ritem.name)
+          }
+        )
+      } else {
+        []
+      }
+    _ => []
+  }
+  ItemContribution {
+    resolved_item: ritem,
+    resolve_diagnostics: resolved.diagnostics,
+    func_sig: func_sig,
+    svc_entries: svc_entries,
+    svc_local: svc_local,
+    variant_locals: variant_locals,
+    item_info: build_item_info(item: ritem)
+  }
+}
+
+fn fold_module_contributions(remaining: List<ItemContribution>,
+    resolved_items: List<Node>,
+    func_sigs: Map<String, DeclaredFuncSig>,
+    svc_registry: Map<String, List<OpEntry>>,
+    svc_locals: Map<String, TypeBinding>,
+    variant_locals: Map<String, TypeBinding>,
+    item_registry: Map<String, ItemInfo>,
+    diag_chunks: List<List<Diagnostic>>) -> LocalContributionState {
+  match remaining |> first {
+    None =>
+      LocalContributionState {
+        resolved_items: resolved_items,
+        func_sigs: func_sigs,
+        svc_registry: svc_registry,
+        svc_locals: svc_locals,
+        variant_locals: variant_locals,
+        item_registry: item_registry,
+        diag_chunks: diag_chunks
+      }
+    Some { value: contribution } =>
+      let next_func_sigs = match contribution.func_sig {
+        Some { value: sig } => map_insert(func_sigs, sig.name, sig)
+        None => func_sigs
+      }
+      let next_svc_registry = if contribution.svc_entries |> count > 0 {
+        map_insert(svc_registry, contribution.resolved_item.name, contribution.svc_entries)
+      } else {
+        svc_registry
+      }
+      let next_svc_locals = match contribution.svc_local {
+        Some { value: binding } => map_insert(svc_locals, binding.name, binding)
+        None => svc_locals
+      }
+      let next_variant_locals = fold(contribution.variant_locals, init: variant_locals, f: (acc, binding) =>
+        map_insert(acc, binding.name, binding)
+      )
+      fold_module_contributions(
+        remaining: remaining |> skip(1),
+        resolved_items: list_push(resolved_items, contribution.resolved_item),
+        func_sigs: next_func_sigs,
+        svc_registry: next_svc_registry,
+        svc_locals: next_svc_locals,
+        variant_locals: next_variant_locals,
+        item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
+        diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics)
+      )
+  }
+}
+
+fn build_module_context(contributions: List<ItemContribution>,
+    parent_index: Map<String, TypedModule>,
+    resolved_imports: List<ResolvedImport>,
+    env: TypeEnv,
+    module_name: String) -> ModuleContext {
+  let env_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
+    if binding.resolved.connective != none {
+      match binding.resolved.connective.value {
+        Disj =>
+          fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+            map_insert(vacc, child.name, TypeBinding {
+              name: child.name,
+              resolved: leaf_node(name: binding.name)
+            })
+          )
+        _ => acc
+      }
+    } else { acc }
+  )
+  let local = fold_module_contributions(
+    remaining: contributions,
+    resolved_items: [],
+    func_sigs: empty_map(),
+    svc_registry: empty_map(),
+    svc_locals: empty_map(),
+    variant_locals: env_variant_locals,
+    item_registry: empty_map(),
+    diag_chunks: []
+  )
+  let merged_scope = merge_scope_from_imports(
+    remaining: resolved_imports,
+    parent_index: parent_index,
+    env: env,
+    func_sigs: empty_map(),
+    svc_registry: local.svc_registry,
+    svc_locals: local.svc_locals,
+    variant_locals: local.variant_locals
+  )
+  let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
+  let resolve_result = resolve_func_sigs(
+    declared_sigs: all_declared_sigs,
+    items: local.resolved_items,
+    module_name: module_name
+  )
+  let optional_locals = map_insert(merged_scope.variant_locals, "Some", TypeBinding {
+    name: "Some", resolved: leaf_node(name: "Optional")
+  })
+  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
+    name: "None", resolved: leaf_node(name: "Optional")
+  })
+  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
+    map_insert(acc, binding.name, binding)
+  )
+  ModuleContext {
+    resolved_items: local.resolved_items,
+    func_env: resolve_result.func_env,
+    svc_registry: merged_scope.svc_registry,
+    locals: all_locals,
+    item_registry: local.item_registry,
+    diagnostics: concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics)
+  }
+}
+
 // =========================================================================
 // Typecheck a single module
 //
@@ -3316,7 +3480,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Gate: if type environment construction produced errors (unresolved types),
   // halt before inference. This makes unresolved nodes structurally impossible
   // downstream -- inference and emit never see them.
-  // validate_no_unresolved becomes a redundant safety net, not the source of truth.
   let env_errors = env_diags |> filter(d => d.severity == Error)
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
@@ -3331,118 +3494,43 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     }
   }
 
-  // Resolve all type expressions in every item against the environment.
-  let item_results = map(resolved.module.items, item =>
-    resolve_item_types(item: item, env: env, module_name: resolved.module.name)
+  let contributions = map(resolved.module.items, item =>
+    analyze_item(item: item, env: env, module_name: resolved.module.name)
   )
-  let resolved_items = map(item_results, ir => ir.item)
-  let item_diags = flat_map(item_results, ir => ir.diagnostics)
+  let ctx = build_module_context(
+    contributions: contributions,
+    parent_index: parent_index,
+    resolved_imports: resolved.resolved_imports,
+    env: env,
+    module_name: resolved.module.name
+  )
 
-  // Rebuild the module with resolved items.
+  let infer_scope = InferScope {
+    type_env: env,
+    func_env: ctx.func_env,
+    locals: ctx.locals,
+    module_name: resolved.module.name,
+    service_registry: ctx.svc_registry
+  }
+  let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
+  let typed_items = map(typed_item_results, tir => tir.item)
+  let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
   let typed_module = Module {
     name: resolved.module.name,
     imports: resolved.module.imports,
-    items: resolved_items,
+    items: ctx.resolved_items,
     span: resolved.module.span
   }
-
-  // Pass B: Fused scope construction -- single walk over items, single walk over imports.
-  // Variant constructors from resolved env bindings (non-recursive Disj types).
-  let env_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
-    if binding.resolved.connective != none {
-      match binding.resolved.connective.value {
-        Disj =>
-          fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-            map_insert(vacc, child.name, TypeBinding {
-              name: child.name,
-              resolved: leaf_node(name: binding.name)
-            })
-          )
-        _ => acc
-      }
-    } else { acc }
-  )
-
-  // Single walk over resolved_items: builds func_sigs, svc_registry, svc_locals, variant_locals
-  let local_scope = build_scope_from_items(
-    remaining: resolved_items, env: env,
-    func_sigs: empty_map(), svc_registry: empty_map(),
-    svc_locals: empty_map(), variant_locals: env_variant_locals
-  )
-
-  // Single walk over imports: merges all four maps from parent modules.
-  // For func_sigs, pass empty so we accumulate only parent sigs, then merge locals on top.
-  let merged_scope = merge_scope_from_imports(
-    remaining: resolved.resolved_imports, parent_index: parent_index, env: env,
-    func_sigs: empty_map(), svc_registry: local_scope.svc_registry,
-    svc_locals: local_scope.svc_locals, variant_locals: local_scope.variant_locals
-  )
-
-  // Merge declared func_sigs: parents first, locals override (map_merge second arg wins).
-  // Both maps contain DeclaredFuncSig -- parent resolved sigs were converted to declared
-  // in merge_scope_from_imports (return_type wrapped in Some).
-  let all_declared_sigs = map_merge(merged_scope.func_sigs, local_scope.func_sigs)
-
-  // Resolve declared sigs to ResolvedFuncSig via SCC-aware topological ordering.
-  // Annotated functions: return_type unwrapped from Some.
-  // Unannotated recursive: compile error (fail closed).
-  // Unannotated non-recursive: infer from body in topological order.
-  let resolve_result = resolve_func_sigs(
-    declared_sigs: all_declared_sigs,
-    items: resolved_items,
-    module_name: resolved.module.name
-  )
-  let func_env = resolve_result.func_env
-  let resolve_diags = resolve_result.diagnostics
-
-  // Register built-in optional constructors (Some, None).
-  let optional_locals = map_insert(merged_scope.variant_locals, "Some", TypeBinding {
-    name: "Some", resolved: leaf_node(name: "Optional")
-  })
-  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
-    name: "None", resolved: leaf_node(name: "Optional")
-  })
-
-  // Merge svc_locals into optional_locals for the final locals map.
-  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
-    map_insert(acc, binding.name, binding)
-  )
-
-  // Build the InferScope and infer all items to produce Nodes with inferred types.
-  let infer_scope = InferScope {
-    type_env: env,
-    func_env: func_env,
-    locals: all_locals,
-    module_name: resolved.module.name,
-    service_registry: merged_scope.svc_registry
-  }
-  let typed_item_results = infer_items(items: resolved_items, scope: infer_scope)
-  let typed_items = map(typed_item_results, tir => tir.item)
-  let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
-  let item_registry = typed_items |> fold(init: empty_map(), f: (acc, item) =>
-    if item.body != none && item.uses |> count > 0 {
-      map_insert(acc, item.name, ItemInfo { name: item.name, kind: "func",
-        service_names: collect_typed_service_calls(texpr: item.body.value),
-        is_self_recursive: false, has_non_tail_self_call: false })
-    } else if item.body != none && item.params |> count > 0 {
-      map_insert(acc, item.name, ItemInfo { name: item.name, kind: "fn", service_names: [],
-        is_self_recursive: item.is_self_recursive,
-        has_non_tail_self_call: item.has_non_tail_self_call })
-    } else {
-      map_insert(acc, item.name, ItemInfo { name: item.name, kind: "other", service_names: [],
-        is_self_recursive: false, has_non_tail_self_call: false })
-    }
-  )
 
   TypecheckModuleResult {
     typed: TypedModule {
       module: typed_module,
       items: typed_items,
       type_env: env,
-      func_env: func_env,
-      item_registry: item_registry
+      func_env: ctx.func_env,
+      item_registry: ctx.item_registry
     },
-    diagnostics: concat(env_diags, item_diags, resolve_diags, infer_diags)
+    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags)
   }
 }
 
@@ -3615,6 +3703,7 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
     remaining: graph.modules,
     modules: [],
     module_index: empty_map(),
+    item_registry: empty_map(),
     diag_chunks: []
   )
 }
@@ -3623,10 +3712,11 @@ fn typecheck_modules(
   remaining: List<ResolvedModule>,
   modules: List<TypedModule>,
   module_index: Map<String, TypedModule>,
+  item_registry: Map<String, ItemInfo>,
   diag_chunks: List<List<Diagnostic>>
 ) -> TypedGraph {
   match remaining |> first {
-    None => TypedGraph { modules: modules, diagnostics: flat_map(diag_chunks, c => c) }
+    None => TypedGraph { modules: modules, item_registry: item_registry, diagnostics: flat_map(diag_chunks, c => c) }
     Some { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
@@ -3636,340 +3726,22 @@ fn typecheck_modules(
         remaining: remaining |> skip(1),
         modules: list_push(modules, typed),
         module_index: map_insert(module_index, typed.module.name, typed),
+        item_registry: map_merge(item_registry, typed.item_registry),
         diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_diags)
       )
   }
 }
 
 // =========================================================================
-// Validation: check that no unresolved Named references survive
+// Reconcile namespaces in one call.
 //
-// Post-typecheck invariant checker. Walks every type in every item
-// of every module and reports any remaining Named references (which
-// indicate a bug in the type checker).
-//
-// DEPRECATED (B3 Phase 2a): This function and its 13 helpers are dead code.
-// reconcile() does not call validate_no_unresolved -- the env-error gate in
-// typecheck_module (Pass A) makes unresolved nodes structurally impossible
-// downstream. Retained for B3 Phase 2b deletion.
-// =========================================================================
-
-fn validate_no_unresolved(graph: TypedGraph) -> List<Diagnostic> {
-  // Collect all defined type names across the graph (for cycle-breaker detection).
-  // Merge all module binding maps into a single Map for O(1) containment checks.
-  let defined_names = fold(graph.modules, init: empty_map(), f: (acc, tm) =>
-    map_merge(acc, tm.type_env.bindings)
-  )
-  flat_map(graph.modules, tm =>
-    // Check raw items (tm.module.items)
-    let item_diags = flat_map(tm.module.items, item =>
-      collect_unresolved_in_item(item: item, module_name: tm.module.name, defined_names: defined_names)
-    )
-    // Also check typed items (tm.items) -- these contain resolved_type on
-    // Expr bodies and the resolved return_type on Node.
-    let typed_item_diags = flat_map(tm.items, titem =>
-      collect_unresolved_in_typed_item(item: titem, module_name: tm.module.name, defined_names: defined_names)
-    )
-    concat(item_diags, typed_item_diags)
-  )
-}
-
-fn collect_unresolved_in_item(item: Node, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  let param_diags = flat_map(item.params, p =>
-    collect_unresolved_in_node(n: p.type_expr, module_name: module_name, defined_names: defined_names)
-  )
-  let ret_diags = if item.return_type == none { [] }
-    else { collect_unresolved_in_node(n: item.return_type.value, module_name: module_name, defined_names: defined_names) }
-  let use_diags = flat_map(item.uses, u =>
-    collect_unresolved_in_node(n: u.resource, module_name: module_name, defined_names: defined_names)
-  )
-  let body_diags = if item.body == none { [] }
-    else { collect_unresolved_in_expr(expr: item.body.value, module_name: module_name, defined_names: defined_names) }
-  let anno_diags = if item.type_annotation == none { [] }
-    else { collect_unresolved_in_node(n: item.type_annotation.value, module_name: module_name, defined_names: defined_names) }
-  let transport_diags = if item.transport == none { [] }
-    else { collect_unresolved_in_transport_binding(transport: item.transport.value, module_name: module_name, defined_names: defined_names) }
-  // Walk children for unresolved types (operations/capabilities as child Nodes)
-  let child_diags = flat_map(item.children, child =>
-    collect_unresolved_in_item(item: child, module_name: module_name, defined_names: defined_names)
-  )
-  let config_diags = if item.config == none { [] }
-    else { collect_unresolved_in_service_config(config: item.config.value, module_name: module_name, defined_names: defined_names) }
-  let prop_diags = flat_map(item.properties, property =>
-    collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names)
-  )
-  concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
-}
-
-fn collect_unresolved_in_node(n: Node, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  if n.connective != none {
-    match n.connective.value {
-      Conj =>
-        if n.name == "Refined" {
-          match n.children |> first {
-            Some { value: base } => collect_unresolved_in_node(n: base, module_name: module_name, defined_names: defined_names)
-            None => []
-          }
-        } else {
-          flat_map(n.children, child =>
-            if child.return_type == none { [] }
-            else { collect_unresolved_in_node(n: child.return_type.value, module_name: module_name, defined_names: defined_names) }
-          )
-        }
-      Disj =>
-        if n.name == "Optional" {
-          match n.children |> first {
-            Some { value: inner } => collect_unresolved_in_node(n: inner, module_name: module_name, defined_names: defined_names)
-            None => []
-          }
-        } else {
-          flat_map(n.children, variant_child =>
-            flat_map(variant_child.children, field_child =>
-              if field_child.return_type == none { [] }
-              else { collect_unresolved_in_node(n: field_child.return_type.value, module_name: module_name, defined_names: defined_names) }
-            )
-          )
-        }
-    }
-  } else if n.name == "Map" && n.children |> count == 2 {
-    let key_diags = match n.children |> first {
-      Some { value: k } => collect_unresolved_in_node(n: k, module_name: module_name, defined_names: defined_names)
-      None => []
-    }
-    let val_diags = match skip(n.children, 1) |> first {
-      Some { value: v } => collect_unresolved_in_node(n: v, module_name: module_name, defined_names: defined_names)
-      None => []
-    }
-    concat(key_diags, val_diags)
-  } else if n.children |> count == 1 {
-    match n.children |> first {
-      Some { value: el } => collect_unresolved_in_node(n: el, module_name: module_name, defined_names: defined_names)
-      None => []
-    }
-  } else if n.children |> count == 0 {
-    if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float" || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes" || n.name == "None" || n.name == "" {
-      []
-    } else if map_contains_key(defined_names, n.name) {
-      []
-    } else {
-      [Diagnostic {
-        severity: Error,
-        message: concat("unresolved type '", n.name, "' survived typecheck (internal error)"),
-        span: n.span,
-        module_name: module_name
-      }]
-    }
-  } else { [] }
-}
-
-fn collect_unresolved_in_field_init(field_init: FieldInit, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  collect_unresolved_in_expr(expr: field_init.value, module_name: module_name, defined_names: defined_names)
-}
-
-fn collect_unresolved_in_named_arg(arg: NamedArg, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  collect_unresolved_in_expr(expr: arg.value, module_name: module_name, defined_names: defined_names)
-}
-
-fn collect_unresolved_in_string_part(part: StringPart, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match part {
-    Text { value: _ } => []
-    Interpolation { expr: expr } =>
-      collect_unresolved_in_expr(expr: expr, module_name: module_name, defined_names: defined_names)
-  }
-}
-
-fn collect_unresolved_in_auth_config(config: AuthConfig, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  collect_unresolved_in_expr(expr: config.token_expr, module_name: module_name, defined_names: defined_names)
-}
-
-fn collect_unresolved_in_service_config(config: ServiceConfig, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  let endpoint_diags = collect_unresolved_in_expr(expr: config.endpoint, module_name: module_name, defined_names: defined_names)
-  let auth_diags = if config.auth == none {
-    []
-  } else {
-    collect_unresolved_in_expr(expr: config.auth.value, module_name: module_name, defined_names: defined_names)
-  }
-  let rate_diags = if config.rate_limit == none {
-    []
-  } else {
-    collect_unresolved_in_expr(expr: config.rate_limit.value, module_name: module_name, defined_names: defined_names)
-  }
-  let retry_diags = if config.retry == none {
-    []
-  } else {
-    collect_unresolved_in_expr(expr: config.retry.value, module_name: module_name, defined_names: defined_names)
-  }
-  concat(endpoint_diags, auth_diags, rate_diags, retry_diags)
-}
-
-fn collect_unresolved_in_transport_binding(transport: TransportBinding, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match transport {
-    RestBinding { base_url: base_url, auth: auth, headers: headers } =>
-      let base_diags = collect_unresolved_in_expr(expr: base_url, module_name: module_name, defined_names: defined_names)
-      let auth_diags = if auth == none {
-        []
-      } else {
-        collect_unresolved_in_auth_config(config: auth.value, module_name: module_name, defined_names: defined_names)
-      }
-      let header_diags = flat_map(headers, header =>
-        collect_unresolved_in_expr(expr: header.value, module_name: module_name, defined_names: defined_names)
-      )
-      concat(base_diags, auth_diags, header_diags)
-    ShellBinding { argv: argv, env: env_defs } =>
-      let argv_diags = flat_map(argv, arg =>
-        collect_unresolved_in_expr(expr: arg, module_name: module_name, defined_names: defined_names)
-      )
-      let env_diags = flat_map(env_defs, env_def =>
-        collect_unresolved_in_expr(expr: env_def.value, module_name: module_name, defined_names: defined_names)
-      )
-      concat(argv_diags, env_diags)
-    FileBinding { base_path: base_path } =>
-      collect_unresolved_in_expr(expr: base_path, module_name: module_name, defined_names: defined_names)
-    LocalBinding => []
-  }
-}
-
-fn collect_unresolved_in_expr(expr: Expr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  match expr {
-    Literal { value: _, span: _ } => []
-    Var { name: _, span: _ } => []
-    FieldAccess { base: base, field: _, span: _ } =>
-      collect_unresolved_in_expr(expr: base, module_name: module_name, defined_names: defined_names)
-    Call { func: _, args: args, span: _ } =>
-      flat_map(args, arg =>
-        collect_unresolved_in_named_arg(arg: arg, module_name: module_name, defined_names: defined_names)
-      )
-    MethodCall { receiver: receiver, method: _, args: args, span: _ } =>
-      let recv_diags = collect_unresolved_in_expr(expr: receiver, module_name: module_name, defined_names: defined_names)
-      let arg_diags = flat_map(args, arg =>
-        collect_unresolved_in_named_arg(arg: arg, module_name: module_name, defined_names: defined_names)
-      )
-      concat(recv_diags, arg_diags)
-    Match { scrutinee: scrutinee, arms: arms, span: _ } =>
-      let scrutinee_diags = collect_unresolved_in_expr(expr: scrutinee, module_name: module_name, defined_names: defined_names)
-      let arm_diags = flat_map(arms, arm =>
-        let guard_diags = if arm.guard == none {
-          []
-        } else {
-          collect_unresolved_in_expr(expr: arm.guard.value, module_name: module_name, defined_names: defined_names)
-        }
-        let body_diags = collect_unresolved_in_expr(expr: arm.body, module_name: module_name, defined_names: defined_names)
-        concat(guard_diags, body_diags)
-      )
-      concat(scrutinee_diags, arm_diags)
-    If { condition: condition, then_branch: then_branch, else_branch: else_branch, span: _ } =>
-      let cond_diags = collect_unresolved_in_expr(expr: condition, module_name: module_name, defined_names: defined_names)
-      let then_diags = collect_unresolved_in_expr(expr: then_branch, module_name: module_name, defined_names: defined_names)
-      let else_diags = if else_branch == none {
-        []
-      } else {
-        collect_unresolved_in_expr(expr: else_branch.value, module_name: module_name, defined_names: defined_names)
-      }
-      concat(cond_diags, then_diags, else_diags)
-    Let { name: _, value: value, body: body, span: _ } =>
-      let value_diags = collect_unresolved_in_expr(expr: value, module_name: module_name, defined_names: defined_names)
-      let body_diags = if body == none {
-        []
-      } else {
-        collect_unresolved_in_expr(expr: body.value, module_name: module_name, defined_names: defined_names)
-      }
-      concat(value_diags, body_diags)
-    RecordLit { type_name: _, fields: fields, span: _ } =>
-      flat_map(fields, field_init =>
-        collect_unresolved_in_field_init(field_init: field_init, module_name: module_name, defined_names: defined_names)
-      )
-    ListLit { elements: elements, span: _ } =>
-      flat_map(elements, element =>
-        collect_unresolved_in_expr(expr: element, module_name: module_name, defined_names: defined_names)
-      )
-    BinOp { op: _, left: left, right: right, span: _ } =>
-      concat(
-        collect_unresolved_in_expr(expr: left, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_expr(expr: right, module_name: module_name, defined_names: defined_names)
-      )
-    UnaryOp { op: _, operand: operand, span: _ } =>
-      collect_unresolved_in_expr(expr: operand, module_name: module_name, defined_names: defined_names)
-    Lambda { params: _, body: body, span: _ } =>
-      collect_unresolved_in_expr(expr: body, module_name: module_name, defined_names: defined_names)
-    StringInterp { parts: parts, span: _ } =>
-      flat_map(parts, part =>
-        collect_unresolved_in_string_part(part: part, module_name: module_name, defined_names: defined_names)
-      )
-    Block { stmts: stmts, span: _ } =>
-      flat_map(stmts, stmt =>
-        collect_unresolved_in_expr(expr: stmt, module_name: module_name, defined_names: defined_names)
-      )
-    Cast { expr: inner, target: target, span: _ } =>
-      concat(
-        collect_unresolved_in_expr(expr: inner, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_node(n: target, module_name: module_name, defined_names: defined_names)
-      )
-    ForEach { variable: _, collection: collection, body: body, span: _ } =>
-      concat(
-        collect_unresolved_in_expr(expr: collection, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_expr(expr: body, module_name: module_name, defined_names: defined_names)
-      )
-    Index { base: base, index: index, span: _ } =>
-      concat(
-        collect_unresolved_in_expr(expr: base, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_expr(expr: index, module_name: module_name, defined_names: defined_names)
-      )
-    Slice { base: base, start: start, end: end, span: _ } =>
-      concat(
-        collect_unresolved_in_expr(expr: base, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_expr(expr: start, module_name: module_name, defined_names: defined_names),
-        collect_unresolved_in_expr(expr: end, module_name: module_name, defined_names: defined_names)
-      )
-    Return { value: v, span: _ } =>
-      collect_unresolved_in_expr(expr: v, module_name: module_name, defined_names: defined_names)
-  }
-}
-
-// =========================================================================
-// Validation: check Nodes for unresolved types
-//
-// Walks the typed AST (Node list) and checks that return types and
-// inferred resolved_type fields on Exprs contain no unresolved Named.
-// =========================================================================
-
-fn collect_unresolved_in_typed_item(item: Node, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  let param_diags = flat_map(item.params, p =>
-    collect_unresolved_in_node(n: p.type_expr, module_name: module_name, defined_names: defined_names)
-  )
-  let ret_diags = if item.return_type == none { [] }
-    else { collect_unresolved_in_node(n: item.return_type.value, module_name: module_name, defined_names: defined_names) }
-  let use_diags = flat_map(item.uses, u =>
-    collect_unresolved_in_node(n: u.resource, module_name: module_name, defined_names: defined_names)
-  )
-  let body_diags = if item.body == none { [] }
-    else { collect_unresolved_in_typed_expr(expr: item.body.value, module_name: module_name, defined_names: defined_names) }
-  let anno_diags = if item.type_annotation == none { [] }
-    else { collect_unresolved_in_node(n: item.type_annotation.value, module_name: module_name, defined_names: defined_names) }
-  let transport_diags = if item.transport == none { [] }
-    else { collect_unresolved_in_transport_binding(transport: item.transport.value, module_name: module_name, defined_names: defined_names) }
-  let child_diags = flat_map(item.children, child =>
-    collect_unresolved_in_typed_item(item: child, module_name: module_name, defined_names: defined_names)
-  )
-  let config_diags = if item.config == none { [] }
-    else { collect_unresolved_in_service_config(config: item.config.value, module_name: module_name, defined_names: defined_names) }
-  let prop_diags = flat_map(item.properties, property =>
-    collect_unresolved_in_field_init(field_init: property, module_name: module_name, defined_names: defined_names)
-  )
-  concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, child_diags, config_diags, prop_diags)
-}
-
-fn collect_unresolved_in_typed_expr(expr: Expr, module_name: String, defined_names: Map<String, TypeBinding>) -> List<Diagnostic> {
-  if expr.resolved_type == none { [] }
-  else { collect_unresolved_in_node(n: expr.resolved_type.value, module_name: module_name, defined_names: defined_names) }
-}
-
-// =========================================================================
-// Reconcile namespaces and validate consistency in one call.
-//
-// Returns the reconciled graph with any validation diagnostics appended.
+// Returns the reconciled graph with graph-level item metadata attached.
+// Historical note: collect_unresolved_in_expr and the rest of the
+// validate_no_unresolved walk family were removed once the env-error gate
+// made unresolved expression-tree validation redundant downstream.
 // =========================================================================
 
 fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
   let typed = typecheck(graph: graph)
-  ResolvedGraph { modules: typed.modules, diagnostics: typed.diagnostics }
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
 }
