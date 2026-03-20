@@ -56,13 +56,15 @@ pub fn concat<T: Concat>(a: T, b: T) -> T {
 /// Extract the character at a given position as a single-char string.
 /// O(1) for ASCII (all .dag source); falls back to O(pos) for multi-byte UTF-8.
 pub fn char_at(s: impl AsRef<str>, pos: i64) -> String {
-    let bytes = s.as_ref().as_bytes();
+    let s = s.as_ref();
+    let bytes = s.as_bytes();
     let pos = pos as usize;
     if pos < bytes.len() && bytes[pos] < 128 {
         // ASCII fast path: O(1) indexed access
         return String::from(bytes[pos] as char);
     }
-    panic!("non-ASCII byte at position {pos}; Unicode source not yet supported")
+    // Unicode fallback: O(pos) walk
+    s.chars().nth(pos).map(|ch| ch.to_string()).unwrap_or_default()
 }
 
 /// Return the number of characters in a string.
@@ -72,7 +74,7 @@ pub fn string_length(s: impl AsRef<str>) -> i64 {
     if s.is_ascii() {
         s.len() as i64
     } else {
-        panic!("non-ASCII content in string_length; Unicode source not yet supported")
+        s.chars().count() as i64
     }
 }
 
@@ -86,7 +88,8 @@ pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {
         // ASCII fast path: byte slicing is O(end - start)
         return s[start..end.min(s.len())].to_string();
     }
-    panic!("non-ASCII byte in substring at position {start}; Unicode source not yet supported")
+    // Unicode fallback: O(end) char walk
+    s.chars().skip(start).take(end.saturating_sub(start)).collect()
 }
 
 /// Check whether a string contains a given substring.

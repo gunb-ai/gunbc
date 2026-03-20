@@ -520,6 +520,37 @@ mod tests {
         }
     }
 
+    fn map_field<'a>(
+        value: &'a gunbc_ir::Value,
+        field: &str,
+    ) -> &'a gunbc_ir::Value {
+        match value {
+            gunbc_ir::Value::Map(map) => map
+                .get(field)
+                .unwrap_or_else(|| panic!("missing field '{field}' in {value:?}")),
+            other => panic!("expected map for field '{field}', got: {other:?}"),
+        }
+    }
+
+    fn expect_variant<'a>(
+        value: &'a gunbc_ir::Value,
+        variant: &str,
+    ) -> &'a std::collections::BTreeMap<String, gunbc_ir::Value> {
+        match value {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("_variant") {
+                    Some(gunbc_ir::Value::Str(tag)) if tag == variant => map,
+                    other => panic!(
+                        "expected variant '{variant}', got tag {:?} in {:?}",
+                        other,
+                        value
+                    ),
+                }
+            }
+            other => panic!("expected variant '{variant}', got: {other:?}"),
+        }
+    }
+
     #[test]
     fn phase0_fn_lambda_syntax() {
         let source = r#"module test
@@ -1811,6 +1842,53 @@ fn foo(item: String) -> String {
         );
     }
 
+    #[test]
+    fn phase4_pipe_arrow_precedence_matches_v1() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let module = v2_tokenize_and_parse(
+            &output,
+            "module test\nfn demo(a: String, b: String) -> String { a ?? b |> trim }\n",
+        );
+
+        let items = match map_field(&module, "items") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected module items list, got: {other:?}"),
+        };
+        let func = items.first().expect("expected parsed function item");
+        let body = map_field(func, "body");
+        let body = map_field(body, "value");
+        let binop = expect_variant(body, "BinOp");
+        match binop.get("op") {
+            Some(gunbc_ir::Value::Enum { variant, .. }) if variant == "NullCoalesce" => {}
+            other => panic!("expected null-coalesce binop, got: {other:?}"),
+        }
+
+        let left = binop.get("left").expect("binop should have left child");
+        let left_var = expect_variant(left, "Var");
+        assert_eq!(
+            left_var.get("name"),
+            Some(&gunbc_ir::Value::Str("a".to_string())),
+            "left side should remain 'a'"
+        );
+
+        let right = binop.get("right").expect("binop should have right child");
+        let method_call = expect_variant(right, "MethodCall");
+        let receiver = method_call
+            .get("receiver")
+            .expect("method call should have receiver");
+        let receiver_var = expect_variant(receiver, "Var");
+        assert_eq!(
+            receiver_var.get("name"),
+            Some(&gunbc_ir::Value::Str("b".to_string())),
+            "pipe rhs should bind to 'b' before null coalesce"
+        );
+        assert_eq!(
+            method_call.get("method"),
+            Some(&gunbc_ir::Value::Str("trim".to_string())),
+            "pipe rhs should parse as the method call target"
+        );
+    }
+
     /// Test that emit_rust.dag handles NullCoalesce emission.
     #[test]
     fn phase4_emit_handles_null_coalesce() {
@@ -2856,6 +2934,45 @@ fn example(items: List<String>) -> Int {
                 && main_rs.contains("v2_rt::substring(&s.clone(), 0, 1)"),
             "string index/slice should emit string runtime helpers:\n{}",
             main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_runtime_shim_keeps_unicode_safe_string_helpers() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[("main.dag", "module main\nfn id(s: String) -> String { s }\n")],
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let runtime_rs = emitted_file_content(files, "src/v2_rt.rs");
+        assert!(
+            runtime_rs.contains("s.chars().nth(pos)")
+                && runtime_rs.contains("s.chars().count() as i64")
+                && runtime_rs.contains("s.chars().skip(start).take(end.saturating_sub(start)).collect()"),
+            "runtime shim should keep Unicode-safe string helpers:\n{}",
+            runtime_rs
+        );
+        assert!(
+            runtime_rs.contains("for ch in s.chars().skip(start)")
+                && runtime_rs.contains("let mut escaped = false;"),
+            "scanner helpers should fall back to char-based traversal for non-ASCII input:\n{}",
+            runtime_rs
+        );
+    }
+
+    #[test]
+    fn phase6_unannotated_function_reports_signature_resolution_error() {
+        let source = read_v2_file("src/v2/04_reconcile.dag");
+        assert!(
+            source.contains("let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)")
+                && source.contains("topo_resolve_loop(")
+                && source.contains("let parent_resolved = fold(map_values(declared_sigs), init: empty_map()"),
+            "resolve_func_sigs should build a local call graph and drive the SCC-aware resolver:\n{}",
+            source
         );
     }
 

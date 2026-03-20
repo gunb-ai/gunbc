@@ -276,23 +276,36 @@ fn emit_v2_rt_module() -> TextFile {
     "}\n\n",
     "pub fn concat<T: V2Concat>(a: T, b: T) -> T { a.v2_concat(b) }\n\n")
   let string_ops = concat(
-    "pub fn char_at(s: impl AsRef<str>, pos: i64) -> String {\n",
-    "    let bytes = s.as_ref().as_bytes();\n",
-    "    let pos = pos as usize;\n",
-    "    String::from(bytes[pos] as char)\n",
+    "pub fn char_at(s: String, pos: i64) -> String {\n",
+    "    let pos = pos.max(0) as usize;\n",
+    "    if s.is_ascii() {\n",
+    "        let bytes = s.as_bytes();\n",
+    "        if pos >= bytes.len() { return String::new(); }\n",
+    "        return String::from(bytes[pos] as char);\n",
+    "    }\n",
+    "    s.chars().nth(pos).map(|ch| ch.to_string()).unwrap_or_default()\n",
     "}\n\n",
-    "pub fn string_length(s: impl AsRef<str>) -> i64 { s.as_ref().len() as i64 }\n\n",
-    "pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {\n",
-    "    let s = s.as_ref();\n",
-    "    s[start.max(0) as usize..end.max(0) as usize].to_string()\n",
+    "pub fn string_length(s: String) -> i64 {\n",
+    "    if s.is_ascii() { s.len() as i64 } else { s.chars().count() as i64 }\n",
     "}\n\n",
-    "pub fn string_contains(s: impl AsRef<str>, sub: impl AsRef<str>) -> bool {\n",
-    "    s.as_ref().contains(sub.as_ref())\n",
+    "pub fn substring(s: String, start: i64, end: i64) -> String {\n",
+    "    let start = start.max(0) as usize;\n",
+    "    let end = end.max(0) as usize;\n",
+    "    if end <= start { return String::new(); }\n",
+    "    if s.is_ascii() {\n",
+    "        let len = s.len();\n",
+    "        if start >= len { return String::new(); }\n",
+    "        return s[start..end.min(len)].to_string();\n",
+    "    }\n",
+    "    s.chars().skip(start).take(end.saturating_sub(start)).collect()\n",
     "}\n\n",
-    "pub fn str_eq(a: impl AsRef<str>, b: impl AsRef<str>) -> bool { a.as_ref() == b.as_ref() }\n\n")
+    "pub fn string_contains(s: String, sub: String) -> bool {\n",
+    "    s.contains(&*sub)\n",
+    "}\n\n",
+    "pub fn str_eq(a: String, b: String) -> bool { a == b }\n\n")
   let collection_ops = concat(
-    "pub fn lookup<V: Clone>(table: &BTreeMap<String, V>, key: impl AsRef<str>) -> Option<V> {\n",
-    "    table.get(key.as_ref()).cloned()\n",
+    "pub fn lookup<V: Clone>(table: &BTreeMap<String, V>, key: String) -> Option<V> {\n",
+    "    table.get(&key).cloned()\n",
     "}\n\n",
     "pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> BTreeMap<String, V> {\n",
     "    let mut map = BTreeMap::new();\n",
@@ -306,52 +319,108 @@ fn emit_v2_rt_module() -> TextFile {
     "pub fn map_merge<V>(mut base: BTreeMap<String, V>, overlay: BTreeMap<String, V>) -> BTreeMap<String, V> {\n",
     "    base.extend(overlay); base\n",
     "}\n\n",
-    "pub fn map_get<V: Clone>(m: &BTreeMap<String, V>, key: impl AsRef<str>) -> Option<V> {\n",
-    "    m.get(key.as_ref()).cloned()\n",
+    "pub fn map_get<V: Clone>(m: &BTreeMap<String, V>, key: String) -> Option<V> {\n",
+    "    m.get(&key).cloned()\n",
     "}\n\n",
     "pub fn map_keys<V>(m: &BTreeMap<String, V>) -> Vec<String> { m.keys().cloned().collect() }\n\n",
     "pub fn map_values<V: Clone>(m: &BTreeMap<String, V>) -> Vec<V> { m.values().cloned().collect() }\n\n",
     "pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }\n\n",
     "pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> { list.push(item); list }\n\n",
-    "pub fn parse_int(s: impl AsRef<str>) -> Option<i64> { s.as_ref().parse::<i64>().ok() }\n\n",
-    "pub fn map_contains_key<V>(m: &BTreeMap<String, V>, key: impl AsRef<str>) -> bool {\n",
-    "    m.contains_key(key.as_ref())\n",
+    "pub fn parse_int(s: String) -> Option<i64> { s.parse::<i64>().ok() }\n\n",
+    "pub fn map_contains_key<V>(m: &BTreeMap<String, V>, key: String) -> bool {\n",
+    "    m.contains_key(&key)\n",
     "}\n\n",
-    "pub fn map_has<V>(m: &BTreeMap<String, V>, key: impl AsRef<str>) -> bool {\n",
-    "    m.contains_key(key.as_ref())\n",
+    "pub fn map_has<V>(m: &BTreeMap<String, V>, key: String) -> bool {\n",
+    "    m.contains_key(&key)\n",
     "}\n\n")
   let scanner_ops = concat(
-    "pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(&str) -> bool) -> i64 {\n",
-    "    let bytes = s.as_ref().as_bytes();\n",
-    "    let mut pos = start.max(0) as usize;\n",
-    "    while pos < bytes.len() && pred(&String::from(bytes[pos] as char)) { pos += 1; }\n",
-    "    pos as i64\n",
-    "}\n\n",
-    "pub fn skip_horizontal_ws(s: impl AsRef<str>, start: i64) -> i64 {\n",
-    "    let bytes = s.as_ref().as_bytes();\n",
-    "    let mut pos = start.max(0) as usize;\n",
-    "    while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\\t') { pos += 1; }\n",
-    "    pos as i64\n",
-    "}\n\n",
-    "pub fn scan_to_eol(s: impl AsRef<str>, start: i64) -> i64 {\n",
-    "    let bytes = s.as_ref().as_bytes();\n",
+    "pub fn scan_while(s: String, start: i64, pred: impl Fn(String) -> bool) -> i64 {\n",
+    "    let s = s.as_str();\n",
     "    let start = start.max(0) as usize;\n",
-    "    for i in start..bytes.len() { if bytes[i] == b'\\n' { return i as i64; } }\n",
-    "    bytes.len() as i64\n",
-    "}\n\n",
-    "pub fn scan_string_end(s: impl AsRef<str>, start: i64) -> i64 {\n",
-    "    let bytes = s.as_ref().as_bytes();\n",
-    "    let mut pos = start.max(0) as usize;\n",
-    "    while pos < bytes.len() {\n",
-    "        if bytes[pos] == b'\\\\' { pos += 2; }\n",
-    "        else if bytes[pos] == b'\\\"' { return (pos + 1) as i64; }\n",
-    "        else { pos += 1; }\n",
+    "    if s.is_ascii() {\n",
+    "        let bytes = s.as_bytes();\n",
+    "        let mut pos = start.min(bytes.len());\n",
+    "        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) { pos += 1; }\n",
+    "        return pos as i64;\n",
     "    }\n",
-    "    bytes.len() as i64\n",
+    "    let char_len = s.chars().count();\n",
+    "    let start = start.min(char_len);\n",
+    "    let mut pos = start;\n",
+    "    for ch in s.chars().skip(start) {\n",
+    "        if pred(ch.to_string()) { pos += 1; } else { break; }\n",
+    "    }\n",
+    "    pos as i64\n",
+    "}\n\n",
+    "pub fn skip_horizontal_ws(s: String, start: i64) -> i64 {\n",
+    "    let s = s.as_str();\n",
+    "    let start = start.max(0) as usize;\n",
+    "    if s.is_ascii() {\n",
+    "        let bytes = s.as_bytes();\n",
+    "        let mut pos = start.min(bytes.len());\n",
+    "        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\\t') { pos += 1; }\n",
+    "        return pos as i64;\n",
+    "    }\n",
+    "    let char_len = s.chars().count();\n",
+    "    let start = start.min(char_len);\n",
+    "    let mut pos = start;\n",
+    "    for ch in s.chars().skip(start) {\n",
+    "        if ch == ' ' || ch == '\\t' { pos += 1; } else { break; }\n",
+    "    }\n",
+    "    pos as i64\n",
+    "}\n\n",
+    "pub fn scan_to_eol(s: String, start: i64) -> i64 {\n",
+    "    let s = s.as_str();\n",
+    "    let start = start.max(0) as usize;\n",
+    "    if s.is_ascii() {\n",
+    "        let bytes = s.as_bytes();\n",
+    "        let start = start.min(bytes.len());\n",
+    "        for i in start..bytes.len() { if bytes[i] == b'\\n' { return i as i64; } }\n",
+    "        return bytes.len() as i64;\n",
+    "    }\n",
+    "    let char_len = s.chars().count();\n",
+    "    let start = start.min(char_len);\n",
+    "    let mut pos = start;\n",
+    "    for ch in s.chars().skip(start) {\n",
+    "        if ch == '\\n' { return pos as i64; }\n",
+    "        pos += 1;\n",
+    "    }\n",
+    "    pos as i64\n",
+    "}\n\n",
+    "pub fn scan_string_end(s: String, start: i64) -> i64 {\n",
+    "    let s = s.as_str();\n",
+    "    let start = start.max(0) as usize;\n",
+    "    if s.is_ascii() {\n",
+    "        let bytes = s.as_bytes();\n",
+    "        let mut pos = start.min(bytes.len());\n",
+    "        while pos < bytes.len() {\n",
+    "            if bytes[pos] == b'\\\\' { pos += 2; }\n",
+    "            else if bytes[pos] == b'\\\"' { return (pos + 1) as i64; }\n",
+    "            else { pos += 1; }\n",
+    "        }\n",
+    "        return bytes.len() as i64;\n",
+    "    }\n",
+    "    let char_len = s.chars().count();\n",
+    "    let start = start.min(char_len);\n",
+    "    let mut pos = start;\n",
+    "    let mut escaped = false;\n",
+    "    for ch in s.chars().skip(start) {\n",
+    "        if escaped {\n",
+    "            escaped = false;\n",
+    "            pos += 1;\n",
+    "        } else if ch == '\\\\' {\n",
+    "            escaped = true;\n",
+    "            pos += 1;\n",
+    "        } else if ch == '\\\"' {\n",
+    "            return (pos + 1) as i64;\n",
+    "        } else {\n",
+    "            pos += 1;\n",
+    "        }\n",
+    "    }\n",
+    "    pos as i64\n",
     "}\n\n")
   let unicode_ops = concat(
-    "pub fn code_point(c: impl AsRef<str>) -> i64 {\n",
-    "    c.as_ref().chars().next().map(|ch| ch as i64).unwrap_or(0)\n",
+    "pub fn code_point(c: String) -> i64 {\n",
+    "    c.chars().next().map(|ch| ch as i64).unwrap_or(0)\n",
     "}\n\n",
     "pub fn from_code_point(cp: i64) -> String {\n",
     "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n",
@@ -709,10 +778,25 @@ fn find_shared_enum_fields(children: List<Node>) -> List<String> {
 }
 
 fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  let shared = find_shared_enum_fields(children: children)
+  let all_shared = find_shared_enum_fields(children: children)
+  if all_shared |> count == 0 { return "" }
+  // Only keep fields whose type is consistent across all fielded variants.
+  let fielded = children |> filter(child => child.children |> count > 0)
+  let shared = all_shared |> filter(fname =>
+    let types = fielded |> map(variant =>
+      match variant.children |> filter(f => f.name == fname) |> first {
+        Some { value: f } => emit_rust_node_type(n: f.return_type.value, rc_types: rc_types)
+        None => ""
+      }
+    )
+    let first_type = match types |> first {
+      Some { value: t } => t
+      None => ""
+    }
+    types |> all(t => t == first_type)
+  )
   if shared |> count == 0 { return "" }
   // For each shared field, generate an accessor method.
-  let fielded = children |> filter(child => child.children |> count > 0)
   let accessor_fns = shared |> map(fname =>
     // Get the field's type from the first variant that has it.
     let field_node = match fielded |> first {
@@ -1116,7 +1200,13 @@ fn emit_variant_pattern(name: String, field_bindings: List<FieldBinding>, vtoe: 
   } else if field_bindings |> count == 0 {
     qualified
   } else {
-    let binding_strs = field_bindings |> map(fb =>
+    // Filter out wildcard bindings — the trailing `..` already handles unbound fields.
+    // This prevents duplicate field bindings when the reconciler produces both
+    // a wildcard and an explicit binding for the same field (e.g. func: _, func: func).
+    let effective_bindings = field_bindings |> filter(fb =>
+      match fb.binding { Wildcard => false  _ => true }
+    )
+    let binding_strs = effective_bindings |> map(fb =>
       let pat_str = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
       concat(rust_ident(name: fb.field_name), ": ", pat_str)
     )
@@ -1194,7 +1284,10 @@ fn emit_variant_pattern_rc_aware(name: String, field_bindings: List<FieldBinding
   } else if field_bindings |> count == 0 {
     qualified
   } else {
-    let binding_strs = field_bindings |> map(fb =>
+    let effective_bindings = field_bindings |> filter(fb =>
+      match fb.binding { Wildcard => false  _ => true }
+    )
+    let binding_strs = effective_bindings |> map(fb =>
       let is_rc_nested = match fb.binding {
         VariantPattern { name: inner_name, field_bindings: _ } =>
           match map_get(vtoe, inner_name) {
@@ -1258,6 +1351,7 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
     }
   } else { inferred_node }
   if n.name == "__EmitTypeCacheMiss" { type_name }
+  else if n.name |> string_contains(substring: "<error:") { type_name }
   else if n.connective != none {
     match n.connective.value {
       Conj => if n.name == "" { type_name } else { Some { value: n.name } }
@@ -1370,24 +1464,36 @@ fn emit_typed_expr(texpr: Expr, registry: Map<String, ItemInfo>, scope: InferSco
         FieldAccess { field: bf } => known_opt_fields |> any(kf => kf == bf)
         _ => false
       }
+      // Types that actually have a "value" field — .value on these is struct access, not Optional unwrap.
+      let types_with_value_field = ["LitStr", "LitInt", "LitFloat", "LitBool",
+        "StrBegin", "StrMid", "StrEnd", "Text", "Literal", "Let", "Return",
+        "NamedArg", "FieldInit", "LitPattern", "HeaderDef", "EnvDef"]
       let is_opt_value = if f == "value" {
         match b.resolved_type {
           Some { value: rt } =>
             if rt.name == "Optional" { true }
-            else { base_is_known_opt }
+            else if types_with_value_field |> any(t => t == rt.name) { false }
+            else { true }
           None => base_is_known_opt
         }
       } else { false }
       // Check if the base type is an enum (shared accessor = method call syntax).
-      // When resolved_type is None (lambda params), check if field is an enum-only accessor.
+      // Fall through to is_enum_only_accessor when resolved_type is a wrapper.
+      // Struct types that have fields matching accessor names (e.g., "resolved_type").
+      // These must NOT use method call syntax.
+      let known_struct_with_accessor_field = ["AccessCheckResultNode",
+        "SliceCheckResultNode", "IndexCheckResultNode"]
       let is_enum_field = match b.resolved_type {
-        Some { value: rt } => is_enum_type_name(type_name: rt.name, vtoe: vtoe)
+        Some { value: rt } =>
+          if is_enum_type_name(type_name: rt.name, vtoe: vtoe) { true }
+          else if known_struct_with_accessor_field |> any(s => s == rt.name) { false }
+          else { is_enum_only_accessor(field: f) }
         None => is_enum_only_accessor(field: f)
       }
       // Use emit_typed_expr_base for the base -- no .clone() needed because
       // field access auto-borrows through Rc and owned values.
       if is_opt_value {
-        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".unwrap()")
+        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".clone().unwrap()")
       } else if f == "first" {
         concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".0")
       } else if f == "second" {
@@ -1665,6 +1771,7 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
   } else {
     let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
     let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+    let elem_type_str = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
     if method == "count" {
       concat("(", recv_str, ".len() as i64)")
     } else if method == "join" {
@@ -1676,7 +1783,11 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
     } else if method == "first" {
       concat(recv_str, ".first().cloned()")
     } else if method == "enumerate" {
-      concat(recv_str, ".iter().enumerate().map(|(i, v)| (i as i64, v.clone())).collect::<Vec<_>>()")
+      if elem_type_str != "_" {
+        concat(recv_str, ".iter().enumerate().map(|(i, v): (usize, &", elem_type_str, ")| (i as i64, v.clone())).collect::<Vec<_>>()")
+      } else {
+        concat(recv_str, ".iter().enumerate().map(|(i, v)| (i as i64, v.clone())).collect::<Vec<_>>()")
+      }
     } else if method == "chars" {
       concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
     } else if method == "string_contains" {
@@ -1686,58 +1797,100 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
       let all_arg_strs = concat([recv_str], arg_strs)
       emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
     } else if method == "map" {
-      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
-      let first_arg_expr = match args |> first {
-        Some { value: a } => a.value
-        None => receiver
+      match args |> first {
+        Some { value: a } =>
+          match a.value {
+            Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+              let p = match ps |> first {
+                Some { value: name } => rust_ident(name: name)
+                None => "__x"
+              }
+              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              concat("{ let mut __result = Vec::new(); for __elem in ", recv_str, ".iter().cloned() {", type_ann, " __result.push(", body_str, "); } __result }")
+            _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+          }
+        None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
       }
-      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      concat(recv_str, ".iter().cloned().map(", lambda_str, ").collect::<Vec<_>>()")
     } else if method == "filter" {
-      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
-      let first_arg_expr = match args |> first {
-        Some { value: a } => a.value
-        None => receiver
+      match args |> first {
+        Some { value: a } =>
+          match a.value {
+            Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+              let p = match ps |> first {
+                Some { value: name } => rust_ident(name: name)
+                None => "__x"
+              }
+              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              concat("{ let mut __result = Vec::new(); for __elem in ", recv_str, ".iter().cloned() {", type_ann, " if ", body_str, " { __result.push(", p, "); } } __result }")
+            _ => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+          }
+        None => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
       }
-      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      concat(recv_str, ".iter().cloned().filter(", lambda_str, ").collect::<Vec<_>>()")
     } else if method == "any" {
-      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
-      let first_arg_expr = match args |> first {
-        Some { value: a } => a.value
-        None => receiver
+      match args |> first {
+        Some { value: a } =>
+          match a.value {
+            Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+              let p = match ps |> first {
+                Some { value: name } => rust_ident(name: name)
+                None => "__x"
+              }
+              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              concat("{ let mut __found = false; for __elem in ", recv_str, ".iter().cloned() {", type_ann, " if ", body_str, " { __found = true; break; } } __found }")
+            _ => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
+          }
+        None => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
       }
-      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      concat(recv_str, ".iter().cloned().any(", lambda_str, ")")
     } else if method == "all" {
-      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
-      let first_arg_expr = match args |> first {
-        Some { value: a } => a.value
-        None => receiver
+      match args |> first {
+        Some { value: a } =>
+          match a.value {
+            Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+              let p = match ps |> first {
+                Some { value: name } => rust_ident(name: name)
+                None => "__x"
+              }
+              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              concat("{ let mut __all = true; for __elem in ", recv_str, ".iter().cloned() {", type_ann, " if !(", body_str, ") { __all = false; break; } } __all }")
+            _ => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
+          }
+        None => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
       }
-      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      concat(recv_str, ".iter().cloned().all(", lambda_str, ")")
     } else if method == "flat_map" {
-      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
-      let first_arg_expr = match args |> first {
-        Some { value: a } => a.value
-        None => receiver
+      match args |> first {
+        Some { value: a } =>
+          match a.value {
+            Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+              let p = match ps |> first {
+                Some { value: name } => rust_ident(name: name)
+                None => "__x"
+              }
+              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              concat("{ let mut __result = Vec::new(); for __elem in ", recv_str, ".iter().cloned() {", type_ann, " __result.extend(", body_str, "); } __result }")
+            _ => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+          }
+        None => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
       }
-      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      concat(recv_str, ".iter().cloned().flat_map(", lambda_str, ").collect::<Vec<_>>()")
     } else if method == "skip" {
       concat(recv_str, ".iter().skip(", first_arg_str, " as usize).cloned().collect::<Vec<_>>()")
     } else if method == "fold" {
-      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
       let init_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      let fold_fn_expr = match args |> skip(1) |> first {
-        Some { value: a } => a.value
-        None => receiver
+      let fold_fn = match args |> skip(1) |> first {
+        Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+        None => "todo!(\"missing fold function\")"
       }
-      let fold_fn = emit_typed_fold_lambda(lambda_expr: fold_fn_expr, acc_type_str: "_", elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
     } else if method == "sort_by" {
-      concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
+      if elem_type_str != "_" {
+        concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| __key_fn(a.clone()).partial_cmp(&__key_fn(b.clone())).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
+      } else {
+        concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
+      }
     } else if method == "append" {
       concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
     } else {
@@ -1927,6 +2080,8 @@ fn is_optional_struct_field(struct_name: String, field_name: String) -> Bool {
     field_name == "span" || field_name == "module_name"
   } else if struct_name == "Field" {
     field_name == "return_type"
+  } else if struct_name == "Node" {
+    field_name == "return_type"
   } else { false }
 }
 
@@ -1949,8 +2104,6 @@ fn is_already_optional(texpr: Expr) -> Bool {
 
 fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, rc_types: rc_types)
-  // RC1: Variant names are imported via `use Enum::*;`, so no qualification needed.
-  // Just use the struct/variant name directly.
   let qualified_name = match struct_name {
     Some { value: sn } => Some { value: sn }
     None => none
@@ -1959,16 +2112,26 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_t
     None =>
       "compile_error!(\"cannot resolve anonymous record type in emitter\")"
     Some { value: tn } =>
+      // RC1: Qualify variant names with parent enum to avoid name collisions
+      // (e.g. LitFloat exists in both TokenKind and LiteralValue).
+      let display_tn = if tn == "Some" || tn == "None" { tn }
+        else {
+          match map_get(vtoe, tn) {
+            Some { value: parent_enum } => concat(parent_enum, "::", tn)
+            None => tn
+          }
+        }
       if tn == "Some" && fields |> count == 1 {
         match fields |> first {
           Some { value: f } =>
             let inner = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
             concat("Some(", inner, ")")
-          None => concat(tn, " {}")
+          None => concat(display_tn, " {}")
         }
       } else if fields |> count == 0 {
-        let raw = concat(tn, " {}")
-        let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name)
+        let raw = concat(display_tn, " {}")
+        let parent_enum = match map_get(vtoe, tn) { Some { value: en } => en  None => "" }
+        let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: parent_enum)
         if needs_rc {
           concat("Rc::new(", raw, ")")
         } else { raw }
@@ -1976,7 +2139,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_t
         let field_strs = fields |> map(f =>
           let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
           // Auto-wrap in Some() for Optional struct fields where the value is not already Optional.
-          // Also check emitted string for "None" (LitNull emits as "None" but can't pattern-match through Rc<LiteralValue>).
           let needs_wrap = is_optional_struct_field(struct_name: tn, field_name: f.name)
             && is_already_optional(texpr: f.value) == false
             && val_str != "None"
@@ -1986,9 +2148,17 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_t
           } else { val_str }
           concat("    ", rust_ident(name: f.name), ": ", wrapped, ",")
         )
-        let fields_str = field_strs |> join(separator: "\n")
-        let raw = concat(tn, " {\n", fields_str, "\n}")
-        let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name)
+        // Add missing Optional fields for known enum variants.
+        // Expr variants all have resolved_type: Option<Rc<Node>> which DAG source may omit.
+        let parent_enum = match map_get(vtoe, tn) { Some { value: en } => en  None => "" }
+        let has_resolved_type = fields |> any(f => f.name == "resolved_type")
+        let extra_fields = if parent_enum == "Expr" && has_resolved_type == false {
+          ["    resolved_type: None,"]
+        } else { [] }
+        let all_field_strs = concat(field_strs, extra_fields)
+        let fields_str = all_field_strs |> join(separator: "\n")
+        let raw = concat(display_tn, " {\n", fields_str, "\n}")
+        let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: parent_enum)
         if needs_rc {
           concat("Rc::new(", raw, ")")
         } else { raw }
