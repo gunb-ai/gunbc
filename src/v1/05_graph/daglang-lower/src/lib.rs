@@ -4699,8 +4699,14 @@ fn build_scoped_service_endpoint_registries(
                 let Some(endpoint) = global_registry.get(&module_scoped).cloned() else {
                     continue;
                 };
-                registry.register(format!("{}.{}", service.name, operation.name), endpoint.clone());
-                registry.register(format!("{service_tail}.{}", operation.name), endpoint.clone());
+                registry.register(
+                    format!("{}.{}", service.name, operation.name),
+                    endpoint.clone(),
+                );
+                registry.register(
+                    format!("{service_tail}.{}", operation.name),
+                    endpoint.clone(),
+                );
                 registry.register(module_scoped, endpoint);
             }
         }
@@ -4784,11 +4790,9 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         };
         let mut body_transports = Vec::new();
         for call_path in &site.body_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 body_transports.push(transport);
             }
         }
@@ -4844,21 +4848,17 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         };
         let mut then_transports = Vec::new();
         for call_path in &site.then_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 then_transports.push(transport);
             }
         }
         let mut else_transports = Vec::new();
         for call_path in &site.else_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 else_transports.push(transport);
             }
         }
@@ -4927,11 +4927,9 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         };
         let mut match_transports = Vec::new();
         for call_path in &site.all_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 match_transports.push(transport);
             }
         }
@@ -6553,7 +6551,7 @@ fn derive_operation_spec(
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation, data_registry)
+            Ok(derive_rest_spec(service, operation, data_registry)?
                 .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
         }
         ServiceTransportClass::ShellLocal => {
@@ -6760,11 +6758,11 @@ fn derive_rest_spec(
     service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
-) -> Option<RestOperationSpec> {
+) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
         Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
-        _ => return None,
+        _ => return Ok(None),
     };
 
     let headers = match &operation.transport {
@@ -6787,9 +6785,13 @@ fn derive_rest_spec(
         .collect::<HashSet<_>>();
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
-        Some(TransportBinding::Rest { body: Some(b), .. }) => {
-            body_template_entries_from_expr(b, &operation_input_names, data_registry)
-        }
+        Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(
+            service,
+            operation,
+            b,
+            &operation_input_names,
+            data_registry,
+        )?,
         _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
@@ -6838,7 +6840,7 @@ fn derive_rest_spec(
         })
     };
 
-    Some(RestOperationSpec {
+    Ok(Some(RestOperationSpec {
         endpoint,
         method,
         path_template,
@@ -6852,7 +6854,7 @@ fn derive_rest_spec(
         response_mapping,
         output_shape,
         mock_responses,
-    })
+    }))
 }
 
 /// Convert a list of argv expressions from `shell(["cmd", "{param}"])` to ArgvSegments.
@@ -7001,59 +7003,119 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
 
 /// Recursively convert an expression (Record or Map) to body template entries.
 fn body_template_entries_from_expr(
+    service: &ServiceDef,
+    operation: &OperationDef,
     expr: &Expr,
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
-) -> Option<Vec<BodyEntry>> {
+) -> Result<Option<Vec<BodyEntry>>, LowerError> {
     match expr {
-        Expr::Record(_, fields) => {
+        Expr::Record(record_name, fields) => {
             let mut entries = Vec::new();
             for (key, value) in fields {
-                if let Some(entry) =
-                    body_template_entry(key, value, operation_input_names, data_registry)
-                {
+                if let Some(entry) = body_template_entry(
+                    service,
+                    operation,
+                    record_name.as_deref(),
+                    key,
+                    value,
+                    operation_input_names,
+                    data_registry,
+                )? {
                     entries.push(entry);
                 }
             }
-            Some(entries)
+            Ok(Some(entries))
         }
         Expr::Map(map_entries) => {
             let mut entries = Vec::new();
             for (key_expr, value) in map_entries {
                 if let Expr::Literal(Literal::String(key)) = key_expr {
-                    if let Some(entry) =
-                        body_template_entry(key, value, operation_input_names, data_registry)
-                    {
+                    if let Some(entry) = body_template_entry(
+                        service,
+                        operation,
+                        None,
+                        key,
+                        value,
+                        operation_input_names,
+                        data_registry,
+                    )? {
                         entries.push(entry);
                     }
                 }
             }
-            Some(entries)
+            Ok(Some(entries))
         }
-        _ => None,
+        _ => Ok(None),
     }
 }
 
 /// Convert a single key-value pair to a BodyEntry.
 fn body_template_entry(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    parent_record_name: Option<&str>,
     key: &str,
     value: &Expr,
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
-) -> Option<BodyEntry> {
+) -> Result<Option<BodyEntry>, LowerError> {
     match value {
-        Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => {
-            Some(BodyEntry::InputRef(key.to_string(), field_name.clone()))
+        Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => Ok(Some(
+            BodyEntry::InputRef(key.to_string(), field_name.clone()),
+        )),
+        Expr::Literal(Literal::String(s)) => {
+            Ok(Some(BodyEntry::Literal(key.to_string(), s.clone())))
         }
-        Expr::Literal(Literal::String(s)) => Some(BodyEntry::Literal(key.to_string(), s.clone())),
-        Expr::Ident(name) => resolve_const_string(name, data_registry)
-            .map(|value| BodyEntry::Literal(key.to_string(), value)),
+        Expr::Ident(name) => {
+            if let Some(value) = resolve_const_string(name, data_registry) {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            if let Some(value) = sts_typed_body_literal(
+                service,
+                operation,
+                parent_record_name,
+                key,
+                value,
+                data_registry,
+            )? {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            Ok(None)
+        }
         Expr::Record(_, _) | Expr::Map(_) => {
-            let inner =
-                body_template_entries_from_expr(value, operation_input_names, data_registry)?;
-            Some(BodyEntry::Nested(key.to_string(), inner))
+            if let Some(value) = sts_typed_body_literal(
+                service,
+                operation,
+                parent_record_name,
+                key,
+                value,
+                data_registry,
+            )? {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            let inner = body_template_entries_from_expr(
+                service,
+                operation,
+                value,
+                operation_input_names,
+                data_registry,
+            )?;
+            Ok(inner.map(|inner| BodyEntry::Nested(key.to_string(), inner)))
         }
-        _ => None,
+        _ => {
+            if let Some(value) = sts_typed_body_literal(
+                service,
+                operation,
+                parent_record_name,
+                key,
+                value,
+                data_registry,
+            )? {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            Ok(None)
+        }
     }
 }
 
@@ -7063,6 +7125,138 @@ fn resolve_const_string(name: &str, data_registry: &DataRegistry<'_>) -> Option<
         Expr::Literal(Literal::String(value)) => Some(value.clone()),
         Expr::Ident(next) if next != name => resolve_const_string(next, data_registry),
         _ => None,
+    }
+}
+
+fn sts_typed_body_literal(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    parent_record_name: Option<&str>,
+    key: &str,
+    value: &Expr,
+    data_registry: &DataRegistry<'_>,
+) -> Result<Option<String>, LowerError> {
+    if parent_record_name != Some("StsTokenExchange") {
+        return Ok(None);
+    }
+
+    match key {
+        "grant_type" => match value {
+            Expr::Record(Some(name), fields) if name == "TokenExchange" && fields.is_empty() => {
+                Ok(Some(resolve_required_sts_wire_value(
+                    service,
+                    operation,
+                    key,
+                    "token_exchange_grant_type_wire",
+                    data_registry,
+                )?))
+            }
+            _ => Err(invalid_sts_body_value(
+                service,
+                operation,
+                key,
+                "`TokenExchange {}` or `token_exchange_grant_type_wire`",
+                value,
+            )),
+        },
+        "subject_token_type" => match value {
+            Expr::Ident(name) if name == "Jwt" => Ok(Some(resolve_required_sts_wire_value(
+                service,
+                operation,
+                key,
+                "jwt_subject_token_type_wire",
+                data_registry,
+            )?)),
+            _ => Err(invalid_sts_body_value(
+                service,
+                operation,
+                key,
+                "`Jwt` or `jwt_subject_token_type_wire`",
+                value,
+            )),
+        },
+        "requested_token_type" => match value {
+            Expr::Ident(name) if name == "RequestAccessToken" => {
+                Ok(Some(resolve_required_sts_wire_value(
+                    service,
+                    operation,
+                    key,
+                    "access_token_requested_token_type_wire",
+                    data_registry,
+                )?))
+            }
+            _ => Err(invalid_sts_body_value(
+                service,
+                operation,
+                key,
+                "`RequestAccessToken` or `access_token_requested_token_type_wire`",
+                value,
+            )),
+        },
+        _ => Ok(None),
+    }
+}
+
+fn resolve_required_sts_wire_value(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+    const_name: &str,
+    data_registry: &DataRegistry<'_>,
+) -> Result<String, LowerError> {
+    resolve_const_string(const_name, data_registry).ok_or_else(|| LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "STS request field `{field_name}` requires string data `{const_name}` to define its OAuth wire value"
+        ),
+    })
+}
+
+fn invalid_sts_body_value(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+    expected: &str,
+    value: &Expr,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "STS request field `{field_name}` must be {expected}; found {}",
+            describe_transport_body_expr(value)
+        ),
+    }
+}
+
+fn describe_transport_body_expr(value: &Expr) -> String {
+    match value {
+        Expr::Ident(name) => format!("`{name}`"),
+        Expr::Literal(Literal::String(value)) => format!("string literal `{value}`"),
+        Expr::Literal(Literal::Int(value)) => format!("integer literal `{value}`"),
+        Expr::Literal(Literal::Float(value)) => format!("float literal `{value}`"),
+        Expr::Literal(Literal::Bool(value)) => format!("boolean literal `{value}`"),
+        Expr::Literal(Literal::None) => "`None`".to_string(),
+        Expr::Record(Some(name), fields) if fields.is_empty() => format!("`{name} {{}}`"),
+        Expr::Record(Some(name), _) => format!("`{name} {{ ... }}`"),
+        Expr::Record(None, _) => "`{ ... }`".to_string(),
+        Expr::Map(_) => "`Map(...)`".to_string(),
+        Expr::List(_) => "`[...]`".to_string(),
+        Expr::StringInterp(_) => "string interpolation".to_string(),
+        Expr::Call(name, _) => format!("call `{name}(...)`"),
+        Expr::FieldAccess(_, field) => format!("field access `.{field}`"),
+        Expr::ServiceCall(path, _) => format!("service call `{}`", path.join(".")),
+        Expr::BinOp(_, _, _) => "binary expression".to_string(),
+        Expr::UnaryOp(_, _) => "unary expression".to_string(),
+        Expr::Match(_, _) => "match expression".to_string(),
+        Expr::If(_, _, _) => "if expression".to_string(),
+        Expr::For(_, _, _, _) => "for expression".to_string(),
+        Expr::Lambda(_, _) => "lambda expression".to_string(),
+        Expr::Return(_) => "return expression".to_string(),
+        Expr::Guarded(_, _) => "guarded expression".to_string(),
+        Expr::After(_, _) => "after expression".to_string(),
+        Expr::Block(_) => "block expression".to_string(),
     }
 }
 
@@ -8896,8 +9090,7 @@ fn wire_auth_credential_edges(
             collect_service_calls_from_stmts(stmts, &mut service_calls);
 
             for call in &service_calls {
-                let Some(endpoint) =
-                    resolve_service_endpoint(&call.path, scoped_service_registry)
+                let Some(endpoint) = resolve_service_endpoint(&call.path, scoped_service_registry)
                 else {
                     continue;
                 };
