@@ -2680,12 +2680,8 @@ import vendor.beta { BetaOnly }
         shared_service.outputs.get("body"),
         Some(&ValueType::Named("String".to_string()))
     );
-    assert!(registry
-        .by_key
-        .contains_key("vendor.alpha.SharedService.read"));
-    assert!(!registry
-        .by_key
-        .contains_key("vendor.beta.SharedService.read"));
+    assert!(registry.by_key.contains_key("vendor.alpha.SharedService.read"));
+    assert!(!registry.by_key.contains_key("vendor.beta.SharedService.read"));
 }
 
 #[test]

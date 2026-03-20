@@ -303,10 +303,7 @@ mod tests {
             ValueCategory::Shared
         );
         assert_eq!(classify_value(&Value::Int(42)), ValueCategory::Shared);
-        assert_eq!(
-            classify_value(&Value::List(Arc::new(vec![]))),
-            ValueCategory::Shared
-        );
+        assert_eq!(classify_value(&Value::List(Arc::new(vec![]))), ValueCategory::Shared);
         assert_eq!(
             classify_value(&Value::Json(serde_json::json!({}))),
             ValueCategory::Shared

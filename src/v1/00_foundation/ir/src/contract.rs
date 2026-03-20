@@ -28,11 +28,11 @@
 use crate::dag::Dag;
 use crate::node::NodeBody;
 use crate::type_op::{Predicate, TypeOp, WrapperKind};
+use std::sync::Arc;
 use crate::type_registry::TypeRegistry;
 use crate::types::Cardinality;
 use crate::value::Value;
 use std::fmt;
-use std::sync::Arc;
 
 /// L1: Extract cardinality from a type DAG.
 ///
@@ -219,9 +219,7 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
         let value = match count {
             0 => match &wrapper {
                 Some(WrapperKind::Optional) => Value::Unit,
-                Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                    Value::List(Arc::new(vec![]))
-                }
+                Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(Arc::new(vec![])),
                 Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(Arc::new(vec![])),
                 Some(WrapperKind::Map) => Value::Map(std::collections::BTreeMap::new()),
                 None => Value::Unit, // Scalar empty = absent
@@ -243,9 +241,7 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
             n => {
                 let witnesses = n_witnesses(&scalar_witness, n);
                 match &wrapper {
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        Value::List(Arc::new(witnesses))
-                    }
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(Arc::new(witnesses)),
                     Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
                     Some(WrapperKind::Map) => {
                         let mut map = std::collections::BTreeMap::new();
@@ -656,12 +652,8 @@ fn layer_witnesses(layer: &TypeLayer, depth_limit: usize, current_depth: usize) 
             0 => {
                 let empty = match &layer.wrapper {
                     Some(WrapperKind::Optional) => Value::Unit,
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        Value::List(Arc::new(vec![]))
-                    }
-                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                        Value::Set(Arc::new(vec![]))
-                    }
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(Arc::new(vec![])),
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(Arc::new(vec![])),
                     Some(WrapperKind::Map) => Value::Map(std::collections::BTreeMap::new()),
                     None => Value::Unit,
                 };
@@ -2259,9 +2251,7 @@ mod tests {
         use crate::value::ValueKind;
 
         let contract = ShapeContract::new(ValueKind::List, "after scalar-to-list coercion");
-        assert!(contract
-            .check(&Value::List(Arc::new(vec![Value::Int(1)])))
-            .is_ok());
+        assert!(contract.check(&Value::List(Arc::new(vec![Value::Int(1)]))).is_ok());
     }
 
     #[test]
@@ -2284,9 +2274,7 @@ mod tests {
             .with_cardinality(Cardinality::ONE_OR_MORE);
 
         // Non-empty list passes
-        assert!(contract
-            .check(&Value::List(Arc::new(vec![Value::Int(1)])))
-            .is_ok());
+        assert!(contract.check(&Value::List(Arc::new(vec![Value::Int(1)]))).is_ok());
 
         // Empty list fails cardinality
         let result = contract.check(&Value::List(Arc::new(vec![])));
