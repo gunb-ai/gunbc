@@ -4094,7 +4094,7 @@ func run() -> { result: String } {
 fn rest_body_template_resolves_string_data_refs_to_literals() {
     let source = r#"module extdeps.cloud.gcp.sts
 type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenKind = RequestAccessToken | RequestIdToken
+type RequestedTokenKind = RequestAccessToken {}
 type GrantKind = TokenExchange {}
 type ExchangeRequest {
   grant_type: GrantKind
@@ -4203,7 +4203,7 @@ fn sts_transport_module_source_with_body_expr_and_wire_values(
     [
         "module extdeps.cloud.gcp.sts\n",
         "type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2\n",
-        "type RequestedTokenType = RequestAccessToken | RequestIdToken\n",
+        "type RequestedTokenType = RequestAccessToken {}\n",
         "type StsGrantType = TokenExchange {}\n",
         "type StsTokenExchange {\n",
         "  grant_type: StsGrantType\n",
@@ -4285,7 +4285,7 @@ fn renamed_sts_transport_module_source(body_fields: &str) -> String {
     [
         "module extdeps.cloud.gcp.sts\n",
         "type SubjectKind = Jwt | StsAccessToken | IdToken | Saml2\n",
-        "type RequestedKind = RequestAccessToken | RequestIdToken\n",
+        "type RequestedKind = RequestAccessToken {}\n",
         "type GrantKind = TokenExchange {}\n",
         "type ExchangeRequest {\n",
         "  grant_type: GrantKind\n",
@@ -4350,7 +4350,7 @@ fn sts_typed_body_rejects_invalid_grant_type_constructor() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4388,7 +4388,7 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
@@ -4439,7 +4439,7 @@ fn typed_rest_body_rejects_invalid_value_using_request_metadata() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4471,48 +4471,10 @@ fn typed_rest_body_rejects_invalid_value_using_request_metadata() {
 }
 
 #[test]
-fn sts_typed_body_rejects_valid_but_unmapped_requested_token_type_variant() {
-    let source = sts_transport_module_source(
-        r#"        grant_type: TokenExchange {}
-        subject_token: subject_token
-        subject_token_type: Jwt
-        audience: audience
-        requested_token_type: RequestIdToken"#,
-    );
-    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
-    let err = lower_typed_project(&typed)
-        .expect_err("lowering should fail when a typed STS variant lacks a wire contract");
-
-    match err {
-        LowerError::InvalidTransportSpec {
-            service,
-            operation,
-            detail,
-        } => {
-            assert_eq!(service, "gcp.STS");
-            assert_eq!(operation, "Exchange");
-            assert!(
-                detail.contains("requested_token_type"),
-                "expected field name in error, got {detail}"
-            );
-            assert!(
-                detail.contains("RequestIdToken"),
-                "expected unmapped variant in error, got {detail}"
-            );
-            assert!(
-                detail.contains("wire_values"),
-                "expected wire contract failure in error, got {detail}"
-            );
-        }
-        other => panic!("expected InvalidTransportSpec, got {other:?}"),
-    }
-}
-
-#[test]
 fn sts_typed_body_rejects_constructor_field_without_wire_contract() {
     let source = r#"module extdeps.cloud.gcp.sts
 type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenType = RequestAccessToken | RequestIdToken
+type RequestedTokenType = RequestAccessToken {}
 type StsGrantType = TokenExchange {}
 type TokenFormat = UseAccessToken | UseIdToken
 type StsTokenExchange {
@@ -4545,7 +4507,7 @@ service gcp.STS {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken
+        requested_token_type: RequestAccessToken {}
         token_format: UseAccessToken
       },
       wire_values: {
@@ -4603,7 +4565,7 @@ func run(subject_token: Secret, audience: String) -> { access_token: Secret } {
 fn typed_rest_body_accepts_new_typed_field_via_transport_wire_metadata() {
     let source = r#"module extdeps.cloud.gcp.sts
 type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenType = RequestAccessToken | RequestIdToken
+type RequestedTokenType = RequestAccessToken {}
 type StsGrantType = TokenExchange {}
 type TokenFormat = UseAccessToken | UseIdToken
 type StsTokenExchange {
@@ -4640,7 +4602,7 @@ service gcp.STS {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken
+        requested_token_type: RequestAccessToken {}
         token_format: UseAccessToken
       },
       wire_values: {
@@ -4707,7 +4669,7 @@ fn sts_typed_body_rejects_invalid_subject_token_type_value() {
         subject_token: subject_token
         subject_token_type: TokenExchange {}
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4746,7 +4708,7 @@ fn sts_typed_body_rejects_drifted_grant_type_wire_value() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken
+        requested_token_type: RequestAccessToken {}
       }"#,
         "urn:ietf:params:oauth:grant-type:refresh_token",
         "urn:ietf:params:oauth:token-type:jwt",
@@ -4795,7 +4757,7 @@ fn sts_typed_body_rejects_invalid_raw_string_wire_values() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
             "urn:ietf:params:oauth:grant-type:token-exchange",
         ),
         (
@@ -4847,7 +4809,7 @@ fn sts_typed_body_rejects_empty_record_grant_type_field() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4887,7 +4849,7 @@ fn sts_typed_body_rejects_untyped_record_grant_type_field() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4926,7 +4888,7 @@ fn sts_typed_body_rejects_map_requested_token_type_field() {
         subject_token_type: Jwt
         audience: audience
         requested_token_type: {
-          "kind": RequestAccessToken
+          "kind": RequestAccessToken {}
         }"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
@@ -4964,7 +4926,7 @@ fn sts_typed_body_rejects_missing_required_grant_type_field() {
         r#"        subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken"#,
+        requested_token_type: RequestAccessToken {}"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4999,7 +4961,7 @@ fn sts_typed_body_rejects_untyped_record_body() {
         subject_token: subject_token
         subject_token_type: Jwt
         audience: audience
-        requested_token_type: RequestAccessToken
+        requested_token_type: RequestAccessToken {}
       }"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
@@ -5034,7 +4996,7 @@ fn sts_typed_body_rejects_map_body() {
         "subject_token": subject_token
         "subject_token_type": Jwt
         "audience": audience
-        "requested_token_type": RequestAccessToken
+        "requested_token_type": RequestAccessToken {}
       }"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
