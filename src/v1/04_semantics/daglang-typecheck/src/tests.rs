@@ -1,5 +1,6 @@
 use super::*;
 use daglang_contract::FileId;
+use daglang_resolve::unused_imports::build_module_export_index;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -2782,6 +2783,87 @@ func run(path: String) -> { body: String } {
         )),
         "{errors:?}"
     );
+}
+
+#[test]
+fn removed_export_disappears_from_export_index_and_breaks_downstream_service_use() {
+    let before_graph = module_graph_from_sources(&[
+        (
+            "vendor/surface.dag",
+            r#"module vendor.surface
+service StableSurface {
+  operation ping() -> { ok: Bool }
+}
+service LegacySurface {
+  operation fetch() -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.surface { LegacySurface }
+
+func run() -> { body: String } {
+  let response = LegacySurface.fetch()
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let before_export_index = build_module_export_index(&before_graph.modules);
+    let before_exports = before_export_index
+        .get("vendor.surface")
+        .expect("provider module should exist in export index");
+    assert!(before_exports.contains("LegacySurface"));
+    typecheck_module_graph_with_options(
+        &before_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("existing selective import should typecheck before the export is removed");
+
+    let after_graph = module_graph_from_sources(&[
+        (
+            "vendor/surface.dag",
+            r#"module vendor.surface
+service StableSurface {
+  operation ping() -> { ok: Bool }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.surface { LegacySurface }
+
+func run() -> { body: String } {
+  let response = LegacySurface.fetch()
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let after_export_index = build_module_export_index(&after_graph.modules);
+    let after_exports = after_export_index
+        .get("vendor.surface")
+        .expect("provider module should exist in export index");
+    assert!(
+        !after_exports.contains("LegacySurface"),
+        "removed bindings must disappear from build_module_export_index"
+    );
+
+    let errors = typecheck_module_graph_with_options(
+        &after_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("removed selective import binding should fail when used downstream");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnresolvedServiceCall {
+            caller,
+            service_call,
+        } if caller == "run" && service_call == "LegacySurface.fetch"
+    )));
 }
 
 #[test]
