@@ -19,7 +19,7 @@ import v2.std.core {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
-import v2.compiler.reconcile { reconcile, TypedGraph }
+import v2.compiler.reconcile { reconcile, ResolvedGraph }
 import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
@@ -42,7 +42,7 @@ type SourceFile {
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
-      Some { value: diag } => concat(acc, [diag])
+      Some { value: diag } => list_push(acc, diag)
       None => acc
     }
   )
@@ -64,7 +64,8 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
   } else {
     let modules = map(parse_results, p => p.module.value)
     let graph = resolve_modules(modules: modules)
-    CompileResult { files: [], diagnostics: concat(parse_diagnostics, graph.diagnostics) }
+    let graph_diags = graph.diagnostics
+    CompileResult { files: [], diagnostics: concat(parse_diagnostics, graph_diags) }
   }
 }
 
@@ -95,27 +96,29 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     let modules = map(parse_results, p => p.module.value)
     // Stage 3: Resolve imports and build module graph
     let graph = resolve_modules(modules: modules)
+    let graph_diags = graph.diagnostics
 
     // Gate: if resolve produced errors, do not proceed to typecheck.
-    let resolve_errors = graph.diagnostics |> filter(d => d.severity == Error)
+    let resolve_errors = graph_diags |> filter(d => d.severity == Error)
     if resolve_errors |> count > 0 {
       return CompileResult {
         files: [],
-        diagnostics: concat(parse_diagnostics, graph.diagnostics)
+        diagnostics: concat(parse_diagnostics, graph_diags)
       }
     }
 
-    // Stage 4: Type-check and validate the module graph.
-    // typecheck_and_validate runs typecheck + validate_no_unresolved,
-    // ensuring no unresolved Named references survive past this point.
+    // Stage 4: Reconcile namespaces and infer the module graph.
+    // The env-error gate inside reconcile() prevents unresolved type
+    // references from reaching emit.
     let typed = reconcile(graph: graph)
+    let typed_diags = typed.diagnostics
 
     // Gate: if typecheck produced errors, do not proceed to emit.
-    let typecheck_errors = typed.diagnostics |> filter(d => d.severity == Error)
+    let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
     if typecheck_errors |> count > 0 {
       return CompileResult {
         files: [],
-        diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics)
+        diagnostics: concat(parse_diagnostics, graph_diags, typed_diags)
       }
     }
 
@@ -127,10 +130,12 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
       Python => emit_python(typed: typed)
       Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: SourceSpan { start: 0, end: 0 }, module_name: "" }] }
     }
+    let emit_files = emit_result.files
+    let emit_diags = emit_result.diagnostics
 
     CompileResult {
-      files: emit_result.files,
-      diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics, emit_result.diagnostics)
+      files: emit_files,
+      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags)
     }
   }
 }
@@ -151,16 +156,18 @@ fn compile_sources_lenient(sources: List<SourceFile>, target: RenderTarget) -> C
   } else {
     let modules = map(parse_results, p => p.module.value)
     let graph = resolve_modules(modules: modules)
+    let graph_diags = graph.diagnostics
 
-    let resolve_errors = graph.diagnostics |> filter(d => d.severity == Error)
+    let resolve_errors = graph_diags |> filter(d => d.severity == Error)
     if resolve_errors |> count > 0 {
       return CompileResult {
         files: [],
-        diagnostics: concat(parse_diagnostics, graph.diagnostics)
+        diagnostics: concat(parse_diagnostics, graph_diags)
       }
     }
 
     let typed = reconcile(graph: graph)
+    let typed_diags = typed.diagnostics
 
     // No typecheck gate -- emit despite errors for bootstrap.
     let emit_result = match target {
@@ -168,10 +175,12 @@ fn compile_sources_lenient(sources: List<SourceFile>, target: RenderTarget) -> C
       Python => emit_python(typed: typed)
       Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: SourceSpan { start: 0, end: 0 }, module_name: "" }] }
     }
+    let emit_files = emit_result.files
+    let emit_diags = emit_result.diagnostics
 
     CompileResult {
-      files: emit_result.files,
-      diagnostics: concat(parse_diagnostics, graph.diagnostics, typed.diagnostics, emit_result.diagnostics)
+      files: emit_files,
+      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags)
     }
   }
 }

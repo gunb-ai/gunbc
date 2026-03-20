@@ -50,18 +50,21 @@ embedded interpreter. The v1 Rust pipeline serves as bootstrap host.
 
 ```
 src/v2/
-  00_core.dag        Type system: Token, AST, Expr, TypeExpr
+  00_core.dag        Core compiler types: Token, AST, Expr, Node
   01_tokenize.dag    String -> List<Token>
   02_parse.dag       List<Token> -> Module (AST)
   03_resolve.dag     List<Module> -> ModuleGraph
-  04_typecheck.dag   ModuleGraph -> TypedGraph (types resolved to TypeExpr)
-  05_emit.dag        TypedGraph -> List<TextFile>
+  04_reconcile.dag   ModuleGraph -> ResolvedGraph
+  05_emit.dag        Shared emit helpers
+  05_emit_rust.dag   ResolvedGraph -> Rust files
+  05_emit_python.dag ResolvedGraph -> Python files
+  05_emit_go.dag     ResolvedGraph -> Go files
   06_pipeline.dag    Orchestrator: discover -> compile -> write
 ```
 
-See `src/v2/DESIGN.md` for target architecture. Current status and gap
-analysis are in `ROADMAP.md`. The sustainability ledger tracking open
-violations is `src/v1/SUSTAINABILITY.md`.
+See `ROADMAP.md` for current status and active design decisions. The
+sustainability ledger tracking open violations is
+`src/v1/SUSTAINABILITY.md`.
 
 The key design change from v1: **types are structural values, not string
 references.** A type like `List<Span>` is stored as
@@ -69,7 +72,7 @@ references.** A type like `List<Span>` is stored as
 not as a `TypeId("List<Span>")` string requiring a registry lookup. No
 registry, no deferred resolution, no stale copies.
 
-See `src/v2/DESIGN.md` for the full design and target type models.
+See `ROADMAP.md` for the current v2 plan and decision record.
 
 ## The Invariants
 

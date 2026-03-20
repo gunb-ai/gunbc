@@ -56,14 +56,15 @@ pub fn concat<T: Concat>(a: T, b: T) -> T {
 /// Extract the character at a given position as a single-char string.
 /// O(1) for ASCII (all .dag source); falls back to O(pos) for multi-byte UTF-8.
 pub fn char_at(s: impl AsRef<str>, pos: i64) -> String {
-    let bytes = s.as_ref().as_bytes();
+    let s = s.as_ref();
+    let bytes = s.as_bytes();
     let pos = pos as usize;
     if pos < bytes.len() && bytes[pos] < 128 {
         // ASCII fast path: O(1) indexed access
         return String::from(bytes[pos] as char);
     }
-    // Non-ASCII fallback
-    s.as_ref().chars().nth(pos).map(|c| c.to_string()).unwrap_or_default()
+    // Unicode fallback: O(pos) walk
+    s.chars().nth(pos).map(|ch| ch.to_string()).unwrap_or_default()
 }
 
 /// Return the number of characters in a string.
@@ -83,11 +84,17 @@ pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {
     let s = s.as_ref();
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
-    if s.is_ascii() && end <= s.len() {
+    if s.is_ascii() {
+        let start = start.min(s.len());
+        let end = end.min(s.len());
+        if start >= end {
+            return String::new();
+        }
         // ASCII fast path: byte slicing is O(end - start)
-        return s[start..end.min(s.len())].to_string();
+        return s[start..end].to_string();
     }
-    s.chars().skip(start).take((end - start).max(0)).collect()
+    // Unicode fallback: O(end) char walk
+    s.chars().skip(start).take(end.saturating_sub(start)).collect()
 }
 
 /// Check whether a string contains a given substring.
@@ -249,3 +256,25 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
     FilesystemReadResult { content }
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::V2_RUNTIME_SOURCE;
+
+    #[test]
+    fn substring_ascii_fast_path_clamps_end() {
+        assert!(
+            V2_RUNTIME_SOURCE.contains("if s.is_ascii() {")
+                && V2_RUNTIME_SOURCE.contains("let start = start.min(s.len());")
+                && V2_RUNTIME_SOURCE.contains("let end = end.min(s.len());")
+                && V2_RUNTIME_SOURCE.contains("if start >= end {")
+                && V2_RUNTIME_SOURCE.contains("return String::new();")
+                && V2_RUNTIME_SOURCE.contains("s[start..end].to_string()"),
+            "runtime shim should clamp ASCII substring bounds and return empty when the clamped range is invalid"
+        );
+        assert!(
+            !V2_RUNTIME_SOURCE.contains("s.is_ascii() && end <= s.len()"),
+            "runtime shim should not gate the ASCII fast path on end <= s.len()"
+        );
+    }
+}

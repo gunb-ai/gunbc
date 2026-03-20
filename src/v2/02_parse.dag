@@ -23,7 +23,7 @@ import v2.std.core {
   Field, Variant, Param, ResourceUse,
   Expr, Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
   RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp, Block, Cast, ForEach,
-  Index, Slice,
+  Index, Slice, Return,
   NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -95,6 +95,9 @@ type FieldResult { field: Field, state: ParserState, err: Diagnostic? }
 type FieldInitResult { field: FieldInit, state: ParserState, err: Diagnostic? }
 type ResUseResult { resource_use: ResourceUse, state: ParserState, err: Diagnostic? }
 type ConfigResult { config: ServiceConfig, state: ParserState, err: Diagnostic? }
+
+// Pratt parser binding power
+type BindingPower { left: Int, right: Int }
 
 // List results
 type ImportsResult { imports: List<Import>, state: ParserState, err: Diagnostic? }
@@ -2660,23 +2663,24 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Expr, min_bp: I
 
 fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
   let k = peek_kind(tokens: tokens, state: state)
+  // Precedence matches v1: ?? < || < && < cmp < add < mul < |> < . < call
   match k {
-    Some { value: PipeArrow }    => Some { value: BindingPower { left: 0, right: 1 } }
-    Some { value: NullCoalesce } => Some { value: BindingPower { left: 1, right: 2 } }
-    Some { value: Or }         => Some { value: BindingPower { left: 2, right: 3 } }
-    Some { value: And }        => Some { value: BindingPower { left: 4, right: 5 } }
-    Some { value: EqEq }     => Some { value: BindingPower { left: 6, right: 7 } }
-    Some { value: Ne }       => Some { value: BindingPower { left: 6, right: 7 } }
-    Some { value: Lt }       => Some { value: BindingPower { left: 6, right: 7 } }
-    Some { value: Gt }       => Some { value: BindingPower { left: 6, right: 7 } }
-    Some { value: Le }       => Some { value: BindingPower { left: 6, right: 7 } }
-    Some { value: Ge }       => Some { value: BindingPower { left: 6, right: 7 } }
-    Some { value: Plus }     => Some { value: BindingPower { left: 8, right: 9 } }
-    Some { value: Minus }    => Some { value: BindingPower { left: 8, right: 9 } }
-    Some { value: Star }     => Some { value: BindingPower { left: 10, right: 11 } }
-    Some { value: Slash }    => Some { value: BindingPower { left: 10, right: 11 } }
-    Some { value: Percent }  => Some { value: BindingPower { left: 10, right: 11 } }
-    Some { value: Dot }      => Some { value: BindingPower { left: 14, right: 15 } }
+    Some { value: NullCoalesce } => Some { value: BindingPower { left: 3, right: 4 } }
+    Some { value: Or }         => Some { value: BindingPower { left: 5, right: 6 } }
+    Some { value: And }        => Some { value: BindingPower { left: 7, right: 8 } }
+    Some { value: EqEq }     => Some { value: BindingPower { left: 9, right: 10 } }
+    Some { value: Ne }       => Some { value: BindingPower { left: 9, right: 10 } }
+    Some { value: Lt }       => Some { value: BindingPower { left: 11, right: 12 } }
+    Some { value: Gt }       => Some { value: BindingPower { left: 11, right: 12 } }
+    Some { value: Le }       => Some { value: BindingPower { left: 11, right: 12 } }
+    Some { value: Ge }       => Some { value: BindingPower { left: 11, right: 12 } }
+    Some { value: Plus }     => Some { value: BindingPower { left: 13, right: 14 } }
+    Some { value: Minus }    => Some { value: BindingPower { left: 13, right: 14 } }
+    Some { value: Star }     => Some { value: BindingPower { left: 15, right: 16 } }
+    Some { value: Slash }    => Some { value: BindingPower { left: 15, right: 16 } }
+    Some { value: Percent }  => Some { value: BindingPower { left: 15, right: 16 } }
+    Some { value: PipeArrow }    => Some { value: BindingPower { left: 17, right: 18 } }
+    Some { value: Dot }      => Some { value: BindingPower { left: 19, right: 20 } }
     _ => none
   }
 }
@@ -3498,7 +3502,7 @@ fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
 
   let r = parse_expr(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return r }
-  ExprResult { expr: r.expr, state: r.state, err: none }
+  ExprResult { expr: Return { value: r.expr, resolved_type: none, span: span }, state: r.state, err: none }
 }
 
 // =========================================================================

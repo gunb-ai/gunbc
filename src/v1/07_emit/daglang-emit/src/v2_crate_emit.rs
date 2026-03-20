@@ -798,6 +798,8 @@ fn emit_module(
         struct_field_ir_types: struct_field_ir_types.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
+        fold_accum_fresh_name: None,
+        fold_accum_is_rc: false,
         enum_accessor_fields: enum_accessor_fields.clone(),
         optional_return_fns: optional_return_fns.clone(),
         anonymous_record_targets: std::collections::HashMap::new(),
@@ -1321,16 +1323,98 @@ mod generated_tests {{
                 // The v2 typechecker's incomplete inference produces false positives.
                 // Self-compile succeeds if files are emitted and Rust compiles them.
 
-                let has_content = result.files.iter().any(|f| !f.content.is_empty());
-                assert!(
-                    has_content,
-                    "self-compile should produce at least one non-empty output file (got {{}} errors, {{}} files)",
-                    error_count, result.files.len()
-                );
+                // Output-shape assertions
+                assert!(result.files.len() >= 9,
+                    "self-compile should produce at least 9 files, got {{}}",
+                    result.files.len());
+
+                // All files must have content
+                assert!(result.files.iter().all(|f| !f.content.is_empty()),
+                    "all self-compiled output files must have non-empty content");
+
+                // Source count floor
+                assert!(source_count >= 13,
+                    "self-compile should process at least 13 sources, got {{}}",
+                    source_count);
+
+                // Diagnostic error ratchet (tracked, not yet tight)
+                const SELF_COMPILE_ERROR_RATCHET: usize = 500;
+                assert!(error_count <= SELF_COMPILE_ERROR_RATCHET,
+                    "self-compile error count regression: {{}} > {{}} ratchet",
+                    error_count, SELF_COMPILE_ERROR_RATCHET);
             }})
             .expect("failed to spawn thread")
             .join();
         result.expect("self-compile-all test panicked");
+    }}
+
+    /// Bootstrap self-compile cargo check: runs the full pipeline, writes
+    /// emitted files to a temp dir, and runs `cargo check` on them.
+    #[test]
+    #[ignore]
+    fn self_compile_cargo_check() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+{self_compile_source_files}                ];
+
+                let result = crate::pipeline::compile_sources_lenient(
+                    std::rc::Rc::new(sources),
+                    crate::v2_core::RenderTarget::Rust,
+                );
+
+                assert!(!result.files.is_empty(), "self-compile produced no files");
+
+                // Write emitted files to a temp directory
+                let tmp_dir = std::env::temp_dir().join("v2-self-compile-check");
+                let _ = std::fs::remove_dir_all(&tmp_dir);
+                std::fs::create_dir_all(tmp_dir.join("src"))
+                    .expect("failed to create temp src dir");
+
+                for file in result.files.iter() {{
+                    let dest = tmp_dir.join(&file.path);
+                    if let Some(parent) = dest.parent() {{
+                        std::fs::create_dir_all(parent).expect("failed to create parent dir");
+                    }}
+                    std::fs::write(&dest, &file.content)
+                        .expect(&format!("failed to write {{}}", file.path));
+                }}
+
+                // Write a minimal Cargo.toml if not emitted
+                let cargo_toml = tmp_dir.join("Cargo.toml");
+                if !cargo_toml.exists() {{
+                    std::fs::write(&cargo_toml,
+                        "[package]\nname = \"v2-self-compile-check\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+                    ).expect("failed to write Cargo.toml");
+                }}
+
+                eprintln!("self-compile-cargo-check: wrote {{}} files to {{}}",
+                    result.files.len(), tmp_dir.display());
+
+                // Run cargo check
+                let output = std::process::Command::new("cargo")
+                    .arg("check")
+                    .current_dir(&tmp_dir)
+                    .output()
+                    .expect("failed to run cargo check");
+
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("cargo check stderr:\n{{}}", stderr);
+
+                if !output.status.success() {{
+                    panic!(
+                        "cargo check failed on self-compiled output (dir: {{}}):\n{{}}",
+                        tmp_dir.display(),
+                        stderr
+                    );
+                }}
+
+                let _ = std::fs::remove_dir_all(&tmp_dir);
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("self-compile-cargo-check test panicked");
     }}
 
     /// Gist resolve: feed gist.dag's transitive source closure through
@@ -1500,6 +1584,311 @@ mod generated_tests {{
             .expect("failed to spawn thread")
             .join();
         result.expect("profile test panicked");
+    }}
+
+    /// Return current process RSS in bytes (macOS via mach_task_basic_info).
+    /// Returns 0 on non-macOS platforms.
+    fn get_rss_bytes() -> u64 {{
+        #[cfg(target_os = "macos")]
+        {{
+            #[allow(non_camel_case_types)]
+            #[repr(C)]
+            struct mach_task_basic_info {{
+                virtual_size: u64,
+                resident_size: u64,
+                resident_size_max: u64,
+                user_time: [u64; 2],
+                system_time: [u64; 2],
+                policy: i32,
+                suspend_count: i32,
+            }}
+            extern "C" {{
+                fn mach_task_self() -> u32;
+                fn task_info(
+                    target_task: u32,
+                    flavor: u32,
+                    task_info_out: *mut mach_task_basic_info,
+                    task_info_count: *mut u32,
+                ) -> i32;
+            }}
+            const MACH_TASK_BASIC_INFO: u32 = 20;
+            const MACH_TASK_BASIC_INFO_COUNT: u32 =
+                (std::mem::size_of::<mach_task_basic_info>() / std::mem::size_of::<u32>()) as u32;
+            let mut info: mach_task_basic_info = unsafe {{ std::mem::zeroed() }};
+            let mut count = MACH_TASK_BASIC_INFO_COUNT;
+            let kr = unsafe {{
+                task_info(mach_task_self(), MACH_TASK_BASIC_INFO, &mut info, &mut count)
+            }};
+            if kr == 0 {{ info.resident_size }} else {{ 0 }}
+        }}
+        #[cfg(not(target_os = "macos"))]
+        {{ 0 }}
+    }}
+
+    /// Format a byte count as a human-readable string (KB / MB / GB).
+    fn format_bytes(bytes: u64) -> String {{
+        if bytes >= 1_073_741_824 {{
+            format!("{{:.1}} GB", bytes as f64 / 1_073_741_824.0)
+        }} else if bytes >= 1_048_576 {{
+            format!("{{:.1}} MB", bytes as f64 / 1_048_576.0)
+        }} else if bytes >= 1024 {{
+            format!("{{:.1}} KB", bytes as f64 / 1024.0)
+        }} else {{
+            format!("{{}} B", bytes)
+        }}
+    }}
+
+    /// Profile the self-compile pipeline by stage with RSS checkpoints.
+    /// Reports per-file and per-stage wall-clock times plus memory usage.
+    #[test]
+    #[ignore]
+    fn profile_self_compile() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                use std::time::Instant;
+
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+{self_compile_source_files}                ];
+
+                let source_count = sources.len();
+                let rss_start = get_rss_bytes();
+                eprintln!("\n=== SELF-COMPILE PIPELINE PROFILE ({{}} sources) ===", source_count);
+                eprintln!("  RSS at start: {{}}\n", format_bytes(rss_start));
+
+                // Phase 1: Tokenize each source individually
+                let t_stage = Instant::now();
+                let mut token_lists = Vec::new();
+                let mut phase1_diags = 0usize;
+                for source in &sources {{
+                    let t = Instant::now();
+                    let tokens = crate::tokenize::tokenize(&source.content);
+                    let elapsed = t.elapsed();
+                    eprintln!("  tokenize {{:>40}}: {{:>8.2?}}  ({{:>5}} tokens, {{:>6}} chars)",
+                        source.path, elapsed, tokens.len(), source.content.len());
+                    token_lists.push(tokens);
+                }}
+                let tokenize_total = t_stage.elapsed();
+                let rss_after_tokenize = get_rss_bytes();
+                eprintln!("  TOKENIZE TOTAL: {{:?}}  | RSS: {{}}  | diags: {{}}\n",
+                    tokenize_total, format_bytes(rss_after_tokenize), phase1_diags);
+
+                // Phase 2: Parse each token stream
+                let t_stage = Instant::now();
+                let mut modules = Vec::new();
+                let mut phase2_diags = 0usize;
+                for (i, tokens) in token_lists.iter().enumerate() {{
+                    let t = Instant::now();
+                    let result = crate::parse::parse(tokens.clone());
+                    let elapsed = t.elapsed();
+                    let ok = result.module.is_some();
+                    if result.error.is_some() {{
+                        phase2_diags += 1;
+                    }}
+                    eprintln!("  parse   {{:>40}}: {{:>8.2?}}  (ok={{}})",
+                        sources[i].path, elapsed, ok);
+                    if let Some(m) = result.module.clone() {{
+                        modules.push(m);
+                    }}
+                }}
+                let parse_total = t_stage.elapsed();
+                let rss_after_parse = get_rss_bytes();
+                eprintln!("  PARSE TOTAL:    {{:?}}  | RSS: {{}}  | diags: {{}}\n",
+                    parse_total, format_bytes(rss_after_parse), phase2_diags);
+
+                // Phase 3: Resolve module graph
+                let t_stage = Instant::now();
+                let graph = crate::resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_total = t_stage.elapsed();
+                let phase3_diags: usize = graph.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .count();
+                let rss_after_resolve = get_rss_bytes();
+                eprintln!("  RESOLVE TOTAL:  {{:?}}  | RSS: {{}}  | diags: {{}}\n",
+                    resolve_total, format_bytes(rss_after_resolve), phase3_diags);
+
+                // Phase 4: Reconcile (typecheck)
+                let t_stage = Instant::now();
+                let typed = crate::reconcile::reconcile(graph);
+                let reconcile_total = t_stage.elapsed();
+                let phase4_diags: usize = typed.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .count();
+                let rss_after_reconcile = get_rss_bytes();
+                eprintln!("  RECONCILE TOTAL: {{:?}}  | RSS: {{}}  | diags: {{}}\n",
+                    reconcile_total, format_bytes(rss_after_reconcile), phase4_diags);
+
+                // Phase 5: Emit (Rust target)
+                let t_stage = Instant::now();
+                let emit_result = crate::emit_rust::emit_rust(typed);
+                let emit_total = t_stage.elapsed();
+                let phase5_diags: usize = emit_result.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .count();
+                let emitted_files = emit_result.files.len();
+                let emitted_bytes: usize = emit_result.files.iter()
+                    .map(|f| f.content.len())
+                    .sum();
+                let rss_after_emit = get_rss_bytes();
+                eprintln!("  EMIT TOTAL:     {{:?}}  | RSS: {{}}  | diags: {{}}\n",
+                    emit_total, format_bytes(rss_after_emit), phase5_diags);
+
+                // Summary
+                let total = tokenize_total + parse_total + resolve_total
+                    + reconcile_total + emit_total;
+                let total_diags = phase1_diags + phase2_diags + phase3_diags
+                    + phase4_diags + phase5_diags;
+                eprintln!("=== SUMMARY ===");
+                eprintln!("  Tokenize:   {{:?}}", tokenize_total);
+                eprintln!("  Parse:      {{:?}}", parse_total);
+                eprintln!("  Resolve:    {{:?}}", resolve_total);
+                eprintln!("  Reconcile:  {{:?}}", reconcile_total);
+                eprintln!("  Emit:       {{:?}}", emit_total);
+                eprintln!("  Total:      {{:?}}", total);
+                eprintln!("  Diagnostics: {{}}", total_diags);
+                eprintln!("  Emitted: {{}} files, {{}}", emitted_files, format_bytes(emitted_bytes as u64));
+                eprintln!("");
+                eprintln!("=== RSS CHECKPOINTS ===");
+                eprintln!("  Start:          {{}}", format_bytes(rss_start));
+                eprintln!("  After tokenize: {{}}", format_bytes(rss_after_tokenize));
+                eprintln!("  After parse:    {{}}", format_bytes(rss_after_parse));
+                eprintln!("  After resolve:  {{}}", format_bytes(rss_after_resolve));
+                eprintln!("  After reconcile:{{}}", format_bytes(rss_after_reconcile));
+                eprintln!("  After emit:     {{}}", format_bytes(rss_after_emit));
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_self_compile test panicked");
+    }}
+
+    /// Per-module reconcile profile: runs tokenize+parse+resolve then
+    /// typecheck_module for each module individually with RSS+timing.
+    /// Isolates which module causes OOM/timeout in the reconcile phase.
+    #[test]
+    #[ignore]
+    fn profile_reconcile_per_module() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                use std::time::Instant;
+                use std::collections::HashMap;
+
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+{self_compile_source_files}                ];
+
+                eprintln!("\n=== PER-MODULE RECONCILE PROFILE ({{}} sources) ===", sources.len());
+
+                // Phases 1-3: tokenize + parse + resolve (known safe, ~28MB)
+                let t0 = Instant::now();
+                let mut modules = Vec::new();
+                for source in &sources {{
+                    let tokens = crate::tokenize::tokenize(&source.content);
+                    let result = crate::parse::parse(tokens);
+                    if let Some(m) = result.module.clone() {{
+                        modules.push(m);
+                    }} else {{
+                        eprintln!("  WARN: parse failed for {{}}", source.path);
+                    }}
+                }}
+                let graph = crate::resolve::resolve_modules(
+                    std::rc::Rc::new(modules)
+                );
+                let setup_time = t0.elapsed();
+                let rss_baseline = get_rss_bytes();
+                eprintln!("  Setup (tok+parse+resolve): {{:?}}  | RSS: {{}}", setup_time, format_bytes(rss_baseline));
+                eprintln!("  Modules to reconcile: {{}}\n", graph.modules.len());
+
+                // Phase 4: typecheck each module individually
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
+
+                for resolved in graph.modules.iter() {{
+                    let name = resolved.module.name.to_string();
+                    let item_count = resolved.module.items.len();
+                    let rss_before = get_rss_bytes();
+
+                    // Print BEFORE typecheck so we know which module crashed on SIGKILL
+                    eprint!("  {{:>35}} ({{:>3}} items) ... ", name, item_count);
+
+                    let module_index = std::rc::Rc::new(mi_raw.clone());
+
+                    // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
+                    let t_unres = Instant::now();
+                    let _unres = crate::reconcile::build_type_env_unresolved(
+                        resolved.clone(),
+                        module_index.clone()
+                    );
+                    let unres_elapsed = t_unres.elapsed();
+                    let rss_after_unres = get_rss_bytes();
+                    let unres_delta = rss_after_unres.saturating_sub(rss_before);
+
+                    eprint!("cycles={{:>8.2?}}(+{{}}) ", unres_elapsed, format_bytes(unres_delta));
+
+                    if unres_delta > 256 * 1024 * 1024 {{
+                        eprintln!("");
+                        panic!("ABORT: '{{}}' cycle detection grew RSS by {{}}", name, format_bytes(unres_delta));
+                    }}
+
+                    // Sub-step 1: build_type_env (includes topo_resolve_types)
+                    let t_env = Instant::now();
+                    let env_result = crate::reconcile::build_type_env(
+                        resolved.clone(),
+                        module_index.clone()
+                    );
+                    let env_elapsed = t_env.elapsed();
+                    let rss_after_env = get_rss_bytes();
+                    let env_delta = rss_after_env.saturating_sub(rss_before);
+                    let env_errs: usize = env_result.diagnostics.iter()
+                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .count();
+
+                    eprint!("env={{:>8.2?}}(+{{}},e={{}}) ", env_elapsed, format_bytes(env_delta), env_errs);
+
+                    if env_delta > 512 * 1024 * 1024 {{
+                        eprintln!("");
+                        panic!("ABORT: '{{}}' build_type_env grew RSS by {{}}", name, format_bytes(env_delta));
+                    }}
+                    if env_elapsed.as_secs() > 10 {{
+                        eprintln!("");
+                        panic!("ABORT: '{{}}' build_type_env took {{:?}}", name, env_elapsed);
+                    }}
+
+                    // Sub-step 2: full typecheck_module
+                    let t_full = Instant::now();
+                    let tc_result = crate::reconcile::typecheck_module(
+                        resolved.clone(),
+                        module_index
+                    );
+                    let full_elapsed = t_full.elapsed();
+                    let rss_after = get_rss_bytes();
+                    let delta = rss_after.saturating_sub(rss_before);
+                    let diag_count: usize = tc_result.diagnostics.iter()
+                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .count();
+
+                    eprintln!("full={{:>8.2?}}  | RSS: {{}} (+{{}})  | errs: {{}}",
+                        full_elapsed, format_bytes(rss_after), format_bytes(delta), diag_count);
+
+                    // Guardrails: abort before OOM kills the system
+                    if delta > 512 * 1024 * 1024 {{
+                        panic!("ABORT: '{{}}' grew RSS by {{}} (>512MB)", name, format_bytes(delta));
+                    }}
+                    if full_elapsed.as_secs() > 10 {{
+                        panic!("ABORT: '{{}}' took {{:?}} (>10s)", name, full_elapsed);
+                    }}
+
+                    let typed = tc_result.typed.clone();
+                    mi_raw.insert(name, typed);
+                }}
+
+                let rss_final = get_rss_bytes();
+                eprintln!("\n  RSS final: {{}} (from baseline: +{{}})",
+                    format_bytes(rss_final),
+                    format_bytes(rss_final.saturating_sub(rss_baseline)));
+                eprintln!("=== DONE ===\n");
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_reconcile_per_module panicked");
     }}
 }}
 "#,

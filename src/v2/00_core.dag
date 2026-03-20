@@ -163,6 +163,7 @@ type Expr
   | ForEach { variable: String, collection: Expr, body: Expr, resolved_type: Node?, span: SourceSpan }
   | Index { base: Expr, index: Expr, resolved_type: Node?, span: SourceSpan }
   | Slice { base: Expr, start: Expr, end: Expr, resolved_type: Node?, span: SourceSpan }
+  | Return { value: Expr, resolved_type: Node?, span: SourceSpan }
 
 type NamedArg { name: String?, value: Expr }
 type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
@@ -280,15 +281,15 @@ type Diagnostic {
 
 type Severity = Error | Warning
 
-type FuncSig {
+type DeclaredFuncSig {
   name: String
   params: List<Param>
-  return_type: Node
+  return_type: Node?
   is_async: Bool
 }
 
-type FuncEnv {
-  signatures: Map<String, FuncSig>
+type DeclaredFuncEnv {
+  signatures: Map<String, DeclaredFuncSig>
 }
 
 // =========================================================================
@@ -393,6 +394,8 @@ fn expr_has_self_call(expr: Expr, fn_name: String) -> Bool {
       expr_has_self_call(expr: b, fn_name: fn_name)
         || expr_has_self_call(expr: s, fn_name: fn_name)
         || expr_has_self_call(expr: e, fn_name: fn_name)
+    Return { value: v, resolved_type: _, span: _ } =>
+      expr_has_self_call(expr: v, fn_name: fn_name)
   }
 }
 
@@ -476,5 +479,7 @@ fn expr_has_non_tail_self_call(expr: Expr, fn_name: String, in_tail: Bool) -> Bo
       expr_has_non_tail_self_call(expr: b, fn_name: fn_name, in_tail: false)
         || expr_has_non_tail_self_call(expr: s, fn_name: fn_name, in_tail: false)
         || expr_has_non_tail_self_call(expr: e, fn_name: fn_name, in_tail: false)
+    Return { value: v, resolved_type: _, span: _ } =>
+      expr_has_non_tail_self_call(expr: v, fn_name: fn_name, in_tail: false)
   }
 }

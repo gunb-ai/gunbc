@@ -62,7 +62,7 @@ type KahnState {
   edges: List<DepEdge>
 }
 
-// Result of a single Kahn iteration step.
+// Result of a single Kahn iteration step (retained for compatibility).
 type KahnStepResult {
   state: KahnState
   progress: Bool
@@ -395,6 +395,7 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
   }
 
   // Run Kahn's algorithm: iterate at most N times (one module emitted per round).
+  // Uses adjacency-map lookup via edge filtering for O(M+E) total.
   let module_count = modules |> count
   let final_state = kahn_iterate(state: initial_state, remaining: module_count)
 
@@ -419,15 +420,12 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
 }
 
 // Run up to `remaining` rounds of Kahn's algorithm.
-// Each round collects all zero-in-degree nodes, adds them to sorted,
-// and decrements in-degrees of their dependants.
 fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
   if remaining <= 0 {
     return state
   }
   let step = kahn_step(state: state)
   if step.progress == false {
-    // No progress -- either done or stuck on a cycle
     return step.state
   }
   kahn_iterate(state: step.state, remaining: remaining - 1)
@@ -435,9 +433,9 @@ fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
 
 // One step of Kahn's algorithm: find all zero-in-degree nodes,
 // emit them (sorted), and decrement neighbors' in-degrees.
+// Uses in_degree_map for O(1) degree lookup and sorted_set for O(1) membership.
+// Edge partition ensures each edge is processed exactly once across all rounds: O(E) total.
 fn kahn_step(state: KahnState) -> KahnStepResult {
-  // Find all nodes with in-degree 0 that aren't already sorted.
-  // Uses in_degree_map for O(1) degree lookup and sorted_set for O(1) membership.
   let zero_nodes = state.module_names
     |> filter(name =>
       let deg = match map_get(state.in_degree_map, name) {
@@ -446,30 +444,24 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
       }
       deg == 0 && map_has(m: state.sorted_set, key: name) == false
     )
-    |> sort_by(name => name)  // deterministic ordering
+    |> sort_by(name => name)
 
   if zero_nodes |> count == 0 {
     return KahnStepResult { state: state, progress: false }
   }
 
-  // Build a set from zero_nodes for O(1) membership checks.
   let zero_set = zero_nodes |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
 
-  // Add zero-degree nodes to sorted output
   let new_sorted = concat(state.sorted, zero_nodes)
   let new_sorted_set = zero_nodes |> fold(init: state.sorted_set, f: (acc, name) =>
     map_insert(acc, name, true)
   )
 
-  // Partition edges: edges from zero_nodes are processed this round,
-  // remaining edges carry forward. Each edge is processed exactly once
-  // across all rounds, so total work is O(E).
   let processed_edges = state.edges |> filter(e => map_has(m: zero_set, key: e.from_module))
   let remaining_edges = state.edges |> filter(e => map_has(m: zero_set, key: e.from_module) == false)
 
-  // Decrement in-degrees for targets of processed edges.
   let decremented = processed_edges |> fold(init: state.in_degree_map, f: (acc, e) =>
     let current = match map_get(acc, e.to_module) {
       Some { value: d } => d
@@ -477,7 +469,6 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
     }
     map_insert(acc, e.to_module, current - 1)
   )
-  // Mark zero_nodes themselves as -1 so they aren't picked again.
   let new_in_degree_map = zero_nodes |> fold(init: decremented, f: (acc, name) =>
     map_insert(acc, name, -1)
   )
@@ -493,4 +484,3 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
     progress: true
   }
 }
-

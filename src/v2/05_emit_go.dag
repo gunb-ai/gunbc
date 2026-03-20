@@ -32,8 +32,8 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  ForEach, Index, Slice,
-  FuncSig,
+  ForEach, Index, Slice, Return,
+  DeclaredFuncSig,
   Literal, Var, FieldAccess, Call,
   MethodCall, Match, If, Let, RecordLit,
   ListLit, BinOp, UnaryOp, Lambda,
@@ -43,25 +43,30 @@ import v2.std.core {
 }
 
 import v2.compiler.reconcile {
-  TypedGraph, TypedModule,
-  TypeEnv, FuncEnv, TypeBinding, InferScope,
+  ResolvedGraph, TypedModule,
+  ResolvedFuncSig, ResolvedFuncEnv,
+  TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   for_each_element_type_node,
-  expr_span
+  expr_span,
+  ItemInfo, FuncItem,
+  is_typed_service_call_receiver, extract_typed_service_name
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, ItemInfo, InterpPart,
+  EmitResult, BlockEmitState, InterpPart,
+  IntrinsicMethod,
+  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
+  MethodEnumerate, MethodChars,
   go_keyword, go_container, go_primitive_type,
   go_literal, go_bin_op_symbol, go_map_template,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
-  build_item_registry, lookup_item,
+  lookup_item,
   unique_strings,
-  collect_typed_service_calls,
   escape_json_string,
   module_to_filename,
-  indent, make_indent, to_string, to_string_helper,
+  make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   apply_type_template1, apply_type_template2,
@@ -69,7 +74,7 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  is_typed_service_call_receiver, extract_typed_service_name,
+  classify_intrinsic_method,
   classify_typed_item, classify_type_structure, classify_transport_kind
 }
 // =========================================================================
@@ -101,12 +106,46 @@ data go_reserved: List<String> = [
 // in v2.compiler.emit
 
 // =========================================================================
+// SG-9: Tail-recursive block statement emitters for Go.
+// =========================================================================
+
+fn emit_go_block_stmts(remaining: List<Expr>, text: List<String>,
+    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let line = emit_go_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth)
+      let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+      emit_go_block_stmts(remaining: remaining |> skip(1),
+        text: list_push(text, line), scope: next_scope,
+        registry: registry, depth: depth)
+  }
+}
+
+fn emit_go_init_block_stmts(remaining: List<Expr>, text: List<String>,
+    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let rest = remaining |> skip(1)
+      match rest |> first {
+        None => BlockEmitState { text: text, scope: scope }
+        Some { value: _ } =>
+          let line = emit_go_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth)
+          let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+          emit_go_init_block_stmts(remaining: rest,
+            text: list_push(text, line), scope: next_scope,
+            registry: registry, depth: depth)
+      }
+  }
+}
+
+// =========================================================================
 // Entry point -- Go target
 // =========================================================================
 
-fn emit_go(typed: TypedGraph) -> EmitResult {
-  let all_items = typed.modules |> flat_map(tm => tm.items)
-  let registry = build_item_registry(items: all_items)
+fn emit_go(typed: ResolvedGraph) -> EmitResult {
+  let registry = typed.item_registry
   let module_files = typed.modules |> map(tm => emit_go_module(typed_module: tm, registry: registry))
   let go_mod = emit_go_mod(module_name: "generated")
   let files = concat([go_mod], module_files)
@@ -419,7 +458,7 @@ fn emit_go_func_def(
 ) -> String {
   let service_names = match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.service_names
-    None => collect_typed_service_calls(texpr: body)
+    None => []
   }
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
   let ret_type = emit_go_node_type(n: return_type)
@@ -517,6 +556,8 @@ fn emit_go_typed_expr(texpr: Expr, registry: Map<String, ItemInfo>, scope: Infer
       concat(prefix, emit_go_typed_index(base: b, index: i, registry: registry, scope: scope))
     Slice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
       concat(prefix, emit_go_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope))
+    Return { value: v, resolved_type: _, span: _ } =>
+      concat(prefix, "return ", emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0))
   }
 }
 
@@ -526,7 +567,8 @@ fn emit_go_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      if info.kind == "func" {
+      let is_func = info.kind == FuncItem
+      if is_func {
         info.service_names |> map(sn => service_var_name(service_name: sn))
       } else { [] }
     None => []
@@ -558,6 +600,21 @@ fn emit_go_typed_slice(base: Expr, start: Expr, end: Expr, registry: Map<String,
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
+fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Expr, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String? {
+  let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
+  let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
+  match intrinsic {
+    MethodCount => Some { value: concat("len(", recv_str, ")") }
+    MethodJoin => Some { value: concat("strings.Join(", recv_str, ", ", first_arg_str, ")") }
+    MethodSplit => Some { value: concat("strings.Split(", recv_str, ", ", first_arg_str, ")") }
+    MethodLast => Some { value: concat(recv_str, "[len(", recv_str, ")-1]") }
+    MethodFirst => Some { value: concat(recv_str, "[0]") }
+    MethodEnumerate => Some { value: recv_str }
+    MethodChars => Some { value: concat("strings.Split(", recv_str, ", \"\")") }
+    _ => none
+  }
+}
+
 fn emit_go_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   // Service call: git.Core.CurrentBranch() -> gitCore.CurrentBranch()
   if is_typed_service_call_receiver(receiver: receiver) {
@@ -572,29 +629,23 @@ fn emit_go_typed_method_call(receiver: Expr, method: String, args: List<NamedArg
         "panic(\"unsupported service receiver\")"
     }
   } else {
-    let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-    let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
-    // Map known DSL pipe methods to Go equivalents
-    if method == "count" {
-      concat("len(", recv_str, ")")
-    } else if method == "join" {
-      concat("strings.Join(", recv_str, ", ", first_arg_str, ")")
-    } else if method == "split" {
-      concat("strings.Split(", recv_str, ", ", first_arg_str, ")")
-    } else if method == "last" {
-      concat(recv_str, "[len(", recv_str, ")-1]")
-    } else if method == "first" {
-      concat(recv_str, "[0]")
-    } else if method == "enumerate" {
-      // Go range already gives index; emit as-is
-      recv_str
-    } else if method == "chars" {
-      concat("strings.Split(", recv_str, ", \"\")")
-    } else {
-      // Generic method call
-      let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
-      let args_str = arg_strs |> join(separator: ", ")
-      concat(recv_str, ".", go_export_ident(name: method), "(", args_str, ")")
+    match classify_intrinsic_method(method: method) {
+      Some { value: intrinsic } =>
+        match emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope) {
+          Some { value: lowered } => lowered
+          None => {
+            let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
+            let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
+            let args_str = arg_strs |> join(separator: ", ")
+            concat(recv_str, ".", go_export_ident(name: method), "(", args_str, ")")
+          }
+        }
+      None => {
+        let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
+        let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
+        let args_str = arg_strs |> join(separator: ", ")
+        concat(recv_str, ".", go_export_ident(name: method), "(", args_str, ")")
+      }
     }
   }
 }
@@ -738,12 +789,8 @@ fn go_typed_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, sc
 }
 
 fn emit_go_typed_block(stmts: List<Expr>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let state = stmts |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, stmt) {
-    let line = emit_go_typed_expr(texpr: stmt, registry: registry, scope: acc.scope, depth: depth)
-    let next_scope = scope_after_expr(texpr: stmt, scope: acc.scope)
-    let new_text = concat(acc.text, [line])
-    BlockEmitState { text: new_text, scope: next_scope }
-  })
+  let state = emit_go_block_stmts(
+    remaining: stmts, text: [], scope: scope, registry: registry, depth: depth)
   state.text |> join(separator: "\n")
 }
 
@@ -774,14 +821,8 @@ fn emit_go_typed_func_body(body: Expr, registry: Map<String, ItemInfo>, scope: I
       if ss |> count == 0 {
         concat(prefix, "return struct{}{}, nil")
       } else {
-        let init_state = ss |> enumerate
-          |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_go_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
-            let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = concat(acc.text, [line])
-            BlockEmitState { text: new_text, scope: next_scope }
-          })
+        let init_state = emit_go_init_block_stmts(
+          remaining: ss, text: [], scope: scope, registry: registry, depth: depth)
         let last_stmt = ss |> last
         let last_str = match last_stmt {
           Some { value: s } => concat(prefix, "return ", emit_go_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: 0), ", nil")
@@ -848,14 +889,8 @@ fn emit_go_typed_tco_expr(texpr: Expr, fn_name: String, params: List<Param>, reg
       if ss |> count == 0 {
         concat(prefix, "return")
       } else {
-        let init_state = ss |> enumerate
-          |> filter(p => p.first < (ss |> count) - 1)
-          |> fold(init: BlockEmitState { text: [], scope: scope }, f: fn(acc, pair) {
-            let line = emit_go_typed_expr(texpr: pair.second, registry: registry, scope: acc.scope, depth: depth)
-            let next_scope = scope_after_expr(texpr: pair.second, scope: acc.scope)
-            let new_text = concat(acc.text, [line])
-            BlockEmitState { text: new_text, scope: next_scope }
-          })
+        let init_state = emit_go_init_block_stmts(
+          remaining: ss, text: [], scope: scope, registry: registry, depth: depth)
         let last_str = match ss |> last {
           Some { value: last_expr } =>
             emit_go_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: depth)

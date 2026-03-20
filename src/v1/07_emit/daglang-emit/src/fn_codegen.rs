@@ -139,6 +139,13 @@ pub struct CompileContext {
     /// Used by concat codegen to strip the accumulator's `.clone()` (safe because the
     /// accumulator is reassigned each iteration, so try_unwrap succeeds → in-place extend).
     pub fold_accum_name: Option<String>,
+    /// The fresh variable name used for the fold accumulator (e.g., `__acc_0`).
+    /// Used to detect field accesses on the accumulator in mutating intrinsics
+    /// so `std::mem::take` can extract fields with refcount=1.
+    pub fold_accum_fresh_name: Option<String>,
+    /// Whether the fold accumulator is Rc-wrapped. When true, mutating intrinsics
+    /// use `Rc::make_mut` to extract fields.
+    pub fold_accum_is_rc: bool,
     /// Map from enum name → set of field names that exist on ALL variants (common fields).
     /// Field access on these fields compiles to accessor method calls instead of direct
     /// field access, since Rust enums don't support direct field access.
@@ -543,6 +550,8 @@ impl CompileContext {
             struct_field_ir_types: HashMap::new(),
             use_counts: HashMap::new(),
             fold_accum_name: None,
+            fold_accum_fresh_name: None,
+            fold_accum_is_rc: false,
             enum_accessor_fields: HashMap::new(),
             optional_return_fns: HashSet::new(),
             fn_str_params: HashSet::new(),
@@ -622,10 +631,7 @@ fn qualified_variant_expr(
 ) -> Option<code_ir::Expr> {
     if qualifies_variant(expected_type, variant_name, ctx) {
         let enum_name = expected_type.expect("checked above").to_string();
-        let variant_expr = code_ir::Expr::Path(vec![
-            enum_name.clone(),
-            variant_name.to_string(),
-        ]);
+        let variant_expr = code_ir::Expr::Path(vec![enum_name.clone(), variant_name.to_string()]);
         // R8: Wrap in Rc::new() if the enum is Rc-wrapped
         if ctx.rc_wrapped_types.contains(&enum_name) {
             Some(code_ir::Expr::Call {
@@ -743,7 +749,8 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
             for arm_map in &arm_counts {
                 for (name, &_arm_count) in arm_map {
                     let current = counts.get(name).copied().unwrap_or(0);
-                    let max_in_arms = arm_counts.iter()
+                    let max_in_arms = arm_counts
+                        .iter()
                         .map(|m| m.get(name).copied().unwrap_or(0))
                         .max()
                         .unwrap_or(0);
@@ -1270,16 +1277,10 @@ fn count_ident_refs(expr: &ast::Expr, name: &str) -> usize {
     match expr {
         ast::Expr::Ident(n) if n == name => 1,
         ast::Expr::FieldAccess(recv, _) => count_ident_refs(recv, name),
-        ast::Expr::Call(_, args) => args
-            .iter()
-            .map(|(_, e)| count_ident_refs(e, name))
-            .sum(),
+        ast::Expr::Call(_, args) => args.iter().map(|(_, e)| count_ident_refs(e, name)).sum(),
         ast::Expr::BinOp(l, _, r) => count_ident_refs(l, name) + count_ident_refs(r, name),
         ast::Expr::UnaryOp(_, e) => count_ident_refs(e, name),
-        ast::Expr::Record(_, fields) => fields
-            .iter()
-            .map(|(_, e)| count_ident_refs(e, name))
-            .sum(),
+        ast::Expr::Record(_, fields) => fields.iter().map(|(_, e)| count_ident_refs(e, name)).sum(),
         ast::Expr::If(c, t, e) => {
             count_ident_refs(c, name)
                 + count_ident_refs(t, name)
@@ -1423,10 +1424,7 @@ fn replace_source_field_clone(
                 if fname == field_name {
                     if let code_ir::Expr::Var(ref name) = **base {
                         if name == &escape_rust_keyword(source_var) {
-                            return (
-                                code_ir::Expr::Var(replacement_var.to_string()),
-                                true,
-                            );
+                            return (code_ir::Expr::Var(replacement_var.to_string()), true);
                         }
                     }
                 }
@@ -1512,8 +1510,7 @@ fn replace_source_field_clone(
             let new_stmts: Vec<_> = stmts
                 .into_iter()
                 .map(|stmt| {
-                    let (s, hit) =
-                        replace_in_stmt(stmt, source_var, field_name, replacement_var);
+                    let (s, hit) = replace_in_stmt(stmt, source_var, field_name, replacement_var);
                     found |= hit;
                     s
                 })
@@ -1590,7 +1587,10 @@ fn compile_functional_record_update(
     // Debug builds: expect (panics if refcount > 1, surfacing degradation)
     // Release builds: fallback to clone (correct but O(N))
     let rc_var = fresh(counter, "rc");
-    stmts.push(code_ir::Stmt::let_bind(&rc_var, code_ir::Expr::Var(source_escaped.clone())));
+    stmts.push(code_ir::Stmt::let_bind(
+        &rc_var,
+        code_ir::Expr::Var(source_escaped.clone()),
+    ));
     stmts.push(code_ir::Stmt::let_mut(
         &owned_var,
         code_ir::Expr::RawCode(format!(
@@ -1613,23 +1613,16 @@ fn compile_functional_record_update(
             let taken_var = fresh(counter, "taken");
             stmts.push(code_ir::Stmt::let_bind(
                 &taken_var,
-                code_ir::Expr::RawCode(format!(
-                    "std::mem::take(&mut {owned_var}.{rust_field})"
-                )),
+                code_ir::Expr::RawCode(format!("std::mem::take(&mut {owned_var}.{rust_field})")),
             ));
 
             // Compile the field expression normally
-            let compiled = ctx.with_expr_path(field_path(index), || {
-                compile_expr(field_expr, ctx, counter)
-            });
+            let compiled =
+                ctx.with_expr_path(field_path(index), || compile_expr(field_expr, ctx, counter));
 
             // Replace source.field.clone() with the taken variable
-            let (replaced, _found) = replace_source_field_clone(
-                compiled,
-                &plan.source_var,
-                field_name,
-                &taken_var,
-            );
+            let (replaced, _found) =
+                replace_source_field_clone(compiled, &plan.source_var, field_name, &taken_var);
 
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
                 "{owned_var}.{rust_field} = {}",
@@ -1722,9 +1715,10 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
-            let mut compiled_receiver = ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
-                compile_expr(receiver, ctx, counter)
-            });
+            let mut compiled_receiver = ctx
+                .with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                    compile_expr(receiver, ctx, counter)
+                });
 
             // R8: For Rc-wrapped receiver types, strip the `.clone()` from the
             // receiver and add `.clone()` to the field result instead.
@@ -1742,10 +1736,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 compiled_receiver = strip_clone(compiled_receiver);
             }
 
-            let field_expr = code_ir::Expr::Field(
-                Box::new(compiled_receiver),
-                rust_field,
-            );
+            let field_expr = code_ir::Expr::Field(Box::new(compiled_receiver), rust_field);
             if is_boxed_field_access(receiver, field, ctx) {
                 code_ir::Expr::Deref(Box::new(field_expr))
             } else if receiver_is_rc {
@@ -1794,11 +1785,15 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // SG-10: For equality/inequality, strip .to_string() from operands.
                 // &str == &str and String == &str both work in Rust via PartialEq,
                 // so the .to_string() heap allocation is unnecessary.
-                let (compiled_left, compiled_right) = if matches!(op, ast::BinOp::Eq | ast::BinOp::Ne) {
-                    (strip_to_string(compiled_left), strip_to_string(compiled_right))
-                } else {
-                    (compiled_left, compiled_right)
-                };
+                let (compiled_left, compiled_right) =
+                    if matches!(op, ast::BinOp::Eq | ast::BinOp::Ne) {
+                        (
+                            strip_to_string(compiled_left),
+                            strip_to_string(compiled_right),
+                        )
+                    } else {
+                        (compiled_left, compiled_right)
+                    };
                 code_ir::Expr::BinOp {
                     left: Box::new(compiled_left),
                     op: compile_binop(op),
@@ -2195,7 +2190,8 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             let is_rc_collection = ir_type
                 .is_some_and(|ty| matches!(ty, IrType::Generic(n, _) if n == "List" || n == "Map"));
             // If type is completely unknown and Rc types exist, assume Rc (conservative).
-            let assume_rc = named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
+            let assume_rc =
+                named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
             let needs_clone = count > 1
                 || ctx.match_bound_vars.contains(name)
                 || is_rc_named
@@ -2328,14 +2324,23 @@ fn is_unwrap_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
 /// R8: Check if a compiled IR expression is `x.clone()` where x has Rc-wrapped type.
 /// This catches intermediate variables that aren't in ir_scope.
 fn is_clone_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
-    if let code_ir::Expr::MethodCall { receiver, method, args } = expr {
+    if let code_ir::Expr::MethodCall {
+        receiver,
+        method,
+        args,
+    } = expr
+    {
         if method == "clone" && args.is_empty() {
             // Check if the receiver is a variable with known Rc-wrapped type
             if let code_ir::Expr::Var(name) = receiver.as_ref() {
-                return ctx.ir_scope.get(name)
+                return ctx
+                    .ir_scope
+                    .get(name)
                     .and_then(named_type_from_ir)
                     .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(&ty_name))
-                    || ctx.param_types.get(name)
+                    || ctx
+                        .param_types
+                        .get(name)
                         .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(ty_name));
             }
             // Also check for field access chains: x.clone() where x's type is unknown
@@ -2681,7 +2686,9 @@ fn compile_intrinsic_call(
                 infer_call_arg_type(args, 0, ctx).and_then(|ty| named_type_from_ir(&ty));
             // Clone the base value since struct update syntax moves the base.
             // R8: For Rc-wrapped types, deref+clone to get the inner struct value.
-            let is_rc = base_struct_name.as_ref().is_some_and(|name| ctx.rc_wrapped_types.contains(name));
+            let is_rc = base_struct_name
+                .as_ref()
+                .is_some_and(|name| ctx.rc_wrapped_types.contains(name));
             let cloned_base = if is_rc {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Deref(Box::new(strip_clone(base)))),
@@ -2774,7 +2781,13 @@ fn compile_intrinsic_call(
         }
         "string_contains" if args.len() == 2 => {
             let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
-            let substring = ref_string_arg(resolve_named_or_positional(args, "substring", 1, ctx, counter));
+            let substring = ref_string_arg(resolve_named_or_positional(
+                args,
+                "substring",
+                1,
+                ctx,
+                counter,
+            ));
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2845,7 +2858,11 @@ fn compile_intrinsic_call(
             if args.len() == 2 {
                 if let ast::Expr::List(elements) = &args[1].1 {
                     if elements.len() == 1 {
-                        let list = strip_outer_clone(collection.clone());
+                        let list = maybe_extract_fold_accum_field(
+                            &collection,
+                            ctx,
+                            FoldAccumFallback::StripOuterClone,
+                        );
                         let item = with_call_arg_path(ctx, 1, || {
                             ctx.with_child_expr_path(ExprPathStep::ListItem(0), || {
                                 compile_expr(&elements[0], ctx, counter)
@@ -3054,9 +3071,14 @@ fn compile_intrinsic_call(
         }
         // append(list, item) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.push(item); Rc::new(v) }
         "append" if args.len() == 2 => {
-            // Strip outer .clone() so Rc::try_unwrap succeeds for in-place push.
-            let list = strip_outer_clone(collection.clone());
             let item = compile_call_arg(args, 1, ctx, counter);
+            // When the list is a field on the fold accumulator (e.g., acc.text),
+            // extract it via std::mem::take so Rc::try_unwrap sees refcount=1.
+            let list = maybe_extract_fold_accum_field(
+                &collection,
+                ctx,
+                FoldAccumFallback::StripOuterClone,
+            );
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -3152,7 +3174,8 @@ fn compile_intrinsic_call(
         }
         // sort_by(list, key_fn) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.sort_by_key(key_fn); Rc::new(v) }
         "sort_by" if args.len() == 2 => {
-            let list = collection.clone();
+            let list =
+                maybe_extract_fold_accum_field(&collection, ctx, FoldAccumFallback::Preserve);
             let key_fn = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "sorted");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
@@ -3174,7 +3197,8 @@ fn compile_intrinsic_call(
         }
         // replace_last(list, value) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; if let Some(last) = v.last_mut() { *last = value; } Rc::new(v) }
         "replace_last" if args.len() == 2 => {
-            let list = collection.clone();
+            let list =
+                maybe_extract_fold_accum_field(&collection, ctx, FoldAccumFallback::Preserve);
             let value = compile_call_arg(args, 1, ctx, counter);
             let v = fresh(counter, "replaced");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
@@ -3221,7 +3245,9 @@ fn compile_intrinsic_call(
         // reverse(list) → { let __rc = list; let mut v = Rc::try_unwrap(__rc)...; v.reverse(); Rc::new(v) }
         "reverse" if args.len() == 1 => {
             let v = fresh(counter, "reversed");
-            let mut stmts = rc_unwrap_stmts(&v, collection.clone(), counter);
+            let list_expr =
+                maybe_extract_fold_accum_field(&collection, ctx, FoldAccumFallback::Preserve);
+            let mut stmts = rc_unwrap_stmts(&v, list_expr, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::Var(v.clone())),
                 method: "reverse".to_string(),
@@ -3234,7 +3260,13 @@ fn compile_intrinsic_call(
         // O(1) amortized append — avoids O(n) concat([item], list) + reverse.
         "list_push" if args.len() == 2 => {
             let item = compile_call_arg(args, 1, ctx, counter);
-            let list = strip_outer_clone(collection.clone());
+            // When the list is a field on the fold accumulator (e.g., acc.text),
+            // extract it via std::mem::take so Rc::try_unwrap sees refcount=1.
+            let list = maybe_extract_fold_accum_field(
+                &collection,
+                ctx,
+                FoldAccumFallback::StripOuterClone,
+            );
             let v = fresh(counter, "appended");
             let mut stmts = rc_unwrap_stmts(&v, list, counter);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
@@ -3389,7 +3421,11 @@ fn compile_intrinsic_call(
         // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.
         // O(1) amortized when refcount=1 (true in fold accumulators).
         "map_insert" if args.len() == 3 => {
-            let map = strip_outer_clone(collection.clone());
+            let map = maybe_extract_fold_accum_field(
+                &collection,
+                ctx,
+                FoldAccumFallback::StripOuterClone,
+            );
             let key = compile_expr(&args[1].1, ctx, counter);
             let value = compile_expr(&args[2].1, ctx, counter);
             let v = fresh(counter, "map_ins");
@@ -3405,7 +3441,11 @@ fn compile_intrinsic_call(
         // map_merge(base, overlay) → unwrap base, extend with overlay, re-wrap.
         // O(|overlay|) amortized.
         "map_merge" if args.len() == 2 => {
-            let base = strip_outer_clone(collection.clone());
+            let base = maybe_extract_fold_accum_field(
+                &collection,
+                ctx,
+                FoldAccumFallback::StripOuterClone,
+            );
             let overlay = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "map_merged");
             let mut stmts = rc_unwrap_stmts(&v, base, counter);
@@ -3569,7 +3609,34 @@ fn compile_fold_intrinsic(
             if let Some(p) = params.first() {
                 fold_ctx.fold_accum_name = Some(p.clone());
             }
-            if let (Some(param), Some(ty)) = (params.get(1), infer_list_element_ir_type(collection_expr, ctx)) {
+            // Track the accumulator's fresh variable name and Rc-wrapped status
+            // so mutating intrinsics (list_push, map_insert, etc.) can use
+            // std::mem::take to extract fields with refcount=1.
+            fold_ctx.fold_accum_fresh_name = Some(acc.clone());
+            let accum_type_name = fold
+                .init
+                .as_ref()
+                .and_then(|(expr, _)| match expr {
+                    ast::Expr::Record(Some(name), _) => Some(name.clone()),
+                    ast::Expr::Ident(name) => ctx.ir_scope.get(name).and_then(|ty| match ty {
+                        IrType::Named(n) => Some(n.clone()),
+                        _ => None,
+                    }),
+                    _ => None,
+                })
+                .or_else(|| {
+                    ctx.current_return_ir_type.as_ref().and_then(|ty| match ty {
+                        IrType::Named(n) => Some(n.clone()),
+                        _ => None,
+                    })
+                });
+            // All generated struct types are Rc-wrapped at construction (Rc::new(T {...})).
+            // If the init is a named record, the accumulator is always Rc-wrapped.
+            fold_ctx.fold_accum_is_rc = accum_type_name.is_some();
+            if let (Some(param), Some(ty)) = (
+                params.get(1),
+                infer_list_element_ir_type(collection_expr, ctx),
+            ) {
                 fold_ctx.ir_scope.insert(param.clone(), ty);
             }
             // Compute use counts for lambda params with weight=1 (reassigned each iter).
@@ -3972,6 +4039,31 @@ fn replace_word(s: &str, from: &str, to: &str) -> String {
     result
 }
 
+/// Count whole-word occurrences of `needle` in a Rust code fragment.
+/// Matches Rust identifier boundaries and skips struct field labels (`name:`).
+fn count_word_occurrences(s: &str, needle: &str) -> usize {
+    let bytes = s.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut count = 0;
+    let mut i = 0;
+    while i + needle_bytes.len() <= bytes.len() {
+        if &bytes[i..i + needle_bytes.len()] == needle_bytes {
+            let before_ok = i == 0 || !is_word(bytes[i - 1]);
+            let after_pos = i + needle_bytes.len();
+            let after_ok = after_pos >= bytes.len() || !is_word(bytes[after_pos]);
+            let is_field_name = after_pos < bytes.len() && bytes[after_pos] == b':';
+            if before_ok && after_ok && !is_field_name {
+                count += 1;
+                i += needle_bytes.len();
+                continue;
+            }
+        }
+        i += 1;
+    }
+    count
+}
+
 fn compile_call(
     name: &str,
     args: &[(Option<String>, ast::Expr)],
@@ -4043,7 +4135,12 @@ fn clone_if_needed(expr: code_ir::Expr, fold_accum_name: Option<&str>) -> code_i
 ///
 /// These can be stripped when passing to another function whose String param is `&str`.
 fn is_str_param_to_string(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
-    if let code_ir::Expr::MethodCall { receiver, method, args } = expr {
+    if let code_ir::Expr::MethodCall {
+        receiver,
+        method,
+        args,
+    } = expr
+    {
         if method == "to_string" && args.is_empty() {
             match receiver.as_ref() {
                 code_ir::Expr::Var(name) => {
@@ -4063,13 +4160,9 @@ fn is_str_param_to_string(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
 fn borrow_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
     match &expr {
         // .clone() on field access → strip clone, borrow the field
-        code_ir::Expr::MethodCall { method, args, .. }
-            if method == "clone" && args.is_empty() =>
-        {
+        code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty() => {
             match expr {
-                code_ir::Expr::MethodCall { receiver, .. } => {
-                    code_ir::Expr::Ref(receiver)
-                }
+                code_ir::Expr::MethodCall { receiver, .. } => code_ir::Expr::Ref(receiver),
                 _ => unreachable!(),
             }
         }
@@ -4108,9 +4201,11 @@ fn borrow_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
 /// works for both `&str` (no-op borrow) and `String` (auto-deref to `&str`).
 fn strip_to_string_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
     match expr {
-        code_ir::Expr::MethodCall { receiver, method, args }
-            if method == "to_string" && args.is_empty() =>
-        {
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } if method == "to_string" && args.is_empty() => {
             match receiver.as_ref() {
                 // "lit".to_string() → "lit" (already &str)
                 code_ir::Expr::Str(_) => *receiver,
@@ -4148,6 +4243,87 @@ fn strip_outer_clone(expr: code_ir::Expr) -> code_ir::Expr {
         }
     } else {
         expr
+    }
+}
+
+/// Check if an expression is a field access on the fold accumulator.
+/// Returns the field name if it matches `accum.field` or `accum.field.clone()`.
+/// Checks against both the fresh name (post-substitute_var) and the original
+/// param name (pre-substitute_var) since this is called during lambda body
+/// compilation before substitute_var runs.
+fn is_fold_accum_field_access(expr: &code_ir::Expr, fold_accum_fresh: &str) -> Option<String> {
+    is_fold_accum_field_access_inner(expr, fold_accum_fresh)
+}
+
+/// Try both the fresh name and the original param name.
+fn try_fold_accum_field_access(expr: &code_ir::Expr, ctx: &CompileContext) -> Option<String> {
+    if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+        if let Some(field) = is_fold_accum_field_access(expr, fresh_name) {
+            return Some(field);
+        }
+    }
+    if let Some(ref orig_name) = ctx.fold_accum_name {
+        if let Some(field) = is_fold_accum_field_access(expr, orig_name) {
+            return Some(field);
+        }
+    }
+    None
+}
+
+fn is_fold_accum_field_access_inner(expr: &code_ir::Expr, accum_name: &str) -> Option<String> {
+    match expr {
+        // accum.field (no clone)
+        code_ir::Expr::Field(receiver, field) => {
+            if matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == accum_name) {
+                Some(field.clone())
+            } else {
+                None
+            }
+        }
+        // accum.field.clone()
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } if method == "clone" && args.is_empty() => {
+            is_fold_accum_field_access_inner(receiver, accum_name)
+        }
+        _ => None,
+    }
+}
+
+/// Produce an expression that extracts a field from a fold accumulator with refcount=1.
+/// Uses `std::mem::take(&mut Rc::make_mut(&mut accum).field)` to extract the field
+/// value, replacing it with Default::default(). This ensures the extracted Rc<Vec<T>>
+/// has refcount=1 so Rc::try_unwrap succeeds in-place.
+fn compile_fold_accum_field_extract(accum_fresh: &str, field_name: &str) -> code_ir::Expr {
+    code_ir::Expr::RawCode(format!(
+        "std::mem::take(&mut Rc::make_mut(&mut {accum_fresh}).{field_name})"
+    ))
+}
+
+#[derive(Clone, Copy)]
+enum FoldAccumFallback {
+    Preserve,
+    StripOuterClone,
+}
+
+fn maybe_extract_fold_accum_field(
+    collection: &code_ir::Expr,
+    ctx: &CompileContext,
+    fallback: FoldAccumFallback,
+) -> code_ir::Expr {
+    if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
+        if ctx.fold_accum_is_rc {
+            if let Some(field) = try_fold_accum_field_access(collection, ctx) {
+                return compile_fold_accum_field_extract(fresh_name, &field);
+            }
+        }
+    }
+
+    match fallback {
+        FoldAccumFallback::Preserve => collection.clone(),
+        FoldAccumFallback::StripOuterClone => strip_outer_clone(collection.clone()),
     }
 }
 
@@ -4782,15 +4958,16 @@ fn compile_match_arm(
 
         // R9: Collect all binding names from this pattern. When the scrutinee
         // is Rc-wrapped, bindings are &Rc<T> references that need .clone().
-        let scrutinee_is_rc = expected_type
-            .is_some_and(|t| ctx.rc_wrapped_types.contains(t));
+        let scrutinee_is_rc = expected_type.is_some_and(|t| ctx.rc_wrapped_types.contains(t));
         let mut match_bindings = Vec::new();
         if scrutinee_is_rc {
             collect_pattern_bindings(&arm.pattern, &mut match_bindings);
         }
 
-        if opt_bindings.is_empty() && type_bindings.is_empty()
-            && ir_type_bindings.is_empty() && match_bindings.is_empty()
+        if opt_bindings.is_empty()
+            && type_bindings.is_empty()
+            && ir_type_bindings.is_empty()
+            && match_bindings.is_empty()
         {
             std::borrow::Cow::Borrowed(ctx)
         } else {
@@ -4937,8 +5114,8 @@ fn compile_pattern_typed(
                             // R8: If the field type is Rc-wrapped and the sub-pattern is
                             // a variant destructure, Rust can't auto-deref Rc in patterns.
                             // Bind the field with ref and defer the destructure to the body.
-                            let field_is_rc = field_type
-                                .is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
+                            let field_is_rc =
+                                field_type.is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
                             if field_is_rc && matches!(p, ast::Pattern::Variant(_, _)) {
                                 format!("ref {n}")
                             } else {
@@ -5223,7 +5400,9 @@ fn rc_wrap_ir_type(ty: &IrType, rc_wrapped: &HashSet<String>) -> IrType {
         IrType::Named(n) if rc_wrapped.contains(n) => IrType::Named(format!("Rc<{n}>")),
         IrType::Generic(name, args) => IrType::Generic(
             name.clone(),
-            args.iter().map(|a| rc_wrap_ir_type(a, rc_wrapped)).collect(),
+            args.iter()
+                .map(|a| rc_wrap_ir_type(a, rc_wrapped))
+                .collect(),
         ),
         IrType::Optional(inner) => IrType::Optional(Box::new(rc_wrap_ir_type(inner, rc_wrapped))),
         IrType::Tuple(items) => IrType::Tuple(
@@ -5441,9 +5620,7 @@ fn collect_rc_nested_deref_stmts(
         if let ast::Pattern::Ident(bind_name) = p {
             let field_needs_box = variant_field_types
                 .and_then(|ft| ft.get(n.as_str()))
-                .is_some_and(|_| {
-                    needs_box_wrapping(inner_variant, n, ctx)
-                });
+                .is_some_and(|_| needs_box_wrapping(inner_variant, n, ctx));
             if field_needs_box {
                 out.push(code_ir::Stmt::Let {
                     name: bind_name.clone(),
@@ -5571,7 +5748,10 @@ fn compile_collection_lambda_body(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let mut body_ctx = ctx.clone();
-    if let (Some(param), Some(elem_ir_type)) = (params.first(), infer_list_element_ir_type(collection_expr, ctx)) {
+    if let (Some(param), Some(elem_ir_type)) = (
+        params.first(),
+        infer_list_element_ir_type(collection_expr, ctx),
+    ) {
         body_ctx.ir_scope.insert(param.clone(), elem_ir_type);
     }
     body_ctx.with_child_expr_path(ExprPathStep::LambdaBody, || {
@@ -6224,7 +6404,249 @@ fn plan_embedded_expr(
     }
 }
 
-fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
+/// Check if a variable name appears in a slice of code_ir statements.
+fn var_referenced_in_stmts(stmts: &[code_ir::Stmt], var_name: &str) -> bool {
+    stmts
+        .iter()
+        .any(|stmt| var_referenced_in_stmt(stmt, var_name))
+}
+
+/// Check if a variable name appears in a single code_ir statement.
+fn var_referenced_in_stmt(stmt: &code_ir::Stmt, var_name: &str) -> bool {
+    count_var_refs_in_stmt(stmt, var_name) > 0
+}
+
+/// Strip `.clone()` from TCO loop parameter arguments in call expressions
+/// when the parameter is not referenced in any later statement in the same block
+/// and is only used once in the current statement.
+///
+/// In a TCO loop, parameters like `tokens` are rebound from `__tco_p_tokens` at
+/// the start of each iteration. When passed to a non-TCO callee, codegen adds
+/// `.clone()` because the loop still holds a reference. But if the parameter is
+/// not referenced after the call (only in the final Recur), the clone is
+/// unnecessary — the value can be moved.
+///
+/// Conservative: only strips clones from direct Let/Expr-level call arguments,
+/// not inside nested if/match conditions or branches. Also requires that the
+/// parameter appears exactly once in the current statement (to avoid stripping
+/// one clone while another reference in the same statement still needs the value).
+fn strip_tco_param_clones(body: &mut [code_ir::Stmt], tco_param_names: &[String]) {
+    // Work on the lowered body portion only (skip rebind stmts at the start).
+    // Rebind stmts are `let param = __tco_p_param;` for each param.
+    let rebind_count = tco_param_names.len();
+    if body.len() <= rebind_count {
+        return;
+    }
+
+    // For each statement in the body (after rebinds), check for Call expressions
+    // with param.clone() arguments where param is not used later.
+    for i in rebind_count..body.len() {
+        let later_stmts = &body[i + 1..];
+        // Collect which params can have their clone stripped at this position:
+        // 1. Not referenced in any later statement in the block
+        // 2. Referenced exactly once in the current statement (the clone we'll strip)
+        let strippable: Vec<String> = tco_param_names
+            .iter()
+            .filter(|param| {
+                !var_referenced_in_stmts(later_stmts, param)
+                    && count_var_refs_in_stmt(&body[i], param) == 1
+            })
+            .cloned()
+            .collect();
+        if strippable.is_empty() {
+            continue;
+        }
+        // Only strip at the top-level call in this statement, not inside
+        // nested control flow (if/match conditions or branches).
+        strip_toplevel_call_clones(&mut body[i], &strippable);
+    }
+}
+
+/// Count how many times a variable is referenced in a statement.
+fn count_var_refs_in_stmt(stmt: &code_ir::Stmt, var_name: &str) -> usize {
+    match stmt {
+        code_ir::Stmt::Let { expr, .. } => count_var_refs_in_expr(expr, var_name),
+        code_ir::Stmt::Bind { expr, .. } => count_var_refs_in_expr(expr, var_name),
+        code_ir::Stmt::Assign { dest, value } => {
+            count_var_refs_in_expr(dest, var_name) + count_var_refs_in_expr(value, var_name)
+        }
+        code_ir::Stmt::Expr(e)
+        | code_ir::Stmt::TailExpr(e)
+        | code_ir::Stmt::Return(e)
+        | code_ir::Stmt::Break(e) => count_var_refs_in_expr(e, var_name),
+        code_ir::Stmt::For { iter, body, .. } => {
+            count_var_refs_in_expr(iter, var_name)
+                + body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, var_name))
+                    .sum::<usize>()
+        }
+        code_ir::Stmt::Loop { body } | code_ir::Stmt::BlockScope(body) => body
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, var_name))
+            .sum(),
+        code_ir::Stmt::Assert(assert) => match assert {
+            code_ir::Assert::Eq { left, right, .. } => {
+                count_var_refs_in_expr(left, var_name) + count_var_refs_in_expr(right, var_name)
+            }
+            code_ir::Assert::True { expr, .. }
+            | code_ir::Assert::NonEmpty { expr, .. }
+            | code_ir::Assert::Contains { expr, .. } => count_var_refs_in_expr(expr, var_name),
+        },
+        _ => 0,
+    }
+}
+
+/// Count variable references in an expression.
+fn count_var_refs_in_expr(expr: &code_ir::Expr, var_name: &str) -> usize {
+    match expr {
+        code_ir::Expr::Var(name) => {
+            if name == var_name {
+                1
+            } else {
+                0
+            }
+        }
+        code_ir::Expr::RawCode(code) => count_word_occurrences(code, var_name),
+        code_ir::Expr::Call { func, args, .. } => {
+            count_var_refs_in_expr(func, var_name)
+                + args
+                    .iter()
+                    .map(|a| count_var_refs_in_expr(a, var_name))
+                    .sum::<usize>()
+        }
+        code_ir::Expr::MethodCall { receiver, args, .. } => {
+            count_var_refs_in_expr(receiver, var_name)
+                + args
+                    .iter()
+                    .map(|a| count_var_refs_in_expr(a, var_name))
+                    .sum::<usize>()
+        }
+        code_ir::Expr::Field(receiver, _) => count_var_refs_in_expr(receiver, var_name),
+        code_ir::Expr::Deref(inner) | code_ir::Expr::Ref(inner) | code_ir::Expr::RefMut(inner) => {
+            count_var_refs_in_expr(inner, var_name)
+        }
+        code_ir::Expr::BinOp { left, right, .. } => {
+            count_var_refs_in_expr(left, var_name) + count_var_refs_in_expr(right, var_name)
+        }
+        code_ir::Expr::UnaryOp { expr: inner, .. } => count_var_refs_in_expr(inner, var_name),
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            count_var_refs_in_expr(cond, var_name)
+                + then_body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, var_name))
+                    .sum::<usize>()
+                + else_body.as_ref().map_or(0, |b| {
+                    b.iter()
+                        .map(|s| count_var_refs_in_stmt(s, var_name))
+                        .sum::<usize>()
+                })
+        }
+        code_ir::Expr::Block(stmts) => stmts
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, var_name))
+            .sum(),
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => {
+            count_var_refs_in_expr(scrutinee, var_name)
+                + arms
+                    .iter()
+                    .map(|arm| {
+                        arm.body
+                            .iter()
+                            .map(|s| count_var_refs_in_stmt(s, var_name))
+                            .sum::<usize>()
+                    })
+                    .sum::<usize>()
+        }
+        code_ir::Expr::Struct { fields, rest, .. } => {
+            fields
+                .iter()
+                .map(|(_, e)| count_var_refs_in_expr(e, var_name))
+                .sum::<usize>()
+                + rest
+                    .as_ref()
+                    .map_or(0, |r| count_var_refs_in_expr(r, var_name))
+        }
+        code_ir::Expr::Closure { body, .. } => count_var_refs_in_expr(body, var_name),
+        code_ir::Expr::FormatStr { args, .. } | code_ir::Expr::MacroCall { args, .. } => args
+            .iter()
+            .map(|a| count_var_refs_in_expr(a, var_name))
+            .sum(),
+        code_ir::Expr::Tuple(items) | code_ir::Expr::Array(items) => items
+            .iter()
+            .map(|e| count_var_refs_in_expr(e, var_name))
+            .sum(),
+        _ => 0,
+    }
+}
+
+/// Strip `.clone()` only from direct call arguments at the top level of a statement.
+/// Does NOT recurse into nested if/match/block structures to avoid stripping
+/// clones from conditions whose values are used in branches.
+fn strip_toplevel_call_clones(stmt: &mut code_ir::Stmt, strippable: &[String]) {
+    let expr = match stmt {
+        code_ir::Stmt::Let { expr, .. } => expr,
+        code_ir::Stmt::Expr(e) | code_ir::Stmt::TailExpr(e) => e,
+        _ => return,
+    };
+    strip_toplevel_expr_clones(expr, strippable);
+}
+
+/// Strip `.clone()` from call arguments at the top level of an expression.
+/// For Call/MethodCall, strip matching clones. For Block, recurse into stmts.
+/// Does NOT recurse into If/Match conditions or branches.
+fn strip_toplevel_expr_clones(expr: &mut code_ir::Expr, strippable: &[String]) {
+    match expr {
+        code_ir::Expr::Call { args, .. } => {
+            for arg in args.iter_mut() {
+                try_strip_param_clone(arg, strippable);
+            }
+        }
+        code_ir::Expr::MethodCall { args, .. } => {
+            for arg in args.iter_mut() {
+                try_strip_param_clone(arg, strippable);
+            }
+        }
+        code_ir::Expr::Block(stmts) => {
+            for s in stmts.iter_mut() {
+                strip_toplevel_call_clones(s, strippable);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// If the expression is `param.clone()` where `param` is in the strippable set,
+/// replace it with just `param` (move instead of clone).
+fn try_strip_param_clone(expr: &mut code_ir::Expr, strippable: &[String]) {
+    let is_strippable_clone = matches!(
+        expr,
+        code_ir::Expr::MethodCall { receiver, method, args }
+            if method == "clone" && args.is_empty()
+            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if strippable.contains(name))
+    );
+    if is_strippable_clone {
+        // Replace param.clone() with param (move)
+        let var = match std::mem::replace(expr, code_ir::Expr::IntLit(0)) {
+            code_ir::Expr::MethodCall { receiver, .. } => *receiver,
+            _ => unreachable!(),
+        };
+        *expr = var;
+    }
+}
+
+fn lower_tco_plan(
+    plan: TcoPlan,
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> Vec<code_ir::Stmt> {
     let loop_vars: Vec<String> = param_names.iter().map(|p| format!("__tco_p_{p}")).collect();
 
     let mut preamble: Vec<code_ir::Stmt> = param_names
@@ -6288,7 +6710,16 @@ fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashS
         .collect();
 
     let mut loop_body = rebind_stmts;
-    loop_body.extend(lower_tco_plan_stmts(&plan.body, &loop_vars, param_names, str_param_names));
+    loop_body.extend(lower_tco_plan_stmts(
+        &plan.body,
+        &loop_vars,
+        param_names,
+        str_param_names,
+    ));
+    // Strip unnecessary .clone() from TCO param arguments passed to non-TCO callees.
+    // When a param is not referenced after the call (only in the final Recur),
+    // it can be moved instead of cloned, keeping Rc refcount=1 for in-place mutation.
+    strip_tco_param_clones(&mut loop_body, param_names);
     preamble.push(code_ir::Stmt::Loop { body: loop_body });
     preamble
 }
@@ -6301,7 +6732,12 @@ fn is_tco_param_passthrough(stmts: &[TcoPlanStmt], param_idx: usize, param_name:
     result && found_recur
 }
 
-fn is_tco_param_passthrough_inner(stmts: &[TcoPlanStmt], param_idx: usize, param_name: &str, found_recur: &mut bool) -> bool {
+fn is_tco_param_passthrough_inner(
+    stmts: &[TcoPlanStmt],
+    param_idx: usize,
+    param_name: &str,
+    found_recur: &mut bool,
+) -> bool {
     stmts.iter().all(|stmt| match stmt {
         TcoPlanStmt::Recur(args) => {
             *found_recur = true;
@@ -6327,29 +6763,55 @@ fn is_tco_param_passthrough_inner(stmts: &[TcoPlanStmt], param_idx: usize, param
     })
 }
 
-fn lower_tco_plan_stmts(stmts: &[TcoPlanStmt], loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
+fn lower_tco_plan_stmts(
+    stmts: &[TcoPlanStmt],
+    loop_vars: &[String],
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> Vec<code_ir::Stmt> {
     stmts
         .iter()
         .map(|stmt| lower_tco_plan_stmt(stmt, loop_vars, param_names, str_param_names))
         .collect()
 }
 
-fn lower_tco_plan_stmt(stmt: &TcoPlanStmt, loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> code_ir::Stmt {
+fn lower_tco_plan_stmt(
+    stmt: &TcoPlanStmt,
+    loop_vars: &[String],
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> code_ir::Stmt {
     match stmt {
         TcoPlanStmt::Raw(stmt) => stmt.clone(),
-        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(expr, loop_vars, param_names, str_param_names)),
-        TcoPlanStmt::TailExpr(expr) => {
-            code_ir::Stmt::TailExpr(lower_tco_plan_expr(expr, loop_vars, param_names, str_param_names))
-        }
-        TcoPlanStmt::BlockScope(body) => {
-            code_ir::Stmt::BlockScope(lower_tco_plan_stmts(body, loop_vars, param_names, str_param_names))
-        }
+        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(
+            expr,
+            loop_vars,
+            param_names,
+            str_param_names,
+        )),
+        TcoPlanStmt::TailExpr(expr) => code_ir::Stmt::TailExpr(lower_tco_plan_expr(
+            expr,
+            loop_vars,
+            param_names,
+            str_param_names,
+        )),
+        TcoPlanStmt::BlockScope(body) => code_ir::Stmt::BlockScope(lower_tco_plan_stmts(
+            body,
+            loop_vars,
+            param_names,
+            str_param_names,
+        )),
         TcoPlanStmt::Break(expr) => code_ir::Stmt::Break(expr.clone()),
         TcoPlanStmt::Recur(args) => lower_tco_recur(args, loop_vars, param_names, str_param_names),
     }
 }
 
-fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> code_ir::Expr {
+fn lower_tco_plan_expr(
+    expr: &TcoPlanExpr,
+    loop_vars: &[String],
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> code_ir::Expr {
     match expr {
         TcoPlanExpr::If {
             cond,
@@ -6372,7 +6834,12 @@ fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String], param_names: &[
                 })
                 .collect(),
         },
-        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(stmts, loop_vars, param_names, str_param_names)),
+        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(
+            stmts,
+            loop_vars,
+            param_names,
+            str_param_names,
+        )),
     }
 }
 
@@ -6392,12 +6859,17 @@ fn lower_tco_recur(
             // would copy the String via .to_string() on every iteration.
             // SG-10: Skip reassignment for passthrough &str params.
             // Matches both Var("source") and source.to_string() patterns.
-            if param_names.get(i).is_some_and(|p| str_param_names.contains(p)) {
+            if param_names
+                .get(i)
+                .is_some_and(|p| str_param_names.contains(p))
+            {
                 let is_passthrough = match arg {
                     code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall { receiver, method, args: margs }
-                        if method == "to_string" && margs.is_empty() =>
-                    {
+                    code_ir::Expr::MethodCall {
+                        receiver,
+                        method,
+                        args: margs,
+                    } if method == "to_string" && margs.is_empty() => {
                         matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
                     }
                     _ => false,
@@ -6425,12 +6897,17 @@ fn lower_tco_recur(
     for (i, loop_var) in loop_vars.iter().enumerate() {
         if i < args.len() {
             // Skip passthrough &str params (no temp was created)
-            if param_names.get(i).is_some_and(|p| str_param_names.contains(p)) {
+            if param_names
+                .get(i)
+                .is_some_and(|p| str_param_names.contains(p))
+            {
                 let is_passthrough = match &args[i] {
                     code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall { receiver, method, args: margs }
-                        if method == "to_string" && margs.is_empty() =>
-                    {
+                    code_ir::Expr::MethodCall {
+                        receiver,
+                        method,
+                        args: margs,
+                    } if method == "to_string" && margs.is_empty() => {
                         matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
                     }
                     _ => false,
@@ -6620,6 +7097,134 @@ mod tests {
             expr_identity.expect("expected walked expression identity"),
             ir_type,
         );
+    }
+
+    fn count_raw_code_hits_expr(expr: &code_ir::Expr, needle: &str) -> usize {
+        match expr {
+            code_ir::Expr::RawCode(code) => usize::from(code.contains(needle)),
+            code_ir::Expr::Call { func, args, .. } => {
+                count_raw_code_hits_expr(func, needle)
+                    + args
+                        .iter()
+                        .map(|arg| count_raw_code_hits_expr(arg, needle))
+                        .sum::<usize>()
+            }
+            code_ir::Expr::MethodCall { receiver, args, .. } => {
+                count_raw_code_hits_expr(receiver, needle)
+                    + args
+                        .iter()
+                        .map(|arg| count_raw_code_hits_expr(arg, needle))
+                        .sum::<usize>()
+            }
+            code_ir::Expr::Field(receiver, _)
+            | code_ir::Expr::Deref(receiver)
+            | code_ir::Expr::Ref(receiver)
+            | code_ir::Expr::RefMut(receiver) => count_raw_code_hits_expr(receiver, needle),
+            code_ir::Expr::Struct { fields, rest, .. } => {
+                fields
+                    .iter()
+                    .map(|(_, expr)| count_raw_code_hits_expr(expr, needle))
+                    .sum::<usize>()
+                    + rest
+                        .as_ref()
+                        .map_or(0, |rest| count_raw_code_hits_expr(rest, needle))
+            }
+            code_ir::Expr::Closure { body, .. } => count_raw_code_hits_expr(body, needle),
+            code_ir::Expr::BinOp { left, right, .. } => {
+                count_raw_code_hits_expr(left, needle) + count_raw_code_hits_expr(right, needle)
+            }
+            code_ir::Expr::UnaryOp { expr, .. } => count_raw_code_hits_expr(expr, needle),
+            code_ir::Expr::Match { expr, arms } => {
+                count_raw_code_hits_expr(expr, needle)
+                    + arms
+                        .iter()
+                        .map(|arm| count_raw_code_hits_stmts(&arm.body, needle))
+                        .sum::<usize>()
+            }
+            code_ir::Expr::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                count_raw_code_hits_expr(cond, needle)
+                    + count_raw_code_hits_stmts(then_body, needle)
+                    + else_body
+                        .as_ref()
+                        .map_or(0, |body| count_raw_code_hits_stmts(body, needle))
+            }
+            code_ir::Expr::Block(stmts) => count_raw_code_hits_stmts(stmts, needle),
+            code_ir::Expr::FormatStr { args, .. }
+            | code_ir::Expr::MacroCall { args, .. }
+            | code_ir::Expr::Tuple(args)
+            | code_ir::Expr::Array(args) => args
+                .iter()
+                .map(|arg| count_raw_code_hits_expr(arg, needle))
+                .sum(),
+            code_ir::Expr::Value(_)
+            | code_ir::Expr::Var(_)
+            | code_ir::Expr::Str(_)
+            | code_ir::Expr::IntLit(_)
+            | code_ir::Expr::BoolLit(_)
+            | code_ir::Expr::Path(_) => 0,
+        }
+    }
+
+    fn count_raw_code_hits_stmt(stmt: &code_ir::Stmt, needle: &str) -> usize {
+        match stmt {
+            code_ir::Stmt::Let { expr, .. } | code_ir::Stmt::Bind { expr, .. } => {
+                count_raw_code_hits_expr(expr, needle)
+            }
+            code_ir::Stmt::Assign { dest, value } => {
+                count_raw_code_hits_expr(dest, needle) + count_raw_code_hits_expr(value, needle)
+            }
+            code_ir::Stmt::Expr(expr)
+            | code_ir::Stmt::TailExpr(expr)
+            | code_ir::Stmt::Return(expr)
+            | code_ir::Stmt::Break(expr) => count_raw_code_hits_expr(expr, needle),
+            code_ir::Stmt::For { iter, body, .. } => {
+                count_raw_code_hits_expr(iter, needle) + count_raw_code_hits_stmts(body, needle)
+            }
+            code_ir::Stmt::Loop { body } | code_ir::Stmt::BlockScope(body) => {
+                count_raw_code_hits_stmts(body, needle)
+            }
+            code_ir::Stmt::Assert(assert) => match assert {
+                code_ir::Assert::Eq { left, right, .. } => {
+                    count_raw_code_hits_expr(left, needle) + count_raw_code_hits_expr(right, needle)
+                }
+                code_ir::Assert::True { expr, .. }
+                | code_ir::Assert::NonEmpty { expr, .. }
+                | code_ir::Assert::Contains { expr, .. } => count_raw_code_hits_expr(expr, needle),
+            },
+            code_ir::Stmt::Item(_)
+            | code_ir::Stmt::Comment(_)
+            | code_ir::Stmt::Blank
+            | code_ir::Stmt::Continue => 0,
+        }
+    }
+
+    fn count_raw_code_hits_stmts(stmts: &[code_ir::Stmt], needle: &str) -> usize {
+        stmts
+            .iter()
+            .map(|stmt| count_raw_code_hits_stmt(stmt, needle))
+            .sum()
+    }
+
+    fn stmts_contain_raw_code(stmts: &[code_ir::Stmt], needle: &str) -> bool {
+        count_raw_code_hits_stmts(stmts, needle) > 0
+    }
+
+    fn assert_is_clone_of_var(expr: &code_ir::Expr, expected_name: &str) {
+        match expr {
+            code_ir::Expr::MethodCall {
+                receiver,
+                method,
+                args,
+            } if method == "clone"
+                && args.is_empty()
+                && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == expected_name) =>
+                {}
+            other => panic!("expected {expected_name}.clone(), got: {other:?}"),
+        }
     }
 
     #[test]
@@ -7658,6 +8263,80 @@ mod tests {
     }
 
     #[test]
+    fn fold_concat_extracts_record_field_before_accum_substitution() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope.insert(
+            "spans".to_string(),
+            IrType::Generic("List".to_string(), vec![IrType::Str]),
+        );
+        ctx.struct_field_types.insert(
+            "Acc".to_string(),
+            [("texts".to_string(), "List<String>".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Acc".to_string(),
+            vec![(
+                "texts".to_string(),
+                IrType::Generic("List".to_string(), vec![IrType::Str]),
+            )],
+        );
+
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("spans".into())),
+                (
+                    Some("init".into()),
+                    Expr::Record(
+                        Some("Acc".into()),
+                        vec![("texts".into(), Expr::List(vec![]))],
+                    ),
+                ),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "span".into()],
+                        Box::new(Expr::Record(
+                            Some("Acc".into()),
+                            vec![(
+                                "texts".into(),
+                                Expr::Call(
+                                    "concat".into(),
+                                    vec![
+                                        (
+                                            None,
+                                            Expr::FieldAccess(
+                                                Box::new(Expr::Ident("acc".into())),
+                                                "texts".into(),
+                                            ),
+                                        ),
+                                        (None, Expr::List(vec![Expr::Ident("span".into())])),
+                                    ],
+                                ),
+                            )],
+                        )),
+                    ),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => assert!(
+                stmts_contain_raw_code(
+                    &stmts,
+                    "std::mem::take(&mut Rc::make_mut(&mut __acc_0).texts)"
+                ),
+                "expected concat fold path to extract acc.texts via std::mem::take, got: {stmts:?}"
+            ),
+            other => panic!("expected fold block, got: {other:?}"),
+        }
+    }
+
+    #[test]
     fn call_arguments_use_parameter_type_for_ambiguous_variants() {
         let mut counter = 0usize;
         let mut ctx = CompileContext::new();
@@ -8081,6 +8760,109 @@ mod tests {
             func: Box::new(code_ir::Expr::Var(fn_name.to_string())),
             args,
             obligation: None,
+        }
+    }
+
+    #[test]
+    fn tco_clone_stripper_counts_raw_code_refs_in_same_statement() {
+        let mut body = vec![
+            code_ir::Stmt::Let {
+                name: "tokens".into(),
+                mutable: false,
+                expr: code_ir::Expr::Var("__tco_p_tokens".into()),
+                ir_type: None,
+            },
+            code_ir::Stmt::Expr(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Var("consume".into())),
+                args: vec![
+                    code_ir::Expr::RawCode("observe(tokens)".into()),
+                    code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var("tokens".into())),
+                        method: "clone".into(),
+                        args: vec![],
+                    },
+                ],
+                obligation: None,
+            }),
+        ];
+
+        strip_tco_param_clones(&mut body, &["tokens".into()]);
+
+        match &body[1] {
+            code_ir::Stmt::Expr(code_ir::Expr::Call { args, .. }) => {
+                assert_is_clone_of_var(&args[1], "tokens");
+            }
+            other => panic!("expected Call statement, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tco_clone_stripper_counts_assert_refs_in_same_block_statement() {
+        let mut body = vec![
+            code_ir::Stmt::Let {
+                name: "tokens".into(),
+                mutable: false,
+                expr: code_ir::Expr::Var("__tco_p_tokens".into()),
+                ir_type: None,
+            },
+            code_ir::Stmt::Expr(code_ir::Expr::Block(vec![
+                code_ir::Stmt::Assert(code_ir::Assert::True {
+                    expr: code_ir::Expr::RawCode("observe(tokens)".into()),
+                    message: "assert keeps tokens live".into(),
+                }),
+                code_ir::Stmt::Expr(code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Var("consume".into())),
+                    args: vec![code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var("tokens".into())),
+                        method: "clone".into(),
+                        args: vec![],
+                    }],
+                    obligation: None,
+                }),
+            ])),
+        ];
+
+        strip_tco_param_clones(&mut body, &["tokens".into()]);
+
+        match &body[1] {
+            code_ir::Stmt::Expr(code_ir::Expr::Block(stmts)) => match &stmts[1] {
+                code_ir::Stmt::Expr(code_ir::Expr::Call { args, .. }) => {
+                    assert_is_clone_of_var(&args[0], "tokens");
+                }
+                other => panic!("expected inner Call statement, got: {other:?}"),
+            },
+            other => panic!("expected Block expression statement, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tco_clone_stripper_respects_later_raw_code_references() {
+        let mut body = vec![
+            code_ir::Stmt::Let {
+                name: "tokens".into(),
+                mutable: false,
+                expr: code_ir::Expr::Var("__tco_p_tokens".into()),
+                ir_type: None,
+            },
+            code_ir::Stmt::Expr(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Var("consume".into())),
+                args: vec![code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var("tokens".into())),
+                    method: "clone".into(),
+                    args: vec![],
+                }],
+                obligation: None,
+            }),
+            code_ir::Stmt::Expr(code_ir::Expr::RawCode("observe(tokens.clone())".into())),
+        ];
+
+        strip_tco_param_clones(&mut body, &["tokens".into()]);
+
+        match &body[1] {
+            code_ir::Stmt::Expr(code_ir::Expr::Call { args, .. }) => {
+                assert_is_clone_of_var(&args[0], "tokens");
+            }
+            other => panic!("expected Call statement, got: {other:?}"),
         }
     }
 
