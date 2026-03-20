@@ -23,8 +23,9 @@ type StsGrantType = TokenExchange {}
 
 // -- OAuth wire values ---------------------------------------------
 
-// These data constants are the single source of truth for STS OAuth URNs.
-// Generic REST body lowering resolves them into request-wire literals.
+// Generic REST body lowering derives STS OAuth URNs from the typed request
+// fields plus enum constructors. These exports remain compatibility shims for
+// callers that still spell the legacy wire strings explicitly in DSL bodies.
 data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
 data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
