@@ -1330,6 +1330,7 @@ pub fn typedefs_to_source_file(
         optional_fields: optional_fields.into(),
         variant_to_enum: variant_to_enum.into(),
         struct_field_types: struct_field_types.into(),
+        struct_field_names: std::collections::HashSet::new().into(),
         enum_variants: enum_variants.into(),
         boxed_fields: std::collections::HashSet::new().into(),
         fn_return_types: std::collections::HashMap::new().into(),
@@ -1345,6 +1346,7 @@ pub fn typedefs_to_source_file(
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
         enum_accessor_fields: HashMap::new().into(),
+        enum_accessor_field_names: HashSet::new().into(),
         data_ir_types: std::collections::HashMap::new().into(),
         fn_return_ir_types: std::collections::HashMap::new().into(),
         optional_return_fns: std::collections::HashSet::new().into(),
@@ -1357,7 +1359,8 @@ pub fn typedefs_to_source_file(
         expr_path: std::cell::RefCell::new(Default::default()),
         rc_wrapped_types: std::collections::HashSet::new().into(),
         match_bound_vars: std::collections::HashSet::new(),
-    };
+    }
+    .with_field_name_indexes();
     let mut code_items = Vec::new();
     for item in items {
         match &item.node {
@@ -1479,6 +1482,7 @@ pub fn generate_types_for_modules(
         optional_fields: optional_fields.into(),
         variant_to_enum: variant_to_enum.into(),
         struct_field_types: struct_field_types.into(),
+        struct_field_names: std::collections::HashSet::new().into(),
         enum_variants: enum_variants.into(),
         boxed_fields: std::collections::HashSet::new().into(),
         fn_return_types: global_fn_return_types.into(),
@@ -1495,6 +1499,7 @@ pub fn generate_types_for_modules(
         use_counts: std::collections::HashMap::new(),
         fold_accum_name: None,
         enum_accessor_fields: HashMap::new().into(),
+        enum_accessor_field_names: HashSet::new().into(),
         optional_return_fns: std::collections::HashSet::new().into(),
         fn_str_params: std::collections::HashSet::new().into(),
         str_param_names: std::collections::HashSet::new(),
@@ -1505,7 +1510,8 @@ pub fn generate_types_for_modules(
         expr_path: std::cell::RefCell::new(Default::default()),
         rc_wrapped_types: std::collections::HashSet::new().into(),
         match_bound_vars: std::collections::HashSet::new(),
-    };
+    }
+    .with_field_name_indexes();
 
     for (module_index, item_index) in &fn_defs {
         let module = typed
@@ -2080,6 +2086,7 @@ mod tests {
                 optional_fields: optional_fields.into(),
                 variant_to_enum: variant_to_enum.into(),
                 struct_field_types: struct_field_types.into(),
+                struct_field_names: HashSet::new().into(),
                 enum_variants: enum_variants.into(),
                 boxed_fields: HashSet::new().into(),
                 fn_return_types: fn_return_types.into(),
@@ -2107,12 +2114,14 @@ mod tests {
                 expr_identities: HashMap::new(),
                 expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
                 enum_accessor_fields: HashMap::new().into(),
+                enum_accessor_field_names: HashSet::new().into(),
                 optional_return_fns: HashSet::new().into(),
                 fn_str_params: HashSet::new().into(),
                 str_param_names: HashSet::new(),
                 rc_wrapped_types: HashSet::new().into(),
                 match_bound_vars: HashSet::new(),
-            },
+            }
+            .with_field_name_indexes(),
         )
     }
 

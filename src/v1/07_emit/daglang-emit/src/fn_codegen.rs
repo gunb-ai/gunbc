@@ -151,6 +151,8 @@ pub struct CompileContext {
     /// Map from struct name → (field name → field type name) for contextual resolution.
     pub struct_field_types:
         Shared<std::collections::HashMap<String, std::collections::HashMap<String, String>>>,
+    /// Flattened set of all struct field names for O(1) unknown-receiver fallback checks.
+    pub struct_field_names: Shared<HashSet<String>>,
     /// Map from enum name → set of variant names, for field-type-based disambiguation.
     pub enum_variants: Shared<std::collections::HashMap<String, HashSet<String>>>,
     /// Set of (type_name, field_name) pairs that need Box<> wrapping (recursive types).
@@ -191,6 +193,8 @@ pub struct CompileContext {
     /// Field access on these fields compiles to accessor method calls instead of direct
     /// field access, since Rust enums don't support direct field access.
     pub enum_accessor_fields: Shared<HashMap<String, HashSet<String>>>,
+    /// Flattened set of all enum accessor field names for O(1) fallback checks.
+    pub enum_accessor_field_names: Shared<HashSet<String>>,
     /// Set of function names whose return type is Optional (T?).
     pub optional_return_fns: Shared<HashSet<String>>,
     /// R3: Set of (fn_name, param_index) pairs where the param is exactly `String`
@@ -578,6 +582,7 @@ impl CompileContext {
             optional_fields: Shared::default(),
             variant_to_enum: Shared::default(),
             struct_field_types: Shared::default(),
+            struct_field_names: Shared::default(),
             enum_variants: Shared::default(),
             boxed_fields: Shared::default(),
             fn_return_types: Shared::default(),
@@ -594,6 +599,7 @@ impl CompileContext {
             use_counts: HashMap::new(),
             fold_accum_name: None,
             enum_accessor_fields: Shared::default(),
+            enum_accessor_field_names: Shared::default(),
             optional_return_fns: Shared::default(),
             fn_str_params: Shared::default(),
             str_param_names: HashSet::new(),
@@ -605,6 +611,17 @@ impl CompileContext {
             rc_wrapped_types: Shared::default(),
             match_bound_vars: HashSet::new(),
         }
+    }
+
+    pub(crate) fn with_field_name_indexes(mut self) -> Self {
+        self.rebuild_field_name_indexes();
+        self
+    }
+
+    pub(crate) fn rebuild_field_name_indexes(&mut self) {
+        self.struct_field_names = build_struct_field_names(&self.struct_field_types).into();
+        self.enum_accessor_field_names =
+            build_enum_accessor_field_names(&self.enum_accessor_fields).into();
     }
 
     fn current_expr_path(&self) -> ExprPath {
@@ -1723,15 +1740,9 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // the field name is an enum accessor. Prefer method call when:
                 // (a) no struct has this as a field, OR
                 // (b) the receiver is a chained expression (likely a typed tree traversal).
-                let is_enum_accessor = ctx
-                    .enum_accessor_fields
-                    .values()
-                    .any(|fields| fields.contains(field.as_str()));
+                let is_enum_accessor = ctx.enum_accessor_field_names.contains(field.as_str());
                 if is_enum_accessor {
-                    let is_struct_field = ctx
-                        .struct_field_types
-                        .values()
-                        .any(|fields| fields.contains_key(field.as_str()));
+                    let is_struct_field = ctx.struct_field_names.contains(field.as_str());
                     // When the field name is ambiguous (exists on both enum and struct),
                     // use method call for chained field access where the intermediate
                     // field returns an Expr (e.g., x.typed.resolved_type,
@@ -5948,6 +5959,24 @@ pub(crate) fn build_struct_field_ir_type_lookup(
         .collect()
 }
 
+pub(crate) fn build_struct_field_names(
+    struct_field_types: &HashMap<String, HashMap<String, String>>,
+) -> HashSet<String> {
+    struct_field_types
+        .values()
+        .flat_map(|fields| fields.keys().cloned())
+        .collect()
+}
+
+pub(crate) fn build_enum_accessor_field_names(
+    enum_accessor_fields: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    enum_accessor_fields
+        .values()
+        .flat_map(|fields| fields.iter().cloned())
+        .collect()
+}
+
 pub(crate) fn build_fn_param_name_indexes(
     fn_param_types: &HashMap<String, Vec<(String, String)>>,
 ) -> HashMap<String, HashMap<String, usize>> {
@@ -7752,6 +7781,106 @@ mod tests {
                 );
             }
             other => panic!("expected struct update, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_receiver_enum_accessor_uses_method_call_without_struct_collision() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_accessor_fields.insert(
+            "TypedExpr".to_string(),
+            ["resolved_type".to_string()].into_iter().collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("node".into())), "resolved_type".into());
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::MethodCall { method, args, .. } => {
+                assert_eq!(method, "resolved_type");
+                assert!(args.is_empty());
+            }
+            other => panic!("expected accessor method call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_receiver_ambiguous_accessor_on_value_chain_still_uses_method_call() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_accessor_fields.insert(
+            "TypedExpr".to_string(),
+            ["resolved_type".to_string()].into_iter().collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ResolvedExpr".to_string(),
+            [("resolved_type".to_string(), "Node".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::FieldAccess(
+                Box::new(Expr::Ident("arg".into())),
+                "value".into(),
+            )),
+            "resolved_type".into(),
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::MethodCall { method, args, .. } => {
+                assert_eq!(method, "resolved_type");
+                assert!(args.is_empty());
+            }
+            other => panic!("expected chained accessor method call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_receiver_ambiguous_accessor_on_plain_ident_stays_field_access() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_accessor_fields.insert(
+            "TypedExpr".to_string(),
+            ["resolved_type".to_string()].into_iter().collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ResolvedExpr".to_string(),
+            [("resolved_type".to_string(), "Node".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("node".into())), "resolved_type".into());
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Field(receiver, field) => {
+                assert_eq!(field, "resolved_type");
+                let receiver_is_node = match receiver.as_ref() {
+                    code_ir::Expr::Var(name) => name == "node",
+                    code_ir::Expr::MethodCall {
+                        receiver,
+                        method,
+                        args,
+                    } => {
+                        method == "clone"
+                            && args.is_empty()
+                            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == "node")
+                    }
+                    _ => false,
+                };
+                assert!(
+                    receiver_is_node,
+                    "expected node receiver, got: {receiver:?}"
+                );
+            }
+            other => panic!("expected plain field access, got: {other:?}"),
         }
     }
 

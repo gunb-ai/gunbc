@@ -826,7 +826,10 @@ fn emit_module(
         expr_path: std::cell::RefCell::new(Default::default()),
         rc_wrapped_types: type_codegen::current_rc_wrapped_types().into(),
         match_bound_vars: std::collections::HashSet::new(),
-    };
+        struct_field_names: std::collections::HashSet::new().into(),
+        enum_accessor_field_names: std::collections::HashSet::new().into(),
+    }
+    .with_field_name_indexes();
 
     for item in items {
         match &item.node {
