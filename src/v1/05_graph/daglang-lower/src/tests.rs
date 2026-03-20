@@ -3981,6 +3981,26 @@ func run() -> { result: String } {
 }
 
 #[test]
+fn sts_token_type_urns_are_derived_from_structural_variants() {
+    assert_eq!(
+        sts_token_type_urn("subject_token_type", "Jwt"),
+        "urn:ietf:params:oauth:token-type:jwt"
+    );
+    assert_eq!(
+        sts_token_type_urn("subject_token_type", "StsAccessToken"),
+        "urn:ietf:params:oauth:token-type:access_token"
+    );
+    assert_eq!(
+        sts_token_type_urn("requested_token_type", "RequestAccessToken"),
+        "urn:ietf:params:oauth:token-type:access_token"
+    );
+    assert_eq!(
+        sts_token_type_urn("requested_token_type", "RequestIdToken"),
+        "urn:ietf:params:oauth:token-type:id_token"
+    );
+}
+
+#[test]
 fn sts_exchange_body_template_literals_are_validated_against_sts_schema() {
     let source = r#"module extdeps.cloud.gcp.sts
 type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2

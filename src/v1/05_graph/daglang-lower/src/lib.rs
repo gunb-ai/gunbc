@@ -51,8 +51,8 @@ use gunbc_ir::transport::middleware::{
     RetryConfig, TransportMiddlewareConfig,
 };
 use gunbc_ir::{
-    Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, Node, NodeId, NodeKind,
-    NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, InputProvenance, NamingCase, Node, NodeId,
+    NodeKind, NodeOrigin, OperationKey, Port, PortName, StaticFingerprint,
 };
 use serde::{Deserialize, Serialize};
 
@@ -6548,8 +6548,6 @@ fn validate_sts_exchange_body_against_typed_schema(
     const STS_SERVICE: &str = "gcp.STS";
     const STS_OPERATION: &str = "Exchange";
     const TOKEN_EXCHANGE_URN: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
-    const JWT_URN: &str = "urn:ietf:params:oauth:token-type:jwt";
-    const ACCESS_TOKEN_URN: &str = "urn:ietf:params:oauth:token-type:access_token";
 
     if service.name != STS_SERVICE || operation.name != STS_OPERATION {
         return Ok(());
@@ -6743,18 +6741,34 @@ fn validate_sts_exchange_body_against_typed_schema(
         TOKEN_EXCHANGE_URN,
         &format!("{grant_type_name}::TokenExchange"),
     )?;
+    let subject_token_type_urn = sts_token_type_urn("subject_token_type", "Jwt");
     expect_literal(
         "subject_token_type",
-        JWT_URN,
+        &subject_token_type_urn,
         &format!("{subject_token_type_name}::Jwt"),
     )?;
+    let requested_token_type_urn = sts_token_type_urn("requested_token_type", "RequestAccessToken");
     expect_literal(
         "requested_token_type",
-        ACCESS_TOKEN_URN,
+        &requested_token_type_urn,
         &format!("{requested_token_type_name}::RequestAccessToken"),
     )?;
 
     Ok(())
+}
+
+fn sts_token_type_urn(field_name: &str, variant_name: &str) -> String {
+    // The DSL enum variants carry role-specific prefixes to keep the type-level
+    // names unambiguous; the OAuth wire value comes from the normalized variant.
+    let normalized_variant = match field_name {
+        "requested_token_type" => variant_name.strip_prefix("Request").unwrap_or(variant_name),
+        "subject_token_type" => variant_name.strip_prefix("Sts").unwrap_or(variant_name),
+        _ => variant_name,
+    };
+    format!(
+        "urn:ietf:params:oauth:token-type:{}",
+        NamingCase::SnakeCase.apply(normalized_variant)
+    )
 }
 
 fn named_type_expr_name(ty: &TypeExpr) -> Option<&str> {
