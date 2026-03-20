@@ -1356,7 +1356,9 @@ struct FunctionalUpdatePlan {
     source_var: String,
     #[allow(dead_code)]
     identity_fields: Vec<String>,
-    modified_fields: Vec<String>,
+    // Indexed so V5 lowering can test per-field membership without rescanning
+    // every modified field name for each record field.
+    modified_fields: HashSet<String>,
 }
 
 /// Count references to a named identifier in an AST expression.
@@ -1408,7 +1410,7 @@ fn detect_functional_update(
 
     let mut source_var: Option<&str> = None;
     let mut identity_fields = Vec::new();
-    let mut modified_fields = Vec::new();
+    let mut modified_fields = HashSet::new();
 
     for (field_name, field_expr) in fields {
         // Identity copy: source.field_name where field_name matches record field
@@ -1425,7 +1427,7 @@ fn detect_functional_update(
                 }
             }
         }
-        modified_fields.push(field_name.clone());
+        modified_fields.insert(field_name.clone());
     }
 
     // Need a source variable (at least one identity field to identify it)
@@ -1465,7 +1467,7 @@ fn detect_functional_update(
     // source variable reference in the compiled expression would fail after move.
     let all_takeable = modified_fields
         .iter()
-        .all(|f| field_supports_take(struct_name, f, ctx));
+        .all(|field_name| field_supports_take(struct_name, field_name, ctx));
     if !all_takeable {
         return None;
     }
@@ -7492,6 +7494,99 @@ mod tests {
                 );
             }
             other => panic!("expected Struct update, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn functional_record_update_handles_multiple_modified_fields() {
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope
+            .insert("state".to_string(), IrType::Named("State".to_string()));
+        ctx.rc_wrapped_types.insert("State".to_string());
+        ctx.struct_field_ir_types.insert(
+            "State".to_string(),
+            vec![
+                (
+                    "left".to_string(),
+                    IrType::Generic("List".to_string(), vec![IrType::Int]),
+                ),
+                (
+                    "right".to_string(),
+                    IrType::Generic("List".to_string(), vec![IrType::Int]),
+                ),
+                ("count".to_string(), IrType::Int),
+            ],
+        );
+
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Record(
+                Some("State".into()),
+                vec![
+                    (
+                        "left".into(),
+                        Expr::Call(
+                            "append".into(),
+                            vec![
+                                (
+                                    None,
+                                    Expr::FieldAccess(
+                                        Box::new(Expr::Ident("state".into())),
+                                        "left".into(),
+                                    ),
+                                ),
+                                (None, Expr::Literal(Literal::Int(1))),
+                            ],
+                        ),
+                    ),
+                    (
+                        "right".into(),
+                        Expr::Call(
+                            "append".into(),
+                            vec![
+                                (
+                                    None,
+                                    Expr::FieldAccess(
+                                        Box::new(Expr::Ident("state".into())),
+                                        "right".into(),
+                                    ),
+                                ),
+                                (None, Expr::Literal(Literal::Int(2))),
+                            ],
+                        ),
+                    ),
+                    (
+                        "count".into(),
+                        Expr::FieldAccess(Box::new(Expr::Ident("state".into())), "count".into()),
+                    ),
+                ],
+            ))],
+        };
+
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Block(stmts)) => {
+                let take_sites = stmts
+                    .iter()
+                    .filter_map(|stmt| match stmt {
+                        code_ir::Stmt::Let { expr, .. } => match expr {
+                            code_ir::Expr::RawCode(code) => Some(code.as_str()),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .filter(|code| code.contains("std::mem::take(&mut __owned_"))
+                    .collect::<Vec<_>>();
+                assert_eq!(take_sites.len(), 2, "expected one take per modified field");
+                assert!(
+                    take_sites.iter().any(|code| code.contains(".left")),
+                    "expected left field take, got: {take_sites:?}"
+                );
+                assert!(
+                    take_sites.iter().any(|code| code.contains(".right")),
+                    "expected right field take, got: {take_sites:?}"
+                );
+            }
+            other => panic!("expected functional-update block, got: {other:?}"),
         }
     }
 
