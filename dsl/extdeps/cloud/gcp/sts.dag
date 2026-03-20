@@ -74,11 +74,11 @@ service gcp.STS {
       method: POST,
       path: "/v1/token",
       body: StsTokenExchange {
-        grant_type: token_exchange_grant_type_wire,
+        grant_type: TokenExchange {},
         subject_token: subject_token,
-        subject_token_type: jwt_subject_token_type_wire,
+        subject_token_type: Jwt,
         audience: audience,
-        requested_token_type: access_token_requested_token_type_wire
+        requested_token_type: RequestAccessToken
       }
     }
     response {
