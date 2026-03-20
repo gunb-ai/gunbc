@@ -36,6 +36,10 @@ use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
 
+type StructFieldTypes = HashMap<String, HashMap<String, String>>;
+type StructFieldIrTypes = HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>;
+type StructFieldIrTypeLookup = HashMap<String, HashMap<String, gunbc_ir::code_ir::IrType>>;
+
 /// A generated file with its path relative to the crate root and content.
 #[derive(Debug)]
 pub struct GeneratedFile {
@@ -68,6 +72,133 @@ struct EmbeddedDagMarks {
     include_in_self_parse: bool,
     include_in_self_resolve: bool,
     include_in_gist_resolve: bool,
+}
+
+#[derive(Clone)]
+struct ModuleEmitSharedContext {
+    optional_fields: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    variant_to_enum: fn_codegen::Shared<HashMap<String, String>>,
+    struct_field_types: fn_codegen::Shared<StructFieldTypes>,
+    struct_field_names: fn_codegen::Shared<HashSet<String>>,
+    enum_variants: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    boxed_fields: fn_codegen::Shared<HashSet<(String, String)>>,
+    fn_return_types: fn_codegen::Shared<HashMap<String, String>>,
+    fn_return_ir_types: fn_codegen::Shared<HashMap<String, gunbc_ir::code_ir::IrType>>,
+    fn_param_types: fn_codegen::Shared<HashMap<String, Vec<(String, String)>>>,
+    fn_param_name_indexes: fn_codegen::Shared<HashMap<String, HashMap<String, usize>>>,
+    struct_field_ir_types: fn_codegen::Shared<StructFieldIrTypes>,
+    struct_field_ir_type_lookup: fn_codegen::Shared<StructFieldIrTypeLookup>,
+    enum_accessor_fields: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    enum_accessor_field_names: fn_codegen::Shared<HashSet<String>>,
+    optional_return_fns: fn_codegen::Shared<HashSet<String>>,
+    fn_str_params: fn_codegen::Shared<HashSet<(String, usize)>>,
+    rc_wrapped_types: fn_codegen::Shared<HashSet<String>>,
+}
+
+struct ModuleEmitGlobalIndexes {
+    optional_fields: HashMap<String, HashSet<String>>,
+    variant_to_enum: HashMap<String, String>,
+    enum_variants: HashMap<String, HashSet<String>>,
+    boxed_fields: HashSet<(String, String)>,
+    fn_return_types: HashMap<String, String>,
+    fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType>,
+    fn_param_types: HashMap<String, Vec<(String, String)>>,
+    enum_accessor_fields: HashMap<String, HashSet<String>>,
+    optional_return_fns: HashSet<String>,
+    fn_str_params: HashSet<(String, usize)>,
+    rc_wrapped_types: HashSet<String>,
+}
+
+impl ModuleEmitSharedContext {
+    fn from_global_indexes(indexes: ModuleEmitGlobalIndexes) -> Self {
+        let ModuleEmitGlobalIndexes {
+            optional_fields,
+            variant_to_enum,
+            enum_variants,
+            boxed_fields,
+            fn_return_types,
+            fn_return_ir_types,
+            fn_param_types,
+            enum_accessor_fields,
+            optional_return_fns,
+            fn_str_params,
+            rc_wrapped_types,
+        } = indexes;
+        let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&fn_param_types);
+        let enum_accessor_field_names =
+            fn_codegen::build_enum_accessor_field_names(&enum_accessor_fields);
+        Self {
+            optional_fields: optional_fields.into(),
+            variant_to_enum: variant_to_enum.into(),
+            struct_field_types: StructFieldTypes::new().into(),
+            struct_field_names: HashSet::new().into(),
+            enum_variants: enum_variants.into(),
+            boxed_fields: boxed_fields.into(),
+            fn_return_types: fn_return_types.into(),
+            fn_return_ir_types: fn_return_ir_types.into(),
+            fn_param_types: fn_param_types.into(),
+            fn_param_name_indexes: fn_param_name_indexes.into(),
+            struct_field_ir_types: StructFieldIrTypes::new().into(),
+            struct_field_ir_type_lookup: StructFieldIrTypeLookup::new().into(),
+            enum_accessor_fields: enum_accessor_fields.into(),
+            enum_accessor_field_names: enum_accessor_field_names.into(),
+            optional_return_fns: optional_return_fns.into(),
+            fn_str_params: fn_str_params.into(),
+            rc_wrapped_types: rc_wrapped_types.into(),
+        }
+    }
+
+    fn expose_visible_types(
+        &mut self,
+        items: &[daglang_syntax::span::Spanned<Item>],
+        all_struct_field_types: &StructFieldTypes,
+        all_struct_field_ir_types: &StructFieldIrTypes,
+    ) {
+        for item in items {
+            let Item::TypeDef(td) = &item.node else {
+                continue;
+            };
+            self.expose_type_name(&td.name, all_struct_field_types, all_struct_field_ir_types);
+            if let TypeBody::Sum(variants) = &td.body {
+                for variant in variants {
+                    self.expose_type_name(
+                        &variant.name,
+                        all_struct_field_types,
+                        all_struct_field_ir_types,
+                    );
+                }
+            }
+        }
+    }
+
+    fn expose_type_name(
+        &mut self,
+        type_name: &str,
+        all_struct_field_types: &StructFieldTypes,
+        all_struct_field_ir_types: &StructFieldIrTypes,
+    ) {
+        if let Some(field_types) = all_struct_field_types.get(type_name) {
+            if !self.struct_field_types.contains_key(type_name) {
+                self.struct_field_names.extend(field_types.keys().cloned());
+                self.struct_field_types
+                    .insert(type_name.to_string(), field_types.clone());
+            }
+        }
+
+        if let Some(ir_fields) = all_struct_field_ir_types.get(type_name) {
+            if !self.struct_field_ir_types.contains_key(type_name) {
+                self.struct_field_ir_type_lookup.insert(
+                    type_name.to_string(),
+                    ir_fields
+                        .iter()
+                        .map(|(field_name, ty)| (field_name.clone(), ty.clone()))
+                        .collect(),
+                );
+                self.struct_field_ir_types
+                    .insert(type_name.to_string(), ir_fields.clone());
+            }
+        }
+    }
 }
 
 fn workspace_root_from_manifest_dir() -> PathBuf {
@@ -487,16 +618,29 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    let mut module_shared_ctx =
+        ModuleEmitSharedContext::from_global_indexes(ModuleEmitGlobalIndexes {
+            optional_fields,
+            variant_to_enum,
+            enum_variants: all_enum_variants,
+            boxed_fields: recursive_fields,
+            fn_return_types: global_fn_return_types,
+            fn_return_ir_types: global_fn_return_ir_types,
+            fn_param_types: global_fn_param_types,
+            enum_accessor_fields,
+            optional_return_fns: global_optional_return_fns,
+            fn_str_params: global_fn_str_params,
+            rc_wrapped_types: rc_wrapped_types.clone(),
+        });
+    module_shared_ctx.expose_type_name("BindingPower", &struct_field_types, &struct_field_ir_types);
+    module_shared_ctx.expose_type_name("SourceSpan", &struct_field_types, &struct_field_ir_types);
+
     // 5. Emit each module, tracking type definitions to suppress exact duplicates
     // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
     // structurally identical types get their duplicate definitions suppressed,
     // so cross-module references use the upstream type
     // via `use crate::upstream::*`.
     let mut defined_type_signatures: HashMap<String, TypeDefSignature> = HashMap::new();
-    // S81: Track which type names are visible to each module (current + upstream)
-    // Initialize with hardcoded materialized types from std_types_prelude
-    let mut visible_type_names: HashSet<String> =
-        HashSet::from(["SourceSpan".to_string(), "BindingPower".to_string()]);
     // R8: Install Rc-wrapped types for all type_expr_to_rust calls within module emission
     type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
         for (_dag_stem, sf) in modules {
@@ -504,54 +648,13 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
                 continue;
             };
             let items = &sf.items;
-
-            // Add this module's type names AND variant names to the visible set
-            for item in items.iter() {
-                if let Item::TypeDef(td) = &item.node {
-                    visible_type_names.insert(td.name.clone());
-                    // Also add variant names (they're keys in struct_field_types)
-                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
-                        for v in variants {
-                            visible_type_names.insert(v.name.clone());
-                        }
-                    }
-                }
-            }
-
-            // Filter struct_field_types to only include visible types
-            let module_struct_field_types: HashMap<String, HashMap<String, String>> =
-                struct_field_types
-                    .iter()
-                    .filter(|(name, _)| visible_type_names.contains(name.as_str()))
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-
-            // Filter struct_field_ir_types to only include visible types
-            let module_struct_field_ir_types: HashMap<
-                String,
-                Vec<(String, gunbc_ir::code_ir::IrType)>,
-            > = struct_field_ir_types
-                .iter()
-                .filter(|(name, _)| visible_type_names.contains(name.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-
-            let source = emit_module(
+            module_shared_ctx.expose_visible_types(
                 items,
-                &recursive_fields,
-                &variant_to_enum,
-                &module_struct_field_types,
-                &optional_fields,
-                &all_enum_variants,
-                &defined_type_signatures,
-                &module_struct_field_ir_types,
-                &global_fn_return_types,
-                &global_fn_return_ir_types,
-                &global_fn_param_types,
-                &enum_accessor_fields,
-                &global_optional_return_fns,
-                &global_fn_str_params,
+                &struct_field_types,
+                &struct_field_ir_types,
             );
+
+            let source = emit_module(items, &module_shared_ctx, &defined_type_signatures);
             // Track which types this module defines with their structural signature.
             for item in items.iter() {
                 if let Item::TypeDef(td) = &item.node {
@@ -726,22 +829,10 @@ fn module_prelude(source_file: &SourceFile) -> String {
     prelude
 }
 
-#[allow(clippy::too_many_arguments)]
 fn emit_module(
     items: &[daglang_syntax::span::Spanned<Item>],
-    recursive_fields: &HashSet<(String, String)>,
-    variant_to_enum: &HashMap<String, String>,
-    struct_field_types: &HashMap<String, HashMap<String, String>>,
-    optional_fields: &HashMap<String, HashSet<String>>,
-    all_enum_variants: &HashMap<String, HashSet<String>>,
+    shared_ctx: &ModuleEmitSharedContext,
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
-    struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
-    global_fn_return_types: &HashMap<String, String>,
-    global_fn_return_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
-    global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
-    enum_accessor_fields: &HashMap<String, HashSet<String>>,
-    optional_return_fns: &HashSet<String>,
-    global_fn_str_params: &HashSet<(String, usize)>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
     let struct_defs: Vec<&TypeDef> = items
@@ -777,10 +868,6 @@ fn emit_module(
         })
         .collect();
 
-    // Use cross-module enum_variants for correct variant resolution
-    let enum_variants_map = all_enum_variants.clone();
-    let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(global_fn_param_types);
-
     let ctx = fn_codegen::CompileContext {
         data_names: data_names.into(),
         data_ir_types: items
@@ -794,42 +881,38 @@ fn emit_module(
             .collect::<HashMap<_, _>>()
             .into(),
         data_map_names: data_map_names.into(),
-        optional_fields: optional_fields.clone().into(),
-        variant_to_enum: variant_to_enum.clone().into(),
-        struct_field_types: struct_field_types.clone().into(),
-        enum_variants: enum_variants_map.into(),
-        boxed_fields: recursive_fields.clone().into(),
-        fn_return_types: global_fn_return_types.clone().into(),
-        fn_return_ir_types: global_fn_return_ir_types.clone().into(),
-        fn_param_types: global_fn_param_types.clone().into(),
-        fn_param_name_indexes: fn_param_name_indexes.into(),
+        optional_fields: shared_ctx.optional_fields.clone(),
+        variant_to_enum: shared_ctx.variant_to_enum.clone(),
+        struct_field_types: shared_ctx.struct_field_types.clone(),
+        struct_field_names: shared_ctx.struct_field_names.clone(),
+        enum_variants: shared_ctx.enum_variants.clone(),
+        boxed_fields: shared_ctx.boxed_fields.clone(),
+        fn_return_types: shared_ctx.fn_return_types.clone(),
+        fn_return_ir_types: shared_ctx.fn_return_ir_types.clone(),
+        fn_param_types: shared_ctx.fn_param_types.clone(),
+        fn_param_name_indexes: shared_ctx.fn_param_name_indexes.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
         current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
-        struct_field_ir_types: struct_field_ir_types.clone().into(),
-        struct_field_ir_type_lookup: fn_codegen::build_struct_field_ir_type_lookup(
-            struct_field_ir_types,
-        )
-        .into(),
+        struct_field_ir_types: shared_ctx.struct_field_ir_types.clone(),
+        struct_field_ir_type_lookup: shared_ctx.struct_field_ir_type_lookup.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
-        enum_accessor_fields: enum_accessor_fields.clone().into(),
-        optional_return_fns: optional_return_fns.clone().into(),
+        enum_accessor_fields: shared_ctx.enum_accessor_fields.clone(),
+        enum_accessor_field_names: shared_ctx.enum_accessor_field_names.clone(),
+        optional_return_fns: shared_ctx.optional_return_fns.clone(),
         anonymous_record_targets: std::collections::HashMap::new().into(),
         synthesized_anonymous_record_types: Vec::new().into(),
         expr_ir_types: std::collections::HashMap::new().into(),
-        fn_str_params: global_fn_str_params.clone().into(),
+        fn_str_params: shared_ctx.fn_str_params.clone(),
         str_param_names: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
-        rc_wrapped_types: type_codegen::current_rc_wrapped_types().into(),
+        rc_wrapped_types: shared_ctx.rc_wrapped_types.clone(),
         match_bound_vars: std::collections::HashSet::new(),
-        struct_field_names: std::collections::HashSet::new().into(),
-        enum_accessor_field_names: std::collections::HashSet::new().into(),
-    }
-    .with_field_name_indexes();
+    };
 
     for item in items {
         match &item.node {
@@ -846,7 +929,10 @@ fn emit_module(
                 {
                     continue;
                 }
-                ir_items.extend(type_codegen::typedef_to_code_ir_boxed(td, recursive_fields));
+                ir_items.extend(type_codegen::typedef_to_code_ir_boxed(
+                    td,
+                    &shared_ctx.boxed_fields,
+                ));
             }
             Item::FnDef(fd) => {
                 ir_items.extend(type_codegen::fndef_to_code_ir(fd, &ctx));
