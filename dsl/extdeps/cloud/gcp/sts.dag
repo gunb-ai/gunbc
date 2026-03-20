@@ -15,7 +15,7 @@ import std.errors { GcpErrorShape, GitHubErrorShape }
 
 type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
 
-type RequestedTokenType = RequestAccessToken | RequestIdToken
+type RequestedTokenType = RequestAccessToken {}
 
 // -- Grant type ----------------------------------------------------
 
@@ -79,7 +79,7 @@ service gcp.STS {
         subject_token: subject_token,
         subject_token_type: Jwt,
         audience: audience,
-        requested_token_type: RequestAccessToken
+        requested_token_type: RequestAccessToken {}
       },
       wire_values: {
         grant_type: {
