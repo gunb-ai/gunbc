@@ -1,86 +1,157 @@
 // Integration coverage for STS lowering via the canonical
-// `dsl/extdeps/cloud/gcp/sts.dag` fixture.
+// `dsl/extdeps/cloud/gcp/sts.dag` fixture discovered from the real `dsl/` tree.
 #![allow(clippy::disallowed_methods)]
 
-use daglang_lower::{lower_typed_project, ServiceOperationSpec};
-use daglang_resolve::{ModuleGraph, ResolvedModule};
-use daglang_syntax::parser;
+use daglang_lower::{lower_typed_project_for_modules_with_entry, LoweredOp, ServiceOperationSpec};
+use daglang_resolve::ModuleGraph;
 use daglang_typecheck::{typecheck_owned_module_graph, TypedProject};
 use gunbc_exec::Executable;
 use gunbc_ir::transport::{HttpMethod, TransportRequest};
+use gunbc_ir::Dag;
 use gunbc_ir::{SecretString, Value};
 use gunbc_resolve::service_ops::GenericPrepareOp;
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
-    let modules = sources
-        .iter()
-        .map(|(path, source)| {
-            let ast = parser::parse(source).expect("source should parse");
-            let module_path = ast
-                .module_path
-                .as_ref()
-                .map(|module| module.node.clone())
-                .expect("module declaration is required");
-            ResolvedModule {
-                path: PathBuf::from(path),
-                ast,
-                module_path,
-                dependencies: Vec::new(),
-                source: source.to_string(),
-            }
-        })
-        .collect::<Vec<_>>();
-    let module_lookup = modules
-        .iter()
-        .enumerate()
-        .map(|(index, module)| (module.module_path.as_dotted(), index))
-        .collect::<HashMap<_, _>>();
-    let mut modules = modules;
-    for module in &mut modules {
-        module.dependencies = module
-            .ast
-            .imports
-            .iter()
-            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
-            .collect::<Vec<_>>();
-    }
-    ModuleGraph { modules }
-}
-
-fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static> {
-    typecheck_owned_module_graph(module_graph_from_sources(sources))
-        .expect("typecheck should succeed")
-}
-
-fn read_repo_source(relative_path: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../")
-        .join(relative_path);
-    std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
-}
-
-#[test]
-fn canonical_sts_fixture_emits_expected_oauth_urns_in_prepared_request() {
-    let std_errors_source = read_repo_source("dsl/std/errors.dag");
-    let sts_source = read_repo_source("dsl/extdeps/cloud/gcp/sts.dag");
-    let typed = typed_project_from_sources(&[
-        ("dsl/std/errors.dag", &std_errors_source),
-        ("dsl/extdeps/cloud/gcp/sts.dag", &sts_source),
-        (
-            "dsl/tests/sts_transport_fixture_harness.dag",
-            r#"module tests.sts_transport_fixture_harness
+const STS_HARNESS_MODULE: &str = "tests.sts_transport_fixture_harness";
+const STS_HARNESS_PATH: &str = "tests/sts_transport_fixture_harness.dag";
+const STS_HARNESS_SOURCE: &str = r#"module tests.sts_transport_fixture_harness
 import extdeps.cloud.gcp.sts { gcp.STS }
 
 func run(subject_token: Secret, audience: NonEmptyStr) -> { access_token: Secret, expires_in: Int } {
   token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
   return { access_token: token.access_token, expires_in: token.expires_in }
-}"#,
-        ),
-    ]);
-    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+}"#;
+
+static STS_FIXTURE_ROOT_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn dsl_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl")
+}
+
+fn unique_fixture_root() -> PathBuf {
+    let id = STS_FIXTURE_ROOT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "daglang_lower_sts_transport_{}_{}",
+        std::process::id(),
+        id
+    ))
+}
+
+fn write_source_file(path: &Path, content: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|error| panic!("failed to create {}: {error}", parent.display()));
+    }
+    std::fs::write(path, content)
+        .unwrap_or_else(|error| panic!("failed to write {}: {error}", path.display()));
+}
+
+fn discovered_module_graph_for_target(fixture_root: &Path, target_module: &str) -> ModuleGraph {
+    let graph = ModuleGraph::discover(&[fixture_root.to_path_buf(), dsl_root()])
+        .expect("canonical STS fixture should discover via real module resolution");
+    let target_index = graph
+        .modules
+        .iter()
+        .position(|module| module.module_path.as_dotted() == target_module)
+        .unwrap_or_else(|| panic!("target module {target_module} should exist"));
+    let mut reachable = HashSet::new();
+    let mut queue = VecDeque::from([target_index]);
+
+    while let Some(module_index) = queue.pop_front() {
+        if !reachable.insert(module_index) {
+            continue;
+        }
+        queue.extend(graph.modules[module_index].dependencies.iter().copied());
+    }
+
+    let kept_indices = graph
+        .modules
+        .iter()
+        .enumerate()
+        .filter_map(|(index, _)| reachable.contains(&index).then_some(index))
+        .collect::<Vec<_>>();
+    let remapped_indices = kept_indices
+        .iter()
+        .enumerate()
+        .map(|(new_index, old_index)| (*old_index, new_index))
+        .collect::<HashMap<_, _>>();
+    let modules = kept_indices
+        .into_iter()
+        .map(|old_index| {
+            let mut module = graph.modules[old_index].clone();
+            module.dependencies = module
+                .dependencies
+                .iter()
+                .filter_map(|dep| remapped_indices.get(dep).copied())
+                .collect();
+            module
+        })
+        .collect();
+
+    ModuleGraph { modules }
+}
+
+fn unique_fixture_root_with_harness() -> PathBuf {
+    let fixture_root = unique_fixture_root();
+    write_source_file(&fixture_root.join(STS_HARNESS_PATH), STS_HARNESS_SOURCE);
+    fixture_root
+}
+
+fn typed_project_from_discovered_fixture() -> TypedProject<'static> {
+    let fixture_root = unique_fixture_root_with_harness();
+    let graph = discovered_module_graph_for_target(&fixture_root, STS_HARNESS_MODULE);
+    let typed = typecheck_owned_module_graph(graph)
+        .expect("canonical STS fixture should typecheck via discovered imports");
+
+    std::fs::remove_dir_all(&fixture_root).unwrap_or_else(|error| {
+        panic!(
+            "failed to remove temporary fixture root {}: {error}",
+            fixture_root.display()
+        )
+    });
+
+    typed
+}
+
+fn lower_target_module(typed: &TypedProject<'_>, target_module: &str) -> Dag<LoweredOp> {
+    let module_lookup: HashMap<String, usize> = typed
+        .modules()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect();
+    let target_index = typed
+        .modules()
+        .position(|module| module.module_path.as_dotted() == target_module)
+        .unwrap_or_else(|| panic!("target module {target_module} should exist"));
+    let mut scope = HashSet::new();
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::from([target_index]);
+
+    while let Some(module_index) = queue.pop_front() {
+        if !visited.insert(module_index) {
+            continue;
+        }
+        let Some(module) = typed.module(module_index) else {
+            continue;
+        };
+        scope.insert(module.module_path.as_dotted());
+        for import in module.imports() {
+            if let Some(import_index) = module_lookup.get(&import.as_dotted()) {
+                queue.push_back(*import_index);
+            }
+        }
+    }
+
+    lower_typed_project_for_modules_with_entry(typed, &scope, None, Some(target_module))
+        .expect("lowering should succeed")
+}
+
+#[test]
+fn canonical_sts_fixture_emits_expected_oauth_urns_in_prepared_request() {
+    let typed = typed_project_from_discovered_fixture();
+    let dag = lower_target_module(&typed, STS_HARNESS_MODULE);
     let prepare_node = dag
         .nodes
         .iter()
