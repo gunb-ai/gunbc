@@ -198,6 +198,8 @@ impl RestBodySchema {
 pub struct RestBodyFieldSchema {
     pub name: String,
     pub type_id: String,
+    #[serde(default)]
+    pub is_optional: bool,
     /// Allowed typed literal constructors when this field is a sum/enum-like type.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub literal_variants: Vec<RestBodyLiteralVariant>,
