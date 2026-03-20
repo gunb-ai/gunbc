@@ -96,6 +96,9 @@ type FieldInitResult { field: FieldInit, state: ParserState, err: Diagnostic? }
 type ResUseResult { resource_use: ResourceUse, state: ParserState, err: Diagnostic? }
 type ConfigResult { config: ServiceConfig, state: ParserState, err: Diagnostic? }
 
+// Pratt parser binding power
+type BindingPower { left: Int, right: Int }
+
 // List results
 type ImportsResult { imports: List<Import>, state: ParserState, err: Diagnostic? }
 type ItemsResult { items: List<Node>, state: ParserState, err: Diagnostic? }

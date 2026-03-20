@@ -25,7 +25,7 @@ import v2.std.core {
   Module, Node, ImportNames, ImportAll, ImportSpecific,
   Field, Variant, Param,
   Connective, Conj, Disj,
-  Expr, Diagnostic,
+  Expr, Diagnostic, Severity, Warning,
   ResourceUse,
   TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   Error,

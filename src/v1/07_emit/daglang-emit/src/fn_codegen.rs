@@ -2856,7 +2856,7 @@ fn compile_intrinsic_call(
                     if elements.len() == 1 {
                         let list = if let Some(ref fresh_name) = ctx.fold_accum_fresh_name {
                             if ctx.fold_accum_is_rc {
-                                if let Some(field) = is_fold_accum_field_access(&collection, fresh_name) {
+                                if let Some(field) = try_fold_accum_field_access(&collection, ctx) {
                                     compile_fold_accum_field_extract(fresh_name, &field)
                                 } else {
                                     strip_outer_clone(collection.clone())
@@ -4106,6 +4106,31 @@ fn replace_word(s: &str, from: &str, to: &str) -> String {
         result.push_str(&s[i..]);
     }
     result
+}
+
+/// Count whole-word occurrences of `needle` in a Rust code fragment.
+/// Matches Rust identifier boundaries and skips struct field labels (`name:`).
+fn count_word_occurrences(s: &str, needle: &str) -> usize {
+    let bytes = s.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut count = 0;
+    let mut i = 0;
+    while i + needle_bytes.len() <= bytes.len() {
+        if &bytes[i..i + needle_bytes.len()] == needle_bytes {
+            let before_ok = i == 0 || !is_word(bytes[i - 1]);
+            let after_pos = i + needle_bytes.len();
+            let after_ok = after_pos >= bytes.len() || !is_word(bytes[after_pos]);
+            let is_field_name = after_pos < bytes.len() && bytes[after_pos] == b':';
+            if before_ok && after_ok && !is_field_name {
+                count += 1;
+                i += needle_bytes.len();
+                continue;
+            }
+        }
+        i += 1;
+    }
+    count
 }
 
 fn compile_call(
@@ -6425,8 +6450,8 @@ fn var_referenced_in_expr(expr: &code_ir::Expr, var_name: &str) -> bool {
         | code_ir::Expr::Str(_)
         | code_ir::Expr::IntLit(_)
         | code_ir::Expr::BoolLit(_)
-        | code_ir::Expr::Path(_)
-        | code_ir::Expr::RawCode(_) => false,
+        | code_ir::Expr::Path(_) => false,
+        code_ir::Expr::RawCode(code) => count_word_occurrences(code, var_name) > 0,
         code_ir::Expr::Call { func, args, .. } => {
             var_referenced_in_expr(func, var_name)
                 || args.iter().any(|a| var_referenced_in_expr(a, var_name))
@@ -6577,6 +6602,7 @@ fn count_var_refs_in_stmt(stmt: &code_ir::Stmt, var_name: &str) -> usize {
 fn count_var_refs_in_expr(expr: &code_ir::Expr, var_name: &str) -> usize {
     match expr {
         code_ir::Expr::Var(name) => if name == var_name { 1 } else { 0 },
+        code_ir::Expr::RawCode(code) => count_word_occurrences(code, var_name),
         code_ir::Expr::Call { func, args, .. } => {
             count_var_refs_in_expr(func, var_name) + args.iter().map(|a| count_var_refs_in_expr(a, var_name)).sum::<usize>()
         }
@@ -7071,6 +7097,117 @@ mod tests {
             expr_identity.expect("expected walked expression identity"),
             ir_type,
         );
+    }
+
+    fn expr_contains_raw_code(expr: &code_ir::Expr, needle: &str) -> bool {
+        match expr {
+            code_ir::Expr::RawCode(code) => code.contains(needle),
+            code_ir::Expr::Call { func, args, .. } => {
+                expr_contains_raw_code(func, needle)
+                    || args.iter().any(|arg| expr_contains_raw_code(arg, needle))
+            }
+            code_ir::Expr::MethodCall { receiver, args, .. } => {
+                expr_contains_raw_code(receiver, needle)
+                    || args.iter().any(|arg| expr_contains_raw_code(arg, needle))
+            }
+            code_ir::Expr::Field(receiver, _)
+            | code_ir::Expr::Deref(receiver)
+            | code_ir::Expr::Ref(receiver)
+            | code_ir::Expr::RefMut(receiver) => expr_contains_raw_code(receiver, needle),
+            code_ir::Expr::Struct { fields, rest, .. } => {
+                fields
+                    .iter()
+                    .any(|(_, expr)| expr_contains_raw_code(expr, needle))
+                    || rest
+                        .as_ref()
+                        .is_some_and(|rest| expr_contains_raw_code(rest, needle))
+            }
+            code_ir::Expr::Closure { body, .. } => expr_contains_raw_code(body, needle),
+            code_ir::Expr::BinOp { left, right, .. } => {
+                expr_contains_raw_code(left, needle) || expr_contains_raw_code(right, needle)
+            }
+            code_ir::Expr::UnaryOp { expr, .. } => expr_contains_raw_code(expr, needle),
+            code_ir::Expr::Match { expr, arms } => {
+                expr_contains_raw_code(expr, needle)
+                    || arms
+                        .iter()
+                        .any(|arm| stmts_contain_raw_code(&arm.body, needle))
+            }
+            code_ir::Expr::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                expr_contains_raw_code(cond, needle)
+                    || stmts_contain_raw_code(then_body, needle)
+                    || else_body
+                        .as_ref()
+                        .is_some_and(|body| stmts_contain_raw_code(body, needle))
+            }
+            code_ir::Expr::Block(stmts) => stmts_contain_raw_code(stmts, needle),
+            code_ir::Expr::FormatStr { args, .. }
+            | code_ir::Expr::MacroCall { args, .. }
+            | code_ir::Expr::Tuple(args)
+            | code_ir::Expr::Array(args) => {
+                args.iter().any(|arg| expr_contains_raw_code(arg, needle))
+            }
+            code_ir::Expr::Value(_)
+            | code_ir::Expr::Var(_)
+            | code_ir::Expr::Str(_)
+            | code_ir::Expr::IntLit(_)
+            | code_ir::Expr::BoolLit(_)
+            | code_ir::Expr::Path(_) => false,
+        }
+    }
+
+    fn stmt_contains_raw_code(stmt: &code_ir::Stmt, needle: &str) -> bool {
+        match stmt {
+            code_ir::Stmt::Let { expr, .. } | code_ir::Stmt::Bind { expr, .. } => {
+                expr_contains_raw_code(expr, needle)
+            }
+            code_ir::Stmt::Assign { dest, value } => {
+                expr_contains_raw_code(dest, needle) || expr_contains_raw_code(value, needle)
+            }
+            code_ir::Stmt::Expr(expr)
+            | code_ir::Stmt::TailExpr(expr)
+            | code_ir::Stmt::Return(expr)
+            | code_ir::Stmt::Break(expr) => expr_contains_raw_code(expr, needle),
+            code_ir::Stmt::For { iter, body, .. } => {
+                expr_contains_raw_code(iter, needle) || stmts_contain_raw_code(body, needle)
+            }
+            code_ir::Stmt::Loop { body } | code_ir::Stmt::BlockScope(body) => {
+                stmts_contain_raw_code(body, needle)
+            }
+            code_ir::Stmt::Assert(assert) => match assert {
+                code_ir::Assert::Eq { left, right, .. } => {
+                    expr_contains_raw_code(left, needle) || expr_contains_raw_code(right, needle)
+                }
+                code_ir::Assert::True { expr, .. }
+                | code_ir::Assert::NonEmpty { expr, .. }
+                | code_ir::Assert::Contains { expr, .. } => expr_contains_raw_code(expr, needle),
+            },
+            code_ir::Stmt::Item(_)
+            | code_ir::Stmt::Comment(_)
+            | code_ir::Stmt::Blank
+            | code_ir::Stmt::Continue => false,
+        }
+    }
+
+    fn stmts_contain_raw_code(stmts: &[code_ir::Stmt], needle: &str) -> bool {
+        stmts.iter().any(|stmt| stmt_contains_raw_code(stmt, needle))
+    }
+
+    fn assert_is_clone_of_var(expr: &code_ir::Expr, expected_name: &str) {
+        match expr {
+            code_ir::Expr::MethodCall {
+                receiver,
+                method,
+                args,
+            } if method == "clone"
+                && args.is_empty()
+                && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == expected_name) => {}
+            other => panic!("expected {expected_name}.clone(), got: {other:?}"),
+        }
     }
 
     #[test]
@@ -8109,6 +8246,77 @@ mod tests {
     }
 
     #[test]
+    fn fold_concat_extracts_record_field_before_accum_substitution() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope.insert(
+            "spans".to_string(),
+            IrType::Generic("List".to_string(), vec![IrType::Str]),
+        );
+        ctx.struct_field_types.insert(
+            "Acc".to_string(),
+            [("texts".to_string(), "List<String>".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Acc".to_string(),
+            vec![("texts".to_string(), IrType::Generic("List".to_string(), vec![IrType::Str]))],
+        );
+
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("spans".into())),
+                (
+                    Some("init".into()),
+                    Expr::Record(
+                        Some("Acc".into()),
+                        vec![("texts".into(), Expr::List(vec![]))],
+                    ),
+                ),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "span".into()],
+                        Box::new(Expr::Record(
+                            Some("Acc".into()),
+                            vec![(
+                                "texts".into(),
+                                Expr::Call(
+                                    "concat".into(),
+                                    vec![
+                                        (
+                                            None,
+                                            Expr::FieldAccess(
+                                                Box::new(Expr::Ident("acc".into())),
+                                                "texts".into(),
+                                            ),
+                                        ),
+                                        (None, Expr::List(vec![Expr::Ident("span".into())])),
+                                    ],
+                                ),
+                            )],
+                        )),
+                    ),
+                ),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => assert!(
+                stmts_contain_raw_code(
+                    &stmts,
+                    "std::mem::take(&mut Rc::make_mut(&mut __acc_0).texts)"
+                ),
+                "expected concat fold path to extract acc.texts via std::mem::take, got: {stmts:?}"
+            ),
+            other => panic!("expected fold block, got: {other:?}"),
+        }
+    }
+
+    #[test]
     fn call_arguments_use_parameter_type_for_ambiguous_variants() {
         let mut counter = 0usize;
         let mut ctx = CompileContext::new();
@@ -8532,6 +8740,70 @@ mod tests {
             func: Box::new(code_ir::Expr::Var(fn_name.to_string())),
             args,
             obligation: None,
+        }
+    }
+
+    #[test]
+    fn tco_clone_stripper_counts_raw_code_refs_in_same_statement() {
+        let mut body = vec![
+            code_ir::Stmt::Let {
+                name: "tokens".into(),
+                mutable: false,
+                expr: code_ir::Expr::Var("__tco_p_tokens".into()),
+                ir_type: None,
+            },
+            code_ir::Stmt::Expr(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Var("consume".into())),
+                args: vec![
+                    code_ir::Expr::RawCode("observe(tokens)".into()),
+                    code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var("tokens".into())),
+                        method: "clone".into(),
+                        args: vec![],
+                    },
+                ],
+                obligation: None,
+            }),
+        ];
+
+        strip_tco_param_clones(&mut body, &["tokens".into()]);
+
+        match &body[1] {
+            code_ir::Stmt::Expr(code_ir::Expr::Call { args, .. }) => {
+                assert_is_clone_of_var(&args[1], "tokens");
+            }
+            other => panic!("expected Call statement, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tco_clone_stripper_respects_later_raw_code_references() {
+        let mut body = vec![
+            code_ir::Stmt::Let {
+                name: "tokens".into(),
+                mutable: false,
+                expr: code_ir::Expr::Var("__tco_p_tokens".into()),
+                ir_type: None,
+            },
+            code_ir::Stmt::Expr(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Var("consume".into())),
+                args: vec![code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var("tokens".into())),
+                    method: "clone".into(),
+                    args: vec![],
+                }],
+                obligation: None,
+            }),
+            code_ir::Stmt::Expr(code_ir::Expr::RawCode("observe(tokens.clone())".into())),
+        ];
+
+        strip_tco_param_clones(&mut body, &["tokens".into()]);
+
+        match &body[1] {
+            code_ir::Stmt::Expr(code_ir::Expr::Call { args, .. }) => {
+                assert_is_clone_of_var(&args[0], "tokens");
+            }
+            other => panic!("expected Call statement, got: {other:?}"),
         }
     }
 

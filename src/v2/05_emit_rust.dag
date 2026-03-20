@@ -314,7 +314,14 @@ fn emit_v2_rt_module() -> TextFile {
     "pub fn map_keys<V>(m: &BTreeMap<String, V>) -> Vec<String> { m.keys().cloned().collect() }\n\n",
     "pub fn map_values<V: Clone>(m: &BTreeMap<String, V>) -> Vec<V> { m.values().cloned().collect() }\n\n",
     "pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }\n\n",
-    "pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> { list.push(item); list }\n\n")
+    "pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> { list.push(item); list }\n\n",
+    "pub fn parse_int(s: impl AsRef<str>) -> Option<i64> { s.as_ref().parse::<i64>().ok() }\n\n",
+    "pub fn map_contains_key<V>(m: &BTreeMap<String, V>, key: impl AsRef<str>) -> bool {\n",
+    "    m.contains_key(key.as_ref())\n",
+    "}\n\n",
+    "pub fn map_has<V>(m: &BTreeMap<String, V>, key: impl AsRef<str>) -> bool {\n",
+    "    m.contains_key(key.as_ref())\n",
+    "}\n\n")
   let scanner_ops = concat(
     "pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(&str) -> bool) -> i64 {\n",
     "    let bytes = s.as_ref().as_bytes();\n",
@@ -463,7 +470,7 @@ fn emit_imports(imports: List<Import>, vtoe: Map<String, String>, enum_names: Ma
             // Emit top-level use line.
             let main_line = if top_with_parents |> count > 0 {
               let names_str = top_with_parents |> join(separator: ", ")
-              concat("use crate::", mod_name, "::{", names_str, "};")
+              concat("pub use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
             let variant_lines = parent_list |> map(parent =>
@@ -644,7 +651,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
 fn emit_struct_from_children(name: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  let derives = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+  let derives = if is_rc_exclude(name: name) { "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]" } else { "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]" }
   if children |> count == 0 {
     concat(derives, "\npub struct ", name, ";")
   } else {
@@ -1211,9 +1218,10 @@ fn emit_typed_expr(texpr: Expr, registry: Map<String, ItemInfo>, scope: InferSco
         }
       } else { false }
       // Check if the base type is an enum (shared accessor = method call syntax).
+      // When resolved_type is None (lambda params), check if field is an enum-only accessor.
       let is_enum_field = match b.resolved_type {
         Some { value: rt } => is_enum_type_name(type_name: rt.name, vtoe: vtoe)
-        None => false
+        None => is_enum_only_accessor(field: f)
       }
       if is_opt_value {
         concat(emit_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".unwrap()")
@@ -1280,6 +1288,12 @@ fn is_enum_type_name(type_name: String, vtoe: Map<String, String>) -> Bool {
   map_values(vtoe) |> any(v => v == type_name)
 }
 
+// Fallback: field names that only exist as shared accessors on enum types,
+// never as struct fields. Used when base resolved_type is unknown.
+fn is_enum_only_accessor(field: String) -> Bool {
+  field == "resolved_type"
+}
+
 fn is_map_typed_expr(texpr: Expr) -> Bool {
   match texpr {
     Var { resolved_type: rt } =>
@@ -1344,8 +1358,10 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     || func == "map_merge" || func == "list_concat" || func == "str_eq"
     || func == "filesystem_read" || func == "list_push" || func == "map_get"
     || func == "map_keys" || func == "map_values"
+    || func == "parse_int" || func == "map_contains_key" || func == "map_has"
   // Runtime functions that take &BTreeMap (read-only map access).
   let is_rt_ref_map = func == "map_get" || func == "map_keys" || func == "map_values" || func == "lookup"
+    || func == "map_contains_key" || func == "map_has"
   // For runtime calls with &BTreeMap params, pass by reference instead of clone.
   let arg_strs = ordered_args |> map(a =>
     if is_rt_ref_map && is_map_typed_expr(texpr: a.value) {
@@ -1481,6 +1497,8 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
         None => "todo!(\"missing fold function\")"
       }
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
+    } else if method == "sort_by" {
+      concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
     } else {
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types))
       let args_str = arg_strs |> join(separator: ", ")
@@ -1520,6 +1538,51 @@ fn arms_need_rc_deref(arms: List<MatchArm>, vtoe: Map<String, String>, rc_types:
   )
 }
 
+// Check if scrutinee is Option<Rc<T>> where T is Rc-wrapped.
+fn is_option_rc_scrutinee(scrutinee: Expr, rc_types: Map<String, Bool>) -> Bool {
+  match scrutinee.resolved_type {
+    Some { value: rt } =>
+      if rt.name == "Optional" {
+        match rt.children |> first {
+          Some { value: inner } =>
+            if inner.children |> count == 0 && inner.name != "" {
+              emit_map_has(m: rc_types, key: inner.name)
+            } else { false }
+          None => false
+        }
+      } else { false }
+    None => false
+  }
+}
+
+// Check if a FieldBinding's inner pattern is a variant of an Rc-wrapped enum.
+fn field_binding_is_rc_variant(fb: FieldBinding, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> Bool {
+  match fb.binding {
+    VariantPattern { name: vn, field_bindings: _ } =>
+      match map_get(vtoe, vn) {
+        Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
+        None => false
+      }
+    _ => false
+  }
+}
+
+// Check if a pattern is Some(VariantOfRcEnum).
+fn arm_pattern_is_some_rc(pat: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> Bool {
+  match pat {
+    VariantPattern { name: vn, field_bindings: fbs } =>
+      if vn == "Some" {
+        fbs |> any(fb => field_binding_is_rc_variant(fb: fb, vtoe: vtoe, rc_types: rc_types))
+      } else { false }
+    _ => false
+  }
+}
+
+// Fallback for Option<Rc<T>>: check if any arm is Some(VariantOfRcEnum).
+fn arms_need_option_rc_deref(arms: List<MatchArm>, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> Bool {
+  arms |> any(arm => arm_pattern_is_some_rc(pat: arm.pattern, vtoe: vtoe, rc_types: rc_types))
+}
+
 fn emit_typed_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
   // Extract scrutinee type name for qualifying variant patterns.
@@ -1536,12 +1599,16 @@ fn emit_typed_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String,
   }
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type))
   let arms_str = arm_strs |> join(separator: "\n")
-  // RC5: If scrutinee is Rc-wrapped, clone to match on owned value.
-  // Using (*s).clone() instead of &*s so pattern bindings are owned,
-  // not references. Rc-field clones are just ref-count increments.
+  // RC5: If scrutinee is Option<Rc<T>>, use .as_deref().cloned() to get Option<T>.
+  // If scrutinee is Rc<T>, use (*s).clone() to get owned T.
   // Check resolved_type first; fallback to arm patterns via vtoe if missing.
+  // Only use pattern-based check (not type-based) to avoid transforming simple
+  // Some(v) => v patterns where the arm body relies on Rc<T>.
+  let needs_option_deref = arms_need_option_rc_deref(arms: arms, vtoe: vtoe, rc_types: rc_types)
   let needs_deref = is_rc_wrapped_scrutinee(scrutinee: scrutinee, rc_types: rc_types) || arms_need_rc_deref(arms: arms, vtoe: vtoe, rc_types: rc_types)
-  if needs_deref {
+  if needs_option_deref {
+    concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
+  } else if needs_deref {
     concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
   } else {
     concat("match ", scrut_str, " {\n", arms_str, "\n}")
@@ -1667,13 +1734,13 @@ fn emit_typed_bin_op(op: BinOpKind, left: Expr, right: Expr, registry: Map<Strin
 // RC3: Detect string equality/inequality comparisons.
 fn is_string_comparison(op: BinOpKind, left: Expr, right: Expr) -> Bool {
   match op {
-    BinEq => is_string_typed_expr(e: left) || is_string_typed_expr(e: right)
-    BinNe => is_string_typed_expr(e: left) || is_string_typed_expr(e: right)
+    BinEq => is_string_typed_expr(e: left) && is_string_typed_expr(e: right)
+    BinNe => is_string_typed_expr(e: left) && is_string_typed_expr(e: right)
     _ => false
   }
 }
 
-// Check if an expression has String resolved_type.
+// Check if an expression has String resolved_type or is a string literal.
 fn is_string_typed_expr(e: Expr) -> Bool {
   match e.resolved_type {
     Some { value: rt } =>
@@ -1747,6 +1814,37 @@ fn emit_typed_cast(expr: Expr, target: Node, registry: Map<String, ItemInfo>, sc
 // reading resolved_type from sub-expressions instead of cache lookups.
 // =========================================================================
 
+// TCO-aware version of emit_rust_init_block_stmts.
+// For Let statements that shadow a TCO parameter, emit assignment (no `let`).
+fn emit_tco_init_block_stmts(remaining: List<Expr>, text: List<String>,
+    scope: InferScope, registry: Map<String, ItemInfo>, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, params: List<Param>) -> BlockEmitState {
+  match remaining |> first {
+    None => BlockEmitState { text: text, scope: scope }
+    Some { value: stmt } =>
+      let rest = remaining |> skip(1)
+      match rest |> first {
+        None => BlockEmitState { text: text, scope: scope }
+        Some { value: _ } =>
+          let line = emit_tco_init_stmt(stmt: stmt, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+          let next_scope = scope_after_expr(texpr: stmt, scope: scope)
+          emit_tco_init_block_stmts(remaining: rest,
+            text: list_push(text, line), scope: next_scope,
+            registry: registry, depth: depth, vtoe: vtoe, rc_types: rc_types, params: params)
+      }
+  }
+}
+
+fn emit_tco_init_stmt(stmt: Expr, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
+  match stmt {
+    Let { name: n, value: v, body: _, resolved_type: _, span: _ } =>
+      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      let is_param = params |> any(p => p.name == n)
+      if is_param { concat(rust_ident(name: n), " = ", val_str, ";") }
+      else { concat("let ", rust_ident(name: n), " = ", val_str, ";") }
+    _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+  }
+}
+
 fn emit_typed_tco_body(texpr: Expr, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types)
   concat("loop {\n", make_indent(level: depth + 1),inner, "\n}")
@@ -1789,10 +1887,19 @@ fn emit_typed_tco_expr(texpr: Expr, fn_name: String, params: List<Param>, regist
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, scrut_type: tco_scrut_type))
       let arms_str = arm_strs |> join(separator: "\n")
-      concat("match ", scrut_str, " {\n", arms_str, "\n}")
+      let tco_needs_option_deref = arms_need_option_rc_deref(arms: arm_list, vtoe: vtoe, rc_types: rc_types)
+      let tco_needs_deref = is_rc_wrapped_scrutinee(scrutinee: s, rc_types: rc_types) || arms_need_rc_deref(arms: arm_list, vtoe: vtoe, rc_types: rc_types)
+      if tco_needs_option_deref {
+        concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
+      } else if tco_needs_deref {
+        concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
+      } else {
+        concat("match ", scrut_str, " {\n", arms_str, "\n}")
+      }
     Let { name: n, value: v, body: bd, resolved_type: _, span: _ } =>
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
+      let is_param = params |> any(p => p.name == n)
+      let let_line = if is_param { concat(rust_ident(name: n), " = ", val_str, ";") } else { concat("let ", rust_ident(name: n), " = ", val_str, ";") }
       let next_scope = extend_scope(scope: scope, name: n, resolved: v.resolved_type.value)
       match bd {
         Some { value: b } =>
@@ -1803,8 +1910,8 @@ fn emit_typed_tco_expr(texpr: Expr, fn_name: String, params: List<Param>, regist
       if ss |> count == 0 {
         "break;"
       } else {
-        let init_state = emit_rust_init_block_stmts(
-          remaining: ss, text: [], scope: scope, registry: registry, depth: depth, vtoe: vtoe, rc_types: rc_types)
+        let init_state = emit_tco_init_block_stmts(
+          remaining: ss, text: [], scope: scope, registry: registry, depth: depth, vtoe: vtoe, rc_types: rc_types, params: params)
         let last_str = match ss |> last {
           Some { value: last_expr } =>
             emit_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
