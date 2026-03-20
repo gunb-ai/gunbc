@@ -1,6 +1,5 @@
 // Integration coverage for STS lowering via the canonical
 // `dsl/extdeps/cloud/gcp/sts.dag` fixture discovered from the real `dsl/` tree.
-#![allow(clippy::disallowed_methods)]
 
 use daglang_lower::{lower_typed_project_for_modules_with_entry, LoweredOp, ServiceOperationSpec};
 use daglang_resolve::ModuleGraph;
@@ -11,7 +10,7 @@ use gunbc_ir::Dag;
 use gunbc_ir::{SecretString, Value};
 use gunbc_resolve::service_ops::GenericPrepareOp;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const STS_HARNESS_MODULE: &str = "tests.sts_transport_fixture_harness";
@@ -30,32 +29,29 @@ fn dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl")
 }
 
-fn unique_fixture_root() -> PathBuf {
+#[allow(clippy::disallowed_methods)] // Non-hermetic integration fixture: writes a temp harness and discovers the real repo DSL tree.
+fn typed_project_from_discovered_fixture() -> TypedProject<'static> {
     let id = STS_FIXTURE_ROOT_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
+    let fixture_root = std::env::temp_dir().join(format!(
         "daglang_lower_sts_transport_{}_{}",
         std::process::id(),
         id
-    ))
-}
-
-fn write_source_file(path: &Path, content: &str) {
-    if let Some(parent) = path.parent() {
+    ));
+    let harness_path = fixture_root.join(STS_HARNESS_PATH);
+    if let Some(parent) = harness_path.parent() {
         std::fs::create_dir_all(parent)
             .unwrap_or_else(|error| panic!("failed to create {}: {error}", parent.display()));
     }
-    std::fs::write(path, content)
-        .unwrap_or_else(|error| panic!("failed to write {}: {error}", path.display()));
-}
+    std::fs::write(&harness_path, STS_HARNESS_SOURCE)
+        .unwrap_or_else(|error| panic!("failed to write {}: {error}", harness_path.display()));
 
-fn discovered_module_graph_for_target(fixture_root: &Path, target_module: &str) -> ModuleGraph {
-    let graph = ModuleGraph::discover(&[fixture_root.to_path_buf(), dsl_root()])
+    let graph = ModuleGraph::discover(&[fixture_root.clone(), dsl_root()])
         .expect("canonical STS fixture should discover via real module resolution");
     let target_index = graph
         .modules
         .iter()
-        .position(|module| module.module_path.as_dotted() == target_module)
-        .unwrap_or_else(|| panic!("target module {target_module} should exist"));
+        .position(|module| module.module_path.as_dotted() == STS_HARNESS_MODULE)
+        .unwrap_or_else(|| panic!("target module {STS_HARNESS_MODULE} should exist"));
     let mut reachable = HashSet::new();
     let mut queue = VecDeque::from([target_index]);
 
@@ -90,18 +86,7 @@ fn discovered_module_graph_for_target(fixture_root: &Path, target_module: &str) 
         })
         .collect();
 
-    ModuleGraph { modules }
-}
-
-fn unique_fixture_root_with_harness() -> PathBuf {
-    let fixture_root = unique_fixture_root();
-    write_source_file(&fixture_root.join(STS_HARNESS_PATH), STS_HARNESS_SOURCE);
-    fixture_root
-}
-
-fn typed_project_from_discovered_fixture() -> TypedProject<'static> {
-    let fixture_root = unique_fixture_root_with_harness();
-    let graph = discovered_module_graph_for_target(&fixture_root, STS_HARNESS_MODULE);
+    let graph = ModuleGraph { modules };
     let typed = typecheck_owned_module_graph(graph)
         .expect("canonical STS fixture should typecheck via discovered imports");
 
