@@ -441,10 +441,7 @@ mod window_helper_tests {
         let input = mocks
             .get_input("z", "items")
             .expect("list input should be injected");
-        assert_eq!(
-            input,
-            &Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)]))
-        );
+        assert_eq!(input, &Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])));
     }
 
     #[test]
@@ -468,10 +465,7 @@ mod window_helper_tests {
         let baseline = ExecutionLog {
             entries: vec![log_entry(
                 "a",
-                vec![(
-                    "items",
-                    Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])),
-                )],
+                vec![("items", Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])))],
             )],
         };
         let mut mocks = BoundaryMocks::new();
@@ -482,10 +476,7 @@ mod window_helper_tests {
         let input = mocks
             .get_input("b", "items")
             .expect("list input should be injected");
-        assert_eq!(
-            input,
-            &Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)]))
-        );
+        assert_eq!(input, &Value::List(Arc::new(vec![Value::Int(1), Value::Int(2)])));
     }
 }
 

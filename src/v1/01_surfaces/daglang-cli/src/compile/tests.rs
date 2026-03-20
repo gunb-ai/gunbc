@@ -5,8 +5,8 @@ use daglang_lower::{
     lower_to_output, CallableKind, CallableObligation, LoweredOp, ServiceCallMetadata,
     ServiceTransportClass, TransportObligation,
 };
-use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_typecheck::TypecheckOptions;
+use daglang_resolve::{ModuleGraph, ResolvedModule};
 use gunbc_exec::{lower, ExecutionMode};
 use gunbc_ir::{Dag, Edge, Node, NodeKind, Port};
 use gunbc_resolve::resolve_lowered_dag_with;

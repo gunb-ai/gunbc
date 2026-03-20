@@ -622,7 +622,10 @@ fn qualified_variant_expr(
 ) -> Option<code_ir::Expr> {
     if qualifies_variant(expected_type, variant_name, ctx) {
         let enum_name = expected_type.expect("checked above").to_string();
-        let variant_expr = code_ir::Expr::Path(vec![enum_name.clone(), variant_name.to_string()]);
+        let variant_expr = code_ir::Expr::Path(vec![
+            enum_name.clone(),
+            variant_name.to_string(),
+        ]);
         // R8: Wrap in Rc::new() if the enum is Rc-wrapped
         if ctx.rc_wrapped_types.contains(&enum_name) {
             Some(code_ir::Expr::Call {
@@ -740,8 +743,7 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
             for arm_map in &arm_counts {
                 for (name, &_arm_count) in arm_map {
                     let current = counts.get(name).copied().unwrap_or(0);
-                    let max_in_arms = arm_counts
-                        .iter()
+                    let max_in_arms = arm_counts.iter()
                         .map(|m| m.get(name).copied().unwrap_or(0))
                         .max()
                         .unwrap_or(0);
@@ -1268,10 +1270,16 @@ fn count_ident_refs(expr: &ast::Expr, name: &str) -> usize {
     match expr {
         ast::Expr::Ident(n) if n == name => 1,
         ast::Expr::FieldAccess(recv, _) => count_ident_refs(recv, name),
-        ast::Expr::Call(_, args) => args.iter().map(|(_, e)| count_ident_refs(e, name)).sum(),
+        ast::Expr::Call(_, args) => args
+            .iter()
+            .map(|(_, e)| count_ident_refs(e, name))
+            .sum(),
         ast::Expr::BinOp(l, _, r) => count_ident_refs(l, name) + count_ident_refs(r, name),
         ast::Expr::UnaryOp(_, e) => count_ident_refs(e, name),
-        ast::Expr::Record(_, fields) => fields.iter().map(|(_, e)| count_ident_refs(e, name)).sum(),
+        ast::Expr::Record(_, fields) => fields
+            .iter()
+            .map(|(_, e)| count_ident_refs(e, name))
+            .sum(),
         ast::Expr::If(c, t, e) => {
             count_ident_refs(c, name)
                 + count_ident_refs(t, name)
@@ -1415,7 +1423,10 @@ fn replace_source_field_clone(
                 if fname == field_name {
                     if let code_ir::Expr::Var(ref name) = **base {
                         if name == &escape_rust_keyword(source_var) {
-                            return (code_ir::Expr::Var(replacement_var.to_string()), true);
+                            return (
+                                code_ir::Expr::Var(replacement_var.to_string()),
+                                true,
+                            );
                         }
                     }
                 }
@@ -1501,7 +1512,8 @@ fn replace_source_field_clone(
             let new_stmts: Vec<_> = stmts
                 .into_iter()
                 .map(|stmt| {
-                    let (s, hit) = replace_in_stmt(stmt, source_var, field_name, replacement_var);
+                    let (s, hit) =
+                        replace_in_stmt(stmt, source_var, field_name, replacement_var);
                     found |= hit;
                     s
                 })
@@ -1578,10 +1590,7 @@ fn compile_functional_record_update(
     // Debug builds: expect (panics if refcount > 1, surfacing degradation)
     // Release builds: fallback to clone (correct but O(N))
     let rc_var = fresh(counter, "rc");
-    stmts.push(code_ir::Stmt::let_bind(
-        &rc_var,
-        code_ir::Expr::Var(source_escaped.clone()),
-    ));
+    stmts.push(code_ir::Stmt::let_bind(&rc_var, code_ir::Expr::Var(source_escaped.clone())));
     stmts.push(code_ir::Stmt::let_mut(
         &owned_var,
         code_ir::Expr::RawCode(format!(
@@ -1604,16 +1613,23 @@ fn compile_functional_record_update(
             let taken_var = fresh(counter, "taken");
             stmts.push(code_ir::Stmt::let_bind(
                 &taken_var,
-                code_ir::Expr::RawCode(format!("std::mem::take(&mut {owned_var}.{rust_field})")),
+                code_ir::Expr::RawCode(format!(
+                    "std::mem::take(&mut {owned_var}.{rust_field})"
+                )),
             ));
 
             // Compile the field expression normally
-            let compiled =
-                ctx.with_expr_path(field_path(index), || compile_expr(field_expr, ctx, counter));
+            let compiled = ctx.with_expr_path(field_path(index), || {
+                compile_expr(field_expr, ctx, counter)
+            });
 
             // Replace source.field.clone() with the taken variable
-            let (replaced, _found) =
-                replace_source_field_clone(compiled, &plan.source_var, field_name, &taken_var);
+            let (replaced, _found) = replace_source_field_clone(
+                compiled,
+                &plan.source_var,
+                field_name,
+                &taken_var,
+            );
 
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
                 "{owned_var}.{rust_field} = {}",
@@ -1706,10 +1722,9 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 "second" => "1".to_string(),
                 other => other.to_string(),
             };
-            let mut compiled_receiver = ctx
-                .with_child_expr_path(ExprPathStep::FieldAccessBase, || {
-                    compile_expr(receiver, ctx, counter)
-                });
+            let mut compiled_receiver = ctx.with_child_expr_path(ExprPathStep::FieldAccessBase, || {
+                compile_expr(receiver, ctx, counter)
+            });
 
             // R8: For Rc-wrapped receiver types, strip the `.clone()` from the
             // receiver and add `.clone()` to the field result instead.
@@ -1727,7 +1742,10 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 compiled_receiver = strip_clone(compiled_receiver);
             }
 
-            let field_expr = code_ir::Expr::Field(Box::new(compiled_receiver), rust_field);
+            let field_expr = code_ir::Expr::Field(
+                Box::new(compiled_receiver),
+                rust_field,
+            );
             if is_boxed_field_access(receiver, field, ctx) {
                 code_ir::Expr::Deref(Box::new(field_expr))
             } else if receiver_is_rc {
@@ -1776,15 +1794,11 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // SG-10: For equality/inequality, strip .to_string() from operands.
                 // &str == &str and String == &str both work in Rust via PartialEq,
                 // so the .to_string() heap allocation is unnecessary.
-                let (compiled_left, compiled_right) =
-                    if matches!(op, ast::BinOp::Eq | ast::BinOp::Ne) {
-                        (
-                            strip_to_string(compiled_left),
-                            strip_to_string(compiled_right),
-                        )
-                    } else {
-                        (compiled_left, compiled_right)
-                    };
+                let (compiled_left, compiled_right) = if matches!(op, ast::BinOp::Eq | ast::BinOp::Ne) {
+                    (strip_to_string(compiled_left), strip_to_string(compiled_right))
+                } else {
+                    (compiled_left, compiled_right)
+                };
                 code_ir::Expr::BinOp {
                     left: Box::new(compiled_left),
                     op: compile_binop(op),
@@ -2181,8 +2195,7 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             let is_rc_collection = ir_type
                 .is_some_and(|ty| matches!(ty, IrType::Generic(n, _) if n == "List" || n == "Map"));
             // If type is completely unknown and Rc types exist, assume Rc (conservative).
-            let assume_rc =
-                named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
+            let assume_rc = named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
             let needs_clone = count > 1
                 || ctx.match_bound_vars.contains(name)
                 || is_rc_named
@@ -2315,23 +2328,14 @@ fn is_unwrap_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
 /// R8: Check if a compiled IR expression is `x.clone()` where x has Rc-wrapped type.
 /// This catches intermediate variables that aren't in ir_scope.
 fn is_clone_of_rc_wrapped(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
-    if let code_ir::Expr::MethodCall {
-        receiver,
-        method,
-        args,
-    } = expr
-    {
+    if let code_ir::Expr::MethodCall { receiver, method, args } = expr {
         if method == "clone" && args.is_empty() {
             // Check if the receiver is a variable with known Rc-wrapped type
             if let code_ir::Expr::Var(name) = receiver.as_ref() {
-                return ctx
-                    .ir_scope
-                    .get(name)
+                return ctx.ir_scope.get(name)
                     .and_then(named_type_from_ir)
                     .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(&ty_name))
-                    || ctx
-                        .param_types
-                        .get(name)
+                    || ctx.param_types.get(name)
                         .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(ty_name));
             }
             // Also check for field access chains: x.clone() where x's type is unknown
@@ -2675,9 +2679,7 @@ fn compile_intrinsic_call(
                 infer_call_arg_type(args, 0, ctx).and_then(|ty| named_type_from_ir(&ty));
             // Clone the base value since struct update syntax moves the base.
             // R8: For Rc-wrapped types, deref+clone to get the inner struct value.
-            let is_rc = base_struct_name
-                .as_ref()
-                .is_some_and(|name| ctx.rc_wrapped_types.contains(name));
+            let is_rc = base_struct_name.as_ref().is_some_and(|name| ctx.rc_wrapped_types.contains(name));
             let cloned_base = if is_rc {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Deref(Box::new(strip_clone(base)))),
@@ -2770,13 +2772,7 @@ fn compile_intrinsic_call(
         }
         "string_contains" if args.len() == 2 => {
             let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
-            let substring = ref_string_arg(resolve_named_or_positional(
-                args,
-                "substring",
-                1,
-                ctx,
-                counter,
-            ));
+            let substring = ref_string_arg(resolve_named_or_positional(args, "substring", 1, ctx, counter));
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -4047,12 +4043,7 @@ fn clone_if_needed(expr: code_ir::Expr, fold_accum_name: Option<&str>) -> code_i
 ///
 /// These can be stripped when passing to another function whose String param is `&str`.
 fn is_str_param_to_string(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
-    if let code_ir::Expr::MethodCall {
-        receiver,
-        method,
-        args,
-    } = expr
-    {
+    if let code_ir::Expr::MethodCall { receiver, method, args } = expr {
         if method == "to_string" && args.is_empty() {
             match receiver.as_ref() {
                 code_ir::Expr::Var(name) => {
@@ -4072,9 +4063,13 @@ fn is_str_param_to_string(expr: &code_ir::Expr, ctx: &CompileContext) -> bool {
 fn borrow_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
     match &expr {
         // .clone() on field access → strip clone, borrow the field
-        code_ir::Expr::MethodCall { method, args, .. } if method == "clone" && args.is_empty() => {
+        code_ir::Expr::MethodCall { method, args, .. }
+            if method == "clone" && args.is_empty() =>
+        {
             match expr {
-                code_ir::Expr::MethodCall { receiver, .. } => code_ir::Expr::Ref(receiver),
+                code_ir::Expr::MethodCall { receiver, .. } => {
+                    code_ir::Expr::Ref(receiver)
+                }
                 _ => unreachable!(),
             }
         }
@@ -4113,11 +4108,9 @@ fn borrow_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
 /// works for both `&str` (no-op borrow) and `String` (auto-deref to `&str`).
 fn strip_to_string_for_str_param(expr: code_ir::Expr) -> code_ir::Expr {
     match expr {
-        code_ir::Expr::MethodCall {
-            receiver,
-            method,
-            args,
-        } if method == "to_string" && args.is_empty() => {
+        code_ir::Expr::MethodCall { receiver, method, args }
+            if method == "to_string" && args.is_empty() =>
+        {
             match receiver.as_ref() {
                 // "lit".to_string() → "lit" (already &str)
                 code_ir::Expr::Str(_) => *receiver,
@@ -4789,16 +4782,15 @@ fn compile_match_arm(
 
         // R9: Collect all binding names from this pattern. When the scrutinee
         // is Rc-wrapped, bindings are &Rc<T> references that need .clone().
-        let scrutinee_is_rc = expected_type.is_some_and(|t| ctx.rc_wrapped_types.contains(t));
+        let scrutinee_is_rc = expected_type
+            .is_some_and(|t| ctx.rc_wrapped_types.contains(t));
         let mut match_bindings = Vec::new();
         if scrutinee_is_rc {
             collect_pattern_bindings(&arm.pattern, &mut match_bindings);
         }
 
-        if opt_bindings.is_empty()
-            && type_bindings.is_empty()
-            && ir_type_bindings.is_empty()
-            && match_bindings.is_empty()
+        if opt_bindings.is_empty() && type_bindings.is_empty()
+            && ir_type_bindings.is_empty() && match_bindings.is_empty()
         {
             std::borrow::Cow::Borrowed(ctx)
         } else {
@@ -4945,8 +4937,8 @@ fn compile_pattern_typed(
                             // R8: If the field type is Rc-wrapped and the sub-pattern is
                             // a variant destructure, Rust can't auto-deref Rc in patterns.
                             // Bind the field with ref and defer the destructure to the body.
-                            let field_is_rc =
-                                field_type.is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
+                            let field_is_rc = field_type
+                                .is_some_and(|ft| ctx.rc_wrapped_types.contains(ft));
                             if field_is_rc && matches!(p, ast::Pattern::Variant(_, _)) {
                                 format!("ref {n}")
                             } else {
@@ -5231,9 +5223,7 @@ fn rc_wrap_ir_type(ty: &IrType, rc_wrapped: &HashSet<String>) -> IrType {
         IrType::Named(n) if rc_wrapped.contains(n) => IrType::Named(format!("Rc<{n}>")),
         IrType::Generic(name, args) => IrType::Generic(
             name.clone(),
-            args.iter()
-                .map(|a| rc_wrap_ir_type(a, rc_wrapped))
-                .collect(),
+            args.iter().map(|a| rc_wrap_ir_type(a, rc_wrapped)).collect(),
         ),
         IrType::Optional(inner) => IrType::Optional(Box::new(rc_wrap_ir_type(inner, rc_wrapped))),
         IrType::Tuple(items) => IrType::Tuple(
@@ -5451,7 +5441,9 @@ fn collect_rc_nested_deref_stmts(
         if let ast::Pattern::Ident(bind_name) = p {
             let field_needs_box = variant_field_types
                 .and_then(|ft| ft.get(n.as_str()))
-                .is_some_and(|_| needs_box_wrapping(inner_variant, n, ctx));
+                .is_some_and(|_| {
+                    needs_box_wrapping(inner_variant, n, ctx)
+                });
             if field_needs_box {
                 out.push(code_ir::Stmt::Let {
                     name: bind_name.clone(),
@@ -6235,11 +6227,7 @@ fn plan_embedded_expr(
     }
 }
 
-fn lower_tco_plan(
-    plan: TcoPlan,
-    param_names: &[String],
-    str_param_names: &HashSet<String>,
-) -> Vec<code_ir::Stmt> {
+fn lower_tco_plan(plan: TcoPlan, param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
     let loop_vars: Vec<String> = param_names.iter().map(|p| format!("__tco_p_{p}")).collect();
 
     let mut preamble: Vec<code_ir::Stmt> = param_names
@@ -6303,12 +6291,7 @@ fn lower_tco_plan(
         .collect();
 
     let mut loop_body = rebind_stmts;
-    loop_body.extend(lower_tco_plan_stmts(
-        &plan.body,
-        &loop_vars,
-        param_names,
-        str_param_names,
-    ));
+    loop_body.extend(lower_tco_plan_stmts(&plan.body, &loop_vars, param_names, str_param_names));
     preamble.push(code_ir::Stmt::Loop { body: loop_body });
     preamble
 }
@@ -6321,12 +6304,7 @@ fn is_tco_param_passthrough(stmts: &[TcoPlanStmt], param_idx: usize, param_name:
     result && found_recur
 }
 
-fn is_tco_param_passthrough_inner(
-    stmts: &[TcoPlanStmt],
-    param_idx: usize,
-    param_name: &str,
-    found_recur: &mut bool,
-) -> bool {
+fn is_tco_param_passthrough_inner(stmts: &[TcoPlanStmt], param_idx: usize, param_name: &str, found_recur: &mut bool) -> bool {
     stmts.iter().all(|stmt| match stmt {
         TcoPlanStmt::Recur(args) => {
             *found_recur = true;
@@ -6352,55 +6330,29 @@ fn is_tco_param_passthrough_inner(
     })
 }
 
-fn lower_tco_plan_stmts(
-    stmts: &[TcoPlanStmt],
-    loop_vars: &[String],
-    param_names: &[String],
-    str_param_names: &HashSet<String>,
-) -> Vec<code_ir::Stmt> {
+fn lower_tco_plan_stmts(stmts: &[TcoPlanStmt], loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> Vec<code_ir::Stmt> {
     stmts
         .iter()
         .map(|stmt| lower_tco_plan_stmt(stmt, loop_vars, param_names, str_param_names))
         .collect()
 }
 
-fn lower_tco_plan_stmt(
-    stmt: &TcoPlanStmt,
-    loop_vars: &[String],
-    param_names: &[String],
-    str_param_names: &HashSet<String>,
-) -> code_ir::Stmt {
+fn lower_tco_plan_stmt(stmt: &TcoPlanStmt, loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> code_ir::Stmt {
     match stmt {
         TcoPlanStmt::Raw(stmt) => stmt.clone(),
-        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(
-            expr,
-            loop_vars,
-            param_names,
-            str_param_names,
-        )),
-        TcoPlanStmt::TailExpr(expr) => code_ir::Stmt::TailExpr(lower_tco_plan_expr(
-            expr,
-            loop_vars,
-            param_names,
-            str_param_names,
-        )),
-        TcoPlanStmt::BlockScope(body) => code_ir::Stmt::BlockScope(lower_tco_plan_stmts(
-            body,
-            loop_vars,
-            param_names,
-            str_param_names,
-        )),
+        TcoPlanStmt::Expr(expr) => code_ir::Stmt::Expr(lower_tco_plan_expr(expr, loop_vars, param_names, str_param_names)),
+        TcoPlanStmt::TailExpr(expr) => {
+            code_ir::Stmt::TailExpr(lower_tco_plan_expr(expr, loop_vars, param_names, str_param_names))
+        }
+        TcoPlanStmt::BlockScope(body) => {
+            code_ir::Stmt::BlockScope(lower_tco_plan_stmts(body, loop_vars, param_names, str_param_names))
+        }
         TcoPlanStmt::Break(expr) => code_ir::Stmt::Break(expr.clone()),
         TcoPlanStmt::Recur(args) => lower_tco_recur(args, loop_vars, param_names, str_param_names),
     }
 }
 
-fn lower_tco_plan_expr(
-    expr: &TcoPlanExpr,
-    loop_vars: &[String],
-    param_names: &[String],
-    str_param_names: &HashSet<String>,
-) -> code_ir::Expr {
+fn lower_tco_plan_expr(expr: &TcoPlanExpr, loop_vars: &[String], param_names: &[String], str_param_names: &HashSet<String>) -> code_ir::Expr {
     match expr {
         TcoPlanExpr::If {
             cond,
@@ -6423,12 +6375,7 @@ fn lower_tco_plan_expr(
                 })
                 .collect(),
         },
-        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(
-            stmts,
-            loop_vars,
-            param_names,
-            str_param_names,
-        )),
+        TcoPlanExpr::Block(stmts) => code_ir::Expr::Block(lower_tco_plan_stmts(stmts, loop_vars, param_names, str_param_names)),
     }
 }
 
@@ -6448,17 +6395,12 @@ fn lower_tco_recur(
             // would copy the String via .to_string() on every iteration.
             // SG-10: Skip reassignment for passthrough &str params.
             // Matches both Var("source") and source.to_string() patterns.
-            if param_names
-                .get(i)
-                .is_some_and(|p| str_param_names.contains(p))
-            {
+            if param_names.get(i).is_some_and(|p| str_param_names.contains(p)) {
                 let is_passthrough = match arg {
                     code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall {
-                        receiver,
-                        method,
-                        args: margs,
-                    } if method == "to_string" && margs.is_empty() => {
+                    code_ir::Expr::MethodCall { receiver, method, args: margs }
+                        if method == "to_string" && margs.is_empty() =>
+                    {
                         matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
                     }
                     _ => false,
@@ -6486,17 +6428,12 @@ fn lower_tco_recur(
     for (i, loop_var) in loop_vars.iter().enumerate() {
         if i < args.len() {
             // Skip passthrough &str params (no temp was created)
-            if param_names
-                .get(i)
-                .is_some_and(|p| str_param_names.contains(p))
-            {
+            if param_names.get(i).is_some_and(|p| str_param_names.contains(p)) {
                 let is_passthrough = match &args[i] {
                     code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall {
-                        receiver,
-                        method,
-                        args: margs,
-                    } if method == "to_string" && margs.is_empty() => {
+                    code_ir::Expr::MethodCall { receiver, method, args: margs }
+                        if method == "to_string" && margs.is_empty() =>
+                    {
                         matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
                     }
                     _ => false,

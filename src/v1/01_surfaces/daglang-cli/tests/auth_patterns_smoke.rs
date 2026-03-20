@@ -243,7 +243,11 @@ fn removing_required_provider_bindings_from_auth_patterns_fails_check() {
             "gcp.IAM",
             "gcp.IAM.GenerateAccessToken",
         ),
-        ("extdeps.cloud.gcp.sts", "gcp.STS", "gcp.STS.Exchange"),
+        (
+            "extdeps.cloud.gcp.sts",
+            "gcp.STS",
+            "gcp.STS.Exchange",
+        ),
         (
             "extdeps.cloud.gcp.sts",
             "github.OIDC",
