@@ -1995,6 +1995,53 @@ fn foo(item: String) -> String {
         );
     }
 
+    #[test]
+    fn phase6_dry_run_without_mock_response_fails_closed() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "op_name".to_string(),
+            gunbc_ir::Value::Str("fetch_user".to_string()),
+        );
+        inputs.insert("return_type".to_string(), named_type_value("String"));
+        inputs.insert(
+            "mock_props".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+
+        let rendered = returned_value(
+            call_fn(&output, "emit_dry_run_branch_from_props", inputs)
+                .expect("emit_dry_run_branch_from_props should succeed"),
+        );
+        let branch = match rendered {
+            gunbc_ir::Value::Str(rendered) => rendered,
+            other => panic!(
+                "emit_dry_run_branch_from_props should return a string, got: {:?}",
+                other
+            ),
+        };
+
+        assert!(
+            branch.contains("dry-run requires explicit mock_response data for operation fetch_user"),
+            "dry-run emission should require explicit mock fixtures:\n{}",
+            branch
+        );
+        assert!(
+            branch.contains("Err(std::io::Error::new(std::io::ErrorKind::Other"),
+            "dry-run emission should return an explicit error when fixtures are missing:\n{}",
+            branch
+        );
+        assert!(
+            !branch.contains("Default::default()"),
+            "dry-run emission should not fabricate defaults when fixtures are missing:\n{}",
+            branch
+        );
+    }
+
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
