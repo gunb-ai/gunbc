@@ -865,6 +865,11 @@ pub mod ast {
             path: String,
             body: Option<Expr>,
             headers: Option<Expr>,
+            /// Optional typed-body wire contract metadata.
+            ///
+            /// Uses record/map syntax shaped like
+            /// `{ field_name: { VariantName: "wire-value" } }`.
+            wire_values: Option<Box<Expr>>,
         },
         Shell {
             argv: Vec<Expr>,

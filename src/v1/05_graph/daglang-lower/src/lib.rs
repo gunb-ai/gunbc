@@ -6542,7 +6542,9 @@ impl RestBodyTypeRegistry {
                     type_id: type_expr_to_string(field_ty),
                     is_optional: rest_body_field_is_optional(field_ty),
                     literal_variants: self.literal_variants_for_type(field_ty),
-                    nested_contract: self.body_contract_for_type(field_ty, visiting).map(Box::new),
+                    nested_contract: self
+                        .body_contract_for_type(field_ty, visiting)
+                        .map(Box::new),
                 })
                 .collect(),
         };
@@ -7005,6 +7007,8 @@ fn derive_rest_spec(
         .map(|field| field.name.as_str())
         .collect::<HashSet<_>>();
     let output_fields = derive_output_fields(&operation.outputs);
+    let typed_body_wire_contract =
+        typed_rest_body_wire_contract(service, operation, data_registry)?;
     let body_template = match &operation.transport {
         Some(TransportBinding::Rest { body: Some(b), .. }) => {
             let body_contract = rest_body_types.body_contract_for_expr(b);
@@ -7014,6 +7018,7 @@ fn derive_rest_spec(
                 b,
                 body_contract.as_ref(),
                 data_registry,
+                &typed_body_wire_contract,
             )?;
             body_template_entries_from_expr(
                 service,
@@ -7022,6 +7027,7 @@ fn derive_rest_spec(
                 &operation_input_names,
                 data_registry,
                 body_contract.as_ref(),
+                &typed_body_wire_contract,
             )?
         }
         _ => None,
@@ -7241,6 +7247,7 @@ fn body_template_entries_from_expr(
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
     body_contract: Option<&ResolvedRestBodyContract>,
+    field_contracts: &[TypedRestLiteralFieldWireContract],
 ) -> Result<Option<Vec<BodyEntry>>, LowerError> {
     match expr {
         Expr::Record(_, fields) => {
@@ -7254,6 +7261,7 @@ fn body_template_entries_from_expr(
                     operation_input_names,
                     data_registry,
                     body_contract,
+                    field_contracts,
                 )? {
                     entries.push(entry);
                 }
@@ -7272,6 +7280,7 @@ fn body_template_entries_from_expr(
                         operation_input_names,
                         data_registry,
                         body_contract,
+                        field_contracts,
                     )? {
                         entries.push(entry);
                     }
@@ -7293,6 +7302,7 @@ fn body_template_entry(
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
     body_contract: Option<&ResolvedRestBodyContract>,
+    field_contracts: &[TypedRestLiteralFieldWireContract],
 ) -> Result<Option<BodyEntry>, LowerError> {
     match value {
         Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => Ok(Some(
@@ -7305,17 +7315,27 @@ fn body_template_entry(
             if let Some(value) = resolve_const_string(name, data_registry) {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
-            if let Some(value) =
-                typed_rest_body_literal(service, operation, body_contract, key, value)?
-            {
+            if let Some(value) = typed_rest_body_literal(
+                service,
+                operation,
+                body_contract,
+                field_contracts,
+                key,
+                value,
+            )? {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
             Ok(None)
         }
         Expr::Record(_, _) | Expr::Map(_) => {
-            if let Some(value) =
-                typed_rest_body_literal(service, operation, body_contract, key, value)?
-            {
+            if let Some(value) = typed_rest_body_literal(
+                service,
+                operation,
+                body_contract,
+                field_contracts,
+                key,
+                value,
+            )? {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
             let nested_contract = body_contract
@@ -7328,13 +7348,19 @@ fn body_template_entry(
                 operation_input_names,
                 data_registry,
                 nested_contract,
+                field_contracts,
             )?;
             Ok(inner.map(|inner| BodyEntry::Nested(key.to_string(), inner)))
         }
         _ => {
-            if let Some(value) =
-                typed_rest_body_literal(service, operation, body_contract, key, value)?
-            {
+            if let Some(value) = typed_rest_body_literal(
+                service,
+                operation,
+                body_contract,
+                field_contracts,
+                key,
+                value,
+            )? {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
             Ok(None)
@@ -7352,64 +7378,106 @@ fn resolve_const_string(name: &str, data_registry: &DataRegistry<'_>) -> Option<
 }
 
 struct TypedRestLiteralFieldWireContract {
-    field_name: &'static str,
-    variants: &'static [TypedRestLiteralVariantWireContract],
+    field_name: String,
+    variants: Vec<TypedRestLiteralVariantWireContract>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct TypedRestLiteralVariantWireContract {
-    variant_name: &'static str,
-    wire_value: &'static str,
+    variant_name: String,
+    wire_value: String,
 }
-
-const STS_EXCHANGE_GRANT_TYPE_WIRE_CONTRACT: &[TypedRestLiteralVariantWireContract] =
-    &[TypedRestLiteralVariantWireContract {
-        variant_name: "TokenExchange",
-        wire_value: "urn:ietf:params:oauth:grant-type:token-exchange",
-    }];
-
-const STS_EXCHANGE_SUBJECT_TOKEN_TYPE_WIRE_CONTRACT: &[TypedRestLiteralVariantWireContract] =
-    &[TypedRestLiteralVariantWireContract {
-        variant_name: "Jwt",
-        wire_value: "urn:ietf:params:oauth:token-type:jwt",
-    }];
-
-const STS_EXCHANGE_REQUESTED_TOKEN_TYPE_WIRE_CONTRACT: &[TypedRestLiteralVariantWireContract] =
-    &[TypedRestLiteralVariantWireContract {
-        variant_name: "RequestAccessToken",
-        wire_value: "urn:ietf:params:oauth:token-type:access_token",
-    }];
-
-const STS_EXCHANGE_TYPED_REST_BODY_WIRE_CONTRACT: &[TypedRestLiteralFieldWireContract] = &[
-    TypedRestLiteralFieldWireContract {
-        field_name: "grant_type",
-        variants: STS_EXCHANGE_GRANT_TYPE_WIRE_CONTRACT,
-    },
-    TypedRestLiteralFieldWireContract {
-        field_name: "subject_token_type",
-        variants: STS_EXCHANGE_SUBJECT_TOKEN_TYPE_WIRE_CONTRACT,
-    },
-    TypedRestLiteralFieldWireContract {
-        field_name: "requested_token_type",
-        variants: STS_EXCHANGE_REQUESTED_TOKEN_TYPE_WIRE_CONTRACT,
-    },
-];
 
 fn typed_rest_body_wire_contract(
     service: &ServiceDef,
     operation: &OperationDef,
-) -> &'static [TypedRestLiteralFieldWireContract] {
-    match (service.name.as_str(), operation.name.as_str()) {
-        ("gcp.STS", "Exchange") => STS_EXCHANGE_TYPED_REST_BODY_WIRE_CONTRACT,
-        _ => &[],
+    data_registry: &DataRegistry<'_>,
+) -> Result<Vec<TypedRestLiteralFieldWireContract>, LowerError> {
+    let Some(TransportBinding::Rest {
+        wire_values: Some(wire_values),
+        ..
+    }) = &operation.transport
+    else {
+        return Ok(Vec::new());
+    };
+
+    let Some(field_entries) = named_expr_entries(wire_values) else {
+        return Err(invalid_typed_rest_body_wire_metadata(
+            service,
+            operation,
+            "REST transport `wire_values` metadata must use record/map syntax shaped like `{ field_name: { VariantName: \"wire-value\" } }`",
+        ));
+    };
+
+    let mut field_contracts = Vec::with_capacity(field_entries.len());
+    for (field_name, variants_expr) in field_entries {
+        let Some(variant_entries) = named_expr_entries(variants_expr) else {
+            return Err(invalid_typed_rest_body_wire_metadata(
+                service,
+                operation,
+                format!(
+                    "REST transport `wire_values.{field_name}` must use record/map syntax shaped like `{{ VariantName: \"wire-value\" }}`"
+                ),
+            ));
+        };
+
+        let mut variants = Vec::with_capacity(variant_entries.len());
+        for (variant_name, wire_expr) in variant_entries {
+            let Some(wire_value) = explicit_rest_body_wire_value(wire_expr, data_registry) else {
+                return Err(invalid_typed_rest_body_wire_metadata(
+                    service,
+                    operation,
+                    format!(
+                        "REST transport `wire_values.{field_name}.{variant_name}` must resolve to a string literal; found {}",
+                        describe_transport_body_expr(wire_expr)
+                    ),
+                ));
+            };
+            variants.push(TypedRestLiteralVariantWireContract {
+                variant_name: variant_name.to_string(),
+                wire_value,
+            });
+        }
+
+        field_contracts.push(TypedRestLiteralFieldWireContract {
+            field_name: field_name.to_string(),
+            variants,
+        });
+    }
+
+    Ok(field_contracts)
+}
+
+fn named_expr_entries(expr: &Expr) -> Option<Vec<(&str, &Expr)>> {
+    match expr {
+        Expr::Record(_, fields) => Some(
+            fields
+                .iter()
+                .map(|(name, value)| (name.as_str(), value))
+                .collect(),
+        ),
+        Expr::Map(entries) => {
+            let mut named_entries = Vec::with_capacity(entries.len());
+            for (key_expr, value) in entries {
+                match key_expr {
+                    Expr::Literal(Literal::String(name)) => {
+                        named_entries.push((name.as_str(), value))
+                    }
+                    Expr::Ident(name) => named_entries.push((name.as_str(), value)),
+                    _ => return None,
+                }
+            }
+            Some(named_entries)
+        }
+        _ => None,
     }
 }
 
-fn typed_rest_body_field_wire_contract(
-    service: &ServiceDef,
-    operation: &OperationDef,
+fn typed_rest_body_field_wire_contract<'a>(
+    field_contracts: &'a [TypedRestLiteralFieldWireContract],
     field_name: &str,
-) -> Option<&'static TypedRestLiteralFieldWireContract> {
-    typed_rest_body_wire_contract(service, operation)
+) -> Option<&'a TypedRestLiteralFieldWireContract> {
+    field_contracts
         .iter()
         .find(|contract| contract.field_name == field_name)
 }
@@ -7418,10 +7486,11 @@ fn typed_rest_body_literal(
     service: &ServiceDef,
     operation: &OperationDef,
     body_contract: Option<&ResolvedRestBodyContract>,
+    field_contracts: &[TypedRestLiteralFieldWireContract],
     key: &str,
     value: &Expr,
 ) -> Result<Option<String>, LowerError> {
-    let field_contract = typed_rest_body_field_wire_contract(service, operation, key);
+    let field_contract = typed_rest_body_field_wire_contract(field_contracts, key);
     let Some(field_schema) = body_contract.and_then(|contract| contract.field(key)) else {
         return match field_contract {
             Some(_) => Err(missing_rest_body_field_metadata(
@@ -7476,7 +7545,7 @@ fn typed_rest_body_literal(
         ));
     };
 
-    Ok(Some(variant_contract.wire_value.to_string()))
+    Ok(Some(variant_contract.wire_value.clone()))
 }
 
 fn validate_typed_rest_body_contract(
@@ -7485,53 +7554,44 @@ fn validate_typed_rest_body_contract(
     body: &Expr,
     body_contract: Option<&ResolvedRestBodyContract>,
     data_registry: &DataRegistry<'_>,
+    field_contracts: &[TypedRestLiteralFieldWireContract],
 ) -> Result<(), LowerError> {
-    let field_contracts = typed_rest_body_wire_contract(service, operation);
-    if field_contracts.is_empty() {
-        return Ok(());
-    }
-
     let Some(contract) = body_contract else {
-        return Err(match body {
-            Expr::Record(None, _) | Expr::Map(_) => {
-                invalid_untyped_rest_body(service, operation, body)
-            }
-            _ => missing_rest_body_contract(service, operation, body),
-        });
+        return if field_contracts.is_empty() {
+            Ok(())
+        } else {
+            Err(match body {
+                Expr::Record(None, _) | Expr::Map(_) => {
+                    invalid_untyped_rest_body(service, operation, body)
+                }
+                _ => missing_rest_body_contract(service, operation, body),
+            })
+        };
     };
 
-    for field_contract in field_contracts {
-        let field_name = field_contract.field_name;
-        let Some(field_schema) = contract.field(field_name) else {
-            return Err(missing_rest_body_field_metadata(
-                service,
-                operation,
-                body_contract,
-                field_name,
-            ));
-        };
+    for field_schema in &contract.fields {
         if field_schema.literal_variants.is_empty() {
-            return Err(missing_rest_body_literal_contract(
-                service,
-                operation,
-                body_contract,
-                field_name,
-            ));
+            continue;
         }
 
-        for variant_contract in field_contract.variants {
-            if field_schema
-                .literal_variants
-                .iter()
-                .all(|variant| variant.name != variant_contract.variant_name)
-            {
-                return Err(missing_typed_rest_body_contract_variant(
-                    service,
-                    operation,
-                    contract,
-                    field_name,
-                    variant_contract.variant_name,
-                ));
+        let field_name = field_schema.name.as_str();
+        let field_contract = typed_rest_body_field_wire_contract(field_contracts, field_name);
+
+        if let Some(field_contract) = field_contract {
+            for variant_contract in &field_contract.variants {
+                if field_schema
+                    .literal_variants
+                    .iter()
+                    .all(|variant| variant.name != variant_contract.variant_name)
+                {
+                    return Err(missing_typed_rest_body_contract_variant(
+                        service,
+                        operation,
+                        contract,
+                        field_name,
+                        &variant_contract.variant_name,
+                    ));
+                }
             }
         }
 
@@ -7545,6 +7605,11 @@ fn validate_typed_rest_body_contract(
         };
 
         if let Some(raw_wire_value) = explicit_rest_body_wire_value(value, data_registry) {
+            let Some(field_contract) = field_contract else {
+                return Err(missing_typed_rest_body_wire_value_metadata(
+                    service, operation, field_name,
+                ));
+            };
             let expected_wire_values = typed_rest_body_expected_wire_values(field_contract);
             if expected_wire_values
                 .iter()
@@ -7562,7 +7627,15 @@ fn validate_typed_rest_body_contract(
             continue;
         }
 
-        if typed_rest_body_literal(service, operation, body_contract, field_name, value)?.is_none()
+        if typed_rest_body_literal(
+            service,
+            operation,
+            body_contract,
+            field_contracts,
+            field_name,
+            value,
+        )?
+        .is_none()
         {
             let expected = sum_literal_contract(&field_schema.literal_variants);
             return Err(invalid_typed_rest_body_value(
@@ -7608,7 +7681,7 @@ fn typed_rest_body_expected_wire_values(
     field_contract
         .variants
         .iter()
-        .map(|variant_contract| variant_contract.wire_value.to_string())
+        .map(|variant_contract| variant_contract.wire_value.clone())
         .collect()
 }
 
@@ -7709,7 +7782,7 @@ fn missing_typed_rest_body_contract_variant(
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "REST request body type `{}` field `{field_name}` is missing typed literal constructor `{variant_name}` required by the STS wire-value contract",
+            "REST request body type `{}` field `{field_name}` is missing typed literal constructor `{variant_name}` required by REST transport `wire_values` metadata",
             body_contract.record_type
         ),
     }
@@ -7741,8 +7814,34 @@ fn missing_typed_rest_body_wire_contract(
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "REST request field `{field_name}` variant `{variant_name}` has no STS wire-value contract"
+            "REST request field `{field_name}` variant `{variant_name}` has no REST transport `wire_values` metadata"
         ),
+    }
+}
+
+fn missing_typed_rest_body_wire_value_metadata(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request field `{field_name}` resolves to a raw wire value but has no REST transport `wire_values` metadata"
+        ),
+    }
+}
+
+fn invalid_typed_rest_body_wire_metadata(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    detail: impl Into<String>,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: detail.into(),
     }
 }
 

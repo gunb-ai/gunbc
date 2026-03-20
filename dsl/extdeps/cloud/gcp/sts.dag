@@ -23,9 +23,9 @@ type StsGrantType = TokenExchange {}
 
 // -- OAuth wire values ---------------------------------------------
 
-// Generic REST body lowering derives STS OAuth URNs from the typed request
-// fields plus enum constructors. These exports remain compatibility shims for
-// callers that still spell the legacy wire strings explicitly in DSL bodies.
+// These URNs are the authoritative transport metadata for typed STS request
+// fields. They also remain compatibility shims for callers that still spell
+// the legacy wire strings explicitly in DSL bodies.
 data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
 data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
@@ -80,6 +80,17 @@ service gcp.STS {
         subject_token_type: Jwt,
         audience: audience,
         requested_token_type: RequestAccessToken
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: token_exchange_grant_type_wire
+        },
+        subject_token_type: {
+          Jwt: jwt_subject_token_type_wire
+        },
+        requested_token_type: {
+          RequestAccessToken: access_token_requested_token_type_wire
+        }
       }
     }
     response {

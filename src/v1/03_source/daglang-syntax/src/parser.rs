@@ -886,6 +886,7 @@ impl Parser {
                 let mut path = String::new();
                 let mut body = None;
                 let mut headers = None;
+                let mut wire_values = None;
                 while !self.check(&TokenKind::RBrace) && !self.at_eof() {
                     if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                         let field_name = self.expect_ident()?;
@@ -908,9 +909,12 @@ impl Parser {
                                 "headers" => {
                                     headers = Some(self.parse_expr(0)?);
                                 }
+                                "wire_values" => {
+                                    wire_values = Some(Box::new(self.parse_expr(0)?));
+                                }
                                 other => {
                                     return Err(self.err(format!(
-                                        "unknown REST transport field `{other}`: expected `method`, `path`, `body`, or `headers`"
+                                        "unknown REST transport field `{other}`: expected `method`, `path`, `body`, `headers`, or `wire_values`"
                                     )));
                                 }
                             }
@@ -925,6 +929,7 @@ impl Parser {
                     path,
                     body,
                     headers,
+                    wire_values,
                 }
             }
             "shell" => {

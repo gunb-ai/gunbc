@@ -487,11 +487,19 @@ fn collect_operation_names(op: &OperationDef, names: &mut HashSet<String>) {
 
 fn collect_transport_names(transport: &TransportBinding, names: &mut HashSet<String>) {
     match transport {
-        TransportBinding::Rest { body, headers, .. } => {
+        TransportBinding::Rest {
+            body,
+            headers,
+            wire_values,
+            ..
+        } => {
             if let Some(expr) = body {
                 collect_expr_names(expr, names);
             }
             if let Some(expr) = headers {
+                collect_expr_names(expr, names);
+            }
+            if let Some(expr) = wire_values {
                 collect_expr_names(expr, names);
             }
         }

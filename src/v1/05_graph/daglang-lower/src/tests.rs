@@ -4020,6 +4020,17 @@ service gcp.STS {
         subject_token_type: jwt_subject_token_type_wire,
         audience: audience,
         requested_token_type: access_token_requested_token_type_wire
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: token_exchange_grant_type_wire
+        },
+        subject_token_type: {
+          Jwt: jwt_subject_token_type_wire
+        },
+        requested_token_type: {
+          RequestAccessToken: access_token_requested_token_type_wire
+        }
       }
     }
     response {
@@ -4119,7 +4130,18 @@ fn sts_transport_module_source_with_body_expr_and_wire_values(
         "      path: \"/v1/token\",\n",
         "      body: ",
         body_expr,
-        "\n",
+        ",\n",
+        "      wire_values: {\n",
+        "        grant_type: {\n",
+        "          TokenExchange: token_exchange_grant_type_wire\n",
+        "        },\n",
+        "        subject_token_type: {\n",
+        "          Jwt: jwt_subject_token_type_wire\n",
+        "        },\n",
+        "        requested_token_type: {\n",
+        "          RequestAccessToken: access_token_requested_token_type_wire\n",
+        "        }\n",
+        "      }\n",
         "    }\n",
         "    response {\n",
         "      200 => StsTokenResponse\n",
@@ -4185,6 +4207,17 @@ fn renamed_sts_transport_module_source(body_fields: &str) -> String {
         "      body: ExchangeRequest {\n",
         body_fields,
         "\n",
+        "      },\n",
+        "      wire_values: {\n",
+        "        grant_type: {\n",
+        "          TokenExchange: token_exchange_grant_type_wire\n",
+        "        },\n",
+        "        subject_token_type: {\n",
+        "          Jwt: jwt_subject_token_type_wire\n",
+        "        },\n",
+        "        requested_token_type: {\n",
+        "          RequestAccessToken: access_token_requested_token_type_wire\n",
+        "        }\n",
         "      }\n",
         "    }\n",
         "    response {\n",
@@ -4357,7 +4390,7 @@ fn sts_typed_body_rejects_valid_but_unmapped_requested_token_type_variant() {
                 "expected unmapped variant in error, got {detail}"
             );
             assert!(
-                detail.contains("wire-value contract"),
+                detail.contains("wire_values"),
                 "expected wire contract failure in error, got {detail}"
             );
         }
@@ -4404,6 +4437,17 @@ service gcp.STS {
         audience: audience
         requested_token_type: RequestAccessToken
         token_format: UseAccessToken
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: "urn:ietf:params:oauth:grant-type:token-exchange"
+        },
+        subject_token_type: {
+          Jwt: "urn:ietf:params:oauth:token-type:jwt"
+        },
+        requested_token_type: {
+          RequestAccessToken: "urn:ietf:params:oauth:token-type:access_token"
+        }
       }
     }
     response {
@@ -4437,12 +4481,113 @@ func run(subject_token: Secret, audience: String) -> { access_token: Secret } {
                 "expected unmapped constructor in error, got {detail}"
             );
             assert!(
-                detail.contains("wire-value contract"),
+                detail.contains("wire_values"),
                 "expected missing wire-value contract detail, got {detail}"
             );
         }
         other => panic!("expected InvalidTransportSpec, got {other:?}"),
     }
+}
+
+#[test]
+fn typed_rest_body_accepts_new_typed_field_via_transport_wire_metadata() {
+    let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type TokenFormat = UseAccessToken | UseIdToken
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: Secret
+  subject_token_type: SubjectTokenType
+  audience: String
+  requested_token_type: RequestedTokenType?
+  token_format: TokenFormat?
+}
+type StsTokenResponse {
+  access_token: Secret
+}
+data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
+data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
+data access_token_format_wire: String = "urn:example:token-format:access"
+service gcp.STS {
+  config { endpoint: "https://sts.googleapis.com" }
+  operation Exchange {
+    input {
+      subject_token: Secret
+      audience: String
+    }
+    output {
+      access_token: Secret from "access_token"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: StsTokenExchange {
+        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+        token_format: UseAccessToken
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: token_exchange_grant_type_wire
+        },
+        subject_token_type: {
+          Jwt: jwt_subject_token_type_wire
+        },
+        requested_token_type: {
+          RequestAccessToken: access_token_requested_token_type_wire
+        },
+        token_format: {
+          UseAccessToken: access_token_format_wire
+        }
+      }
+    }
+    response {
+      200 => StsTokenResponse
+    }
+  }
+}
+func run(subject_token: Secret, audience: String) -> { access_token: Secret } {
+  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
+  return { access_token: token.access_token }
+}"#;
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed with transport metadata");
+    let prepare_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("prepare_transport") && node.id.0.contains("Exchange"))
+        .expect("prepare transport node for STS.Exchange should exist");
+
+    let metadata = match &prepare_node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be preserved"),
+        _ => panic!("expected opaque lowered node"),
+    };
+
+    let spec = metadata.spec.as_ref().expect("spec should be present");
+    let ServiceOperationSpec::Rest(rest_spec) = spec else {
+        panic!("expected REST spec");
+    };
+
+    assert!(
+        rest_spec
+            .body_template
+            .as_ref()
+            .expect("body template should exist")
+            .contains(&BodyEntry::Literal(
+                "token_format".to_string(),
+                "urn:example:token-format:access".to_string(),
+            )),
+        "transport wire metadata should drive new typed REST fields without lowerer edits",
+    );
 }
 
 #[test]
@@ -4496,6 +4641,11 @@ fn sts_typed_body_rejects_drifted_grant_type_wire_value() {
         "urn:ietf:params:oauth:grant-type:refresh_token",
         "urn:ietf:params:oauth:token-type:jwt",
         "urn:ietf:params:oauth:token-type:access_token",
+    )
+    .replacen(
+        "          TokenExchange: token_exchange_grant_type_wire\n",
+        "          TokenExchange: \"urn:ietf:params:oauth:grant-type:token-exchange\"\n",
+        1,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
