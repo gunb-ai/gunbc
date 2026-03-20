@@ -8,7 +8,7 @@
 //      std::future::Future trait
 //
 // Consumers:
-//   v2/05_emit_rust.dag -- async func emission, service call awaiting, main.rs
+//   v2/05_emit.dag -- unified lowered-graph emission for Rust async items
 
 module extdeps.languages.rust.async_
 

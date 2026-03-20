@@ -7,7 +7,7 @@
 //      Go Modules Reference (go.dev/ref/mod)
 //
 // Consumers:
-//   v2/05_emit_go.dag -- import emission, package declaration, file layout
+//   v2/05_emit.dag -- unified module/import emission for Go
 
 module extdeps.languages.go.imports
 

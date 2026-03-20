@@ -62,6 +62,7 @@ type TypeMapping {
   float: String
   bool: String
   bytes: String
+  unit: String
   list_template: String
   optional_template: String
   map_template: String
@@ -81,6 +82,7 @@ type StatementSyntax {
   let_binding: String              // e.g. "let \{name}: \{type} = \{value};"
   let_binding_inferred: String     // e.g. "let \{name} = \{value};"
   assignment: String               // e.g. "\{name} = \{value};"
+  top_level_binding: String?       // e.g. "\{name}: \{type} = \{value}" or null
   return_value: String             // e.g. "return \{value};"
   return_void: String              // e.g. "return;" or "return"
   expression_statement: String     // e.g. "\{expr};"
@@ -93,6 +95,7 @@ type StatementSyntax {
 type ExpressionSyntax {
   binary_op: String                // e.g. "\{lhs} \{op} \{rhs}"
   unary_op: String                 // e.g. "\{op}\{expr}"
+  conditional: String?             // e.g. "if \{cond} { \{then} } else { \{else} }" or "(\{then} if \{cond} else \{else})"
   field_access: String             // e.g. "\{object}.\{field}"
   method_call: String              // e.g. "\{object}.\{method}(\{args})"
   function_call: String            // e.g. "\{func}(\{args})"
@@ -121,7 +124,7 @@ type OperatorSyntax {
   sub: String
   mul: String
   div: String
-  mod: String
+  mod_op: String
   eq: String
   ne: String
   lt: String
@@ -168,6 +171,7 @@ type LiteralSyntax {
 //      Python Reference 7.11 "The import statement"
 type ModuleSyntax {
   import_single: String            // e.g. "use \{path};" or "import \{path}"
+  import_all: String?              // e.g. "use crate::\{module}::*;" or "from \{module} import *"
   import_from: String?             // e.g. "from \{module} import \{names}" or null
   import_alias: String             // e.g. "use \{path} as \{alias};" or "import \{path} as \{alias}"
   module_declaration: String?      // e.g. "mod \{name};" or "package \{name}" or null
@@ -176,10 +180,19 @@ type ModuleSyntax {
   path_separator: String           // e.g. "::" or "." or "/"
 }
 
+type FunctionBodyStyle
+  = BraceBody
+  | IndentBody
+
 // "How does a language define functions?"
 // Ref: Rust Reference 6.4, Go Spec "Function declarations",
 //      Python Reference 8.7 "Function definitions"
 type FunctionSyntax {
+  keyword: String                  // e.g. "fn" or "def" or "func"
+  public_prefix: String?           // e.g. "pub " or null
+  async_keyword: String?           // e.g. "async" or null
+  body_style: FunctionBodyStyle    // e.g. BraceBody or IndentBody
+  uses_tail_expression: Bool       // Rust true, Python/Go false
   definition: String               // e.g. "fn \{name}(\{params}) -> \{ret} { \{body} }"
   definition_void: String          // e.g. "fn \{name}(\{params}) { \{body} }"
   param_with_type: String          // e.g. "\{name}: \{type}" or "\{name} \{type}"
@@ -296,6 +309,8 @@ type StringOps {
   concat: String                 // e.g. "format!(\"{}\", \{args})" or "f\"\{args}\""
   string_literal: String         // e.g. "\"\{value}\".to_string()" or "\"\{value}\""
   string_interp: String          // e.g. "format!(\"\{fmt}\", \{args})" or "f\"\{fmt}\""
+  index: String?                 // e.g. "v2_rt::char_at(&\{recv}, \{index})" or "\{recv}[\{index}]"
+  slice: String?                 // e.g. "v2_rt::substring(&\{recv}, \{start}, \{end})" or "\{recv}[\{start}:\{end}]"
   code_point: String             // e.g. "\{recv} as u32 as i64" or "ord(\{recv})"
   from_code_point: String        // e.g. "char::from_u32(\{arg} as u32)..." or "chr(\{arg})"
 }
@@ -372,12 +387,19 @@ type SerializationFramework {
 // "What project scaffolding does the language need?"
 // The emitter generates project files beyond just source files.
 // Ref: Cargo.toml, go.mod, requirements.txt, pyproject.toml
+type ModulePreludeStyle
+  = NoModulePrelude
+  | RustSerdePrelude
+  | PythonTypingPrelude
+
 type ProjectScaffold {
   manifest_file: String?         // e.g. "Cargo.toml" or "go.mod" or null
   module_init_file: String?      // e.g. null or "__init__.py" or null
   source_file_extension: String  // e.g. ".rs" or ".py" or ".go"
   source_dir: String?            // e.g. "src/" or null
   entry_point_file: String?      // e.g. "src/main.rs" or "__main__.py" or "main.go"
+  main_module_stem: String?      // e.g. "main_mod" or null
+  module_prelude: ModulePreludeStyle
 }
 
 // "How does a language invoke async service calls?"
@@ -487,9 +509,8 @@ type Language {
 // This is layer 1 -- the interface. Layer 2 (language extdeps) provides
 // the concrete data for each target language.
 //
-// Design principle: every hardcoded fact in the emitters
-// (05_emit_rust.dag, 05_emit_python.dag, 05_emit_go.dag) must be
-// expressible as a field lookup on this type. If adding a new target
+// Design principle: every hardcoded fact in the live v2 emit path must
+// be expressible as a field lookup on this type. If adding a new target
 // language requires changing the emitter rather than just providing a
 // new LanguageSpec value, a field is missing from this type.
 type LanguageSpec {
@@ -531,6 +552,80 @@ type LanguageSpec {
 
   // -- Lowered graph realization --
   realization: RealizationRules
+}
+
+// "What is the canonical surface view of a language?"
+// This sits beside LanguageSpec rather than replacing it. The emitter still
+// consumes LanguageSpec; surface correspondences describe the emitted subset
+// that should round-trip through a future surface parser.
+type SurfaceTemplate {
+  raw: String
+  holes: List<String>
+}
+
+type TypeCorrespondence {
+  ir_name: String
+  canonical_surface: String
+  parse_aliases: List<String>
+}
+
+type ContainerCorrespondence {
+  ir_kind: String
+  canonical: SurfaceTemplate
+  parse_aliases: List<SurfaceTemplate>
+}
+
+type OperatorCorrespondence {
+  ir_op: String
+  canonical_surface: String
+  parse_aliases: List<String>
+}
+
+type ExprCorrespondence {
+  ir_construct: String
+  canonical: SurfaceTemplate
+  parse_aliases: List<SurfaceTemplate>
+  supported: Bool
+}
+
+type ReservedWordMapping {
+  ir_name: String
+  surface_name: String
+}
+
+type NamingCorrespondence {
+  type_case: NamingCase
+  function_case: NamingCase
+  field_case: NamingCase
+  reserved_words: List<ReservedWordMapping>
+}
+
+type BraceStyle
+  = BraceDelimited
+  | IndentDelimited
+  | ExpressionOnly
+
+type RecognitionRules {
+  keywords: List<String>
+  block_style: BraceStyle
+  member_separator: String
+  statement_terminator: String
+  path_separator: String
+}
+
+type SurfaceModel {
+  type_correspondences: List<TypeCorrespondence>
+  container_correspondences: List<ContainerCorrespondence>
+  expr_correspondences: List<ExprCorrespondence>
+  operator_correspondences: List<OperatorCorrespondence>
+  naming: NamingCorrespondence
+}
+
+type LanguageModel {
+  emit: LanguageSpec
+  surface: SurfaceModel
+  recognition: RecognitionRules
+  scaffold: ProjectScaffold
 }
 
 // "What is a markup format?" -- subset for non-Turing languages.
@@ -576,6 +671,7 @@ data rust_language: Language = {
     float: "f64",
     bool: "bool",
     bytes: "Vec<u8>",
+    unit: "()",
     list_template: "Vec<\{0}>",
     optional_template: "Option<\{0}>",
     map_template: "HashMap<\{0}, \{1}>"
@@ -606,6 +702,7 @@ data go_language: Language = {
     float: "float64",
     bool: "bool",
     bytes: "[]byte",
+    unit: "struct{}",
     list_template: "[]\{0}",
     optional_template: "*\{0}",
     map_template: "map[\{0}]\{1}"
@@ -636,6 +733,7 @@ data python_language: Language = {
     float: "float",
     bool: "bool",
     bytes: "bytes",
+    unit: "None",
     list_template: "list[\{0}]",
     optional_template: "\{0} | None",
     map_template: "dict[\{0}, \{1}]"
@@ -666,6 +764,7 @@ data typescript_language: Language = {
     float: "number",
     bool: "boolean",
     bytes: "Uint8Array",
+    unit: "void",
     list_template: "\{0}[]",
     optional_template: "\{0} | undefined",
     map_template: "Map<\{0}, \{1}>"
@@ -685,6 +784,7 @@ data rust_statements: StatementSyntax = {
   let_binding: "let \{name}: \{type} = \{value};",
   let_binding_inferred: "let \{name} = \{value};",
   assignment: "\{name} = \{value};",
+  top_level_binding: null,
   return_value: "return \{value};",
   return_void: "return;",
   expression_statement: "\{expr};",
@@ -695,6 +795,7 @@ data rust_statements: StatementSyntax = {
 data rust_expressions: ExpressionSyntax = {
   binary_op: "\{lhs} \{op} \{rhs}",
   unary_op: "\{op}\{expr}",
+  conditional: "if \{cond} { \{then} } else { \{else} }",
   field_access: "\{object}.\{field}",
   method_call: "\{object}.\{method}(\{args})",
   function_call: "\{func}(\{args})",
@@ -718,7 +819,7 @@ data rust_expressions: ExpressionSyntax = {
     sub: "-",
     mul: "*",
     div: "/",
-    mod: "%",
+    mod_op: "%",
     eq: "==",
     ne: "!=",
     lt: "<",
@@ -760,7 +861,8 @@ data rust_literals: LiteralSyntax = {
 // "How does Rust organize modules?"
 data rust_modules: ModuleSyntax = {
   import_single: "use \{path};",
-  import_from: "use \{module}::\{names};",
+  import_all: "use crate::\{module}::*;",
+  import_from: "use crate::\{module}::\{names};",
   import_alias: "use \{path} as \{alias};",
   module_declaration: "mod \{name};",
   visibility_public: "pub",
@@ -770,6 +872,11 @@ data rust_modules: ModuleSyntax = {
 
 // "How does Rust define functions?"
 data rust_functions: FunctionSyntax = {
+  keyword: "fn",
+  public_prefix: "pub ",
+  async_keyword: "async",
+  body_style: BraceBody,
+  uses_tail_expression: true,
   definition: "fn \{name}(\{params}) -> \{ret} { \{body} }",
   definition_void: "fn \{name}(\{params}) { \{body} }",
   param_with_type: "\{name}: \{type}",
@@ -833,6 +940,7 @@ data go_statements: StatementSyntax = {
   let_binding: "var \{name} \{type} = \{value}",
   let_binding_inferred: "\{name} := \{value}",
   assignment: "\{name} = \{value}",
+  top_level_binding: null,
   return_value: "return \{value}",
   return_void: "return",
   expression_statement: "\{expr}",
@@ -843,6 +951,7 @@ data go_statements: StatementSyntax = {
 data go_expressions: ExpressionSyntax = {
   binary_op: "\{lhs} \{op} \{rhs}",
   unary_op: "\{op}\{expr}",
+  conditional: "func() interface{} { if \{cond} { return \{then} }; return \{else} }()",
   field_access: "\{object}.\{field}",
   method_call: "\{object}.\{method}(\{args})",
   function_call: "\{func}(\{args})",
@@ -866,7 +975,7 @@ data go_expressions: ExpressionSyntax = {
     sub: "-",
     mul: "*",
     div: "/",
-    mod: "%",
+    mod_op: "%",
     eq: "==",
     ne: "!=",
     lt: "<",
@@ -908,6 +1017,7 @@ data go_literals: LiteralSyntax = {
 // "How does Go organize modules?"
 data go_modules: ModuleSyntax = {
   import_single: "import \"\{path}\"",
+  import_all: null,
   import_from: null,
   import_alias: "import \{alias} \"\{path}\"",
   module_declaration: "package \{name}",
@@ -918,6 +1028,11 @@ data go_modules: ModuleSyntax = {
 
 // "How does Go define functions?"
 data go_functions: FunctionSyntax = {
+  keyword: "func",
+  public_prefix: null,
+  async_keyword: null,
+  body_style: BraceBody,
+  uses_tail_expression: false,
   definition: "func \{name}(\{params}) \{ret} { \{body} }",
   definition_void: "func \{name}(\{params}) { \{body} }",
   param_with_type: "\{name} \{type}",
@@ -982,6 +1097,7 @@ data python_statements: StatementSyntax = {
   let_binding: "\{name}: \{type} = \{value}",
   let_binding_inferred: "\{name} = \{value}",
   assignment: "\{name} = \{value}",
+  top_level_binding: "\{name}: \{type} = \{value}",
   return_value: "return \{value}",
   return_void: "return",
   expression_statement: "\{expr}",
@@ -992,6 +1108,7 @@ data python_statements: StatementSyntax = {
 data python_expressions: ExpressionSyntax = {
   binary_op: "\{lhs} \{op} \{rhs}",
   unary_op: "\{op}\{expr}",
+  conditional: "(\{then} if \{cond} else \{else})",
   field_access: "\{object}.\{field}",
   method_call: "\{object}.\{method}(\{args})",
   function_call: "\{func}(\{args})",
@@ -1015,7 +1132,7 @@ data python_expressions: ExpressionSyntax = {
     sub: "-",
     mul: "*",
     div: "//",
-    mod: "%",
+    mod_op: "%",
     eq: "==",
     ne: "!=",
     lt: "<",
@@ -1057,6 +1174,7 @@ data python_literals: LiteralSyntax = {
 // "How does Python organize modules?"
 data python_modules: ModuleSyntax = {
   import_single: "import \{path}",
+  import_all: "from \{module} import *",
   import_from: "from \{module} import \{names}",
   import_alias: "import \{path} as \{alias}",
   module_declaration: null,
@@ -1067,6 +1185,11 @@ data python_modules: ModuleSyntax = {
 
 // "How does Python define functions?"
 data python_functions: FunctionSyntax = {
+  keyword: "def",
+  public_prefix: null,
+  async_keyword: "async",
+  body_style: IndentBody,
+  uses_tail_expression: false,
   definition: "def \{name}(\{params}) -> \{ret}:\n    \{body}",
   definition_void: "def \{name}(\{params}):\n    \{body}",
   param_with_type: "\{name}: \{type}",
@@ -1155,6 +1278,8 @@ data rust_string_ops: StringOps = {
   concat: "format!(\"\{fmt}\", \{args})",
   string_literal: "\"\{value}\".to_string()",
   string_interp: "format!(\"\{fmt}\", \{args})",
+  index: "v2_rt::char_at(&\{recv}, \{index})",
+  slice: "v2_rt::substring(&\{recv}, \{start}, \{end})",
   code_point: "\{recv} as u32 as i64",
   from_code_point: "char::from_u32(\{arg} as u32).map(|c| c.to_string()).unwrap_or_default()"
 }
@@ -1206,7 +1331,9 @@ data rust_scaffold: ProjectScaffold = {
   module_init_file: null,
   source_file_extension: ".rs",
   source_dir: "src/",
-  entry_point_file: "src/main.rs"
+  entry_point_file: "src/main.rs",
+  main_module_stem: "main_mod",
+  module_prelude: RustSerdePrelude
 }
 
 data rust_service_calls: ServiceCallSemantics = AwaitQuestion {
@@ -1238,6 +1365,8 @@ data go_string_ops: StringOps = {
   concat: "fmt.Sprintf(\"\{fmt}\", \{args})",
   string_literal: "\"\{value}\"",
   string_interp: "fmt.Sprintf(\"\{fmt}\", \{args})",
+  index: "string([]rune(\{recv})[\{index}])",
+  slice: "string([]rune(\{recv})[\{start}:\{end}])",
   code_point: "int64([]rune(\{recv})[0])",
   from_code_point: "string(rune(\{arg}))"
 }
@@ -1291,7 +1420,9 @@ data go_scaffold: ProjectScaffold = {
   module_init_file: null,
   source_file_extension: ".go",
   source_dir: null,
-  entry_point_file: "main.go"
+  entry_point_file: "main.go",
+  main_module_stem: null,
+  module_prelude: NoModulePrelude
 }
 
 data go_service_calls: ServiceCallSemantics = MultiReturnError {
@@ -1323,6 +1454,8 @@ data python_string_ops: StringOps = {
   concat: "f\"\{fmt}\"",
   string_literal: "\"\{value}\"",
   string_interp: "f\"\{fmt}\"",
+  index: "\{recv}[\{index}]",
+  slice: "\{recv}[\{start}:\{end}]",
   code_point: "ord(\{recv})",
   from_code_point: "chr(\{arg})"
 }
@@ -1368,7 +1501,9 @@ data python_scaffold: ProjectScaffold = {
   module_init_file: "__init__.py",
   source_file_extension: ".py",
   source_dir: null,
-  entry_point_file: "__main__.py"
+  entry_point_file: "__main__.py",
+  main_module_stem: null,
+  module_prelude: PythonTypingPrelude
 }
 
 data python_service_calls: ServiceCallSemantics = AwaitPrefix {
@@ -1421,6 +1556,198 @@ data go_spec: LanguageSpec = {
   scaffold: go_scaffold,
   service_calls: go_service_calls,
   realization: go_realization
+}
+
+// -- Bidirectional surface models ------------------------------------
+
+data rust_surface_model: SurfaceModel = {
+  type_correspondences: [
+    { ir_name: "String", canonical_surface: "String", parse_aliases: ["String"] },
+    { ir_name: "Int", canonical_surface: "i64", parse_aliases: ["i64"] },
+    { ir_name: "Float", canonical_surface: "f64", parse_aliases: ["f64"] },
+    { ir_name: "Bool", canonical_surface: "bool", parse_aliases: ["bool"] },
+    { ir_name: "Bytes", canonical_surface: "Vec<u8>", parse_aliases: ["Vec<u8>"] },
+    { ir_name: "Unit", canonical_surface: "()", parse_aliases: ["()"] },
+    { ir_name: "Secret", canonical_surface: "String", parse_aliases: ["String"] },
+    { ir_name: "Json", canonical_surface: "serde_json::Value", parse_aliases: ["serde_json::Value"] }
+  ],
+  container_correspondences: [
+    { ir_kind: "List", canonical: { raw: "Vec<\{item}>", holes: ["item"] }, parse_aliases: [{ raw: "Vec<\{item}>", holes: ["item"] }] },
+    { ir_kind: "Optional", canonical: { raw: "Option<\{item}>", holes: ["item"] }, parse_aliases: [{ raw: "Option<\{item}>", holes: ["item"] }] },
+    { ir_kind: "Map", canonical: { raw: "BTreeMap<\{key}, \{value}>", holes: ["key", "value"] }, parse_aliases: [{ raw: "HashMap<\{key}, \{value}>", holes: ["key", "value"] }, { raw: "BTreeMap<\{key}, \{value}>", holes: ["key", "value"] }] }
+  ],
+  expr_correspondences: [
+    { ir_construct: "let_binding", canonical: { raw: "let \{name} = \{value};", holes: ["name", "value"] }, parse_aliases: [{ raw: "let \{name}: \{type} = \{value};", holes: ["name", "type", "value"] }, { raw: "let \{name} = \{value};", holes: ["name", "value"] }], supported: true },
+    { ir_construct: "if_expr", canonical: { raw: "if \{cond} { \{then} } else { \{else} }", holes: ["cond", "then", "else"] }, parse_aliases: [{ raw: "if \{cond} { \{then} } else { \{else} }", holes: ["cond", "then", "else"] }], supported: true },
+    { ir_construct: "function_call", canonical: { raw: "\{func}(\{args})", holes: ["func", "args"] }, parse_aliases: [{ raw: "\{func}(\{args})", holes: ["func", "args"] }], supported: true },
+    { ir_construct: "field_access", canonical: { raw: "\{object}.\{field}", holes: ["object", "field"] }, parse_aliases: [{ raw: "\{object}.\{field}", holes: ["object", "field"] }], supported: true },
+    { ir_construct: "lambda", canonical: { raw: "|\{params}| \{body}", holes: ["params", "body"] }, parse_aliases: [{ raw: "|\{params}| \{body}", holes: ["params", "body"] }], supported: true },
+    { ir_construct: "block", canonical: { raw: "{ \{body} }", holes: ["body"] }, parse_aliases: [{ raw: "{ \{body} }", holes: ["body"] }], supported: true },
+    { ir_construct: "for_each", canonical: { raw: "for \{item} in \{iter} { \{body} }", holes: ["item", "iter", "body"] }, parse_aliases: [{ raw: "for \{item} in \{iter} { \{body} }", holes: ["item", "iter", "body"] }], supported: true },
+    { ir_construct: "string_interp", canonical: { raw: "format!(\"\{fmt}\", \{args})", holes: ["fmt", "args"] }, parse_aliases: [{ raw: "format!(\"\{fmt}\", \{args})", holes: ["fmt", "args"] }], supported: true },
+    { ir_construct: "record_lit", canonical: { raw: "\{type} { \{fields} }", holes: ["type", "fields"] }, parse_aliases: [{ raw: "\{type} { \{fields} }", holes: ["type", "fields"] }], supported: true },
+    { ir_construct: "list_lit", canonical: { raw: "vec![\{elements}]", holes: ["elements"] }, parse_aliases: [{ raw: "vec![\{elements}]", holes: ["elements"] }], supported: true },
+    { ir_construct: "type_def", canonical: { raw: "struct \{name} { \{fields} }", holes: ["name", "fields"] }, parse_aliases: [{ raw: "struct \{name} { \{fields} }", holes: ["name", "fields"] }, { raw: "enum \{name} { \{variants} }", holes: ["name", "variants"] }], supported: true }
+  ],
+  operator_correspondences: [
+    { ir_op: "DfAdd", canonical_surface: "+", parse_aliases: ["+"] },
+    { ir_op: "DfSub", canonical_surface: "-", parse_aliases: ["-"] },
+    { ir_op: "DfMul", canonical_surface: "*", parse_aliases: ["*"] },
+    { ir_op: "DfDiv", canonical_surface: "/", parse_aliases: ["/"] },
+    { ir_op: "DfMod", canonical_surface: "%", parse_aliases: ["%"] },
+    { ir_op: "DfEq", canonical_surface: "==", parse_aliases: ["=="] },
+    { ir_op: "DfNe", canonical_surface: "!=", parse_aliases: ["!="] },
+    { ir_op: "DfLt", canonical_surface: "<", parse_aliases: ["<"] },
+    { ir_op: "DfGt", canonical_surface: ">", parse_aliases: [">"] },
+    { ir_op: "DfLe", canonical_surface: "<=", parse_aliases: ["<="] },
+    { ir_op: "DfGe", canonical_surface: ">=", parse_aliases: [">="] },
+    { ir_op: "DfAnd", canonical_surface: "&&", parse_aliases: ["&&"] },
+    { ir_op: "DfOr", canonical_surface: "||", parse_aliases: ["||"] },
+    { ir_op: "DfNot", canonical_surface: "!", parse_aliases: ["!"] }
+  ],
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    field_case: SnakeCase,
+    reserved_words: []
+  }
+}
+
+data rust_recognition: RecognitionRules = {
+  keywords: ["let", "fn", "match", "if", "else", "for", "in", "return"],
+  block_style: BraceDelimited,
+  member_separator: ".",
+  statement_terminator: ";",
+  path_separator: "::"
+}
+
+data go_surface_model: SurfaceModel = {
+  type_correspondences: [
+    { ir_name: "String", canonical_surface: "string", parse_aliases: ["string"] },
+    { ir_name: "Int", canonical_surface: "int64", parse_aliases: ["int64", "int"] },
+    { ir_name: "Float", canonical_surface: "float64", parse_aliases: ["float64"] },
+    { ir_name: "Bool", canonical_surface: "bool", parse_aliases: ["bool"] },
+    { ir_name: "Bytes", canonical_surface: "[]byte", parse_aliases: ["[]byte"] },
+    { ir_name: "Unit", canonical_surface: "struct{}", parse_aliases: ["struct{}"] },
+    { ir_name: "Secret", canonical_surface: "string", parse_aliases: ["string"] },
+    { ir_name: "Json", canonical_surface: "interface{}", parse_aliases: ["interface{}"] }
+  ],
+  container_correspondences: [
+    { ir_kind: "List", canonical: { raw: "[]\{item}", holes: ["item"] }, parse_aliases: [{ raw: "[]\{item}", holes: ["item"] }] },
+    { ir_kind: "Optional", canonical: { raw: "*\{item}", holes: ["item"] }, parse_aliases: [{ raw: "*\{item}", holes: ["item"] }] },
+    { ir_kind: "Map", canonical: { raw: "map[\{key}]\{value}", holes: ["key", "value"] }, parse_aliases: [{ raw: "map[\{key}]\{value}", holes: ["key", "value"] }] }
+  ],
+  expr_correspondences: [
+    { ir_construct: "let_binding", canonical: { raw: "\{name} := \{value}", holes: ["name", "value"] }, parse_aliases: [{ raw: "var \{name} \{type} = \{value}", holes: ["name", "type", "value"] }, { raw: "\{name} := \{value}", holes: ["name", "value"] }], supported: true },
+    { ir_construct: "if_expr", canonical: { raw: "if \{cond} { \{then} } else { \{else} }", holes: ["cond", "then", "else"] }, parse_aliases: [{ raw: "if \{cond} { \{then} } else { \{else} }", holes: ["cond", "then", "else"] }], supported: true },
+    { ir_construct: "function_call", canonical: { raw: "\{func}(\{args})", holes: ["func", "args"] }, parse_aliases: [{ raw: "\{func}(\{args})", holes: ["func", "args"] }], supported: true },
+    { ir_construct: "field_access", canonical: { raw: "\{object}.\{field}", holes: ["object", "field"] }, parse_aliases: [{ raw: "\{object}.\{field}", holes: ["object", "field"] }], supported: true },
+    { ir_construct: "lambda", canonical: { raw: "func(\{params}) { return \{body} }", holes: ["params", "body"] }, parse_aliases: [{ raw: "func(\{params}) { return \{body} }", holes: ["params", "body"] }], supported: true },
+    { ir_construct: "block", canonical: { raw: "{ \{body} }", holes: ["body"] }, parse_aliases: [{ raw: "{ \{body} }", holes: ["body"] }], supported: true },
+    { ir_construct: "for_each", canonical: { raw: "for _, \{item} := range \{iter} { \{body} }", holes: ["item", "iter", "body"] }, parse_aliases: [{ raw: "for _, \{item} := range \{iter} { \{body} }", holes: ["item", "iter", "body"] }], supported: true },
+    { ir_construct: "string_interp", canonical: { raw: "fmt.Sprintf(\"\{fmt}\", \{args})", holes: ["fmt", "args"] }, parse_aliases: [{ raw: "fmt.Sprintf(\"\{fmt}\", \{args})", holes: ["fmt", "args"] }], supported: true },
+    { ir_construct: "record_lit", canonical: { raw: "\{type}{ \{fields} }", holes: ["type", "fields"] }, parse_aliases: [{ raw: "\{type}{ \{fields} }", holes: ["type", "fields"] }], supported: true },
+    { ir_construct: "list_lit", canonical: { raw: "[]\{type}{ \{elements} }", holes: ["type", "elements"] }, parse_aliases: [{ raw: "[]\{type}{ \{elements} }", holes: ["type", "elements"] }], supported: true },
+    { ir_construct: "type_def", canonical: { raw: "type \{name} struct { \{fields} }", holes: ["name", "fields"] }, parse_aliases: [{ raw: "type \{name} struct { \{fields} }", holes: ["name", "fields"] }, { raw: "type \{name} interface { \{body} }", holes: ["name", "body"] }], supported: true }
+  ],
+  operator_correspondences: [
+    { ir_op: "DfAdd", canonical_surface: "+", parse_aliases: ["+"] },
+    { ir_op: "DfSub", canonical_surface: "-", parse_aliases: ["-"] },
+    { ir_op: "DfMul", canonical_surface: "*", parse_aliases: ["*"] },
+    { ir_op: "DfDiv", canonical_surface: "/", parse_aliases: ["/"] },
+    { ir_op: "DfMod", canonical_surface: "%", parse_aliases: ["%"] },
+    { ir_op: "DfEq", canonical_surface: "==", parse_aliases: ["=="] },
+    { ir_op: "DfNe", canonical_surface: "!=", parse_aliases: ["!="] },
+    { ir_op: "DfLt", canonical_surface: "<", parse_aliases: ["<"] },
+    { ir_op: "DfGt", canonical_surface: ">", parse_aliases: [">"] },
+    { ir_op: "DfLe", canonical_surface: "<=", parse_aliases: ["<="] },
+    { ir_op: "DfGe", canonical_surface: ">=", parse_aliases: [">="] },
+    { ir_op: "DfAnd", canonical_surface: "&&", parse_aliases: ["&&"] },
+    { ir_op: "DfOr", canonical_surface: "||", parse_aliases: ["||"] },
+    { ir_op: "DfNot", canonical_surface: "!", parse_aliases: ["!"] }
+  ],
+  naming: {
+    type_case: PascalCase,
+    function_case: CamelCase,
+    field_case: CamelCase,
+    reserved_words: []
+  }
+}
+
+data go_recognition: RecognitionRules = {
+  keywords: ["func", "if", "else", "switch", "case", "for", "range", "return", "var"],
+  block_style: BraceDelimited,
+  member_separator: ".",
+  statement_terminator: "",
+  path_separator: "."
+}
+
+data go_model: LanguageModel = {
+  emit: go_spec,
+  surface: go_surface_model,
+  recognition: go_recognition,
+  scaffold: go_scaffold
+}
+
+data python_surface_model: SurfaceModel = {
+  type_correspondences: [
+    { ir_name: "String", canonical_surface: "str", parse_aliases: ["str"] },
+    { ir_name: "Int", canonical_surface: "int", parse_aliases: ["int"] },
+    { ir_name: "Float", canonical_surface: "float", parse_aliases: ["float"] },
+    { ir_name: "Bool", canonical_surface: "bool", parse_aliases: ["bool"] },
+    { ir_name: "Bytes", canonical_surface: "bytes", parse_aliases: ["bytes"] },
+    { ir_name: "Unit", canonical_surface: "None", parse_aliases: ["None"] },
+    { ir_name: "Secret", canonical_surface: "str", parse_aliases: ["str"] },
+    { ir_name: "Json", canonical_surface: "dict", parse_aliases: ["dict"] }
+  ],
+  container_correspondences: [
+    { ir_kind: "List", canonical: { raw: "list[\{item}]", holes: ["item"] }, parse_aliases: [{ raw: "list[\{item}]", holes: ["item"] }] },
+    { ir_kind: "Optional", canonical: { raw: "\{item} | None", holes: ["item"] }, parse_aliases: [{ raw: "Optional[\{item}]", holes: ["item"] }, { raw: "\{item} | None", holes: ["item"] }] },
+    { ir_kind: "Map", canonical: { raw: "dict[\{key}, \{value}]", holes: ["key", "value"] }, parse_aliases: [{ raw: "dict[\{key}, \{value}]", holes: ["key", "value"] }] }
+  ],
+  expr_correspondences: [
+    { ir_construct: "let_binding", canonical: { raw: "\{name} = \{value}", holes: ["name", "value"] }, parse_aliases: [{ raw: "\{name}: \{type} = \{value}", holes: ["name", "type", "value"] }, { raw: "\{name} = \{value}", holes: ["name", "value"] }], supported: true },
+    { ir_construct: "if_expr", canonical: { raw: "\{then} if \{cond} else \{else}", holes: ["then", "cond", "else"] }, parse_aliases: [{ raw: "\{then} if \{cond} else \{else}", holes: ["then", "cond", "else"] }, { raw: "if \{cond}:\n    \{then}\nelse:\n    \{else}", holes: ["cond", "then", "else"] }], supported: true },
+    { ir_construct: "function_call", canonical: { raw: "\{func}(\{args})", holes: ["func", "args"] }, parse_aliases: [{ raw: "\{func}(\{args})", holes: ["func", "args"] }], supported: true },
+    { ir_construct: "field_access", canonical: { raw: "\{object}.\{field}", holes: ["object", "field"] }, parse_aliases: [{ raw: "\{object}.\{field}", holes: ["object", "field"] }], supported: true },
+    { ir_construct: "lambda", canonical: { raw: "lambda \{params}: \{body}", holes: ["params", "body"] }, parse_aliases: [{ raw: "lambda \{params}: \{body}", holes: ["params", "body"] }], supported: true },
+    { ir_construct: "block", canonical: { raw: "\{body}", holes: ["body"] }, parse_aliases: [{ raw: "\{body}", holes: ["body"] }], supported: true },
+    { ir_construct: "for_each", canonical: { raw: "[\{body} for \{item} in \{iter}]", holes: ["body", "item", "iter"] }, parse_aliases: [{ raw: "[\{body} for \{item} in \{iter}]", holes: ["body", "item", "iter"] }, { raw: "for \{item} in \{iter}:\n    \{body}", holes: ["item", "iter", "body"] }], supported: true },
+    { ir_construct: "string_interp", canonical: { raw: "f\"\{body}\"", holes: ["body"] }, parse_aliases: [{ raw: "f\"\{body}\"", holes: ["body"] }], supported: true },
+    { ir_construct: "record_lit", canonical: { raw: "\{type}(\{fields})", holes: ["type", "fields"] }, parse_aliases: [{ raw: "\{type}(\{fields})", holes: ["type", "fields"] }, { raw: "{\{fields}}", holes: ["fields"] }], supported: true },
+    { ir_construct: "list_lit", canonical: { raw: "[\{elements}]", holes: ["elements"] }, parse_aliases: [{ raw: "[\{elements}]", holes: ["elements"] }], supported: true },
+    { ir_construct: "type_def", canonical: { raw: "class \{name}:\n    \{body}", holes: ["name", "body"] }, parse_aliases: [{ raw: "class \{name}:\n    \{body}", holes: ["name", "body"] }], supported: true }
+  ],
+  operator_correspondences: [
+    { ir_op: "DfAdd", canonical_surface: "+", parse_aliases: ["+"] },
+    { ir_op: "DfSub", canonical_surface: "-", parse_aliases: ["-"] },
+    { ir_op: "DfMul", canonical_surface: "*", parse_aliases: ["*"] },
+    { ir_op: "DfDiv", canonical_surface: "/", parse_aliases: ["/"] },
+    { ir_op: "DfMod", canonical_surface: "%", parse_aliases: ["%"] },
+    { ir_op: "DfEq", canonical_surface: "==", parse_aliases: ["=="] },
+    { ir_op: "DfNe", canonical_surface: "!=", parse_aliases: ["!="] },
+    { ir_op: "DfLt", canonical_surface: "<", parse_aliases: ["<"] },
+    { ir_op: "DfGt", canonical_surface: ">", parse_aliases: [">"] },
+    { ir_op: "DfLe", canonical_surface: "<=", parse_aliases: ["<="] },
+    { ir_op: "DfGe", canonical_surface: ">=", parse_aliases: [">="] },
+    { ir_op: "DfAnd", canonical_surface: "and", parse_aliases: ["and"] },
+    { ir_op: "DfOr", canonical_surface: "or", parse_aliases: ["or"] },
+    { ir_op: "DfNot", canonical_surface: "not", parse_aliases: ["not"] }
+  ],
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    field_case: SnakeCase,
+    reserved_words: []
+  }
+}
+
+data python_recognition: RecognitionRules = {
+  keywords: ["def", "if", "else", "elif", "for", "in", "lambda", "return"],
+  block_style: IndentDelimited,
+  member_separator: ".",
+  statement_terminator: "",
+  path_separator: "."
 }
 
 // -- Markup formats ---------------------------------------------------

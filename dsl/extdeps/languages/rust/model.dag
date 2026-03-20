@@ -1,0 +1,18 @@
+// extdeps/languages/rust/model.dag -- bidirectional Rust language model.
+
+module extdeps.languages.rust.model
+
+import std.languages {
+  LanguageModel,
+  rust_surface_model,
+  rust_recognition,
+  rust_scaffold
+}
+import extdeps.languages.rust.spec { rust_spec }
+
+data rust_model: LanguageModel = {
+  emit: rust_spec,
+  surface: rust_surface_model,
+  recognition: rust_recognition,
+  scaffold: rust_scaffold
+}

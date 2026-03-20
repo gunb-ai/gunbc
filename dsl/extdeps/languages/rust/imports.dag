@@ -8,7 +8,7 @@
 //      Cargo Reference (doc.rust-lang.org/cargo)
 //
 // Consumers:
-//   v2/05_emit_rust.dag -- import emission, module file generation, lib.rs
+//   v2/05_emit.dag -- unified module/import emission for Rust
 
 module extdeps.languages.rust.imports
 

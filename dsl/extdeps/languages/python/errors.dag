@@ -7,7 +7,7 @@
 //      Python Standard Library (docs.python.org/3/library/exceptions.html)
 //
 // Consumers:
-//   v2/05_emit_python.dag -- error handling emission, service call wrapping
+//   v2/05_emit.dag -- unified lowered-graph emission for Python error handling
 
 module extdeps.languages.python.errors
 

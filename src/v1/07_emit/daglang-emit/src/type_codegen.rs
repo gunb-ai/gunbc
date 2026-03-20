@@ -9,8 +9,8 @@
 //!   - `TypeBody::Alias`   → `Raw` type alias
 //!
 //! ## Data mapping
-//!   - `data name: List<T> = [...]` → `pub static NAME: &[T] = &[...]`
-//!   - `data name: T = {...}`       → `pub static NAME: T = T {...}`
+//!   - `data name: T = value` → `pub fn name() -> T { ... }`
+//!   - Rc-backed values use thread-local cached getters for cloneable access
 //!
 //! ## Fn mapping
 //!   - `fn name(params) -> Ret`     → `pub fn name(params) -> Ret` signature
@@ -556,82 +556,59 @@ fn format_variant(v: &Variant) -> String {
 // DataDef → Rust static data
 // ---------------------------------------------------------------------------
 
-/// Convert a DSL `DataDef` to a Rust static item.
-///
-/// `data standard_symbols: List<SymbolEntry> = [...]`
-///  → `pub static STANDARD_SYMBOLS: &[SymbolEntry] = &[...]`
+/// Convert a DSL `DataDef` to a Rust getter item.
 pub fn datadef_to_code_ir(dd: &DataDef) -> Vec<code_ir::Item> {
-    datadef_to_code_ir_with(dd, &[])
+    let visible_data_names = HashSet::new();
+    let visible_data_map_names = HashSet::new();
+    datadef_to_code_ir_with(dd, &[], &visible_data_names, &visible_data_map_names)
 }
 
-/// Convert data def to code IR with struct definitions for field-type resolution.
-pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<code_ir::Item> {
-    let rust_name = to_screaming_snake(&dd.name);
-    let (rust_type, rust_value) = match &dd.ty {
-        TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => {
-            let elem_type = type_expr_to_rust(&args[0]);
-            // TEMPORARY bootstrap scaffolding (S81): In static context, List<String>
-            // must emit &[&str] because string literals are &str, not String.
-            let is_string_list = matches!(&args[0], TypeExpr::Named(n) if n == "String");
-            let static_elem_type = if is_string_list {
-                "&str".to_string()
-            } else {
-                elem_type.clone()
-            };
-            let elem_type_name = match &args[0] {
-                TypeExpr::Named(n) => n.as_str(),
-                _ => &elem_type,
-            };
-            let field_types = resolve_field_types(elem_type_name, struct_defs);
-            let items = match &dd.value {
-                Expr::List(elements) => elements
-                    .iter()
-                    .map(|e| render_data_record(e, &elem_type, &field_types))
-                    .collect::<Vec<_>>()
-                    .join(",\n    "),
-                _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
-            };
-            (
-                format!("&[{static_elem_type}]"),
-                format!("&[\n    {items}\n]"),
-            )
-        }
-        // Map<K, V> data: emit as a LazyLock static (HashMap can't be const)
-        // R8: Don't Rc-wrap types in static context — Rc is not Sync.
-        // Strip Rc wrapping from the resolved types.
-        TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
-            let key_type = strip_rc_wrapper(&type_expr_to_rust(&args[0]));
-            let val_type = strip_rc_wrapper(&type_expr_to_rust(&args[1]));
-            let val_type_name = match &args[1] {
-                TypeExpr::Named(n) => n.as_str(),
-                _ => &val_type,
-            };
-            let value = render_expr_to_rust(&dd.value, val_type_name, STATIC_OPTS);
-            // Emit as a LazyLock static with SCREAMING_SNAKE name so compile_ident's
-            // `NAME.clone()` pattern works for both List statics and Map statics.
-            return vec![code_ir::Item::Raw(format!(
-                "pub static {rust_name}: std::sync::LazyLock<std::collections::HashMap<{key_type}, {val_type}>> = std::sync::LazyLock::new(|| {{\n    {value}\n}});"
-            ))];
-        }
-        _ => {
-            let rust_ty = type_expr_to_rust(&dd.ty);
-            let value = render_expr_to_rust(&dd.value, &rust_ty, STATIC_OPTS);
-            (rust_ty, value)
-        }
+/// Convert data def to code IR with type and data visibility for field/type resolution.
+pub fn datadef_to_code_ir_with(
+    dd: &DataDef,
+    type_defs: &[&TypeDef],
+    visible_data_names: &HashSet<String>,
+    visible_data_map_names: &HashSet<String>,
+) -> Vec<code_ir::Item> {
+    let rust_name = to_snake_case(&dd.name);
+    let rust_type = type_expr_to_rust(&dd.ty);
+    let render_ctx = DataRenderContext {
+        type_defs,
+        visible_data_names,
+        visible_data_map_names,
     };
-    vec![code_ir::Item::Raw(format!(
-        "pub static {rust_name}: {rust_type} = {rust_value};"
-    ))]
+    let rust_value = if data_value_shape_matches(&dd.ty, &dd.value) {
+        render_expr_to_rust(&dd.value, &rust_type, RUNTIME_OPTS, &render_ctx)
+    } else {
+        format!(
+            "compile_error!(\"unsupported data value in type_codegen: {}\")",
+            format!("{:?}", dd.value)
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+        )
+    };
+
+    if is_rc_type(&rust_type) {
+        let cell_name = format!("{}_CELL", to_screaming_snake(&dd.name));
+        vec![code_ir::Item::Raw(format!(
+            "thread_local! {{\n    static {cell_name}: {rust_type} = {rust_value};\n}}\n\npub fn {rust_name}() -> {rust_type} {{\n    {cell_name}.with(|value| value.clone())\n}}"
+        ))]
+    } else {
+        vec![code_ir::Item::Raw(format!(
+            "pub fn {rust_name}() -> {rust_type} {{\n    {rust_value}\n}}"
+        ))]
+    }
 }
 
-/// Build a field-name → Rust-type-name map from struct definitions.
-fn resolve_field_types(struct_name: &str, struct_defs: &[&TypeDef]) -> Vec<(String, String)> {
-    for td in struct_defs {
-        if td.name == struct_name {
+/// Build a field-name → Rust-type map from type definitions.
+fn resolve_field_rust_types(type_name: &str, type_defs: &[&TypeDef]) -> Vec<(String, String)> {
+    for td in type_defs {
+        if td.name == type_name {
             if let TypeBody::Record(fields) = &td.body {
                 return fields
                     .iter()
-                    .map(|f| (f.name.clone(), type_expr_to_rust_name(&f.ty)))
+                    .map(|f| (f.name.clone(), type_expr_to_rust(&f.ty)))
                     .collect();
             }
         }
@@ -639,26 +616,123 @@ fn resolve_field_types(struct_name: &str, struct_defs: &[&TypeDef]) -> Vec<(Stri
     vec![]
 }
 
-/// Extract field types for a data table's element type.
-fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(String, String)> {
+fn resolve_field_types_for_data(dd: &DataDef, type_defs: &[&TypeDef]) -> Vec<(String, String)> {
     let elem_type_name = match &dd.ty {
         TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => match &args[0] {
-            TypeExpr::Named(n) => n.as_str(),
+            TypeExpr::Named(name) => name.as_str(),
             _ => return vec![],
         },
         _ => return vec![],
     };
-    resolve_field_types(elem_type_name, struct_defs)
+    resolve_field_rust_types(elem_type_name, type_defs)
 }
 
-/// R8: Strip `Rc<...>` wrapper from a Rust type string.
-/// Used for static data tables where Rc is not Sync-compatible.
-fn strip_rc_wrapper(rust_type: &str) -> String {
-    if let Some(inner) = rust_type.strip_prefix("Rc<").and_then(|s| s.strip_suffix('>')) {
-        inner.to_string()
-    } else {
-        rust_type.to_string()
+fn data_value_shape_matches(ty: &TypeExpr, value: &Expr) -> bool {
+    match ty {
+        TypeExpr::Generic(name, _) if name == "List" => {
+            matches!(value, Expr::List(_) | Expr::Ident(_))
+        }
+        TypeExpr::Generic(name, _) if name == "Map" => {
+            matches!(value, Expr::Map(_) | Expr::Ident(_))
+        }
+        _ => true,
     }
+}
+
+fn has_named_type(type_name: &str, type_defs: &[&TypeDef]) -> bool {
+    type_defs.iter().any(|td| td.name == type_name)
+}
+
+fn resolve_variant_field_rust_types(
+    enum_name: &str,
+    variant_name: &str,
+    type_defs: &[&TypeDef],
+) -> Vec<(String, String)> {
+    for td in type_defs {
+        if td.name != enum_name {
+            continue;
+        }
+        if let TypeBody::Sum(variants) = &td.body {
+            if let Some(variant) = variants.iter().find(|variant| variant.name == variant_name) {
+                return variant
+                    .fields
+                    .iter()
+                    .map(|field| (field.name.clone(), type_expr_to_rust(&field.ty)))
+                    .collect();
+            }
+        }
+    }
+    vec![]
+}
+
+fn resolve_record_field_rust_types(
+    record_name: Option<&str>,
+    context_type: &str,
+    type_defs: &[&TypeDef],
+) -> Vec<(String, String)> {
+    let bare_context = strip_known_wrappers(context_type);
+    if let Some(record_name) = record_name {
+        if has_named_type(record_name, type_defs) {
+            resolve_field_rust_types(record_name, type_defs)
+        } else {
+            resolve_variant_field_rust_types(bare_context, record_name, type_defs)
+        }
+    } else {
+        resolve_field_rust_types(bare_context, type_defs)
+    }
+}
+
+fn is_rc_type(rust_type: &str) -> bool {
+    rust_type.starts_with("Rc<") && rust_type.ends_with('>')
+}
+
+fn strip_wrapper<'a>(rust_type: &'a str, prefix: &str) -> Option<&'a str> {
+    rust_type
+        .strip_prefix(prefix)
+        .and_then(|inner| inner.strip_suffix('>'))
+}
+
+fn strip_known_wrappers<'a>(mut rust_type: &'a str) -> &'a str {
+    loop {
+        if let Some(inner) = strip_wrapper(rust_type, "Rc<") {
+            rust_type = inner;
+            continue;
+        }
+        if let Some(inner) = strip_wrapper(rust_type, "Option<") {
+            rust_type = inner;
+            continue;
+        }
+        return rust_type;
+    }
+}
+
+fn split_top_level_generic_args(args: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (index, ch) in args.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(args[start..index].trim().to_string());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    if start < args.len() {
+        out.push(args[start..].trim().to_string());
+    }
+    out
+}
+
+fn generic_args_for(context_type: &str, container: &str) -> Option<Vec<String>> {
+    let bare = strip_known_wrappers(context_type);
+    let prefix = format!("{container}<");
+    bare.strip_prefix(&prefix)
+        .and_then(|inner| inner.strip_suffix('>'))
+        .map(split_top_level_generic_args)
 }
 
 /// Get the simple type name (without Option wrapping) for field context resolution.
@@ -674,30 +748,6 @@ fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
     }
 }
 
-/// Render a record expression for a data table entry,
-/// using field type info to qualify enum variant references.
-fn render_data_record(expr: &Expr, context_type: &str, field_types: &[(String, String)]) -> String {
-    match expr {
-        Expr::Record(maybe_name, fields) => {
-            let type_name = maybe_name.as_deref().unwrap_or(context_type);
-            let field_strs: Vec<String> = fields
-                .iter()
-                .map(|(name, val)| {
-                    let field_type = field_types
-                        .iter()
-                        .find(|(n, _)| n == name)
-                        .map(|(_, t)| t.as_str())
-                        .unwrap_or(name.as_str());
-                    let field_val = render_expr_to_rust(val, field_type, STATIC_OPTS);
-                    format!("{name}: {field_val}")
-                })
-                .collect();
-            format!("{type_name} {{ {} }}", field_strs.join(", "))
-        }
-        other => render_expr_to_rust(other, context_type, STATIC_OPTS),
-    }
-}
-
 /// Options controlling expression rendering.
 #[derive(Clone, Copy)]
 struct RenderOpts {
@@ -709,6 +759,39 @@ struct RenderOpts {
 const STATIC_OPTS: RenderOpts = RenderOpts {
     static_context: true,
 };
+
+const RUNTIME_OPTS: RenderOpts = RenderOpts {
+    static_context: false,
+};
+
+struct DataRenderContext<'a> {
+    type_defs: &'a [&'a TypeDef],
+    visible_data_names: &'a HashSet<String>,
+    visible_data_map_names: &'a HashSet<String>,
+}
+
+fn wrap_optional(rendered: String, context_type: &str) -> String {
+    if strip_wrapper(context_type, "Option<").is_some()
+        && rendered != "None"
+        && !rendered.starts_with("Some(")
+    {
+        format!("Some({rendered})")
+    } else {
+        rendered
+    }
+}
+
+fn wrap_rc_if_needed(rendered: String, context_type: &str, inner_type: &str) -> String {
+    let direct_rc = strip_wrapper(context_type, "Rc<") == Some(inner_type);
+    let option_rc = strip_wrapper(context_type, "Option<")
+        .and_then(|inner| strip_wrapper(inner, "Rc<"))
+        == Some(inner_type);
+    if direct_rc || option_rc {
+        format!("Rc::new({rendered})")
+    } else {
+        rendered
+    }
+}
 
 /// Render a DSL expression to a Rust expression string.
 ///
@@ -723,42 +806,90 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
-fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> String {
+fn render_expr_to_rust(
+    expr: &Expr,
+    context_type: &str,
+    opts: RenderOpts,
+    ctx: &DataRenderContext<'_>,
+) -> String {
     match expr {
-        Expr::Literal(lit) => render_literal(lit, opts),
+        Expr::Literal(lit) => wrap_optional(render_literal(lit, opts), context_type),
         Expr::Ident(name) => {
-            // Bare identifiers in data contexts are enum variants.
-            // `context_type` should be the enum name (e.g. "SymbolId").
-            format!("{context_type}::{name}")
+            let is_visible_data = ctx.visible_data_names.contains(name) || ctx.visible_data_map_names.contains(name);
+            let rendered = if is_visible_data {
+                format!("{}()", to_snake_case(name))
+            } else if name == "null" || name == "None" {
+                "None".to_string()
+            } else if name
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_lowercase())
+            {
+                name.clone()
+            } else {
+                format!("{}::{name}", strip_known_wrappers(context_type))
+            };
+            let rendered = if !is_visible_data
+                && name != "null"
+                && name != "None"
+                && name
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_uppercase())
+            {
+                wrap_rc_if_needed(rendered, context_type, strip_known_wrappers(context_type))
+            } else {
+                rendered
+            };
+            wrap_optional(rendered, context_type)
         }
         Expr::Record(maybe_name, fields) => {
-            let type_name = maybe_name.as_deref().unwrap_or(context_type);
+            let bare_context = strip_known_wrappers(context_type);
+            let type_name = maybe_name
+                .as_deref()
+                .unwrap_or(bare_context);
+            let is_variant_record = maybe_name.is_some() && !has_named_type(type_name, ctx.type_defs);
+            let constructor = if is_variant_record {
+                format!("{bare_context}::{type_name}")
+            } else {
+                type_name.to_string()
+            };
+            let field_types = resolve_record_field_rust_types(maybe_name.as_deref(), context_type, ctx.type_defs);
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(name, val)| {
-                    // FC-3: Use field name as context type only as a last resort.
-                    // In most cases, the correct context type would come from type
-                    // information. Since we don't have full type context here, we
-                    // use the field name capitalized as a heuristic for enum type names
-                    // (e.g., field "color" → context type "Color" for variant resolution).
-                    // This is imperfect but better than raw field names as types.
-                    let field_context = capitalize_first(name);
-                    let field_val = render_expr_to_rust(val, &field_context, opts);
+                    let field_context = field_types
+                        .iter()
+                        .find(|(field_name, _)| field_name == name)
+                        .map(|(_, field_type)| field_type.clone())
+                        .unwrap_or_else(|| capitalize_first(name));
+                    let field_val = render_expr_to_rust(val, &field_context, opts, ctx);
                     format!("{name}: {field_val}")
                 })
                 .collect();
-            format!("{type_name} {{ {} }}", field_strs.join(", "))
+            let rendered = format!("{constructor} {{ {} }}", field_strs.join(", "));
+            let inner_type = if is_variant_record { bare_context } else { type_name };
+            wrap_optional(wrap_rc_if_needed(rendered, context_type, inner_type), context_type)
         }
         Expr::List(elements) => {
+            let elem_context = generic_args_for(context_type, "Vec")
+                .and_then(|args| args.into_iter().next())
+                .unwrap_or_else(|| strip_known_wrappers(context_type).to_string());
             let items: Vec<String> = elements
                 .iter()
-                .map(|e| render_expr_to_rust(e, context_type, opts))
+                .map(|e| render_expr_to_rust(e, &elem_context, opts, ctx))
                 .collect();
-            if opts.static_context {
+            let rendered = if opts.static_context {
                 format!("&[{}]", items.join(", "))
             } else {
                 format!("vec![{}]", items.join(", "))
-            }
+            };
+            let rendered = wrap_rc_if_needed(
+                rendered,
+                context_type,
+                &format!("Vec<{elem_context}>"),
+            );
+            wrap_optional(rendered, context_type)
         }
         Expr::StringInterp(parts) => {
             let mut s = String::new();
@@ -768,29 +899,35 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
                     daglang_syntax::ast::StringPart::Expr(_) => s.push_str("{}"),
                 }
             }
-            if opts.static_context {
+            let rendered = if opts.static_context {
                 format!("\"{s}\"")
             } else {
                 format!("\"{s}\".to_string()")
-            }
+            };
+            wrap_optional(rendered, context_type)
         }
         Expr::Map(entries) => {
+            let mut map_args = generic_args_for(context_type, "HashMap").unwrap_or_default();
+            while map_args.len() < 2 {
+                map_args.push("String".to_string());
+            }
+            let key_context = map_args[0].clone();
+            let value_context = map_args[1].clone();
             let items: Vec<String> = entries
                 .iter()
                 .map(|(k, v)| {
-                    let key_str = render_expr_to_rust(k, "String", opts);
-                    let val_str = render_expr_to_rust(v, context_type, opts);
-                    // In static context, string literal values are &str but HashMap<K, String>
-                    // needs String values. Add .to_string() for String-typed values.
-                    let val_expr = if context_type == "String" && opts.static_context {
-                        format!("{val_str}.to_string()")
-                    } else {
-                        val_str
-                    };
-                    format!("({key_str}.to_string(), {val_expr})")
+                    let key_str = render_expr_to_rust(k, &key_context, opts, ctx);
+                    let val_str = render_expr_to_rust(v, &value_context, opts, ctx);
+                    format!("({key_str}, {val_str})")
                 })
                 .collect();
-            format!("HashMap::from([{}])", items.join(", "))
+            let rendered = format!("HashMap::from([{}])", items.join(", "));
+            let rendered = wrap_rc_if_needed(
+                rendered,
+                context_type,
+                &format!("HashMap<{key_context}, {value_context}>"),
+            );
+            wrap_optional(rendered, context_type)
         }
         _ => format!(
             "compile_error!(\"unsupported expr in type_codegen: {}\")",
@@ -1195,7 +1332,7 @@ pub fn impl_from_data_table(
         _ => return None,
     };
 
-    let field_types = resolve_field_types(elem_type_name, struct_defs);
+    let field_types = resolve_field_rust_types(elem_type_name, struct_defs);
     let key_type = field_types
         .iter()
         .find(|(n, _)| n == key_field)
@@ -1221,7 +1358,14 @@ pub fn impl_from_data_table(
                 .map(|(_, v)| v);
 
             if let (Some(Expr::Ident(key)), Some(val)) = (key_val, val_val) {
-                let rendered_val = render_expr_to_rust(val, value_type, STATIC_OPTS);
+                let empty_data_names = HashSet::new();
+                let empty_data_map_names = HashSet::new();
+                let render_ctx = DataRenderContext {
+                    type_defs: &[],
+                    visible_data_names: &empty_data_names,
+                    visible_data_map_names: &empty_data_map_names,
+                };
+                let rendered_val = render_expr_to_rust(val, value_type, STATIC_OPTS, &render_ctx);
                 match_arms.push(format!("            Self::{key} => {rendered_val},"));
             }
         }
@@ -1391,8 +1535,22 @@ pub fn generate_types_for_modules(
         }
     }
 
+    let visible_data_names: HashSet<String> = data_defs.iter().map(|dd| dd.name.clone()).collect();
+    let visible_data_map_names: HashSet<String> = data_defs
+        .iter()
+        .filter_map(|dd| match &dd.ty {
+            TypeExpr::Generic(name, _) if name == "Map" => Some(dd.name.clone()),
+            _ => None,
+        })
+        .collect();
+
     for dd in &data_defs {
-        all_items.extend(datadef_to_code_ir_with(dd, &type_def_refs));
+        all_items.extend(datadef_to_code_ir_with(
+            dd,
+            &type_def_refs,
+            &visible_data_names,
+            &visible_data_map_names,
+        ));
     }
 
     for (module_index, item_index) in &fn_defs {
@@ -2226,22 +2384,26 @@ mod tests {
                 ],
             )]),
         };
-        let items = datadef_to_code_ir_with(&dd, &[&entry_td]);
+        let visible_data_names = std::collections::HashSet::new();
+        let visible_data_map_names = std::collections::HashSet::new();
+        let items =
+            datadef_to_code_ir_with(&dd, &[&entry_td], &visible_data_names, &visible_data_map_names);
         assert_eq!(items.len(), 1);
         match &items[0] {
             code_ir::Item::Raw(s) => {
-                assert!(s.contains("pub static TEST_DATA: &[Entry]"), "got: {s}");
+                assert!(s.contains("thread_local!"), "got: {s}");
+                assert!(s.contains("pub fn test_data() -> Rc<Vec<Entry>>"), "got: {s}");
                 assert!(
                     s.contains("id: EntryKind::Alpha"),
                     "should resolve field type: {s}"
                 );
                 assert!(
-                    s.contains(r#"label: "first""#),
-                    "static context uses &str: {s}"
+                    s.contains(r#"label: "first".to_string()"#),
+                    "runtime getter uses owned strings: {s}"
                 );
                 assert!(
-                    !s.contains("to_string"),
-                    "no to_string in static context: {s}"
+                    s.contains("Rc::new(vec!["),
+                    "list data should materialize Rc<Vec<_>>: {s}"
                 );
             }
             _ => panic!("expected Raw"),
@@ -2258,7 +2420,7 @@ mod tests {
         let items = datadef_to_code_ir(&dd);
         match &items[0] {
             code_ir::Item::Raw(s) => {
-                assert_eq!(s, "pub static BOX_WIDTH: i64 = 60;");
+                assert_eq!(s, "pub fn box_width() -> i64 {\n    60\n}");
             }
             _ => panic!("expected Raw"),
         }

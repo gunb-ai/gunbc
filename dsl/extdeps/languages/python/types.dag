@@ -11,7 +11,7 @@
 //      PEP 604 "Union types with X | Y"
 //
 // Consumers:
-//   v2/05_emit_python.dag -- type emission, class generation, decorator usage
+//   v2/05_emit.dag -- unified lowered-graph emission for Python
 
 module extdeps.languages.python.types
 

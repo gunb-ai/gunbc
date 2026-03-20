@@ -8,7 +8,7 @@
 //      aiohttp docs (docs.aiohttp.org)
 //
 // Consumers:
-//   v2/05_emit_python.dag -- async func emission, service call awaiting
+//   v2/05_emit.dag -- unified lowered-graph emission for Python async items
 
 module extdeps.languages.python.async_
 

@@ -8,7 +8,7 @@
 //      Go Blog "Working with Errors in Go 1.13" (go.dev/blog/go1.13-errors)
 //
 // Consumers:
-//   v2/05_emit_go.dag -- error return emission, error wrapping
+//   v2/05_emit.dag -- unified lowered-graph emission for Go error handling
 
 module extdeps.languages.go.errors
 

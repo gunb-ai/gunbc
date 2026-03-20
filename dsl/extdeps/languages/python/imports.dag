@@ -8,7 +8,7 @@
 //      Python Tutorial 6 "Modules"
 //
 // Consumers:
-//   v2/05_emit_python.dag -- import emission, module file generation
+//   v2/05_emit.dag -- unified module/import emission for Python
 
 module extdeps.languages.python.imports
 

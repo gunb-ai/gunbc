@@ -83,7 +83,10 @@ mod tests {
             "dsl/std/types.dag",
             "dsl/std/languages.dag",
             "dsl/extdeps/languages/rust/spec.dag",
+            "dsl/extdeps/languages/rust/model.dag",
             "dsl/extdeps/languages/python/spec.dag",
+            "dsl/extdeps/languages/python/model.dag",
+            "dsl/extdeps/languages/pspice/spec.dag",
             "src/v2/00_core.dag",
             "src/v2/01_tokenize.dag",
             "src/v2/02_parse.dag",
@@ -91,8 +94,6 @@ mod tests {
             "src/v2/04_reconcile.dag",
             "src/v2/05_lower.dag",
             "src/v2/05_emit.dag",
-            "src/v2/05_emit_rust.dag",
-            "src/v2/05_emit_python.dag",
             "src/v2/05_emit_scaffold.dag",
             "src/v2/06_pipeline.dag",
             "src/v2/07_complexity.dag",
@@ -113,6 +114,7 @@ mod tests {
             ("std_languages", "dsl/std/languages.dag"),
             ("rust_spec", "dsl/extdeps/languages/rust/spec.dag"),
             ("python_spec", "dsl/extdeps/languages/python/spec.dag"),
+            ("pspice_spec", "dsl/extdeps/languages/pspice/spec.dag"),
             ("00_core", "src/v2/00_core.dag"),
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
@@ -120,8 +122,6 @@ mod tests {
             ("04_reconcile", "src/v2/04_reconcile.dag"),
             ("05_lower", "src/v2/05_lower.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("05_emit_scaffold", "src/v2/05_emit_scaffold.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
         ]
@@ -504,47 +504,6 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn literal_value_string(value: &str) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            "_variant".to_string(),
-            gunbc_ir::Value::Str("LitStr".to_string()),
-        );
-        map.insert("value".to_string(), gunbc_ir::Value::Str(value.to_string()));
-        gunbc_ir::Value::Map(map)
-    }
-
-    fn literal_value_bool(value: bool) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            "_variant".to_string(),
-            gunbc_ir::Value::Str("LitBool".to_string()),
-        );
-        map.insert("value".to_string(), gunbc_ir::Value::Bool(value));
-        gunbc_ir::Value::Map(map)
-    }
-
-    fn literal_expr_value(
-        literal: gunbc_ir::Value,
-        span: gunbc_ir::Value,
-    ) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            "_variant".to_string(),
-            gunbc_ir::Value::Str("Literal".to_string()),
-        );
-        map.insert("value".to_string(), literal);
-        map.insert("span".to_string(), span);
-        gunbc_ir::Value::Map(map)
-    }
-
-    fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
-        map.insert("value".to_string(), value);
-        gunbc_ir::Value::Map(map)
-    }
-
     fn func_env_value() -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert(
@@ -664,6 +623,50 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing emitted file {path}")),
             other => panic!("expected files list, got: {other:?}"),
         }
+    }
+
+    fn rust_spec_value(output: &daglang_driver::EmbeddedCompileOutput) -> gunbc_ir::Value {
+        output
+            .data_values
+            .get("rust_spec")
+            .cloned()
+            .expect("compiler data values should include rust_spec")
+    }
+
+    fn lowered_modules_from_typed_graph(
+        output: &daglang_driver::EmbeddedCompileOutput,
+        typed_graph: gunbc_ir::Value,
+    ) -> Vec<gunbc_ir::Value> {
+        let mut lower_inputs = HashMap::new();
+        lower_inputs.insert("typed".to_string(), typed_graph);
+        let lowered = returned_value(
+            call_fn(output, "lower_graph", lower_inputs).expect("lower_graph should succeed"),
+        );
+        let lowered_map = match lowered {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("lower_graph should return LoweredGraph, got: {:?}", other),
+        };
+        match lowered_map.get("modules") {
+            Some(gunbc_ir::Value::List(modules)) => modules.iter().cloned().collect(),
+            other => panic!("lower_graph.modules should be a list, got: {:?}", other),
+        }
+    }
+
+    fn emit_lowered_rust_module(
+        output: &daglang_driver::EmbeddedCompileOutput,
+        lowered_module: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut emit_inputs = HashMap::new();
+        emit_inputs.insert("module".to_string(), lowered_module);
+        emit_inputs.insert("spec".to_string(), rust_spec_value(output));
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        returned_value(
+            call_fn(output, "emit_lowered_module", emit_inputs)
+                .expect("emit_lowered_module should succeed"),
+        )
     }
 
     #[test]
@@ -932,8 +935,23 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    fn phase0_rust_extdep_model_parses_strict() {
+        assert_parses_strict("dsl/extdeps/languages/rust/model.dag");
+    }
+
+    #[test]
     fn phase0_python_extdep_spec_parses_strict() {
         assert_parses_strict("dsl/extdeps/languages/python/spec.dag");
+    }
+
+    #[test]
+    fn phase0_python_extdep_model_parses_strict() {
+        assert_parses_strict("dsl/extdeps/languages/python/model.dag");
+    }
+
+    #[test]
+    fn phase0_pspice_extdep_spec_parses_strict() {
+        assert_parses_strict("dsl/extdeps/languages/pspice/spec.dag");
     }
 
     #[test]
@@ -1324,8 +1342,12 @@ fn foo(item: String) -> String {
             "should have typecheck fn"
         );
         assert!(
-            output.fns.contains_key("emit_rust"),
-            "should have emit_rust fn"
+            output.fns.contains_key("emit_lowered"),
+            "should have emit_lowered fn"
+        );
+        assert!(
+            output.fns.contains_key("emit_lowered_module"),
+            "should have emit_lowered_module fn"
         );
         assert!(
             output.fns.contains_key("lower_graph"),
@@ -1348,6 +1370,11 @@ fn foo(item: String) -> String {
         assert!(
             output.data_values.contains_key("python_spec"),
             "compiler data values should include python_spec, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            output.data_values.contains_key("pspice_spec"),
+            "compiler data values should include pspice_spec, got: {:?}",
             output.data_values.keys().collect::<Vec<_>>()
         );
     }
@@ -1391,6 +1418,50 @@ fn foo(item: String) -> String {
             Some(gunbc_ir::Value::Str(id)) => assert_eq!(id, "python"),
             other => panic!("language.id missing, got: {:?}", other),
         }
+
+        let mut pspice_inputs = HashMap::new();
+        pspice_inputs.insert("target".to_string(), render_target_value("PSpice"));
+        let pspice_result = returned_value(
+            call_fn(&output, "load_language_spec", pspice_inputs).expect("load pspice spec ok"),
+        );
+        let pspice_map = match pspice_result {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("load_language_spec should return LanguageSpec, got: {:?}", other),
+        };
+        let pspice_language = match pspice_map.get("language") {
+            Some(gunbc_ir::Value::Map(map)) => map,
+            other => panic!("LanguageSpec.language missing, got: {:?}", other),
+        };
+        match pspice_language.get("id") {
+            Some(gunbc_ir::Value::Str(id)) => assert_eq!(id, "pspice"),
+            other => panic!("language.id missing, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn phase3_compiler_data_values_include_language_models() {
+        let output = compile_all_modules().expect("all modules should compile");
+
+        assert!(
+            output.data_values.contains_key("rust_surface_model"),
+            "compiler data values should include rust_surface_model, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            output.data_values.contains_key("python_surface_model"),
+            "compiler data values should include python_surface_model, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            output.data_values.contains_key("rust_model"),
+            "compiler data values should include rust_model, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            output.data_values.contains_key("python_model"),
+            "compiler data values should include python_model, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1474,34 +1545,14 @@ fn foo(item: String) -> String {
         } else {
             gunbc_ir::Value::Map(tc_result.into_iter().collect())
         };
-        let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
-            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                mods.clone()
-            } else {
-                panic!("no modules in typed graph");
-            }
-        } else {
-            panic!("typed graph not a map");
-        };
-
-        let mut emit_inputs = HashMap::new();
-        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert(
-            "registry".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
-        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
-        let text_file = if let Some(ret) = emit_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(emit_result.into_iter().collect())
-        };
+        let lowered_modules = lowered_modules_from_typed_graph(&output, typed_graph);
+        let text_file = emit_lowered_rust_module(&output, lowered_modules[0].clone());
         let content = match &text_file {
             gunbc_ir::Value::Map(m) => match m.get("content") {
                 Some(gunbc_ir::Value::Str(content)) => content,
                 other => panic!("TextFile.content missing, got: {:?}", other),
             },
-            other => panic!("emit_module should return TextFile, got: {:?}", other),
+            other => panic!("emit_lowered_module should return TextFile, got: {:?}", other),
         };
         assert!(
             content.contains("true"),
@@ -1509,7 +1560,7 @@ fn foo(item: String) -> String {
             content
         );
         assert!(
-            content.contains("1 + 2"),
+            content.contains(" + "),
             "emitted Rust should contain infix operator spelling, got:\n{}",
             content
         );
@@ -1971,25 +2022,9 @@ fn foo(item: String) -> String {
         } else {
             gunbc_ir::Value::Map(tc_result.into_iter().collect())
         };
-        let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
-            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                mods.clone()
-            } else {
-                panic!("no modules in typed graph");
-            }
-        } else {
-            panic!("typed graph not a map");
-        };
-        assert!(!typed_modules.is_empty());
-        let mut emit_inputs = HashMap::new();
-        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
-        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
-        let text_file = if let Some(ret) = emit_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(emit_result.into_iter().collect())
-        };
+        let lowered_modules = lowered_modules_from_typed_graph(&output, typed_graph);
+        assert!(!lowered_modules.is_empty());
+        let text_file = emit_lowered_rust_module(&output, lowered_modules[0].clone());
         if let gunbc_ir::Value::Map(m) = &text_file {
             assert!(m.contains_key("path"), "TextFile should have 'path'");
             assert!(m.contains_key("content"), "TextFile should have 'content'");
@@ -2045,24 +2080,8 @@ fn foo(item: String) -> String {
         } else {
             gunbc_ir::Value::Map(tc_result.into_iter().collect())
         };
-        let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
-            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                mods.clone()
-            } else {
-                panic!("no modules");
-            }
-        } else {
-            panic!("not a map");
-        };
-        let mut emit_inputs = HashMap::new();
-        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
-        emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
-        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
-        let text_file = if let Some(ret) = emit_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(emit_result.into_iter().collect())
-        };
+        let lowered_modules = lowered_modules_from_typed_graph(&output, typed_graph);
+        let text_file = emit_lowered_rust_module(&output, lowered_modules[0].clone());
         if let gunbc_ir::Value::Map(m) = &text_file {
             if let Some(gunbc_ir::Value::Str(s)) = m.get("content") {
                 assert!(
@@ -2164,83 +2183,85 @@ fn foo(item: String) -> String {
         );
     }
 
-    /// Test that emit_rust.dag handles NullCoalesce emission.
+    /// Test that the shared lowered emitter handles NullCoalesce emission.
     #[test]
     fn phase4_emit_handles_null_coalesce() {
-        let source = read_v2_file("src/v2/05_emit_rust.dag");
+        let source = read_v2_file("src/v2/05_emit.dag");
+        let languages = read_v2_file("dsl/std/languages.dag");
         assert!(
-            source.contains("unwrap_or_else"),
-            "emit_rust.dag should emit unwrap_or_else for null coalesce"
+            source.contains("DfNullCoalesce"),
+            "emit.dag should handle lowered null-coalesce nodes"
+        );
+        assert!(
+            languages.contains("unwrap_or_else"),
+            "languages.dag should carry the Rust null-coalesce template"
         );
     }
 
-    /// Test that emit_rust.dag handles for-loop emission.
+    /// Test that the shared lowered emitter handles replicate/for-each emission.
     #[test]
     fn phase4_emit_handles_for_loop() {
-        let source = read_v2_file("src/v2/05_emit_rust.dag");
+        let source = read_v2_file("src/v2/05_emit.dag");
+        let rust_spec = read_v2_file("dsl/extdeps/languages/rust/spec.dag");
         assert!(
-            source.contains("emit_typed_for_each"),
-            "emit_rust.dag should contain emit_typed_for_each function"
+            source.contains("DfReplicate"),
+            "emit.dag should contain lowered replicate handling"
+        );
+        assert!(
+            rust_spec.contains("replicate_rule: MapCollect"),
+            "rust spec should choose map/collect realization for replicate"
         );
         assert!(
             source.contains("into_iter"),
-            "emit_rust.dag should emit .into_iter().map() for for-loops"
+            "emit.dag should emit .into_iter().map() for Rust replicate nodes"
         );
     }
 
-    /// Test that emit_rust.dag generates Cargo.toml.
+    /// Test that scaffold emission remains a separate hook after unified emit.
     #[test]
-    fn phase4_emit_generates_cargo_toml() {
-        let source = read_v2_file("src/v2/05_emit_rust.dag");
+    fn phase4_pipeline_wires_scaffold_hook() {
+        let source = read_v2_file("src/v2/05_emit_scaffold.dag");
+        let pipeline = read_v2_file("src/v2/06_pipeline.dag");
         assert!(
-            source.contains("emit_cargo_toml"),
-            "emit_rust.dag should contain emit_cargo_toml function"
+            source.contains("fn emit_scaffold"),
+            "emit_scaffold.dag should contain the scaffold dispatch hook"
+        );
+        assert!(
+            pipeline.contains("emit_scaffold(lowered: lowered, spec: spec)"),
+            "pipeline should call the scaffold hook after unified emit"
         );
     }
 
-    /// Test that emit_rust.dag has tail-call optimization support.
-    /// TCO-eligible functions should emit `loop` + `continue` instead of
-    /// direct self-recursion. Uses typed TCO variants (emit_typed_tco_*).
+    /// Test that lowering and the language specs carry the TCO contract.
     #[test]
-    fn phase4_emit_has_tco_support() {
-        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+    fn phase4_lower_and_specs_encode_tco_strategy() {
+        let lower_source = read_v2_file("src/v2/05_lower.dag");
+        let rust_spec = read_v2_file("dsl/extdeps/languages/rust/spec.dag");
+        let python_spec = read_v2_file("dsl/extdeps/languages/python/spec.dag");
+        let languages_source = read_v2_file("dsl/std/languages.dag");
         assert!(
-            rust_source.contains("emit_typed_tco_body"),
-            "emit_rust.dag should contain emit_typed_tco_body function for TCO rendering"
+            lower_source.contains("fn detect_tco"),
+            "lower.dag should contain detect_tco for TCO classification"
         );
         assert!(
-            rust_source.contains("emit_typed_tco_expr"),
-            "emit_rust.dag should contain emit_typed_tco_expr for TCO expression rendering"
+            lower_source.contains("is_tco: detect_tco(item: item)"),
+            "lower.dag should mark lowered function defs with detect_tco"
         );
         assert!(
-            rust_source.contains("emit_tco_params"),
-            "emit_rust.dag should contain emit_tco_params for mut parameter declarations"
+            languages_source.contains("type TcoRealization"),
+            "languages.dag should define TcoRealization"
         );
         assert!(
-            rust_source.contains("loop {"),
-            "emit_rust.dag should emit Rust loop for TCO-eligible functions"
+            languages_source.contains("loop_infinite"),
+            "languages.dag should carry loop templates for TCO-capable targets"
         );
         assert!(
-            rust_source.contains("continue;"),
-            "emit_rust.dag should emit continue for tail self-calls"
+            rust_spec.contains("tco_rule: LoopContinue"),
+            "rust spec should choose loop/continue TCO realization"
         );
         assert!(
-            rust_source.contains("break "),
-            "emit_rust.dag should emit break for non-recursive returns in TCO"
-        );
-
-        let python_source = read_v2_file("src/v2/05_emit_python.dag");
-        assert!(
-            python_source.contains("emit_py_typed_tco_body"),
-            "emit_python.dag should contain emit_py_typed_tco_body function for TCO rendering"
-        );
-        assert!(
-            python_source.contains("while True:"),
-            "emit_python.dag should emit Python while True for TCO-eligible functions"
-        );
-        assert!(
-            python_source.contains("continue"),
-            "emit_python.dag should emit continue for tail self-calls in Python"
+            python_spec.contains("tco_rule: WhileTrueContinue"),
+            "python spec should choose while-true/continue TCO realization"
         );
 
         // Verify the shared classification functions exist in 00_core.dag
@@ -2329,10 +2350,10 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase6_emit_preserves_field_provenance_and_named_arg_ordering() {
-        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+        let rust_lang = read_v2_file("dsl/std/languages.dag");
         assert!(
-            rust_source.contains("serde(rename = "),
-            "emit_rust.dag should preserve from_key through serde rename attributes"
+            rust_lang.contains("serde(rename = "),
+            "languages.dag should preserve from_key through Rust rename attributes"
         );
         let core_source = read_v2_file("src/v2/05_emit.dag");
         assert!(
@@ -2925,31 +2946,55 @@ fn example(items: List<String>) -> Int {
             )]),
         );
 
-        let mut inputs = HashMap::new();
-        inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
-        inputs.insert(
-            "fields".to_string(),
-            gunbc_ir::Value::List(std::sync::Arc::new(vec![
-                field_init_value(
-                    "name",
-                    literal_expr_value(literal_value_string("demo"), span.clone()),
-                ),
-                field_init_value(
-                    "enabled",
-                    literal_expr_value(literal_value_bool(true), span.clone()),
-                ),
+        let _ = span;
+        let _ = scope;
+        let mut field_name = std::collections::BTreeMap::new();
+        field_name.insert("name".to_string(), gunbc_ir::Value::Str("name".to_string()));
+        field_name.insert(
+            "value".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::from([
+                ("_variant".to_string(), gunbc_ir::Value::Str("DfString".to_string())),
+                ("value".to_string(), gunbc_ir::Value::Str("demo".to_string())),
             ])),
         );
-        inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
-        inputs.insert("scope".to_string(), scope);
-
+        let mut field_enabled = std::collections::BTreeMap::new();
+        field_enabled.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("enabled".to_string()),
+        );
+        field_enabled.insert(
+            "value".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::from([
+                ("_variant".to_string(), gunbc_ir::Value::Str("DfBool".to_string())),
+                ("value".to_string(), gunbc_ir::Value::Bool(true)),
+            ])),
+        );
         let rendered = returned_value(
-            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+            call_fn(
+                &output,
+                "emit_df_value",
+                HashMap::from([
+                    (
+                        "value".to_string(),
+                        gunbc_ir::Value::Map(std::collections::BTreeMap::from([
+                            ("_variant".to_string(), gunbc_ir::Value::Str("DfRecord".to_string())),
+                            (
+                                "fields".to_string(),
+                                gunbc_ir::Value::List(std::sync::Arc::new(vec![
+                                    gunbc_ir::Value::Map(field_name),
+                                    gunbc_ir::Value::Map(field_enabled),
+                                ])),
+                            ),
+                        ])),
+                    ),
+                    ("spec".to_string(), rust_spec_value(&output)),
+                ]),
+            )
+            .expect("emit_df_value should succeed"),
         );
         let main_rs = match rendered {
             gunbc_ir::Value::Str(rendered) => rendered,
-            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+            other => panic!("emit_df_value should return a string, got: {:?}", other),
         };
 
         assert!(
@@ -2998,31 +3043,55 @@ fn example(items: List<String>) -> Int {
             ]),
         );
 
-        let mut inputs = HashMap::new();
-        inputs.insert("type_name".to_string(), gunbc_ir::Value::Unit);
-        inputs.insert(
-            "fields".to_string(),
-            gunbc_ir::Value::List(std::sync::Arc::new(vec![
-                field_init_value(
-                    "name",
-                    literal_expr_value(literal_value_string("demo"), span.clone()),
-                ),
-                field_init_value(
-                    "enabled",
-                    literal_expr_value(literal_value_bool(true), span.clone()),
-                ),
+        let _ = span;
+        let _ = scope;
+        let mut field_name = std::collections::BTreeMap::new();
+        field_name.insert("name".to_string(), gunbc_ir::Value::Str("name".to_string()));
+        field_name.insert(
+            "value".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::from([
+                ("_variant".to_string(), gunbc_ir::Value::Str("DfString".to_string())),
+                ("value".to_string(), gunbc_ir::Value::Str("demo".to_string())),
             ])),
         );
-        inputs.insert("span".to_string(), span);
-        inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
-        inputs.insert("scope".to_string(), scope);
-
+        let mut field_enabled = std::collections::BTreeMap::new();
+        field_enabled.insert(
+            "name".to_string(),
+            gunbc_ir::Value::Str("enabled".to_string()),
+        );
+        field_enabled.insert(
+            "value".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::from([
+                ("_variant".to_string(), gunbc_ir::Value::Str("DfBool".to_string())),
+                ("value".to_string(), gunbc_ir::Value::Bool(true)),
+            ])),
+        );
         let rendered = returned_value(
-            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+            call_fn(
+                &output,
+                "emit_df_value",
+                HashMap::from([
+                    (
+                        "value".to_string(),
+                        gunbc_ir::Value::Map(std::collections::BTreeMap::from([
+                            ("_variant".to_string(), gunbc_ir::Value::Str("DfRecord".to_string())),
+                            (
+                                "fields".to_string(),
+                                gunbc_ir::Value::List(std::sync::Arc::new(vec![
+                                    gunbc_ir::Value::Map(field_name),
+                                    gunbc_ir::Value::Map(field_enabled),
+                                ])),
+                            ),
+                        ])),
+                    ),
+                    ("spec".to_string(), rust_spec_value(&output)),
+                ]),
+            )
+            .expect("emit_df_value should succeed"),
         );
         let main_rs = match rendered {
             gunbc_ir::Value::Str(rendered) => rendered,
-            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+            other => panic!("emit_df_value should return a string, got: {:?}", other),
         };
 
         assert!(
@@ -3506,38 +3575,27 @@ fn example(items: List<String>) -> Int {
         };
 
         // Step 4: Emit Rust for each typed module
-        let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
-            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                mods.clone()
-            } else {
-                panic!("no modules in typed graph");
-            }
-        } else {
-            panic!("typed graph not a map");
-        };
-
         assert_eq!(
-            typed_modules.len(),
+            if let gunbc_ir::Value::Map(ref m) = typed_graph {
+                if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                    mods.len()
+                } else {
+                    panic!("no modules in typed graph");
+                }
+            } else {
+                panic!("typed graph not a map");
+            },
             dag_files.len(),
-            "should have {} typed modules, got {}",
-            dag_files.len(),
-            typed_modules.len()
+            "should have {} typed modules after typecheck",
+            dag_files.len()
         );
 
+        let lowered_modules = lowered_modules_from_typed_graph(&output, typed_graph);
         let mut emitted_files = Vec::new();
-        for typed_module in typed_modules.iter() {
-            let mut emit_inputs = HashMap::new();
-            emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
-            if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
-                let text_file = if let Some(ret) = result.get("return") {
-                    ret.clone()
-                } else {
-                    gunbc_ir::Value::Map(result.into_iter().collect())
-                };
-                if matches!(text_file, gunbc_ir::Value::Map(_)) {
-                    emitted_files.push(text_file);
-                }
+        for lowered_module in lowered_modules.iter() {
+            let text_file = emit_lowered_rust_module(&output, lowered_module.clone());
+            if matches!(text_file, gunbc_ir::Value::Map(_)) {
+                emitted_files.push(text_file);
             }
         }
 
@@ -4232,6 +4290,84 @@ fn example(items: List<String>) -> Int {
                 name
             );
         }
+    }
+
+    #[test]
+    fn phase4_pspice_emit_produces_netlist_shape() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let source = r#"module test
+fn resistor(pos: Float, neg: Float, value: Float) -> Float {
+  value
+}
+
+fn voltage(pos: Float, neg: Float, value: Float) -> Float {
+  value
+}
+
+fn bias(vcc: Float, gnd: Float) -> Float {
+  voltage(pos: vcc, neg: gnd, value: 5.0)
+}
+
+fn divider(inp: Float, out: Float, gnd: Float) -> Float {
+  resistor(pos: inp, neg: out, value: 1000.0)
+}
+
+fn top(vcc: Float, inp: Float, out: Float, gnd: Float) -> Float {
+  bias(vcc, gnd)
+  divider(inp, out, gnd)
+}"#;
+
+        let result = compile_sources_with_target(&output, &[("test.dag", source)], "PSpice");
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "PSpice emission should produce no diagnostics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return emitted files");
+        let netlist = emitted_file_content(files, "test.cir");
+
+        assert!(
+            netlist.contains(".SUBCKT bias vcc gnd"),
+            "expected bias subcircuit in PSpice output:\n{}",
+            netlist
+        );
+        assert!(
+            netlist.contains(".SUBCKT divider inp out gnd"),
+            "expected divider subcircuit in PSpice output:\n{}",
+            netlist
+        );
+        assert!(
+            netlist.contains(".SUBCKT top vcc inp out gnd"),
+            "expected top subcircuit in PSpice output:\n{}",
+            netlist
+        );
+        assert!(
+            netlist.contains("V"),
+            "expected voltage source card in PSpice output:\n{}",
+            netlist
+        );
+        assert!(
+            netlist.contains("R"),
+            "expected resistor card in PSpice output:\n{}",
+            netlist
+        );
+        assert!(
+            netlist.contains("X"),
+            "expected subcircuit instance card in PSpice output:\n{}",
+            netlist
+        );
+        assert!(
+            netlist.contains(".ENDS top"),
+            "expected .ENDS footer in PSpice output:\n{}",
+            netlist
+        );
     }
 
     // ═════════════════════════════════════════════════════════════════════

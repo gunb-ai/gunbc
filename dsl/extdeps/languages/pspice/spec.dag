@@ -1,0 +1,291 @@
+// extdeps/languages/pspice/spec.dag -- PSpice LanguageSpec composition.
+//
+// This is an emit-only netlist target. It exercises the unified emitter's
+// non-software realization paths without adding a full surface parser.
+
+module extdeps.languages.pspice.spec
+
+import std.languages {
+  LanguageSpec, RealizationRules,
+  Language, StatementSyntax, ExpressionSyntax,
+  ControlFlowSyntax, LiteralSyntax, ModuleSyntax, FunctionSyntax,
+  TypeDefinitionSyntax, PatternMatchSyntax,
+  CollectionOps, StringOps, MapOps,
+  NullCoalesceStrategy, ReservedWords, ValueSemantics,
+  SerializationFramework, ProjectScaffold, ServiceCallSemantics,
+  SnakeCase, PascalCase,
+  IndentBody, MultiReturn, IIFEBased, NoEscape, ReferenceBased,
+  NoModulePrelude, MultiReturnError,
+  WireBind, SubcircuitInstance, CircuitOp, SwitchCircuit,
+  InstanceArray, TransmissionGate, ConcurrentAssign, ConcatFallback, NoTco
+}
+
+data pspice_language: Language = {
+  id: "pspice",
+  name: "PSpice",
+  extensions: [".cir"],
+  comment: {
+    line_prefix: "*",
+    block_start: null,
+    block_end: null,
+    doc_prefix: "*"
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    variable_case: SnakeCase,
+    constant_case: SnakeCase,
+    module_case: SnakeCase
+  },
+  types: {
+    string: "STRING",
+    int: "REAL",
+    float: "REAL",
+    bool: "REAL",
+    bytes: "STRING",
+    unit: "0",
+    list_template: "LIST<{0}>",
+    optional_template: "{0}",
+    map_template: "MAP<{0}, {1}>"
+  }
+}
+
+data pspice_statements: StatementSyntax = {
+  let_binding: ".PARAM \{name} = \{value}",
+  let_binding_inferred: ".PARAM \{name} = \{value}",
+  assignment: ".PARAM \{name} = \{value}",
+  top_level_binding: ".PARAM \{name} = \{value}",
+  return_value: "* return \{value}",
+  return_void: "* return",
+  expression_statement: "\{expr}",
+  statement_terminator: ""
+}
+
+data pspice_expressions: ExpressionSyntax = {
+  binary_op: "\{lhs} \{op} \{rhs}",
+  unary_op: "\{op}\{expr}",
+  conditional: "IF(\{cond}, \{then}, \{else})",
+  field_access: "\{object}.\{field}",
+  method_call: "\{object}.\{method}(\{args})",
+  function_call: "\{func}(\{args})",
+  index_access: "\{object}[\{index}]",
+  slice_access: null,
+  cast_expr: null,
+  string_interpolation: null,
+  closure: "\{body}",
+  records: {
+    named: null,
+    named_empty: null,
+    named_field: null,
+    named_separator: ", ",
+    anonymous: null,
+    anonymous_empty: null,
+    anonymous_field: null,
+    anonymous_separator: ", "
+  },
+  operators: {
+    add: "+",
+    sub: "-",
+    mul: "*",
+    div: "/",
+    mod_op: "%",
+    eq: "==",
+    ne: "!=",
+    lt: "<",
+    gt: ">",
+    le: "<=",
+    ge: ">=",
+    and_op: "&&",
+    or_op: "||",
+    not_op: "!",
+    neg: "-"
+  }
+}
+
+data pspice_control_flow: ControlFlowSyntax = {
+  if_then: "* if \{cond}\n\{body}",
+  if_else: "* if \{cond}\n\{then}\n* else\n\{else}",
+  match_header: "* switch \{expr}",
+  match_arm: "* arm \{pattern} => \{body}",
+  for_each: "* for \{item} in \{iter}\n\{body}",
+  while_loop: "* while \{cond}\n\{body}",
+  loop_infinite: null,
+  break_keyword: "* break",
+  continue_keyword: "* continue"
+}
+
+data pspice_literals: LiteralSyntax = {
+  true_keyword: "1",
+  false_keyword: "0",
+  null_keyword: "0",
+  string_delimiter: "\"",
+  raw_string_delimiter: null,
+  multiline_string: null,
+  string_escape_backslash: true,
+  integer_separator: null
+}
+
+data pspice_modules: ModuleSyntax = {
+  import_single: "* .INCLUDE \{path}",
+  import_all: null,
+  import_from: null,
+  import_alias: "* .INCLUDE \{path}",
+  module_declaration: null,
+  visibility_public: null,
+  visibility_private: null,
+  path_separator: "/"
+}
+
+data pspice_functions: FunctionSyntax = {
+  keyword: ".SUBCKT",
+  public_prefix: null,
+  async_keyword: null,
+  body_style: IndentBody,
+  uses_tail_expression: false,
+  definition: ".SUBCKT \{name} \{params}\n\{body}\n.ENDS \{name}",
+  definition_void: ".SUBCKT \{name} \{params}\n\{body}\n.ENDS \{name}",
+  param_with_type: "\{name}",
+  param_separator: " ",
+  async_definition: null,
+  async_await: null,
+  return_type_separator: " "
+}
+
+data pspice_errors: ErrorHandlingSyntax = MultiReturn {
+  error_interface: "ERR",
+  error_check: "* if \{name} != 0 { \{handler} }",
+  error_return: "* return \{zero}, \{msg}",
+  error_format: "\{template} \{args}"
+}
+
+data pspice_type_defs: TypeDefinitionSyntax = {
+  struct_def: "* type \{name}\n\{fields}",
+  struct_empty: "* type \{name}",
+  struct_field: "* field \{name}: \{type}",
+  enum_def: "* enum \{name}\n\{variants}",
+  enum_unit_variant: "* variant \{name}",
+  enum_data_variant: "* variant \{name}\n\{fields}",
+  type_alias: "* type \{name} = \{type}",
+  generic_param: "\{params}",
+  derive_attribute: null,
+  visibility_modifier: null
+}
+
+data pspice_patterns: PatternMatchSyntax = {
+  match_expr: "* match \{expr}\n\{arms}",
+  match_arm: "* case \{pattern}: \{body}",
+  variant_pattern: "\{name}(\{bindings})",
+  variant_pattern_empty: "\{name}",
+  field_binding: "\{field}=\{binding}",
+  field_binding_separator: ", ",
+  wildcard: "*",
+  guard: null,
+  or_pattern: null
+}
+
+data pspice_collection_ops: CollectionOps = {
+  count: "COUNT(\{recv})",
+  first: "\{recv}",
+  last: "\{recv}",
+  enumerate: "\{recv}",
+  join: "\{recv}",
+  map: "\{body}",
+  filter: "\{body}",
+  flat_map: "\{body}",
+  fold: "\{body}",
+  any: "\{body}",
+  all: "\{body}",
+  empty_list: "",
+  list_literal: "\{elements}"
+}
+
+data pspice_string_ops: StringOps = {
+  split: "\{recv}",
+  chars: "\{recv}",
+  concat: "\{args}",
+  string_literal: "\"\{value}\"",
+  string_interp: "\{fmt}",
+  index: null,
+  slice: null,
+  code_point: "\{recv}",
+  from_code_point: "\{arg}"
+}
+
+data pspice_map_ops: MapOps = {
+  empty_map: "{}",
+  map_insert: "\{recv}[\{key}] = \{value}",
+  map_get: "\{recv}[\{key}]",
+  map_contains: "\{recv}[\{key}]"
+}
+
+data pspice_null_coalesce: NullCoalesceStrategy = IIFEBased {
+  template: "IF(\{lhs}, \{lhs}, \{rhs})"
+}
+
+data pspice_reserved_words: ReservedWords = {
+  keywords: [".SUBCKT", ".ENDS", ".PARAM", ".MODEL", ".INCLUDE", ".END"],
+  strategy: NoEscape
+}
+
+data pspice_value_semantics: ValueSemantics = ReferenceBased
+
+data pspice_serialization: SerializationFramework = {
+  struct_derives: null,
+  enum_derives: null,
+  tag_attribute: null,
+  rename_attribute: null,
+  json_parse: null,
+  json_emit: null,
+  json_type: "STRING",
+  default_value: "0"
+}
+
+data pspice_scaffold: ProjectScaffold = {
+  manifest_file: null,
+  module_init_file: null,
+  source_file_extension: ".cir",
+  source_dir: null,
+  entry_point_file: null,
+  main_module_stem: null,
+  module_prelude: NoModulePrelude
+}
+
+data pspice_service_calls: ServiceCallSemantics = MultiReturnError {
+  template: "\{call}"
+}
+
+data pspice_realization: RealizationRules = {
+  bind_rule: WireBind,
+  apply_rule: SubcircuitInstance,
+  combine_rule: CircuitOp,
+  switch_rule: SwitchCircuit,
+  replicate_rule: InstanceArray,
+  gate_rule: TransmissionGate,
+  sequence_rule: ConcurrentAssign,
+  format_rule: ConcatFallback,
+  tco_rule: NoTco
+}
+
+data pspice_spec: LanguageSpec = {
+  language: pspice_language,
+  statements: pspice_statements,
+  expressions: pspice_expressions,
+  control_flow: pspice_control_flow,
+  literals: pspice_literals,
+  modules: pspice_modules,
+  functions: pspice_functions,
+  errors: pspice_errors,
+  type_defs: pspice_type_defs,
+  patterns: pspice_patterns,
+  async_model: null,
+  collection_ops: pspice_collection_ops,
+  string_ops: pspice_string_ops,
+  map_ops: pspice_map_ops,
+  null_coalesce: pspice_null_coalesce,
+  reserved_words: pspice_reserved_words,
+  value_semantics: pspice_value_semantics,
+  serialization: pspice_serialization,
+  scaffold: pspice_scaffold,
+  service_calls: pspice_service_calls,
+  realization: pspice_realization
+}

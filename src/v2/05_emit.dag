@@ -1,24 +1,20 @@
-// v2 emitter core -- target-agnostic dispatch and shared helpers.
+// v2 emitter core -- unified lowered-graph emission and shared helpers.
 //
 // No I/O -- file writing is handled by the pipeline.
 // This module provides:
-//   - The `emit` entry point that dispatches to per-target renderers
-//   - Scope management helpers (module_emit_scope, empty_emit_scope)
-//   - Item registry lookup (lookup_item, lookup_func_sig_in_scope)
-//   - Service call detection (re-exported from reconcile)
+//   - The `emit_lowered` entry point for LoweredGraph × LanguageSpec -> files
+//   - Shared graph/item/type rendering helpers used by all live targets
 //   - Name conversion utilities (to_snake, to_screaming_snake, etc.)
 //   - Indentation and string formatting utilities
 //
-// Target-specific rendering lives in 05_emit_rust.dag, 05_emit_python.dag.
-//
-// Invariant 6: "DAG nodes are facts, rendering is separate."
-// This module contains no target-specific syntax. Adding a new target
-// means creating a new renderer module and adding one match arm to `emit`.
+// Rust and Python now share this emitter. Target-specific structure comes
+// from LanguageSpec field lookups; project scaffolding lives separately in
+// 05_emit_scaffold.dag.
 
 module v2.compiler.emit
 
 import v2.std.core {
-  Import,
+  Import, ImportAll, ImportSpecific,
   Node,
   Connective, Conj, Disj,
   Field, Param, Expr,
@@ -34,7 +30,15 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
   DeclaredFuncSig,
-  ItemInfo
+  ItemInfo,
+  DfNode, DfProduce, DfRefer, DfBind, DfCompose, DfSelect, DfApply,
+  DfCombine, DfSwitch, DfReplicate, DfGate, DfSequence, DfFormat,
+  DfGraph, DfModule, DfItem, DfFuncDef, DfTypeDef, DfServiceDef, DfDataDef,
+  DfField, DfInput, DfArm, DfPattern, DfWildcard, DfLiteralPat, DfVariantPat, DfBindPat,
+  DfFormatPart, DfTextPart, DfExprPart,
+  DfValue, DfInt, DfFloat, DfBool, DfString, DfNull, DfList, DfRecord, DfFieldValue,
+  DfOp, DfAdd, DfSub, DfMul, DfDiv, DfMod, DfEq, DfNe, DfLt, DfGt, DfLe, DfGe, DfAnd, DfOr, DfNullCoalesce, DfNot,
+  LoweredGraph
 }
 
 import v2.compiler.reconcile {
@@ -45,12 +49,7 @@ import v2.compiler.reconcile {
   UniqueAccum, emit_map_has
 }
 
-import std.languages {
-  LanguageSpec, go_spec
-}
-
-import extdeps.languages.rust.spec { rust_spec }
-import extdeps.languages.python.spec { python_spec }
+import std.languages { LanguageSpec }
 
 // =========================================================================
 // Emit result -- files plus diagnostic channel for downstream consumers.
@@ -70,6 +69,19 @@ type BlockEmitState {
 type InterpPart {
   format_segment: String
   arg_expr: String
+}
+
+type GraphEmitFragment {
+  lines: List<String>
+  output_expr: String
+  type_map: Map<String, Node>
+  expr_map: Map<String, String>
+}
+
+type GraphEmitState {
+  lines: List<String>
+  type_map: Map<String, Node>
+  expr_map: Map<String, String>
 }
 
 // =========================================================================
@@ -423,73 +435,6 @@ fn apply_type_template2(template: String, arg0: String, arg1: String) -> String 
     |> split(delimiter: "{1}") |> join(separator: arg1)
 }
 
-// =========================================================================
-// Language data -- inline copies of per-language facts.
-//
-// Canonical source: dsl/extdeps/languages/{rust,python,go}/types.dag
-// (emit_type_map, emit_keywords, emit_container_templates)
-//
-// These inline data declarations duplicate the extdep definitions.
-// Replacing them with imports requires v1 bootstrap changes:
-//   1. Name collision: all three extdeps define emit_type_map /
-//      emit_keywords / emit_container_templates. build_data_values
-//      removes ambiguous unqualified names, and the evaluator's
-//      eval_ident cannot resolve dotted qualified paths.
-//   2. No import renaming: the import syntax lacks `as` aliases,
-//      so emit_type_map cannot be imported as rust_type_map.
-//   3. Test harness: compile_all_modules in v2-compiler-tests has
-//      a hardcoded file list that does not follow extdep imports.
-//   4. Data declarations are not import-bindable: import { name }
-//      binds types and functions, not data declarations.
-//
-// When the v1 bootstrap gains qualified data references or import
-// renaming, these should be replaced with imports from the extdeps.
-// =========================================================================
-
-// ---- Rust language data ----
-
-data rust_type_map: Map<String, String> = {
-  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
-}
-
-data rust_container_templates: Map<String, String> = {
-  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
-  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
-}
-
-// ---- Python language data ----
-
-data python_type_map: Map<String, String> = {
-  "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
-  "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
-}
-
-data python_container_templates: Map<String, String> = {
-  "list": "list[{0}]", "set": "set[{0}]",
-  "optional": "Optional[{0}]", "map": "dict[{0}, {1}]"
-}
-
-// ---- Go language data ----
-
-data go_type_map: Map<String, String> = {
-  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
-  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
-}
-
-data go_container_templates: Map<String, String> = {
-  "list": "[]{0}", "set": "map[{0}]struct{}",
-  "optional": "*{0}", "map": "map[{0}]{1}"
-}
-
-// =========================================================================
-// Shared leaf functions -- parameterized by language data
-// =========================================================================
-
-fn apply_value_template(template: String, value: String) -> String {
-  template |> split(delimiter: "{value}") |> join(separator: value)
-}
-
 // Emit a string literal from a spec-owned template such as
 // "\"{value}\".to_string()" or "\"{value}\"".
 fn emit_string_literal(s: String, template: String) -> String {
@@ -497,74 +442,11 @@ fn emit_string_literal(s: String, template: String) -> String {
     |> split(delimiter: "\\") |> join(separator: "\\\\")
   let escaped2 = escaped
     |> split(delimiter: "\"") |> join(separator: "\\\"")
-  apply_value_template(template: template, value: escaped2)
-}
-
-// Check if a binary op is null coalesce (shared across all backends).
-fn is_null_coalesce(op: BinOpKind) -> Bool {
-  match op {
-    NullCoalesce => true
-    _ => false
-  }
-}
-
-// =========================================================================
-// Per-language functions -- centralized data, inline lookup.
-//
-// Data declarations above are the single source of truth. Each function
-// uses lookup() on the local data. The v1 bootstrap cannot pass data-
-// declared Maps as function parameters, so these use direct lookup.
-// =========================================================================
-
-// ---- Container template lookup ----
-fn rust_container(kind: String, inner: String) -> String {
-  match lookup(rust_container_templates, key: kind) {
-    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
-    None => concat(kind, "<", inner, ">")
-  }
-}
-fn python_container(kind: String, inner: String) -> String {
-  match lookup(python_container_templates, key: kind) {
-    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
-    None => concat(kind, "[", inner, "]")
-  }
-}
-fn go_container(kind: String, inner: String) -> String {
-  match lookup(go_container_templates, key: kind) {
-    Some { value: tmpl } => apply_type_template1(template: tmpl, arg0: inner)
-    None => concat(kind, "[", inner, "]")
-  }
-}
-
-// ---- Primitive type mapping ----
-fn rust_primitive_type(name: String) -> String {
-  match lookup(rust_type_map, key: name) { Some { value: m } => m, None => name }
-}
-fn python_primitive_type(name: String) -> String {
-  match lookup(python_type_map, key: name) { Some { value: m } => m, None => name }
-}
-fn go_primitive_type(name: String) -> String {
-  match lookup(go_type_map, key: name) { Some { value: m } => m, None => name }
-}
-
-// ---- Map template lookup (two-arg templates) ----
-fn rust_map_template() -> String {
-  match lookup(rust_container_templates, key: "map") {
-    Some { value: tmpl } => tmpl
-    None => "BTreeMap<{0}, {1}>"
-  }
-}
-fn python_map_template() -> String {
-  match lookup(python_container_templates, key: "map") {
-    Some { value: tmpl } => tmpl
-    None => "dict[{0}, {1}]"
-  }
-}
-
-fn go_map_template() -> String {
-  match lookup(go_container_templates, key: "map") {
-    Some { value: tmpl } => tmpl
-    None => "map[{0}]{1}"
+  let quoted = concat("\"", escaped2, "\"")
+  if template |> split(delimiter: ".to_string()") |> count > 1 {
+    concat(quoted, ".to_string()")
+  } else {
+    quoted
   }
 }
 
@@ -584,7 +466,7 @@ fn bin_op_symbol_from_spec(op: BinOpKind, spec: LanguageSpec) -> String {
     Sub => spec.expressions.operators.sub
     Mul => spec.expressions.operators.mul
     Div => spec.expressions.operators.div
-    Mod => spec.expressions.operators.mod
+    Mod => spec.expressions.operators.mod_op
     BinEq => spec.expressions.operators.eq
     BinNe => spec.expressions.operators.ne
     BinLt => spec.expressions.operators.lt
@@ -602,44 +484,6 @@ fn unary_op_symbol_from_spec(op: UnaryOpKind, spec: LanguageSpec) -> String {
     Not => spec.expressions.operators.not_op
     Neg => spec.expressions.operators.neg
   }
-}
-
-// ---- Literal emission ----
-fn rust_literal(value: LiteralValue) -> String {
-  literal_from_spec(value: value, spec: rust_spec)
-}
-
-fn python_literal(value: LiteralValue) -> String {
-  literal_from_spec(value: value, spec: python_spec)
-}
-
-fn go_literal(value: LiteralValue) -> String {
-  literal_from_spec(value: value, spec: go_spec)
-}
-
-// ---- Binary operator symbol ----
-fn rust_bin_op_symbol(op: BinOpKind) -> String {
-  bin_op_symbol_from_spec(op: op, spec: rust_spec)
-}
-
-fn python_bin_op_symbol(op: BinOpKind) -> String {
-  bin_op_symbol_from_spec(op: op, spec: python_spec)
-}
-
-fn go_bin_op_symbol(op: BinOpKind) -> String {
-  bin_op_symbol_from_spec(op: op, spec: go_spec)
-}
-
-fn rust_unary_op_symbol(op: UnaryOpKind) -> String {
-  unary_op_symbol_from_spec(op: op, spec: rust_spec)
-}
-
-fn python_unary_op_symbol(op: UnaryOpKind) -> String {
-  unary_op_symbol_from_spec(op: op, spec: python_spec)
-}
-
-fn go_unary_op_symbol(op: UnaryOpKind) -> String {
-  unary_op_symbol_from_spec(op: op, spec: go_spec)
 }
 
 // =========================================================================
@@ -717,5 +561,1178 @@ fn classify_transport_kind(transport: TransportBinding) -> String {
     ShellBinding { argv: _, env: _ } => "shell"
     FileBinding { base_path: _ } => "file"
     LocalBinding => "local"
+  }
+}
+
+// =========================================================================
+// Lowered-graph emission -- shared Rust/Python path
+// =========================================================================
+
+fn replace_placeholder(template: String, name: String, value: String) -> String {
+  template |> split(delimiter: concat("\\{", name, "}")) |> join(separator: value)
+    |> split(delimiter: concat("{", name, "}")) |> join(separator: value)
+}
+
+fn apply_template1(template: String, name0: String, value0: String) -> String {
+  replace_placeholder(template: template, name: name0, value: value0)
+}
+
+fn apply_template2_names(template: String, name0: String, value0: String, name1: String, value1: String) -> String {
+  replace_placeholder(
+    template: replace_placeholder(template: template, name: name0, value: value0),
+    name: name1,
+    value: value1
+  )
+}
+
+fn apply_template3_names(template: String, name0: String, value0: String, name1: String, value1: String, name2: String, value2: String) -> String {
+  replace_placeholder(
+    template: apply_template2_names(template: template, name0: name0, value0: value0, name1: name1, value1: value1),
+    name: name2,
+    value: value2
+  )
+}
+
+fn apply_template4_names(template: String, name0: String, value0: String, name1: String, value1: String, name2: String, value2: String, name3: String, value3: String) -> String {
+  replace_placeholder(
+    template: apply_template3_names(
+      template: template,
+      name0: name0, value0: value0,
+      name1: name1, value1: value1,
+      name2: name2, value2: value2
+    ),
+    name: name3,
+    value: value3
+  )
+}
+
+fn primitive_type_from_spec(name: String, spec: LanguageSpec) -> String {
+  if name == "Unit" {
+    match spec.language.types {
+      Some { value: tm } => tm.unit
+      None => name
+    }
+  } else {
+    match spec.language.types {
+      Some { value: tm } =>
+        if name == "String" { tm.string }
+        else if name == "Int" { tm.int }
+        else if name == "Float" { tm.float }
+        else if name == "Bool" { tm.bool }
+        else if name == "Bytes" { tm.bytes }
+        else { name }
+      None => name
+    }
+  }
+}
+
+fn list_template_from_spec(spec: LanguageSpec) -> String {
+  match spec.language.types {
+    Some { value: tm } => tm.list_template
+    None => "List<\\{0}>"
+  }
+}
+
+fn optional_template_from_spec(spec: LanguageSpec) -> String {
+  match spec.language.types {
+    Some { value: tm } => tm.optional_template
+    None => "Optional<\\{0}>"
+  }
+}
+
+fn map_template_from_spec(spec: LanguageSpec) -> String {
+  match spec.language.types {
+    Some { value: tm } => tm.map_template
+    None => "Map<\\{0}, \\{1}>"
+  }
+}
+
+fn emit_node_type_from_spec(n: Node, spec: LanguageSpec) -> String {
+  if n.name == "Map" && n.children |> count == 2 {
+    let key_ty = match n.children |> first {
+      Some { value: key_node } => emit_node_type_from_spec(n: key_node, spec: spec)
+      None => primitive_type_from_spec(name: "String", spec: spec)
+    }
+    let value_ty = match skip(n.children, 1) |> first {
+      Some { value: value_node } => emit_node_type_from_spec(n: value_node, spec: spec)
+      None => primitive_type_from_spec(name: "String", spec: spec)
+    }
+    apply_type_template2(template: map_template_from_spec(spec: spec), arg0: key_ty, arg1: value_ty)
+  } else if n.name == "Optional" && n.children |> count > 0 {
+    let inner = match n.children |> first {
+      Some { value: child } => emit_node_type_from_spec(n: child, spec: spec)
+      None => primitive_type_from_spec(name: "Unit", spec: spec)
+    }
+    apply_type_template1(template: optional_template_from_spec(spec: spec), arg0: inner)
+  } else if n.children |> count == 1 && n.connective == none {
+    let inner = match n.children |> first {
+      Some { value: child } => emit_node_type_from_spec(n: child, spec: spec)
+      None => primitive_type_from_spec(name: "Unit", spec: spec)
+    }
+    if n.name == "List" || n.name == "NonEmptyList" {
+      apply_type_template1(template: list_template_from_spec(spec: spec), arg0: inner)
+    } else {
+      concat(n.name, "<", inner, ">")
+    }
+  } else if n.connective != none {
+    if n.name != "" { n.name } else { primitive_type_from_spec(name: "Unit", spec: spec) }
+  } else {
+    primitive_type_from_spec(name: n.name, spec: spec)
+  }
+}
+
+fn reserved_word_escape(name: String, spec: LanguageSpec) -> String {
+  if spec.reserved_words.keywords |> any(word => word == name) {
+    match spec.reserved_words.strategy {
+      PrefixEscape { prefix: prefix } => concat(prefix, name)
+      SuffixEscape { suffix: suffix } => concat(name, suffix)
+      NoEscape => name
+    }
+  } else {
+    name
+  }
+}
+
+fn mangle_ident(name: String, spec: LanguageSpec) -> String {
+  let base = match spec.language.naming {
+    Some { value: naming } =>
+      match naming.variable_case {
+        SnakeCase => to_snake(name: name)
+        ScreamingSnakeCase => to_screaming_snake(name: name)
+        _ => name
+      }
+    None => name
+  }
+  reserved_word_escape(name: base, spec: spec)
+}
+
+fn mangle_type_name(name: String, spec: LanguageSpec) -> String {
+  reserved_word_escape(name: name, spec: spec)
+}
+
+fn line_comment_prefix(spec: LanguageSpec) -> String {
+  match spec.language.comment.line_prefix {
+    Some { value: prefix } => prefix
+    None => "//"
+  }
+}
+
+fn emit_df_value(value: DfValue, spec: LanguageSpec) -> String {
+  match value {
+    DfInt { value: i } => to_string(value: i)
+    DfFloat { value: f } => f
+    DfBool { value: b } => if b { spec.literals.true_keyword } else { spec.literals.false_keyword }
+    DfString { value: s } =>
+      emit_string_literal(s: s, template: spec.string_ops.string_literal)
+    DfNull => spec.literals.null_keyword
+    DfList { elements: elements } =>
+      let rendered = elements |> map(el => emit_df_value(value: el, spec: spec)) |> join(separator: ", ")
+      apply_template1(template: spec.collection_ops.list_literal, name0: "elements", value0: rendered)
+    DfRecord { fields: fields } =>
+      match spec.expressions.records.anonymous {
+        Some { value: template } =>
+          if fields |> count == 0 {
+            match spec.expressions.records.anonymous_empty {
+              Some { value: empty_template } => empty_template
+              None => apply_template1(template: template, name0: "fields", value0: "")
+            }
+          } else {
+            let field_lines = fields |> map(field =>
+              match spec.expressions.records.anonymous_field {
+                Some { value: field_template } =>
+                  apply_template2_names(
+                    template: field_template,
+                    name0: "name", value0: mangle_ident(name: field.name, spec: spec),
+                    name1: "value", value1: emit_df_value(value: field.value, spec: spec)
+                  )
+                None => concat(line_comment_prefix(spec: spec), " anonymous record field syntax missing")
+              }
+            ) |> join(separator: spec.expressions.records.anonymous_separator)
+            apply_template1(template: template, name0: "fields", value0: field_lines)
+          }
+        None => concat(line_comment_prefix(spec: spec), " cannot resolve anonymous record type in emitter")
+      }
+  }
+}
+
+fn emit_df_pattern(pattern: DfPattern, spec: LanguageSpec) -> String {
+  match pattern {
+    DfWildcard => spec.patterns.wildcard
+    DfBindPat { name: name } => mangle_ident(name: name, spec: spec)
+    DfLiteralPat { value: value } => emit_df_value(value: value, spec: spec)
+    DfVariantPat { variant: variant, bindings: bindings } =>
+      if bindings |> count == 0 {
+        apply_template1(template: spec.patterns.variant_pattern_empty, name0: "name", value0: variant)
+      } else {
+        let binding_str = bindings |> map(binding =>
+          apply_template2_names(
+            template: spec.patterns.field_binding,
+            name0: "field", value0: binding.field,
+            name1: "binding", value1: mangle_ident(name: binding.binding, spec: spec)
+          )
+        ) |> join(separator: spec.patterns.field_binding_separator)
+        apply_template2_names(
+          template: spec.patterns.variant_pattern,
+          name0: "name", value0: variant,
+          name1: "bindings", value1: binding_str
+        )
+      }
+  }
+}
+
+fn record_type_if_present(type_map: Map<String, Node>, name: String, resolved_type: Node?) -> Map<String, Node> {
+  match resolved_type {
+    Some { value: rt } => map_insert(type_map, name, rt)
+    None => type_map
+  }
+}
+
+fn emitted_ref(name: String, spec: LanguageSpec) -> String {
+  mangle_ident(name: name, spec: spec)
+}
+
+fn current_type(type_map: Map<String, Node>, name: String) -> Node? {
+  map_get(type_map, name)
+}
+
+fn inline_expr(expr_map: Map<String, String>, name: String, spec: LanguageSpec) -> String {
+  match map_get(expr_map, name) {
+    Some { value: expr } => expr
+    None => emitted_ref(name: name, spec: spec)
+  }
+}
+
+fn emit_binding_stmt(name: String, expr: String, spec: LanguageSpec, depth: Int) -> String {
+  let stmt = match spec.realization.bind_rule {
+    LetBind => apply_template2_names(template: spec.statements.let_binding_inferred, name0: "name", value0: mangle_ident(name: name, spec: spec), name1: "value", value1: expr)
+    AssignBind => apply_template2_names(template: spec.statements.assignment, name0: "name", value0: mangle_ident(name: name, spec: spec), name1: "value", value1: expr)
+    WireBind => apply_template2_names(template: spec.statements.assignment, name0: "name", value0: mangle_ident(name: name, spec: spec), name1: "value", value1: expr)
+  }
+  concat(make_indent(level: depth), stmt)
+}
+
+fn get_input_source(inputs: List<DfInput>, param: String) -> String? {
+  match inputs |> filter(inp => inp.param == param) |> first {
+    Some { value: inp } => Some { value: inp.source }
+    None => none
+  }
+}
+
+fn get_input_expr(inputs: List<DfInput>, param: String, spec: LanguageSpec) -> String {
+  match get_input_source(inputs: inputs, param: param) {
+    Some { value: source } => emitted_ref(name: source, spec: spec)
+    None => emitted_ref(name: param, spec: spec)
+  }
+}
+
+fn emit_args_list(inputs: List<DfInput>, spec: LanguageSpec) -> String {
+  inputs |> map(inp => emitted_ref(name: inp.source, spec: spec)) |> join(separator: ", ")
+}
+
+fn nth_input_expr(inputs: List<DfInput>, index: Int, spec: LanguageSpec) -> String {
+  match inputs |> skip(index) |> first {
+    Some { value: inp } => emitted_ref(name: inp.source, spec: spec)
+    None => spec.literals.null_keyword
+  }
+}
+
+fn get_named_or_index_input_expr(inputs: List<DfInput>, name0: String, name1: String, name2: String, index: Int, spec: LanguageSpec) -> String {
+  match get_input_source(inputs: inputs, param: name0) {
+    Some { value: source } => emitted_ref(name: source, spec: spec)
+    None =>
+      if name1 != "" {
+        match get_input_source(inputs: inputs, param: name1) {
+          Some { value: source } => emitted_ref(name: source, spec: spec)
+          None =>
+            if name2 != "" {
+              match get_input_source(inputs: inputs, param: name2) {
+                Some { value: source } => emitted_ref(name: source, spec: spec)
+                None => nth_input_expr(inputs: inputs, index: index, spec: spec)
+              }
+            } else {
+              nth_input_expr(inputs: inputs, index: index, spec: spec)
+            }
+        }
+      } else {
+        nth_input_expr(inputs: inputs, index: index, spec: spec)
+      }
+  }
+}
+
+fn emit_pspice_apply_line(name: String, transform: String, inputs: List<DfInput>, spec: LanguageSpec) -> String {
+  let inst_name = mangle_ident(name: name, spec: spec)
+  let pos = get_named_or_index_input_expr(inputs: inputs, name0: "pos", name1: "p", name2: "plus", index: 0, spec: spec)
+  let neg = get_named_or_index_input_expr(inputs: inputs, name0: "neg", name1: "n", name2: "minus", index: 1, spec: spec)
+  let value = get_named_or_index_input_expr(inputs: inputs, name0: "value", name1: "val", name2: "", index: 2, spec: spec)
+  if transform == "resistor" || transform == "R" || transform == "r" {
+    concat("R", inst_name, " ", pos, " ", neg, " ", value)
+  } else if transform == "capacitor" || transform == "C" || transform == "c" {
+    concat("C", inst_name, " ", pos, " ", neg, " ", value)
+  } else if transform == "inductor" || transform == "L" || transform == "l" {
+    concat("L", inst_name, " ", pos, " ", neg, " ", value)
+  } else if transform == "voltage" || transform == "vsource" || transform == "V" || transform == "v" {
+    concat("V", inst_name, " ", pos, " ", neg, " DC ", value)
+  } else if transform == "current" || transform == "isource" || transform == "I" || transform == "i" {
+    concat("I", inst_name, " ", pos, " ", neg, " DC ", value)
+  } else {
+    let node_args = inputs |> map(inp => emitted_ref(name: inp.source, spec: spec)) |> join(separator: " ")
+    if node_args == "" {
+      concat("X", inst_name, " ", mangle_ident(name: transform, spec: spec))
+    } else {
+      concat("X", inst_name, " ", node_args, " ", mangle_ident(name: transform, spec: spec))
+    }
+  }
+}
+
+fn emit_rust_non_empty_wrappers() -> String {
+  concat(
+    "#[derive(Debug, Clone, PartialEq, Serialize)]\n",
+    "pub struct NonEmptyVec<T>(Vec<T>);\n\n",
+    "impl<T> NonEmptyVec<T> {\n",
+    "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n",
+    "        if items.is_empty() {\n",
+    "            Err(\"NonEmptyVec requires at least one element\")\n",
+    "        } else {\n",
+    "            Ok(Self(items))\n",
+    "        }\n",
+    "    }\n\n",
+    "    pub fn as_slice(&self) -> &[T] {\n",
+    "        &self.0\n",
+    "    }\n\n",
+    "    pub fn into_vec(self) -> Vec<T> {\n",
+    "        self.0\n",
+    "    }\n",
+    "}\n\n",
+    "impl<'de, T> Deserialize<'de> for NonEmptyVec<T>\n",
+    "where\n",
+    "    T: Deserialize<'de>,\n",
+    "{\n",
+    "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>\n",
+    "    where\n",
+    "        D: serde::Deserializer<'de>,\n",
+    "    {\n",
+    "        let items = Vec::<T>::deserialize(deserializer)?;\n",
+    "        NonEmptyVec::new(items).map_err(serde::de::Error::custom)\n",
+    "    }\n",
+    "}\n\n",
+    "#[derive(Debug, Clone, PartialEq, Serialize)]\n",
+    "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
+    "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
+    "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
+    "        if items.is_empty() {\n",
+    "            Err(\"NonEmptyBTreeSet requires at least one element\")\n",
+    "        } else {\n",
+    "            Ok(Self(items))\n",
+    "        }\n",
+    "    }\n\n",
+    "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n",
+    "        &self.0\n",
+    "    }\n\n",
+    "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n",
+    "        self.0\n",
+    "    }\n",
+    "}\n\n",
+    "impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>\n",
+    "where\n",
+    "    T: Ord + Deserialize<'de>,\n",
+    "{\n",
+    "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>\n",
+    "    where\n",
+    "        D: serde::Deserializer<'de>,\n",
+    "    {\n",
+    "        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;\n",
+    "        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)\n",
+    "    }\n",
+    "}"
+  )
+}
+
+fn emit_module_prelude(spec: LanguageSpec) -> String {
+  match spec.scaffold.module_prelude {
+    NoModulePrelude => ""
+    RustSerdePrelude =>
+      concat(
+        "#![allow(unused_imports, unused_variables, unused_mut, dead_code, unreachable_patterns)]\n\n",
+        "use std::collections::BTreeMap;\n",
+        "use std::rc::Rc;\n",
+        concat("use serde::{", "Serialize, Deserialize};\n"),
+        "use crate::v2_rt;\n\n",
+        emit_rust_non_empty_wrappers()
+      )
+    PythonTypingPrelude =>
+      concat(
+        "from __future__ import annotations\n",
+        "from dataclasses import dataclass\n",
+        "from enum import Enum, auto\n",
+        "from typing import Optional, Union\n"
+      )
+  }
+}
+
+fn emit_imports_for_spec(imports: List<Import>, spec: LanguageSpec) -> String {
+  if imports |> count == 0 {
+    ""
+  } else {
+    imports |> map(imp =>
+      let mod_name = module_to_filename(name: imp.module_path)
+      match imp.names {
+        ImportAll =>
+          match spec.modules.import_all {
+            Some { value: template } =>
+              apply_template1(template: template, name0: "module", value0: mod_name)
+            None => ""
+          }
+        ImportSpecific { names: names } =>
+          if names |> count == 0 {
+            ""
+          } else {
+            let joined_names = names |> join(separator: ", ")
+            match spec.modules.import_from {
+              Some { value: template } =>
+                apply_template2_names(
+                  template: template,
+                  name0: "module", value0: mod_name,
+                  name1: "names", value1: joined_names
+                )
+              None =>
+                names |> map(name =>
+                  apply_template1(
+                    template: spec.modules.import_single,
+                    name0: "path",
+                    value0: concat(mod_name, spec.modules.path_separator, name)
+                  )
+                ) |> join(separator: "\n")
+            }
+          }
+      }
+    ) |> filter(line => line != "") |> join(separator: "\n")
+  }
+}
+
+fn emit_record_from_fields(type_name: String?, fields: List<DfField>, spec: LanguageSpec) -> String {
+  if type_name == none {
+    match spec.expressions.records.anonymous {
+      Some { value: template } =>
+        if fields |> count == 0 {
+          match spec.expressions.records.anonymous_empty {
+            Some { value: empty_template } => empty_template
+            None => apply_template1(template: template, name0: "fields", value0: "")
+          }
+        } else {
+          let field_lines = fields |> map(field =>
+            match spec.expressions.records.anonymous_field {
+              Some { value: field_template } =>
+                apply_template2_names(
+                  template: field_template,
+                  name0: "name", value0: mangle_ident(name: field.name, spec: spec),
+                  name1: "value", value1: emitted_ref(name: field.source, spec: spec)
+                )
+              None => concat(line_comment_prefix(spec: spec), " anonymous record field syntax missing")
+            }
+          ) |> join(separator: spec.expressions.records.anonymous_separator)
+          apply_template1(template: template, name0: "fields", value0: field_lines)
+        }
+      None => concat(line_comment_prefix(spec: spec), " cannot resolve anonymous record type in emitter")
+    }
+  } else {
+    match type_name {
+      Some { value: tname } =>
+        match spec.expressions.records.named {
+          Some { value: template } =>
+            if fields |> count == 0 {
+              match spec.expressions.records.named_empty {
+                Some { value: empty_template } =>
+                  apply_template1(template: empty_template, name0: "type", value0: tname)
+                None =>
+                  apply_template2_names(template: template, name0: "type", value0: tname, name1: "fields", value1: "")
+              }
+            } else {
+              let field_lines = fields |> map(field =>
+                match spec.expressions.records.named_field {
+                  Some { value: field_template } =>
+                    apply_template2_names(
+                      template: field_template,
+                      name0: "name", value0: mangle_ident(name: field.name, spec: spec),
+                      name1: "value", value1: emitted_ref(name: field.source, spec: spec)
+                    )
+                  None => concat(line_comment_prefix(spec: spec), " named record field syntax missing")
+                }
+              ) |> join(separator: spec.expressions.records.named_separator)
+              apply_template2_names(template: template, name0: "type", value0: tname, name1: "fields", value1: field_lines)
+            }
+          None => concat(line_comment_prefix(spec: spec), " named record syntax missing")
+        }
+      None => concat(line_comment_prefix(spec: spec), " cannot resolve anonymous record type in emitter")
+    }
+  }
+}
+
+fn emit_df_format_expr(parts: List<DfFormatPart>, spec: LanguageSpec) -> String {
+  let fmt = parts |> map(part =>
+    match part {
+      DfTextPart { value: value } => value
+      DfExprPart { source: _ } => "{}"
+    }
+  ) |> join(separator: "")
+  let args = parts |> flat_map(part =>
+    match part {
+      DfTextPart { value: _ } => []
+      DfExprPart { source: source } => [emitted_ref(name: source, spec: spec)]
+    }
+  ) |> join(separator: ", ")
+  match spec.realization.format_rule {
+    FStringInline =>
+      let body = parts |> map(part =>
+        match part {
+          DfTextPart { value: value } => value
+          DfExprPart { source: source } => concat("{", emitted_ref(name: source, spec: spec), "}")
+        }
+      ) |> join(separator: "")
+      concat("f\"", body, "\"")
+    FormatMacro { template: template } =>
+      if args == "" {
+        emit_string_literal(s: fmt, template: spec.string_ops.string_literal)
+      } else {
+        apply_template2_names(template: template, name0: "fmt", value0: fmt, name1: "args", value1: args)
+      }
+    SprintfCall { func: func } =>
+      if args == "" {
+        emit_string_literal(s: fmt, template: spec.string_ops.string_literal)
+      } else {
+        concat(func, "(\"", fmt, "\", ", args, ")")
+      }
+    ConcatFallback =>
+      let segments = parts |> map(part =>
+        match part {
+          DfTextPart { value: value } => emit_string_literal(s: value, template: spec.string_ops.string_literal)
+          DfExprPart { source: source } => emitted_ref(name: source, spec: spec)
+        }
+      )
+      match segments |> first {
+        Some { value: first_segment } =>
+          if segments |> count == 1 {
+            first_segment
+          } else {
+            segments |> join(separator: " + ")
+          }
+        None => emit_string_literal(s: "", template: spec.string_ops.string_literal)
+      }
+  }
+}
+
+fn emit_df_apply_expr(transform: String, inputs: List<DfInput>, spec: LanguageSpec, type_map: Map<String, Node>, expr_map: Map<String, String>) -> String {
+  if transform == "list" {
+    apply_template1(template: spec.collection_ops.list_literal, name0: "elements", value0: emit_args_list(inputs: inputs, spec: spec))
+  } else if transform == "neg" {
+    apply_template2_names(
+      template: spec.expressions.unary_op,
+      name0: "op", value0: spec.expressions.operators.neg,
+      name1: "expr", value1: get_input_expr(inputs: inputs, param: "value", spec: spec)
+    )
+  } else if transform == "index" {
+    let base_source = match get_input_source(inputs: inputs, param: "base") {
+      Some { value: source } => source
+      None => "base"
+    }
+    let base_expr = inline_expr(expr_map: expr_map, name: base_source, spec: spec)
+    let index_source = match get_input_source(inputs: inputs, param: "index") {
+      Some { value: source } => source
+      None => "index"
+    }
+    let index_expr = inline_expr(expr_map: expr_map, name: index_source, spec: spec)
+    match current_type(type_map: type_map, name: base_source) {
+      Some { value: base_type } =>
+        if base_type.name == "Map" {
+          apply_template2_names(
+            template: spec.map_ops.map_get,
+            name0: "recv", value0: base_expr,
+            name1: "key", value1: index_expr
+          )
+        } else if base_type.name == "String" {
+          match spec.string_ops.index {
+            Some { value: template } =>
+              apply_template2_names(
+                template: template,
+                name0: "recv", value0: base_expr,
+                name1: "index", value1: index_expr
+              )
+            None =>
+              apply_template2_names(template: spec.expressions.index_access, name0: "object", value0: base_expr, name1: "index", value1: index_expr)
+          }
+        } else {
+          apply_template2_names(template: spec.expressions.index_access, name0: "object", value0: base_expr, name1: "index", value1: index_expr)
+        }
+      None =>
+        apply_template2_names(template: spec.expressions.index_access, name0: "object", value0: base_expr, name1: "index", value1: index_expr)
+    }
+  } else if transform == "slice" {
+    let base_source = match get_input_source(inputs: inputs, param: "base") {
+      Some { value: source } => source
+      None => "base"
+    }
+    let start_source = match get_input_source(inputs: inputs, param: "start") {
+      Some { value: source } => source
+      None => "start"
+    }
+    let end_source = match get_input_source(inputs: inputs, param: "end") {
+      Some { value: source } => source
+      None => "end"
+    }
+    let base_expr = inline_expr(expr_map: expr_map, name: base_source, spec: spec)
+    let start_expr = inline_expr(expr_map: expr_map, name: start_source, spec: spec)
+    let end_expr = inline_expr(expr_map: expr_map, name: end_source, spec: spec)
+    match current_type(type_map: type_map, name: base_source) {
+      Some { value: base_type } =>
+        if base_type.name == "String" {
+          match spec.string_ops.slice {
+            Some { value: template } =>
+              apply_template3_names(
+                template: template,
+                name0: "recv", value0: base_expr,
+                name1: "start", value1: start_expr,
+                name2: "end", value2: end_expr
+              )
+            None =>
+              match spec.expressions.slice_access {
+                Some { value: expr_template } =>
+                  apply_template3_names(
+                    template: expr_template,
+                    name0: "object", value0: base_expr,
+                    name1: "start", value1: start_expr,
+                    name2: "end", value2: end_expr
+                  )
+                None => base_expr
+              }
+          }
+        } else {
+          match spec.expressions.slice_access {
+            Some { value: template } =>
+              apply_template3_names(
+                template: template,
+                name0: "object", value0: base_expr,
+                name1: "start", value1: start_expr,
+                name2: "end", value2: end_expr
+              )
+            None => base_expr
+          }
+        }
+      None =>
+        match spec.expressions.slice_access {
+          Some { value: template } =>
+            apply_template3_names(
+              template: template,
+              name0: "object", value0: base_expr,
+              name1: "start", value1: start_expr,
+              name2: "end", value2: end_expr
+            )
+          None => base_expr
+        }
+    }
+  } else if starts_with(s: transform, prefix: "cast:") {
+    let target_parts = transform |> split(delimiter: "cast:")
+    let target_name = match target_parts |> skip(1) |> first {
+      Some { value: part } => part
+      None => primitive_type_from_spec(name: "Unit", spec: spec)
+    }
+    let value_expr = get_input_expr(inputs: inputs, param: "value", spec: spec)
+    match spec.expressions.cast_expr {
+      Some { value: template } =>
+        apply_template2_names(
+          template: apply_template1(
+            template: template,
+            name0: "type",
+            value0: primitive_type_from_spec(name: target_name, spec: spec)
+          ),
+          name0: "expr",
+          value0: value_expr,
+          name1: "type",
+          value1: primitive_type_from_spec(name: target_name, spec: spec)
+        )
+      None => value_expr
+    }
+  } else {
+    let self_input = get_input_source(inputs: inputs, param: "self")
+    match self_input {
+      Some { value: self_source } =>
+        let receiver = emitted_ref(name: self_source, spec: spec)
+        let arg_exprs = inputs |> filter(inp => inp.param != "self") |> map(inp => emitted_ref(name: inp.source, spec: spec)) |> join(separator: ", ")
+        apply_template3_names(
+          template: spec.expressions.method_call,
+          name0: "object", value0: receiver,
+          name1: "method", value1: transform,
+          name2: "args", value2: arg_exprs
+        )
+      None =>
+        apply_template2_names(
+          template: spec.expressions.function_call,
+          name0: "func", value0: mangle_ident(name: transform, spec: spec),
+          name1: "args", value1: emit_args_list(inputs: inputs, spec: spec)
+        )
+    }
+  }
+}
+
+fn emit_df_op_expr(op: DfOp, left: String, right: String, spec: LanguageSpec) -> String {
+  match op {
+    DfNot =>
+      apply_template2_names(
+        template: spec.expressions.unary_op,
+        name0: "op", value0: spec.expressions.operators.not_op,
+        name1: "expr", value1: emitted_ref(name: left, spec: spec)
+      )
+    DfNullCoalesce =>
+      match spec.null_coalesce {
+        MethodBased { template: template } =>
+          apply_template2_names(template: template, name0: "lhs", value0: emitted_ref(name: left, spec: spec), name1: "rhs", value1: emitted_ref(name: right, spec: spec))
+        TernaryBased { template: template } =>
+          apply_template2_names(template: template, name0: "lhs", value0: emitted_ref(name: left, spec: spec), name1: "rhs", value1: emitted_ref(name: right, spec: spec))
+        IIFEBased { template: template } =>
+          apply_template2_names(template: template, name0: "lhs", value0: emitted_ref(name: left, spec: spec), name1: "rhs", value1: emitted_ref(name: right, spec: spec))
+      }
+    _ =>
+      let symbol = match op {
+        DfAdd => spec.expressions.operators.add
+        DfSub => spec.expressions.operators.sub
+        DfMul => spec.expressions.operators.mul
+        DfDiv => spec.expressions.operators.div
+        DfMod => spec.expressions.operators.mod_op
+        DfEq => spec.expressions.operators.eq
+        DfNe => spec.expressions.operators.ne
+        DfLt => spec.expressions.operators.lt
+        DfGt => spec.expressions.operators.gt
+        DfLe => spec.expressions.operators.le
+        DfGe => spec.expressions.operators.ge
+        DfAnd => spec.expressions.operators.and_op
+        DfOr => spec.expressions.operators.or_op
+        _ => "?"
+      }
+      apply_template3_names(
+        template: spec.expressions.binary_op,
+        name0: "lhs", value0: emitted_ref(name: left, spec: spec),
+        name1: "op", value1: symbol,
+        name2: "rhs", value2: emitted_ref(name: right, spec: spec)
+      )
+  }
+}
+
+fn emit_graph_nodes(remaining: List<DfNode>, state: GraphEmitState, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int) -> GraphEmitState {
+  match remaining |> first {
+    None => state
+    Some { value: node } =>
+      let next = emit_graph_node(node: node, state: state, spec: spec, registry: registry, depth: depth)
+      emit_graph_nodes(remaining: remaining |> skip(1), state: next, spec: spec, registry: registry, depth: depth)
+  }
+}
+
+fn emit_graph_fragment(graph: DfGraph, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int) -> GraphEmitFragment {
+  let state = emit_graph_nodes(
+    remaining: graph.nodes,
+    state: GraphEmitState { lines: [], type_map: empty_map(), expr_map: empty_map() },
+    spec: spec,
+    registry: registry,
+    depth: depth
+  )
+  GraphEmitFragment {
+    lines: state.lines,
+    output_expr: if graph.output == "" { spec.literals.null_keyword } else { emitted_ref(name: graph.output, spec: spec) },
+    type_map: state.type_map,
+    expr_map: state.expr_map
+  }
+}
+
+fn emit_graph_node(node: DfNode, state: GraphEmitState, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int) -> GraphEmitState {
+  match node {
+    DfProduce { name: name, value: value, resolved_type: resolved_type } =>
+      let expr = emit_df_value(value: value, spec: spec)
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, expr)
+      }
+    DfRefer { name: name, source: source, resolved_type: resolved_type } =>
+      let expr = emitted_ref(name: source, spec: spec)
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, expr)
+      }
+    DfBind { name: name, source: source, resolved_type: resolved_type } =>
+      let expr = emitted_ref(name: source, spec: spec)
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfCompose { name: name, type_name: type_name, fields: fields, resolved_type: resolved_type } =>
+      let expr = emit_record_from_fields(type_name: type_name, fields: fields, spec: spec)
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfSelect { name: name, source: source, field: field, resolved_type: resolved_type } =>
+      let expr = apply_template2_names(
+        template: spec.expressions.field_access,
+        name0: "object", value0: emitted_ref(name: source, spec: spec),
+        name1: "field", value1: mangle_ident(name: field, spec: spec)
+      )
+      GraphEmitState {
+        lines: list_push(
+          state.lines,
+          emit_binding_stmt(
+            name: name,
+            expr: expr,
+            spec: spec,
+            depth: depth
+          )
+        ),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfApply { name: name, transform: transform, inputs: inputs, resolved_type: resolved_type } =>
+      match spec.realization.apply_rule {
+        SubcircuitInstance =>
+          let line = emit_pspice_apply_line(name: name, transform: transform, inputs: inputs, spec: spec)
+          GraphEmitState {
+            lines: list_push(state.lines, concat(make_indent(level: depth), line)),
+            type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+            expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+          }
+        _ =>
+          let expr = emit_df_apply_expr(transform: transform, inputs: inputs, spec: spec, type_map: state.type_map, expr_map: state.expr_map)
+          GraphEmitState {
+            lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+            type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+            expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+          }
+      }
+    DfCombine { name: name, op: op, left: left, right: right, resolved_type: resolved_type } =>
+      let expr = emit_df_op_expr(op: op, left: left, right: right, spec: spec)
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfFormat { name: name, parts: parts, resolved_type: resolved_type } =>
+      let expr = emit_df_format_expr(parts: parts, spec: spec)
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfSequence { name: name, steps: steps, resolved_type: resolved_type } =>
+      let rendered_steps = steps |> map(step => emit_graph_fragment(graph: step, spec: spec, registry: registry, depth: depth))
+      let step_lines = rendered_steps |> flat_map(fragment => fragment.lines)
+      let last_output = match rendered_steps |> last {
+        Some { value: fragment } => fragment.output_expr
+        None => primitive_type_from_spec(name: "Unit", spec: spec)
+      }
+      GraphEmitState {
+        lines: concat(state.lines, step_lines, [emit_binding_stmt(name: name, expr: last_output, spec: spec, depth: depth)]),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfGate { name: name, condition: condition, then_graph: then_graph, else_graph: else_graph, resolved_type: resolved_type } =>
+      let cond_expr = emitted_ref(name: condition, spec: spec)
+      let then_expr = spec.literals.null_keyword
+      let else_expr = spec.literals.null_keyword
+      let gate_expr = match spec.realization.gate_rule {
+        TransmissionGate => concat(line_comment_prefix(spec: spec), " transmission-gate emission not yet implemented")
+        _ =>
+          match spec.expressions.conditional {
+            Some { value: template } =>
+              apply_template3_names(
+                template: template,
+                name0: "cond", value0: cond_expr,
+                name1: "then", value1: then_expr,
+                name2: "else", value2: else_expr
+              )
+            None => concat(line_comment_prefix(spec: spec), " conditional syntax missing")
+          }
+      }
+      let gate_lines = [emit_binding_stmt(name: name, expr: gate_expr, spec: spec, depth: depth)]
+      GraphEmitState {
+        lines: concat(state.lines, gate_lines),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfSwitch { name: name, scrutinee: scrutinee, arms: arms, resolved_type: resolved_type } =>
+      let switch_lines = match spec.realization.switch_rule {
+        IfElifChain => emit_if_chain_switch_lines(name: name, scrutinee: scrutinee, arms: arms, spec: spec, registry: registry, depth: depth)
+        _ => emit_match_switch_lines(name: name, scrutinee: scrutinee, arms: arms, spec: spec, registry: registry, depth: depth)
+      }
+      GraphEmitState {
+        lines: concat(state.lines, switch_lines),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+    DfReplicate { name: name, source: source, element_var: element_var, transform_graph: transform_graph, resolved_type: resolved_type } =>
+      let body_fragment = emit_graph_fragment(graph: transform_graph, spec: spec, registry: registry, depth: depth + 1)
+      let source_expr = emitted_ref(name: source, spec: spec)
+      let element_name = mangle_ident(name: element_var, spec: spec)
+      let expr = match spec.realization.replicate_rule {
+        ListComprehension =>
+          concat("[", body_fragment.output_expr, " for ", element_name, " in ", source_expr, "]")
+        MapCollect =>
+          concat(source_expr, ".into_iter().map(|", element_name, "| ", body_fragment.output_expr, ").collect::<Vec<_>>()")
+        RangeLoop =>
+          apply_template3_names(
+            template: spec.collection_ops.map,
+            name0: "recv", value0: source_expr,
+            name1: "body", value1: body_fragment.output_expr,
+            name2: "param", value2: element_name
+          )
+        GenerateBlock => concat(line_comment_prefix(spec: spec), " generate-block emission not yet implemented")
+        InstanceArray => concat(line_comment_prefix(spec: spec), " instance-array emission not yet implemented")
+      }
+      GraphEmitState {
+        lines: list_push(state.lines, emit_binding_stmt(name: name, expr: expr, spec: spec, depth: depth)),
+        type_map: record_type_if_present(type_map: state.type_map, name: name, resolved_type: resolved_type),
+        expr_map: map_insert(state.expr_map, name, emitted_ref(name: name, spec: spec))
+      }
+  }
+}
+
+fn emit_match_switch_lines(name: String, scrutinee: String, arms: List<DfArm>, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int) -> List<String> {
+  [emit_binding_stmt(name: name, expr: spec.literals.null_keyword, spec: spec, depth: depth)]
+}
+
+fn emit_if_chain_switch_lines(name: String, scrutinee: String, arms: List<DfArm>, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int) -> List<String> {
+  if arms |> count == 0 {
+    [emit_binding_stmt(name: name, expr: spec.literals.null_keyword, spec: spec, depth: depth)]
+  } else {
+    concat(
+      [emit_binding_stmt(name: name, expr: spec.literals.null_keyword, spec: spec, depth: depth)],
+      emit_if_chain_switch_arms(remaining: arms, name: name, scrutinee: scrutinee, spec: spec, registry: registry, depth: depth, is_first: true)
+    )
+  }
+}
+
+fn emit_if_chain_switch_arms(remaining: List<DfArm>, name: String, scrutinee: String, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int, is_first: Bool) -> List<String> {
+  match remaining |> first {
+    None => []
+    Some { value: arm } =>
+      let body_fragment = emit_graph_fragment(graph: arm.body, spec: spec, registry: registry, depth: depth + 1)
+      let condition = emit_if_chain_arm_condition(pattern: arm.pattern, scrutinee: scrutinee, spec: spec)
+      let guard_condition = match arm.guard {
+        Some { value: guard_name } => concat(condition, " and ", emitted_ref(name: guard_name, spec: spec))
+        None => condition
+      }
+      let header = if is_first {
+        concat(make_indent(level: depth), "if ", guard_condition, ":")
+      } else {
+        concat(make_indent(level: depth), "elif ", guard_condition, ":")
+      }
+      concat(
+        [header],
+        body_fragment.lines,
+        [emit_binding_stmt(name: name, expr: body_fragment.output_expr, spec: spec, depth: depth + 1)],
+        emit_if_chain_switch_arms(remaining: remaining |> skip(1), name: name, scrutinee: scrutinee, spec: spec, registry: registry, depth: depth, is_first: false)
+      )
+  }
+}
+
+fn emit_if_chain_arm_condition(pattern: DfPattern, scrutinee: String, spec: LanguageSpec) -> String {
+  let scrutinee_expr = emitted_ref(name: scrutinee, spec: spec)
+  match pattern {
+    DfWildcard => spec.literals.true_keyword
+    DfBindPat { name: _ } => spec.literals.true_keyword
+    DfLiteralPat { value: value } => concat(scrutinee_expr, " == ", emit_df_value(value: value, spec: spec))
+    DfVariantPat { variant: variant, bindings: _ } => concat("isinstance(", scrutinee_expr, ", ", variant, ")")
+  }
+}
+
+fn emit_graph_body(graph: DfGraph, spec: LanguageSpec, registry: Map<String, ItemInfo>, depth: Int) -> String {
+  let fragment = emit_graph_fragment(graph: graph, spec: spec, registry: registry, depth: depth)
+  match spec.realization.sequence_rule {
+    ConcurrentAssign =>
+      fragment.lines |> join(separator: "\n")
+    _ =>
+      if spec.functions.uses_tail_expression {
+        let body_lines = concat(fragment.lines, [concat(make_indent(level: depth), fragment.output_expr)])
+        body_lines |> join(separator: "\n")
+      } else {
+        let return_stmt = apply_template1(template: spec.statements.return_value, name0: "value", value0: fragment.output_expr)
+        let lines = concat(fragment.lines, [concat(make_indent(level: depth), return_stmt)])
+        lines |> join(separator: "\n")
+      }
+  }
+}
+
+fn emit_type_item(item: Node, spec: LanguageSpec) -> String {
+  match item.connective {
+    Some { value: connective } =>
+      match connective {
+        Conj =>
+          if item.children |> count == 0 {
+            apply_template1(template: spec.type_defs.struct_empty, name0: "name", value0: mangle_type_name(name: item.name, spec: spec))
+          } else {
+            let field_lines = item.children |> map(child =>
+              apply_template2_names(
+                template: spec.type_defs.struct_field,
+                name0: "name", value0: mangle_ident(name: child.name, spec: spec),
+                name1: "type", value1: emit_node_type_from_spec(n: child.return_type.value, spec: spec)
+              )
+            ) |> join(separator: "\n")
+            let body = apply_template2_names(
+              template: spec.type_defs.struct_def,
+              name0: "name", value0: mangle_type_name(name: item.name, spec: spec),
+              name1: "fields", value1: field_lines
+            )
+            match spec.serialization.struct_derives {
+              Some { value: derives } => concat(derives, "\n", body)
+              None => body
+            }
+          }
+        Disj =>
+          let variants = item.children |> map(child =>
+            if child.children |> count == 0 {
+              apply_template1(template: spec.type_defs.enum_unit_variant, name0: "name", value0: child.name)
+            } else {
+              let fields = child.children |> map(field =>
+                apply_template2_names(
+                  template: spec.type_defs.struct_field,
+                  name0: "name", value0: mangle_ident(name: field.name, spec: spec),
+                  name1: "type", value1: emit_node_type_from_spec(n: field.return_type.value, spec: spec)
+                )
+              ) |> join(separator: "\n")
+              apply_template2_names(
+                template: spec.type_defs.enum_data_variant,
+                name0: "name", value0: child.name,
+                name1: "fields", value1: fields
+              )
+            }
+          ) |> join(separator: "\n")
+          let enum_body = apply_template2_names(
+            template: spec.type_defs.enum_def,
+            name0: "name", value0: mangle_type_name(name: item.name, spec: spec),
+            name1: "variants", value1: variants
+          )
+          match spec.serialization.enum_derives {
+            Some { value: derives } =>
+              if spec.serialization.tag_attribute == none {
+                concat(derives, "\n", enum_body)
+              } else {
+                concat(derives, "\n", "#[serde(tag = \"_variant\")]\n", enum_body)
+              }
+            None => enum_body
+          }
+      }
+    None =>
+      if item.return_type != none {
+        apply_template2_names(
+          template: spec.type_defs.type_alias,
+          name0: "name", value0: mangle_type_name(name: item.name, spec: spec),
+          name1: "type", value1: emit_node_type_from_spec(n: item.return_type.value, spec: spec)
+        )
+      } else {
+        concat(line_comment_prefix(spec: spec), " unsupported type item ", item.name)
+      }
+  }
+}
+
+fn emit_func_item(name: String, params: List<Param>, return_type: Node, body: DfGraph, is_async: Bool, spec: LanguageSpec, registry: Map<String, ItemInfo>) -> String {
+  let params_str = params |> map(param =>
+    apply_template2_names(
+      template: spec.functions.param_with_type,
+      name0: "name", value0: mangle_ident(name: param.name, spec: spec),
+      name1: "type", value1: emit_node_type_from_spec(n: param.type_expr, spec: spec)
+    )
+  ) |> join(separator: spec.functions.param_separator)
+  let body_str = emit_graph_body(graph: body, spec: spec, registry: registry, depth: 1)
+  let prefix = match spec.functions.public_prefix {
+    Some { value: value } => value
+    None => ""
+  }
+  let async_prefix = if is_async {
+    match spec.functions.async_keyword {
+      Some { value: keyword } => concat(keyword, " ")
+      None => ""
+    }
+  } else {
+    ""
+  }
+  let name_str = mangle_ident(name: name, spec: spec)
+  let ret_str = emit_node_type_from_spec(n: return_type, spec: spec)
+  match spec.realization.sequence_rule {
+    ConcurrentAssign =>
+      let header = if params_str == "" {
+        concat(spec.functions.keyword, " ", name_str)
+      } else {
+        concat(spec.functions.keyword, " ", name_str, " ", params_str)
+      }
+      if body_str == "" {
+        concat(header, "\n.ENDS ", name_str)
+      } else {
+        concat(header, "\n", body_str, "\n.ENDS ", name_str)
+      }
+    _ =>
+      let header = concat(prefix, async_prefix, spec.functions.keyword, " ", name_str, "(", params_str, ")", spec.functions.return_type_separator, ret_str)
+      match spec.functions.body_style {
+        IndentBody => concat(header, ":\n", body_str)
+        BraceBody => concat(header, " {\n", body_str, "\n}")
+      }
+  }
+}
+
+fn emit_data_item(name: String, type_node: Node, value: DfGraph, spec: LanguageSpec, registry: Map<String, ItemInfo>) -> String {
+  match spec.statements.top_level_binding {
+    Some { value: template } =>
+      let fragment = emit_graph_fragment(graph: value, spec: spec, registry: registry, depth: 0)
+      let setup = if fragment.lines |> count == 0 { "" } else { concat(fragment.lines |> join(separator: "\n"), "\n") }
+      concat(
+        setup,
+        apply_template3_names(
+          template: template,
+          name0: "name", value0: mangle_ident(name: name, spec: spec),
+          name1: "type", value1: emit_node_type_from_spec(n: type_node, spec: spec),
+          name2: "value", value2: fragment.output_expr
+        )
+      )
+    None =>
+      emit_func_item(name: name, params: [], return_type: type_node, body: value, is_async: false, spec: spec, registry: registry)
+  }
+}
+
+fn emit_service_item(item: Node, spec: LanguageSpec) -> String {
+  concat(line_comment_prefix(spec: spec), " service emission not yet lowered for ", item.name)
+}
+
+fn emit_lowered_item(item: DfItem, spec: LanguageSpec, registry: Map<String, ItemInfo>) -> String {
+  match item {
+    DfTypeDef { item: item } => emit_type_item(item: item, spec: spec)
+    DfServiceDef { item: item } => emit_service_item(item: item, spec: spec)
+    DfFuncDef { name: name, params: params, return_type: return_type, body: body, is_async: is_async, is_tco: _, item_info: _ } =>
+      emit_func_item(name: name, params: params, return_type: return_type, body: body, is_async: is_async, spec: spec, registry: registry)
+    DfDataDef { name: name, type_node: type_node, value: value, item_info: _ } =>
+      emit_data_item(name: name, type_node: type_node, value: value, spec: spec, registry: registry)
+  }
+}
+
+fn emit_lowered_module(module: DfModule, spec: LanguageSpec, registry: Map<String, ItemInfo>) -> TextFile {
+  let filename = module_to_filename(name: module.name)
+  let module_filename = match spec.scaffold.main_module_stem {
+    Some { value: main_stem } =>
+      if filename == "main" { main_stem } else { filename }
+    None => filename
+  }
+  let prelude = emit_module_prelude(spec: spec)
+  let imports = emit_imports_for_spec(imports: module.imports, spec: spec)
+  let imports_section = if imports == "" { "" } else { concat("\n", imports) }
+  let items = module.items |> map(item => emit_lowered_item(item: item, spec: spec, registry: registry)) |> join(separator: "\n\n")
+  let prefix = line_comment_prefix(spec: spec)
+  let header = concat(prefix, " Generated by v2 compiler -- do not edit.\n", prefix, " Source module: ", module.name, "\n\n")
+  let content = concat(header, prelude, imports_section, if prelude == "" && imports == "" { "" } else { "\n\n" }, items, "\n")
+  let dir_prefix = match spec.scaffold.source_dir {
+    Some { value: dir } => dir
+    None => ""
+  }
+  TextFile { path: concat(dir_prefix, module_filename, spec.scaffold.source_file_extension), content: content }
+}
+
+fn emit_lowered(lowered: LoweredGraph, spec: LanguageSpec) -> EmitResult {
+  EmitResult {
+    files: lowered.modules |> map(m => emit_lowered_module(module: m, spec: spec, registry: lowered.item_registry)),
+    diagnostics: []
   }
 }

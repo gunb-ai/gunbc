@@ -253,7 +253,7 @@ type CapabilityDef {
 // Render target -- which language the emitter produces.
 // =========================================================================
 
-type RenderTarget = Rust | Python | Go
+type RenderTarget = Rust | Python | Go | PSpice
 
 // =========================================================================
 // Compiler output
@@ -415,6 +415,7 @@ type DfOp
 
 type DfModule {
   name: String
+  imports: List<Import>
   items: List<DfItem>
 }
 

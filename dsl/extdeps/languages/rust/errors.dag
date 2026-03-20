@@ -8,7 +8,7 @@
 //      std::error::Error trait
 //
 // Consumers:
-//   v2/05_emit_rust.dag -- func return types, error propagation, service calls
+//   v2/05_emit.dag -- unified lowered-graph emission for Rust error handling
 
 module extdeps.languages.rust.errors
 

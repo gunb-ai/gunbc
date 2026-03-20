@@ -583,7 +583,7 @@ disjoint files or disjoint ownership zones within `04_reconcile.dag`.
 | W1-B | `wt/mw-resolve-walks` | `resolve_*`, `resolve_expr_types`, `resolve_node_bounded`, `resolve_item_types` result-unpack removal | `src/v2/04_reconcile.dag` | Owns the resolution zone. Keep helper/result types local to that zone to reduce conflicts. |
 | W1-C | `wt/mw-infer-walks` | `infer_expr`, infer helpers, block/list accumulation cleanup | `src/v2/04_reconcile.dag` | Owns the inference zone. Do not touch module boundary types in this lane. |
 | W1-D | `wt/mw-resolve-graph` | `resolve_modules`, `kahn_step`, adjacency/indegree cleanup if profiling keeps it relevant | `src/v2/03_resolve.dag` | Fully independent of reconcile work. |
-| W1-E | `wt/mw-emit-micro` | `order_typed_call_args`, cold emitter micro-walks, reserved-word lookup cleanup | `src/v2/05_emit.dag`, `src/v2/05_emit_rust.dag` | Independent of reconcile internals as long as boundary types stay unchanged. |
+| W1-E | `wt/mw-emit-micro` | `order_typed_call_args`, cold emitter micro-walks, reserved-word lookup cleanup | `src/v2/05_emit.dag` | Independent of reconcile internals as long as boundary types stay unchanged. |
 | W1-F | `wt/blocker3-core-cleanup` | Delete remaining `TypeExpr` helpers / last callers | `src/v2/00_core.dag`, v1 bootstrap callers | Explicitly parallelizable mechanical cleanup. |
 
 #### Wave 2 — single boundary lane plus support lanes
@@ -1077,9 +1077,10 @@ remapper handles without a full debugger.
 ### A4 attempt 1: concat→list_push migration (2026-03-19)
 
 **What was done:** Replaced all 13 `concat(acc, [x])` singleton-wrap
-patterns with `list_push(acc, x)` across 6 .dag files (05_emit_rust,
-05_emit_go, 05_emit_python, 05_emit, 06_pipeline, 04_reconcile). Also
-replaced 1 `map |> fold(concat)` with `flat_map` in 05_emit_rust.dag.
+patterns with `list_push(acc, x)` across 6 .dag files, including the
+then-live per-target emitters and the shared compiler pipeline. Also
+replaced 1 `map |> fold(concat)` with `flat_map` in the old Rust emitter
+before the emitter unification landed.
 All 3375 tests pass, clippy clean.
 
 **Result:** Interpreter path is now O(1) per append (verified by tests).

@@ -34,7 +34,7 @@ import v2.std.core {
 }
 
 import v2.compiler.reconcile {
-  TypedGraph, TypedModule, InferScope
+  ResolvedGraph, TypedModule, InferScope
 }
 
 type LowerExprResult {
@@ -81,25 +81,58 @@ fn graph_with(node: DfNode, output: String) -> DfGraph {
   DfGraph { nodes: [node], output: output, subgraphs: empty_map() }
 }
 
-fn merge_subgraphs(left: Map<String, DfSubGraph>, right: Map<String, DfSubGraph>) -> Map<String, DfSubGraph> {
-  fold(map_keys(right), init: left, f: (acc, key) =>
-    match map_get(right, key) {
-      Some { value: subgraph } => map_insert(acc, key, subgraph)
-      None => acc
+fn lower_int_to_string(value: Int) -> String {
+  if value < 0 {
+    concat("-", lower_int_to_string(value: 0 - value))
+  } else if value == 0 {
+    "0"
+  } else {
+    lower_int_to_string_acc(value: value, acc: []) |> join(separator: "")
+  }
+}
+
+fn lower_int_to_string_acc(value: Int, acc: List<String>) -> List<String> {
+  if value == 0 {
+    acc
+  } else {
+    let digit = value % 10
+    let rest = (value - digit) / 10
+    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    let ch = match digit_chars |> enumerate |> filter(pair => pair.first == digit) |> first {
+      Some { value: pair } => pair.second
+      None => "?"
     }
-  )
+    lower_int_to_string_acc(value: rest, acc: concat([ch], acc))
+  }
+}
+
+fn has_no_subgraphs(subgraphs: Map<String, DfSubGraph>) -> Bool {
+  subgraphs == empty_map()
 }
 
 fn merge_graphs(left: DfGraph, right: DfGraph) -> DfGraph {
+  let left_nodes = left.nodes
+  let left_subgraphs = left.subgraphs
+  let right_nodes = right.nodes
+  let right_output = right.output
+  let right_subgraphs = right.subgraphs
+  let left_has_no_subgraphs = has_no_subgraphs(subgraphs: left_subgraphs)
+  let right_has_no_subgraphs = has_no_subgraphs(subgraphs: right_subgraphs)
   DfGraph {
-    nodes: concat(left.nodes, right.nodes),
-    output: right.output,
-    subgraphs: merge_subgraphs(left: left.subgraphs, right: right.subgraphs)
+    nodes: concat(left_nodes, right_nodes),
+    output: right_output,
+    subgraphs: if left_has_no_subgraphs {
+      right_subgraphs
+    } else if right_has_no_subgraphs {
+      left_subgraphs
+    } else {
+      right_subgraphs
+    }
   }
 }
 
 fn fresh_name(prefix: String, counter: Int) -> String {
-  concat(prefix, to_string(value: counter))
+  concat(prefix, lower_int_to_string(value: counter))
 }
 
 fn expr_type(expr: Expr) -> Node? {
@@ -190,20 +223,28 @@ fn lower_named_args(args: List<NamedArg>, next_id: Int, scope: InferScope) -> Lo
     nodes: [],
     subgraphs: empty_map(),
     next_id: next_id
-  }, f: (acc, pair) =>
-    let lowered = lower_expr_from(expr: pair.second.value, scope: scope, next_id: acc.next_id)
-    let param_name = if pair.second.name == none {
-      concat("arg", to_string(value: pair.first))
+  }, f: (acc, pair) => lower_named_arg_step(acc: acc, index: pair.first, arg: pair.second, scope: scope))
+}
+
+fn lower_named_arg_step(acc: LowerInputsState, index: Int, arg: NamedArg, scope: InferScope) -> LowerInputsState {
+  let lowered = lower_expr_from(expr: arg.value, scope: scope, next_id: acc.next_id)
+  let param_name = if arg.name == none {
+    concat("arg", lower_int_to_string(value: index))
+  } else {
+    arg.name.value
+  }
+  LowerInputsState {
+    inputs: list_push(acc.inputs, DfInput { param: param_name, source: lowered.graph.output }),
+    nodes: concat(acc.nodes, lowered.graph.nodes),
+    subgraphs: if has_no_subgraphs(subgraphs: acc.subgraphs) {
+      lowered.graph.subgraphs
+    } else if has_no_subgraphs(subgraphs: lowered.graph.subgraphs) {
+      acc.subgraphs
     } else {
-      pair.second.name.value
-    }
-    LowerInputsState {
-      inputs: list_push(acc.inputs, DfInput { param: param_name, source: lowered.graph.output }),
-      nodes: concat(acc.nodes, lowered.graph.nodes),
-      subgraphs: merge_subgraphs(left: acc.subgraphs, right: lowered.graph.subgraphs),
-      next_id: lowered.next_id
-    }
-  )
+      lowered.graph.subgraphs
+    },
+    next_id: lowered.next_id
+  }
 }
 
 fn lower_field_inits(fields: List<FieldInit>, next_id: Int, scope: InferScope) -> LowerFieldsState {
@@ -212,15 +253,23 @@ fn lower_field_inits(fields: List<FieldInit>, next_id: Int, scope: InferScope) -
     nodes: [],
     subgraphs: empty_map(),
     next_id: next_id
-  }, f: (acc, field_init) =>
-    let lowered = lower_expr_from(expr: field_init.value, scope: scope, next_id: acc.next_id)
-    LowerFieldsState {
-      fields: list_push(acc.fields, DfField { name: field_init.name, source: lowered.graph.output }),
-      nodes: concat(acc.nodes, lowered.graph.nodes),
-      subgraphs: merge_subgraphs(left: acc.subgraphs, right: lowered.graph.subgraphs),
-      next_id: lowered.next_id
-    }
-  )
+  }, f: (acc, field_init) => lower_field_init_step(acc: acc, field_init: field_init, scope: scope))
+}
+
+fn lower_field_init_step(acc: LowerFieldsState, field_init: FieldInit, scope: InferScope) -> LowerFieldsState {
+  let lowered = lower_expr_from(expr: field_init.value, scope: scope, next_id: acc.next_id)
+  LowerFieldsState {
+    fields: list_push(acc.fields, DfField { name: field_init.name, source: lowered.graph.output }),
+    nodes: concat(acc.nodes, lowered.graph.nodes),
+    subgraphs: if has_no_subgraphs(subgraphs: acc.subgraphs) {
+      lowered.graph.subgraphs
+    } else if has_no_subgraphs(subgraphs: lowered.graph.subgraphs) {
+      acc.subgraphs
+    } else {
+      lowered.graph.subgraphs
+    },
+    next_id: lowered.next_id
+  }
 }
 
 fn lower_format_parts(parts: List<StringPart>, next_id: Int, scope: InferScope) -> LowerFormatState {
@@ -229,66 +278,124 @@ fn lower_format_parts(parts: List<StringPart>, next_id: Int, scope: InferScope) 
     nodes: [],
     subgraphs: empty_map(),
     next_id: next_id
-  }, f: (acc, part) =>
-    match part {
-      Text { value: value } =>
-        LowerFormatState {
-          parts: list_push(acc.parts, DfTextPart { value: value }),
-          nodes: acc.nodes,
-          subgraphs: acc.subgraphs,
-          next_id: acc.next_id
-        }
-      Interpolation { expr: expr } =>
-        let lowered = lower_expr_from(expr: expr, scope: scope, next_id: acc.next_id)
-        LowerFormatState {
-          parts: list_push(acc.parts, DfExprPart { source: lowered.graph.output }),
-          nodes: concat(acc.nodes, lowered.graph.nodes),
-          subgraphs: merge_subgraphs(left: acc.subgraphs, right: lowered.graph.subgraphs),
-          next_id: lowered.next_id
-        }
-    }
-  )
+  }, f: (acc, part) => lower_format_part_step(acc: acc, part: part, scope: scope))
+}
+
+fn lower_format_part_step(acc: LowerFormatState, part: StringPart, scope: InferScope) -> LowerFormatState {
+  match part {
+    Text { value: value } =>
+      LowerFormatState {
+        parts: list_push(acc.parts, DfTextPart { value: value }),
+        nodes: acc.nodes,
+        subgraphs: acc.subgraphs,
+        next_id: acc.next_id
+      }
+    Interpolation { expr: expr } =>
+      let lowered = lower_expr_from(expr: expr, scope: scope, next_id: acc.next_id)
+      LowerFormatState {
+        parts: list_push(acc.parts, DfExprPart { source: lowered.graph.output }),
+        nodes: concat(acc.nodes, lowered.graph.nodes),
+        subgraphs: if has_no_subgraphs(subgraphs: acc.subgraphs) {
+          lowered.graph.subgraphs
+        } else if has_no_subgraphs(subgraphs: lowered.graph.subgraphs) {
+          acc.subgraphs
+        } else {
+          lowered.graph.subgraphs
+        },
+        next_id: lowered.next_id
+      }
+  }
+}
+
+fn lower_guard_expr(guard: Expr?, scope: InferScope, next_id: Int) -> LowerExprResult? {
+  match guard {
+    Some { value: guard_expr } => Some { value: lower_expr_from(expr: guard_expr, scope: scope, next_id: next_id) }
+    None => none
+  }
+}
+
+fn guarded_arm_body(guard_result: LowerExprResult?, body_result: LowerExprResult, body_type: Node?) -> DfGraph {
+  match guard_result {
+    Some { value: guard } =>
+      let seq_name = fresh_name(prefix: "_v", counter: guard.next_id)
+      graph_with(
+        node: DfSequence {
+          name: seq_name,
+          steps: [guard.graph, body_result.graph],
+          resolved_type: body_type
+        },
+        output: seq_name
+      )
+    None => body_result.graph
+  }
+}
+
+fn arm_guard_output(guard_result: LowerExprResult?) -> String? {
+  match guard_result {
+    Some { value: guard } => Some { value: guard.graph.output }
+    None => none
+  }
+}
+
+fn arm_next_id(guard_result: LowerExprResult?, body_result: LowerExprResult) -> Int {
+  match guard_result {
+    Some { value: guard } => guard.next_id + 1
+    None => body_result.next_id
+  }
 }
 
 fn lower_match_arms(arms: List<MatchArm>, next_id: Int, scope: InferScope) -> LowerArmsState {
   arms |> fold(init: LowerArmsState { arms: [], next_id: next_id }, f: (acc, arm) =>
-    let body_result = lower_expr_from(expr: arm.body, scope: scope, next_id: acc.next_id)
-    let guard_result = match arm.guard {
-      Some { value: guard_expr } => Some { value: lower_expr_from(expr: guard_expr, scope: scope, next_id: body_result.next_id) }
-      None => none
-    }
-    let guarded_body = if guard_result == none {
-      body_result.graph
-    } else {
-      let seq_name = fresh_name(prefix: "_v", counter: guard_result.value.next_id)
-      graph_with(
-        node: DfSequence {
-          name: seq_name,
-          steps: [guard_result.value.graph, body_result.graph],
-          resolved_type: expr_type(expr: arm.body)
-        },
-        output: seq_name
-      )
-    }
-    LowerArmsState {
-      arms: list_push(acc.arms, DfArm {
-        pattern: lower_pattern(pattern: arm.pattern),
-        guard: if guard_result == none { none } else { Some { value: guard_result.value.graph.output } },
-        body: guarded_body
-      }),
-      next_id: if guard_result == none { body_result.next_id } else { guard_result.value.next_id + 1 }
-    }
+    lower_match_arm_step(acc: acc, arm: arm, scope: scope)
   )
+}
+
+fn lower_match_arm_step(acc: LowerArmsState, arm: MatchArm, scope: InferScope) -> LowerArmsState {
+  let body_result = lower_expr_from(expr: arm.body, scope: scope, next_id: acc.next_id)
+  let guard_result = lower_guard_expr(guard: arm.guard, scope: scope, next_id: body_result.next_id)
+  LowerArmsState {
+    arms: list_push(acc.arms, DfArm {
+      pattern: lower_pattern(pattern: arm.pattern),
+      guard: arm_guard_output(guard_result: guard_result),
+      body: guarded_arm_body(guard_result: guard_result, body_result: body_result, body_type: expr_type(expr: arm.body))
+    }),
+    next_id: arm_next_id(guard_result: guard_result, body_result: body_result)
+  }
 }
 
 fn lower_steps(stmts: List<Expr>, next_id: Int, scope: InferScope) -> LowerStepsState {
   stmts |> fold(init: LowerStepsState { steps: [], next_id: next_id }, f: (acc, stmt) =>
-    let lowered = lower_expr_from(expr: stmt, scope: scope, next_id: acc.next_id)
-    LowerStepsState {
-      steps: list_push(acc.steps, lowered.graph),
-      next_id: lowered.next_id
-    }
+    lower_step_stmt(acc: acc, stmt: stmt, scope: scope)
   )
+}
+
+fn lower_step_stmt(acc: LowerStepsState, stmt: Expr, scope: InferScope) -> LowerStepsState {
+  let lowered = lower_expr_from(expr: stmt, scope: scope, next_id: acc.next_id)
+  LowerStepsState {
+    steps: list_push(acc.steps, lowered.graph),
+    next_id: lowered.next_id
+  }
+}
+
+fn gate_name_next_id(else_result: LowerExprResult?, then_result: LowerExprResult) -> Int {
+  match else_result {
+    Some { value: else_graph } => else_graph.next_id
+    None => then_result.next_id
+  }
+}
+
+fn gate_else_graph(else_result: LowerExprResult?) -> DfGraph? {
+  match else_result {
+    Some { value: else_graph } => Some { value: else_graph.graph }
+    None => none
+  }
+}
+
+fn gate_result_next_id(else_result: LowerExprResult?, then_result: LowerExprResult) -> Int {
+  match else_result {
+    Some { value: else_graph } => else_graph.next_id + 1
+    None => then_result.next_id + 1
+  }
 }
 
 fn lower_expr(expr: Expr, scope: InferScope) -> DfGraph {
@@ -365,7 +472,13 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             }
           ),
           output: name,
-          subgraphs: merge_subgraphs(left: receiver_result.graph.subgraphs, right: arg_state.subgraphs)
+          subgraphs: if has_no_subgraphs(subgraphs: receiver_result.graph.subgraphs) {
+            arg_state.subgraphs
+          } else if has_no_subgraphs(subgraphs: arg_state.subgraphs) {
+            receiver_result.graph.subgraphs
+          } else {
+            arg_state.subgraphs
+          }
         },
         next_id: arg_state.next_id + 1
       }
@@ -393,11 +506,8 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
     If { condition: condition, then_branch: then_branch, else_branch: else_branch, resolved_type: resolved_type, span: _ } =>
       let cond_result = lower_expr_from(expr: condition, scope: scope, next_id: next_id)
       let then_result = lower_expr_from(expr: then_branch, scope: scope, next_id: cond_result.next_id)
-      let else_result = match else_branch {
-        Some { value: else_expr } => Some { value: lower_expr_from(expr: else_expr, scope: scope, next_id: then_result.next_id) }
-        None => none
-      }
-      let name = fresh_name(prefix: "_v", counter: if else_result == none { then_result.next_id } else { else_result.value.next_id })
+      let else_result = lower_guard_expr(guard: else_branch, scope: scope, next_id: then_result.next_id)
+      let name = fresh_name(prefix: "_v", counter: gate_name_next_id(else_result: else_result, then_result: then_result))
       LowerExprResult {
         graph: merge_graphs(
           left: cond_result.graph,
@@ -406,13 +516,13 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
               name: name,
               condition: cond_result.graph.output,
               then_graph: then_result.graph,
-              else_graph: if else_result == none { none } else { Some { value: else_result.value.graph } },
+              else_graph: gate_else_graph(else_result: else_result),
               resolved_type: resolved_type
             },
             output: name
           )
         ),
-        next_id: if else_result == none { then_result.next_id + 1 } else { else_result.value.next_id + 1 }
+        next_id: gate_result_next_id(else_result: else_result, then_result: then_result)
       }
 
     Let { name: bind_name, value: value, body: body, resolved_type: resolved_type, span: _ } =>
@@ -428,10 +538,15 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             graph: DfGraph {
               nodes: concat(concat(value_result.graph.nodes, bind_graph.nodes), body_result.graph.nodes),
               output: body_result.graph.output,
-              subgraphs: merge_subgraphs(
-                left: merge_subgraphs(left: value_result.graph.subgraphs, right: bind_graph.subgraphs),
-                right: body_result.graph.subgraphs
-              )
+              subgraphs: if has_no_subgraphs(subgraphs: body_result.graph.subgraphs) {
+                if has_no_subgraphs(subgraphs: bind_graph.subgraphs) {
+                  value_result.graph.subgraphs
+                } else {
+                  bind_graph.subgraphs
+                }
+              } else {
+                body_result.graph.subgraphs
+              }
             },
             next_id: body_result.next_id
           }
@@ -440,7 +555,13 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             graph: DfGraph {
               nodes: concat(value_result.graph.nodes, bind_graph.nodes),
               output: bind_name,
-              subgraphs: merge_subgraphs(left: value_result.graph.subgraphs, right: bind_graph.subgraphs)
+              subgraphs: if has_no_subgraphs(subgraphs: value_result.graph.subgraphs) {
+                bind_graph.subgraphs
+              } else if has_no_subgraphs(subgraphs: bind_graph.subgraphs) {
+                value_result.graph.subgraphs
+              } else {
+                bind_graph.subgraphs
+              }
             },
             next_id: value_result.next_id
           }
@@ -464,7 +585,7 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
       }
 
     ListLit { elements: elements, resolved_type: resolved_type, span: _ } =>
-      let args = elements |> enumerate |> map(pair => NamedArg { name: Some { value: concat("arg", to_string(value: pair.first)) }, value: pair.second })
+      let args = elements |> enumerate |> map(pair => NamedArg { name: Some { value: concat("arg", lower_int_to_string(value: pair.first)) }, value: pair.second })
       let arg_state = lower_named_args(args: args, next_id: next_id, scope: scope)
       let name = fresh_name(prefix: "_v", counter: arg_state.next_id)
       LowerExprResult {
@@ -498,7 +619,13 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             }
           ),
           output: name,
-          subgraphs: merge_subgraphs(left: left_result.graph.subgraphs, right: right_result.graph.subgraphs)
+          subgraphs: if has_no_subgraphs(subgraphs: left_result.graph.subgraphs) {
+            right_result.graph.subgraphs
+          } else if has_no_subgraphs(subgraphs: right_result.graph.subgraphs) {
+            left_result.graph.subgraphs
+          } else {
+            right_result.graph.subgraphs
+          }
         },
         next_id: right_result.next_id + 1
       }
@@ -616,7 +743,13 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             resolved_type: resolved_type
           }),
           output: name,
-          subgraphs: merge_subgraphs(left: collection_result.graph.subgraphs, right: body_result.graph.subgraphs)
+          subgraphs: if has_no_subgraphs(subgraphs: collection_result.graph.subgraphs) {
+            body_result.graph.subgraphs
+          } else if has_no_subgraphs(subgraphs: body_result.graph.subgraphs) {
+            collection_result.graph.subgraphs
+          } else {
+            body_result.graph.subgraphs
+          }
         },
         next_id: body_result.next_id + 1
       }
@@ -640,7 +773,13 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             }
           ),
           output: name,
-          subgraphs: merge_subgraphs(left: base_result.graph.subgraphs, right: index_result.graph.subgraphs)
+          subgraphs: if has_no_subgraphs(subgraphs: base_result.graph.subgraphs) {
+            index_result.graph.subgraphs
+          } else if has_no_subgraphs(subgraphs: index_result.graph.subgraphs) {
+            base_result.graph.subgraphs
+          } else {
+            index_result.graph.subgraphs
+          }
         },
         next_id: index_result.next_id + 1
       }
@@ -666,10 +805,15 @@ fn lower_expr_from(expr: Expr, scope: InferScope, next_id: Int) -> LowerExprResu
             }
           ),
           output: name,
-          subgraphs: merge_subgraphs(
-            left: merge_subgraphs(left: base_result.graph.subgraphs, right: start_result.graph.subgraphs),
-            right: end_result.graph.subgraphs
-          )
+          subgraphs: if has_no_subgraphs(subgraphs: end_result.graph.subgraphs) {
+            if has_no_subgraphs(subgraphs: start_result.graph.subgraphs) {
+              base_result.graph.subgraphs
+            } else {
+              start_result.graph.subgraphs
+            }
+          } else {
+            end_result.graph.subgraphs
+          }
         },
         next_id: end_result.next_id + 1
       }
@@ -748,11 +892,12 @@ fn lower_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> D
   }
   DfModule {
     name: typed_module.module.name,
+    imports: typed_module.module.imports,
     items: typed_module.items |> map(item => lower_item(item: item, scope: scope, registry: registry))
   }
 }
 
-fn lower_graph(typed: TypedGraph) -> LoweredGraph {
+fn lower_graph(typed: ResolvedGraph) -> LoweredGraph {
   LoweredGraph {
     modules: typed.modules |> map(tm => lower_module(typed_module: tm, registry: typed.item_registry)),
     item_registry: typed.item_registry,

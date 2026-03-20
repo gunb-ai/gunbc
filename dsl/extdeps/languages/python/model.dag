@@ -1,0 +1,18 @@
+// extdeps/languages/python/model.dag -- bidirectional Python language model.
+
+module extdeps.languages.python.model
+
+import std.languages {
+  LanguageModel,
+  python_surface_model,
+  python_recognition,
+  python_scaffold
+}
+import extdeps.languages.python.spec { python_spec }
+
+data python_model: LanguageModel = {
+  emit: python_spec,
+  surface: python_surface_model,
+  recognition: python_recognition,
+  scaffold: python_scaffold
+}

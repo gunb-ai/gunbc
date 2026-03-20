@@ -6,7 +6,7 @@
 // Ref: Rust Standard Library docs (doc.rust-lang.org/std)
 //
 // Consumers:
-//   v2/05_emit_rust.dag -- method call emission, pipe operator translation
+//   v2/05_emit.dag -- unified lowered-graph emission for Rust
 
 module extdeps.languages.rust.runtime
 

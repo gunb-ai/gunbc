@@ -2143,16 +2143,25 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
     if name == "null" || name == "None" {
         return code_ir::Expr::Var("None".to_string());
     }
-    if ctx.data_map_names.contains(name) {
-        // Map data tables are lazy_static HashMap constants. Emit `&TABLE` to produce
-        // a reference — functions like `v2_rt::lookup` expect `&HashMap`.
-        code_ir::Expr::Ref(Box::new(code_ir::Expr::Var(to_screaming_snake(name))))
-    } else if ctx.data_names.contains(name) {
-        // Non-map data tables (arrays, etc.) — clone the value.
-        code_ir::Expr::MethodCall {
-            receiver: Box::new(code_ir::Expr::Var(to_screaming_snake(name))),
-            method: "clone".to_string(),
+    let is_local_name = ctx.ir_scope.contains_key(name)
+        || ctx.param_types.contains_key(name)
+        || ctx.match_bound_vars.contains(name)
+        || ctx.str_param_names.contains(name);
+    if !is_local_name && ctx.data_map_names.contains(name) {
+        // Map data defs are getter-backed Rc<HashMap<...>> values. Emit `&*name()`
+        // to produce `&HashMap<...>` for lookup-style call sites.
+        code_ir::Expr::Ref(Box::new(code_ir::Expr::Deref(Box::new(
+            code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Var(to_snake_case(name))),
+                args: vec![],
+                obligation: None,
+            },
+        ))))
+    } else if !is_local_name && ctx.data_names.contains(name) {
+        code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Var(to_snake_case(name))),
             args: vec![],
+            obligation: None,
         }
     } else if let Some(enum_name) = resolve_variant_enum(name, ctx) {
         let variant_expr = code_ir::Expr::Path(vec![enum_name.clone(), name.to_string()]);
@@ -2367,17 +2376,6 @@ fn escape_rust_keyword(name: &str) -> String {
         | "unsized" | "virtual" | "yield" => format!("r#{name}"),
         _ => name.to_string(),
     }
-}
-
-fn to_screaming_snake(name: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in name.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            result.push('_');
-        }
-        result.push(c.to_ascii_uppercase());
-    }
-    result
 }
 
 fn with_call_arg_path<T>(ctx: &CompileContext, index: usize, f: impl FnOnce() -> T) -> T {
@@ -2796,50 +2794,14 @@ fn compile_intrinsic_call(
         "lookup" if args.len() == 2 => {
             let table = resolve_named_or_positional(args, "table", 0, ctx, counter);
             let key = resolve_named_or_positional(args, "key", 1, ctx, counter);
-            let lookup_call = code_ir::Expr::Call {
+            Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
                     "lookup".to_string(),
                 ])),
                 args: vec![table, key],
                 obligation: None,
-            };
-            // R8: Data table statics store bare T (Rc is not Sync), but the
-            // rest of the code expects Rc<T>.  Wrap: lookup(..).map(Rc::new).
-            let table_name = match &args[0].1 {
-                ast::Expr::Ident(n) => Some(n.as_str()),
-                _ => args
-                    .iter()
-                    .find(|(name, _)| name.as_deref() == Some("table"))
-                    .and_then(|(_, e)| match e {
-                        ast::Expr::Ident(n) => Some(n.as_str()),
-                        _ => None,
-                    }),
-            };
-            let needs_rc_wrap = table_name.is_some_and(|name| {
-                ctx.data_ir_types.get(name).is_some_and(|ir| {
-                    if let IrType::Generic(_, type_args) = ir {
-                        type_args.last().is_some_and(|val_ty| {
-                            named_type_from_ir(val_ty)
-                                .is_some_and(|n| ctx.rc_wrapped_types.contains(&n))
-                        })
-                    } else {
-                        false
-                    }
-                })
-            });
-            if needs_rc_wrap {
-                Some(code_ir::Expr::MethodCall {
-                    receiver: Box::new(lookup_call),
-                    method: "map".to_string(),
-                    args: vec![code_ir::Expr::Path(vec![
-                        "Rc".to_string(),
-                        "new".to_string(),
-                    ])],
-                })
-            } else {
-                Some(lookup_call)
-            }
+            })
         }
         // concat(a) → identity (single-arg concat is a no-op, avoids
         // clashing with Rust's built-in `concat!` macro).
@@ -7660,15 +7622,11 @@ mod tests {
         let ctx = ctx_with_data(&["zero_width_blocks"]);
         let ir = compile_expr(&Expr::Ident("zero_width_blocks".into()), &ctx, &mut counter);
         match &ir {
-            code_ir::Expr::MethodCall {
-                receiver, method, ..
-            } => {
-                assert_eq!(method, "clone");
-                assert!(
-                    matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "ZERO_WIDTH_BLOCKS")
-                );
+            code_ir::Expr::Call { func, args, .. } => {
+                assert!(args.is_empty());
+                assert!(matches!(func.as_ref(), code_ir::Expr::Var(ref n) if n == "zero_width_blocks"));
             }
-            other => panic!("expected MethodCall(clone), got: {other:?}"),
+            other => panic!("expected Call(zero_width_blocks), got: {other:?}"),
         }
     }
 
@@ -7679,13 +7637,20 @@ mod tests {
         ctx.data_map_names.insert("single_punct".to_string());
         let ir = compile_expr(&Expr::Ident("single_punct".into()), &ctx, &mut counter);
         match &ir {
-            code_ir::Expr::Ref(inner) => {
-                assert!(
-                    matches!(inner.as_ref(), code_ir::Expr::Var(ref n) if n == "SINGLE_PUNCT"),
-                    "expected Ref(Var(SINGLE_PUNCT)), got Ref({inner:?})"
-                );
+            code_ir::Expr::Ref(inner) => match inner.as_ref() {
+                code_ir::Expr::Deref(call) => match call.as_ref() {
+                    code_ir::Expr::Call { func, args, .. } => {
+                        assert!(args.is_empty());
+                        assert!(
+                            matches!(func.as_ref(), code_ir::Expr::Var(ref n) if n == "single_punct"),
+                            "expected getter call inside map ref, got {func:?}"
+                        );
+                    }
+                    other => panic!("expected getter call inside Deref, got: {other:?}"),
+                },
+                other => panic!("expected Ref(Deref(Call(...))), got Ref({other:?})"),
             }
-            other => panic!("expected Ref(Var(SINGLE_PUNCT)), got: {other:?}"),
+            other => panic!("expected Ref(Deref(Call(single_punct))), got: {other:?}"),
         }
     }
 

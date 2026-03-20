@@ -55,10 +55,9 @@ src/v2/
   02_parse.dag       List<Token> -> Module (AST)
   03_resolve.dag     List<Module> -> ModuleGraph
   04_reconcile.dag   ModuleGraph -> ResolvedGraph
-  05_emit.dag        Shared emit helpers
-  05_emit_rust.dag   ResolvedGraph -> Rust files
-  05_emit_python.dag ResolvedGraph -> Python files
-  05_emit_go.dag     ResolvedGraph -> Go files
+  05_lower.dag       ResolvedGraph -> LoweredGraph (DfGraph)
+  05_emit.dag        LoweredGraph x LanguageSpec -> target files
+  05_emit_scaffold.dag Target-specific project-file hook
   06_pipeline.dag    Orchestrator: discover -> compile -> write
 ```
 

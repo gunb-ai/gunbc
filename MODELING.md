@@ -1379,7 +1379,8 @@ Test 3 — multiple results with diagnostics:
 
 #### Grounded example: chained filter-map-count
 
-From `src/v2/05_emit_rust.dag` (service test generation):
+From the pre-unified Rust emitter logic now carried by `src/v2/05_emit.dag`
+(service test generation):
 
 ```dag
 fn emit_typed_service_tests(item: TypedNode, registry: Map<String, ItemInfo>) -> List<String> {

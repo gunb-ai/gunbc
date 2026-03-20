@@ -461,6 +461,9 @@ struct Continuation<'a> {
     /// to the frame so `pop_stack` can restore it automatically — preventing
     /// desync between the continuation stack and a parallel fn_id tracker.
     caller_fn: FnId,
+    /// The sibling function being resumed from this continuation.
+    /// Used only for diagnostics when a callee returns an invalid output map.
+    callee_fn: FnId,
 }
 
 // ── 3b. Main loop ───────────────────────────────────────────────────────────
@@ -587,6 +590,12 @@ fn pop_stack<'a>(
         match stack.pop() {
             None => return PopResult::Done(result),
             Some(cont) => {
+                assert!(
+                    !result.is_empty(),
+                    "BUG: function `{}` returned an empty outputs map while resuming `{}`",
+                    fn_name_for_id(cont.callee_fn, ctx),
+                    fn_name_for_id(cont.caller_fn, ctx),
+                );
                 // S57: return type checks happen in run_machine before
                 // pop_stack is called, so no per-frame check needed here.
                 let value = output_value(&result);
@@ -653,6 +662,7 @@ fn eval_stmts<'a>(
                                     env: env.clone(),
                                     is_fn_boundary: true,
                                     caller_fn: current_fn,
+                                    callee_fn: callee_id,
                                 });
                                 return Step::Call {
                                     callee: callee_id,
@@ -680,6 +690,7 @@ fn eval_stmts<'a>(
                                     env: env.clone(),
                                     is_fn_boundary: false,
                                     caller_fn: current_fn,
+                                    callee_fn: callee,
                                 },
                             );
                             return Step::Call { callee, inputs };
@@ -707,6 +718,7 @@ fn eval_stmts<'a>(
                                         env: env.clone(),
                                         is_fn_boundary: true,
                                         caller_fn: current_fn,
+                                        callee_fn: callee_id,
                                     });
                                 }
                                 return Step::Call {
@@ -753,6 +765,7 @@ fn eval_stmts<'a>(
                                     env: env.clone(),
                                     is_fn_boundary: false,
                                     caller_fn: current_fn,
+                                    callee_fn: callee,
                                 },
                             );
                             return Step::Call { callee, inputs };
@@ -912,6 +925,7 @@ fn eval_block_s<'a>(
                                         env: child,
                                         is_fn_boundary: true,
                                         caller_fn: current_fn,
+                                        callee_fn: callee_id,
                                     },
                                 );
                                 return ExprResult::Suspend {
@@ -944,6 +958,7 @@ fn eval_block_s<'a>(
                                     env: child,
                                     is_fn_boundary: false,
                                     caller_fn: current_fn,
+                                    callee_fn: callee,
                                 },
                             );
                             return ExprResult::Suspend { callee, inputs };
@@ -966,6 +981,7 @@ fn eval_block_s<'a>(
                                             env: child,
                                             is_fn_boundary: true,
                                             caller_fn: current_fn,
+                                            callee_fn: callee_id,
                                         },
                                     );
                                 }
@@ -998,6 +1014,7 @@ fn eval_block_s<'a>(
                                     env: child,
                                     is_fn_boundary: false,
                                     caller_fn: current_fn,
+                                    callee_fn: callee,
                                 },
                             );
                             return ExprResult::Suspend { callee, inputs };

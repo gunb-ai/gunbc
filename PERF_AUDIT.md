@@ -808,9 +808,9 @@ In the self-hosted world, every layer that caused this problem disappears:
 | v1 layer (disappears) | v2 replacement | Why it's auditable |
 |------------------------|---------------|-------------------|
 | `v2_runtime_shim.rs` (string constant) | `.dag`-defined `extern func` with complexity contracts | Subject to parse/infer/emit pipeline, Track D analysis |
-| `fn_codegen.rs` (clone strategy) | `05_emit_rust.dag` (v2 emitter) | The emitter IS `.dag` code — same invariants apply |
-| `type_codegen.rs` (boxing decisions) | `05_emit_rust.dag` type emission | Boxing rules expressed in `.dag`, not hidden in Rust |
-| `render_rust.rs` | Subsumed by `05_emit_rust.dag` | One layer, not two |
+| `fn_codegen.rs` (clone strategy) | `05_emit.dag` (shared v2 emitter) | The emitter IS `.dag` code — same invariants apply |
+| `type_codegen.rs` (boxing decisions) | `05_emit.dag` type emission | Boxing rules expressed in `.dag`, not hidden in Rust |
+| `render_rust.rs` | Subsumed by `05_emit.dag` | One layer, not two |
 
 The fundamental shift: in v1, there are **two compilers** — the `.dag`
 compiler and the Rust codegen. The `.dag` compiler has invariants; the

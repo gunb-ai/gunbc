@@ -7,7 +7,7 @@
 //      The Rustonomicon (doc.rust-lang.org/nomicon)
 //
 // Consumers:
-//   v2/05_emit_rust.dag -- type emission, parameter passing, derive macros
+//   v2/05_emit.dag -- unified lowered-graph emission for Rust
 
 module extdeps.languages.rust.types
 

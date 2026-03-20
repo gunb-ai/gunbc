@@ -276,10 +276,16 @@ fn collect_embedded_dag_sources() -> Vec<EmbeddedDagSource> {
 }
 
 fn rust_mod_for_module_path(path: &str) -> String {
-    let leaf = path.rsplit('.').next().unwrap_or(path);
-    match leaf {
-        "core" => "v2_core".to_string(),
-        other => other.replace('-', "_"),
+    match path {
+        "v2.std.core" => "v2_core".to_string(),
+        "extdeps.languages.rust.spec" => "rust_spec".to_string(),
+        "extdeps.languages.python.spec" => "python_spec".to_string(),
+        "extdeps.languages.go.spec" => "go_spec".to_string(),
+        "extdeps.languages.pspice.spec" => "pspice_spec".to_string(),
+        _ => {
+            let leaf = path.rsplit('.').next().unwrap_or(path);
+            leaf.replace('-', "_")
+        }
     }
 }
 
@@ -426,6 +432,45 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    let global_data_names: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd) => Some(dd.name.clone()),
+                _ => None,
+            })
+        })
+        .collect();
+
+    let global_data_ir_types: HashMap<String, gunbc_ir::code_ir::IrType> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd) => {
+                    Some((dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
+    let global_data_map_names: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd)
+                    if matches!(
+                        &dd.ty,
+                        daglang_syntax::ast::TypeExpr::Generic(name, _) if name == "Map"
+                    ) =>
+                {
+                    Some(dd.name.clone())
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
     // R3: Build set of (fn_name, param_index) where the param is exactly `String`
     // (not `Option<String>` or other wrappers). These become `&str` in generated code.
     let global_fn_str_params: HashSet<(String, usize)> = modules
@@ -536,6 +581,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
 
         let source = emit_module(
             items,
+            &all_type_defs,
             &recursive_fields,
             &variant_to_enum,
             &module_struct_field_types,
@@ -543,6 +589,9 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &all_enum_variants,
             &defined_type_signatures,
             &module_struct_field_ir_types,
+            &global_data_names,
+            &global_data_ir_types,
+            &global_data_map_names,
             &global_fn_return_types,
             &global_fn_return_ir_types,
             &global_fn_param_types,
@@ -652,6 +701,9 @@ fn emit_lib_rs(modules: &[(&str, &SourceFile)]) -> String {
 /// exist in the generated crate unless we define them.
 fn std_types_prelude() -> &'static str {
     r#"
+/// Language identifier type.
+pub type LanguageId = String;
+
 /// Source span for diagnostic reporting.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SourceSpan {
@@ -671,6 +723,20 @@ pub struct BindingPower {
     pub left: i64,
     pub right: i64,
 }
+
+"#
+}
+
+fn std_language_types_prelude() -> &'static str {
+    r#"
+/// Language identifier type.
+pub type LanguageId = String;
+
+/// Type alias for file paths.
+pub type FilePath = String;
+
+/// Non-empty string type (alias — validation not enforced at type level).
+pub type NonEmptyStr = String;
 
 "#
 }
@@ -706,7 +772,11 @@ fn module_prelude(source_file: &SourceFile) -> String {
     // but only if they don't also import v2.std.core (which already
     // contains these definitions via its own std.types import).
     if has_std_types_import && !has_v2_core_import {
-        prelude.push_str(std_types_prelude());
+        if current_module == "std.languages" {
+            prelude.push_str(std_language_types_prelude());
+        } else {
+            prelude.push_str(std_types_prelude());
+        }
     }
 
     // All modules get access to the runtime shims and std collections
@@ -715,6 +785,12 @@ fn module_prelude(source_file: &SourceFile) -> String {
     prelude.push_str("use crate::v2_rt::{scan_while, scan_to_eol, skip_horizontal_ws, code_point, from_code_point, scan_string_end};\n");
     prelude.push_str("use std::collections::HashMap;\n");
     prelude.push_str("use std::rc::Rc;\n");
+    if current_module == "v2.compiler.lower" {
+        prelude.push_str("fn to_string(value: i64) -> String { value.to_string() }\n");
+        prelude.push_str(
+            "fn map_keys<V>(m: &HashMap<String, V>) -> Vec<String> { m.keys().cloned().collect() }\n",
+        );
+    }
     // Map type alias is defined only in v2_core to avoid redefinition conflicts
     if current_module == "v2.std.core" {
         prelude.push_str("pub type Map<K, V> = HashMap<K, V>;\n");
@@ -727,6 +803,7 @@ fn module_prelude(source_file: &SourceFile) -> String {
 #[allow(clippy::too_many_arguments)]
 fn emit_module(
     items: &[daglang_syntax::span::Spanned<Item>],
+    all_type_defs: &[&TypeDef],
     recursive_fields: &HashSet<(String, String)>,
     variant_to_enum: &HashMap<String, String>,
     struct_field_types: &HashMap<String, HashMap<String, String>>,
@@ -734,6 +811,9 @@ fn emit_module(
     all_enum_variants: &HashMap<String, HashSet<String>>,
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
     struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
+    global_data_names: &HashSet<String>,
+    global_data_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
+    global_data_map_names: &HashSet<String>,
     global_fn_return_types: &HashMap<String, String>,
     global_fn_return_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
     global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
@@ -743,45 +823,13 @@ fn emit_module(
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
-    // Collect data names for compile context
-    let data_names: HashSet<String> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::DataDef(dd) => Some(dd.name.clone()),
-            _ => None,
-        })
-        .collect();
-
-    // Collect data names that are Map types (need `&` reference instead of `.clone()`)
-    let data_map_names: HashSet<String> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::DataDef(dd) => {
-                if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Generic(name, _) if name == "Map") {
-                    Some(dd.name.clone())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        })
-        .collect();
-
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
     let ctx = fn_codegen::CompileContext {
-        data_names,
-        data_ir_types: items
-            .iter()
-            .filter_map(|item| match &item.node {
-                Item::DataDef(dd) => {
-                    Some((dd.name.clone(), fn_codegen::type_expr_to_ir_type(&dd.ty)))
-                }
-                _ => None,
-            })
-            .collect(),
-        data_map_names,
+        data_names: global_data_names.clone(),
+        data_ir_types: global_data_ir_types.clone(),
+        data_map_names: global_data_map_names.clone(),
         optional_fields: optional_fields.clone(),
         variant_to_enum: variant_to_enum.clone(),
         struct_field_types: struct_field_types.clone(),
@@ -834,15 +882,12 @@ fn emit_module(
                 ir_items.extend(type_codegen::fndef_to_code_ir(fd, &ctx));
             }
             Item::DataDef(dd) => {
-                // Collect struct TypeDefs for field-type resolution
-                let struct_defs: Vec<&TypeDef> = items
-                    .iter()
-                    .filter_map(|i| match &i.node {
-                        Item::TypeDef(td) => Some(td),
-                        _ => None,
-                    })
-                    .collect();
-                ir_items.extend(type_codegen::datadef_to_code_ir_with(dd, &struct_defs));
+                ir_items.extend(type_codegen::datadef_to_code_ir_with(
+                    dd,
+                    all_type_defs,
+                    global_data_names,
+                    global_data_map_names,
+                ));
             }
             // Skip module/import/service/resource/interface/pipeline/extern declarations
             _ => {}
@@ -1718,11 +1763,23 @@ mod generated_tests {{
                 eprintln!("  RECONCILE TOTAL: {{:?}}  | RSS: {{}}  | diags: {{}}\n",
                     reconcile_total, format_bytes(rss_after_reconcile), phase4_diags);
 
-                // Phase 5: Emit (Rust target)
+                // Phase 5: Lower into dataflow IR
                 let t_stage = Instant::now();
-                let emit_result = crate::emit_rust::emit_rust(typed);
+                let lowered = crate::lower::lower_graph(typed);
+                let lower_total = t_stage.elapsed();
+                let phase5_diags: usize = lowered.diagnostics.iter()
+                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .count();
+                let rss_after_lower = get_rss_bytes();
+                eprintln!("  LOWER TOTAL:    {{:?}}  | RSS: {{}}  | diags: {{}}\n",
+                    lower_total, format_bytes(rss_after_lower), phase5_diags);
+
+                // Phase 6: Emit (Rust target)
+                let t_stage = Instant::now();
+                let rust_spec = crate::pipeline::load_language_spec(crate::v2_core::RenderTarget::Rust);
+                let emit_result = crate::emit::emit_lowered(lowered, rust_spec);
                 let emit_total = t_stage.elapsed();
-                let phase5_diags: usize = emit_result.diagnostics.iter()
+                let phase6_diags: usize = emit_result.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
                     .count();
                 let emitted_files = emit_result.files.len();
@@ -1731,18 +1788,19 @@ mod generated_tests {{
                     .sum();
                 let rss_after_emit = get_rss_bytes();
                 eprintln!("  EMIT TOTAL:     {{:?}}  | RSS: {{}}  | diags: {{}}\n",
-                    emit_total, format_bytes(rss_after_emit), phase5_diags);
+                    emit_total, format_bytes(rss_after_emit), phase6_diags);
 
                 // Summary
                 let total = tokenize_total + parse_total + resolve_total
-                    + reconcile_total + emit_total;
+                    + reconcile_total + lower_total + emit_total;
                 let total_diags = phase1_diags + phase2_diags + phase3_diags
-                    + phase4_diags + phase5_diags;
+                    + phase4_diags + phase5_diags + phase6_diags;
                 eprintln!("=== SUMMARY ===");
                 eprintln!("  Tokenize:   {{:?}}", tokenize_total);
                 eprintln!("  Parse:      {{:?}}", parse_total);
                 eprintln!("  Resolve:    {{:?}}", resolve_total);
                 eprintln!("  Reconcile:  {{:?}}", reconcile_total);
+                eprintln!("  Lower:      {{:?}}", lower_total);
                 eprintln!("  Emit:       {{:?}}", emit_total);
                 eprintln!("  Total:      {{:?}}", total);
                 eprintln!("  Diagnostics: {{}}", total_diags);
@@ -1754,6 +1812,7 @@ mod generated_tests {{
                 eprintln!("  After parse:    {{}}", format_bytes(rss_after_parse));
                 eprintln!("  After resolve:  {{}}", format_bytes(rss_after_resolve));
                 eprintln!("  After reconcile:{{}}", format_bytes(rss_after_reconcile));
+                eprintln!("  After lower:    {{}}", format_bytes(rss_after_lower));
                 eprintln!("  After emit:     {{}}", format_bytes(rss_after_emit));
             }})
             .expect("failed to spawn thread")
