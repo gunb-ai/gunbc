@@ -6462,12 +6462,7 @@ fn lower_tco_plan(
 
     // SG-10: Detect which &str params are pass-through in ALL tail calls.
     // Only these get the &String borrow optimization (avoids per-iteration clone).
-    let str_passthrough: HashSet<usize> = (0..param_names.len())
-        .filter(|&i| {
-            str_param_names.contains(&param_names[i])
-                && is_tco_param_passthrough(&plan.body, i, &param_names[i])
-        })
-        .collect();
+    let str_passthrough = analyze_tco_str_passthrough(&plan.body, param_names, str_param_names);
 
     // Move (not clone) the loop variable into an immutable binding.
     // The tail-call path always reassigns __tco_p_X before `continue`,
@@ -6505,43 +6500,112 @@ fn lower_tco_plan(
     preamble
 }
 
-/// Check if param at index `i` is always passed through unchanged in all Recur sites.
-/// Returns false if no Recur is found (can't determine passthrough without evidence).
-fn is_tco_param_passthrough(stmts: &[TcoPlanStmt], param_idx: usize, param_name: &str) -> bool {
+/// Compute which `&str` params are passed through unchanged in every Recur site.
+///
+/// This runs a single structural walk over the TCO plan and intersects the
+/// passthrough candidates at each `Recur` instead of rescanning the whole plan
+/// once per string parameter.
+fn analyze_tco_str_passthrough(
+    stmts: &[TcoPlanStmt],
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> HashSet<usize> {
+    let mut passthrough: HashSet<usize> = param_names
+        .iter()
+        .enumerate()
+        .filter_map(|(index, param_name)| str_param_names.contains(param_name).then_some(index))
+        .collect();
+    if passthrough.is_empty() {
+        return passthrough;
+    }
+
     let mut found_recur = false;
-    let result = is_tco_param_passthrough_inner(stmts, param_idx, param_name, &mut found_recur);
-    result && found_recur
+    retain_tco_str_passthrough(stmts, param_names, &mut passthrough, &mut found_recur);
+    if found_recur {
+        passthrough
+    } else {
+        HashSet::new()
+    }
 }
 
-fn is_tco_param_passthrough_inner(
+fn retain_tco_str_passthrough(
     stmts: &[TcoPlanStmt],
-    param_idx: usize,
-    param_name: &str,
+    param_names: &[String],
+    passthrough: &mut HashSet<usize>,
     found_recur: &mut bool,
-) -> bool {
-    stmts.iter().all(|stmt| match stmt {
-        TcoPlanStmt::Recur(args) => {
-            *found_recur = true;
-            args.get(param_idx).is_some_and(|arg| {
-                matches!(arg, code_ir::Expr::Var(name) if name == param_name)
-                    || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
-                        if method == "to_string" && margs.is_empty()
-                        && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
-            })
+) {
+    if passthrough.is_empty() {
+        return;
+    }
+
+    for stmt in stmts {
+        match stmt {
+            TcoPlanStmt::Recur(args) => {
+                *found_recur = true;
+                passthrough.retain(|&index| {
+                    args.get(index)
+                        .is_some_and(|arg| is_tco_recur_arg_passthrough(arg, &param_names[index]))
+                });
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+            TcoPlanStmt::Raw(_) | TcoPlanStmt::Break(_) => {}
+            TcoPlanStmt::Expr(expr) | TcoPlanStmt::TailExpr(expr) => {
+                retain_tco_str_passthrough_expr(expr, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+            TcoPlanStmt::BlockScope(body) => {
+                retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
         }
-        TcoPlanStmt::Raw(_) | TcoPlanStmt::Expr(_) | TcoPlanStmt::Break(_) => true,
-        TcoPlanStmt::TailExpr(expr) => match expr {
-            TcoPlanExpr::If { then_body, else_body, .. } => {
-                is_tco_param_passthrough_inner(then_body, param_idx, param_name, found_recur)
-                    && else_body.as_ref().is_none_or(|b| is_tco_param_passthrough_inner(b, param_idx, param_name, found_recur))
+    }
+}
+
+fn retain_tco_str_passthrough_expr(
+    expr: &TcoPlanExpr,
+    param_names: &[String],
+    passthrough: &mut HashSet<usize>,
+    found_recur: &mut bool,
+) {
+    match expr {
+        TcoPlanExpr::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            retain_tco_str_passthrough(then_body, param_names, passthrough, found_recur);
+            if passthrough.is_empty() {
+                return;
             }
-            TcoPlanExpr::Match { arms, .. } => {
-                arms.iter().all(|arm| is_tco_param_passthrough_inner(&arm.body, param_idx, param_name, found_recur))
+            if let Some(body) = else_body {
+                retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
             }
-            TcoPlanExpr::Block(body) => is_tco_param_passthrough_inner(body, param_idx, param_name, found_recur),
-        },
-        TcoPlanStmt::BlockScope(body) => is_tco_param_passthrough_inner(body, param_idx, param_name, found_recur),
-    })
+        }
+        TcoPlanExpr::Match { arms, .. } => {
+            for arm in arms {
+                retain_tco_str_passthrough(&arm.body, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+        }
+        TcoPlanExpr::Block(body) => {
+            retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+        }
+    }
+}
+
+fn is_tco_recur_arg_passthrough(arg: &code_ir::Expr, param_name: &str) -> bool {
+    matches!(arg, code_ir::Expr::Var(name) if name == param_name)
+        || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
+            if method == "to_string" && margs.is_empty()
+            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
 }
 
 fn lower_tco_plan_stmts(
@@ -6644,17 +6708,7 @@ fn lower_tco_recur(
                 .get(i)
                 .is_some_and(|p| str_param_names.contains(p))
             {
-                let is_passthrough = match arg {
-                    code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall {
-                        receiver,
-                        method,
-                        args: margs,
-                    } if method == "to_string" && margs.is_empty() => {
-                        matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
-                    }
-                    _ => false,
-                };
+                let is_passthrough = is_tco_recur_arg_passthrough(arg, &param_names[i]);
                 if is_passthrough {
                     continue;
                 }
@@ -6682,17 +6736,7 @@ fn lower_tco_recur(
                 .get(i)
                 .is_some_and(|p| str_param_names.contains(p))
             {
-                let is_passthrough = match &args[i] {
-                    code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall {
-                        receiver,
-                        method,
-                        args: margs,
-                    } if method == "to_string" && margs.is_empty() => {
-                        matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
-                    }
-                    _ => false,
-                };
+                let is_passthrough = is_tco_recur_arg_passthrough(&args[i], &param_names[i]);
                 if is_passthrough {
                     continue;
                 }
@@ -8990,6 +9034,61 @@ mod tests {
             matches!(&block[4], code_ir::Stmt::Continue),
             "last stmt should be Continue"
         );
+    }
+
+    #[test]
+    fn tco_rebinds_only_globally_passthrough_string_params_by_reference() {
+        let body = vec![code_ir::Stmt::TailExpr(code_ir::Expr::If {
+            cond: Box::new(code_ir::Expr::Var("cond".into())),
+            then_body: vec![code_ir::Stmt::Return(self_call(
+                "f",
+                vec![
+                    code_ir::Expr::Var("source".into()),
+                    code_ir::Expr::Var("suffix".into()),
+                ],
+            ))],
+            else_body: Some(vec![code_ir::Stmt::Return(self_call(
+                "f",
+                vec![
+                    code_ir::Expr::Var("source".into()),
+                    code_ir::Expr::Str("!".into()),
+                ],
+            ))]),
+        })];
+        let str_params = HashSet::from(["source".to_string(), "suffix".to_string()]);
+
+        let transformed = apply_tco("f", &["source".into(), "suffix".into()], &body, &str_params)
+            .expect("tail-recursive string params should still lower with TCO");
+        let loop_body = match &transformed[2] {
+            code_ir::Stmt::Loop { body } => body,
+            other => panic!("expected Loop, got: {other:?}"),
+        };
+
+        match &loop_body[0] {
+            code_ir::Stmt::Let { name, expr, .. } => {
+                assert_eq!(name, "source");
+                assert!(
+                    matches!(
+                        expr,
+                        code_ir::Expr::Ref(inner)
+                            if matches!(inner.as_ref(), code_ir::Expr::Var(var) if var == "__tco_p_source")
+                    ),
+                    "globally passthrough source should rebind by reference, got: {expr:?}"
+                );
+            }
+            other => panic!("expected first rebind let, got: {other:?}"),
+        }
+
+        match &loop_body[1] {
+            code_ir::Stmt::Let { name, expr, .. } => {
+                assert_eq!(name, "suffix");
+                assert!(
+                    matches!(expr, code_ir::Expr::Var(var) if var == "__tco_p_suffix"),
+                    "non-passthrough suffix should keep owned rebind, got: {expr:?}"
+                );
+            }
+            other => panic!("expected second rebind let, got: {other:?}"),
+        }
     }
 
     #[test]
