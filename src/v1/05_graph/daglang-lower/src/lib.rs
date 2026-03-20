@@ -6401,10 +6401,12 @@ fn derive_service_call_metadata(
         None => ServiceTransportClass::Unknown,
     };
 
+    let response_classification = derive_response_classification(service, operation)?;
     let spec = derive_operation_spec(
         service,
         operation,
         transport,
+        response_classification,
         data_registry,
         rest_body_types,
     )?;
@@ -6829,7 +6831,13 @@ fn derive_operation_spec(
     match transport {
         ServiceTransportClass::RestNetwork => {
             Ok(
-                derive_rest_spec(service, operation, data_registry, rest_body_types)?
+                derive_rest_spec(
+                    service,
+                    operation,
+                    response_classification,
+                    data_registry,
+                    rest_body_types,
+                )?
                     .map(|s| ServiceOperationSpec::Rest(Box::new(s))),
             )
         }
@@ -7021,6 +7029,7 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
 fn derive_rest_spec(
     service: &ServiceDef,
     operation: &OperationDef,
+    response_classification: Option<ResponseClassification>,
     data_registry: &DataRegistry<'_>,
     rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<RestOperationSpec>, LowerError> {

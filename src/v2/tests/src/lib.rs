@@ -12,16 +12,6 @@ mod tests {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    static NEXT_TEMP_DIR_ID: AtomicU64 = AtomicU64::new(0);
-
-    fn unique_temp_dir(dir_name: &str) -> std::path::PathBuf {
-        let unique_id = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
-        let tmp_dir =
-            std::env::temp_dir().join(format!("{dir_name}-{}-{unique_id}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-        tmp_dir
-    }
-
     fn workspace_root() -> std::path::PathBuf {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         // v2/tests lives at src/v2/tests, so workspace root is 3 levels up.

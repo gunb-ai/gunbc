@@ -81,19 +81,6 @@ fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
         .collect()
 }
 
-fn missing_declared_input_ports<'a>(
-    referenced_ports: impl IntoIterator<Item = &'a str>,
-    inputs: &[Port],
-) -> Vec<&'a str> {
-    let mut missing = referenced_ports
-        .into_iter()
-        .filter(|port| !inputs.iter().any(|input| input.name.0 == *port))
-        .collect::<Vec<_>>();
-    missing.sort_unstable();
-    missing.dedup();
-    missing
-}
-
 fn declared_input_port_names(inputs: &[Port]) -> Vec<String> {
     let mut declared = inputs
         .iter()
@@ -975,25 +962,27 @@ fn resolve_primitive(
     outputs: &[Port],
 ) -> Result<DynOp, ResolveError> {
     // Validate declared ports cover the kind's required ports.
-    if let Some(required) = kind.required_input_ports() {
-        let declared: std::collections::HashSet<&str> =
-            inputs.iter().map(|p| p.name.0.as_str()).collect();
-        let missing: Vec<&str> = required
-            .iter()
-            .filter(|port| !declared.contains(port.as_str()))
-            .map(String::as_str)
-            .collect();
-        if !missing.is_empty() {
-            let mut declared_sorted: Vec<&str> = declared.into_iter().collect();
-            declared_sorted.sort_unstable();
-            return Err(ResolveError {
-                node_id: node_id.to_string(),
-                reason: format!(
-                    "primitive node has incomplete input ports: missing [{}]; declared [{}]",
-                    missing.join(", "),
-                    declared_sorted.join(", "),
-                ),
-            });
+    if !matches!(kind, PrimitiveOpKind::StringInterpolate { .. }) {
+        if let Some(required) = kind.required_input_ports() {
+            let declared: std::collections::HashSet<&str> =
+                inputs.iter().map(|p| p.name.0.as_str()).collect();
+            let missing: Vec<&str> = required
+                .iter()
+                .filter(|port| !declared.contains(port.as_str()))
+                .map(String::as_str)
+                .collect();
+            if !missing.is_empty() {
+                let mut declared_sorted: Vec<&str> = declared.into_iter().collect();
+                declared_sorted.sort_unstable();
+                return Err(ResolveError {
+                    node_id: node_id.to_string(),
+                    reason: format!(
+                        "primitive node has incomplete input ports: missing [{}]; declared [{}]",
+                        missing.join(", "),
+                        declared_sorted.join(", "),
+                    ),
+                });
+            }
         }
     }
     match kind {
@@ -1076,6 +1065,7 @@ fn resolve_primitive(
                 kind: kind.clone(),
                 output_port: default_output_port(outputs),
                 has_else: false,
+                input_port: None,
             }))
         }
         PrimitiveOpKind::BinaryOp { .. }

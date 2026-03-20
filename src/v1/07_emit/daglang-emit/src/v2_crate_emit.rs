@@ -81,6 +81,20 @@ struct EmbeddedDagMarks {
     include_in_gist_resolve: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct LockPackageKey {
+    name: String,
+    version: String,
+    source: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LockDependencyRef {
+    name: String,
+    version: Option<String>,
+    source: Option<String>,
+}
+
 #[derive(Clone)]
 struct ModuleEmitSharedContext {
     optional_fields: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
@@ -1968,7 +1982,8 @@ mod generated_tests {{
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_v2_crate, build_global_fn_metadata, build_variant_to_enum, type_def_signature,
+        assemble_v2_crate, build_global_fn_metadata, build_variant_to_enum,
+        parse_lock_dependency, type_def_signature,
     };
     use daglang_syntax::ast::{Item, TypeDef};
     use gunbc_ir::code_ir::IrType;
