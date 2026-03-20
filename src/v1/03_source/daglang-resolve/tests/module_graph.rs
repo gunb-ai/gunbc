@@ -1409,6 +1409,54 @@ fn dependency_counts_match_import_structure() {
 }
 
 #[test]
+fn removed_top_level_data_export_disappears_from_module_export_index() {
+    let root = unique_temp_dir("removed_top_level_data_export");
+    let module_path = root.join("sample/contracts.dag");
+
+    write_file(
+        &module_path,
+        r#"
+        module sample.contracts
+
+        data stable_surface: String = "stable"
+        data legacy_surface: String = "legacy"
+        "#,
+    );
+
+    let before_graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph with both data exports to parse");
+    let before_export_index = build_module_export_index(&before_graph.modules);
+    let before_exports = before_export_index
+        .get("sample.contracts")
+        .expect("provider module should exist in export index before removal");
+    assert!(before_exports.contains("stable_surface"));
+    assert!(before_exports.contains("legacy_surface"));
+
+    write_file(
+        &module_path,
+        r#"
+        module sample.contracts
+
+        data stable_surface: String = "stable"
+        "#,
+    );
+
+    let after_graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph after removing data export to parse");
+    let after_export_index = build_module_export_index(&after_graph.modules);
+    let after_exports = after_export_index
+        .get("sample.contracts")
+        .expect("provider module should still exist in export index after removal");
+    assert!(after_exports.contains("stable_surface"));
+    assert!(
+        !after_exports.contains("legacy_surface"),
+        "removed top-level data exports must disappear from build_module_export_index"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn module_import_used_via_exported_service_namespaces_is_not_reported() {
     let root = unique_temp_dir("unused_import_exported_service_namespaces");
 
