@@ -27,6 +27,7 @@
 use std::collections::{HashMap, HashSet};
 
 use daglang_contract::{Diagnostic, DiagnosticContext, FileId, LocatedSpan};
+use daglang_resolve::unused_imports::build_module_export_index;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
     Expr, Field, ForBody, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause,
@@ -399,6 +400,12 @@ pub enum TypeError {
     DuplicateOutputField { item: String, field: String },
     /// Import target does not exist in the available module graph.
     UnresolvedImport { module: String, target: String },
+    /// Import binding is not exported by the target module.
+    UnresolvedImportBinding {
+        module: String,
+        target: String,
+        binding: String,
+    },
     /// Resource/service declares an interface that cannot be resolved.
     UnresolvedInterface {
         implementor: String,
@@ -605,6 +612,7 @@ impl TypeError {
             Self::DuplicateParameter { .. } => "TC013",
             Self::DuplicateOutputField { .. } => "TC014",
             Self::UnresolvedImport { .. } => "TC015",
+            Self::UnresolvedImportBinding { .. } => "TC042",
             Self::UnresolvedInterface { .. } => "TC016",
             Self::AmbiguousInterface { .. } => "TC017",
             Self::MissingOperation { .. } => "TC018",
@@ -655,6 +663,11 @@ impl TypeError {
             )),
             Self::UnresolvedImport { target, .. } => Some(format!(
                 "`{target}` not found — check the module path and ensure the .dag file exists"
+            )),
+            Self::UnresolvedImportBinding {
+                target, binding, ..
+            } => Some(format!(
+                "`{binding}` is not exported by `{target}` — remove it from the selective import or restore the export"
             )),
             Self::UnresolvedCallTarget { callee, .. } => Some(format!(
                 "`{callee}` is not defined — check spelling or add an import"
@@ -725,6 +738,7 @@ impl TypeError {
             Self::UndefinedType(name)
             | Self::UnresolvableType { ty: name, .. }
             | Self::UnresolvedImport { target: name, .. }
+            | Self::UnresolvedImportBinding { binding: name, .. }
             | Self::UnresolvedInterface {
                 interface: name, ..
             }
@@ -838,6 +852,14 @@ impl std::fmt::Display for TypeError {
             Self::UnresolvedImport { module, target } => {
                 write!(f, "unresolved import `{target}` in module `{module}`")
             }
+            Self::UnresolvedImportBinding {
+                module,
+                target,
+                binding,
+            } => write!(
+                f,
+                "unresolved import binding `{binding}` from `{target}` in module `{module}`"
+            ),
             Self::UnresolvedInterface {
                 implementor,
                 interface,
@@ -1111,6 +1133,7 @@ fn typecheck_graph_modules_spanned(
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
     let resource_capability_registry = collect_resource_capabilities(&graph.modules);
+    let export_index = build_module_export_index(&graph.modules);
     let available_modules = graph
         .modules
         .iter()
@@ -1150,6 +1173,28 @@ fn typecheck_graph_modules_spanned(
                         module: module_name.clone(),
                         span: import.span,
                     });
+                    continue;
+                }
+                if let Some(bindings) = &import.node.bindings {
+                    let exported_names = export_index
+                        .get(&target)
+                        .expect("available module must exist in export index");
+                    for binding in bindings {
+                        if exported_names.contains(binding) {
+                            continue;
+                        }
+                        errors.push(SpannedTypeError {
+                            error: TypeError::UnresolvedImportBinding {
+                                module: module_name.clone(),
+                                target: target.clone(),
+                                binding: binding.clone(),
+                            },
+                            file_id: module_file_id,
+                            file: module_file.clone(),
+                            module: module_name.clone(),
+                            span: import.span,
+                        });
+                    }
                 }
             }
         }

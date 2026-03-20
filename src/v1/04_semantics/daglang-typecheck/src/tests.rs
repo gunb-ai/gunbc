@@ -2786,7 +2786,7 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
-fn removed_export_disappears_from_export_index_and_breaks_downstream_service_use() {
+fn removed_selective_import_binding_fails_at_import_boundary() {
     let before_graph = module_graph_from_sources(&[
         (
             "vendor/surface.dag",
@@ -2803,10 +2803,7 @@ service LegacySurface {
             r#"module sample.main
 import vendor.surface { LegacySurface }
 
-func run() -> { body: String } {
-  let response = LegacySurface.fetch()
-  return { body: response.body }
-}"#,
+fn run() -> Unit {}"#,
         ),
     ]);
     let before_export_index = build_module_export_index(&before_graph.modules);
@@ -2835,10 +2832,7 @@ service StableSurface {
             r#"module sample.main
 import vendor.surface { LegacySurface }
 
-func run() -> { body: String } {
-  let response = LegacySurface.fetch()
-  return { body: response.body }
-}"#,
+fn run() -> Unit {}"#,
         ),
     ]);
     let after_export_index = build_module_export_index(&after_graph.modules);
@@ -2856,14 +2850,21 @@ func run() -> { body: String } {
             allow_unresolved_imports: false,
         },
     )
-    .expect_err("removed selective import binding should fail when used downstream");
+    .expect_err("removed selective import binding should fail at the import boundary");
     assert!(errors.iter().any(|error| matches!(
         error,
-        TypeError::UnresolvedServiceCall {
-            caller,
-            service_call,
-        } if caller == "run" && service_call == "LegacySurface.fetch"
+        TypeError::UnresolvedImportBinding {
+            module,
+            target,
+            binding,
+        } if module == "sample.main"
+            && target == "vendor.surface"
+            && binding == "LegacySurface"
     )));
+    assert!(
+        !errors.iter().any(|error| matches!(error, TypeError::UnresolvedServiceCall { .. })),
+        "unused stale imports should fail before service-call resolution"
+    );
 }
 
 #[test]

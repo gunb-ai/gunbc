@@ -13,7 +13,7 @@
 
 module extdeps.cloud.gcp.gcp
 
-import std.types { FilePath, NonEmptyStr, Secret }
+import std.types { FilePath, NonEmptyStr }
 import std.errors { GcpErrorShape }
 
 // -- Projects ------------------------------------------------------
