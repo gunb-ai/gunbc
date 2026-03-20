@@ -104,6 +104,9 @@ pub enum PureBody {
     /// Hardcoded value (e.g., LoadRegistry, FsEnv configuration).
     Literal(serde_json::Value),
 
+    /// Forward explicit `__out:*` passthrough inputs to matching outputs.
+    Passthrough,
+
     /// Build a transport request payload from step inputs.
     PrepareTransport { kind: TransportKind },
 
@@ -273,7 +276,7 @@ use daglang_lower::{
     LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
 };
 use gunbc_ir::node::{Node, NodeBody, NodeKind};
-use gunbc_ir::Port;
+use gunbc_ir::{Port, PortName};
 
 /// Error during computation classification.
 #[derive(Debug, Clone)]
@@ -346,7 +349,7 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
         | NodeKind::ToolEnvironment
         | NodeKind::ToolConsumer
         | NodeKind::DataDeclaration
-        | NodeKind::Pure => classify_pure_body(op, inputs, outputs),
+        | NodeKind::Pure => classify_pure_body(op, &node.id.0, inputs, outputs),
     }
 }
 
@@ -493,6 +496,7 @@ fn classify_resource_acquire(
 /// Classify a pure-kind node's body from its `LoweredOp`.
 fn classify_pure_body(
     op: &LoweredOp,
+    node_id: &str,
     inputs: Vec<TypedPort>,
     outputs: Vec<TypedPort>,
 ) -> Result<Computation, ClassifyError> {
@@ -509,19 +513,15 @@ fn classify_pure_body(
             classify_primitive(module, name, kind, inputs, outputs)
         }
         LoweredOp::Callable {
-            module,
-            name,
-            obligation,
-            ..
-        } => classify_callable_pure(module, name, (*obligation).into(), None, inputs, outputs),
+            name, obligation, ..
+        } => classify_callable_pure(node_id, name, (*obligation).into(), None, inputs, outputs),
         LoweredOp::Transport {
-            module,
             name,
             obligation,
             service_metadata,
             ..
         } => classify_callable_pure(
-            module,
+            node_id,
             name,
             (*obligation).into(),
             Some(service_metadata),
@@ -698,7 +698,7 @@ fn classify_collection(
 /// (template, literal, compare, service-call), not the top-level Computation
 /// category — that decision was made at lowering time (S68).
 fn classify_callable_pure(
-    module: &str,
+    node_id: &str,
     name: &str,
     obligation: ObligationCategory,
     service_metadata: Option<&daglang_lower::ServiceCallMetadata>,
@@ -739,9 +739,7 @@ fn classify_callable_pure(
             }
         }
 
-        ObligationCategory::None => {
-            return classify_by_name(module, name, inputs, outputs);
-        }
+        ObligationCategory::None => return classify_passthrough_callable(node_id, inputs, outputs),
 
         // All other pure-kind obligations produce a literal body.
         _ => PureBody::Literal(serde_json::Value::Null),
@@ -838,20 +836,28 @@ fn infer_request_kind(inputs: &[TypedPort], kind: TransportKind) -> RequestKind 
     }
 }
 
-/// Safety-net classifier for callables with `ObligationCategory::None`.
-///
-/// Most callables are now classified by obligation (assigned in the lowerer).
-/// This function handles any remaining untagged callables as a fallback.
-fn classify_by_name(
-    _module: &str,
-    _name: &str,
+fn classify_passthrough_callable(
+    node_id: &str,
     inputs: Vec<TypedPort>,
     outputs: Vec<TypedPort>,
 ) -> Result<Computation, ClassifyError> {
+    for output in &outputs {
+        let passthrough = format!("{}{}", PortName::OUTPUT_PASSTHROUGH_PREFIX, output.name);
+        if !inputs.iter().any(|input| input.name == passthrough) {
+            return Err(ClassifyError::UnrecognizedOp {
+                node_id: node_id.to_string(),
+                detail: format!(
+                    "missing required output passthrough input `{passthrough}` for output `{}`",
+                    output.name
+                ),
+            });
+        }
+    }
+
     Ok(Computation::Pure {
         inputs,
         outputs,
-        body: PureBody::Literal(serde_json::Value::Null),
+        body: PureBody::Passthrough,
     })
 }
 
@@ -1175,7 +1181,10 @@ mod tests {
     fn classify_makegen_entrypoint() {
         let node = make_node(
             "makegen",
-            vec![scalar("registry", "ToolRegistry")],
+            vec![
+                scalar("registry", "ToolRegistry"),
+                scalar("__out:written", "Bool"),
+            ],
             vec![scalar("written", "Bool")],
             LoweredOp::Callable {
                 module: "tools.makegen".into(),
@@ -1188,8 +1197,38 @@ mod tests {
             },
         );
         let comp = classify_computation(&node).unwrap();
-        // Entrypoint with no special name pattern → generic Pure(Literal).
-        assert!(matches!(comp, Computation::Pure { .. }));
+        assert!(matches!(
+            comp,
+            Computation::Pure {
+                body: PureBody::Passthrough,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classify_none_obligation_callable_requires_output_passthrough_inputs() {
+        let node = make_node(
+            "surface",
+            vec![scalar("registry", "ToolRegistry")],
+            vec![scalar("written", "Bool")],
+            LoweredOp::Callable {
+                module: "tools.makegen".into(),
+                kind: CallableKind::Func,
+                name: "surface".into(),
+                obligation: CallableObligation::None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        );
+        let err = classify_computation(&node).expect_err("missing __out: input must fail");
+        assert!(matches!(
+            err,
+            ClassifyError::UnrecognizedOp { ref node_id, ref detail }
+                if node_id == "surface"
+                    && detail.contains("__out:written")
+        ));
     }
 
     // -- A1.5: pragma node classification tests --
