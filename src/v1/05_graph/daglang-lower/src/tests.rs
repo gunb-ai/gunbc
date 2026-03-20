@@ -4412,6 +4412,86 @@ fn sts_typed_body_rejects_valid_but_unmapped_requested_token_type_variant() {
 }
 
 #[test]
+fn sts_typed_body_rejects_constructor_field_without_wire_contract() {
+    let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type TokenFormat = UseAccessToken | UseIdToken
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: Secret
+  subject_token_type: SubjectTokenType
+  audience: String
+  requested_token_type: RequestedTokenType?
+  token_format: TokenFormat?
+}
+type StsTokenResponse {
+  access_token: Secret
+}
+service gcp.STS {
+  config { endpoint: "https://sts.googleapis.com" }
+  operation Exchange {
+    input {
+      subject_token: Secret
+      audience: String
+    }
+    output {
+      access_token: Secret from "access_token"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: StsTokenExchange {
+        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+        token_format: UseAccessToken
+      }
+    }
+    response {
+      200 => StsTokenResponse
+    }
+  }
+}
+func run(subject_token: Secret, audience: String) -> { access_token: Secret } {
+  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
+  return { access_token: token.access_token }
+}"#;
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
+    let err = lower_typed_project(&typed).expect_err(
+        "lowering should fail when a typed REST constructor field lacks a wire contract",
+    );
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("token_format"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("UseAccessToken"),
+                "expected unmapped constructor in error, got {detail}"
+            );
+            assert!(
+                detail.contains("wire-value contract"),
+                "expected missing wire-value contract detail, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
 fn sts_typed_body_rejects_invalid_subject_token_type_value() {
     let source = sts_transport_module_source(
         r#"        grant_type: TokenExchange {}

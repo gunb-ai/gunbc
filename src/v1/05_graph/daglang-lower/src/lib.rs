@@ -7397,21 +7397,29 @@ fn typed_rest_body_literal(
     key: &str,
     value: &Expr,
 ) -> Result<Option<String>, LowerError> {
-    let Some(field_contract) = typed_rest_body_field_wire_contract(service, operation, key) else {
-        return Ok(None);
+    let field_contract = typed_rest_body_field_wire_contract(service, operation, key);
+    let Some(field_schema) = body_schema.and_then(|schema| schema.field(key)) else {
+        return match field_contract {
+            Some(_) => Err(missing_rest_body_field_metadata(
+                service,
+                operation,
+                body_schema,
+                key,
+            )),
+            None => Ok(None),
+        };
     };
 
-    let field_schema = body_schema
-        .and_then(|schema| schema.field(key))
-        .ok_or_else(|| missing_rest_body_field_metadata(service, operation, body_schema, key))?;
-
     if field_schema.literal_variants.is_empty() {
-        return Err(missing_rest_body_literal_contract(
-            service,
-            operation,
-            body_schema,
-            key,
-        ));
+        return match field_contract {
+            Some(_) => Err(missing_rest_body_literal_contract(
+                service,
+                operation,
+                body_schema,
+                key,
+            )),
+            None => Ok(None),
+        };
     }
 
     let Some(variant) =
@@ -7420,6 +7428,15 @@ fn typed_rest_body_literal(
         })?
     else {
         return Ok(None);
+    };
+
+    let Some(field_contract) = field_contract else {
+        return Err(missing_typed_rest_body_wire_contract(
+            service,
+            operation,
+            key,
+            &variant.name,
+        ));
     };
 
     let Some(variant_contract) = field_contract
