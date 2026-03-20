@@ -92,6 +92,34 @@ fn discovers_all_real_dsl_modules() {
 }
 
 #[test]
+fn real_corpus_includes_contractual_extdeps_language_modules() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+    let discovered_modules: HashSet<String> = graph
+        .modules
+        .iter()
+        .map(|module| module.module_path.as_dotted())
+        .collect();
+    let required_modules = [
+        "extdeps.languages.go.runtime",
+        "extdeps.languages.go.types",
+        "extdeps.languages.python.types",
+        "extdeps.languages.rust.runtime",
+        "extdeps.languages.rust.types",
+    ];
+
+    let missing: Vec<_> = required_modules
+        .into_iter()
+        .filter(|module| !discovered_modules.contains(*module))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "real dsl corpus must retain contractual extdeps language modules: missing {missing:?}"
+    );
+}
+
+#[test]
 fn real_corpus_module_order_is_stable_across_discovery_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
     let first =
