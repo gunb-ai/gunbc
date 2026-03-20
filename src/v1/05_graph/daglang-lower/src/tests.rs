@@ -4124,6 +4124,57 @@ fn sts_transport_module_source(body_fields: &str) -> String {
     .concat()
 }
 
+fn renamed_sts_transport_module_source(body_fields: &str) -> String {
+    [
+        "module extdeps.cloud.gcp.sts\n",
+        "type SubjectKind = JwtToken | StsAccessTokenValue | IdTokenValue | Saml2Value\n",
+        "type RequestedKind = AccessToken | IdTokenRequest\n",
+        "type GrantKind = GrantExchange {}\n",
+        "type ExchangeRequest {\n",
+        "  grant_type: GrantKind\n",
+        "  subject_token: Secret\n",
+        "  subject_token_type: SubjectKind\n",
+        "  audience: String\n",
+        "  requested_token_type: RequestedKind?\n",
+        "}\n",
+        "type StsTokenResponse {\n",
+        "  access_token: Secret\n",
+        "}\n",
+        "data token_exchange_grant_type_wire: String = \"urn:ietf:params:oauth:grant-type:token-exchange\"\n",
+        "data jwt_subject_token_type_wire: String = \"urn:ietf:params:oauth:token-type:jwt\"\n",
+        "data access_token_requested_token_type_wire: String = \"urn:ietf:params:oauth:token-type:access_token\"\n",
+        "service gcp.STS {\n",
+        "  config { endpoint: \"https://sts.googleapis.com\" }\n",
+        "  operation Exchange {\n",
+        "    input {\n",
+        "      subject_token: Secret\n",
+        "      audience: String\n",
+        "    }\n",
+        "    output {\n",
+        "      access_token: Secret from \"access_token\"\n",
+        "    }\n",
+        "    idempotent\n",
+        "    transport rest {\n",
+        "      method: POST,\n",
+        "      path: \"/v1/token\",\n",
+        "      body: ExchangeRequest {\n",
+        body_fields,
+        "\n",
+        "      }\n",
+        "    }\n",
+        "    response {\n",
+        "      200 => StsTokenResponse\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+        "func run(subject_token: Secret, audience: String) -> { access_token: Secret } {\n",
+        "  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)\n",
+        "  return { access_token: token.access_token }\n",
+        "}\n",
+    ]
+    .concat()
+}
+
 #[test]
 fn sts_typed_body_rejects_invalid_grant_type_constructor() {
     let source = sts_transport_module_source(
@@ -4150,11 +4201,100 @@ fn sts_typed_body_rejects_invalid_grant_type_constructor() {
                 "expected field name in error, got {detail}"
             );
             assert!(
-                detail.contains("TokenExchange {}"),
+                detail.contains("TokenExchange"),
                 "expected constructor contract in error, got {detail}"
             );
             assert!(
                 detail.contains("found `Jwt`"),
+                "expected actual invalid value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
+    let source = renamed_sts_transport_module_source(
+        r#"        grant_type: GrantExchange {}
+        subject_token: subject_token
+        subject_token_type: JwtToken
+        audience: audience
+        requested_token_type: AccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let prepare_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("prepare_transport") && node.id.0.contains("Exchange"))
+        .expect("prepare transport node for STS.Exchange should exist");
+
+    let metadata = match &prepare_node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be preserved"),
+        _ => panic!("expected opaque lowered node"),
+    };
+
+    let spec = metadata.spec.as_ref().expect("spec should be present");
+    let ServiceOperationSpec::Rest(rest_spec) = spec else {
+        panic!("expected REST spec");
+    };
+
+    assert_eq!(
+        rest_spec.body_template,
+        Some(vec![
+            BodyEntry::Literal(
+                "grant_type".to_string(),
+                "urn:ietf:params:oauth:grant-type:token-exchange".to_string()
+            ),
+            BodyEntry::InputRef("subject_token".to_string(), "subject_token".to_string()),
+            BodyEntry::Literal(
+                "subject_token_type".to_string(),
+                "urn:ietf:params:oauth:token-type:jwt".to_string()
+            ),
+            BodyEntry::InputRef("audience".to_string(), "audience".to_string()),
+            BodyEntry::Literal(
+                "requested_token_type".to_string(),
+                "urn:ietf:params:oauth:token-type:access_token".to_string()
+            ),
+        ]),
+        "typed REST body lowering should follow request metadata, not STS-specific type names"
+    );
+}
+
+#[test]
+fn typed_rest_body_rejects_invalid_value_using_request_metadata() {
+    let source = renamed_sts_transport_module_source(
+        r#"        grant_type: JwtToken
+        subject_token: subject_token
+        subject_token_type: JwtToken
+        audience: audience
+        requested_token_type: AccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail on an invalid renamed grant_type value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("GrantExchange"),
+                "expected metadata-derived constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `JwtToken`"),
                 "expected actual invalid value in error, got {detail}"
             );
         }

@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
@@ -6337,6 +6337,7 @@ fn derive_service_call_metadata(
     service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<ServiceCallMetadata, LowerError> {
     let transport = match &operation.transport {
         Some(TransportBinding::Rest { .. }) => ServiceTransportClass::RestNetwork,
@@ -6350,7 +6351,13 @@ fn derive_service_call_metadata(
         None => ServiceTransportClass::Unknown,
     };
 
-    let spec = derive_operation_spec(service, operation, transport, data_registry)?;
+    let spec = derive_operation_spec(
+        service,
+        operation,
+        transport,
+        data_registry,
+        rest_body_types,
+    )?;
 
     // Auto-derive readonly from HTTP method: GET and HEAD are read-only by definition.
     let readonly = operation.readonly
@@ -6392,6 +6399,160 @@ fn derive_service_call_metadata(
 /// Registry of module-level `data` definitions, keyed by both qualified and
 /// unqualified names. Used to resolve compile-time constants (e.g., env maps).
 type DataRegistry<'a> = HashMap<String, &'a DataDef>;
+
+#[derive(Debug, Clone, Default)]
+struct RestBodyTypeRegistry {
+    records: HashMap<String, Vec<(String, TypeExpr)>>,
+    sums: HashMap<String, Vec<RestBodyVariantType>>,
+    aliases: HashMap<String, TypeExpr>,
+}
+
+#[derive(Debug, Clone)]
+struct RestBodyVariantType {
+    name: String,
+    fields: Vec<(String, TypeExpr)>,
+}
+
+#[derive(Debug, Clone)]
+struct TypedRestBodyLiteral {
+    field_type: String,
+}
+
+impl RestBodyTypeRegistry {
+    fn from_project(project: &TypedProject) -> Self {
+        let mut registry = Self::default();
+        for module in project.modules() {
+            for item in &module.ast.items {
+                let Item::TypeDef(def) = &item.node else {
+                    continue;
+                };
+                match &def.body {
+                    TypeBody::Record(fields) => {
+                        registry.records.insert(
+                            def.name.clone(),
+                            fields
+                                .iter()
+                                .map(|field| (field.name.clone(), field.ty.clone()))
+                                .collect(),
+                        );
+                    }
+                    TypeBody::Sum(variants) => {
+                        registry.sums.insert(
+                            def.name.clone(),
+                            variants
+                                .iter()
+                                .map(|variant| RestBodyVariantType {
+                                    name: variant.name.clone(),
+                                    fields: variant
+                                        .fields
+                                        .iter()
+                                        .map(|field| (field.name.clone(), field.ty.clone()))
+                                        .collect(),
+                                })
+                                .collect(),
+                        );
+                    }
+                    TypeBody::Alias(inner) => {
+                        registry.aliases.insert(def.name.clone(), inner.clone());
+                    }
+                }
+            }
+        }
+        registry
+    }
+
+    fn record_field_type(&self, record_name: &str, field_name: &str) -> Option<&TypeExpr> {
+        self.records
+            .get(record_name)?
+            .iter()
+            .find_map(|(name, ty)| (name == field_name).then_some(ty))
+    }
+
+    fn resolve_sum(&self, ty: &TypeExpr) -> Option<&[RestBodyVariantType]> {
+        match ty {
+            TypeExpr::Named(name) => self
+                .sums
+                .get(name)
+                .map(|variants| variants.as_slice())
+                .or_else(|| {
+                    self.aliases
+                        .get(name)
+                        .and_then(|inner| self.resolve_sum(inner))
+                }),
+            TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => self.resolve_sum(inner),
+            _ => None,
+        }
+    }
+
+    fn typed_literal_for_field(
+        &self,
+        parent_record_name: Option<&str>,
+        field_name: &str,
+        value: &Expr,
+    ) -> Result<Option<TypedRestBodyLiteral>, String> {
+        let Some(parent_record_name) = parent_record_name else {
+            return Ok(None);
+        };
+        let Some(field_ty) = self.record_field_type(parent_record_name, field_name) else {
+            return Ok(None);
+        };
+        let Some(variants) = self.resolve_sum(field_ty) else {
+            return Ok(None);
+        };
+
+        match value {
+            Expr::Ident(name) => {
+                let Some(variant) = variants.iter().find(|variant| variant.name == *name) else {
+                    return Err(sum_literal_contract(variants));
+                };
+                if !variant.fields.is_empty() {
+                    return Err(sum_literal_contract(variants));
+                }
+                Ok(Some(TypedRestBodyLiteral {
+                    field_type: type_expr_to_string(field_ty),
+                }))
+            }
+            Expr::Record(Some(name), fields) => {
+                let Some(variant) = variants.iter().find(|variant| variant.name == *name) else {
+                    return Err(sum_literal_contract(variants));
+                };
+                if !record_fields_match_variant(fields, &variant.fields) {
+                    return Err(sum_literal_contract(variants));
+                }
+                Ok(Some(TypedRestBodyLiteral {
+                    field_type: type_expr_to_string(field_ty),
+                }))
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+fn record_fields_match_variant(
+    fields: &[(String, Expr)],
+    variant_fields: &[(String, TypeExpr)],
+) -> bool {
+    fields.len() == variant_fields.len()
+        && fields.iter().all(|(name, _)| {
+            variant_fields
+                .iter()
+                .any(|(expected_name, _)| expected_name == name)
+        })
+}
+
+fn sum_literal_contract(variants: &[RestBodyVariantType]) -> String {
+    variants
+        .iter()
+        .map(|variant| {
+            if variant.fields.is_empty() {
+                format!("`{}`", variant.name)
+            } else {
+                format!("`{} {{ ... }}`", variant.name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
 
 /// Build a data registry from all modules in the project.
 fn build_data_registry<'a>(project: &'a TypedProject<'_>) -> DataRegistry<'a> {
@@ -6548,11 +6709,14 @@ fn derive_operation_spec(
     operation: &OperationDef,
     transport: ServiceTransportClass,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
-            Ok(derive_rest_spec(service, operation, data_registry)?
-                .map(|s| ServiceOperationSpec::Rest(Box::new(s))))
+            Ok(
+                derive_rest_spec(service, operation, data_registry, rest_body_types)?
+                    .map(|s| ServiceOperationSpec::Rest(Box::new(s))),
+            )
         }
         ServiceTransportClass::ShellLocal => {
             Ok(derive_shell_spec(service, operation, data_registry)?
@@ -6758,6 +6922,7 @@ fn derive_rest_spec(
     service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
@@ -6791,6 +6956,7 @@ fn derive_rest_spec(
             b,
             &operation_input_names,
             data_registry,
+            rest_body_types,
         )?,
         _ => None,
     };
@@ -7008,6 +7174,7 @@ fn body_template_entries_from_expr(
     expr: &Expr,
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<Vec<BodyEntry>>, LowerError> {
     match expr {
         Expr::Record(record_name, fields) => {
@@ -7021,6 +7188,7 @@ fn body_template_entries_from_expr(
                     value,
                     operation_input_names,
                     data_registry,
+                    rest_body_types,
                 )? {
                     entries.push(entry);
                 }
@@ -7039,6 +7207,7 @@ fn body_template_entries_from_expr(
                         value,
                         operation_input_names,
                         data_registry,
+                        rest_body_types,
                     )? {
                         entries.push(entry);
                     }
@@ -7051,6 +7220,7 @@ fn body_template_entries_from_expr(
 }
 
 /// Convert a single key-value pair to a BodyEntry.
+#[allow(clippy::too_many_arguments)]
 fn body_template_entry(
     service: &ServiceDef,
     operation: &OperationDef,
@@ -7059,6 +7229,7 @@ fn body_template_entry(
     value: &Expr,
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<BodyEntry>, LowerError> {
     match value {
         Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => Ok(Some(
@@ -7071,26 +7242,28 @@ fn body_template_entry(
             if let Some(value) = resolve_const_string(name, data_registry) {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
-            if let Some(value) = sts_typed_body_literal(
+            if let Some(value) = typed_rest_body_literal(
                 service,
                 operation,
                 parent_record_name,
                 key,
                 value,
                 data_registry,
+                rest_body_types,
             )? {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
             Ok(None)
         }
         Expr::Record(_, _) | Expr::Map(_) => {
-            if let Some(value) = sts_typed_body_literal(
+            if let Some(value) = typed_rest_body_literal(
                 service,
                 operation,
                 parent_record_name,
                 key,
                 value,
                 data_registry,
+                rest_body_types,
             )? {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
@@ -7100,17 +7273,19 @@ fn body_template_entry(
                 value,
                 operation_input_names,
                 data_registry,
+                rest_body_types,
             )?;
             Ok(inner.map(|inner| BodyEntry::Nested(key.to_string(), inner)))
         }
         _ => {
-            if let Some(value) = sts_typed_body_literal(
+            if let Some(value) = typed_rest_body_literal(
                 service,
                 operation,
                 parent_record_name,
                 key,
                 value,
                 data_registry,
+                rest_body_types,
             )? {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
@@ -7128,76 +7303,61 @@ fn resolve_const_string(name: &str, data_registry: &DataRegistry<'_>) -> Option<
     }
 }
 
-fn sts_typed_body_literal(
+fn typed_rest_body_literal(
     service: &ServiceDef,
     operation: &OperationDef,
     parent_record_name: Option<&str>,
     key: &str,
     value: &Expr,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<String>, LowerError> {
-    if parent_record_name != Some("StsTokenExchange") {
+    let Some(typed_literal) = rest_body_types
+        .typed_literal_for_field(parent_record_name, key, value)
+        .map_err(|expected| {
+            invalid_typed_rest_body_value(service, operation, key, expected.as_str(), value)
+        })?
+    else {
         return Ok(None);
-    }
+    };
 
-    match key {
-        "grant_type" => match value {
-            Expr::Record(Some(name), fields) if name == "TokenExchange" && fields.is_empty() => {
-                Ok(Some(resolve_required_sts_wire_value(
-                    service,
-                    operation,
-                    key,
-                    "token_exchange_grant_type_wire",
-                    data_registry,
-                )?))
-            }
-            _ => Err(invalid_sts_body_value(
-                service,
-                operation,
-                key,
-                "`TokenExchange {}` or `token_exchange_grant_type_wire`",
-                value,
-            )),
-        },
-        "subject_token_type" => match value {
-            Expr::Ident(name) if name == "Jwt" => Ok(Some(resolve_required_sts_wire_value(
-                service,
-                operation,
-                key,
-                "jwt_subject_token_type_wire",
-                data_registry,
-            )?)),
-            _ => Err(invalid_sts_body_value(
-                service,
-                operation,
-                key,
-                "`Jwt` or `jwt_subject_token_type_wire`",
-                value,
-            )),
-        },
-        "requested_token_type" => match value {
-            Expr::Ident(name) if name == "RequestAccessToken" => {
-                Ok(Some(resolve_required_sts_wire_value(
-                    service,
-                    operation,
-                    key,
-                    "access_token_requested_token_type_wire",
-                    data_registry,
-                )?))
-            }
-            _ => Err(invalid_sts_body_value(
-                service,
-                operation,
-                key,
-                "`RequestAccessToken` or `access_token_requested_token_type_wire`",
-                value,
-            )),
-        },
-        _ => Ok(None),
+    let Some(const_name) = typed_rest_body_wire_constant(service, operation, key) else {
+        return Err(LowerError::InvalidTransportSpec {
+            service: service.name.clone(),
+            operation: operation.name.clone(),
+            detail: format!(
+                "REST request field `{key}` uses typed value {} for `{}`, but lowering has no wire-value derivation for that field",
+                describe_transport_body_expr(value),
+                typed_literal.field_type
+            ),
+        });
+    };
+
+    Ok(Some(resolve_required_rest_wire_value(
+        service,
+        operation,
+        key,
+        const_name,
+        data_registry,
+    )?))
+}
+
+fn typed_rest_body_wire_constant(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+) -> Option<&'static str> {
+    match (service.name.as_str(), operation.name.as_str(), field_name) {
+        ("gcp.STS", "Exchange", "grant_type") => Some("token_exchange_grant_type_wire"),
+        ("gcp.STS", "Exchange", "subject_token_type") => Some("jwt_subject_token_type_wire"),
+        ("gcp.STS", "Exchange", "requested_token_type") => {
+            Some("access_token_requested_token_type_wire")
+        }
+        _ => None,
     }
 }
 
-fn resolve_required_sts_wire_value(
+fn resolve_required_rest_wire_value(
     service: &ServiceDef,
     operation: &OperationDef,
     field_name: &str,
@@ -7208,12 +7368,12 @@ fn resolve_required_sts_wire_value(
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "STS request field `{field_name}` requires string data `{const_name}` to define its OAuth wire value"
+            "REST request field `{field_name}` requires string data `{const_name}` to define its wire value"
         ),
     })
 }
 
-fn invalid_sts_body_value(
+fn invalid_typed_rest_body_value(
     service: &ServiceDef,
     operation: &OperationDef,
     field_name: &str,
@@ -7224,7 +7384,7 @@ fn invalid_sts_body_value(
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "STS request field `{field_name}` must be {expected}; found {}",
+            "REST request field `{field_name}` must be {expected}; found {}",
             describe_transport_body_expr(value)
         ),
     }
@@ -7762,6 +7922,7 @@ fn derive_service_transport_triplets(
     required_calls: Option<&HashSet<String>>,
 ) -> Result<transport::TransportManifest, LowerError> {
     let data_registry = build_data_registry(project);
+    let rest_body_types = RestBodyTypeRegistry::from_project(project);
     let mut manifest = transport::TransportManifest::new();
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
@@ -7794,8 +7955,12 @@ fn derive_service_transport_triplets(
                     }
                 }
                 validate_rest_output_field_paths(service, operation)?;
-                let service_metadata =
-                    derive_service_call_metadata(service, operation, &data_registry)?;
+                let service_metadata = derive_service_call_metadata(
+                    service,
+                    operation,
+                    &data_registry,
+                    &rest_body_types,
+                )?;
                 // RT4: Fail-closed when a service operation has no transport
                 // block. Previously this silently created a triplet with no
                 // spec, causing the executor to skip the operation.
