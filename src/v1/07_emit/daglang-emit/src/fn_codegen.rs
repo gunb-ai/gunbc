@@ -2481,6 +2481,39 @@ fn infer_call_arg_type(
     })
 }
 
+struct CallArgIndex<'a> {
+    args: &'a [(Option<String>, ast::Expr)],
+    named_indexes: HashMap<&'a str, usize>,
+}
+
+impl<'a> CallArgIndex<'a> {
+    fn new(args: &'a [(Option<String>, ast::Expr)]) -> Self {
+        let mut named_indexes = HashMap::new();
+        for (index, (name, _)) in args.iter().enumerate() {
+            if let Some(name) = name.as_deref() {
+                // Preserve the first occurrence to match the previous linear-scan semantics.
+                named_indexes.entry(name).or_insert(index);
+            }
+        }
+        Self {
+            args,
+            named_indexes,
+        }
+    }
+
+    fn named_index(&self, name: &str) -> Option<usize> {
+        self.named_indexes.get(name).copied()
+    }
+
+    fn named_or_positional_index(&self, name: &str, pos: usize) -> usize {
+        self.named_index(name).unwrap_or(pos)
+    }
+
+    fn named_or_positional_expr(&self, name: &str, pos: usize) -> &'a ast::Expr {
+        &self.args[self.named_or_positional_index(name, pos)].1
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Function calls
 // ---------------------------------------------------------------------------
@@ -2498,6 +2531,8 @@ fn compile_intrinsic_call(
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> Option<code_ir::Expr> {
+    let call_args = CallArgIndex::new(args);
+
     // Zero-arg intrinsics (before the args.is_empty() guard).
     // empty_map() → Rc::new(HashMap::new())
     if name == "empty_map" && args.is_empty() {
@@ -2537,16 +2572,14 @@ fn compile_intrinsic_call(
         })),
         "fold" if args.len() >= 2 => {
             let call_path = ctx.current_expr_path();
-            let init_index = args
-                .iter()
-                .position(|(n, _)| n.as_deref() == Some("init"))
+            let init_index = call_args
+                .named_index("init")
                 .or_else(|| (args.len() > 1).then_some(1));
-            let init = init_index.map(|index| &args[index].1);
-            let func_index = args
-                .iter()
-                .position(|(n, _)| n.as_deref() == Some("f"))
+            let init = init_index.map(|index| &call_args.args[index].1);
+            let func_index = call_args
+                .named_index("f")
                 .or_else(|| (args.len() > 2).then_some(2));
-            let func = func_index.map(|index| &args[index].1);
+            let func = func_index.map(|index| &call_args.args[index].1);
             Some(compile_fold_intrinsic(
                 &collection.clone(),
                 &args[0].1,
@@ -2563,21 +2596,13 @@ fn compile_intrinsic_call(
             ))
         }
         "any" if args.len() == 2 => {
-            let pred = args
-                .iter()
-                .find(|(n, _)| n.as_deref() == Some("predicate"))
-                .or_else(|| args.get(1))
-                .map(|(_, e)| e);
+            let pred = Some(call_args.named_or_positional_expr("predicate", 1));
             Some(with_call_arg_path(ctx, 1, || {
                 compile_any_intrinsic(&collection.clone(), &args[0].1, pred, ctx, counter)
             }))
         }
         "all" if args.len() == 2 => {
-            let pred = args
-                .iter()
-                .find(|(n, _)| n.as_deref() == Some("predicate"))
-                .or_else(|| args.get(1))
-                .map(|(_, e)| e);
+            let pred = Some(call_args.named_or_positional_expr("predicate", 1));
             Some(with_call_arg_path(ctx, 1, || {
                 compile_all_intrinsic(&collection.clone(), &args[0].1, pred, ctx, counter)
             }))
@@ -2813,8 +2838,10 @@ fn compile_intrinsic_call(
         "char_at" if args.len() == 2 => {
             // SG-10: Pass &s instead of s.to_string()/s.clone() — runtime accepts impl AsRef<str>.
             // Strips .to_string()/.clone() and wraps in & to avoid O(N) string copy per call.
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
-            let pos = resolve_named_or_positional(args, "pos", 1, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
+            let pos = resolve_named_or_positional(&call_args, "pos", 1, ctx, counter);
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2825,7 +2852,9 @@ fn compile_intrinsic_call(
             })
         }
         "string_length" if args.len() == 1 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2836,9 +2865,11 @@ fn compile_intrinsic_call(
             })
         }
         "substring" if args.len() == 3 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
-            let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
-            let end = resolve_named_or_positional(args, "end", 2, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
+            let start = resolve_named_or_positional(&call_args, "start", 1, ctx, counter);
+            let end = resolve_named_or_positional(&call_args, "end", 2, ctx, counter);
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2849,9 +2880,11 @@ fn compile_intrinsic_call(
             })
         }
         "string_contains" if args.len() == 2 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
             let substring = ref_string_arg(resolve_named_or_positional(
-                args,
+                &call_args,
                 "substring",
                 1,
                 ctx,
@@ -2867,8 +2900,8 @@ fn compile_intrinsic_call(
             })
         }
         "lookup" if args.len() == 2 => {
-            let table = resolve_named_or_positional(args, "table", 0, ctx, counter);
-            let key = resolve_named_or_positional(args, "key", 1, ctx, counter);
+            let table = resolve_named_or_positional(&call_args, "table", 0, ctx, counter);
+            let key = resolve_named_or_positional(&call_args, "key", 1, ctx, counter);
             let lookup_call = code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2879,15 +2912,9 @@ fn compile_intrinsic_call(
             };
             // R8: Data table statics store bare T (Rc is not Sync), but the
             // rest of the code expects Rc<T>.  Wrap: lookup(..).map(Rc::new).
-            let table_name = match &args[0].1 {
+            let table_name = match call_args.named_or_positional_expr("table", 0) {
                 ast::Expr::Ident(n) => Some(n.as_str()),
-                _ => args
-                    .iter()
-                    .find(|(name, _)| name.as_deref() == Some("table"))
-                    .and_then(|(_, e)| match e {
-                        ast::Expr::Ident(n) => Some(n.as_str()),
-                        _ => None,
-                    }),
+                _ => None,
             };
             let needs_rc_wrap = table_name.is_some_and(|name| {
                 ctx.data_ir_types.get(name).is_some_and(|ir| {
@@ -3509,18 +3536,18 @@ fn render_expr_inline(expr: &code_ir::Expr) -> String {
 
 /// Resolve a named argument by name first, falling back to positional index.
 fn resolve_named_or_positional(
-    args: &[(Option<String>, ast::Expr)],
+    call_args: &CallArgIndex<'_>,
     name: &str,
     pos: usize,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
-    // Try named first
-    if let Some(index) = args.iter().position(|(n, _)| n.as_deref() == Some(name)) {
-        return compile_call_arg(args, index, ctx, counter);
-    }
-    // Fall back to positional
-    compile_call_arg(args, pos, ctx, counter)
+    compile_call_arg(
+        call_args.args,
+        call_args.named_or_positional_index(name, pos),
+        ctx,
+        counter,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -8349,6 +8376,77 @@ mod tests {
                 assert_eq!(args.len(), 1);
             }
             other => panic!("expected Call in stmt, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn substring_intrinsic_uses_named_args_out_of_order() {
+        let mut counter = 0usize;
+        let expr = Expr::Call(
+            "substring".into(),
+            vec![
+                (Some("end".into()), Expr::Literal(Literal::Int(3))),
+                (Some("s".into()), Expr::Ident("text".into())),
+                (Some("start".into()), Expr::Literal(Literal::Int(1))),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &empty_ctx(), &mut counter);
+        match ir {
+            code_ir::Expr::Call { func, args, .. } => {
+                assert!(
+                    matches!(func.as_ref(), code_ir::Expr::Path(parts) if parts == &["v2_rt", "substring"]),
+                    "expected v2_rt::substring call, got: {func:?}"
+                );
+                assert_eq!(args.len(), 3);
+                assert!(
+                    matches!(&args[0], code_ir::Expr::Ref(inner) if matches!(inner.as_ref(), code_ir::Expr::Var(name) if name == "text")),
+                    "expected first arg to borrow text, got: {:?}",
+                    args[0]
+                );
+                assert!(
+                    matches!(&args[1], code_ir::Expr::IntLit(1)),
+                    "expected start arg to come from the named `start`, got: {:?}",
+                    args[1]
+                );
+                assert!(
+                    matches!(&args[2], code_ir::Expr::IntLit(3)),
+                    "expected end arg to come from the named `end`, got: {:?}",
+                    args[2]
+                );
+            }
+            other => panic!("expected substring call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_intrinsic_uses_named_init_out_of_order() {
+        let mut counter = 0usize;
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("items".into())),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "item".into()],
+                        Box::new(Expr::Ident("acc".into())),
+                    ),
+                ),
+                (Some("init".into()), Expr::Literal(Literal::Int(7))),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &empty_ctx(), &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => match &stmts[0] {
+                code_ir::Stmt::Let { expr, .. } => assert!(
+                    matches!(expr, code_ir::Expr::IntLit(7)),
+                    "expected fold init to use the named `init` arg, got: {expr:?}"
+                ),
+                other => panic!("expected fold preamble let, got: {other:?}"),
+            },
+            other => panic!("expected fold block, got: {other:?}"),
         }
     }
 
