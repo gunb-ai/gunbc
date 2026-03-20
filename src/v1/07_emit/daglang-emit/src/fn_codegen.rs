@@ -145,6 +145,8 @@ pub struct CompileContext {
     pub data_map_names: Shared<HashSet<String>>,
     /// Map from struct name → set of field names that are `Option<T>`.
     pub optional_fields: Shared<std::collections::HashMap<String, HashSet<String>>>,
+    /// Flattened set of optional field names for O(1) fallback optionality checks.
+    pub optional_field_names: Shared<HashSet<String>>,
     /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
     /// Ambiguous variants (present in multiple enums) are excluded.
     pub variant_to_enum: Shared<std::collections::HashMap<String, String>>,
@@ -580,6 +582,7 @@ impl CompileContext {
             data_ir_types: Shared::default(),
             data_map_names: Shared::default(),
             optional_fields: Shared::default(),
+            optional_field_names: Shared::default(),
             variant_to_enum: Shared::default(),
             struct_field_types: Shared::default(),
             struct_field_names: Shared::default(),
@@ -619,6 +622,7 @@ impl CompileContext {
     }
 
     pub(crate) fn rebuild_field_name_indexes(&mut self) {
+        self.optional_field_names = build_optional_field_names(&self.optional_fields).into();
         self.struct_field_names = build_struct_field_names(&self.struct_field_types).into();
         self.enum_accessor_field_names =
             build_enum_accessor_field_names(&self.enum_accessor_fields).into();
@@ -5368,24 +5372,12 @@ fn is_likely_option_receiver_ctx(expr: &ast::Expr, ctx: &CompileContext) -> bool
         // A bare identifier is Option if it matches a known optional field name
         // in any struct (e.g., `return_type` from `FnDef.return_type: TypeExpr?`).
         ast::Expr::Ident(name) => {
-            for opt_fields in ctx.optional_fields.values() {
-                if opt_fields.contains(name.as_str()) {
-                    return true;
-                }
-            }
-            // Also check optional params
-            ctx.optional_params.contains(name.as_str())
+            ctx.optional_field_names.contains(name.as_str())
+                || ctx.optional_params.contains(name.as_str())
         }
         // A field access is Option if the accessed field is optional
         // (e.g., `p.module` where `ParseResult.module: Module?`).
-        ast::Expr::FieldAccess(_, field) => {
-            for opt_fields in ctx.optional_fields.values() {
-                if opt_fields.contains(field.as_str()) {
-                    return true;
-                }
-            }
-            false
-        }
+        ast::Expr::FieldAccess(_, field) => ctx.optional_field_names.contains(field.as_str()),
         _ => false,
     }
 }
@@ -5559,11 +5551,7 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext, target_struc
                 }
                 // Fallback: check ALL structs — field accesses are specific enough
                 // that name-based matching is reliable (unlike bare identifiers).
-                for opt_fields in ctx.optional_fields.values() {
-                    if opt_fields.contains(field_name.as_str()) {
-                        return true;
-                    }
-                }
+                return ctx.optional_field_names.contains(field_name.as_str());
             }
             false
         }
@@ -5981,6 +5969,15 @@ pub(crate) fn build_struct_field_names(
     struct_field_types
         .values()
         .flat_map(|fields| fields.keys().cloned())
+        .collect()
+}
+
+pub(crate) fn build_optional_field_names(
+    optional_fields: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    optional_fields
+        .values()
+        .flat_map(|fields| fields.iter().cloned())
         .collect()
 }
 
@@ -7162,6 +7159,7 @@ mod tests {
             "Config".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Config".into()),
@@ -7194,8 +7192,8 @@ mod tests {
                 ("optional_b".to_string(), "Option<String>".to_string()),
                 ("optional_a".to_string(), "Option<String>".to_string()),
             ]
-                .into_iter()
-                .collect(),
+            .into_iter()
+            .collect(),
         );
         ctx.struct_field_ir_types.insert(
             "Config".to_string(),
@@ -7217,6 +7215,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Config".into()),
@@ -7252,6 +7251,7 @@ mod tests {
             "Config".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Config".into()),
@@ -7315,6 +7315,7 @@ mod tests {
             "Config".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Target".into()),
@@ -7369,6 +7370,7 @@ mod tests {
             "Target".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let body = FnBody {
             stmts: vec![Stmt::Return(vec![(
@@ -8224,6 +8226,76 @@ mod tests {
             infer_match_result_type(&arms, &ctx),
             Some("TokenKind".to_string())
         );
+    }
+
+    #[test]
+    fn optional_field_binding_value_access_uses_unwrap_via_optional_field_index() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.optional_fields.insert(
+            "MaybeToken".to_string(),
+            ["return_type".to_string()].into_iter().collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("return_type".into())), "value".into());
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::MethodCall { method, args, .. } => {
+                assert_eq!(method, "unwrap");
+                assert!(args.is_empty());
+            }
+            other => panic!("expected unwrap method call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn optional_record_field_uses_indexed_optional_field_fallback_without_double_wrapping() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "Target".to_string(),
+            [("maybe".to_string(), "Option<String>".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Target".to_string(),
+            vec![("maybe".to_string(), IrType::Optional(Box::new(IrType::Str)))],
+        );
+        ctx.optional_fields.insert(
+            "Source".to_string(),
+            ["maybe".to_string()].into_iter().collect(),
+        );
+        ctx.optional_fields.insert(
+            "Target".to_string(),
+            ["maybe".to_string()].into_iter().collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::Record(
+            Some("Target".into()),
+            vec![(
+                "maybe".into(),
+                Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
+            )],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct { fields, .. } => match &fields[0].1 {
+                code_ir::Expr::Call { func, .. } => {
+                    assert!(
+                        !matches!(func.as_ref(), code_ir::Expr::Var(name) if name == "Some"),
+                        "expected optional field to stay single-wrapped, got: {:?}",
+                        fields[0].1
+                    );
+                }
+                _ => {}
+            },
+            other => panic!("expected Struct, got: {other:?}"),
+        }
     }
 
     #[test]

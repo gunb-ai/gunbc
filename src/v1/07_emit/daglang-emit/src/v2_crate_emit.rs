@@ -77,6 +77,7 @@ struct EmbeddedDagMarks {
 #[derive(Clone)]
 struct ModuleEmitSharedContext {
     optional_fields: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    optional_field_names: fn_codegen::Shared<HashSet<String>>,
     variant_to_enum: fn_codegen::Shared<HashMap<String, String>>,
     struct_field_types: fn_codegen::Shared<StructFieldTypes>,
     struct_field_names: fn_codegen::Shared<HashSet<String>>,
@@ -125,10 +126,12 @@ impl ModuleEmitSharedContext {
             rc_wrapped_types,
         } = indexes;
         let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&fn_param_types);
+        let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
         let enum_accessor_field_names =
             fn_codegen::build_enum_accessor_field_names(&enum_accessor_fields);
         Self {
             optional_fields: optional_fields.into(),
+            optional_field_names: optional_field_names.into(),
             variant_to_enum: variant_to_enum.into(),
             struct_field_types: StructFieldTypes::new().into(),
             struct_field_names: HashSet::new().into(),
@@ -882,6 +885,7 @@ fn emit_module(
             .into(),
         data_map_names: data_map_names.into(),
         optional_fields: shared_ctx.optional_fields.clone(),
+        optional_field_names: shared_ctx.optional_field_names.clone(),
         variant_to_enum: shared_ctx.variant_to_enum.clone(),
         struct_field_types: shared_ctx.struct_field_types.clone(),
         struct_field_names: shared_ctx.struct_field_names.clone(),

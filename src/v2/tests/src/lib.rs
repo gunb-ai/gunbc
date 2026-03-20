@@ -8,6 +8,7 @@
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -46,6 +47,16 @@ mod tests {
         let path = workspace_root().join(relative_path);
         std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
+    }
+
+    fn fresh_temp_dir(prefix: &str) -> std::path::PathBuf {
+        static NEXT_TEMP_DIR_ID: AtomicUsize = AtomicUsize::new(0);
+
+        let unique_id = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
+        let tmp_dir =
+            std::env::temp_dir().join(format!("{prefix}-{}-{unique_id}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        tmp_dir
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -3408,8 +3419,7 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
 
-        let tmp_dir = std::env::temp_dir().join(dir_name);
-        let _ = std::fs::remove_dir_all(&tmp_dir);
+        let tmp_dir = fresh_temp_dir(dir_name);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
         tmp_dir
     }
@@ -3924,8 +3934,7 @@ fn example(items: List<String>) -> Int {
         );
 
         // Write emitted files to a temp directory and verify with cargo check.
-        let tmp_dir = std::env::temp_dir().join("v2-gist-rust-check");
-        let _ = std::fs::remove_dir_all(&tmp_dir);
+        let tmp_dir = fresh_temp_dir("v2-gist-rust-check");
         let src_dir = tmp_dir.join("src");
         std::fs::create_dir_all(&src_dir).expect("failed to create src dir");
 
@@ -4055,8 +4064,7 @@ path = "src/lib.rs"
         );
 
         // Write emitted .py files to a temp directory and verify each one.
-        let tmp_dir = std::env::temp_dir().join("v2-gist-python-check");
-        let _ = std::fs::remove_dir_all(&tmp_dir);
+        let tmp_dir = fresh_temp_dir("v2-gist-python-check");
         std::fs::create_dir_all(&tmp_dir).expect("failed to create temp dir");
 
         let mut py_files = Vec::new();

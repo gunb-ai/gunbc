@@ -1327,10 +1327,12 @@ pub fn typedefs_to_source_file(
     }
     let struct_field_ir_type_lookup =
         fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
+    let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
     let ctx = fn_codegen::CompileContext {
         data_names: data_names.into(),
         data_map_names: std::collections::HashSet::new().into(),
         optional_fields: optional_fields.into(),
+        optional_field_names: optional_field_names.into(),
         variant_to_enum: variant_to_enum.into(),
         struct_field_types: struct_field_types.into(),
         struct_field_names: std::collections::HashSet::new().into(),
@@ -1478,11 +1480,13 @@ pub fn generate_types_for_modules(
     let struct_field_ir_type_lookup =
         fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
     let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&global_fn_param_types);
+    let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
     let base_fn_ctx = fn_codegen::CompileContext {
         data_names: fn_data_names.into(),
         data_ir_types: data_ir_types.into(),
         data_map_names: std::collections::HashSet::new().into(),
         optional_fields: optional_fields.into(),
+        optional_field_names: optional_field_names.into(),
         variant_to_enum: variant_to_enum.into(),
         struct_field_types: struct_field_types.into(),
         struct_field_names: std::collections::HashSet::new().into(),
@@ -2075,6 +2079,7 @@ mod tests {
         let struct_field_ir_type_lookup =
             fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
         let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&fn_param_types);
+        let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
 
         (
             fd,
@@ -2087,6 +2092,7 @@ mod tests {
                 data_ir_types: collect_data_ir_types(data_defs.iter().copied()).into(),
                 data_map_names: HashSet::new().into(),
                 optional_fields: optional_fields.into(),
+                optional_field_names: optional_field_names.into(),
                 variant_to_enum: variant_to_enum.into(),
                 struct_field_types: struct_field_types.into(),
                 struct_field_names: HashSet::new().into(),
@@ -2569,7 +2575,8 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types.into();
         ctx.fn_param_types = fn_param_types.into();
-        ctx.fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
+        ctx.fn_param_name_indexes =
+            fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2658,7 +2665,8 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types.into();
         ctx.fn_param_types = fn_param_types.into();
-        ctx.fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
+        ctx.fn_param_name_indexes =
+            fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2776,7 +2784,8 @@ mod tests {
         }
         ctx.fn_return_types = fn_return_types.into();
         ctx.fn_param_types = fn_param_types.into();
-        ctx.fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
+        ctx.fn_param_name_indexes =
+            fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
 
         let items = fndef_to_code_ir(&fd, &ctx);
         match &items[0] {
