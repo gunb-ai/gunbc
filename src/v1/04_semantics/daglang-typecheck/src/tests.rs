@@ -2733,6 +2733,58 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn selective_import_beta_shared_service_reports_int_contract_mismatch() {
+    // Negative coverage for the same selective-import seam: alpha and beta use
+    // identical `path`/`body` names, so this failure only happens when beta's
+    // incompatible Int contract is the selected provider.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}
+service AlphaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(path: Int) -> { body: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { AlphaOnly }
+import vendor.beta { SharedService }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let errors = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("beta selective import should surface the selected Int contract");
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            TypeError::TypeMismatch { expected, got }
+                if expected == "String" && got == "Int"
+        )),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn alias_qualified_service_call_resolves_single_provider() {
     // `storage.FsStorage.read` resolves when only one provider exists because
     // the short lookup key `FsStorage.read` matches. The alias prefix `storage`
