@@ -629,6 +629,9 @@ impl CompileContext {
     pub(crate) fn rebuild_field_name_indexes(&mut self) {
         self.optional_field_names = build_optional_field_names(&self.optional_fields).into();
         self.struct_field_names = build_struct_field_names(&self.struct_field_types).into();
+        // Keep the hot-path IrType lookup in sync with any newly exposed struct fields.
+        self.struct_field_ir_type_lookup =
+            build_struct_field_ir_type_lookup(&self.struct_field_ir_types).into();
         self.enum_accessor_field_names =
             build_enum_accessor_field_names(&self.enum_accessor_fields).into();
     }
@@ -6945,6 +6948,31 @@ mod tests {
         assert!(original.struct_field_types.contains_key("Base"));
         assert!(!original.struct_field_types.contains_key("Derived"));
         assert!(cloned.struct_field_types.contains_key("Derived"));
+    }
+
+    #[test]
+    fn rebuild_field_name_indexes_refreshes_struct_field_ir_type_lookup() {
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_ir_types.insert(
+            "State".to_string(),
+            vec![(
+                "items".to_string(),
+                IrType::Generic("List".to_string(), vec![IrType::Int]),
+            )],
+        );
+
+        assert!(!ctx.struct_field_ir_type_lookup.contains_key("State"));
+
+        ctx.rebuild_field_name_indexes();
+
+        let items_type = ctx
+            .struct_field_ir_type_lookup
+            .get("State")
+            .and_then(|fields| fields.get("items"));
+        assert_eq!(
+            items_type,
+            Some(&IrType::Generic("List".to_string(), vec![IrType::Int]))
+        );
     }
 
     #[test]
