@@ -148,6 +148,106 @@ fn real_corpus_includes_contractual_extdeps_language_modules() {
 }
 
 #[test]
+fn real_corpus_contractual_extdeps_language_modules_resolve_via_public_bindings() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+    let std_languages = dsl_graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "std.languages")
+        .unwrap_or_else(|| panic!("missing `std.languages` module in real corpus"));
+    let required_modules = string_list_data(
+        &std_languages.ast,
+        "contractual_extdeps_language_modules",
+    );
+    let witnesses = [
+        ("extdeps.languages.go.runtime", "format_func", "String"),
+        ("extdeps.languages.go.types", "visibility_by_case", "Bool"),
+        (
+            "extdeps.languages.python.types",
+            "type_checker_strict",
+            "String",
+        ),
+        ("extdeps.languages.rust.runtime", "string_literal_suffix", "String"),
+        ("extdeps.languages.rust.types", "pass_copy_by_value", "Bool"),
+    ];
+
+    let witness_modules: HashSet<String> = witnesses
+        .iter()
+        .map(|(module, _, _)| (*module).to_string())
+        .collect();
+    let required_module_set: HashSet<String> = required_modules.iter().cloned().collect();
+    let missing_witnesses: Vec<_> = required_modules
+        .iter()
+        .filter(|module| !witness_modules.contains(*module))
+        .cloned()
+        .collect();
+    let unexpected_witnesses: Vec<_> = witness_modules
+        .difference(&required_module_set)
+        .cloned()
+        .collect();
+    assert!(
+        missing_witnesses.is_empty() && unexpected_witnesses.is_empty(),
+        "public-binding witnesses must stay aligned with std.languages contractual module authority: \
+         missing witnesses {missing_witnesses:?}, unexpected witnesses {unexpected_witnesses:?}"
+    );
+
+    let root = unique_temp_dir("contractual_language_module_surface");
+    let importer_path = root.join("sample/language_contracts.dag");
+    let import_lines = witnesses
+        .iter()
+        .map(|(module, binding, _)| format!("import {module} {{ {binding} }}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let output_fields = witnesses
+        .iter()
+        .map(|(_, binding, ty)| format!("{binding}: {ty}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let return_fields = witnesses
+        .iter()
+        .map(|(_, binding, _)| format!("{binding}: {binding}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    write_file(
+        &importer_path,
+        &format!(
+            "module sample.language_contracts\n\n{import_lines}\n\nfunc proof() -> {{ {output_fields} }} {{\n  return {{ {return_fields} }}\n}}\n"
+        ),
+    );
+
+    let graph = ModuleGraph::discover(&[root.clone(), dsl_root.clone()]).expect(
+        "real contractual extdeps language modules should resolve when imported by a consumer",
+    );
+    let export_index = build_module_export_index(&graph.modules);
+
+    for (module, binding, _) in witnesses {
+        let exports = export_index
+            .get(module)
+            .unwrap_or_else(|| panic!("missing export index entry for `{module}`"));
+        assert!(
+            exports.contains(binding),
+            "contractual language module `{module}` must export witness binding `{binding}`"
+        );
+    }
+
+    let importer = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "sample.language_contracts")
+        .expect("expected importer module to be present");
+    let unused = find_unused_imports_with_export_index(&importer.ast, &export_index);
+    assert!(
+        unused.is_empty(),
+        "contractual language module imports should stay usable through their exported bindings, got: {unused:?}"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn real_corpus_module_order_is_stable_across_discovery_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
     let first =
