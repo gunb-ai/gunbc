@@ -136,10 +136,13 @@ fn find_unused_imports_inner(
                     // Aliased module import: the alias is structural.
                     referenced.contains(alias)
                 } else if let Some(index) = export_index {
-                    // Non-aliased: match against exported service/type namespaces.
-                    index
-                        .get(&path_str)
-                        .is_some_and(|exports| exports.iter().any(|name| referenced.contains(name)))
+                    // Non-aliased module imports are structural in two ways:
+                    // 1. Fully-qualified references record the imported module prefix itself.
+                    // 2. Unqualified references match exported service/type namespaces.
+                    referenced.contains(path_str.as_str())
+                        || index.get(&path_str).is_some_and(|exports| {
+                            exports.iter().any(|name| referenced.contains(name))
+                        })
                 } else {
                     unreachable!(
                         "find_unused_imports must reject non-aliased module imports without an export index"
@@ -266,7 +269,7 @@ fn collect_item_names(item: &Item, names: &mut HashSet<String>) {
         }
         Item::ServiceDef(def) => {
             if let Some(iface) = &def.implements {
-                names.insert(iface.clone());
+                insert_dotted_name_prefixes(iface, names);
             }
             for op in &def.operations {
                 collect_operation_names(op, names);
@@ -280,7 +283,7 @@ fn collect_item_names(item: &Item, names: &mut HashSet<String>) {
         }
         Item::ResourceDef(def) => {
             if let Some(iface) = &def.implements {
-                names.insert(iface.clone());
+                insert_dotted_name_prefixes(iface, names);
             }
             for (_, expr) in &def.properties {
                 collect_expr_names(expr, names);
@@ -315,8 +318,8 @@ fn collect_item_names(item: &Item, names: &mut HashSet<String>) {
         }
         Item::ProfileDef(def) => {
             for bind in &def.binds {
-                names.insert(bind.interface_type.clone());
-                names.insert(bind.implementation_type.clone());
+                insert_dotted_name_prefixes(&bind.interface_type, names);
+                insert_dotted_name_prefixes(&bind.implementation_type, names);
                 for (_, expr) in &bind.config_entries {
                     collect_expr_names(expr, names);
                 }
@@ -381,6 +384,17 @@ fn collect_property_exprs(properties: &[(String, Expr)], names: &mut HashSet<Str
     }
 }
 
+fn insert_dotted_name_prefixes(name: &str, names: &mut HashSet<String>) {
+    let mut prefix = String::new();
+    for segment in name.split('.') {
+        if !prefix.is_empty() {
+            prefix.push('.');
+        }
+        prefix.push_str(segment);
+        names.insert(prefix.clone());
+    }
+}
+
 fn collect_type_body_names(body: &TypeBody, names: &mut HashSet<String>) {
     match body {
         TypeBody::Record(fields) => collect_fields_names(fields, names),
@@ -399,16 +413,16 @@ fn collect_type_names(ty: &TypeExpr, names: &mut HashSet<String>) {
             // The parser may embed config/suffix in the name
             // (e.g., "Filesystem(mode:ReadWrite)"). Extract the base name.
             let base = name.split('(').next().unwrap_or(name).trim();
-            names.insert(base.to_string());
+            insert_dotted_name_prefixes(base, names);
         }
         TypeExpr::Generic(name, args) => {
-            names.insert(name.clone());
+            insert_dotted_name_prefixes(name, names);
             for arg in args {
                 collect_type_names(arg, names);
             }
         }
         TypeExpr::AssociatedOutput(base) => {
-            names.insert(base.clone());
+            insert_dotted_name_prefixes(base, names);
         }
         TypeExpr::Function(params, output) => {
             for p in params {
@@ -525,7 +539,7 @@ fn collect_expect_names(expect: &daglang_syntax::ast::ExpectStmt, names: &mut Ha
             collect_expr_names(expr, names);
         }
         ExpectStmt::Is(_, type_name) => {
-            names.insert(type_name.clone());
+            insert_dotted_name_prefixes(type_name, names);
         }
         ExpectStmt::Truthy(_) => {}
     }
@@ -555,10 +569,10 @@ fn collect_stmts_names(stmts: &[Stmt], names: &mut HashSet<String>) {
 fn collect_expr_names(expr: &Expr, names: &mut HashSet<String>) {
     match expr {
         Expr::Ident(name) => {
-            names.insert(name.clone());
+            insert_dotted_name_prefixes(name, names);
         }
         Expr::Call(name, args) => {
-            names.insert(name.clone());
+            insert_dotted_name_prefixes(name, names);
             for (_, arg) in args {
                 collect_expr_names(arg, names);
             }
@@ -581,7 +595,7 @@ fn collect_expr_names(expr: &Expr, names: &mut HashSet<String>) {
         }
         Expr::Record(type_name, fields) => {
             if let Some(name) = type_name {
-                names.insert(name.clone());
+                insert_dotted_name_prefixes(name, names);
             }
             for (_, value) in fields {
                 collect_expr_names(value, names);
@@ -797,6 +811,30 @@ mod tests {
         assert!(
             unused.is_empty(),
             "import used via exported namespace should not be reported, got: {unused:?}"
+        );
+    }
+
+    #[test]
+    fn module_import_used_via_module_qualified_prefix_is_not_reported() {
+        let source = parse(
+            r#"
+            module test.a
+            import vendor.alpha
+            func run(path: String) -> { body: String } {
+                response = vendor.alpha.SharedService.read(path: path)
+                return { body: response.body }
+            }
+            "#,
+        );
+        let mut export_index = ModuleExportIndex::new();
+        export_index.insert(
+            "vendor.alpha".into(),
+            ["SharedService".into()].into_iter().collect(),
+        );
+        let unused = find_unused_imports_with_export_index(&source, &export_index);
+        assert!(
+            unused.is_empty(),
+            "module-qualified references should mark the import used, got: {unused:?}"
         );
     }
 

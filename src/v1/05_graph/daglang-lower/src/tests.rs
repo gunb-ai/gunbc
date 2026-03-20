@@ -943,6 +943,56 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn alias_qualified_service_call_disambiguates_conflicting_providers() {
+    let typed = typed_project_from_sources(&[
+        (
+            "extdeps/storage.dag",
+            r#"module extdeps.storage
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}"#,
+        ),
+        (
+            "extdeps/legacy.dag",
+            r#"module extdeps.legacy
+service FsStorage {
+  operation read(query: Int) -> { count: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import extdeps.storage as storage
+import extdeps.legacy
+
+func run(path: String) -> { body: String } {
+  let response = storage.FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+
+    let dag =
+        lower_typed_project(&typed).expect("lowering should resolve the alias-qualified call");
+    assert!(
+        dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "param_source_sample_main_run_path"
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_transport_extdeps_storage_FsStorage_read"
+                && edge.to_port.0 == "path"
+        }),
+        "alias-qualified call should wire into the aliased provider transport"
+    );
+    assert!(
+        !dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "param_source_sample_main_run_path"
+                && edge.to_node.0 == "prepare_transport_extdeps_legacy_FsStorage_read"
+        }),
+        "alias-qualified call must not wire into the conflicting provider transport"
+    );
+}
+
+#[test]
 fn positional_service_call_args_wire_by_operation_input_order() {
     let typed = typed_project_from_sources(&[(
         "dsl/services/storage_calls_positional.dag",

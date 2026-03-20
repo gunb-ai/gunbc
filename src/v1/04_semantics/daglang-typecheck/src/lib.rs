@@ -1156,6 +1156,12 @@ fn typecheck_graph_modules_spanned(
     let resource_type_registry = collect_resource_types(&graph.modules);
     let resource_capability_registry = collect_resource_capabilities(&graph.modules);
     let export_index = build_module_export_index(&graph.modules);
+    let module_indices_by_name = graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
     let available_modules = graph
         .modules
         .iter()
@@ -1170,6 +1176,7 @@ fn typecheck_graph_modules_spanned(
         callable_registry: &callable_registry,
         pattern_callable_names: &pattern_callable_names,
         modules: &graph.modules,
+        module_indices_by_name: &module_indices_by_name,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
@@ -1808,6 +1815,7 @@ struct TypecheckContext<'a> {
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
     pattern_callable_names: &'a HashSet<String>,
     modules: &'a [ResolvedModule],
+    module_indices_by_name: &'a HashMap<String, usize>,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
@@ -1856,7 +1864,8 @@ fn collect_signatures(
     let mut signatures = Vec::new();
     let mut callable_body_metadata = HashMap::new();
     let data_bindings = collect_local_data_bindings(module);
-    let module_service_registry = scope_service_call_registry(module, context.modules);
+    let module_service_registry =
+        scope_service_call_registry(module, context.modules, context.module_indices_by_name);
     let body_context = BodyInferenceContext {
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
@@ -2846,11 +2855,12 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
 fn scope_service_call_registry(
     module: &ResolvedModule,
     all_modules: &[ResolvedModule],
+    module_indices_by_name: &HashMap<String, usize>,
 ) -> ServiceCallRegistry {
     let mut registry = ServiceCallRegistry::default();
 
     // Own module: all services visible
-    register_module_service_contracts(&mut registry, module, None);
+    register_module_service_contracts(&mut registry, module, None, None);
 
     // Imports: services visible if they pass the selective-binding filter
     for import in &module.ast.imports {
@@ -2860,11 +2870,13 @@ fn scope_service_call_registry(
             .bindings
             .as_ref()
             .map(|b| b.iter().cloned().collect::<HashSet<_>>());
-        if let Some(imported_module) = all_modules
-            .iter()
-            .find(|m| m.module_path.as_dotted() == import_path)
-        {
-            register_module_service_contracts(&mut registry, imported_module, filter.as_ref());
+        if let Some(&imported_index) = module_indices_by_name.get(&import_path) {
+            register_module_service_contracts(
+                &mut registry,
+                &all_modules[imported_index],
+                filter.as_ref(),
+                import.node.alias.as_deref(),
+            );
         }
     }
 
@@ -2880,6 +2892,7 @@ fn register_module_service_contracts(
     registry: &mut ServiceCallRegistry,
     module: &ResolvedModule,
     service_filter: Option<&HashSet<String>>,
+    import_alias: Option<&str>,
 ) {
     let module_name = module.module_path.as_dotted();
     for item in &module.ast.items {
@@ -2906,15 +2919,36 @@ fn register_module_service_contracts(
                     .collect(),
                 outputs: field_value_type_map(&operation.outputs),
             };
-            let mut keys = HashSet::new();
-            keys.insert(format!("{}.{}", service.name, operation.name));
-            keys.insert(format!("{service_tail}.{}", operation.name));
-            keys.insert(format!(
-                "{}.{}.{}",
-                module_name, service.name, operation.name
-            ));
-            for key in keys {
-                register_service_call_contract(registry, key, contract.clone());
+            let canonical = format!("{}.{}", service.name, operation.name);
+            register_service_call_contract(registry, canonical.clone(), contract.clone());
+
+            let short = format!("{service_tail}.{}", operation.name);
+            if short != canonical {
+                register_service_call_contract(registry, short.clone(), contract.clone());
+            }
+
+            let module_scoped = format!("{}.{}.{}", module_name, service.name, operation.name);
+            if module_scoped != canonical && module_scoped != short {
+                register_service_call_contract(registry, module_scoped, contract.clone());
+            }
+
+            if let Some(alias) = import_alias {
+                let alias_qualified = format!("{alias}.{}.{}", service.name, operation.name);
+                if alias_qualified != canonical && alias_qualified != short {
+                    register_service_call_contract(
+                        registry,
+                        alias_qualified.clone(),
+                        contract.clone(),
+                    );
+                }
+
+                let alias_short = format!("{alias}.{service_tail}.{}", operation.name);
+                if alias_short != canonical
+                    && alias_short != short
+                    && alias_short != alias_qualified
+                {
+                    register_service_call_contract(registry, alias_short, contract.clone());
+                }
             }
         }
     }

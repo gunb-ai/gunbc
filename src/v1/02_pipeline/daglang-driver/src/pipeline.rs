@@ -28,6 +28,7 @@ pub fn run_compile_pipeline(
             allow_unresolved_imports: false,
         },
     )?;
+    super::fail_on_strict_unused_imports(&module_graph)?;
     let extern_assets = collect_extern_assets(&typed);
     let dsl_registry = typed.dsl_type_registry();
     let process_env_resolver = |name: &str| -> Option<String> { std::env::var(name).ok() };

@@ -2716,7 +2716,14 @@ import vendor.beta { BetaOnly }
         .iter()
         .find(|module| module.module_path.as_dotted() == "sample.main")
         .expect("sample.main should exist");
-    let registry = scope_service_call_registry(main_module, &graph.modules);
+    let module_indices_by_name = graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
+    let registry =
+        scope_service_call_registry(main_module, &graph.modules, &module_indices_by_name);
     let shared_service = registry
         .by_key
         .get("SharedService.read")
@@ -2913,7 +2920,9 @@ fn run() -> Unit {}"#,
             && binding == "LegacySurface"
     )));
     assert!(
-        !errors.iter().any(|error| matches!(error, TypeError::UnresolvedServiceCall { .. })),
+        !errors
+            .iter()
+            .any(|error| matches!(error, TypeError::UnresolvedServiceCall { .. })),
         "unused stale imports should fail before service-call resolution"
     );
 }
@@ -2953,13 +2962,10 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
-fn alias_qualified_service_call_does_not_disambiguate_conflicting_providers() {
+fn alias_qualified_service_call_disambiguates_conflicting_providers() {
     // Two modules export FsStorage with incompatible shapes. The alias-qualified
-    // call `storage.FsStorage.read` does NOT disambiguate because aliases are not
-    // registered as lookup key prefixes — only bare (`FsStorage.read`) and
-    // full-module-qualified (`extdeps.storage.FsStorage.read`) keys exist.
-    // With two providers, the bare key becomes ambiguous and the alias-qualified
-    // key `storage.FsStorage.read` has no registry entry.
+    // call must resolve through the imported module alias rather than the bare
+    // `FsStorage.read` fallback so the selected provider stays unambiguous.
     let graph = module_graph_from_sources(&[
         (
             "extdeps/storage.dag",
@@ -2987,14 +2993,11 @@ func run(path: String) -> { body: String } {
 }"#,
         ),
     ]);
-    let result = typecheck_module_graph_with_options(
+    typecheck_module_graph_with_options(
         &graph,
         TypecheckOptions {
             allow_unresolved_imports: false,
         },
-    );
-    assert!(
-        result.is_err(),
-        "alias-qualified spelling must not disambiguate conflicting providers"
-    );
+    )
+    .expect("alias-qualified spelling should disambiguate conflicting providers");
 }

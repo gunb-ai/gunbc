@@ -3688,6 +3688,11 @@ func run(path: String) -> { body: String } {
   let response = SharedService.read(path: path)
   return { body: response.body }
 }
+
+func ping(msg: String) -> { ok: Bool } {
+  let response = BetaOnly.ping(msg: msg)
+  return { ok: response.ok }
+}
 "#,
     );
     write_source(
@@ -3699,6 +3704,11 @@ import vendor.beta
 func run(path: String) -> { body: String } {
   let response = vendor.alpha.SharedService.read(path: path)
   return { body: response.body }
+}
+
+func count(query: Int) -> { count: Int } {
+  let response = vendor.beta.SharedService.read(query: query)
+  return { count: response.count }
 }
 "#,
     );
@@ -3811,20 +3821,19 @@ service FsStorage {
 import extdeps.storage as storage
 
 func run(path: String) -> { body: String } {
-  let response = FsStorage.read(path: path)
+  let response = storage.FsStorage.read(path: path)
   return { body: response.body }
 }"#,
         ),
     ]);
     check_from_module_graph(graph)
-        .expect("aliased import should make services accessible at compile level");
+        .expect("aliased import should resolve when referenced through its alias at compile level");
 }
 
 #[test]
 fn check_alias_qualified_spelling_resolves_single_provider_hermetic() {
-    // `storage.FsStorage.read` resolves when only one provider exists because
-    // the short lookup key `FsStorage.read` matches. The alias prefix `storage`
-    // is not registered as a disambiguation key.
+    // Alias-qualified service calls are first-class lookup keys in the strict
+    // compile/check pipeline.
     let graph = module_graph_from_sources(&[
         (
             "extdeps/storage.dag",
@@ -3849,11 +3858,9 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
-fn check_alias_qualified_spelling_does_not_disambiguate_hermetic() {
-    // Two modules export FsStorage. The alias-qualified call
-    // `storage.FsStorage.read` does NOT disambiguate — the alias is not
-    // registered as a lookup key prefix, so the bare key collision causes
-    // failure.
+fn check_alias_qualified_spelling_disambiguates_hermetic() {
+    // Two modules export FsStorage. The alias-qualified call must resolve
+    // through the imported alias, not the ambiguous bare `FsStorage.read` key.
     let graph = module_graph_from_sources(&[
         (
             "extdeps/storage.dag",
@@ -3878,13 +3885,16 @@ import extdeps.legacy
 func run(path: String) -> { body: String } {
   let response = storage.FsStorage.read(path: path)
   return { body: response.body }
+}
+
+func legacy(query: Int) -> { count: Int } {
+  let response = extdeps.legacy.FsStorage.read(query: query)
+  return { count: response.count }
 }"#,
         ),
     ]);
-    let result = check_from_module_graph(graph);
-    assert!(
-        result.is_err(),
-        "alias-qualified spelling must not disambiguate conflicting providers at compile level"
+    check_from_module_graph(graph).expect(
+        "alias-qualified spelling should disambiguate conflicting providers at compile level",
     );
 }
 
@@ -3920,6 +3930,11 @@ import vendor.beta
 func run(path: String) -> { body: String } {
   let response = vendor.alpha.SharedService.read(path: path)
   return { body: response.body }
+}
+
+func count(query: Int) -> { count: Int } {
+  let response = vendor.beta.SharedService.read(query: query)
+  return { count: response.count }
 }"#,
         ),
     ]);
@@ -3958,6 +3973,11 @@ import vendor.beta { BetaOnly }
 func run(path: String) -> { body: String } {
   let response = SharedService.read(path: path)
   return { body: response.body }
+}
+
+func ping(msg: String) -> { ok: Bool } {
+  let response = BetaOnly.ping(msg: msg)
+  return { ok: response.ok }
 }"#,
         ),
     ]);

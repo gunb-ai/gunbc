@@ -4727,6 +4727,11 @@ fn build_scoped_service_endpoint_registries(
     global_registry: &ServiceEndpointRegistry,
 ) -> HashMap<String, ServiceEndpointRegistry> {
     let all_modules = &project.graph().modules;
+    let module_indices_by_name = all_modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .collect::<HashMap<_, _>>();
     let mut scoped = HashMap::new();
 
     for module in project.modules() {
@@ -4749,15 +4754,15 @@ fn build_scoped_service_endpoint_registries(
                 let Some(endpoint) = global_registry.get(&module_scoped).cloned() else {
                     continue;
                 };
-                registry.register(
-                    format!("{}.{}", service.name, operation.name),
-                    endpoint.clone(),
+                register_scoped_service_endpoint(
+                    &mut registry,
+                    &endpoint,
+                    &resolved_module_name,
+                    &service.name,
+                    service_tail,
+                    &operation.name,
+                    None,
                 );
-                registry.register(
-                    format!("{service_tail}.{}", operation.name),
-                    endpoint.clone(),
-                );
-                registry.register(module_scoped, endpoint);
             }
         }
 
@@ -4768,10 +4773,8 @@ fn build_scoped_service_endpoint_registries(
                 .bindings
                 .as_ref()
                 .map(|bindings| bindings.iter().cloned().collect::<HashSet<_>>());
-            if let Some(imported_module) = all_modules
-                .iter()
-                .find(|resolved| resolved.module_path.as_dotted() == import_path)
-            {
+            if let Some(&imported_index) = module_indices_by_name.get(&import_path) {
+                let imported_module = &all_modules[imported_index];
                 let imported_module_name = imported_module.module_path.as_dotted();
                 for item in &imported_module.ast.items {
                     let Item::ServiceDef(service) = &item.node else {
@@ -4793,15 +4796,15 @@ fn build_scoped_service_endpoint_registries(
                         let Some(endpoint) = global_registry.get(&module_scoped).cloned() else {
                             continue;
                         };
-                        registry.register(
-                            format!("{}.{}", service.name, operation.name),
-                            endpoint.clone(),
+                        register_scoped_service_endpoint(
+                            &mut registry,
+                            &endpoint,
+                            &imported_module_name,
+                            &service.name,
+                            service_tail,
+                            &operation.name,
+                            import.node.alias.as_deref(),
                         );
-                        registry.register(
-                            format!("{service_tail}.{}", operation.name),
-                            endpoint.clone(),
-                        );
-                        registry.register(module_scoped, endpoint);
                     }
                 }
             }
@@ -4811,6 +4814,41 @@ fn build_scoped_service_endpoint_registries(
     }
 
     scoped
+}
+
+fn register_scoped_service_endpoint(
+    registry: &mut ServiceEndpointRegistry,
+    endpoint: &ServiceTransportEndpoint,
+    module_name: &str,
+    service_name: &str,
+    service_tail: &str,
+    operation_name: &str,
+    import_alias: Option<&str>,
+) {
+    let canonical = format!("{service_name}.{operation_name}");
+    registry.register(canonical.clone(), endpoint.clone());
+
+    let short = format!("{service_tail}.{operation_name}");
+    if short != canonical {
+        registry.register(short.clone(), endpoint.clone());
+    }
+
+    let module_scoped = format!("{module_name}.{service_name}.{operation_name}");
+    if module_scoped != canonical && module_scoped != short {
+        registry.register(module_scoped, endpoint.clone());
+    }
+
+    if let Some(alias) = import_alias {
+        let alias_qualified = format!("{alias}.{service_name}.{operation_name}");
+        if alias_qualified != canonical && alias_qualified != short {
+            registry.register(alias_qualified.clone(), endpoint.clone());
+        }
+
+        let alias_short = format!("{alias}.{service_tail}.{operation_name}");
+        if alias_short != canonical && alias_short != short && alias_short != alias_qualified {
+            registry.register(alias_short, endpoint.clone());
+        }
+    }
 }
 
 fn module_scoped_service_registry<'a>(
@@ -6829,18 +6867,14 @@ fn derive_operation_spec(
     rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
-        ServiceTransportClass::RestNetwork => {
-            Ok(
-                derive_rest_spec(
-                    service,
-                    operation,
-                    response_classification,
-                    data_registry,
-                    rest_body_types,
-                )?
-                    .map(|s| ServiceOperationSpec::Rest(Box::new(s))),
-            )
-        }
+        ServiceTransportClass::RestNetwork => Ok(derive_rest_spec(
+            service,
+            operation,
+            response_classification,
+            data_registry,
+            rest_body_types,
+        )?
+        .map(|s| ServiceOperationSpec::Rest(Box::new(s)))),
         ServiceTransportClass::ShellLocal => {
             Ok(derive_shell_spec(service, operation, data_registry)?
                 .map(ServiceOperationSpec::Shell))

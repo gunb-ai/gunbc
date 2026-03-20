@@ -35,7 +35,7 @@ mod pipeline;
 mod prepare;
 mod receipt;
 
-use daglang_contract::{Diagnostics, FileId, LocatedSpan};
+use daglang_contract::{Diagnostic, Diagnostics, FileId, LocatedSpan};
 use daglang_derive::{derive_artifacts, DeriveError, DerivedArtifacts};
 use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
@@ -44,6 +44,9 @@ use daglang_emit::{
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
 use daglang_lower::{lower_to_output_with_config, LowerError, LoweredOp, LoweringConfig};
+use daglang_resolve::unused_imports::{
+    build_module_export_index, find_unused_imports_with_export_index,
+};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt};
 use daglang_syntax::parser;
@@ -347,6 +350,131 @@ fn typecheck_with_user_diagnostics<'a>(
 ) -> Result<TypedProject<'a>, CompileError> {
     typecheck_module_graph_located(graph, options)
         .map_err(|errors| CompileError::Diagnostics(typecheck_diagnostics_located(errors, graph)))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct UnusedImportKey {
+    module_path: String,
+    binding: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct UnusedImportSite {
+    span: daglang_syntax::span::Span,
+    message: String,
+    help: String,
+}
+
+fn strict_unused_import_diagnostics(graph: &ModuleGraph) -> Diagnostics {
+    let export_index = build_module_export_index(&graph.modules);
+    let mut diagnostics = Vec::new();
+
+    for (index, module) in graph.modules.iter().enumerate() {
+        let mut sites = unused_import_sites(&module.ast);
+        for unused_import in find_unused_imports_with_export_index(&module.ast, &export_index) {
+            let key = UnusedImportKey {
+                module_path: unused_import.module_path,
+                binding: unused_import.binding,
+            };
+            let Some(site) = sites.get_mut(&key).and_then(VecDeque::pop_front) else {
+                continue;
+            };
+            let mut diagnostic = Diagnostic::located(
+                "MOD009",
+                site.message,
+                LocatedSpan {
+                    file: compile_file_id(index),
+                    span: daglang_contract::Span::new(site.span.start, site.span.end),
+                    label: "unused import".to_string(),
+                },
+            )
+            .with_file(module.path.clone())
+            .with_help(site.help);
+            diagnostic.resolve_source(&module.source);
+            diagnostics.push(diagnostic);
+        }
+    }
+
+    diagnostics.sort_by_key(|diag| {
+        (
+            diag.file
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            diag.span.map(|span| span.start).unwrap_or_default(),
+            diag.span.map(|span| span.end).unwrap_or_default(),
+            diag.message.clone(),
+        )
+    });
+
+    Diagnostics {
+        errors: diagnostics,
+    }
+}
+
+fn unused_import_sites(
+    source: &daglang_syntax::ast::SourceFile,
+) -> HashMap<UnusedImportKey, VecDeque<UnusedImportSite>> {
+    let mut sites = HashMap::new();
+
+    for import in &source.imports {
+        let module_path = import.node.path.as_dotted();
+        match &import.node.bindings {
+            Some(bindings) => {
+                for binding in bindings {
+                    sites
+                        .entry(UnusedImportKey {
+                            module_path: module_path.clone(),
+                            binding: Some(binding.clone()),
+                        })
+                        .or_insert_with(VecDeque::new)
+                        .push_back(UnusedImportSite {
+                            span: import.span,
+                            message: format!(
+                                "unused import binding `{binding}` from `{module_path}`"
+                            ),
+                            help: format!(
+                                "remove `{binding}` from the import list or use it in the module body"
+                            ),
+                        });
+                }
+            }
+            None => {
+                let (message, help) = match import.node.alias.as_deref() {
+                    Some(alias) => (
+                        format!("unused import alias `{alias}` for module `{module_path}`"),
+                        format!("remove alias `{alias}` or reference it from the module body"),
+                    ),
+                    None => (
+                        format!("unused import `{module_path}`"),
+                        format!("remove import `{module_path}` or reference one of its exports"),
+                    ),
+                };
+                sites
+                    .entry(UnusedImportKey {
+                        module_path,
+                        binding: None,
+                    })
+                    .or_insert_with(VecDeque::new)
+                    .push_back(UnusedImportSite {
+                        span: import.span,
+                        message,
+                        help,
+                    });
+            }
+        }
+    }
+
+    sites
+}
+
+fn fail_on_strict_unused_imports(graph: &ModuleGraph) -> Result<(), CompileError> {
+    let diagnostics = strict_unused_import_diagnostics(graph);
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(CompileError::Diagnostics(diagnostics))
+    }
 }
 
 fn lower_diagnostics(error: LowerError) -> Diagnostics {
@@ -808,6 +936,7 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
             allow_unresolved_imports: false,
         },
     )?;
+    fail_on_strict_unused_imports(&module_graph)?;
     Ok(CheckOutput { parsed_files })
 }
 
@@ -1964,6 +2093,37 @@ mod tests {
     }
 
     #[test]
+    fn check_single_file_reports_unused_import_diagnostic() {
+        let root = unique_temp_dir("check_unused_import");
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/dep.dag"),
+            "module sample.dep\ntype Thing = String\n",
+        )
+        .expect("failed to write dependency source");
+        let file = root.join("sample/main.dag");
+        std::fs::write(
+            &file,
+            "module sample.main\nimport sample.dep { Thing }\nfn run() -> Unit {}\n",
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let error =
+            check_from_context(&context).expect_err("strict check should fail unused imports");
+        let error_text = error.to_string();
+        assert!(
+            error_text.contains("unused import binding `Thing` from `sample.dep`"),
+            "expected unused import diagnostic, got: {error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn check_single_file_includes_discovered_dependency_closure() {
         let root = unique_temp_dir("check_single_file_with_deps");
         std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
@@ -2042,6 +2202,43 @@ mod tests {
         assert!(
             error.to_string().contains("unresolved call target"),
             "expected unresolved call target error, got: {error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_reports_unused_import_diagnostic() {
+        let root = unique_temp_dir("compile_unused_import");
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/dep.dag"),
+            "module sample.dep\ntype Thing = String\n",
+        )
+        .expect("failed to write dependency source");
+        let file = root.join("sample/main.dag");
+        std::fs::write(
+            &file,
+            r#"module sample.main
+import sample.dep { Thing }
+
+func run() -> { ok: Bool } {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let error =
+            compile_from_context(&context).expect_err("strict compile should fail unused imports");
+        let error_text = error.to_string();
+        assert!(
+            error_text.contains("unused import binding `Thing` from `sample.dep`"),
+            "expected unused import diagnostic, got: {error}"
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -2619,12 +2816,12 @@ fn run() -> Bool {
         std::fs::create_dir_all(&root).expect("failed to create temp root");
         std::fs::write(
             root.join("alpha.dag"),
-            "module alpha\nfn run() -> Unit {}\n",
+            "module alpha\nfn run() -> String { \"alpha\" }\n",
         )
         .expect("failed to write alpha");
         std::fs::write(
             root.join("beta.dag"),
-            "module beta\nimport alpha\nfn process(input: String) -> String { input }\n",
+            "module beta\nimport alpha { run }\nfn process(input: String) -> String { run() }\n",
         )
         .expect("failed to write beta");
 

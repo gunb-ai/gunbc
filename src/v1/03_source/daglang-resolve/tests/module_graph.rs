@@ -131,10 +131,8 @@ fn real_corpus_includes_contractual_extdeps_language_modules() {
         .iter()
         .find(|module| module.module_path.as_dotted() == "std.languages")
         .unwrap_or_else(|| panic!("missing `std.languages` module in real corpus"));
-    let required_modules = string_list_data(
-        &std_languages.ast,
-        "contractual_extdeps_language_modules",
-    );
+    let required_modules =
+        string_list_data(&std_languages.ast, "contractual_extdeps_language_modules");
 
     let missing: Vec<_> = required_modules
         .iter()
@@ -157,10 +155,8 @@ fn real_corpus_contractual_extdeps_language_modules_resolve_via_public_bindings(
         .iter()
         .find(|module| module.module_path.as_dotted() == "std.languages")
         .unwrap_or_else(|| panic!("missing `std.languages` module in real corpus"));
-    let required_modules = string_list_data(
-        &std_languages.ast,
-        "contractual_extdeps_language_modules",
-    );
+    let required_modules =
+        string_list_data(&std_languages.ast, "contractual_extdeps_language_modules");
     let witnesses = [
         ("extdeps.languages.go.runtime", "format_func", "String"),
         ("extdeps.languages.go.types", "visibility_by_case", "Bool"),
@@ -169,7 +165,11 @@ fn real_corpus_contractual_extdeps_language_modules_resolve_via_public_bindings(
             "type_checker_strict",
             "String",
         ),
-        ("extdeps.languages.rust.runtime", "string_literal_suffix", "String"),
+        (
+            "extdeps.languages.rust.runtime",
+            "string_literal_suffix",
+            "String",
+        ),
         ("extdeps.languages.rust.types", "pass_copy_by_value", "Bool"),
     ];
 

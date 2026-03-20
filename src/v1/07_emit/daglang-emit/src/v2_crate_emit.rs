@@ -1982,8 +1982,8 @@ mod generated_tests {{
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_v2_crate, build_global_fn_metadata, build_variant_to_enum,
-        parse_lock_dependency, type_def_signature,
+        assemble_v2_crate, build_global_fn_metadata, build_variant_to_enum, parse_lock_dependency,
+        type_def_signature,
     };
     use daglang_syntax::ast::{Item, TypeDef};
     use gunbc_ir::code_ir::IrType;

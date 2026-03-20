@@ -353,7 +353,10 @@ mod tests {
         );
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
-        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert(
+            "is_self_recursive".to_string(),
+            gunbc_ir::Value::Bool(false),
+        );
         map.insert(
             "has_non_tail_self_call".to_string(),
             gunbc_ir::Value::Bool(false),
@@ -2071,7 +2074,8 @@ fn foo(item: String) -> String {
         };
 
         assert!(
-            branch.contains("dry-run requires explicit mock_response data for operation fetch_user"),
+            branch
+                .contains("dry-run requires explicit mock_response data for operation fetch_user"),
             "dry-run emission should require explicit mock fixtures:\n{}",
             branch
         );
