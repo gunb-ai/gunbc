@@ -4073,7 +4073,7 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
     );
 }
 
-fn sts_transport_module_source(body_fields: &str) -> String {
+fn sts_transport_module_source_with_body_expr(body_expr: &str) -> String {
     [
         "module extdeps.cloud.gcp.sts\n",
         "type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2\n",
@@ -4106,10 +4106,9 @@ fn sts_transport_module_source(body_fields: &str) -> String {
         "    transport rest {\n",
         "      method: POST,\n",
         "      path: \"/v1/token\",\n",
-        "      body: StsTokenExchange {\n",
-        body_fields,
+        "      body: ",
+        body_expr,
         "\n",
-        "      }\n",
         "    }\n",
         "    response {\n",
         "      200 => StsTokenResponse\n",
@@ -4122,6 +4121,12 @@ fn sts_transport_module_source(body_fields: &str) -> String {
         "}\n",
     ]
     .concat()
+}
+
+fn sts_transport_module_source(body_fields: &str) -> String {
+    sts_transport_module_source_with_body_expr(&format!(
+        "StsTokenExchange {{\n{body_fields}\n      }}"
+    ))
 }
 
 fn renamed_sts_transport_module_source(body_fields: &str) -> String {
@@ -4334,6 +4339,77 @@ fn sts_typed_body_rejects_invalid_subject_token_type_value() {
             assert!(
                 detail.contains("found `TokenExchange {}`"),
                 "expected actual invalid value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_untyped_record_body() {
+    let source = sts_transport_module_source_with_body_expr(
+        r#"{
+        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+      }"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err =
+        lower_typed_project(&typed).expect_err("lowering should fail on an untyped STS body");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("typed record literal"),
+                "expected typed-body contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `{ ... }`"),
+                "expected untyped record body in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_map_body() {
+    let source = sts_transport_module_source_with_body_expr(
+        r#"{
+        "grant_type": TokenExchange {}
+        "subject_token": subject_token
+        "subject_token_type": Jwt
+        "audience": audience
+        "requested_token_type": RequestAccessToken
+      }"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed).expect_err("lowering should fail on a map STS body");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("typed record literal"),
+                "expected typed-body contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `Map(...)`"),
+                "expected map body in error, got {detail}"
             );
         }
         other => panic!("expected InvalidTransportSpec, got {other:?}"),

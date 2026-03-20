@@ -6950,14 +6950,17 @@ fn derive_rest_spec(
         .collect::<HashSet<_>>();
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
-        Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(
-            service,
-            operation,
-            b,
-            &operation_input_names,
-            data_registry,
-            rest_body_types,
-        )?,
+        Some(TransportBinding::Rest { body: Some(b), .. }) => {
+            validate_typed_rest_body_contract(service, operation, b)?;
+            body_template_entries_from_expr(
+                service,
+                operation,
+                b,
+                &operation_input_names,
+                data_registry,
+                rest_body_types,
+            )?
+        }
         _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
@@ -7357,6 +7360,32 @@ fn typed_rest_body_wire_constant(
     }
 }
 
+fn validate_typed_rest_body_contract(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body: &Expr,
+) -> Result<(), LowerError> {
+    let loses_typed_body_contract = match body {
+        Expr::Record(None, fields) => fields.iter().any(|(field_name, _)| {
+            typed_rest_body_wire_constant(service, operation, field_name).is_some()
+        }),
+        Expr::Map(entries) => entries.iter().any(|(key_expr, _)| {
+            matches!(
+                key_expr,
+                Expr::Literal(Literal::String(field_name))
+                    if typed_rest_body_wire_constant(service, operation, field_name).is_some()
+            )
+        }),
+        _ => false,
+    };
+
+    if loses_typed_body_contract {
+        return Err(invalid_untyped_rest_body(service, operation, body));
+    }
+
+    Ok(())
+}
+
 fn resolve_required_rest_wire_value(
     service: &ServiceDef,
     operation: &OperationDef,
@@ -7371,6 +7400,21 @@ fn resolve_required_rest_wire_value(
             "REST request field `{field_name}` requires string data `{const_name}` to define its wire value"
         ),
     })
+}
+
+fn invalid_untyped_rest_body(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body: &Expr,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request body must use a typed record literal so lowering can derive wire values; found {}",
+            describe_transport_body_expr(body)
+        ),
+    }
 }
 
 fn invalid_typed_rest_body_value(
