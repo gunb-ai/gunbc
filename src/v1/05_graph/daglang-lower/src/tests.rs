@@ -4547,6 +4547,86 @@ fn sts_typed_body_rejects_invalid_raw_string_wire_values() {
 }
 
 #[test]
+fn sts_typed_body_rejects_untyped_record_grant_type_field() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: {
+          kind: Jwt
+        }
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS field uses an untyped record value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("TokenExchange"),
+                "expected typed constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `{ ... }`"),
+                "expected untyped record shape in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_map_requested_token_type_field() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: {
+          "kind": RequestAccessToken
+        }"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS field uses a map value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("requested_token_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("RequestAccessToken"),
+                "expected typed constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `Map(...)`"),
+                "expected map shape in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
 fn sts_typed_body_rejects_missing_required_grant_type_field() {
     let source = sts_transport_module_source(
         r#"        subject_token: subject_token

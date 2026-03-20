@@ -7521,7 +7521,16 @@ fn validate_typed_rest_body_contract(
             continue;
         }
 
-        let _ = typed_rest_body_literal(service, operation, body_schema, field_name, value)?;
+        if typed_rest_body_literal(service, operation, body_schema, field_name, value)?.is_none() {
+            let expected = sum_literal_contract(&field_schema.literal_variants);
+            return Err(invalid_typed_rest_body_value(
+                service,
+                operation,
+                field_name,
+                expected.as_str(),
+                value,
+            ));
+        }
     }
 
     Ok(())
