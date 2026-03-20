@@ -959,32 +959,28 @@ fn emit_module(
 }
 
 /// Build variant_name → enum_name map from type definitions.
+///
+/// Ambiguous variants keep the same deterministic lexicographic tiebreak as
+/// before, but the map is built in one pass instead of collecting, sorting,
+/// and deduplicating a candidate list per variant.
 fn build_variant_to_enum(type_defs: &[&TypeDef]) -> HashMap<String, String> {
-    let mut candidates: HashMap<String, Vec<String>> = HashMap::new();
+    let mut variant_to_enum = HashMap::new();
     for td in type_defs {
         if let TypeBody::Sum(variants) = &td.body {
+            let enum_name = td.name.as_str();
             for v in variants {
-                candidates
+                variant_to_enum
                     .entry(v.name.clone())
-                    .or_default()
-                    .push(td.name.clone());
+                    .and_modify(|smallest: &mut String| {
+                        if enum_name < smallest.as_str() {
+                            *smallest = enum_name.to_string();
+                        }
+                    })
+                    .or_insert_with(|| enum_name.to_string());
             }
         }
     }
-    candidates
-        .into_iter()
-        .map(|(variant, mut enums)| {
-            enums.sort();
-            enums.dedup();
-            (
-                variant,
-                enums
-                    .into_iter()
-                    .next()
-                    .expect("variant has at least one enum"),
-            )
-        })
-        .collect()
+    variant_to_enum
 }
 
 /// Build struct_name → { field_name → field_type_name } map.
