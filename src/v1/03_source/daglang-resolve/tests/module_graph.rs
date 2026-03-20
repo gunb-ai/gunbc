@@ -5,6 +5,7 @@ use daglang_resolve::unused_imports::{
     build_module_export_index, find_unused_imports_with_export_index, UnusedImport,
 };
 use daglang_resolve::{ModuleGraph, ResolveError};
+use daglang_syntax::ast::{Expr, Item, Literal, SourceFile};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -70,6 +71,30 @@ fn parse_module_declaration(dsl_root: &Path, path: &Path) -> String {
     );
 }
 
+fn find_data_def<'a>(ast: &'a SourceFile, name: &str) -> &'a daglang_syntax::ast::DataDef {
+    ast.items
+        .iter()
+        .find_map(|item| match &item.node {
+            Item::DataDef(data_def) if data_def.name == name => Some(data_def),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data definition `{name}`"))
+}
+
+fn string_list_data(ast: &SourceFile, name: &str) -> Vec<String> {
+    let data_def = find_data_def(ast, name);
+    let Expr::List(entries) = &data_def.value else {
+        panic!("data definition `{name}` must stay a list literal");
+    };
+    entries
+        .iter()
+        .map(|entry| match entry {
+            Expr::Literal(Literal::String(value)) => value.clone(),
+            _ => panic!("data definition `{name}` must contain only string literals"),
+        })
+        .collect()
+}
+
 #[test]
 fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
@@ -89,6 +114,137 @@ fn discovers_all_real_dsl_modules() {
         .collect();
     module_names.sort();
     assert_eq!(module_names, expected);
+}
+
+#[test]
+fn real_corpus_includes_contractual_extdeps_language_modules() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+    let discovered_modules: HashSet<String> = graph
+        .modules
+        .iter()
+        .map(|module| module.module_path.as_dotted())
+        .collect();
+    let std_languages = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "std.languages")
+        .unwrap_or_else(|| panic!("missing `std.languages` module in real corpus"));
+    let required_modules = string_list_data(
+        &std_languages.ast,
+        "contractual_extdeps_language_modules",
+    );
+
+    let missing: Vec<_> = required_modules
+        .iter()
+        .filter(|module| !discovered_modules.contains(*module))
+        .cloned()
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "real dsl corpus must retain contractual extdeps language modules: missing {missing:?}"
+    );
+}
+
+#[test]
+fn real_corpus_contractual_extdeps_language_modules_resolve_via_public_bindings() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
+    let dsl_graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
+    let std_languages = dsl_graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "std.languages")
+        .unwrap_or_else(|| panic!("missing `std.languages` module in real corpus"));
+    let required_modules = string_list_data(
+        &std_languages.ast,
+        "contractual_extdeps_language_modules",
+    );
+    let witnesses = [
+        ("extdeps.languages.go.runtime", "format_func", "String"),
+        ("extdeps.languages.go.types", "visibility_by_case", "Bool"),
+        (
+            "extdeps.languages.python.types",
+            "type_checker_strict",
+            "String",
+        ),
+        ("extdeps.languages.rust.runtime", "string_literal_suffix", "String"),
+        ("extdeps.languages.rust.types", "pass_copy_by_value", "Bool"),
+    ];
+
+    let witness_modules: HashSet<String> = witnesses
+        .iter()
+        .map(|(module, _, _)| (*module).to_string())
+        .collect();
+    let required_module_set: HashSet<String> = required_modules.iter().cloned().collect();
+    let missing_witnesses: Vec<_> = required_modules
+        .iter()
+        .filter(|module| !witness_modules.contains(*module))
+        .cloned()
+        .collect();
+    let unexpected_witnesses: Vec<_> = witness_modules
+        .difference(&required_module_set)
+        .cloned()
+        .collect();
+    assert!(
+        missing_witnesses.is_empty() && unexpected_witnesses.is_empty(),
+        "public-binding witnesses must stay aligned with std.languages contractual module authority: \
+         missing witnesses {missing_witnesses:?}, unexpected witnesses {unexpected_witnesses:?}"
+    );
+
+    let root = unique_temp_dir("contractual_language_module_surface");
+    let importer_path = root.join("sample/language_contracts.dag");
+    let import_lines = witnesses
+        .iter()
+        .map(|(module, binding, _)| format!("import {module} {{ {binding} }}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let output_fields = witnesses
+        .iter()
+        .map(|(_, binding, ty)| format!("{binding}: {ty}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let return_fields = witnesses
+        .iter()
+        .map(|(_, binding, _)| format!("{binding}: {binding}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    write_file(
+        &importer_path,
+        &format!(
+            "module sample.language_contracts\n\n{import_lines}\n\nfunc proof() -> {{ {output_fields} }} {{\n  return {{ {return_fields} }}\n}}\n"
+        ),
+    );
+
+    let graph = ModuleGraph::discover(&[root.clone(), dsl_root.clone()]).expect(
+        "real contractual extdeps language modules should resolve when imported by a consumer",
+    );
+    let export_index = build_module_export_index(&graph.modules);
+
+    for (module, binding, _) in witnesses {
+        let exports = export_index
+            .get(module)
+            .unwrap_or_else(|| panic!("missing export index entry for `{module}`"));
+        assert!(
+            exports.contains(binding),
+            "contractual language module `{module}` must export witness binding `{binding}`"
+        );
+    }
+
+    let importer = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "sample.language_contracts")
+        .expect("expected importer module to be present");
+    let unused = find_unused_imports_with_export_index(&importer.ast, &export_index);
+    assert!(
+        unused.is_empty(),
+        "contractual language module imports should stay usable through their exported bindings, got: {unused:?}"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
 
 #[test]
@@ -1253,6 +1409,54 @@ fn dependency_counts_match_import_structure() {
 }
 
 #[test]
+fn removed_top_level_data_export_disappears_from_module_export_index() {
+    let root = unique_temp_dir("removed_top_level_data_export");
+    let module_path = root.join("sample/contracts.dag");
+
+    write_file(
+        &module_path,
+        r#"
+        module sample.contracts
+
+        data stable_surface: String = "stable"
+        data legacy_surface: String = "legacy"
+        "#,
+    );
+
+    let before_graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph with both data exports to parse");
+    let before_export_index = build_module_export_index(&before_graph.modules);
+    let before_exports = before_export_index
+        .get("sample.contracts")
+        .expect("provider module should exist in export index before removal");
+    assert!(before_exports.contains("stable_surface"));
+    assert!(before_exports.contains("legacy_surface"));
+
+    write_file(
+        &module_path,
+        r#"
+        module sample.contracts
+
+        data stable_surface: String = "stable"
+        "#,
+    );
+
+    let after_graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected synthetic graph after removing data export to parse");
+    let after_export_index = build_module_export_index(&after_graph.modules);
+    let after_exports = after_export_index
+        .get("sample.contracts")
+        .expect("provider module should still exist in export index after removal");
+    assert!(after_exports.contains("stable_surface"));
+    assert!(
+        !after_exports.contains("legacy_surface"),
+        "removed top-level data exports must disappear from build_module_export_index"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn module_import_used_via_exported_service_namespaces_is_not_reported() {
     let root = unique_temp_dir("unused_import_exported_service_namespaces");
 
@@ -1491,13 +1695,7 @@ fn real_corpus_has_no_unused_imports() {
                 Some(name) => format!("binding `{name}` from `{}`", u.module_path),
                 None => format!("module `{}`", u.module_path),
             };
-            if module_path.starts_with("extdeps.languages.") {
-                violations.push(format!(
-                    "{module_path} should not carry unused imports after std.languages cleanup: unused import {binding_desc}",
-                ));
-            } else {
-                violations.push(format!("{module_path}: unused import {binding_desc}"));
-            }
+            violations.push(format!("{module_path}: unused import {binding_desc}"));
         }
     }
     assert!(
@@ -1505,31 +1703,4 @@ fn real_corpus_has_no_unused_imports() {
         "found unused imports in dsl corpus:\n  {}",
         violations.join("\n  ")
     );
-}
-
-#[test]
-fn language_extdep_std_language_cleanup_has_no_unused_imports() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
-    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
-        .expect("expected real dsl graph to parse");
-    let export_index = build_module_export_index(&graph.modules);
-
-    for module_path in [
-        "extdeps.languages.go.runtime",
-        "extdeps.languages.go.types",
-        "extdeps.languages.python.types",
-        "extdeps.languages.rust.runtime",
-        "extdeps.languages.rust.types",
-    ] {
-        let module = graph
-            .modules
-            .iter()
-            .find(|module| module.module_path.as_dotted() == module_path)
-            .unwrap_or_else(|| panic!("expected {module_path} in real dsl graph"));
-        let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
-        assert!(
-            unused.is_empty(),
-            "{module_path} should not carry unused imports after std.languages cleanup: {unused:?}"
-        );
-    }
 }

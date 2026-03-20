@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use daglang_contract::{Diagnostic, DiagnosticContext};
 use daglang_syntax::ast::{
     BackoffStrategy, CapabilityDef, DataDef, Expr, Field, Item, Literal, NodeStmt, OperationDef,
-    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeDef, TypeExpr,
+    RateLimitUnit, ServiceDef, Stmt, TransportBinding, TypeBody, TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
@@ -4749,8 +4749,14 @@ fn build_scoped_service_endpoint_registries(
                 let Some(endpoint) = global_registry.get(&module_scoped).cloned() else {
                     continue;
                 };
-                registry.register(format!("{}.{}", service.name, operation.name), endpoint.clone());
-                registry.register(format!("{service_tail}.{}", operation.name), endpoint.clone());
+                registry.register(
+                    format!("{}.{}", service.name, operation.name),
+                    endpoint.clone(),
+                );
+                registry.register(
+                    format!("{service_tail}.{}", operation.name),
+                    endpoint.clone(),
+                );
                 registry.register(module_scoped, endpoint);
             }
         }
@@ -4834,11 +4840,9 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         };
         let mut body_transports = Vec::new();
         for call_path in &site.body_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 body_transports.push(transport);
             }
         }
@@ -4894,21 +4898,17 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         };
         let mut then_transports = Vec::new();
         for call_path in &site.then_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 then_transports.push(transport);
             }
         }
         let mut else_transports = Vec::new();
         for call_path in &site.else_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 else_transports.push(transport);
             }
         }
@@ -4977,11 +4977,9 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         };
         let mut match_transports = Vec::new();
         for call_path in &site.all_service_call_paths {
-            if let Some(transport) = resolve_loop_body_service_call(
-                call_path,
-                ctx.uses_binding_types,
-                service_lookup,
-            ) {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, ctx.uses_binding_types, service_lookup)
+            {
                 match_transports.push(transport);
             }
         }
@@ -6389,6 +6387,7 @@ fn derive_service_call_metadata(
     service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<ServiceCallMetadata, LowerError> {
     let transport = match &operation.transport {
         Some(TransportBinding::Rest { .. }) => ServiceTransportClass::RestNetwork,
@@ -6402,13 +6401,12 @@ fn derive_service_call_metadata(
         None => ServiceTransportClass::Unknown,
     };
 
-    let response_classification = derive_response_classification(service, operation)?;
     let spec = derive_operation_spec(
         service,
         operation,
         transport,
-        response_classification,
         data_registry,
+        rest_body_types,
     )?;
 
     // Auto-derive readonly from HTTP method: GET and HEAD are read-only by definition.
@@ -6451,6 +6449,224 @@ fn configured_response_provider_for_service(
 /// Registry of module-level `data` definitions, keyed by both qualified and
 /// unqualified names. Used to resolve compile-time constants (e.g., env maps).
 type DataRegistry<'a> = HashMap<String, &'a DataDef>;
+
+#[derive(Debug, Clone, Default)]
+struct RestBodyTypeRegistry {
+    records: HashMap<String, Vec<(String, TypeExpr)>>,
+    sums: HashMap<String, Vec<RestBodyVariantType>>,
+    aliases: HashMap<String, TypeExpr>,
+}
+
+#[derive(Debug, Clone)]
+struct RestBodyVariantType {
+    name: String,
+    fields: Vec<(String, TypeExpr)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedRestBodyContract {
+    record_type: String,
+    fields: Vec<ResolvedRestBodyFieldContract>,
+}
+
+impl ResolvedRestBodyContract {
+    fn field(&self, name: &str) -> Option<&ResolvedRestBodyFieldContract> {
+        self.fields.iter().find(|field| field.name == name)
+    }
+
+    fn field_mut(&mut self, name: &str) -> Option<&mut ResolvedRestBodyFieldContract> {
+        self.fields.iter_mut().find(|field| field.name == name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedRestBodyFieldContract {
+    name: String,
+    type_id: String,
+    is_optional: bool,
+    literal_variants: Vec<ResolvedRestBodyLiteralVariant>,
+    nested_contract: Option<Box<ResolvedRestBodyContract>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedRestBodyLiteralVariant {
+    name: String,
+    field_names: Vec<String>,
+    wire_value: Option<String>,
+}
+
+impl RestBodyTypeRegistry {
+    fn from_project(project: &TypedProject) -> Self {
+        let mut registry = Self::default();
+        for module in project.modules() {
+            for item in &module.ast.items {
+                let Item::TypeDef(def) = &item.node else {
+                    continue;
+                };
+                match &def.body {
+                    TypeBody::Record(fields) => {
+                        registry.records.insert(
+                            def.name.clone(),
+                            fields
+                                .iter()
+                                .map(|field| (field.name.clone(), field.ty.clone()))
+                                .collect(),
+                        );
+                    }
+                    TypeBody::Sum(variants) => {
+                        registry.sums.insert(
+                            def.name.clone(),
+                            variants
+                                .iter()
+                                .map(|variant| RestBodyVariantType {
+                                    name: variant.name.clone(),
+                                    fields: variant
+                                        .fields
+                                        .iter()
+                                        .map(|field| (field.name.clone(), field.ty.clone()))
+                                        .collect(),
+                                })
+                                .collect(),
+                        );
+                    }
+                    TypeBody::Alias(inner) => {
+                        registry.aliases.insert(def.name.clone(), inner.clone());
+                    }
+                }
+            }
+        }
+        registry
+    }
+
+    fn resolve_record(&self, ty: &TypeExpr) -> Option<(&str, &[(String, TypeExpr)])> {
+        match ty {
+            TypeExpr::Named(name) => self
+                .records
+                .get_key_value(name)
+                .map(|(record_name, fields)| (record_name.as_str(), fields.as_slice()))
+                .or_else(|| {
+                    self.aliases
+                        .get(name)
+                        .and_then(|inner| self.resolve_record(inner))
+                }),
+            TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => self.resolve_record(inner),
+            _ => None,
+        }
+    }
+
+    fn resolve_sum(&self, ty: &TypeExpr) -> Option<&[RestBodyVariantType]> {
+        match ty {
+            TypeExpr::Named(name) => self
+                .sums
+                .get(name)
+                .map(|variants| variants.as_slice())
+                .or_else(|| {
+                    self.aliases
+                        .get(name)
+                        .and_then(|inner| self.resolve_sum(inner))
+                }),
+            TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => self.resolve_sum(inner),
+            _ => None,
+        }
+    }
+
+    fn body_contract_for_expr(&self, expr: &Expr) -> Option<ResolvedRestBodyContract> {
+        let Expr::Record(Some(record_type), _) = expr else {
+            return None;
+        };
+        let mut visiting = HashSet::new();
+        self.body_contract_for_record_name(record_type, &mut visiting)
+    }
+
+    fn body_contract_for_record_name(
+        &self,
+        record_type: &str,
+        visiting: &mut HashSet<String>,
+    ) -> Option<ResolvedRestBodyContract> {
+        let fields = self.records.get(record_type)?;
+        if !visiting.insert(record_type.to_string()) {
+            return None;
+        }
+
+        let contract = ResolvedRestBodyContract {
+            record_type: record_type.to_string(),
+            fields: fields
+                .iter()
+                .map(|(field_name, field_ty)| ResolvedRestBodyFieldContract {
+                    name: field_name.clone(),
+                    type_id: type_expr_to_string(field_ty),
+                    is_optional: rest_body_field_is_optional(field_ty),
+                    literal_variants: self.literal_variants_for_type(field_ty),
+                    nested_contract: self
+                        .body_contract_for_type(field_ty, visiting)
+                        .map(Box::new),
+                })
+                .collect(),
+        };
+
+        visiting.remove(record_type);
+        Some(contract)
+    }
+
+    fn body_contract_for_type(
+        &self,
+        ty: &TypeExpr,
+        visiting: &mut HashSet<String>,
+    ) -> Option<ResolvedRestBodyContract> {
+        let (record_type, _) = self.resolve_record(ty)?;
+        self.body_contract_for_record_name(record_type, visiting)
+    }
+
+    fn literal_variants_for_type(&self, ty: &TypeExpr) -> Vec<ResolvedRestBodyLiteralVariant> {
+        self.resolve_sum(ty)
+            .map(|variants| {
+                variants
+                    .iter()
+                    .map(|variant| ResolvedRestBodyLiteralVariant {
+                        name: variant.name.clone(),
+                        field_names: variant
+                            .fields
+                            .iter()
+                            .map(|(field_name, _)| field_name.clone())
+                            .collect(),
+                        wire_value: None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn rest_body_field_is_optional(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Optional(_) => true,
+        TypeExpr::Refined(inner, _) => rest_body_field_is_optional(inner),
+        _ => false,
+    }
+}
+
+fn record_fields_match_variant(fields: &[(String, Expr)], variant_fields: &[String]) -> bool {
+    fields.len() == variant_fields.len()
+        && fields.iter().all(|(name, _)| {
+            variant_fields
+                .iter()
+                .any(|expected_name| expected_name == name)
+        })
+}
+
+fn sum_literal_contract(variants: &[ResolvedRestBodyLiteralVariant]) -> String {
+    variants
+        .iter()
+        .map(|variant| {
+            if variant.field_names.is_empty() {
+                format!("`{}`", variant.name)
+            } else {
+                format!("`{} {{ ... }}`", variant.name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
 
 /// Build a data registry from all modules in the project.
 fn build_data_registry<'a>(project: &'a TypedProject<'_>) -> DataRegistry<'a> {
@@ -6597,231 +6813,6 @@ fn validate_rest_output_field_paths(
     Ok(())
 }
 
-fn validate_sts_exchange_body_against_typed_schema(
-    service: &ServiceDef,
-    operation: &OperationDef,
-    type_defs: &HashMap<String, &TypeDef>,
-) -> Result<(), LowerError> {
-    const STS_SERVICE: &str = "gcp.STS";
-    const STS_OPERATION: &str = "Exchange";
-    const TOKEN_EXCHANGE_URN: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
-    const JWT_URN: &str = "urn:ietf:params:oauth:token-type:jwt";
-    const ACCESS_TOKEN_URN: &str = "urn:ietf:params:oauth:token-type:access_token";
-
-    if service.name != STS_SERVICE || operation.name != STS_OPERATION {
-        return Ok(());
-    }
-
-    let (request_type_name, body_fields) = match &operation.transport {
-        Some(TransportBinding::Rest {
-            body: Some(body), ..
-        }) => match body {
-            Expr::Record(Some(type_name), fields) => (
-                type_name.as_str(),
-                fields
-                    .iter()
-                    .map(|(key, value)| (key.as_str(), value))
-                    .collect::<HashMap<_, _>>(),
-            ),
-            Expr::Record(None, _) | Expr::Map(_) => {
-                return Err(LowerError::InvalidTransportSpec {
-                    service: service.name.clone(),
-                    operation: operation.name.clone(),
-                    detail: format!(
-                        "{STS_SERVICE}.{STS_OPERATION} requires a typed REST body record so lowering can resolve the request schema from DSL metadata"
-                    ),
-                });
-            }
-            _ => {
-                return Err(LowerError::InvalidTransportSpec {
-                    service: service.name.clone(),
-                    operation: operation.name.clone(),
-                    detail: format!(
-                        "{STS_SERVICE}.{STS_OPERATION} REST body must stay a typed record matching the declared request schema"
-                    ),
-                });
-            }
-        },
-        Some(TransportBinding::Rest { body: None, .. }) => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires an explicit typed REST body so lowering can validate it against the declared request schema"
-                ),
-            });
-        }
-        _ => return Ok(()),
-    };
-
-    let request_fields = match type_defs.get(request_type_name) {
-        Some(TypeDef {
-            body: TypeBody::Record(fields),
-            ..
-        }) => fields.as_slice(),
-        Some(_) => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("`{request_type_name}` must remain a record type"),
-            });
-        }
-        None => {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires the typed REST body record `{request_type_name}` to resolve to a local request schema"
-                ),
-            });
-        }
-    };
-
-    let request_field_types = request_fields
-        .iter()
-        .map(|field| (field.name.as_str(), &field.ty))
-        .collect::<HashMap<_, _>>();
-
-    for key in body_fields.keys() {
-        if !request_field_types.contains_key(key) {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("STS body field `{key}` is not declared on `{request_type_name}`"),
-            });
-        }
-    }
-
-    for field in request_fields {
-        if !is_type_expr_optional(&field.ty) && !body_fields.contains_key(field.name.as_str()) {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body is missing required `{request_type_name}.{}` field",
-                    field.name
-                ),
-            });
-        }
-    }
-
-    let named_type_name = |field_name: &str| -> Result<&str, LowerError> {
-        let Some(field_ty) = request_field_types.get(field_name) else {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("STS request schema is missing `{request_type_name}.{field_name}`"),
-            });
-        };
-        named_type_expr_name(field_ty).ok_or_else(|| LowerError::InvalidTransportSpec {
-            service: service.name.clone(),
-            operation: operation.name.clone(),
-            detail: format!("`{request_type_name}.{field_name}` must resolve to a named enum type"),
-        })
-    };
-    let grant_type_name = named_type_name("grant_type")?;
-    let subject_token_type_name = named_type_name("subject_token_type")?;
-    let requested_token_type_name = named_type_name("requested_token_type")?;
-
-    let expect_unit_variant = |enum_name: &str, variant_name: &str| -> Result<(), LowerError> {
-        let Some(type_def) = type_defs.get(enum_name) else {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "{STS_SERVICE}.{STS_OPERATION} requires local `{enum_name}` so lowering can validate the REST body literals"
-                ),
-            });
-        };
-        let TypeBody::Sum(variants) = &type_def.body else {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!("`{enum_name}` must remain a sum type"),
-            });
-        };
-        if !variants
-            .iter()
-            .any(|variant| variant.name == variant_name && variant.fields.is_empty())
-        {
-            return Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "`{enum_name}` must keep unit variant `{variant_name}` for `{STS_SERVICE}.{STS_OPERATION}`"
-                ),
-            });
-        }
-        Ok(())
-    };
-    expect_unit_variant(grant_type_name, "TokenExchange")?;
-    expect_unit_variant(subject_token_type_name, "Jwt")?;
-    expect_unit_variant(requested_token_type_name, "RequestAccessToken")?;
-
-    let expect_input_ref = |field_name: &str| -> Result<(), LowerError> {
-        match body_fields.get(field_name) {
-            Some(Expr::Ident(name)) if name == field_name => Ok(()),
-            _ => Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body field `{field_name}` must remain wired from operation input `{field_name}`"
-                ),
-            }),
-        }
-    };
-    expect_input_ref("subject_token")?;
-    expect_input_ref("audience")?;
-
-    let expect_literal = |field_name: &str,
-                          expected: &str,
-                          source: &str|
-     -> Result<(), LowerError> {
-        match body_fields.get(field_name) {
-            Some(Expr::Literal(Literal::String(value))) if value == expected => Ok(()),
-            Some(Expr::Literal(Literal::String(value))) => Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body field `{field_name}` must stay aligned with `{source}` and use `{expected}`, found `{value}`"
-                ),
-            }),
-            _ => Err(LowerError::InvalidTransportSpec {
-                service: service.name.clone(),
-                operation: operation.name.clone(),
-                detail: format!(
-                    "STS body field `{field_name}` must stay a literal derived from `{source}`"
-                ),
-            }),
-        }
-    };
-    expect_literal(
-        "grant_type",
-        TOKEN_EXCHANGE_URN,
-        &format!("{grant_type_name}::TokenExchange"),
-    )?;
-    expect_literal(
-        "subject_token_type",
-        JWT_URN,
-        &format!("{subject_token_type_name}::Jwt"),
-    )?;
-    expect_literal(
-        "requested_token_type",
-        ACCESS_TOKEN_URN,
-        &format!("{requested_token_type_name}::RequestAccessToken"),
-    )?;
-
-    Ok(())
-}
-
-fn named_type_expr_name(ty: &TypeExpr) -> Option<&str> {
-    match ty {
-        TypeExpr::Named(name) => Some(name.as_str()),
-        TypeExpr::Optional(inner) | TypeExpr::Refined(inner, _) => named_type_expr_name(inner),
-        _ => None,
-    }
-}
-
 // ============================================================================
 // ServiceOperationSpec extraction from annotations
 // ============================================================================
@@ -6833,11 +6824,12 @@ fn derive_operation_spec(
     transport: ServiceTransportClass,
     response_classification: Option<ResponseClassification>,
     data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<ServiceOperationSpec>, LowerError> {
     match transport {
         ServiceTransportClass::RestNetwork => {
             Ok(
-                derive_rest_spec(service, operation, response_classification)?
+                derive_rest_spec(service, operation, data_registry, rest_body_types)?
                     .map(|s| ServiceOperationSpec::Rest(Box::new(s))),
             )
         }
@@ -7029,7 +7021,8 @@ fn derive_exit_mapping(exit_entries: &[daglang_syntax::ast::ExitEntry]) -> Vec<E
 fn derive_rest_spec(
     service: &ServiceDef,
     operation: &OperationDef,
-    response_classification: Option<ResponseClassification>,
+    data_registry: &DataRegistry<'_>,
+    rest_body_types: &RestBodyTypeRegistry,
 ) -> Result<Option<RestOperationSpec>, LowerError> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
     let (method, path_template) = match &operation.transport {
@@ -7050,9 +7043,39 @@ fn derive_rest_spec(
         &headers,
         auth_input.as_deref(),
     );
+    let operation_input_names = operation
+        .inputs
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect::<HashSet<_>>();
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
-        Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(b),
+        Some(TransportBinding::Rest { body: Some(b), .. }) => {
+            let has_wire_values_metadata = rest_transport_wire_values(operation).is_some();
+            let body_contract = resolve_typed_rest_body_contract(
+                service,
+                operation,
+                b,
+                rest_body_types,
+                data_registry,
+            )?;
+            validate_typed_rest_body_contract(
+                service,
+                operation,
+                b,
+                body_contract.as_ref(),
+                data_registry,
+                has_wire_values_metadata,
+            )?;
+            body_template_entries_from_expr(
+                service,
+                operation,
+                b,
+                &operation_input_names,
+                data_registry,
+                body_contract.as_ref(),
+            )?
+        }
         _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
@@ -7263,42 +7286,587 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
 }
 
 /// Recursively convert an expression (Record or Map) to body template entries.
-fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
+fn body_template_entries_from_expr(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    expr: &Expr,
+    operation_input_names: &HashSet<&str>,
+    data_registry: &DataRegistry<'_>,
+    body_contract: Option<&ResolvedRestBodyContract>,
+) -> Result<Option<Vec<BodyEntry>>, LowerError> {
     match expr {
         Expr::Record(_, fields) => {
             let mut entries = Vec::new();
             for (key, value) in fields {
-                if let Some(entry) = body_template_entry(key, value) {
+                if let Some(entry) = body_template_entry(
+                    service,
+                    operation,
+                    key,
+                    value,
+                    operation_input_names,
+                    data_registry,
+                    body_contract,
+                )? {
                     entries.push(entry);
                 }
             }
-            Some(entries)
+            Ok(Some(entries))
         }
         Expr::Map(map_entries) => {
             let mut entries = Vec::new();
             for (key_expr, value) in map_entries {
                 if let Expr::Literal(Literal::String(key)) = key_expr {
-                    if let Some(entry) = body_template_entry(key, value) {
+                    if let Some(entry) = body_template_entry(
+                        service,
+                        operation,
+                        key,
+                        value,
+                        operation_input_names,
+                        data_registry,
+                        body_contract,
+                    )? {
                         entries.push(entry);
                     }
                 }
             }
-            Some(entries)
+            Ok(Some(entries))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Convert a single key-value pair to a BodyEntry.
+#[allow(clippy::too_many_arguments)]
+fn body_template_entry(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    key: &str,
+    value: &Expr,
+    operation_input_names: &HashSet<&str>,
+    data_registry: &DataRegistry<'_>,
+    body_contract: Option<&ResolvedRestBodyContract>,
+) -> Result<Option<BodyEntry>, LowerError> {
+    match value {
+        Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => Ok(Some(
+            BodyEntry::InputRef(key.to_string(), field_name.clone()),
+        )),
+        Expr::Literal(Literal::String(s)) => {
+            Ok(Some(BodyEntry::Literal(key.to_string(), s.clone())))
+        }
+        Expr::Ident(name) => {
+            if let Some(value) = resolve_const_string(name, data_registry) {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            if let Some(value) =
+                typed_rest_body_literal(service, operation, body_contract, key, value)?
+            {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            Ok(None)
+        }
+        Expr::Record(_, _) | Expr::Map(_) => {
+            if let Some(value) =
+                typed_rest_body_literal(service, operation, body_contract, key, value)?
+            {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            let nested_contract = body_contract
+                .and_then(|contract| contract.field(key))
+                .and_then(|field| field.nested_contract.as_deref());
+            let inner = body_template_entries_from_expr(
+                service,
+                operation,
+                value,
+                operation_input_names,
+                data_registry,
+                nested_contract,
+            )?;
+            Ok(inner.map(|inner| BodyEntry::Nested(key.to_string(), inner)))
+        }
+        _ => {
+            if let Some(value) =
+                typed_rest_body_literal(service, operation, body_contract, key, value)?
+            {
+                return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
+            }
+            Ok(None)
+        }
+    }
+}
+
+fn resolve_const_string(name: &str, data_registry: &DataRegistry<'_>) -> Option<String> {
+    let def = data_registry.get(name)?;
+    match &def.value {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        Expr::Ident(next) if next != name => resolve_const_string(next, data_registry),
+        _ => None,
+    }
+}
+
+fn rest_transport_wire_values(operation: &OperationDef) -> Option<&Expr> {
+    match &operation.transport {
+        Some(TransportBinding::Rest {
+            wire_values: Some(wire_values),
+            ..
+        }) => Some(wire_values.as_ref()),
+        _ => None,
+    }
+}
+
+fn resolve_typed_rest_body_contract(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body: &Expr,
+    rest_body_types: &RestBodyTypeRegistry,
+    data_registry: &DataRegistry<'_>,
+) -> Result<Option<ResolvedRestBodyContract>, LowerError> {
+    let mut body_contract = rest_body_types.body_contract_for_expr(body);
+    let Some(wire_values) = rest_transport_wire_values(operation) else {
+        return Ok(body_contract);
+    };
+    let Some(body_contract) = body_contract.as_mut() else {
+        return Ok(None);
+    };
+
+    let Some(field_entries) = named_expr_entries(wire_values) else {
+        return Err(invalid_typed_rest_body_wire_metadata(
+            service,
+            operation,
+            "REST transport `wire_values` metadata must use record/map syntax shaped like `{ field_name: { VariantName: \"wire-value\" } }`",
+        ));
+    };
+
+    for (field_name, variants_expr) in field_entries {
+        let Some(variant_entries) = named_expr_entries(variants_expr) else {
+            return Err(invalid_typed_rest_body_wire_metadata(
+                service,
+                operation,
+                format!(
+                    "REST transport `wire_values.{field_name}` must use record/map syntax shaped like `{{ VariantName: \"wire-value\" }}`"
+                ),
+            ));
+        };
+
+        let Some(field_contract) = body_contract.field_mut(field_name) else {
+            continue;
+        };
+        if field_contract.literal_variants.is_empty() {
+            continue;
+        }
+
+        for (variant_name, wire_expr) in variant_entries {
+            let Some(wire_value) = explicit_rest_body_wire_value(wire_expr, data_registry) else {
+                return Err(invalid_typed_rest_body_wire_metadata(
+                    service,
+                    operation,
+                    format!(
+                        "REST transport `wire_values.{field_name}.{variant_name}` must resolve to a string literal; found {}",
+                        describe_transport_body_expr(wire_expr)
+                    ),
+                ));
+            };
+            let Some(variant_contract) = field_contract
+                .literal_variants
+                .iter_mut()
+                .find(|variant| variant.name == variant_name)
+            else {
+                return Err(missing_typed_rest_body_contract_variant(
+                    service,
+                    operation,
+                    body_contract,
+                    field_name,
+                    variant_name,
+                ));
+            };
+            variant_contract.wire_value = Some(wire_value);
+        }
+    }
+
+    Ok(Some(body_contract.clone()))
+}
+
+fn named_expr_entries(expr: &Expr) -> Option<Vec<(&str, &Expr)>> {
+    match expr {
+        Expr::Record(_, fields) => Some(
+            fields
+                .iter()
+                .map(|(name, value)| (name.as_str(), value))
+                .collect(),
+        ),
+        Expr::Map(entries) => {
+            let mut named_entries = Vec::with_capacity(entries.len());
+            for (key_expr, value) in entries {
+                match key_expr {
+                    Expr::Literal(Literal::String(name)) => {
+                        named_entries.push((name.as_str(), value))
+                    }
+                    Expr::Ident(name) => named_entries.push((name.as_str(), value)),
+                    _ => return None,
+                }
+            }
+            Some(named_entries)
         }
         _ => None,
     }
 }
 
-/// Convert a single key-value pair to a BodyEntry.
-fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
-    match value {
-        Expr::Ident(field_name) => Some(BodyEntry::InputRef(key.to_string(), field_name.clone())),
-        Expr::Literal(Literal::String(s)) => Some(BodyEntry::Literal(key.to_string(), s.clone())),
-        Expr::Record(_, _) | Expr::Map(_) => {
-            let inner = body_template_entries_from_expr(value)?;
-            Some(BodyEntry::Nested(key.to_string(), inner))
+fn typed_rest_body_literal(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body_contract: Option<&ResolvedRestBodyContract>,
+    key: &str,
+    value: &Expr,
+) -> Result<Option<String>, LowerError> {
+    let Some(field_schema) = body_contract.and_then(|contract| contract.field(key)) else {
+        return Ok(None);
+    };
+
+    if field_schema.literal_variants.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(variant) =
+        typed_rest_body_literal_matches(field_schema, value).map_err(|expected| {
+            invalid_typed_rest_body_value(service, operation, key, expected.as_str(), value)
+        })?
+    else {
+        return Ok(None);
+    };
+
+    let Some(wire_value) = variant.wire_value.as_ref() else {
+        return Err(missing_typed_rest_body_wire_mapping(
+            service,
+            operation,
+            key,
+            &variant.name,
+        ));
+    };
+
+    Ok(Some(wire_value.clone()))
+}
+
+fn validate_typed_rest_body_contract(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body: &Expr,
+    body_contract: Option<&ResolvedRestBodyContract>,
+    data_registry: &DataRegistry<'_>,
+    has_wire_values_metadata: bool,
+) -> Result<(), LowerError> {
+    let Some(contract) = body_contract else {
+        return if !has_wire_values_metadata {
+            Ok(())
+        } else {
+            Err(match body {
+                Expr::Record(None, _) | Expr::Map(_) => {
+                    invalid_untyped_rest_body(service, operation, body)
+                }
+                _ => missing_rest_body_contract(service, operation, body),
+            })
+        };
+    };
+
+    for field_schema in &contract.fields {
+        if field_schema.literal_variants.is_empty() {
+            continue;
         }
+
+        let field_name = field_schema.name.as_str();
+
+        let Some(value) = rest_body_field_value(body, field_name) else {
+            if !field_schema.is_optional {
+                return Err(missing_required_typed_rest_body_field(
+                    service, operation, contract, field_name,
+                ));
+            }
+            continue;
+        };
+
+        if let Some(raw_wire_value) = explicit_rest_body_wire_value(value, data_registry) {
+            let expected_wire_values = typed_rest_body_expected_wire_values(field_schema);
+            if expected_wire_values.is_empty() {
+                return Err(missing_typed_rest_body_wire_value_metadata(
+                    service, operation, field_name,
+                ));
+            }
+            if expected_wire_values
+                .iter()
+                .all(|expected| expected != &raw_wire_value)
+            {
+                return Err(invalid_typed_rest_body_wire_value(
+                    service,
+                    operation,
+                    field_name,
+                    &expected_wire_values,
+                    &raw_wire_value,
+                    value,
+                ));
+            }
+            continue;
+        }
+
+        if typed_rest_body_literal(service, operation, body_contract, field_name, value)?.is_none()
+        {
+            let expected = sum_literal_contract(&field_schema.literal_variants);
+            return Err(invalid_typed_rest_body_value(
+                service,
+                operation,
+                field_name,
+                expected.as_str(),
+                value,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn rest_body_field_value<'a>(body: &'a Expr, field_name: &str) -> Option<&'a Expr> {
+    match body {
+        Expr::Record(_, fields) => fields
+            .iter()
+            .find(|(candidate_name, _)| candidate_name == field_name)
+            .map(|(_, value)| value),
+        Expr::Map(entries) => entries.iter().find_map(|(key_expr, value)| match key_expr {
+            Expr::Literal(Literal::String(candidate_name)) if candidate_name == field_name => {
+                Some(value)
+            }
+            _ => None,
+        }),
         _ => None,
+    }
+}
+
+fn explicit_rest_body_wire_value(value: &Expr, data_registry: &DataRegistry<'_>) -> Option<String> {
+    match value {
+        Expr::Literal(Literal::String(raw_wire_value)) => Some(raw_wire_value.clone()),
+        Expr::Ident(name) => resolve_const_string(name, data_registry),
+        _ => None,
+    }
+}
+
+fn typed_rest_body_expected_wire_values(
+    field_schema: &ResolvedRestBodyFieldContract,
+) -> Vec<String> {
+    field_schema
+        .literal_variants
+        .iter()
+        .filter_map(|variant| variant.wire_value.clone())
+        .collect()
+}
+
+fn typed_rest_body_literal_matches<'a>(
+    field_schema: &'a ResolvedRestBodyFieldContract,
+    value: &Expr,
+) -> Result<Option<&'a ResolvedRestBodyLiteralVariant>, String> {
+    match value {
+        Expr::Ident(name) => {
+            let Some(variant) = field_schema
+                .literal_variants
+                .iter()
+                .find(|variant| variant.name == *name)
+            else {
+                return Err(sum_literal_contract(&field_schema.literal_variants));
+            };
+            if !variant.field_names.is_empty() {
+                return Err(sum_literal_contract(&field_schema.literal_variants));
+            }
+            Ok(Some(variant))
+        }
+        Expr::Record(Some(name), fields) => {
+            let Some(variant) = field_schema
+                .literal_variants
+                .iter()
+                .find(|variant| variant.name == *name)
+            else {
+                return Err(sum_literal_contract(&field_schema.literal_variants));
+            };
+            if !record_fields_match_variant(fields, &variant.field_names) {
+                return Err(sum_literal_contract(&field_schema.literal_variants));
+            }
+            Ok(Some(variant))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn missing_rest_body_contract(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body: &Expr,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request body {} loses its resolved body-type contract before REST lowering",
+            describe_transport_body_expr(body)
+        ),
+    }
+}
+
+fn missing_typed_rest_body_contract_variant(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body_contract: &ResolvedRestBodyContract,
+    field_name: &str,
+    variant_name: &str,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request body type `{}` field `{field_name}` is missing typed literal constructor `{variant_name}` required by REST transport `wire_values` metadata",
+            body_contract.record_type
+        ),
+    }
+}
+
+fn missing_required_typed_rest_body_field(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body_contract: &ResolvedRestBodyContract,
+    field_name: &str,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request body type `{}` is missing required field `{field_name}` for the typed wire-value contract",
+            body_contract.record_type
+        ),
+    }
+}
+
+fn missing_typed_rest_body_wire_mapping(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+    variant_name: &str,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request field `{field_name}` variant `{variant_name}` has no REST transport `wire_values` metadata"
+        ),
+    }
+}
+
+fn missing_typed_rest_body_wire_value_metadata(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request field `{field_name}` resolves to a raw wire value but has no REST transport `wire_values` metadata"
+        ),
+    }
+}
+
+fn invalid_typed_rest_body_wire_metadata(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    detail: impl Into<String>,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: detail.into(),
+    }
+}
+
+fn invalid_untyped_rest_body(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    body: &Expr,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request body must use a typed record literal so lowering can derive wire values; found {}",
+            describe_transport_body_expr(body)
+        ),
+    }
+}
+
+fn invalid_typed_rest_body_value(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+    expected: &str,
+    value: &Expr,
+) -> LowerError {
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request field `{field_name}` must be {expected}; found {}",
+            describe_transport_body_expr(value)
+        ),
+    }
+}
+
+fn invalid_typed_rest_body_wire_value(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    field_name: &str,
+    expected_wire_values: &[String],
+    actual_wire_value: &str,
+    value: &Expr,
+) -> LowerError {
+    let expected = match expected_wire_values {
+        [expected] => format!("resolve to wire value `{expected}`"),
+        _ => format!(
+            "resolve to one of {}",
+            expected_wire_values
+                .iter()
+                .map(|value| format!("`{value}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    LowerError::InvalidTransportSpec {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        detail: format!(
+            "REST request field `{field_name}` must {expected}; found resolved wire value `{actual_wire_value}` from {}",
+            describe_transport_body_expr(value)
+        ),
+    }
+}
+
+fn describe_transport_body_expr(value: &Expr) -> String {
+    match value {
+        Expr::Ident(name) => format!("`{name}`"),
+        Expr::Literal(Literal::String(value)) => format!("string literal `{value}`"),
+        Expr::Literal(Literal::Int(value)) => format!("integer literal `{value}`"),
+        Expr::Literal(Literal::Float(value)) => format!("float literal `{value}`"),
+        Expr::Literal(Literal::Bool(value)) => format!("boolean literal `{value}`"),
+        Expr::Literal(Literal::None) => "`None`".to_string(),
+        Expr::Record(Some(name), fields) if fields.is_empty() => format!("`{name} {{}}`"),
+        Expr::Record(Some(name), _) => format!("`{name} {{ ... }}`"),
+        Expr::Record(None, _) => "`{ ... }`".to_string(),
+        Expr::Map(_) => "`Map(...)`".to_string(),
+        Expr::List(_) => "`[...]`".to_string(),
+        Expr::StringInterp(_) => "string interpolation".to_string(),
+        Expr::Call(name, _) => format!("call `{name}(...)`"),
+        Expr::FieldAccess(_, field) => format!("field access `.{field}`"),
+        Expr::ServiceCall(path, _) => format!("service call `{}`", path.join(".")),
+        Expr::BinOp(_, _, _) => "binary expression".to_string(),
+        Expr::UnaryOp(_, _) => "unary expression".to_string(),
+        Expr::Match(_, _) => "match expression".to_string(),
+        Expr::If(_, _, _) => "if expression".to_string(),
+        Expr::For(_, _, _, _) => "for expression".to_string(),
+        Expr::Lambda(_, _) => "lambda expression".to_string(),
+        Expr::Return(_) => "return expression".to_string(),
+        Expr::Guarded(_, _) => "guarded expression".to_string(),
+        Expr::After(_, _) => "after expression".to_string(),
+        Expr::Block(_) => "block expression".to_string(),
     }
 }
 
@@ -7804,19 +8372,11 @@ fn derive_service_transport_triplets(
     required_calls: Option<&HashSet<String>>,
 ) -> Result<transport::TransportManifest, LowerError> {
     let data_registry = build_data_registry(project);
+    let rest_body_types = RestBodyTypeRegistry::from_project(project);
     let mut manifest = transport::TransportManifest::new();
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let source_file = module.path.display().to_string();
-        let module_type_defs = module
-            .ast
-            .items
-            .iter()
-            .filter_map(|item| match &item.node {
-                Item::TypeDef(type_def) => Some((type_def.name.clone(), type_def)),
-                _ => None,
-            })
-            .collect::<HashMap<_, _>>();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -7845,13 +8405,12 @@ fn derive_service_transport_triplets(
                     }
                 }
                 validate_rest_output_field_paths(service, operation)?;
-                validate_sts_exchange_body_against_typed_schema(
+                let service_metadata = derive_service_call_metadata(
                     service,
                     operation,
-                    &module_type_defs,
+                    &data_registry,
+                    &rest_body_types,
                 )?;
-                let service_metadata =
-                    derive_service_call_metadata(service, operation, &data_registry)?;
                 // RT4: Fail-closed when a service operation has no transport
                 // block. Previously this silently created a triplet with no
                 // spec, causing the executor to skip the operation.
@@ -9146,8 +9705,7 @@ fn wire_auth_credential_edges(
             collect_service_calls_from_stmts(stmts, &mut service_calls);
 
             for call in &service_calls {
-                let Some(endpoint) =
-                    resolve_service_endpoint(&call.path, scoped_service_registry)
+                let Some(endpoint) = resolve_service_endpoint(&call.path, scoped_service_registry)
                 else {
                     continue;
                 };

@@ -4041,7 +4041,7 @@ func run() -> { result: String } {
 }
 
 #[test]
-fn sts_exchange_body_template_literals_are_validated_against_sts_schema() {
+fn rest_body_template_resolves_string_data_refs_to_literals() {
     let source = r#"module extdeps.cloud.gcp.sts
 type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
 type RequestedTokenKind = RequestAccessToken | RequestIdToken
@@ -4057,6 +4057,9 @@ type ExchangeRequest {
 type ExchangeResponse {
   access_token: String
 }
+data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
+data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
 service gcp.STS {
   config { endpoint: "https://sts.googleapis.com" }
   operation Exchange {
@@ -4072,11 +4075,22 @@ service gcp.STS {
       method: POST,
       path: "/v1/token",
       body: ExchangeRequest {
-        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        grant_type: token_exchange_grant_type_wire,
         subject_token: subject_token,
-        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+        subject_token_type: jwt_subject_token_type_wire,
         audience: audience,
-        requested_token_type: "urn:ietf:params:oauth:token-type:access_token"
+        requested_token_type: access_token_requested_token_type_wire
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: token_exchange_grant_type_wire
+        },
+        subject_token_type: {
+          Jwt: jwt_subject_token_type_wire
+        },
+        requested_token_type: {
+          RequestAccessToken: access_token_requested_token_type_wire
+        }
       }
     }
     response {
@@ -4126,74 +4140,875 @@ func run(subject_token: String, audience: String) -> { access_token: String } {
                 "urn:ietf:params:oauth:token-type:access_token".to_string()
             ),
         ]),
-        "lowered STS request body should preserve the OAuth wire values after validating them against the typed STS schema"
+        "lowered REST body should inline string-valued data metadata as wire literals"
+    );
+}
+
+fn sts_transport_module_source_with_body_expr_and_wire_values(
+    body_expr: &str,
+    grant_type_wire: &str,
+    subject_token_type_wire: &str,
+    requested_token_type_wire: &str,
+) -> String {
+    [
+        "module extdeps.cloud.gcp.sts\n",
+        "type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2\n",
+        "type RequestedTokenType = RequestAccessToken | RequestIdToken\n",
+        "type StsGrantType = TokenExchange {}\n",
+        "type StsTokenExchange {\n",
+        "  grant_type: StsGrantType\n",
+        "  subject_token: Secret\n",
+        "  subject_token_type: SubjectTokenType\n",
+        "  audience: String\n",
+        "  requested_token_type: RequestedTokenType?\n",
+        "}\n",
+        "type StsTokenResponse {\n",
+        "  access_token: Secret\n",
+        "}\n",
+        "data token_exchange_grant_type_wire: String = \"",
+        grant_type_wire,
+        "\"\n",
+        "data jwt_subject_token_type_wire: String = \"",
+        subject_token_type_wire,
+        "\"\n",
+        "data access_token_requested_token_type_wire: String = \"",
+        requested_token_type_wire,
+        "\"\n",
+        "service gcp.STS {\n",
+        "  config { endpoint: \"https://sts.googleapis.com\" }\n",
+        "  operation Exchange {\n",
+        "    input {\n",
+        "      subject_token: Secret\n",
+        "      audience: String\n",
+        "    }\n",
+        "    output {\n",
+        "      access_token: Secret from \"access_token\"\n",
+        "    }\n",
+        "    idempotent\n",
+        "    transport rest {\n",
+        "      method: POST,\n",
+        "      path: \"/v1/token\",\n",
+        "      body: ",
+        body_expr,
+        ",\n",
+        "      wire_values: {\n",
+        "        grant_type: {\n",
+        "          TokenExchange: token_exchange_grant_type_wire\n",
+        "        },\n",
+        "        subject_token_type: {\n",
+        "          Jwt: jwt_subject_token_type_wire\n",
+        "        },\n",
+        "        requested_token_type: {\n",
+        "          RequestAccessToken: access_token_requested_token_type_wire\n",
+        "        }\n",
+        "      }\n",
+        "    }\n",
+        "    response {\n",
+        "      200 => StsTokenResponse\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+        "func run(subject_token: Secret, audience: String) -> { access_token: Secret } {\n",
+        "  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)\n",
+        "  return { access_token: token.access_token }\n",
+        "}\n",
+    ]
+    .concat()
+}
+
+fn sts_transport_module_source_with_body_expr(body_expr: &str) -> String {
+    sts_transport_module_source_with_body_expr_and_wire_values(
+        body_expr,
+        "urn:ietf:params:oauth:grant-type:token-exchange",
+        "urn:ietf:params:oauth:token-type:jwt",
+        "urn:ietf:params:oauth:token-type:access_token",
+    )
+}
+
+fn sts_transport_module_source(body_fields: &str) -> String {
+    sts_transport_module_source_with_body_expr(&format!(
+        "StsTokenExchange {{\n{body_fields}\n      }}"
+    ))
+}
+
+fn renamed_sts_transport_module_source(body_fields: &str) -> String {
+    [
+        "module extdeps.cloud.gcp.sts\n",
+        "type SubjectKind = Jwt | StsAccessToken | IdToken | Saml2\n",
+        "type RequestedKind = RequestAccessToken | RequestIdToken\n",
+        "type GrantKind = TokenExchange {}\n",
+        "type ExchangeRequest {\n",
+        "  grant_type: GrantKind\n",
+        "  subject_token: Secret\n",
+        "  subject_token_type: SubjectKind\n",
+        "  audience: String\n",
+        "  requested_token_type: RequestedKind?\n",
+        "}\n",
+        "type StsTokenResponse {\n",
+        "  access_token: Secret\n",
+        "}\n",
+        "data token_exchange_grant_type_wire: String = \"urn:ietf:params:oauth:grant-type:token-exchange\"\n",
+        "data jwt_subject_token_type_wire: String = \"urn:ietf:params:oauth:token-type:jwt\"\n",
+        "data access_token_requested_token_type_wire: String = \"urn:ietf:params:oauth:token-type:access_token\"\n",
+        "service gcp.STS {\n",
+        "  config { endpoint: \"https://sts.googleapis.com\" }\n",
+        "  operation Exchange {\n",
+        "    input {\n",
+        "      subject_token: Secret\n",
+        "      audience: String\n",
+        "    }\n",
+        "    output {\n",
+        "      access_token: Secret from \"access_token\"\n",
+        "    }\n",
+        "    idempotent\n",
+        "    transport rest {\n",
+        "      method: POST,\n",
+        "      path: \"/v1/token\",\n",
+        "      body: ExchangeRequest {\n",
+        body_fields,
+        "\n",
+        "      },\n",
+        "      wire_values: {\n",
+        "        grant_type: {\n",
+        "          TokenExchange: token_exchange_grant_type_wire\n",
+        "        },\n",
+        "        subject_token_type: {\n",
+        "          Jwt: jwt_subject_token_type_wire\n",
+        "        },\n",
+        "        requested_token_type: {\n",
+        "          RequestAccessToken: access_token_requested_token_type_wire\n",
+        "        }\n",
+        "      }\n",
+        "    }\n",
+        "    response {\n",
+        "      200 => StsTokenResponse\n",
+        "    }\n",
+        "  }\n",
+        "}\n",
+        "func run(subject_token: Secret, audience: String) -> { access_token: Secret } {\n",
+        "  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)\n",
+        "  return { access_token: token.access_token }\n",
+        "}\n",
+    ]
+    .concat()
+}
+
+#[test]
+fn sts_typed_body_rejects_invalid_grant_type_constructor() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: Jwt
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail on an invalid STS grant_type value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("TokenExchange"),
+                "expected constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `Jwt`"),
+                "expected actual invalid value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
+    let source = renamed_sts_transport_module_source(
+        r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let prepare_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("prepare_transport") && node.id.0.contains("Exchange"))
+        .expect("prepare transport node for STS.Exchange should exist");
+
+    let metadata = match &prepare_node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be preserved"),
+        _ => panic!("expected opaque lowered node"),
+    };
+
+    let spec = metadata.spec.as_ref().expect("spec should be present");
+    let ServiceOperationSpec::Rest(rest_spec) = spec else {
+        panic!("expected REST spec");
+    };
+
+    assert_eq!(
+        rest_spec.body_template,
+        Some(vec![
+            BodyEntry::Literal(
+                "grant_type".to_string(),
+                "urn:ietf:params:oauth:grant-type:token-exchange".to_string()
+            ),
+            BodyEntry::InputRef("subject_token".to_string(), "subject_token".to_string()),
+            BodyEntry::Literal(
+                "subject_token_type".to_string(),
+                "urn:ietf:params:oauth:token-type:jwt".to_string()
+            ),
+            BodyEntry::InputRef("audience".to_string(), "audience".to_string()),
+            BodyEntry::Literal(
+                "requested_token_type".to_string(),
+                "urn:ietf:params:oauth:token-type:access_token".to_string()
+            ),
+        ]),
+        "typed REST body lowering should follow request metadata at the lowering boundary, not STS-specific type names"
     );
 }
 
 #[test]
-fn sts_exchange_body_template_rejects_requested_token_type_drift() {
-    let source = r#"module extdeps.cloud.gcp.sts
-type SubjectTokenKind = Jwt | StsAccessToken | IdToken | Saml2
-type RequestedTokenKind = RequestAccessToken | RequestIdToken
-type GrantKind = TokenExchange {}
-type ExchangeRequest {
-  grant_type: GrantKind
-  subject_token: String
-  subject_token_type: SubjectTokenKind
-  audience: String
-  scope: String?
-  requested_token_type: RequestedTokenKind?
+fn typed_rest_body_rejects_invalid_value_using_request_metadata() {
+    let source = renamed_sts_transport_module_source(
+        r#"        grant_type: Jwt
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail on an invalid renamed grant_type value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("TokenExchange"),
+                "expected metadata-derived constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `Jwt`"),
+                "expected actual invalid value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
 }
-type ExchangeResponse {
-  access_token: String
+
+#[test]
+fn sts_typed_body_rejects_valid_but_unmapped_requested_token_type_variant() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestIdToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS variant lacks a wire contract");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("requested_token_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("RequestIdToken"),
+                "expected unmapped variant in error, got {detail}"
+            );
+            assert!(
+                detail.contains("wire_values"),
+                "expected wire contract failure in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_constructor_field_without_wire_contract() {
+    let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type TokenFormat = UseAccessToken | UseIdToken
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: Secret
+  subject_token_type: SubjectTokenType
+  audience: String
+  requested_token_type: RequestedTokenType?
+  token_format: TokenFormat?
+}
+type StsTokenResponse {
+  access_token: Secret
 }
 service gcp.STS {
   config { endpoint: "https://sts.googleapis.com" }
   operation Exchange {
     input {
-      subject_token: String
+      subject_token: Secret
       audience: String
     }
     output {
-      access_token: String from "access_token"
+      access_token: Secret from "access_token"
     }
     idempotent
     transport rest {
       method: POST,
       path: "/v1/token",
-      body: ExchangeRequest {
-        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-        subject_token: subject_token,
-        subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
-        audience: audience,
-        requested_token_type: "urn:ietf:params:oauth:token-type:id_token"
+      body: StsTokenExchange {
+        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+        token_format: UseAccessToken
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: "urn:ietf:params:oauth:grant-type:token-exchange"
+        },
+        subject_token_type: {
+          Jwt: "urn:ietf:params:oauth:token-type:jwt"
+        },
+        requested_token_type: {
+          RequestAccessToken: "urn:ietf:params:oauth:token-type:access_token"
+        }
       }
     }
     response {
-      200 => ExchangeResponse
+      200 => StsTokenResponse
     }
   }
 }
-func run(subject_token: String, audience: String) -> { access_token: String } {
+func run(subject_token: Secret, audience: String) -> { access_token: Secret } {
   token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
   return { access_token: token.access_token }
 }"#;
-
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
-    let error =
-        lower_typed_project(&typed).expect_err("lowering should fail when STS wire literals drift");
+    let err = lower_typed_project(&typed).expect_err(
+        "lowering should fail when a typed REST constructor field lacks a wire contract",
+    );
 
-    assert!(matches!(
-        error,
+    match err {
         LowerError::InvalidTransportSpec {
-            ref service,
-            ref operation,
-            ref detail,
-        } if service == "gcp.STS"
-            && operation == "Exchange"
-            && detail.contains("requested_token_type")
-            && detail.contains("RequestedTokenKind::RequestAccessToken")
-    ));
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("token_format"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("UseAccessToken"),
+                "expected unmapped constructor in error, got {detail}"
+            );
+            assert!(
+                detail.contains("wire_values"),
+                "expected missing wire-value contract detail, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn typed_rest_body_accepts_new_typed_field_via_transport_wire_metadata() {
+    let source = r#"module extdeps.cloud.gcp.sts
+type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
+type RequestedTokenType = RequestAccessToken | RequestIdToken
+type StsGrantType = TokenExchange {}
+type TokenFormat = UseAccessToken | UseIdToken
+type StsTokenExchange {
+  grant_type: StsGrantType
+  subject_token: Secret
+  subject_token_type: SubjectTokenType
+  audience: String
+  requested_token_type: RequestedTokenType?
+  token_format: TokenFormat?
+}
+type StsTokenResponse {
+  access_token: Secret
+}
+data token_exchange_grant_type_wire: String = "urn:ietf:params:oauth:grant-type:token-exchange"
+data jwt_subject_token_type_wire: String = "urn:ietf:params:oauth:token-type:jwt"
+data access_token_requested_token_type_wire: String = "urn:ietf:params:oauth:token-type:access_token"
+data access_token_format_wire: String = "urn:example:token-format:access"
+service gcp.STS {
+  config { endpoint: "https://sts.googleapis.com" }
+  operation Exchange {
+    input {
+      subject_token: Secret
+      audience: String
+    }
+    output {
+      access_token: Secret from "access_token"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/token",
+      body: StsTokenExchange {
+        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+        token_format: UseAccessToken
+      },
+      wire_values: {
+        grant_type: {
+          TokenExchange: token_exchange_grant_type_wire
+        },
+        subject_token_type: {
+          Jwt: jwt_subject_token_type_wire
+        },
+        requested_token_type: {
+          RequestAccessToken: access_token_requested_token_type_wire
+        },
+        token_format: {
+          UseAccessToken: access_token_format_wire
+        }
+      }
+    }
+    response {
+      200 => StsTokenResponse
+    }
+  }
+}
+func run(subject_token: Secret, audience: String) -> { access_token: Secret } {
+  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
+  return { access_token: token.access_token }
+}"#;
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", source)]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed with transport metadata");
+    let prepare_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("prepare_transport") && node.id.0.contains("Exchange"))
+        .expect("prepare transport node for STS.Exchange should exist");
+
+    let metadata = match &prepare_node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be preserved"),
+        _ => panic!("expected opaque lowered node"),
+    };
+
+    let spec = metadata.spec.as_ref().expect("spec should be present");
+    let ServiceOperationSpec::Rest(rest_spec) = spec else {
+        panic!("expected REST spec");
+    };
+
+    assert!(
+        rest_spec
+            .body_template
+            .as_ref()
+            .expect("body template should exist")
+            .contains(&BodyEntry::Literal(
+                "token_format".to_string(),
+                "urn:example:token-format:access".to_string(),
+            )),
+        "transport wire metadata should drive new typed REST fields without lowerer edits",
+    );
+}
+
+#[test]
+fn sts_typed_body_rejects_invalid_subject_token_type_value() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: TokenExchange {}
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail on an invalid STS subject_token_type value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("subject_token_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("`Jwt`"),
+                "expected enum contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `TokenExchange {}`"),
+                "expected actual invalid value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_drifted_grant_type_wire_value() {
+    let source = sts_transport_module_source_with_body_expr_and_wire_values(
+        r#"StsTokenExchange {
+        grant_type: token_exchange_grant_type_wire
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+      }"#,
+        "urn:ietf:params:oauth:grant-type:refresh_token",
+        "urn:ietf:params:oauth:token-type:jwt",
+        "urn:ietf:params:oauth:token-type:access_token",
+    )
+    .replacen(
+        "          TokenExchange: token_exchange_grant_type_wire\n",
+        "          TokenExchange: \"urn:ietf:params:oauth:grant-type:token-exchange\"\n",
+        1,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when an STS wire constant drifts");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("refresh_token"),
+                "expected drifted wire value in error, got {detail}"
+            );
+            assert!(
+                detail.contains("token_exchange"),
+                "expected required STS wire value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_invalid_raw_string_wire_values() {
+    for (field_name, body_fields, expected_wire_value) in [
+        (
+            "grant_type",
+            r#"        grant_type: "wrong"
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+            "urn:ietf:params:oauth:grant-type:token-exchange",
+        ),
+        (
+            "requested_token_type",
+            r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: "wrong""#,
+            "urn:ietf:params:oauth:token-type:access_token",
+        ),
+    ] {
+        let source = sts_transport_module_source(body_fields);
+        let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+        let err = lower_typed_project(&typed).expect_err(
+            "lowering should fail when a typed STS field uses an invalid raw string wire value",
+        );
+
+        match err {
+            LowerError::InvalidTransportSpec {
+                service,
+                operation,
+                detail,
+            } => {
+                assert_eq!(service, "gcp.STS");
+                assert_eq!(operation, "Exchange");
+                assert!(
+                    detail.contains(field_name),
+                    "expected field name in error, got {detail}"
+                );
+                assert!(
+                    detail.contains("wrong"),
+                    "expected invalid raw string in error, got {detail}"
+                );
+                assert!(
+                    detail.contains(expected_wire_value),
+                    "expected required STS wire value in error, got {detail}"
+                );
+            }
+            other => panic!("expected InvalidTransportSpec, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_empty_record_grant_type_field() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS field uses an empty record value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("TokenExchange"),
+                "expected typed constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `{ ... }`"),
+                "expected empty record shape in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_untyped_record_grant_type_field() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: {
+          kind: Jwt
+        }
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS field uses an untyped record value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("TokenExchange"),
+                "expected typed constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `{ ... }`"),
+                "expected untyped record shape in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_map_requested_token_type_field() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: {
+          "kind": RequestAccessToken
+        }"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS field uses a map value");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("requested_token_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("RequestAccessToken"),
+                "expected typed constructor contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `Map(...)`"),
+                "expected map shape in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_missing_required_grant_type_field() {
+    let source = sts_transport_module_source(
+        r#"        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a required STS typed field is missing");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("grant_type"),
+                "expected missing required field in error, got {detail}"
+            );
+            assert!(
+                detail.contains("missing required field"),
+                "expected required-field contract in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_untyped_record_body() {
+    let source = sts_transport_module_source_with_body_expr(
+        r#"{
+        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken
+      }"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed).expect_err("lowering should fail on an untyped STS body");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("typed record literal"),
+                "expected typed-body contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `{ ... }`"),
+                "expected untyped record body in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_map_body() {
+    let source = sts_transport_module_source_with_body_expr(
+        r#"{
+        "grant_type": TokenExchange {}
+        "subject_token": subject_token
+        "subject_token_type": Jwt
+        "audience": audience
+        "requested_token_type": RequestAccessToken
+      }"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed).expect_err("lowering should fail on a map STS body");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("typed record literal"),
+                "expected typed-body contract in error, got {detail}"
+            );
+            assert!(
+                detail.contains("found `Map(...)`"),
+                "expected map body in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
 }
 
 // ============================================================================

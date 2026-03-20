@@ -1,5 +1,6 @@
 use super::*;
 use daglang_contract::FileId;
+use daglang_resolve::unused_imports::build_module_export_index;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -2740,7 +2741,9 @@ import vendor.beta { BetaOnly }
 
 #[test]
 fn selective_import_disambiguates_same_name_services() {
-    // Happy-path integration coverage for selective imports. The registry test
+    // Happy-path integration coverage for selective imports. Both providers use
+    // the same parameter and field names, so choosing beta would fail on
+    // incompatible types rather than on a name mismatch. The registry test
     // above proves beta's SharedService is excluded structurally.
     let graph = module_graph_from_sources(&[
         (
@@ -2754,7 +2757,7 @@ service SharedService {
             "vendor/beta.dag",
             r#"module vendor.beta
 service SharedService {
-  operation read(query: Int) -> { count: Int }
+  operation read(path: Int) -> { body: Int }
 }
 service BetaOnly {
   operation ping(msg: String) -> { ok: Bool }
@@ -2779,6 +2782,140 @@ func run(path: String) -> { body: String } {
         },
     )
     .expect("selective import should disambiguate same-name services");
+}
+
+#[test]
+fn selective_import_beta_shared_service_reports_int_contract_mismatch() {
+    // Negative coverage for the same selective-import seam: alpha and beta use
+    // identical `path`/`body` names, so this failure only happens when beta's
+    // incompatible Int contract is the selected provider.
+    let graph = module_graph_from_sources(&[
+        (
+            "vendor/alpha.dag",
+            r#"module vendor.alpha
+service SharedService {
+  operation read(path: String) -> { body: String }
+}
+service AlphaOnly {
+  operation ping(msg: String) -> { ok: Bool }
+}"#,
+        ),
+        (
+            "vendor/beta.dag",
+            r#"module vendor.beta
+service SharedService {
+  operation read(path: Int) -> { body: Int }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.alpha { AlphaOnly }
+import vendor.beta { SharedService }
+
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        ),
+    ]);
+    let errors = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("beta selective import should surface the selected Int contract");
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            TypeError::TypeMismatch { expected, got }
+                if expected == "String" && got == "Int"
+        )),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn removed_selective_import_binding_fails_at_import_boundary() {
+    let before_graph = module_graph_from_sources(&[
+        (
+            "vendor/surface.dag",
+            r#"module vendor.surface
+service StableSurface {
+  operation ping() -> { ok: Bool }
+}
+service LegacySurface {
+  operation fetch() -> { body: String }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.surface { LegacySurface }
+
+fn run() -> Unit {}"#,
+        ),
+    ]);
+    let before_export_index = build_module_export_index(&before_graph.modules);
+    let before_exports = before_export_index
+        .get("vendor.surface")
+        .expect("provider module should exist in export index");
+    assert!(before_exports.contains("LegacySurface"));
+    typecheck_module_graph_with_options(
+        &before_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("existing selective import should typecheck before the export is removed");
+
+    let after_graph = module_graph_from_sources(&[
+        (
+            "vendor/surface.dag",
+            r#"module vendor.surface
+service StableSurface {
+  operation ping() -> { ok: Bool }
+}"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import vendor.surface { LegacySurface }
+
+fn run() -> Unit {}"#,
+        ),
+    ]);
+    let after_export_index = build_module_export_index(&after_graph.modules);
+    let after_exports = after_export_index
+        .get("vendor.surface")
+        .expect("provider module should exist in export index");
+    assert!(
+        !after_exports.contains("LegacySurface"),
+        "removed bindings must disappear from build_module_export_index"
+    );
+
+    let errors = typecheck_module_graph_with_options(
+        &after_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect_err("removed selective import binding should fail at the import boundary");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnresolvedImportBinding {
+            module,
+            target,
+            binding,
+        } if module == "sample.main"
+            && target == "vendor.surface"
+            && binding == "LegacySurface"
+    )));
+    assert!(
+        !errors.iter().any(|error| matches!(error, TypeError::UnresolvedServiceCall { .. })),
+        "unused stale imports should fail before service-call resolution"
+    );
 }
 
 #[test]
