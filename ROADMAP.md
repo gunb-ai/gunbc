@@ -14,8 +14,15 @@ should always be able to see through the name to the structure underneath.
 
 ### What works
 
-- **455 tests pass** — 363 daglang-emit + 92 v2-compiler-tests (11 ignored)
+- **455 tests pass** — 363 daglang-emit + 92 v2-compiler-tests (12 ignored)
 - **Generated crate compiles** — `v2_crate_cargo_check` passes in <7s
+- **Self-compile error count: 3,928** (down from 3,917 baseline, with RC1/RC2/RC3 fixes)
+  - RC1: per-enum variant imports (resolves E0432 flat import errors)
+  - RC2: struct Rc wrapping with `Rc::new()` construction + type rendering
+  - RC3: `.as_str()` string comparison for `==`/`!=`
+  - Pattern `..` for non-exhaustive variant field binding
+  - Match deref (`&*`) for Rc-wrapped scrutinees
+  - serde `rc` feature for Rc serialization
 - **B3 Phase 1 complete** — TypedExpr (19 variants) eliminated. Expr carries
   `resolved_type: Node?` directly. TypedNode merged into Node. One AST
   instead of two — halves expression memory for self-compile.
@@ -39,10 +46,10 @@ should always be able to see through the name to the structure underneath.
 
 ### What's next
 
-**A4 evidence run.** All A4 prep work is merged — instrumentation (Lane M),
-codegen ownership fixes (Lane R), tokenizer refactor (Lane P), acceptance
-ratchets (Lane T). The next step is to run the evidence tests and see if
-self-compile completes without OOM:
+**A4 evidence run, then the multi-walk refactor.** All A4 prep work is
+merged — instrumentation (Lane M), codegen ownership fixes (Lane R),
+tokenizer refactor (Lane P), acceptance ratchets (Lane T). The next step is
+to run the evidence tests and see if self-compile completes without OOM:
 
 ```bash
 # Step 1: Run the profiling test to measure per-phase timing + RSS
@@ -52,8 +59,19 @@ cargo test -p v2-compiler-tests -- --ignored profile_self_compile --nocapture
 cargo test -p v2-compiler-tests -- --ignored v2_crate_self_compile_cargo_check --nocapture
 ```
 
-If both pass, A4 is complete and we move to B3 Phase 2a implementation.
-If OOM persists, the profiling data tells us exactly where.
+If both pass, A4 is complete. The next stage is B3 Phase 2a implementation
+with a narrower focus than before:
+
+1. fuse `typecheck_module()` around wider contribution/context types so
+   one walk over items/imports produces all sibling facts needed downstream
+2. eliminate result-unpack re-walks in reconcile hot paths
+   (`resolve_expr_types`, `infer_expr`, `resolve_item_types`,
+   `resolve_node_bounded`)
+3. widen the reconcile-to-emit boundary so shared metadata is computed once
+   and carried forward instead of rediscovered in each backend
+
+If OOM persists, the profiling data tells us whether the remaining blocker is
+still ownership fallback or the multi-walk hot paths identified below.
 
 ### Baseline tests
 
@@ -71,18 +89,27 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ### Critical path
 
 **Critical path summary:** A1 (done) → R9 (done) → B3 Ph1 (done) →
-**A4 (evidence run pending)** → **B3 Ph2a** → A5 → A6 (needs Blocker 2) → A7
+**A4 (evidence run pending)** → **B3 Ph2a (multi-walk + wider boundaries)** →
+A5 → A6 (needs Blocker 2) → A7
 
 ### Immediate next actions
 
 1. **A4 evidence run** — run `profile_self_compile` and
    `v2_crate_self_compile_cargo_check`. If both pass, A4 is done.
-2. **If A4 passes:** begin B3 Phase 2a implementation (contracts are frozen,
-   design is ready).
-3. **If A4 fails (OOM):** use profiling data to identify remaining hotspot.
-   Likely candidates: remaining try_unwrap sites not yet covered by Lane R
-   fixes, or algorithmic O(N^2) in .dag code.
-4. **SG-9 workaround revert** — after A4 evidence confirms the codegen fixes
+2. **If A4 passes: start P0/P1 immediately.** First fuse
+   `typecheck_module()` around wider contribution/context types
+   (`ItemContribution` / `ModuleContext` shape), then rewrite
+   `resolve_expr_types()` to accumulate split outputs in one walk.
+3. **Follow with P2/P3.** Remove the systematic result-unpack pattern from
+   `infer_expr()`, `resolve_item_types()`, and `resolve_node_bounded()`.
+   Prefer direct accumulation or wider batch result types; use a mechanical
+   `fold_unpack` helper only where it meaningfully reduces churn.
+4. **Then widen the emit boundary.** Carry shared registry/summary metadata on
+   `TypedGraph` / `ResolvedGraph` so emitters stop rebuilding it from
+   `typed.modules`, and collapse `order_typed_call_args()` to a single pass.
+5. **If A4 fails (OOM):** use profiling data to decide whether the remaining
+   blocker is ownership fallback or the multi-walk refactor above.
+6. **SG-9 workaround revert** — after A4 evidence confirms the codegen fixes
    are sufficient, revert TokPos extraction and branch-aware use counting.
 
 ### Completed parallel lanes (2026-03-19)
@@ -496,6 +523,74 @@ v2-stage0 compiles v2 .dag → Rust → rustc → v2-stage1
 
 v2 builds and tests without v1 in the dependency chain.
 
+### Remaining work: branchable lanes
+
+The remaining roadmap should be executed in **waves of cleanly mergeable
+branches**, not as one long serial refactor. The rule is simple: parallelize
+by **write scope**, not by conceptual topic. If two tasks need the same top-level
+types or the same orchestration function, they are not independent lanes.
+
+#### Wave 0 — serial gate
+
+| Lane | Branch | Ownership | Files |
+|------|--------|-----------|-------|
+| G0 | `wt/a4-evidence` | Run/record the A4 evidence tests, establish the fresh hotspot ranking | tests + docs only |
+
+#### Wave 1 — clean post-A4 lanes
+
+These can run in parallel immediately after A4 because they have either
+disjoint files or disjoint ownership zones within `04_reconcile.dag`.
+
+| Lane | Branch | Ownership | Files | Merge notes |
+|------|--------|-----------|-------|-------------|
+| W1-A | `wt/mw-typecheck-module` | `build_scope_from_items`, `merge_scope_from_imports`, `typecheck_module`, per-module contribution/context types, item-registry construction | `src/v2/04_reconcile.dag` | Owns the module-orchestration zone only. Avoid edits to `infer_expr` / `resolve_expr_types` sections. |
+| W1-B | `wt/mw-resolve-walks` | `resolve_*`, `resolve_expr_types`, `resolve_node_bounded`, `resolve_item_types` result-unpack removal | `src/v2/04_reconcile.dag` | Owns the resolution zone. Keep helper/result types local to that zone to reduce conflicts. |
+| W1-C | `wt/mw-infer-walks` | `infer_expr`, infer helpers, block/list accumulation cleanup | `src/v2/04_reconcile.dag` | Owns the inference zone. Do not touch module boundary types in this lane. |
+| W1-D | `wt/mw-resolve-graph` | `resolve_modules`, `kahn_step`, adjacency/indegree cleanup if profiling keeps it relevant | `src/v2/03_resolve.dag` | Fully independent of reconcile work. |
+| W1-E | `wt/mw-emit-micro` | `order_typed_call_args`, cold emitter micro-walks, reserved-word lookup cleanup | `src/v2/05_emit.dag`, `src/v2/05_emit_rust.dag` | Independent of reconcile internals as long as boundary types stay unchanged. |
+| W1-F | `wt/blocker3-core-cleanup` | Delete remaining `TypeExpr` helpers / last callers | `src/v2/00_core.dag`, v1 bootstrap callers | Explicitly parallelizable mechanical cleanup. |
+
+#### Wave 2 — single boundary lane plus support lanes
+
+This wave should **not** be split across multiple branches that all edit
+`ResolvedGraph`, `TypedModule`, `DeclaredFuncSig`, `ResolvedFuncSig`,
+`06_pipeline.dag`, and the emit entry points. Those are one ownership surface.
+
+| Lane | Branch | Ownership | Files | Depends on |
+|------|--------|-----------|-------|------------|
+| W2-A | `wt/ph2a-boundary` | Declared vs resolved func-sig split, SCC resolution, strict `ResolvedGraph` boundary, `compile_sources_lenient` retirement path, `validate_no_unresolved` demotion | `src/v2/04_reconcile.dag`, `src/v2/06_pipeline.dag`, emitter entry points | W1-A merged |
+| W2-B | `wt/ph2a-ratchets` | Acceptance tests, perf ratchets, strict-path test coverage, self-hosting assertions | tests / harness / docs | Can track W1/W2 APIs and merge after W2-A |
+| W2-C | `wt/ph2a-docs` | Docs, roadmap, design notes, migration notes for the strict boundary | docs only | Independent support lane |
+
+#### Wave 3 — A5/A6 parallel lanes after Phase 2a lands
+
+Once the strict boundary is stable, the next self-hosting phases split fairly
+cleanly again:
+
+| Lane | Branch | Ownership | Files | Why independent |
+|------|--------|-----------|-------|-----------------|
+| W3-A | `wt/a5-stage-harness` | Stage0→stage1 harness, bootstrap runner, self-host test plumbing | pipeline/tests/harness | Mostly harness work; should not change emitter semantics. |
+| W3-B | `wt/a6-determinism` | Deterministic file/module/item ordering, artifact normalization, stable output comparison helpers | emitters + artifact helpers | Needed for fixed-point equality; separate from harness mechanics. |
+| W3-C | `wt/result-special-case` | Special-case `Result<T,E>` support before A6 | parser + reconcile + tests | Required for fail-closed error paths, but distinct from stage harness and determinism work. |
+
+#### Wave 4 — A7 retirement lanes
+
+| Lane | Branch | Ownership | Files |
+|------|--------|-----------|-------|
+| W4-A | `wt/a7-runtime-retire` | Remove remaining v1 runtime/bootstrap dependency from build/test path | manifests, pipeline, harness |
+| W4-B | `wt/a7-docs-retire` | Docs, workflows, cleanup of v1-era instructions/ratchets | docs + CI/workflow files |
+
+#### Merge discipline
+
+- During Wave 1, treat `04_reconcile.dag` as three owned zones:
+  module orchestration, resolution, inference.
+- Do not move functions across files during Waves 1-2. Optimize for merge
+  cleanliness first; reorganize after the hot-path refactor lands.
+- Reserve top-level boundary type edits (`TypedModule`, `TypedGraph`,
+  `ResolvedGraph`, func-sig types) to the boundary lane.
+- Every lane should land with its own tests/ratchets so branches merge on
+  behavior, not just on text.
+
 ---
 
 ## Track B: Node Convergence
@@ -527,6 +622,12 @@ root cause documented in the postmortem below.
 
 These contracts define the strict post-A4 boundary. Each makes a class of
 fabrication structurally unrepresentable.
+
+**Implementation shape fixed for Phase 2a:** keep the compiler in the current
+functional/imperative style (explicit recursion, folds, local accumulators),
+but widen boundary and helper result types wherever a single walk learns
+multiple sibling facts. The goal is not to add a visitor/object layer; the
+goal is to stop re-walking the same collections to rediscover adjacent data.
 
 ##### Contract 1 — Declared vs Resolved FuncSig
 
@@ -586,6 +687,21 @@ Contracts 1-3 land, neither has a reason to exist.
 
 Do **not** weaken `typecheck_module()` into a partial/best-effort mode.
 The fix is stronger output types, not more lenient control flow.
+
+##### Refactor rule set (updated 2026-03-19)
+
+- **Prefer wider contribution/context types over sibling passes.** If one walk
+  over items/imports learns multiple facts, return them together
+  (`ItemContribution` / `ModuleContext` shape) instead of rebuilding them in
+  separate passes.
+- **Hot-path helpers must not return a list of compound results that callers
+  immediately unpack with extra `map` / `flat_map` walks.** Either accumulate
+  directly or return a wider batch result that is already split.
+- **Use `fold_unpack` only as a transition tool.** It is acceptable for
+  medium-priority cleanup, but true hot paths should avoid both the unpack
+  walks and the intermediate results list.
+- **When metadata is derivable during reconcile, carry it on the boundary
+  type.** Emitters should consume shared summaries, not rediscover them.
 
 **Acceptance:**
 - [ ] `validate_no_unresolved()` deleted; replaced with structural type boundary
@@ -974,86 +1090,86 @@ emit_rust.rs (3,114 lines). 13 .dag files totaling 646KB of source text.
 
 ---
 
-## Interface Lower-Bound Program (2026-03-19)
+## Multi-Walk Refactor Program (2026-03-19)
 
-This section turns the Interface Performance Catalog into a concrete plan.
-"Lower bound" here means: one unavoidable walk over the owned input for a
-stage, plus work proportional to emitted output. Re-walking the same
-module/body/block without learning new facts needs an explicit reason or
-should be removed.
+This section turns the multi-walk audit into the concrete post-A4 plan.
+"Lower bound" still means: one unavoidable walk over the owned input for a
+stage, plus work proportional to emitted output. The audit sharpens the rule:
+if a walk learns multiple sibling facts, widen the result type so it returns
+those facts together. Do not rediscover them in follow-up passes.
 
 **Execution rule:** this does **not** replace A4. Run the A4 evidence tests
-first. Then use this list to remove the largest remaining gaps between the
-current implementation and each stage's lower bound.
+first. Then use this list to remove the largest remaining multi-walk gaps in
+the current compiler.
 
-### Catalog check against current source
+### Audit principle
 
-- **Validated:** `typecheck_module()` still does 8 whole-module/item passes;
-  `validate_no_unresolved()` still walks both raw and typed items;
-  `infer_expr(Block)` and all three block emitters still have SG-9
-  `list_push(acc.field, ...)` patterns; `scan_braces_depth()` still rescans
-  forward; `rust_ident()` still linearly scans reserved words.
-- **Adjusted from the catalog:**
-  - `indent()` is currently unused in `src/v2`, so this is cleanup, not a
-    hot-path blocker.
-  - `build_item_registry()` is still redundant whole-body work, but it runs
-    once for the selected target, not literally 3 times per compile.
-  - `resolve_expr_types()` and tokenization are already at their asymptotic
-    floor; work there is pass fusion / ownership discipline, not a new big-O.
-
-### Interface-by-interface target
-
-| Interface | Lower-bound target | Current gap | Planned work |
-|-----------|--------------------|-------------|--------------|
-| `00_core.dag` | O(N) tree walks, O(1) type construction | None found | Keep stable. No perf work unless profiling disproves this. |
-| `01_tokenize.dag` | O(C) time, O(T) space | No algorithmic gap after `ScanResult` refactor | Preserve single-owner accumulator discipline. Reject new struct-field push sites in hot loops. |
-| `02_parse.dag` | O(T) total parse | `scan_braces_depth()` can rescan nested regions | Replace match-arm brace lookahead with single-pass depth tracking or cached boundaries. |
-| `03_resolve.dag` | O(M + E) dependency ordering | `kahn_step()` still filters edges per step | Rework topo sort around adjacency + indegree decrement so the whole sort is truly O(M + E). |
-| `04_reconcile.dag` | 3 passes max: env build, item resolve, item infer | `typecheck_module()` still spends 8 passes; block inference still has SG-9; `validate_no_unresolved()` duplicates finished work | Fuse passes 2-7b of `typecheck_module()`. Rewrite `infer_expr(Block)` around standalone accumulators or explicit recursion. Retire `validate_no_unresolved()` via B3 Phase 2a boundary types. |
-| `05_emit.dag` | One metadata walk per compile, no dead helpers on hot path | `build_item_registry()` recomputes service-call summaries from bodies; `indent()` is dead code | Hoist item registry / service-call summaries into reconciler output or `TypedGraph`. Delete `indent()` if it stays unused. |
-| `05_emit_rust.dag` | O(N + B) per item/module | SG-9 in block + func-body emission; `rust_ident()` does list scan per name | Rewrite block builders around standalone accumulators. Replace reserved-word list scan with a map-backed membership check. |
-| `05_emit_python.dag` | O(N + B) per item/module | SG-9 in block + func-body emission | Same block rewrite as Rust. Consume shared upstream registry instead of rebuilding. |
-| `05_emit_go.dag` | O(N + B) per item/module | SG-9 in block + func-body emission | Same block rewrite as Rust. Consume shared upstream registry instead of rebuilding. |
-| `06_pipeline.dag` | One strict pipeline path | Strict path still coexists with lenient/bootstrap scaffolding | After B3 Phase 2a, delete `compile_sources_lenient()` and remove release-path dependence on `validate_no_unresolved()`. |
-| `07_complexity.dag` / `08_artifact.dag` | O(1) | None found | No performance work planned. |
+- One O(N) walk is fine.
+- K separate O(N) walks over the same collection is a scaling dimension.
+- The two anti-patterns to remove are:
+  1. **module-level multi-pass** — same items/imports walked in separate
+     passes to extract sibling facts
+  2. **result-unpack** — `map(process)` creates a results list, then 2-3 more
+     walks split out fields/diagnostics
 
 ### Priority order after A4 evidence run
 
-1. **Fuse `typecheck_module()` to 3 passes.** This is the largest confirmed
-   whole-module gap and dominates the self-compile catalog.
-2. **Retire `validate_no_unresolved()` from the release path.** This is
-   already the B3 Phase 2a direction and removes a full duplicate graph walk.
-3. **Eliminate SG-9 block accumulators in reconcile + all emitters.** The
-   lower-bound rule is: no hot-path `list_push(acc.field, ...)` or
-   `map_insert(acc.field, ...)` on struct fields.
-4. **Hoist emitter registry/service-call summaries upstream.** Compute once
-   during reconcile, reuse in every backend.
-5. **Make resolver topo sort truly O(M + E).** Current constants are small,
-   but the interface should still match the graph lower bound.
-6. **Replace parser brace rescans with linear lookahead.** Important for
-   pathological nesting, lower priority than reconcile/emitter work.
-7. **Clean up cold linear scans and dead helpers.** `rust_ident()` reserved
-   words should use a map; `indent()` should be deleted if it remains unused.
+| Priority | Area | Confirmed extra work | Planned response |
+|----------|------|----------------------|------------------|
+| **P0** | `04_reconcile.dag:typecheck_module` | ~42 extra walks in the audit: 8 module/item passes plus unpack re-walks on `item_results` and `typed_item_results` | Fuse around wider `ItemContribution` / `ModuleContext`-style types. One env build, one contribution fold over items/imports, one infer pass. Carry shared registry/summary data on the boundary instead of rebuilding it later. |
+| **P1** | `04_reconcile.dag:resolve_expr_types` | 8 extra result-unpack walks inside expression recursion | Rewrite collection-processing branches to accumulate split outputs directly, or return wider batch results that are already split. |
+| **P2** | `04_reconcile.dag:infer_expr` | 5 systematic unpack sites on small lists, repeated across a very hot function | Use a mechanical `fold_unpack` / batch helper first, then inline the hottest sites if the next profile still points there. |
+| **P3** | `04_reconcile.dag:resolve_item_types` and `resolve_node_bounded` | 7 extra unpack sites across params/uses/props/children/fields/variants | Convert to inline accumulation or standalone accumulator recursion. |
+| **P4** | `05_emit*.dag` + `05_emit.dag` | emitters still walk `typed.modules` once to rebuild shared registry and again to emit; `order_typed_call_args()` re-walks args | Widen `TypedGraph` / `ResolvedGraph` to carry shared metadata once. Rewrite call-arg ordering around a single fold. |
+| **P5** | `03_resolve.dag` | `resolve_modules()` / `kahn_step()` still re-walk modules and edges | Keep as explicit technical debt unless A4 profile says it moved onto the hot path. Rework to adjacency + indegree when worth it. |
+
+**Estimated payoff:** P0-P3 remove roughly 130K unnecessary list traversals
+in self-compile, plus the constant-factor savings from not allocating
+intermediate results lists.
+
+### Concrete next stages
+
+1. **P0: reshape `typecheck_module()` around wider contributions.**
+   Keep the functional/imperative style, but let one item walk produce all
+   sibling outputs needed later: declared signatures, service registry,
+   service locals, variant locals, item registry, and diagnostics. The module
+   orchestration target is still 3 logical passes max:
+   Pass A: build env + resolve item types
+   Pass B: fold item/import contributions into one `ModuleContext`
+   Pass C: infer items
+2. **P1: rewrite `resolve_expr_types()` list branches.**
+   Replace `map(...)` followed by `map(r => r.value)` and
+   `flat_map(r => r.diagnostics)` with direct accumulation. This is the
+   highest-value hot-path cleanup after `typecheck_module()`.
+3. **P2/P3: remove systematic unpack helpers in reconcile.**
+   For `infer_expr()`, start with a mechanical helper if it reduces churn.
+   For `resolve_item_types()` and `resolve_node_bounded()`, prefer direct
+   one-pass accumulation because the call sites are already localized.
+4. **P4: widen the reconcile-to-emit boundary.**
+   `item_registry` already exists per module. The next step is to carry the
+   graph-wide shared registry/summaries on `TypedGraph` / `ResolvedGraph` so
+   backends stop rebuilding them from `typed.modules`. Fold `order_typed_call_args()`
+   into the same cleanup pass.
+5. **P5 and below stay deferred unless profiling changes the order.**
+   Parser brace rescans, resolver topo constants, and cold linear scans remain
+   technical debt, but they should not pre-empt the reconcile refactor unless
+   the A4 evidence run says otherwise.
 
 ### Acceptance
 
 - [ ] A4 evidence run completes and produces a fresh hotspot ranking
-- [x] `typecheck_module()` reduced to 3 module-scale passes max
-      (Pass A: build_type_env + resolve_item_types; Pass B: fused build_scope_from_items + merge_scope_from_imports; Pass C: infer_items)
-- [x] `validate_no_unresolved()` demoted (B3 Phase 2a — not deleted, B3 Phase 2b)
-- [x] No SG-9 struct-field accumulator sites remain in compiler hot paths
-      (10 sites converted: infer_block_stmts + 3 emitters × 3 block patterns)
-- [x] Emitter registry/service-call summaries computed once upstream
-      (item_registry built inline in typecheck_module, emitters merge via fold+map_merge)
-- [ ] Resolver dependency ordering is O(M + E) end-to-end
-      (Blocked: v1 emitter cannot codegen Map<String, List<String>>; existing O(E) edge partition retained)
-- [ ] Parser lookahead no longer rescans brace regions
-      (Deferred: v1 emitter cannot codegen Map<Int, Int>; current scan bounded by pattern depth)
-- [ ] `rust_ident()` uses map lookup
-      (Deferred: v1 emitter type mismatch on data-literal fold to map; O(50) scan retained)
-- [x] `indent()` deleted from `05_emit.dag`
-- [ ] Interfaces already at their lower bound remain unchanged unless a new
-      profile shows regression
+- [ ] `typecheck_module()` performs one item-contribution walk and one
+      import-contribution walk; no module/item collection is re-walked just to
+      extract sibling facts
+- [ ] `item_results` / `typed_item_results` unpack re-walks are eliminated
+- [ ] hot-path reconcile helpers no longer use the result-unpack pattern
+      (`resolve_expr_types`, `infer_expr`, `resolve_item_types`,
+      `resolve_node_bounded`)
+- [ ] `TypedGraph` / `ResolvedGraph` carries shared emitter metadata so
+      backends do not rebuild it from `typed.modules`
+- [ ] `order_typed_call_args()` no longer triple-walks the same arguments
+- [ ] lower-priority resolver/parser scans stay explicitly deferred unless a
+      new profile promotes them
 
 ---
 

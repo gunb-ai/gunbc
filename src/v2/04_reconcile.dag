@@ -43,7 +43,7 @@ import v2.std.core {
   Literal, Var, FieldAccess, Call, MethodCall,
   Match, If, Let, RecordLit, ListLit, BinOp, UnaryOp,
   Lambda, StringInterp, Block, Cast,
-  Index, Slice
+  Index, Slice, Return
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 
@@ -776,6 +776,7 @@ fn expr_span(expr: Expr) -> SourceSpan {
     ForEach { span: s } => s
     Index { span: s } => s
     Slice { span: s } => s
+    Return { span: s } => s
     _ => SourceSpan { start: 0, end: 0 }
   }
 }
@@ -1789,7 +1790,15 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         diagnostics: concat(base_diags, start_diags, end_diags, slice_check.diagnostics)
       }
 
-    // All 19 Expr variants are handled above. This arm is unreachable.
+    Return { value: inner_expr, span: span } =>
+      let inner_result = infer_expr(expr: inner_expr, scope: scope)
+      let texpr = Return { value: inner_result.typed, resolved_type: Some { value: inner_result.typed.resolved_type.value }, span: span }
+      InferResult {
+        typed: texpr,
+        diagnostics: inner_result.diagnostics
+      }
+
+    // All 20 Expr variants are handled above. This arm is unreachable.
     // If a new variant is added to Expr without a case here, this emits
     // a clear error diagnostic rather than silently fabricating Unit.
     _ =>
@@ -2923,6 +2932,13 @@ fn resolve_expr_types(expr: Expr, env: TypeEnv, module_name: String) -> ExprReso
         },
         diagnostics: concat(base_diags, start_diags, end_diags)
       }
+
+    Return { value: inner, span: span } =>
+      let inner_result = resolve_expr_types(expr: inner, env: env, module_name: module_name)
+      ExprResolveResult {
+        expr: Return { value: inner_result.expr, span: span },
+        diagnostics: inner_result.diagnostics
+      }
   }
 }
 
@@ -3136,6 +3152,8 @@ fn collect_calls_in_expr(caller: String, expr: Expr, local_func_set: Map<String,
         collect_calls_in_expr(caller: caller, expr: s, local_func_set: local_func_set),
         collect_calls_in_expr(caller: caller, expr: e, local_func_set: local_func_set)
       )
+    Return { value: v, resolved_type: _, span: _ } =>
+      collect_calls_in_expr(caller: caller, expr: v, local_func_set: local_func_set)
     _ => []
   }
 }
@@ -3902,6 +3920,8 @@ fn collect_unresolved_in_expr(expr: Expr, module_name: String, defined_names: Ma
         collect_unresolved_in_expr(expr: start, module_name: module_name, defined_names: defined_names),
         collect_unresolved_in_expr(expr: end, module_name: module_name, defined_names: defined_names)
       )
+    Return { value: v, span: _ } =>
+      collect_unresolved_in_expr(expr: v, module_name: module_name, defined_names: defined_names)
   }
 }
 

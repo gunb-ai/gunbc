@@ -32,7 +32,7 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  ForEach, Index, Slice,
+  ForEach, Index, Slice, Return,
   DeclaredFuncSig,
   Literal, Var, FieldAccess, Call,
   MethodCall, Match, If, Let, RecordLit,
@@ -554,6 +554,8 @@ fn emit_go_typed_expr(texpr: Expr, registry: Map<String, ItemInfo>, scope: Infer
       concat(prefix, emit_go_typed_index(base: b, index: i, registry: registry, scope: scope))
     Slice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
       concat(prefix, emit_go_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope))
+    Return { value: v, resolved_type: _, span: _ } =>
+      concat(prefix, "return ", emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0))
   }
 }
 
