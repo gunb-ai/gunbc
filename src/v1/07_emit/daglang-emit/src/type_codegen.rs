@@ -402,30 +402,33 @@ pub fn common_enum_fields(variants: &[Variant]) -> Vec<(String, String)> {
     if variants.is_empty() {
         return vec![];
     }
-    // Only consider variants that have fields (skip unit variants)
-    let struct_variants: Vec<&Variant> = variants.iter().filter(|v| !v.fields.is_empty()).collect();
-    if struct_variants.len() != variants.len() {
+    if variants.iter().any(|variant| variant.fields.is_empty()) {
         return vec![]; // Not all variants have fields
     }
-    // Start with fields from first variant
-    let first_fields: HashMap<&str, &TypeExpr> = struct_variants[0]
+
+    let mut common: Vec<(String, String)> = variants[0]
         .fields
         .iter()
-        .map(|f| (f.name.as_str(), &f.ty))
+        .map(|field| (field.name.clone(), type_expr_to_rust(&field.ty)))
         .collect();
-    // Keep only fields present in ALL variants with matching types
-    first_fields
-        .into_iter()
-        .filter(|(name, ty)| {
-            let ty_str = type_expr_to_rust(ty);
-            struct_variants[1..].iter().all(|v| {
-                v.fields
-                    .iter()
-                    .any(|f| f.name == *name && type_expr_to_rust(&f.ty) == ty_str)
-            })
-        })
-        .map(|(name, ty)| (name.to_string(), type_expr_to_rust(ty)))
-        .collect()
+
+    for variant in &variants[1..] {
+        let field_types: HashMap<&str, String> = variant
+            .fields
+            .iter()
+            .map(|field| (field.name.as_str(), type_expr_to_rust(&field.ty)))
+            .collect();
+        common.retain(|(name, ty)| {
+            field_types
+                .get(name.as_str())
+                .is_some_and(|candidate| candidate == ty)
+        });
+        if common.is_empty() {
+            break;
+        }
+    }
+
+    common
 }
 
 /// Build map from enum name → set of common field names across all type definitions.
@@ -2156,6 +2159,80 @@ mod tests {
             }
             _ => panic!("expected Enum"),
         }
+    }
+
+    #[test]
+    fn common_enum_fields_keeps_only_matching_shared_fields() {
+        let variants = vec![
+            Variant {
+                name: "Circle".into(),
+                fields: vec![
+                    Field {
+                        name: "span".into(),
+                        ty: TypeExpr::Named("SourceSpan".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                    Field {
+                        name: "label".into(),
+                        ty: TypeExpr::Named("String".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                    Field {
+                        name: "radius".into(),
+                        ty: TypeExpr::Named("Float".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                ],
+            },
+            Variant {
+                name: "Square".into(),
+                fields: vec![
+                    Field {
+                        name: "span".into(),
+                        ty: TypeExpr::Named("SourceSpan".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                    Field {
+                        name: "label".into(),
+                        ty: TypeExpr::Named("Int".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                    Field {
+                        name: "side".into(),
+                        ty: TypeExpr::Named("Float".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                ],
+            },
+            Variant {
+                name: "Point".into(),
+                fields: vec![
+                    Field {
+                        name: "span".into(),
+                        ty: TypeExpr::Named("SourceSpan".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                    Field {
+                        name: "x".into(),
+                        ty: TypeExpr::Named("Float".into()),
+                        default: None,
+                        from_path: None,
+                    },
+                ],
+            },
+        ];
+
+        assert_eq!(
+            common_enum_fields(&variants),
+            vec![("span".to_string(), "SourceSpan".to_string())]
+        );
     }
 
     #[test]
