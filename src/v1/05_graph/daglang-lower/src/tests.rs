@@ -4493,6 +4493,60 @@ fn sts_typed_body_rejects_drifted_grant_type_wire_value() {
 }
 
 #[test]
+fn sts_typed_body_rejects_invalid_raw_string_wire_values() {
+    for (field_name, body_fields, expected_wire_value) in [
+        (
+            "grant_type",
+            r#"        grant_type: "wrong"
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestAccessToken"#,
+            "urn:ietf:params:oauth:grant-type:token-exchange",
+        ),
+        (
+            "requested_token_type",
+            r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: "wrong""#,
+            "urn:ietf:params:oauth:token-type:access_token",
+        ),
+    ] {
+        let source = sts_transport_module_source(body_fields);
+        let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+        let err = lower_typed_project(&typed).expect_err(
+            "lowering should fail when a typed STS field uses an invalid raw string wire value",
+        );
+
+        match err {
+            LowerError::InvalidTransportSpec {
+                service,
+                operation,
+                detail,
+            } => {
+                assert_eq!(service, "gcp.STS");
+                assert_eq!(operation, "Exchange");
+                assert!(
+                    detail.contains(field_name),
+                    "expected field name in error, got {detail}"
+                );
+                assert!(
+                    detail.contains("wrong"),
+                    "expected invalid raw string in error, got {detail}"
+                );
+                assert!(
+                    detail.contains(expected_wire_value),
+                    "expected required STS wire value in error, got {detail}"
+                );
+            }
+            other => panic!("expected InvalidTransportSpec, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn sts_typed_body_rejects_missing_required_grant_type_field() {
     let source = sts_transport_module_source(
         r#"        subject_token: subject_token
