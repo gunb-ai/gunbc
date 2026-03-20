@@ -161,6 +161,10 @@ pub struct CompileContext {
     pub fn_return_ir_types: Shared<HashMap<String, IrType>>,
     /// Map from function name → ordered parameter names and their type names.
     pub fn_param_types: Shared<std::collections::HashMap<String, Vec<(String, String)>>>,
+    /// Map from function name → parameter name → positional index in `fn_param_types`.
+    /// This keeps the ordered vector as the source of truth while making named
+    /// argument lookup O(1) on the hot call-codegen path.
+    pub fn_param_name_indexes: Shared<HashMap<String, HashMap<String, usize>>>,
     /// Set of parameter names that are Optional (for v2 crate emit).
     pub optional_params: HashSet<String>,
     /// Map from parameter name → type name (for v2 crate emit).
@@ -579,6 +583,7 @@ impl CompileContext {
             fn_return_types: Shared::default(),
             fn_return_ir_types: Shared::default(),
             fn_param_types: Shared::default(),
+            fn_param_name_indexes: Shared::default(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
@@ -692,14 +697,22 @@ fn lookup_call_arg_type<'a>(
     arg_name: Option<&str>,
     ctx: &'a CompileContext,
 ) -> Option<&'a str> {
-    let params = ctx
+    let snake_name = to_snake_case(fn_name);
+    let (lookup_name, params) = ctx
         .fn_param_types
         .get(fn_name)
-        .or_else(|| ctx.fn_param_types.get(&to_snake_case(fn_name)))?;
+        .map(|params| (fn_name, params))
+        .or_else(|| {
+            ctx.fn_param_types
+                .get(&snake_name)
+                .map(|params| (snake_name.as_str(), params))
+        })?;
     if let Some(name) = arg_name {
-        return params
-            .iter()
-            .find(|(param_name, _)| param_name == name)
+        return ctx
+            .fn_param_name_indexes
+            .get(lookup_name)
+            .and_then(|param_indexes| param_indexes.get(name))
+            .and_then(|&index| params.get(index))
             .map(|(_, ty)| ty.as_str());
     }
     params.get(arg_index).map(|(_, ty)| ty.as_str())
@@ -5929,6 +5942,24 @@ pub(crate) fn build_struct_field_ir_type_lookup(
                 fields
                     .iter()
                     .map(|(field_name, ty)| (field_name.clone(), ty.clone()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn build_fn_param_name_indexes(
+    fn_param_types: &HashMap<String, Vec<(String, String)>>,
+) -> HashMap<String, HashMap<String, usize>> {
+    fn_param_types
+        .iter()
+        .map(|(fn_name, params)| {
+            (
+                fn_name.clone(),
+                params
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (param_name, _))| (param_name.clone(), index))
                     .collect(),
             )
         })

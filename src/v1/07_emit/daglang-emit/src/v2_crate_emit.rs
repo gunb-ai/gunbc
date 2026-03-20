@@ -779,6 +779,7 @@ fn emit_module(
 
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
+    let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(global_fn_param_types);
 
     let ctx = fn_codegen::CompileContext {
         data_names: data_names.into(),
@@ -801,6 +802,7 @@ fn emit_module(
         fn_return_types: global_fn_return_types.clone().into(),
         fn_return_ir_types: global_fn_return_ir_types.clone().into(),
         fn_param_types: global_fn_param_types.clone().into(),
+        fn_param_name_indexes: fn_param_name_indexes.into(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir

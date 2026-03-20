@@ -1334,6 +1334,7 @@ pub fn typedefs_to_source_file(
         boxed_fields: std::collections::HashSet::new().into(),
         fn_return_types: std::collections::HashMap::new().into(),
         fn_param_types: std::collections::HashMap::new().into(),
+        fn_param_name_indexes: std::collections::HashMap::new().into(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
@@ -1470,6 +1471,7 @@ pub fn generate_types_for_modules(
     }
     let struct_field_ir_type_lookup =
         fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
+    let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&global_fn_param_types);
     let base_fn_ctx = fn_codegen::CompileContext {
         data_names: fn_data_names.into(),
         data_ir_types: data_ir_types.into(),
@@ -1482,6 +1484,7 @@ pub fn generate_types_for_modules(
         fn_return_types: global_fn_return_types.into(),
         fn_return_ir_types: std::collections::HashMap::new().into(),
         fn_param_types: global_fn_param_types.into(),
+        fn_param_name_indexes: fn_param_name_indexes.into(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
@@ -2062,6 +2065,7 @@ mod tests {
         }
         let struct_field_ir_type_lookup =
             fn_codegen::build_struct_field_ir_type_lookup(&struct_field_ir_types);
+        let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&fn_param_types);
 
         (
             fd,
@@ -2081,6 +2085,7 @@ mod tests {
                 fn_return_types: fn_return_types.into(),
                 fn_return_ir_types: HashMap::new().into(),
                 fn_param_types: fn_param_types.into(),
+                fn_param_name_indexes: fn_param_name_indexes.into(),
                 optional_params: HashSet::new(),
                 param_types: HashMap::new(),
                 current_return_type: None,
@@ -2478,6 +2483,7 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types.into();
         ctx.fn_param_types = fn_param_types.into();
+        ctx.fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2566,6 +2572,7 @@ mod tests {
         );
         ctx.fn_return_types = fn_return_types.into();
         ctx.fn_param_types = fn_param_types.into();
+        ctx.fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2683,6 +2690,7 @@ mod tests {
         }
         ctx.fn_return_types = fn_return_types.into();
         ctx.fn_param_types = fn_param_types.into();
+        ctx.fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&ctx.fn_param_types).into();
 
         let items = fndef_to_code_ir(&fd, &ctx);
         match &items[0] {
