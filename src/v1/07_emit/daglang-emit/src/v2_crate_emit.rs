@@ -110,6 +110,14 @@ struct ModuleEmitGlobalIndexes {
     rc_wrapped_types: HashSet<String>,
 }
 
+struct GlobalFnMetadata {
+    return_types: HashMap<String, String>,
+    optional_return_fns: HashSet<String>,
+    return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType>,
+    param_types: HashMap<String, Vec<(String, String)>>,
+    str_params: HashSet<(String, usize)>,
+}
+
 impl ModuleEmitSharedContext {
     fn from_global_indexes(indexes: ModuleEmitGlobalIndexes) -> Self {
         let ModuleEmitGlobalIndexes {
@@ -499,97 +507,13 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
     // 4. Build optional_fields map
     let optional_fields = build_optional_fields(&all_type_defs);
 
-    // 4c. Build global fn_return_types (cross-module) for type inference in intrinsics
-    let global_fn_return_types: HashMap<String, String> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    let ret = type_expr_to_rust_name(&fd.return_type);
-                    Some((rust_name, ret))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    // 4d. Build set of function names that return Optional types (T?)
-    let global_optional_return_fns: HashSet<String> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    if matches!(&fd.return_type, daglang_syntax::ast::TypeExpr::Optional(_)) {
-                        Some(crate::type_codegen::to_snake_case(&fd.name))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    let global_fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    Some((rust_name, fn_codegen::type_expr_to_ir_type(&fd.return_type)))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    let global_fn_param_types: HashMap<String, Vec<(String, String)>> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    let params = fd
-                        .params
-                        .iter()
-                        .map(|param| (param.name.clone(), type_expr_to_rust_name(&param.ty)))
-                        .collect();
-                    Some((rust_name, params))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    // R3: Build set of (fn_name, param_index) where the param is exactly `String`
-    // (not `Option<String>` or other wrappers). These become `&str` in generated code.
-    let global_fn_str_params: HashSet<(String, usize)> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    Some(
-                        fd.params
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, param)| {
-                                if matches!(&param.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String")
-                                {
-                                    Some((rust_name.clone(), i))
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                }
-                _ => None,
-            })
-        })
-        .flatten()
-        .collect();
+    let GlobalFnMetadata {
+        return_types: global_fn_return_types,
+        optional_return_fns: global_optional_return_fns,
+        return_ir_types: global_fn_return_ir_types,
+        param_types: global_fn_param_types,
+        str_params: global_fn_str_params,
+    } = build_global_fn_metadata(modules);
 
     // SG-10: Register v2 runtime functions that accept &str (impl AsRef<str>)
     // so call sites strip .to_string() from &str arguments. Without this,
@@ -981,6 +905,51 @@ fn build_variant_to_enum(type_defs: &[&TypeDef]) -> HashMap<String, String> {
         }
     }
     variant_to_enum
+}
+
+/// Build the cross-module function metadata in one pass over module items.
+fn build_global_fn_metadata(modules: &[(&str, &SourceFile)]) -> GlobalFnMetadata {
+    let mut return_types = HashMap::new();
+    let mut optional_return_fns = HashSet::new();
+    let mut return_ir_types = HashMap::new();
+    let mut param_types = HashMap::new();
+    let mut str_params = HashSet::new();
+
+    for (_, sf) in modules {
+        for item in &sf.items {
+            let Item::FnDef(fd) = &item.node else {
+                continue;
+            };
+
+            let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+            return_types.insert(rust_name.clone(), type_expr_to_rust_name(&fd.return_type));
+            return_ir_types.insert(
+                rust_name.clone(),
+                fn_codegen::type_expr_to_ir_type(&fd.return_type),
+            );
+            if matches!(&fd.return_type, daglang_syntax::ast::TypeExpr::Optional(_)) {
+                optional_return_fns.insert(rust_name.clone());
+            }
+
+            let mut params = Vec::with_capacity(fd.params.len());
+            for (index, param) in fd.params.iter().enumerate() {
+                if matches!(&param.ty, daglang_syntax::ast::TypeExpr::Named(name) if name == "String")
+                {
+                    str_params.insert((rust_name.clone(), index));
+                }
+                params.push((param.name.clone(), type_expr_to_rust_name(&param.ty)));
+            }
+            param_types.insert(rust_name, params);
+        }
+    }
+
+    GlobalFnMetadata {
+        return_types,
+        optional_return_fns,
+        return_ir_types,
+        param_types,
+        str_params,
+    }
 }
 
 /// Build struct_name → { field_name → field_type_name } map.
@@ -1614,8 +1583,11 @@ mod generated_tests {{
 
 #[cfg(test)]
 mod tests {
-    use super::{assemble_v2_crate, build_variant_to_enum, type_def_signature};
+    use super::{
+        assemble_v2_crate, build_global_fn_metadata, build_variant_to_enum, type_def_signature,
+    };
     use daglang_syntax::ast::{Item, TypeDef};
+    use gunbc_ir::code_ir::IrType;
 
     fn parse_source(source: &str) -> daglang_syntax::ast::SourceFile {
         daglang_syntax::parser::parse(source)
@@ -1755,6 +1727,54 @@ type Alpha = Shared | Other
 
         let variant_map = build_variant_to_enum(&type_defs);
         assert_eq!(variant_map.get("Shared"), Some(&"Alpha".to_string()));
+    }
+
+    #[test]
+    fn build_global_fn_metadata_collects_all_indexes_in_one_pass() {
+        let sf = parse_source(
+            r#"
+module sample.meta
+
+fn MaybeName(input: String, maybe: String?) -> String? {
+  None
+}
+
+fn Count(flag: Bool, label: String) -> Int {
+  0
+}
+"#,
+        );
+
+        let metadata = build_global_fn_metadata(&[("sample_meta", &sf)]);
+
+        assert_eq!(
+            metadata.return_types.get("maybe_name"),
+            Some(&"String".to_string())
+        );
+        assert_eq!(metadata.return_types.get("count"), Some(&"Int".to_string()));
+        assert!(metadata.optional_return_fns.contains("maybe_name"));
+        assert!(!metadata.optional_return_fns.contains("count"));
+        assert_eq!(
+            metadata.return_ir_types.get("maybe_name"),
+            Some(&IrType::Optional(Box::new(IrType::Str)))
+        );
+        assert_eq!(
+            metadata.param_types.get("maybe_name"),
+            Some(&vec![
+                ("input".to_string(), "String".to_string()),
+                ("maybe".to_string(), "String".to_string()),
+            ])
+        );
+        assert_eq!(
+            metadata.param_types.get("count"),
+            Some(&vec![
+                ("flag".to_string(), "Bool".to_string()),
+                ("label".to_string(), "String".to_string()),
+            ])
+        );
+        assert!(metadata.str_params.contains(&("maybe_name".to_string(), 0)));
+        assert!(!metadata.str_params.contains(&("maybe_name".to_string(), 1)));
+        assert!(metadata.str_params.contains(&("count".to_string(), 1)));
     }
 
     #[test]
