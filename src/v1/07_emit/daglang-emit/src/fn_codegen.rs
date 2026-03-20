@@ -824,18 +824,9 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
                     count_ident_uses_expr(guard, &mut arm_map, weight);
                 }
                 count_ident_uses_expr(&arm.body, &mut arm_map, weight);
-                arm_counts.push(arm_map);
-            }
-            for arm_map in &arm_counts {
-                for (name, &_arm_count) in arm_map {
-                    let current = counts.get(name).copied().unwrap_or(0);
-                    let max_in_arms = arm_counts
-                        .iter()
-                        .map(|m| m.get(name).copied().unwrap_or(0))
-                        .max()
-                        .unwrap_or(0);
-                    // Only add the max (not sum) since arms are exclusive
-                    counts.insert(name.clone(), current.max(max_in_arms));
+                for (name, &arm_count) in &arm_map {
+                    let max_count = max_in_arms.entry(name.clone()).or_insert(0);
+                    *max_count = (*max_count).max(arm_count);
                 }
             }
             for (name, arm_count) in max_in_arms {
@@ -2897,9 +2888,11 @@ fn compile_intrinsic_call(
             })
         }
         "string_contains" if args.len() == 2 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
             let substring = ref_string_arg(resolve_named_or_positional(
-                args,
+                &call_args,
                 "substring",
                 1,
                 ctx,
@@ -6535,23 +6528,84 @@ fn analyze_tco_str_passthrough(
     }
 }
 
-fn is_tco_param_passthrough_inner(
+fn retain_tco_str_passthrough(
     stmts: &[TcoPlanStmt],
-    param_idx: usize,
-    param_name: &str,
+    param_names: &[String],
+    passthrough: &mut HashSet<usize>,
     found_recur: &mut bool,
-) -> bool {
-    stmts.iter().all(|stmt| match stmt {
-        TcoPlanStmt::Recur(args) => {
-            *found_recur = true;
-            args.get(param_idx).is_some_and(|arg| {
-                matches!(arg, code_ir::Expr::Var(name) if name == param_name)
-                    || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
-                        if method == "to_string" && margs.is_empty()
-                        && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
-            })
+) {
+    if passthrough.is_empty() {
+        return;
+    }
+
+    for stmt in stmts {
+        match stmt {
+            TcoPlanStmt::Recur(args) => {
+                *found_recur = true;
+                passthrough.retain(|&index| {
+                    args.get(index)
+                        .is_some_and(|arg| is_tco_recur_arg_passthrough(arg, &param_names[index]))
+                });
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+            TcoPlanStmt::Raw(_) | TcoPlanStmt::Break(_) => {}
+            TcoPlanStmt::Expr(expr) | TcoPlanStmt::TailExpr(expr) => {
+                retain_tco_str_passthrough_expr(expr, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+            TcoPlanStmt::BlockScope(body) => {
+                retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
         }
     }
+}
+
+fn retain_tco_str_passthrough_expr(
+    expr: &TcoPlanExpr,
+    param_names: &[String],
+    passthrough: &mut HashSet<usize>,
+    found_recur: &mut bool,
+) {
+    match expr {
+        TcoPlanExpr::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            retain_tco_str_passthrough(then_body, param_names, passthrough, found_recur);
+            if passthrough.is_empty() {
+                return;
+            }
+            if let Some(body) = else_body {
+                retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+            }
+        }
+        TcoPlanExpr::Match { arms, .. } => {
+            for arm in arms {
+                retain_tco_str_passthrough(&arm.body, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+        }
+        TcoPlanExpr::Block(body) => {
+            retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+        }
+    }
+}
+
+fn is_tco_recur_arg_passthrough(arg: &code_ir::Expr, param_name: &str) -> bool {
+    matches!(arg, code_ir::Expr::Var(name) if name == param_name)
+        || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
+            if method == "to_string" && margs.is_empty()
+            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
 }
 
 fn lower_tco_plan_stmts(
