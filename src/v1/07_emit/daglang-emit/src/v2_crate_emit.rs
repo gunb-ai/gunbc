@@ -618,7 +618,6 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
 pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
     let output = std::process::Command::new("cargo")
         .arg("generate-lockfile")
-        .arg("--offline")
         .current_dir(crate_dir)
         .output()?;
     if !output.status.success() {
