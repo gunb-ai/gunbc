@@ -4132,9 +4132,9 @@ fn sts_transport_module_source(body_fields: &str) -> String {
 fn renamed_sts_transport_module_source(body_fields: &str) -> String {
     [
         "module extdeps.cloud.gcp.sts\n",
-        "type SubjectKind = JwtToken | StsAccessTokenValue | IdTokenValue | Saml2Value\n",
-        "type RequestedKind = AccessToken | IdTokenRequest\n",
-        "type GrantKind = GrantExchange {}\n",
+        "type SubjectKind = Jwt | StsAccessToken | IdToken | Saml2\n",
+        "type RequestedKind = RequestAccessToken | RequestIdToken\n",
+        "type GrantKind = TokenExchange {}\n",
         "type ExchangeRequest {\n",
         "  grant_type: GrantKind\n",
         "  subject_token: Secret\n",
@@ -4221,11 +4221,11 @@ fn sts_typed_body_rejects_invalid_grant_type_constructor() {
 #[test]
 fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
     let source = renamed_sts_transport_module_source(
-        r#"        grant_type: GrantExchange {}
+        r#"        grant_type: TokenExchange {}
         subject_token: subject_token
-        subject_token_type: JwtToken
+        subject_token_type: Jwt
         audience: audience
-        requested_token_type: AccessToken"#,
+        requested_token_type: RequestAccessToken"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
@@ -4260,7 +4260,7 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
             name: "grant_type".to_string(),
             type_id: "GrantKind".to_string(),
             literal_variants: vec![RestBodyLiteralVariant {
-                name: "GrantExchange".to_string(),
+                name: "TokenExchange".to_string(),
                 field_names: vec![],
             }],
             nested_schema: None,
@@ -4273,19 +4273,19 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
             .literal_variants,
         vec![
             RestBodyLiteralVariant {
-                name: "JwtToken".to_string(),
+                name: "Jwt".to_string(),
                 field_names: vec![],
             },
             RestBodyLiteralVariant {
-                name: "StsAccessTokenValue".to_string(),
+                name: "StsAccessToken".to_string(),
                 field_names: vec![],
             },
             RestBodyLiteralVariant {
-                name: "IdTokenValue".to_string(),
+                name: "IdToken".to_string(),
                 field_names: vec![],
             },
             RestBodyLiteralVariant {
-                name: "Saml2Value".to_string(),
+                name: "Saml2".to_string(),
                 field_names: vec![],
             },
         ],
@@ -4317,11 +4317,11 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
 #[test]
 fn typed_rest_body_rejects_invalid_value_using_request_metadata() {
     let source = renamed_sts_transport_module_source(
-        r#"        grant_type: JwtToken
+        r#"        grant_type: Jwt
         subject_token: subject_token
-        subject_token_type: JwtToken
+        subject_token_type: Jwt
         audience: audience
-        requested_token_type: AccessToken"#,
+        requested_token_type: RequestAccessToken"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
     let err = lower_typed_project(&typed)
@@ -4340,12 +4340,50 @@ fn typed_rest_body_rejects_invalid_value_using_request_metadata() {
                 "expected field name in error, got {detail}"
             );
             assert!(
-                detail.contains("GrantExchange"),
+                detail.contains("TokenExchange"),
                 "expected metadata-derived constructor contract in error, got {detail}"
             );
             assert!(
-                detail.contains("found `JwtToken`"),
+                detail.contains("found `Jwt`"),
                 "expected actual invalid value in error, got {detail}"
+            );
+        }
+        other => panic!("expected InvalidTransportSpec, got {other:?}"),
+    }
+}
+
+#[test]
+fn sts_typed_body_rejects_valid_but_unmapped_requested_token_type_variant() {
+    let source = sts_transport_module_source(
+        r#"        grant_type: TokenExchange {}
+        subject_token: subject_token
+        subject_token_type: Jwt
+        audience: audience
+        requested_token_type: RequestIdToken"#,
+    );
+    let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let err = lower_typed_project(&typed)
+        .expect_err("lowering should fail when a typed STS variant lacks a wire contract");
+
+    match err {
+        LowerError::InvalidTransportSpec {
+            service,
+            operation,
+            detail,
+        } => {
+            assert_eq!(service, "gcp.STS");
+            assert_eq!(operation, "Exchange");
+            assert!(
+                detail.contains("requested_token_type"),
+                "expected field name in error, got {detail}"
+            );
+            assert!(
+                detail.contains("RequestIdToken"),
+                "expected unmapped variant in error, got {detail}"
+            );
+            assert!(
+                detail.contains("wire-value contract"),
+                "expected wire contract failure in error, got {detail}"
             );
         }
         other => panic!("expected InvalidTransportSpec, got {other:?}"),
