@@ -11954,9 +11954,7 @@ fn synthesize_string_interpolate(
         LoweredOp::Primitive {
             module: ctx.module_name.to_string(),
             name: format!("string_interpolate::{}::{}", ctx.item_name, output_name),
-            kind: PrimitiveOpKind::StringInterpolate {
-                parts,
-            },
+            kind: PrimitiveOpKind::StringInterpolate { parts },
         },
     ));
 

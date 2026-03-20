@@ -571,22 +571,32 @@ fn string_interpolate_ir_through_resolve_execute() {
             module: "test".into(),
             name: "string_interpolate::greeting".into(),
             kind: PrimitiveOpKind::StringInterpolate {
-                parts: vec![
-                    "hello ".into(),
-                    ", you have ".into(),
-                    " items".into(),
-                ],
+                parts: vec!["hello ".into(), ", you have ".into(), " items".into()],
             },
         },
     ));
 
     // Edges: lit_name.value → interp.interp_0, lit_count.value → interp.interp_1
-    dag.add_edge(Edge::new("lit_name", "value", "string_interpolate_greeting", "interp_0"));
-    dag.add_edge(Edge::new("lit_count", "value", "string_interpolate_greeting", "interp_1"));
+    dag.add_edge(Edge::new(
+        "lit_name",
+        "value",
+        "string_interpolate_greeting",
+        "interp_0",
+    ));
+    dag.add_edge(Edge::new(
+        "lit_count",
+        "value",
+        "string_interpolate_greeting",
+        "interp_1",
+    ));
 
     let resolved = resolve_lowered_dag(&dag).expect("resolve should succeed");
     let result = execute_resolved_dag(&resolved, ExecutionMode::Real, None);
-    assert!(result.is_ok(), "execution should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "execution should succeed: {:?}",
+        result.err()
+    );
 
     let log = result.unwrap();
     let entry = log
@@ -595,7 +605,10 @@ fn string_interpolate_ir_through_resolve_execute() {
         .find(|e| e.node_id == "string_interpolate_greeting")
         .expect("StringInterpolate node should have executed");
     assert_eq!(
-        entry.outputs.get("result").and_then(gunbc_ir::Value::as_str),
+        entry
+            .outputs
+            .get("result")
+            .and_then(gunbc_ir::Value::as_str),
         Some("hello Alice, you have 42 items"),
         "StringInterpolate must produce correct output via derived port names"
     );

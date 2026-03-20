@@ -899,7 +899,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 .collect();
 
             if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
-                unpack_out.insert(loop_info.element_port.clone(), Value::List(Arc::new(results)));
+                unpack_out.insert(
+                    loop_info.element_port.clone(),
+                    Value::List(Arc::new(results)),
+                );
             }
 
             entries.extend(body_entries);
@@ -1448,7 +1451,10 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
             .filter_map(|entry| entry.outputs.get("result").cloned())
             .collect();
         if let Some(unpack_out) = state.node_outputs.get_mut(&loop_info.unpack_id.0) {
-            unpack_out.insert(loop_info.element_port.clone(), Value::List(Arc::new(results)));
+            unpack_out.insert(
+                loop_info.element_port.clone(),
+                Value::List(Arc::new(results)),
+            );
         }
 
         state.loop_entries[idx].extend(body_entries);

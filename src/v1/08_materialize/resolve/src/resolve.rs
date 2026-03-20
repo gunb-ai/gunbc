@@ -360,7 +360,11 @@ impl Executable for SubDagDispatchOp {
                 continue;
             }
             if port_name.0 == PortName::DEPS {
-                input_mocks.set_input(node_id.0, port_name.0, Value::List(std::sync::Arc::new(Vec::new())));
+                input_mocks.set_input(
+                    node_id.0,
+                    port_name.0,
+                    Value::List(std::sync::Arc::new(Vec::new())),
+                );
             }
         }
         let execution = gunbc_test::boundary::execute_via_engine_with_inputs(
@@ -2038,7 +2042,11 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(std::sync::Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)])),
+            Value::List(std::sync::Arc::new(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+            ])),
         );
         let outputs = result
             .execute(inputs)
@@ -2425,7 +2433,10 @@ mod tests {
         // parts has 3 entries → ports are interp_0, interp_1 (derived, not stored)
         let node = Node::opaque(
             "interp",
-            vec![Port::new("interp_0", "String"), Port::new("interp_1", "Int")],
+            vec![
+                Port::new("interp_0", "String"),
+                Port::new("interp_1", "Int"),
+            ],
             vec![Port::new("result", "String")],
             LoweredOp::Primitive {
                 module: "test".to_string(),
