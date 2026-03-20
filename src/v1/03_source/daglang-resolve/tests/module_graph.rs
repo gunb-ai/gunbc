@@ -5,6 +5,7 @@ use daglang_resolve::unused_imports::{
     build_module_export_index, find_unused_imports_with_export_index, UnusedImport,
 };
 use daglang_resolve::{ModuleGraph, ResolveError};
+use daglang_syntax::ast::{Expr, Item, Literal, SourceFile};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -70,6 +71,30 @@ fn parse_module_declaration(dsl_root: &Path, path: &Path) -> String {
     );
 }
 
+fn find_data_def<'a>(ast: &'a SourceFile, name: &str) -> &'a daglang_syntax::ast::DataDef {
+    ast.items
+        .iter()
+        .find_map(|item| match &item.node {
+            Item::DataDef(data_def) if data_def.name == name => Some(data_def),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data definition `{name}`"))
+}
+
+fn string_list_data(ast: &SourceFile, name: &str) -> Vec<String> {
+    let data_def = find_data_def(ast, name);
+    let Expr::List(entries) = &data_def.value else {
+        panic!("data definition `{name}` must stay a list literal");
+    };
+    entries
+        .iter()
+        .map(|entry| match entry {
+            Expr::Literal(Literal::String(value)) => value.clone(),
+            _ => panic!("data definition `{name}` must contain only string literals"),
+        })
+        .collect()
+}
+
 #[test]
 fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
@@ -101,17 +126,20 @@ fn real_corpus_includes_contractual_extdeps_language_modules() {
         .iter()
         .map(|module| module.module_path.as_dotted())
         .collect();
-    let required_modules = [
-        "extdeps.languages.go.runtime",
-        "extdeps.languages.go.types",
-        "extdeps.languages.python.types",
-        "extdeps.languages.rust.runtime",
-        "extdeps.languages.rust.types",
-    ];
+    let std_languages = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "std.languages")
+        .unwrap_or_else(|| panic!("missing `std.languages` module in real corpus"));
+    let required_modules = string_list_data(
+        &std_languages.ast,
+        "contractual_extdeps_language_modules",
+    );
 
     let missing: Vec<_> = required_modules
-        .into_iter()
+        .iter()
         .filter(|module| !discovered_modules.contains(*module))
+        .cloned()
         .collect();
     assert!(
         missing.is_empty(),

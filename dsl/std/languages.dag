@@ -433,6 +433,17 @@ type LanguageSpec {
   service_calls: ServiceCallSemantics
 }
 
+// Contractual extdeps modules that define the supported language surface.
+// Resolver corpus coverage must read this authority instead of hardcoding
+// a duplicate module list in Rust tests.
+data contractual_extdeps_language_modules: List<String> = [
+  "extdeps.languages.go.runtime",
+  "extdeps.languages.go.types",
+  "extdeps.languages.python.types",
+  "extdeps.languages.rust.runtime",
+  "extdeps.languages.rust.types"
+]
+
 // "What is a markup format?" -- subset for non-Turing languages.
 type MarkupFormat {
   id: LanguageId
