@@ -43,10 +43,21 @@ type SizeExpr
 // operation costs), and Unknown (when the system cannot prove a
 // tighter bound).
 //
-// PrimCost references a cost model by name (e.g., "list_push",
-// "concat") with symbolic size arguments. The model string identifies
-// the cost rule to apply given the SemanticsCtx.
+// PrimCost references a closed primitive operator under a concrete
+// semantics context, keeping the proof vocabulary structural instead of
+// stringly typed.
 // =========================================================================
+
+type PrimOp
+  = OpCharAt
+  | OpStringLength
+  | OpListPush
+  | OpMapInsert
+  | OpMapGet
+  | OpConcat
+  | OpSubstring
+  | OpScanWhile
+  | OpJoin
 
 type CostExpr
   = CostConst { value: Int }
@@ -54,7 +65,7 @@ type CostExpr
   | CostMul { left: CostExpr, right: CostExpr }
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
-  | PrimCost { op: String, args: List<SizeExpr>, model: String }
+  | PrimCost { op: PrimOp, args: List<SizeExpr>, ctx: SemanticsCtx }
   | CostUnknown { reason: String }
 
 // =========================================================================
@@ -88,19 +99,24 @@ type Certainty = Proven | Conservative | Unknown
 // representation. The same surface operation (e.g., list append)
 // has different costs under different models:
 //
-//   PrimCost("list_push", [n], "PersistentList") = n + 1
-//   PrimCost("list_push", [n], "RcVec")          = 1  (amortized)
-//
-// Fields use strings rather than a closed enum so that new backends
-// and models can be added without modifying this type.
+//   PrimCost(OpListPush, [n], SemanticsCtx { list_model: PersistentList, ... }) = n + 1
+//   PrimCost(OpListPush, [n], SemanticsCtx { list_model: RcVec, ... })          = 1
 // =========================================================================
 
+type BackendKind = V1Interpreter | EmittedRust | EmittedPython | EmittedGo
+
+type ListModel = PersistentList | RcVec | NativeVec
+
+type MapModel = BTreeMap | HashMap | NativeDict
+
+type StringModel = PersistentString | RcString | NativeString
+
 type SemanticsCtx {
-  backend: String
-  exec_model: String
-  list_model: String
-  map_model: String
-  string_model: String
+  backend: BackendKind
+  exec_model: BackendKind
+  list_model: ListModel
+  map_model: MapModel
+  string_model: StringModel
 }
 
 // =========================================================================

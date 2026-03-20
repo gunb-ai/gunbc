@@ -42,7 +42,7 @@ import v2.compiler.reconcile {
   infer_record_lit,
   normalize_access_type_node, for_each_element_type_node,
   expr_span,
-  ItemInfo,
+  ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
   emit_map_has
 }
@@ -229,9 +229,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
       } else { acc2 }
     )
   )
-  let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
-    map_merge(acc, tm.item_registry)
-  )
+  let registry = typed.item_registry
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, vtoe: vtoe, enum_names: enum_names, rc_types: rc_types))
   let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
@@ -1182,11 +1180,10 @@ fn emit_var_ref(name: String, resolved_type: Node?, vtoe: Map<String, String>, r
           concat("Rc::new(", name, ")")
         } else { name }
       None =>
-        // Data constants use SCREAMING_SNAKE_CASE. Detect via registry kind "other"
-        // with a non-empty body (data defs have kind "other" from reconciler).
+        // Data constants use SCREAMING_SNAKE_CASE.
         match map_get(registry, name) {
           Some { value: info } =>
-            if info.kind == "other" { to_screaming_snake(name: name) }
+            if info.kind == DataItem { to_screaming_snake(name: name) }
             else { rust_ident(name: name) }
           None => rust_ident(name: name)
         }
@@ -1374,7 +1371,7 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      if info.kind == "func" {
+      if info.kind == FuncItem {
         info.service_names |> map(sn => service_var_name(service_name: sn))
       } else { [] }
     None => []
@@ -1392,7 +1389,7 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   match callee {
     Some { value: info } =>
-      if info.kind == "func" { concat(call_str, ".await?") } else { call_str }
+      if info.kind == FuncItem { concat(call_str, ".await?") } else { call_str }
     None => call_str
   }
 }
