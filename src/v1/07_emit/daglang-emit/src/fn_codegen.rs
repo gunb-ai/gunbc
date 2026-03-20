@@ -50,6 +50,8 @@ use gunbc_ir::code_ir::IrType;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 
 use crate::type_codegen::to_snake_case;
 
@@ -87,6 +89,46 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
     }
 }
 
+/// Shared immutable compile metadata with copy-on-write mutation.
+///
+/// Cloning a [`CompileContext`] should stay O(1) in the size of its read-only
+/// indexes. When a cloned context needs to mutate one of those indexes for a
+/// single function, `Rc::make_mut` preserves isolation by cloning on write.
+#[derive(Clone, Debug)]
+pub struct Shared<T>(Rc<T>);
+
+impl<T> Shared<T> {
+    pub fn new(value: T) -> Self {
+        Self(Rc::new(value))
+    }
+}
+
+impl<T: Default> Default for Shared<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
+impl<T> From<T> for Shared<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<T> Deref for Shared<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl<T: Clone> DerefMut for Shared<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        Rc::make_mut(&mut self.0)
+    }
+}
+
 /// Context for compiling DSL function bodies.
 ///
 /// Carries the set of data table names defined in the module so that
@@ -96,29 +138,41 @@ pub fn type_expr_to_ir_type(expr: &ast::TypeExpr) -> IrType {
 #[derive(Clone)]
 pub struct CompileContext {
     /// Names of `data` definitions visible in this module.
-    pub data_names: HashSet<String>,
+    pub data_names: Shared<HashSet<String>>,
     /// Data definition name → IrType for collection element inference.
-    pub data_ir_types: HashMap<String, IrType>,
+    pub data_ir_types: Shared<HashMap<String, IrType>>,
     /// Names of `data` definitions that are Map types (need `&` reference, not `.clone()`).
-    pub data_map_names: HashSet<String>,
+    pub data_map_names: Shared<HashSet<String>>,
     /// Map from struct name → set of field names that are `Option<T>`.
-    pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
+    pub optional_fields: Shared<std::collections::HashMap<String, HashSet<String>>>,
+    /// Flattened set of optional field names for O(1) fallback optionality checks.
+    pub optional_field_names: Shared<HashSet<String>>,
     /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
     /// Ambiguous variants (present in multiple enums) are excluded.
-    pub variant_to_enum: std::collections::HashMap<String, String>,
+    pub variant_to_enum: Shared<std::collections::HashMap<String, String>>,
     /// Map from struct name → (field name → field type name) for contextual resolution.
     pub struct_field_types:
-        std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+        Shared<std::collections::HashMap<String, std::collections::HashMap<String, String>>>,
+    /// Flattened set of all struct field names for O(1) unknown-receiver fallback checks.
+    pub struct_field_names: Shared<HashSet<String>>,
     /// Map from enum name → set of variant names, for field-type-based disambiguation.
-    pub enum_variants: std::collections::HashMap<String, HashSet<String>>,
+    pub enum_variants: Shared<std::collections::HashMap<String, HashSet<String>>>,
+    /// Reverse index from variant name → enums containing it.
+    /// This lets ambiguous match inference touch only relevant enums instead of
+    /// rescanning the entire enum registry for every match.
+    pub variant_enum_memberships: Shared<HashMap<String, Vec<String>>>,
     /// Set of (type_name, field_name) pairs that need Box<> wrapping (recursive types).
-    pub boxed_fields: HashSet<(String, String)>,
+    pub boxed_fields: Shared<HashSet<(String, String)>>,
     /// Map from function name → return type name (for v2 crate emit).
-    pub fn_return_types: std::collections::HashMap<String, String>,
+    pub fn_return_types: Shared<std::collections::HashMap<String, String>>,
     /// Map from function name → exact return IrType when only signature metadata is available.
-    pub fn_return_ir_types: HashMap<String, IrType>,
+    pub fn_return_ir_types: Shared<HashMap<String, IrType>>,
     /// Map from function name → ordered parameter names and their type names.
-    pub fn_param_types: std::collections::HashMap<String, Vec<(String, String)>>,
+    pub fn_param_types: Shared<std::collections::HashMap<String, Vec<(String, String)>>>,
+    /// Map from function name → parameter name → positional index in `fn_param_types`.
+    /// This keeps the ordered vector as the source of truth while making named
+    /// argument lookup O(1) on the hot call-codegen path.
+    pub fn_param_name_indexes: Shared<HashMap<String, HashMap<String, usize>>>,
     /// Set of parameter names that are Optional (for v2 crate emit).
     pub optional_params: HashSet<String>,
     /// Map from parameter name → type name (for v2 crate emit).
@@ -131,7 +185,9 @@ pub struct CompileContext {
     /// Current function's return type as IrType (for fold accumulator inference).
     pub current_return_ir_type: Option<IrType>,
     /// Struct/variant name → [(field_name, IrType)] for populating `Expr::Struct.field_types`.
-    pub struct_field_ir_types: HashMap<String, Vec<(String, IrType)>>,
+    pub struct_field_ir_types: Shared<HashMap<String, Vec<(String, IrType)>>>,
+    /// Indexed field IrType lookup used by hot-path field/type inference helpers.
+    pub struct_field_ir_type_lookup: Shared<HashMap<String, HashMap<String, IrType>>>,
     /// Variable name → number of `Ident` references in the current function body.
     /// Used to elide `.clone()` when a variable is referenced only once (move suffices).
     pub use_counts: HashMap<String, usize>,
@@ -142,29 +198,31 @@ pub struct CompileContext {
     /// Map from enum name → set of field names that exist on ALL variants (common fields).
     /// Field access on these fields compiles to accessor method calls instead of direct
     /// field access, since Rust enums don't support direct field access.
-    pub enum_accessor_fields: HashMap<String, HashSet<String>>,
+    pub enum_accessor_fields: Shared<HashMap<String, HashSet<String>>>,
+    /// Flattened set of all enum accessor field names for O(1) fallback checks.
+    pub enum_accessor_field_names: Shared<HashSet<String>>,
     /// Set of function names whose return type is Optional (T?).
-    pub optional_return_fns: HashSet<String>,
+    pub optional_return_fns: Shared<HashSet<String>>,
     /// R3: Set of (fn_name, param_index) pairs where the param is exactly `String`
     /// (now `&str`). Used to elide `.to_string()` / `.clone()` when passing `&str`
     /// values to these params.
-    pub fn_str_params: HashSet<(String, usize)>,
+    pub fn_str_params: Shared<HashSet<(String, usize)>>,
     /// R3: Set of param names in the CURRENT function that are `String` (now `&str`).
     /// Unlike `param_types` which includes match bindings, this tracks only function
     /// params whose type was changed from String to &str.
     pub str_param_names: HashSet<String>,
     /// Typecheck-produced anonymous-record constructor targets keyed by stable AST identity.
-    pub anonymous_record_targets: HashMap<ExprIdentity, String>,
+    pub anonymous_record_targets: Shared<HashMap<ExprIdentity, String>>,
     /// Typecheck-produced synthesized anonymous-record types for this callable.
-    pub synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
+    pub synthesized_anonymous_record_types: Shared<Vec<SynthesizedAnonymousRecordType>>,
     /// Typecheck-produced resolved expression IrTypes keyed by stable AST identity.
-    pub expr_ir_types: HashMap<ExprIdentity, IrType>,
+    pub expr_ir_types: Shared<HashMap<ExprIdentity, IrType>>,
     /// Local mapping from this function body's structural expression paths back to
     /// stable identities produced by typecheck.
     pub(crate) expr_identities: HashMap<ExprPath, ExprIdentity>,
     pub(crate) expr_path: RefCell<ExprPath>,
     /// R8: Set of type names that are Rc-wrapped for O(1) clone.
-    pub rc_wrapped_types: HashSet<String>,
+    pub rc_wrapped_types: Shared<HashSet<String>>,
     /// R9: Set of variable names bound from match patterns on Rc-wrapped scrutinees.
     /// These are `&Rc<T>` references that must be cloned to convert to owned `Rc<T>`.
     pub match_bound_vars: HashSet<String>,
@@ -524,37 +582,58 @@ impl Default for CompileContext {
 impl CompileContext {
     pub fn new() -> Self {
         Self {
-            data_names: HashSet::new(),
-            data_ir_types: HashMap::new(),
-            data_map_names: HashSet::new(),
-            optional_fields: std::collections::HashMap::new(),
-            variant_to_enum: std::collections::HashMap::new(),
-            struct_field_types: std::collections::HashMap::new(),
-            enum_variants: std::collections::HashMap::new(),
-            boxed_fields: HashSet::new(),
-            fn_return_types: std::collections::HashMap::new(),
-            fn_return_ir_types: HashMap::new(),
-            fn_param_types: std::collections::HashMap::new(),
+            data_names: Shared::default(),
+            data_ir_types: Shared::default(),
+            data_map_names: Shared::default(),
+            optional_fields: Shared::default(),
+            optional_field_names: Shared::default(),
+            variant_to_enum: Shared::default(),
+            struct_field_types: Shared::default(),
+            struct_field_names: Shared::default(),
+            enum_variants: Shared::default(),
+            variant_enum_memberships: Shared::default(),
+            boxed_fields: Shared::default(),
+            fn_return_types: Shared::default(),
+            fn_return_ir_types: Shared::default(),
+            fn_param_types: Shared::default(),
+            fn_param_name_indexes: Shared::default(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
             current_return_ir_type: None,
             ir_scope: HashMap::new(),
-            struct_field_ir_types: HashMap::new(),
+            struct_field_ir_types: Shared::default(),
+            struct_field_ir_type_lookup: Shared::default(),
             use_counts: HashMap::new(),
             fold_accum_name: None,
-            enum_accessor_fields: HashMap::new(),
-            optional_return_fns: HashSet::new(),
-            fn_str_params: HashSet::new(),
+            enum_accessor_fields: Shared::default(),
+            enum_accessor_field_names: Shared::default(),
+            optional_return_fns: Shared::default(),
+            fn_str_params: Shared::default(),
             str_param_names: HashSet::new(),
-            anonymous_record_targets: HashMap::new(),
-            synthesized_anonymous_record_types: Vec::new(),
-            expr_ir_types: HashMap::new(),
+            anonymous_record_targets: Shared::default(),
+            synthesized_anonymous_record_types: Shared::default(),
+            expr_ir_types: Shared::default(),
             expr_identities: HashMap::new(),
             expr_path: RefCell::new(ExprPath::default()),
-            rc_wrapped_types: HashSet::new(),
+            rc_wrapped_types: Shared::default(),
             match_bound_vars: HashSet::new(),
         }
+    }
+
+    pub(crate) fn with_field_name_indexes(mut self) -> Self {
+        self.rebuild_field_name_indexes();
+        self
+    }
+
+    pub(crate) fn rebuild_field_name_indexes(&mut self) {
+        self.optional_field_names = build_optional_field_names(&self.optional_fields).into();
+        self.struct_field_names = build_struct_field_names(&self.struct_field_types).into();
+        // Keep the hot-path IrType lookup in sync with any newly exposed struct fields.
+        self.struct_field_ir_type_lookup =
+            build_struct_field_ir_type_lookup(&self.struct_field_ir_types).into();
+        self.enum_accessor_field_names =
+            build_enum_accessor_field_names(&self.enum_accessor_fields).into();
     }
 
     fn current_expr_path(&self) -> ExprPath {
@@ -647,14 +726,22 @@ fn lookup_call_arg_type<'a>(
     arg_name: Option<&str>,
     ctx: &'a CompileContext,
 ) -> Option<&'a str> {
-    let params = ctx
+    let snake_name = to_snake_case(fn_name);
+    let (lookup_name, params) = ctx
         .fn_param_types
         .get(fn_name)
-        .or_else(|| ctx.fn_param_types.get(&to_snake_case(fn_name)))?;
+        .map(|params| (fn_name, params))
+        .or_else(|| {
+            ctx.fn_param_types
+                .get(&snake_name)
+                .map(|params| (snake_name.as_str(), params))
+        })?;
     if let Some(name) = arg_name {
-        return params
-            .iter()
-            .find(|(param_name, _)| param_name == name)
+        return ctx
+            .fn_param_name_indexes
+            .get(lookup_name)
+            .and_then(|param_indexes| param_indexes.get(name))
+            .and_then(|&index| params.get(index))
             .map(|(_, ty)| ty.as_str());
     }
     params.get(arg_index).map(|(_, ty)| ty.as_str())
@@ -727,27 +814,23 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
         ast::Expr::Match(scrutinee, arms) => {
             count_ident_uses_expr(scrutinee, counts, weight);
             // SG-9: Match arms are exclusive — a variable used once per arm
-            // is consumed only once at runtime. Use max across arms, not sum.
-            let mut arm_counts: Vec<HashMap<String, usize>> = Vec::new();
+            // is consumed only once at runtime. Merge per-arm maxima in one
+            // pass instead of rescanning every arm map for every variable.
+            let mut arm_map = HashMap::new();
+            let mut max_in_arms = HashMap::new();
             for arm in arms {
-                let mut arm_map = HashMap::new();
+                arm_map.clear();
                 if let Some(guard) = &arm.guard {
                     count_ident_uses_expr(guard, &mut arm_map, weight);
                 }
                 count_ident_uses_expr(&arm.body, &mut arm_map, weight);
-                arm_counts.push(arm_map);
-            }
-            for arm_map in &arm_counts {
-                for (name, &_arm_count) in arm_map {
-                    let current = counts.get(name).copied().unwrap_or(0);
-                    let max_in_arms = arm_counts
-                        .iter()
-                        .map(|m| m.get(name).copied().unwrap_or(0))
-                        .max()
-                        .unwrap_or(0);
-                    // Only add the max (not sum) since arms are exclusive
-                    counts.insert(name.clone(), current.max(max_in_arms));
+                for (name, &arm_count) in &arm_map {
+                    let max_count = max_in_arms.entry(name.clone()).or_insert(0);
+                    *max_count = (*max_count).max(arm_count);
                 }
+            }
+            for (name, arm_count) in max_in_arms {
+                *counts.entry(name).or_insert(0) += arm_count;
             }
         }
         ast::Expr::If(cond, then_expr, else_expr) => {
@@ -1021,6 +1104,22 @@ fn fill_missing_fields(
     }
     let opt_set = ctx.optional_fields.get(struct_name);
     let mut result = provided;
+    // Real emit contexts already carry declaration-order field vectors.
+    // Reuse that structure so filling optionals stays a single pass instead
+    // of sorting the HashMap keys on every record construction.
+    if let Some(field_order) = ctx.struct_field_ir_types.get(struct_name) {
+        for (field_name, _) in field_order {
+            if !provided_names.contains(field_name.as_str())
+                && opt_set.is_some_and(|s| s.contains(field_name.as_str()))
+            {
+                result.push((
+                    field_name.clone(),
+                    code_ir::Expr::Path(vec!["None".to_string()]),
+                ));
+            }
+        }
+        return result;
+    }
     let mut field_names: Vec<&String> = field_types.keys().collect();
     field_names.sort();
     for field_name in field_names {
@@ -1260,7 +1359,9 @@ struct FunctionalUpdatePlan {
     source_var: String,
     #[allow(dead_code)]
     identity_fields: Vec<String>,
-    modified_fields: Vec<String>,
+    // Indexed so V5 lowering can test per-field membership without rescanning
+    // every modified field name for each record field.
+    modified_fields: HashSet<String>,
 }
 
 /// Count references to a named identifier in an AST expression.
@@ -1312,7 +1413,7 @@ fn detect_functional_update(
 
     let mut source_var: Option<&str> = None;
     let mut identity_fields = Vec::new();
-    let mut modified_fields = Vec::new();
+    let mut modified_fields = HashSet::new();
 
     for (field_name, field_expr) in fields {
         // Identity copy: source.field_name where field_name matches record field
@@ -1329,7 +1430,7 @@ fn detect_functional_update(
                 }
             }
         }
-        modified_fields.push(field_name.clone());
+        modified_fields.insert(field_name.clone());
     }
 
     // Need a source variable (at least one identity field to identify it)
@@ -1369,7 +1470,7 @@ fn detect_functional_update(
     // source variable reference in the compiled expression would fail after move.
     let all_takeable = modified_fields
         .iter()
-        .all(|f| field_supports_take(struct_name, f, ctx));
+        .all(|field_name| field_supports_take(struct_name, field_name, ctx));
     if !all_takeable {
         return None;
     }
@@ -1384,14 +1485,7 @@ fn detect_functional_update(
 /// Check if a field type supports std::mem::take (has Default).
 /// Rc<Vec<T>> and Rc<HashMap<K,V>> do; other Rc<T> types generally don't.
 fn field_supports_take(struct_name: &str, field_name: &str, ctx: &CompileContext) -> bool {
-    ctx.struct_field_ir_types
-        .get(struct_name)
-        .and_then(|fields| {
-            fields
-                .iter()
-                .find(|(n, _)| n == field_name)
-                .map(|(_, ty)| ty)
-        })
+    struct_field_ir_type(struct_name, field_name, ctx)
         .is_some_and(|ty| matches!(ty, IrType::Generic(name, _) if name == "List" || name == "Map"))
 }
 
@@ -1676,15 +1770,9 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 // the field name is an enum accessor. Prefer method call when:
                 // (a) no struct has this as a field, OR
                 // (b) the receiver is a chained expression (likely a typed tree traversal).
-                let is_enum_accessor = ctx
-                    .enum_accessor_fields
-                    .values()
-                    .any(|fields| fields.contains(field.as_str()));
+                let is_enum_accessor = ctx.enum_accessor_field_names.contains(field.as_str());
                 if is_enum_accessor {
-                    let is_struct_field = ctx
-                        .struct_field_types
-                        .values()
-                        .any(|fields| fields.contains_key(field.as_str()));
+                    let is_struct_field = ctx.struct_field_names.contains(field.as_str());
                     // When the field name is ambiguous (exists on both enum and struct),
                     // use method call for chained field access where the intermediate
                     // field returns an Expr (e.g., x.typed.resolved_type,
@@ -2403,6 +2491,39 @@ fn infer_call_arg_type(
     })
 }
 
+struct CallArgIndex<'a> {
+    args: &'a [(Option<String>, ast::Expr)],
+    named_indexes: HashMap<&'a str, usize>,
+}
+
+impl<'a> CallArgIndex<'a> {
+    fn new(args: &'a [(Option<String>, ast::Expr)]) -> Self {
+        let mut named_indexes = HashMap::new();
+        for (index, (name, _)) in args.iter().enumerate() {
+            if let Some(name) = name.as_deref() {
+                // Preserve the first occurrence to match the previous linear-scan semantics.
+                named_indexes.entry(name).or_insert(index);
+            }
+        }
+        Self {
+            args,
+            named_indexes,
+        }
+    }
+
+    fn named_index(&self, name: &str) -> Option<usize> {
+        self.named_indexes.get(name).copied()
+    }
+
+    fn named_or_positional_index(&self, name: &str, pos: usize) -> usize {
+        self.named_index(name).unwrap_or(pos)
+    }
+
+    fn named_or_positional_expr(&self, name: &str, pos: usize) -> &'a ast::Expr {
+        &self.args[self.named_or_positional_index(name, pos)].1
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Function calls
 // ---------------------------------------------------------------------------
@@ -2420,6 +2541,8 @@ fn compile_intrinsic_call(
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> Option<code_ir::Expr> {
+    let call_args = CallArgIndex::new(args);
+
     // Zero-arg intrinsics (before the args.is_empty() guard).
     // empty_map() → Rc::new(HashMap::new())
     if name == "empty_map" && args.is_empty() {
@@ -2457,16 +2580,14 @@ fn compile_intrinsic_call(
         })),
         "fold" if args.len() >= 2 => {
             let call_path = ctx.current_expr_path();
-            let init_index = args
-                .iter()
-                .position(|(n, _)| n.as_deref() == Some("init"))
+            let init_index = call_args
+                .named_index("init")
                 .or_else(|| (args.len() > 1).then_some(1));
-            let init = init_index.map(|index| &args[index].1);
-            let func_index = args
-                .iter()
-                .position(|(n, _)| n.as_deref() == Some("f"))
+            let init = init_index.map(|index| &call_args.args[index].1);
+            let func_index = call_args
+                .named_index("f")
                 .or_else(|| (args.len() > 2).then_some(2));
-            let func = func_index.map(|index| &args[index].1);
+            let func = func_index.map(|index| &call_args.args[index].1);
             Some(compile_fold_intrinsic(
                 &collection.clone(),
                 &args[0].1,
@@ -2483,21 +2604,13 @@ fn compile_intrinsic_call(
             ))
         }
         "any" if args.len() == 2 => {
-            let pred = args
-                .iter()
-                .find(|(n, _)| n.as_deref() == Some("predicate"))
-                .or_else(|| args.get(1))
-                .map(|(_, e)| e);
+            let pred = Some(call_args.named_or_positional_expr("predicate", 1));
             Some(with_call_arg_path(ctx, 1, || {
                 compile_any_intrinsic(&collection.clone(), &args[0].1, pred, ctx, counter)
             }))
         }
         "all" if args.len() == 2 => {
-            let pred = args
-                .iter()
-                .find(|(n, _)| n.as_deref() == Some("predicate"))
-                .or_else(|| args.get(1))
-                .map(|(_, e)| e);
+            let pred = Some(call_args.named_or_positional_expr("predicate", 1));
             Some(with_call_arg_path(ctx, 1, || {
                 compile_all_intrinsic(&collection.clone(), &args[0].1, pred, ctx, counter)
             }))
@@ -2733,8 +2846,10 @@ fn compile_intrinsic_call(
         "char_at" if args.len() == 2 => {
             // SG-10: Pass &s instead of s.to_string()/s.clone() — runtime accepts impl AsRef<str>.
             // Strips .to_string()/.clone() and wraps in & to avoid O(N) string copy per call.
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
-            let pos = resolve_named_or_positional(args, "pos", 1, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
+            let pos = resolve_named_or_positional(&call_args, "pos", 1, ctx, counter);
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2745,7 +2860,9 @@ fn compile_intrinsic_call(
             })
         }
         "string_length" if args.len() == 1 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2756,9 +2873,11 @@ fn compile_intrinsic_call(
             })
         }
         "substring" if args.len() == 3 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
-            let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
-            let end = resolve_named_or_positional(args, "end", 2, ctx, counter);
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
+            let start = resolve_named_or_positional(&call_args, "start", 1, ctx, counter);
+            let end = resolve_named_or_positional(&call_args, "end", 2, ctx, counter);
             Some(code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2769,9 +2888,11 @@ fn compile_intrinsic_call(
             })
         }
         "string_contains" if args.len() == 2 => {
-            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let s = ref_string_arg(resolve_named_or_positional(
+                &call_args, "s", 0, ctx, counter,
+            ));
             let substring = ref_string_arg(resolve_named_or_positional(
-                args,
+                &call_args,
                 "substring",
                 1,
                 ctx,
@@ -2787,8 +2908,8 @@ fn compile_intrinsic_call(
             })
         }
         "lookup" if args.len() == 2 => {
-            let table = resolve_named_or_positional(args, "table", 0, ctx, counter);
-            let key = resolve_named_or_positional(args, "key", 1, ctx, counter);
+            let table = resolve_named_or_positional(&call_args, "table", 0, ctx, counter);
+            let key = resolve_named_or_positional(&call_args, "key", 1, ctx, counter);
             let lookup_call = code_ir::Expr::Call {
                 func: Box::new(code_ir::Expr::Path(vec![
                     "v2_rt".to_string(),
@@ -2799,15 +2920,9 @@ fn compile_intrinsic_call(
             };
             // R8: Data table statics store bare T (Rc is not Sync), but the
             // rest of the code expects Rc<T>.  Wrap: lookup(..).map(Rc::new).
-            let table_name = match &args[0].1 {
+            let table_name = match call_args.named_or_positional_expr("table", 0) {
                 ast::Expr::Ident(n) => Some(n.as_str()),
-                _ => args
-                    .iter()
-                    .find(|(name, _)| name.as_deref() == Some("table"))
-                    .and_then(|(_, e)| match e {
-                        ast::Expr::Ident(n) => Some(n.as_str()),
-                        _ => None,
-                    }),
+                _ => None,
             };
             let needs_rc_wrap = table_name.is_some_and(|name| {
                 ctx.data_ir_types.get(name).is_some_and(|ir| {
@@ -3429,18 +3544,18 @@ fn render_expr_inline(expr: &code_ir::Expr) -> String {
 
 /// Resolve a named argument by name first, falling back to positional index.
 fn resolve_named_or_positional(
-    args: &[(Option<String>, ast::Expr)],
+    call_args: &CallArgIndex<'_>,
     name: &str,
     pos: usize,
     ctx: &CompileContext,
     counter: &mut usize,
 ) -> code_ir::Expr {
-    // Try named first
-    if let Some(index) = args.iter().position(|(n, _)| n.as_deref() == Some(name)) {
-        return compile_call_arg(args, index, ctx, counter);
-    }
-    // Fall back to positional
-    compile_call_arg(args, pos, ctx, counter)
+    compile_call_arg(
+        call_args.args,
+        call_args.named_or_positional_index(name, pos),
+        ctx,
+        counter,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -4601,38 +4716,14 @@ fn infer_type_from_arms(arms: &[ast::MatchArm], ctx: &CompileContext) -> Option<
             _ => None,
         })
         .collect();
-    if variant_names.is_empty() {
-        return None;
-    }
-    let matches: Vec<(&String, usize)> = ctx
-        .enum_variants
-        .iter()
-        .filter_map(|(enum_name, variants)| {
-            let count = variant_names
-                .iter()
-                .filter(|v| variants.contains(**v))
-                .count();
-            (count > 0).then_some((enum_name, count))
-        })
-        .collect();
-    let best_count = matches.iter().map(|(_, count)| *count).max()?;
-    let winners: Vec<&String> = matches
-        .into_iter()
-        .filter(|(_, count)| *count == best_count)
-        .map(|(enum_name, _)| enum_name)
-        .collect();
-    if winners.len() == 1 {
-        Some(winners[0].clone())
-    } else {
-        None
-    }
+    infer_best_enum_for_variant_names(&variant_names, ctx)
 }
 
-fn collect_result_variant_names(expr: &ast::Expr, out: &mut Vec<String>) {
+fn collect_result_variant_names<'a>(expr: &'a ast::Expr, out: &mut Vec<&'a str>) {
     match expr {
-        ast::Expr::Ident(name) if name != "null" && name != "None" => out.push(name.clone()),
+        ast::Expr::Ident(name) if name != "null" && name != "None" => out.push(name.as_str()),
         ast::Expr::Record(Some(name), _) if name != "Some" && name != "None" => {
-            out.push(name.clone())
+            out.push(name.as_str())
         }
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
             collect_result_variant_names(then_expr, out);
@@ -4658,31 +4749,7 @@ fn infer_type_from_result_exprs(exprs: &[&ast::Expr], ctx: &CompileContext) -> O
     for expr in exprs {
         collect_result_variant_names(expr, &mut variant_names);
     }
-    if variant_names.is_empty() {
-        return None;
-    }
-    let matches: Vec<(&String, usize)> = ctx
-        .enum_variants
-        .iter()
-        .filter_map(|(enum_name, variants)| {
-            let count = variant_names
-                .iter()
-                .filter(|variant| variants.contains(variant.as_str()))
-                .count();
-            (count > 0).then_some((enum_name, count))
-        })
-        .collect();
-    let best_count = matches.iter().map(|(_, count)| *count).max()?;
-    let winners: Vec<&String> = matches
-        .into_iter()
-        .filter(|(_, count)| *count == best_count)
-        .map(|(enum_name, _)| enum_name)
-        .collect();
-    if winners.len() == 1 {
-        Some(winners[0].clone())
-    } else {
-        None
-    }
+    infer_best_enum_for_variant_names(&variant_names, ctx)
 }
 
 fn infer_match_result_type(arms: &[ast::MatchArm], ctx: &CompileContext) -> Option<String> {
@@ -4770,10 +4837,8 @@ fn compile_match_arm(
                         type_bindings.push((bind_name.clone(), ft.clone()));
                     }
                 }
-                if let Some(field_types) = ctx.struct_field_ir_types.get(variant_name.as_str()) {
-                    if let Some((_, ty)) = field_types.iter().find(|(name, _)| name == field_name) {
-                        ir_type_bindings.push((bind_name.clone(), ty.clone()));
-                    }
+                if let Some(ty) = struct_field_ir_type(variant_name, field_name, ctx) {
+                    ir_type_bindings.push((bind_name.clone(), ty.clone()));
                 }
             }
         }
@@ -5293,24 +5358,12 @@ fn is_likely_option_receiver_ctx(expr: &ast::Expr, ctx: &CompileContext) -> bool
         // A bare identifier is Option if it matches a known optional field name
         // in any struct (e.g., `return_type` from `FnDef.return_type: TypeExpr?`).
         ast::Expr::Ident(name) => {
-            for opt_fields in ctx.optional_fields.values() {
-                if opt_fields.contains(name.as_str()) {
-                    return true;
-                }
-            }
-            // Also check optional params
-            ctx.optional_params.contains(name.as_str())
+            ctx.optional_field_names.contains(name.as_str())
+                || ctx.optional_params.contains(name.as_str())
         }
         // A field access is Option if the accessed field is optional
         // (e.g., `p.module` where `ParseResult.module: Module?`).
-        ast::Expr::FieldAccess(_, field) => {
-            for opt_fields in ctx.optional_fields.values() {
-                if opt_fields.contains(field.as_str()) {
-                    return true;
-                }
-            }
-            false
-        }
+        ast::Expr::FieldAccess(_, field) => ctx.optional_field_names.contains(field.as_str()),
         _ => false,
     }
 }
@@ -5484,11 +5537,7 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext, target_struc
                 }
                 // Fallback: check ALL structs — field accesses are specific enough
                 // that name-based matching is reliable (unlike bare identifiers).
-                for opt_fields in ctx.optional_fields.values() {
-                    if opt_fields.contains(field_name.as_str()) {
-                        return true;
-                    }
-                }
+                return ctx.optional_field_names.contains(field_name.as_str());
             }
             false
         }
@@ -5647,11 +5696,7 @@ fn infer_known_field_ir_type(
 ) -> Option<IrType> {
     match receiver_type {
         IrType::Optional(inner) if field == "value" => Some((**inner).clone()),
-        IrType::Named(name) => ctx
-            .struct_field_ir_types
-            .get(name)
-            .and_then(|fields| fields.iter().find(|(field_name, _)| field_name == field))
-            .map(|(_, ty)| ty.clone()),
+        IrType::Named(name) => struct_field_ir_type(name, field, ctx).cloned(),
         IrType::Record(fields) => fields
             .iter()
             .find(|(field_name, _)| field_name == field)
@@ -5885,6 +5930,153 @@ pub fn materialize_synthesized_anonymous_record_types(
         }));
     }
     (items, new_field_types, new_field_ir_types)
+}
+
+pub(crate) fn build_struct_field_ir_type_lookup(
+    struct_field_ir_types: &HashMap<String, Vec<(String, IrType)>>,
+) -> HashMap<String, HashMap<String, IrType>> {
+    struct_field_ir_types
+        .iter()
+        .map(|(struct_name, fields)| {
+            (
+                struct_name.clone(),
+                fields
+                    .iter()
+                    .map(|(field_name, ty)| (field_name.clone(), ty.clone()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn build_struct_field_names(
+    struct_field_types: &HashMap<String, HashMap<String, String>>,
+) -> HashSet<String> {
+    struct_field_types
+        .values()
+        .flat_map(|fields| fields.keys().cloned())
+        .collect()
+}
+
+pub(crate) fn build_optional_field_names(
+    optional_fields: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    optional_fields
+        .values()
+        .flat_map(|fields| fields.iter().cloned())
+        .collect()
+}
+
+pub(crate) fn build_enum_accessor_field_names(
+    enum_accessor_fields: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    enum_accessor_fields
+        .values()
+        .flat_map(|fields| fields.iter().cloned())
+        .collect()
+}
+
+pub(crate) fn build_fn_param_name_indexes(
+    fn_param_types: &HashMap<String, Vec<(String, String)>>,
+) -> HashMap<String, HashMap<String, usize>> {
+    fn_param_types
+        .iter()
+        .map(|(fn_name, params)| {
+            (
+                fn_name.clone(),
+                params
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (param_name, _))| (param_name.clone(), index))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn build_variant_enum_memberships(
+    enum_variants: &HashMap<String, HashSet<String>>,
+) -> HashMap<String, Vec<String>> {
+    let mut memberships = HashMap::new();
+    for (enum_name, variants) in enum_variants {
+        for variant_name in variants {
+            memberships
+                .entry(variant_name.clone())
+                .or_insert_with(Vec::new)
+                .push(enum_name.clone());
+        }
+    }
+    memberships
+}
+
+fn infer_best_enum_for_variant_names(
+    variant_names: &[&str],
+    ctx: &CompileContext,
+) -> Option<String> {
+    if variant_names.is_empty() {
+        return None;
+    }
+
+    if ctx.variant_enum_memberships.is_empty() {
+        return infer_best_enum_for_variant_names_by_full_scan(variant_names, ctx);
+    }
+
+    let mut counts: HashMap<&String, usize> = HashMap::new();
+    for variant_name in variant_names {
+        if let Some(enum_names) = ctx.variant_enum_memberships.get(*variant_name) {
+            for enum_name in enum_names {
+                *counts.entry(enum_name).or_insert(0) += 1;
+            }
+        }
+    }
+    unique_best_enum_name(counts)
+}
+
+fn infer_best_enum_for_variant_names_by_full_scan(
+    variant_names: &[&str],
+    ctx: &CompileContext,
+) -> Option<String> {
+    let mut counts: HashMap<&String, usize> = HashMap::new();
+    for (enum_name, variants) in ctx.enum_variants.iter() {
+        let count = variant_names
+            .iter()
+            .filter(|variant_name| variants.contains(**variant_name))
+            .count();
+        if count > 0 {
+            counts.insert(enum_name, count);
+        }
+    }
+    unique_best_enum_name(counts)
+}
+
+fn unique_best_enum_name(counts: HashMap<&String, usize>) -> Option<String> {
+    let best_count = counts.values().copied().max()?;
+    let mut winners = counts
+        .into_iter()
+        .filter(|(_, count)| *count == best_count)
+        .map(|(enum_name, _)| enum_name);
+    let winner = winners.next()?;
+    if winners.next().is_some() {
+        None
+    } else {
+        Some(winner.clone())
+    }
+}
+
+fn struct_field_ir_type<'a>(
+    struct_name: &str,
+    field_name: &str,
+    ctx: &'a CompileContext,
+) -> Option<&'a IrType> {
+    ctx.struct_field_ir_type_lookup
+        .get(struct_name)
+        .and_then(|fields| fields.get(field_name))
+        .or_else(|| {
+            ctx.struct_field_ir_types
+                .get(struct_name)
+                .and_then(|fields| fields.iter().find(|(name, _)| name == field_name))
+                .map(|(_, ty)| ty)
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -6270,12 +6462,7 @@ fn lower_tco_plan(
 
     // SG-10: Detect which &str params are pass-through in ALL tail calls.
     // Only these get the &String borrow optimization (avoids per-iteration clone).
-    let str_passthrough: HashSet<usize> = (0..param_names.len())
-        .filter(|&i| {
-            str_param_names.contains(&param_names[i])
-                && is_tco_param_passthrough(&plan.body, i, &param_names[i])
-        })
-        .collect();
+    let str_passthrough = analyze_tco_str_passthrough(&plan.body, param_names, str_param_names);
 
     // Move (not clone) the loop variable into an immutable binding.
     // The tail-call path always reassigns __tco_p_X before `continue`,
@@ -6313,43 +6500,112 @@ fn lower_tco_plan(
     preamble
 }
 
-/// Check if param at index `i` is always passed through unchanged in all Recur sites.
-/// Returns false if no Recur is found (can't determine passthrough without evidence).
-fn is_tco_param_passthrough(stmts: &[TcoPlanStmt], param_idx: usize, param_name: &str) -> bool {
+/// Compute which `&str` params are passed through unchanged in every Recur site.
+///
+/// This runs a single structural walk over the TCO plan and intersects the
+/// passthrough candidates at each `Recur` instead of rescanning the whole plan
+/// once per string parameter.
+fn analyze_tco_str_passthrough(
+    stmts: &[TcoPlanStmt],
+    param_names: &[String],
+    str_param_names: &HashSet<String>,
+) -> HashSet<usize> {
+    let mut passthrough: HashSet<usize> = param_names
+        .iter()
+        .enumerate()
+        .filter_map(|(index, param_name)| str_param_names.contains(param_name).then_some(index))
+        .collect();
+    if passthrough.is_empty() {
+        return passthrough;
+    }
+
     let mut found_recur = false;
-    let result = is_tco_param_passthrough_inner(stmts, param_idx, param_name, &mut found_recur);
-    result && found_recur
+    retain_tco_str_passthrough(stmts, param_names, &mut passthrough, &mut found_recur);
+    if found_recur {
+        passthrough
+    } else {
+        HashSet::new()
+    }
 }
 
-fn is_tco_param_passthrough_inner(
+fn retain_tco_str_passthrough(
     stmts: &[TcoPlanStmt],
-    param_idx: usize,
-    param_name: &str,
+    param_names: &[String],
+    passthrough: &mut HashSet<usize>,
     found_recur: &mut bool,
-) -> bool {
-    stmts.iter().all(|stmt| match stmt {
-        TcoPlanStmt::Recur(args) => {
-            *found_recur = true;
-            args.get(param_idx).is_some_and(|arg| {
-                matches!(arg, code_ir::Expr::Var(name) if name == param_name)
-                    || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
-                        if method == "to_string" && margs.is_empty()
-                        && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
-            })
+) {
+    if passthrough.is_empty() {
+        return;
+    }
+
+    for stmt in stmts {
+        match stmt {
+            TcoPlanStmt::Recur(args) => {
+                *found_recur = true;
+                passthrough.retain(|&index| {
+                    args.get(index)
+                        .is_some_and(|arg| is_tco_recur_arg_passthrough(arg, &param_names[index]))
+                });
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+            TcoPlanStmt::Raw(_) | TcoPlanStmt::Break(_) => {}
+            TcoPlanStmt::Expr(expr) | TcoPlanStmt::TailExpr(expr) => {
+                retain_tco_str_passthrough_expr(expr, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+            TcoPlanStmt::BlockScope(body) => {
+                retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
         }
-        TcoPlanStmt::Raw(_) | TcoPlanStmt::Expr(_) | TcoPlanStmt::Break(_) => true,
-        TcoPlanStmt::TailExpr(expr) => match expr {
-            TcoPlanExpr::If { then_body, else_body, .. } => {
-                is_tco_param_passthrough_inner(then_body, param_idx, param_name, found_recur)
-                    && else_body.as_ref().is_none_or(|b| is_tco_param_passthrough_inner(b, param_idx, param_name, found_recur))
+    }
+}
+
+fn retain_tco_str_passthrough_expr(
+    expr: &TcoPlanExpr,
+    param_names: &[String],
+    passthrough: &mut HashSet<usize>,
+    found_recur: &mut bool,
+) {
+    match expr {
+        TcoPlanExpr::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            retain_tco_str_passthrough(then_body, param_names, passthrough, found_recur);
+            if passthrough.is_empty() {
+                return;
             }
-            TcoPlanExpr::Match { arms, .. } => {
-                arms.iter().all(|arm| is_tco_param_passthrough_inner(&arm.body, param_idx, param_name, found_recur))
+            if let Some(body) = else_body {
+                retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
             }
-            TcoPlanExpr::Block(body) => is_tco_param_passthrough_inner(body, param_idx, param_name, found_recur),
-        },
-        TcoPlanStmt::BlockScope(body) => is_tco_param_passthrough_inner(body, param_idx, param_name, found_recur),
-    })
+        }
+        TcoPlanExpr::Match { arms, .. } => {
+            for arm in arms {
+                retain_tco_str_passthrough(&arm.body, param_names, passthrough, found_recur);
+                if passthrough.is_empty() {
+                    return;
+                }
+            }
+        }
+        TcoPlanExpr::Block(body) => {
+            retain_tco_str_passthrough(body, param_names, passthrough, found_recur);
+        }
+    }
+}
+
+fn is_tco_recur_arg_passthrough(arg: &code_ir::Expr, param_name: &str) -> bool {
+    matches!(arg, code_ir::Expr::Var(name) if name == param_name)
+        || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
+            if method == "to_string" && margs.is_empty()
+            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
 }
 
 fn lower_tco_plan_stmts(
@@ -6452,17 +6708,7 @@ fn lower_tco_recur(
                 .get(i)
                 .is_some_and(|p| str_param_names.contains(p))
             {
-                let is_passthrough = match arg {
-                    code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall {
-                        receiver,
-                        method,
-                        args: margs,
-                    } if method == "to_string" && margs.is_empty() => {
-                        matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
-                    }
-                    _ => false,
-                };
+                let is_passthrough = is_tco_recur_arg_passthrough(arg, &param_names[i]);
                 if is_passthrough {
                     continue;
                 }
@@ -6490,17 +6736,7 @@ fn lower_tco_recur(
                 .get(i)
                 .is_some_and(|p| str_param_names.contains(p))
             {
-                let is_passthrough = match &args[i] {
-                    code_ir::Expr::Var(name) => name == &param_names[i],
-                    code_ir::Expr::MethodCall {
-                        receiver,
-                        method,
-                        args: margs,
-                    } if method == "to_string" && margs.is_empty() => {
-                        matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == &param_names[i])
-                    }
-                    _ => false,
-                };
+                let is_passthrough = is_tco_recur_arg_passthrough(&args[i], &param_names[i]);
                 if is_passthrough {
                     continue;
                 }
@@ -6686,6 +6922,88 @@ mod tests {
             expr_identity.expect("expected walked expression identity"),
             ir_type,
         );
+    }
+
+    #[test]
+    fn compile_context_clone_isolates_shared_metadata_writes() {
+        let mut original = CompileContext::new();
+        original.struct_field_types.insert(
+            "Base".to_string(),
+            [("field".to_string(), "Int".to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        let mut cloned = original.clone();
+        cloned.struct_field_types.insert(
+            "Derived".to_string(),
+            [("other".to_string(), "String".to_string())]
+                .into_iter()
+                .collect(),
+        );
+
+        assert!(original.struct_field_types.contains_key("Base"));
+        assert!(!original.struct_field_types.contains_key("Derived"));
+        assert!(cloned.struct_field_types.contains_key("Derived"));
+    }
+
+    #[test]
+    fn rebuild_field_name_indexes_refreshes_struct_field_ir_type_lookup() {
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_ir_types.insert(
+            "State".to_string(),
+            vec![(
+                "items".to_string(),
+                IrType::Generic("List".to_string(), vec![IrType::Int]),
+            )],
+        );
+
+        assert!(!ctx.struct_field_ir_type_lookup.contains_key("State"));
+
+        ctx.rebuild_field_name_indexes();
+
+        let items_type = ctx
+            .struct_field_ir_type_lookup
+            .get("State")
+            .and_then(|fields| fields.get("items"));
+        assert_eq!(
+            items_type,
+            Some(&IrType::Generic("List".to_string(), vec![IrType::Int]))
+        );
+    }
+
+    #[test]
+    fn count_ident_uses_match_adds_scrutinee_and_max_arm_usage() {
+        let expr = Expr::Match(
+            Box::new(Expr::Ident("shared".into())),
+            vec![
+                MatchArm {
+                    pattern: Pattern::Literal(Literal::Int(0)),
+                    guard: Some(Expr::Ident("only_a".into())),
+                    body: Expr::Ident("shared".into()),
+                },
+                MatchArm {
+                    pattern: Pattern::Literal(Literal::Int(1)),
+                    guard: None,
+                    body: Expr::BinOp(
+                        Box::new(Expr::Ident("shared".into())),
+                        BinOp::Add,
+                        Box::new(Expr::Ident("shared".into())),
+                    ),
+                },
+                MatchArm {
+                    pattern: Pattern::Wildcard,
+                    guard: None,
+                    body: Expr::Ident("only_a".into()),
+                },
+            ],
+        );
+
+        let mut counts = HashMap::new();
+        count_ident_uses_expr(&expr, &mut counts, 1);
+
+        assert_eq!(counts.get("shared"), Some(&3));
+        assert_eq!(counts.get("only_a"), Some(&1));
     }
 
     #[test]
@@ -6965,6 +7283,7 @@ mod tests {
             "Config".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Config".into()),
@@ -6987,7 +7306,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_record_fills_missing_optional_fields_in_sorted_order() {
+    fn compile_record_fills_missing_optional_fields_in_declared_order() {
         let mut counter = 0usize;
         let mut ctx = CompileContext::new();
         ctx.struct_field_types.insert(
@@ -7000,12 +7319,27 @@ mod tests {
             .into_iter()
             .collect(),
         );
+        ctx.struct_field_ir_types.insert(
+            "Config".to_string(),
+            vec![
+                ("required".to_string(), IrType::Str),
+                (
+                    "optional_b".to_string(),
+                    IrType::Optional(Box::new(IrType::Str)),
+                ),
+                (
+                    "optional_a".to_string(),
+                    IrType::Optional(Box::new(IrType::Str)),
+                ),
+            ],
+        );
         ctx.optional_fields.insert(
             "Config".to_string(),
             ["optional_b".to_string(), "optional_a".to_string()]
                 .into_iter()
                 .collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Config".into()),
@@ -7018,7 +7352,7 @@ mod tests {
         match ir {
             code_ir::Expr::Struct { fields, .. } => {
                 let names: Vec<_> = fields.into_iter().map(|(name, _)| name).collect();
-                assert_eq!(names, vec!["required", "optional_a", "optional_b"]);
+                assert_eq!(names, vec!["required", "optional_b", "optional_a"]);
             }
             other => panic!("expected Struct, got: {other:?}"),
         }
@@ -7041,6 +7375,7 @@ mod tests {
             "Config".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Config".into()),
@@ -7104,6 +7439,7 @@ mod tests {
             "Config".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let expr = Expr::Record(
             Some("Target".into()),
@@ -7158,6 +7494,7 @@ mod tests {
             "Target".to_string(),
             ["optional".to_string()].into_iter().collect(),
         );
+        ctx.rebuild_field_name_indexes();
 
         let body = FnBody {
             stmts: vec![Stmt::Return(vec![(
@@ -7226,6 +7563,99 @@ mod tests {
                 );
             }
             other => panic!("expected Struct update, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn functional_record_update_handles_multiple_modified_fields() {
+        let mut ctx = CompileContext::new();
+        ctx.ir_scope
+            .insert("state".to_string(), IrType::Named("State".to_string()));
+        ctx.rc_wrapped_types.insert("State".to_string());
+        ctx.struct_field_ir_types.insert(
+            "State".to_string(),
+            vec![
+                (
+                    "left".to_string(),
+                    IrType::Generic("List".to_string(), vec![IrType::Int]),
+                ),
+                (
+                    "right".to_string(),
+                    IrType::Generic("List".to_string(), vec![IrType::Int]),
+                ),
+                ("count".to_string(), IrType::Int),
+            ],
+        );
+
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Record(
+                Some("State".into()),
+                vec![
+                    (
+                        "left".into(),
+                        Expr::Call(
+                            "append".into(),
+                            vec![
+                                (
+                                    None,
+                                    Expr::FieldAccess(
+                                        Box::new(Expr::Ident("state".into())),
+                                        "left".into(),
+                                    ),
+                                ),
+                                (None, Expr::Literal(Literal::Int(1))),
+                            ],
+                        ),
+                    ),
+                    (
+                        "right".into(),
+                        Expr::Call(
+                            "append".into(),
+                            vec![
+                                (
+                                    None,
+                                    Expr::FieldAccess(
+                                        Box::new(Expr::Ident("state".into())),
+                                        "right".into(),
+                                    ),
+                                ),
+                                (None, Expr::Literal(Literal::Int(2))),
+                            ],
+                        ),
+                    ),
+                    (
+                        "count".into(),
+                        Expr::FieldAccess(Box::new(Expr::Ident("state".into())), "count".into()),
+                    ),
+                ],
+            ))],
+        };
+
+        let ir = compile_fn_body(&body, &ctx);
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::Block(stmts)) => {
+                let take_sites = stmts
+                    .iter()
+                    .filter_map(|stmt| match stmt {
+                        code_ir::Stmt::Let { expr, .. } => match expr {
+                            code_ir::Expr::RawCode(code) => Some(code.as_str()),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .filter(|code| code.contains("std::mem::take(&mut __owned_"))
+                    .collect::<Vec<_>>();
+                assert_eq!(take_sites.len(), 2, "expected one take per modified field");
+                assert!(
+                    take_sites.iter().any(|code| code.contains(".left")),
+                    "expected left field take, got: {take_sites:?}"
+                );
+                assert!(
+                    take_sites.iter().any(|code| code.contains(".right")),
+                    "expected right field take, got: {take_sites:?}"
+                );
+            }
+            other => panic!("expected functional-update block, got: {other:?}"),
         }
     }
 
@@ -7604,6 +8034,106 @@ mod tests {
     }
 
     #[test]
+    fn unknown_receiver_enum_accessor_uses_method_call_without_struct_collision() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_accessor_fields.insert(
+            "TypedExpr".to_string(),
+            ["resolved_type".to_string()].into_iter().collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("node".into())), "resolved_type".into());
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::MethodCall { method, args, .. } => {
+                assert_eq!(method, "resolved_type");
+                assert!(args.is_empty());
+            }
+            other => panic!("expected accessor method call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_receiver_ambiguous_accessor_on_value_chain_still_uses_method_call() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_accessor_fields.insert(
+            "TypedExpr".to_string(),
+            ["resolved_type".to_string()].into_iter().collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ResolvedExpr".to_string(),
+            [("resolved_type".to_string(), "Node".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::FieldAccess(
+                Box::new(Expr::Ident("arg".into())),
+                "value".into(),
+            )),
+            "resolved_type".into(),
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::MethodCall { method, args, .. } => {
+                assert_eq!(method, "resolved_type");
+                assert!(args.is_empty());
+            }
+            other => panic!("expected chained accessor method call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_receiver_ambiguous_accessor_on_plain_ident_stays_field_access() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_accessor_fields.insert(
+            "TypedExpr".to_string(),
+            ["resolved_type".to_string()].into_iter().collect(),
+        );
+        ctx.struct_field_types.insert(
+            "ResolvedExpr".to_string(),
+            [("resolved_type".to_string(), "Node".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("node".into())), "resolved_type".into());
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Field(receiver, field) => {
+                assert_eq!(field, "resolved_type");
+                let receiver_is_node = match receiver.as_ref() {
+                    code_ir::Expr::Var(name) => name == "node",
+                    code_ir::Expr::MethodCall {
+                        receiver,
+                        method,
+                        args,
+                    } => {
+                        method == "clone"
+                            && args.is_empty()
+                            && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == "node")
+                    }
+                    _ => false,
+                };
+                assert!(
+                    receiver_is_node,
+                    "expected node receiver, got: {receiver:?}"
+                );
+            }
+            other => panic!("expected plain field access, got: {other:?}"),
+        }
+    }
+
+    #[test]
     fn fold_uses_function_return_ir_type_for_empty_list_accumulator() {
         let mut counter = 0usize;
         let mut ctx = CompileContext::new();
@@ -7859,6 +8389,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
+        ctx.variant_enum_memberships = build_variant_enum_memberships(&ctx.enum_variants).into();
 
         let arms = vec![
             MatchArm {
@@ -7889,6 +8420,7 @@ mod tests {
             "LiteralValue".to_string(),
             ["LitInt".to_string()].into_iter().collect(),
         );
+        ctx.variant_enum_memberships = build_variant_enum_memberships(&ctx.enum_variants).into();
 
         let arms = vec![
             MatchArm {
@@ -7916,6 +8448,76 @@ mod tests {
     }
 
     #[test]
+    fn optional_field_binding_value_access_uses_unwrap_via_optional_field_index() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.optional_fields.insert(
+            "MaybeToken".to_string(),
+            ["return_type".to_string()].into_iter().collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("return_type".into())), "value".into());
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::MethodCall { method, args, .. } => {
+                assert_eq!(method, "unwrap");
+                assert!(args.is_empty());
+            }
+            other => panic!("expected unwrap method call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn optional_record_field_uses_indexed_optional_field_fallback_without_double_wrapping() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "Target".to_string(),
+            [("maybe".to_string(), "Option<String>".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Target".to_string(),
+            vec![("maybe".to_string(), IrType::Optional(Box::new(IrType::Str)))],
+        );
+        ctx.optional_fields.insert(
+            "Source".to_string(),
+            ["maybe".to_string()].into_iter().collect(),
+        );
+        ctx.optional_fields.insert(
+            "Target".to_string(),
+            ["maybe".to_string()].into_iter().collect(),
+        );
+        ctx.rebuild_field_name_indexes();
+
+        let expr = Expr::Record(
+            Some("Target".into()),
+            vec![(
+                "maybe".into(),
+                Expr::FieldAccess(Box::new(Expr::Ident("src".into())), "maybe".into()),
+            )],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Struct { fields, .. } => match &fields[0].1 {
+                code_ir::Expr::Call { func, .. } => {
+                    assert!(
+                        !matches!(func.as_ref(), code_ir::Expr::Var(name) if name == "Some"),
+                        "expected optional field to stay single-wrapped, got: {:?}",
+                        fields[0].1
+                    );
+                }
+                _ => {}
+            },
+            other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
     fn infer_type_from_arms_prefers_unique_best_match() {
         let mut ctx = CompileContext::new();
         ctx.enum_variants.insert(
@@ -7928,6 +8530,7 @@ mod tests {
             "SymbolId".to_string(),
             ["Info".to_string()].into_iter().collect(),
         );
+        ctx.variant_enum_memberships = build_variant_enum_memberships(&ctx.enum_variants).into();
 
         let arms = vec![
             MatchArm {
@@ -7966,6 +8569,77 @@ mod tests {
                 assert_eq!(args.len(), 1);
             }
             other => panic!("expected Call in stmt, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn substring_intrinsic_uses_named_args_out_of_order() {
+        let mut counter = 0usize;
+        let expr = Expr::Call(
+            "substring".into(),
+            vec![
+                (Some("end".into()), Expr::Literal(Literal::Int(3))),
+                (Some("s".into()), Expr::Ident("text".into())),
+                (Some("start".into()), Expr::Literal(Literal::Int(1))),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &empty_ctx(), &mut counter);
+        match ir {
+            code_ir::Expr::Call { func, args, .. } => {
+                assert!(
+                    matches!(func.as_ref(), code_ir::Expr::Path(parts) if parts == &["v2_rt", "substring"]),
+                    "expected v2_rt::substring call, got: {func:?}"
+                );
+                assert_eq!(args.len(), 3);
+                assert!(
+                    matches!(&args[0], code_ir::Expr::Ref(inner) if matches!(inner.as_ref(), code_ir::Expr::Var(name) if name == "text")),
+                    "expected first arg to borrow text, got: {:?}",
+                    args[0]
+                );
+                assert!(
+                    matches!(&args[1], code_ir::Expr::IntLit(1)),
+                    "expected start arg to come from the named `start`, got: {:?}",
+                    args[1]
+                );
+                assert!(
+                    matches!(&args[2], code_ir::Expr::IntLit(3)),
+                    "expected end arg to come from the named `end`, got: {:?}",
+                    args[2]
+                );
+            }
+            other => panic!("expected substring call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_intrinsic_uses_named_init_out_of_order() {
+        let mut counter = 0usize;
+        let expr = Expr::Call(
+            "fold".into(),
+            vec![
+                (None, Expr::Ident("items".into())),
+                (
+                    Some("f".into()),
+                    Expr::Lambda(
+                        vec!["acc".into(), "item".into()],
+                        Box::new(Expr::Ident("acc".into())),
+                    ),
+                ),
+                (Some("init".into()), Expr::Literal(Literal::Int(7))),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &empty_ctx(), &mut counter);
+        match ir {
+            code_ir::Expr::Block(stmts) => match &stmts[0] {
+                code_ir::Stmt::Let { expr, .. } => assert!(
+                    matches!(expr, code_ir::Expr::IntLit(7)),
+                    "expected fold init to use the named `init` arg, got: {expr:?}"
+                ),
+                other => panic!("expected fold preamble let, got: {other:?}"),
+            },
+            other => panic!("expected fold block, got: {other:?}"),
         }
     }
 
@@ -8385,6 +9059,61 @@ mod tests {
             matches!(&block[4], code_ir::Stmt::Continue),
             "last stmt should be Continue"
         );
+    }
+
+    #[test]
+    fn tco_rebinds_only_globally_passthrough_string_params_by_reference() {
+        let body = vec![code_ir::Stmt::TailExpr(code_ir::Expr::If {
+            cond: Box::new(code_ir::Expr::Var("cond".into())),
+            then_body: vec![code_ir::Stmt::Return(self_call(
+                "f",
+                vec![
+                    code_ir::Expr::Var("source".into()),
+                    code_ir::Expr::Var("suffix".into()),
+                ],
+            ))],
+            else_body: Some(vec![code_ir::Stmt::Return(self_call(
+                "f",
+                vec![
+                    code_ir::Expr::Var("source".into()),
+                    code_ir::Expr::Str("!".into()),
+                ],
+            ))]),
+        })];
+        let str_params = HashSet::from(["source".to_string(), "suffix".to_string()]);
+
+        let transformed = apply_tco("f", &["source".into(), "suffix".into()], &body, &str_params)
+            .expect("tail-recursive string params should still lower with TCO");
+        let loop_body = match &transformed[2] {
+            code_ir::Stmt::Loop { body } => body,
+            other => panic!("expected Loop, got: {other:?}"),
+        };
+
+        match &loop_body[0] {
+            code_ir::Stmt::Let { name, expr, .. } => {
+                assert_eq!(name, "source");
+                assert!(
+                    matches!(
+                        expr,
+                        code_ir::Expr::Ref(inner)
+                            if matches!(inner.as_ref(), code_ir::Expr::Var(var) if var == "__tco_p_source")
+                    ),
+                    "globally passthrough source should rebind by reference, got: {expr:?}"
+                );
+            }
+            other => panic!("expected first rebind let, got: {other:?}"),
+        }
+
+        match &loop_body[1] {
+            code_ir::Stmt::Let { name, expr, .. } => {
+                assert_eq!(name, "suffix");
+                assert!(
+                    matches!(expr, code_ir::Expr::Var(var) if var == "__tco_p_suffix"),
+                    "non-passthrough suffix should keep owned rebind, got: {expr:?}"
+                );
+            }
+            other => panic!("expected second rebind let, got: {other:?}"),
+        }
     }
 
     #[test]

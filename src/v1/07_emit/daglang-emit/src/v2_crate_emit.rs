@@ -26,6 +26,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::fn_codegen;
 use crate::render_rust;
@@ -41,6 +42,10 @@ const V2_CRATE_NAME: &str = "v2-compiler";
 const V2_CRATE_VERSION: &str = "0.1.0";
 const V2_CRATE_DEPENDENCIES: &[(&str, &str)] = &[("stacker", "0.1")];
 const CRATES_IO_SOURCE: &str = "registry+https://github.com/rust-lang/crates.io-index";
+
+type StructFieldTypes = HashMap<String, HashMap<String, String>>;
+type StructFieldIrTypes = HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>;
+type StructFieldIrTypeLookup = HashMap<String, HashMap<String, gunbc_ir::code_ir::IrType>>;
 
 /// A generated file with its path relative to the crate root and content.
 #[derive(Debug)]
@@ -61,7 +66,7 @@ struct EmbeddedDagSource {
     include_in_gist_resolve: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct LoadedDagSource {
     rel_path: String,
     module_name: String,
@@ -76,18 +81,145 @@ struct EmbeddedDagMarks {
     include_in_gist_resolve: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct LockPackageKey {
-    name: String,
-    version: String,
-    source: Option<String>,
+#[derive(Clone)]
+struct ModuleEmitSharedContext {
+    optional_fields: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    optional_field_names: fn_codegen::Shared<HashSet<String>>,
+    variant_to_enum: fn_codegen::Shared<HashMap<String, String>>,
+    struct_field_types: fn_codegen::Shared<StructFieldTypes>,
+    struct_field_names: fn_codegen::Shared<HashSet<String>>,
+    enum_variants: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    variant_enum_memberships: fn_codegen::Shared<HashMap<String, Vec<String>>>,
+    boxed_fields: fn_codegen::Shared<HashSet<(String, String)>>,
+    fn_return_types: fn_codegen::Shared<HashMap<String, String>>,
+    fn_return_ir_types: fn_codegen::Shared<HashMap<String, gunbc_ir::code_ir::IrType>>,
+    fn_param_types: fn_codegen::Shared<HashMap<String, Vec<(String, String)>>>,
+    fn_param_name_indexes: fn_codegen::Shared<HashMap<String, HashMap<String, usize>>>,
+    struct_field_ir_types: fn_codegen::Shared<StructFieldIrTypes>,
+    struct_field_ir_type_lookup: fn_codegen::Shared<StructFieldIrTypeLookup>,
+    enum_accessor_fields: fn_codegen::Shared<HashMap<String, HashSet<String>>>,
+    enum_accessor_field_names: fn_codegen::Shared<HashSet<String>>,
+    optional_return_fns: fn_codegen::Shared<HashSet<String>>,
+    fn_str_params: fn_codegen::Shared<HashSet<(String, usize)>>,
+    rc_wrapped_types: fn_codegen::Shared<HashSet<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct LockDependencyRef {
-    name: String,
-    version: Option<String>,
-    source: Option<String>,
+struct ModuleEmitGlobalIndexes {
+    optional_fields: HashMap<String, HashSet<String>>,
+    variant_to_enum: HashMap<String, String>,
+    enum_variants: HashMap<String, HashSet<String>>,
+    boxed_fields: HashSet<(String, String)>,
+    fn_return_types: HashMap<String, String>,
+    fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType>,
+    fn_param_types: HashMap<String, Vec<(String, String)>>,
+    enum_accessor_fields: HashMap<String, HashSet<String>>,
+    optional_return_fns: HashSet<String>,
+    fn_str_params: HashSet<(String, usize)>,
+    rc_wrapped_types: HashSet<String>,
+}
+
+struct GlobalFnMetadata {
+    return_types: HashMap<String, String>,
+    optional_return_fns: HashSet<String>,
+    return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType>,
+    param_types: HashMap<String, Vec<(String, String)>>,
+    str_params: HashSet<(String, usize)>,
+}
+
+impl ModuleEmitSharedContext {
+    fn from_global_indexes(indexes: ModuleEmitGlobalIndexes) -> Self {
+        let ModuleEmitGlobalIndexes {
+            optional_fields,
+            variant_to_enum,
+            enum_variants,
+            boxed_fields,
+            fn_return_types,
+            fn_return_ir_types,
+            fn_param_types,
+            enum_accessor_fields,
+            optional_return_fns,
+            fn_str_params,
+            rc_wrapped_types,
+        } = indexes;
+        let fn_param_name_indexes = fn_codegen::build_fn_param_name_indexes(&fn_param_types);
+        let optional_field_names = fn_codegen::build_optional_field_names(&optional_fields);
+        let enum_accessor_field_names =
+            fn_codegen::build_enum_accessor_field_names(&enum_accessor_fields);
+        let variant_enum_memberships = fn_codegen::build_variant_enum_memberships(&enum_variants);
+        Self {
+            optional_fields: optional_fields.into(),
+            optional_field_names: optional_field_names.into(),
+            variant_to_enum: variant_to_enum.into(),
+            struct_field_types: StructFieldTypes::new().into(),
+            struct_field_names: HashSet::new().into(),
+            enum_variants: enum_variants.into(),
+            variant_enum_memberships: variant_enum_memberships.into(),
+            boxed_fields: boxed_fields.into(),
+            fn_return_types: fn_return_types.into(),
+            fn_return_ir_types: fn_return_ir_types.into(),
+            fn_param_types: fn_param_types.into(),
+            fn_param_name_indexes: fn_param_name_indexes.into(),
+            struct_field_ir_types: StructFieldIrTypes::new().into(),
+            struct_field_ir_type_lookup: StructFieldIrTypeLookup::new().into(),
+            enum_accessor_fields: enum_accessor_fields.into(),
+            enum_accessor_field_names: enum_accessor_field_names.into(),
+            optional_return_fns: optional_return_fns.into(),
+            fn_str_params: fn_str_params.into(),
+            rc_wrapped_types: rc_wrapped_types.into(),
+        }
+    }
+
+    fn expose_visible_types(
+        &mut self,
+        items: &[daglang_syntax::span::Spanned<Item>],
+        all_struct_field_types: &StructFieldTypes,
+        all_struct_field_ir_types: &StructFieldIrTypes,
+    ) {
+        for item in items {
+            let Item::TypeDef(td) = &item.node else {
+                continue;
+            };
+            self.expose_type_name(&td.name, all_struct_field_types, all_struct_field_ir_types);
+            if let TypeBody::Sum(variants) = &td.body {
+                for variant in variants {
+                    self.expose_type_name(
+                        &variant.name,
+                        all_struct_field_types,
+                        all_struct_field_ir_types,
+                    );
+                }
+            }
+        }
+    }
+
+    fn expose_type_name(
+        &mut self,
+        type_name: &str,
+        all_struct_field_types: &StructFieldTypes,
+        all_struct_field_ir_types: &StructFieldIrTypes,
+    ) {
+        if let Some(field_types) = all_struct_field_types.get(type_name) {
+            if !self.struct_field_types.contains_key(type_name) {
+                self.struct_field_names.extend(field_types.keys().cloned());
+                self.struct_field_types
+                    .insert(type_name.to_string(), field_types.clone());
+            }
+        }
+
+        if let Some(ir_fields) = all_struct_field_ir_types.get(type_name) {
+            if !self.struct_field_ir_types.contains_key(type_name) {
+                self.struct_field_ir_type_lookup.insert(
+                    type_name.to_string(),
+                    ir_fields
+                        .iter()
+                        .map(|(field_name, ty)| (field_name.clone(), ty.clone()))
+                        .collect(),
+                );
+                self.struct_field_ir_types
+                    .insert(type_name.to_string(), ir_fields.clone());
+            }
+        }
+    }
 }
 
 fn workspace_root_from_manifest_dir() -> PathBuf {
@@ -517,13 +649,15 @@ fn load_dag_source(workspace_root: &Path, rel_path: &str) -> LoadedDagSource {
 fn load_dag_source_cached(
     workspace_root: &Path,
     rel_path: &str,
-    cache: &mut HashMap<String, LoadedDagSource>,
-) -> LoadedDagSource {
+    cache: &mut HashMap<String, Rc<LoadedDagSource>>,
+) -> Rc<LoadedDagSource> {
     if let Some(loaded) = cache.get(rel_path) {
-        return loaded.clone();
+        return Rc::clone(loaded);
     }
-    let loaded = load_dag_source(workspace_root, rel_path);
-    cache.insert(rel_path.to_string(), loaded.clone());
+    // Cache the parsed source behind shared ownership so repeated lookups stay O(1)
+    // instead of cloning the full source text and import list back out of the cache.
+    let loaded = Rc::new(load_dag_source(workspace_root, rel_path));
+    cache.insert(rel_path.to_string(), Rc::clone(&loaded));
     loaded
 }
 
@@ -577,7 +711,7 @@ fn collect_import_closure(
     compiler_module_paths: &HashMap<String, String>,
     seed_rel_paths: &[String],
     marks: EmbeddedDagMarks,
-    cache: &mut HashMap<String, LoadedDagSource>,
+    cache: &mut HashMap<String, Rc<LoadedDagSource>>,
     sources: &mut BTreeMap<String, EmbeddedDagSource>,
 ) {
     let mut stack = seed_rel_paths.to_vec();
@@ -587,7 +721,7 @@ fn collect_import_closure(
             continue;
         }
         let loaded = load_dag_source_cached(workspace_root, &rel_path, cache);
-        mark_embedded_dag_source(sources, &loaded, marks);
+        mark_embedded_dag_source(sources, loaded.as_ref(), marks);
         for import_path in &loaded.imports {
             stack.push(resolve_import_rel_path(import_path, compiler_module_paths));
         }
@@ -738,97 +872,13 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
     // 4. Build optional_fields map
     let optional_fields = build_optional_fields(&all_type_defs);
 
-    // 4c. Build global fn_return_types (cross-module) for type inference in intrinsics
-    let global_fn_return_types: HashMap<String, String> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    let ret = type_expr_to_rust_name(&fd.return_type);
-                    Some((rust_name, ret))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    // 4d. Build set of function names that return Optional types (T?)
-    let global_optional_return_fns: HashSet<String> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    if matches!(&fd.return_type, daglang_syntax::ast::TypeExpr::Optional(_)) {
-                        Some(crate::type_codegen::to_snake_case(&fd.name))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    let global_fn_return_ir_types: HashMap<String, gunbc_ir::code_ir::IrType> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    Some((rust_name, fn_codegen::type_expr_to_ir_type(&fd.return_type)))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    let global_fn_param_types: HashMap<String, Vec<(String, String)>> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    let params = fd
-                        .params
-                        .iter()
-                        .map(|param| (param.name.clone(), type_expr_to_rust_name(&param.ty)))
-                        .collect();
-                    Some((rust_name, params))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-
-    // R3: Build set of (fn_name, param_index) where the param is exactly `String`
-    // (not `Option<String>` or other wrappers). These become `&str` in generated code.
-    let global_fn_str_params: HashSet<(String, usize)> = modules
-        .iter()
-        .flat_map(|(_, sf)| {
-            sf.items.iter().filter_map(|item| match &item.node {
-                Item::FnDef(fd) => {
-                    let rust_name = crate::type_codegen::to_snake_case(&fd.name);
-                    Some(
-                        fd.params
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, param)| {
-                                if matches!(&param.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String")
-                                {
-                                    Some((rust_name.clone(), i))
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                }
-                _ => None,
-            })
-        })
-        .flatten()
-        .collect();
+    let GlobalFnMetadata {
+        return_types: global_fn_return_types,
+        optional_return_fns: global_optional_return_fns,
+        return_ir_types: global_fn_return_ir_types,
+        param_types: global_fn_param_types,
+        str_params: global_fn_str_params,
+    } = build_global_fn_metadata(modules);
 
     // SG-10: Register v2 runtime functions that accept &str (impl AsRef<str>)
     // so call sites strip .to_string() from &str arguments. Without this,
@@ -860,16 +910,29 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    let mut module_shared_ctx =
+        ModuleEmitSharedContext::from_global_indexes(ModuleEmitGlobalIndexes {
+            optional_fields,
+            variant_to_enum,
+            enum_variants: all_enum_variants,
+            boxed_fields: recursive_fields,
+            fn_return_types: global_fn_return_types,
+            fn_return_ir_types: global_fn_return_ir_types,
+            fn_param_types: global_fn_param_types,
+            enum_accessor_fields,
+            optional_return_fns: global_optional_return_fns,
+            fn_str_params: global_fn_str_params,
+            rc_wrapped_types: rc_wrapped_types.clone(),
+        });
+    module_shared_ctx.expose_type_name("BindingPower", &struct_field_types, &struct_field_ir_types);
+    module_shared_ctx.expose_type_name("SourceSpan", &struct_field_types, &struct_field_ir_types);
+
     // 5. Emit each module, tracking type definitions to suppress exact duplicates
     // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
     // structurally identical types get their duplicate definitions suppressed,
     // so cross-module references use the upstream type
     // via `use crate::upstream::*`.
     let mut defined_type_signatures: HashMap<String, TypeDefSignature> = HashMap::new();
-    // S81: Track which type names are visible to each module (current + upstream)
-    // Initialize with hardcoded materialized types from std_types_prelude
-    let mut visible_type_names: HashSet<String> =
-        HashSet::from(["SourceSpan".to_string(), "BindingPower".to_string()]);
     // R8: Install Rc-wrapped types for all type_expr_to_rust calls within module emission
     type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
         for (_dag_stem, sf) in modules {
@@ -877,54 +940,13 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
                 continue;
             };
             let items = &sf.items;
-
-            // Add this module's type names AND variant names to the visible set
-            for item in items.iter() {
-                if let Item::TypeDef(td) = &item.node {
-                    visible_type_names.insert(td.name.clone());
-                    // Also add variant names (they're keys in struct_field_types)
-                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
-                        for v in variants {
-                            visible_type_names.insert(v.name.clone());
-                        }
-                    }
-                }
-            }
-
-            // Filter struct_field_types to only include visible types
-            let module_struct_field_types: HashMap<String, HashMap<String, String>> =
-                struct_field_types
-                    .iter()
-                    .filter(|(name, _)| visible_type_names.contains(name.as_str()))
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-
-            // Filter struct_field_ir_types to only include visible types
-            let module_struct_field_ir_types: HashMap<
-                String,
-                Vec<(String, gunbc_ir::code_ir::IrType)>,
-            > = struct_field_ir_types
-                .iter()
-                .filter(|(name, _)| visible_type_names.contains(name.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-
-            let source = emit_module(
+            module_shared_ctx.expose_visible_types(
                 items,
-                &recursive_fields,
-                &variant_to_enum,
-                &module_struct_field_types,
-                &optional_fields,
-                &all_enum_variants,
-                &defined_type_signatures,
-                &module_struct_field_ir_types,
-                &global_fn_return_types,
-                &global_fn_return_ir_types,
-                &global_fn_param_types,
-                &enum_accessor_fields,
-                &global_optional_return_fns,
-                &global_fn_str_params,
+                &struct_field_types,
+                &struct_field_ir_types,
             );
+
+            let source = emit_module(items, &module_shared_ctx, &defined_type_signatures);
             // Track which types this module defines with their structural signature.
             for item in items.iter() {
                 if let Item::TypeDef(td) = &item.node {
@@ -1117,24 +1139,20 @@ fn module_prelude(source_file: &SourceFile) -> String {
     prelude
 }
 
-#[allow(clippy::too_many_arguments)]
 fn emit_module(
     items: &[daglang_syntax::span::Spanned<Item>],
-    recursive_fields: &HashSet<(String, String)>,
-    variant_to_enum: &HashMap<String, String>,
-    struct_field_types: &HashMap<String, HashMap<String, String>>,
-    optional_fields: &HashMap<String, HashSet<String>>,
-    all_enum_variants: &HashMap<String, HashSet<String>>,
+    shared_ctx: &ModuleEmitSharedContext,
     upstream_type_signatures: &HashMap<String, TypeDefSignature>,
-    struct_field_ir_types: &HashMap<String, Vec<(String, gunbc_ir::code_ir::IrType)>>,
-    global_fn_return_types: &HashMap<String, String>,
-    global_fn_return_ir_types: &HashMap<String, gunbc_ir::code_ir::IrType>,
-    global_fn_param_types: &HashMap<String, Vec<(String, String)>>,
-    enum_accessor_fields: &HashMap<String, HashSet<String>>,
-    optional_return_fns: &HashSet<String>,
-    global_fn_str_params: &HashSet<(String, usize)>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
+    let struct_defs: Vec<&TypeDef> = items
+        .iter()
+        .filter_map(|item| match &item.node {
+            Item::TypeDef(td) => Some(td),
+            _ => None,
+        })
+        .collect();
+    let record_field_types = type_codegen::build_record_field_type_index(&struct_defs);
 
     // Collect data names for compile context
     let data_names: HashSet<String> = items
@@ -1160,11 +1178,8 @@ fn emit_module(
         })
         .collect();
 
-    // Use cross-module enum_variants for correct variant resolution
-    let enum_variants_map = all_enum_variants.clone();
-
     let ctx = fn_codegen::CompileContext {
-        data_names,
+        data_names: data_names.into(),
         data_ir_types: items
             .iter()
             .filter_map(|item| match &item.node {
@@ -1173,34 +1188,41 @@ fn emit_module(
                 }
                 _ => None,
             })
-            .collect(),
-        data_map_names,
-        optional_fields: optional_fields.clone(),
-        variant_to_enum: variant_to_enum.clone(),
-        struct_field_types: struct_field_types.clone(),
-        enum_variants: enum_variants_map,
-        boxed_fields: recursive_fields.clone(),
-        fn_return_types: global_fn_return_types.clone(),
-        fn_return_ir_types: global_fn_return_ir_types.clone(),
-        fn_param_types: global_fn_param_types.clone(),
+            .collect::<HashMap<_, _>>()
+            .into(),
+        data_map_names: data_map_names.into(),
+        optional_fields: shared_ctx.optional_fields.clone(),
+        optional_field_names: shared_ctx.optional_field_names.clone(),
+        variant_to_enum: shared_ctx.variant_to_enum.clone(),
+        struct_field_types: shared_ctx.struct_field_types.clone(),
+        struct_field_names: shared_ctx.struct_field_names.clone(),
+        enum_variants: shared_ctx.enum_variants.clone(),
+        variant_enum_memberships: shared_ctx.variant_enum_memberships.clone(),
+        boxed_fields: shared_ctx.boxed_fields.clone(),
+        fn_return_types: shared_ctx.fn_return_types.clone(),
+        fn_return_ir_types: shared_ctx.fn_return_ir_types.clone(),
+        fn_param_types: shared_ctx.fn_param_types.clone(),
+        fn_param_name_indexes: shared_ctx.fn_param_name_indexes.clone(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
         current_return_ir_type: None,                  // populated per-function in fndef_to_code_ir
         ir_scope: std::collections::HashMap::new(),    // populated per-function in fndef_to_code_ir
-        struct_field_ir_types: struct_field_ir_types.clone(),
+        struct_field_ir_types: shared_ctx.struct_field_ir_types.clone(),
+        struct_field_ir_type_lookup: shared_ctx.struct_field_ir_type_lookup.clone(),
         use_counts: std::collections::HashMap::new(), // populated per-function in compile_fn_body
         fold_accum_name: None,
-        enum_accessor_fields: enum_accessor_fields.clone(),
-        optional_return_fns: optional_return_fns.clone(),
-        anonymous_record_targets: std::collections::HashMap::new(),
-        synthesized_anonymous_record_types: Vec::new(),
-        expr_ir_types: std::collections::HashMap::new(),
-        fn_str_params: global_fn_str_params.clone(),
+        enum_accessor_fields: shared_ctx.enum_accessor_fields.clone(),
+        enum_accessor_field_names: shared_ctx.enum_accessor_field_names.clone(),
+        optional_return_fns: shared_ctx.optional_return_fns.clone(),
+        anonymous_record_targets: std::collections::HashMap::new().into(),
+        synthesized_anonymous_record_types: Vec::new().into(),
+        expr_ir_types: std::collections::HashMap::new().into(),
+        fn_str_params: shared_ctx.fn_str_params.clone(),
         str_param_names: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         expr_identities: std::collections::HashMap::new(),
         expr_path: std::cell::RefCell::new(Default::default()),
-        rc_wrapped_types: type_codegen::current_rc_wrapped_types(),
+        rc_wrapped_types: shared_ctx.rc_wrapped_types.clone(),
         match_bound_vars: std::collections::HashSet::new(),
     };
 
@@ -1219,21 +1241,19 @@ fn emit_module(
                 {
                     continue;
                 }
-                ir_items.extend(type_codegen::typedef_to_code_ir_boxed(td, recursive_fields));
+                ir_items.extend(type_codegen::typedef_to_code_ir_boxed(
+                    td,
+                    &shared_ctx.boxed_fields,
+                ));
             }
             Item::FnDef(fd) => {
                 ir_items.extend(type_codegen::fndef_to_code_ir(fd, &ctx));
             }
             Item::DataDef(dd) => {
-                // Collect struct TypeDefs for field-type resolution
-                let struct_defs: Vec<&TypeDef> = items
-                    .iter()
-                    .filter_map(|i| match &i.node {
-                        Item::TypeDef(td) => Some(td),
-                        _ => None,
-                    })
-                    .collect();
-                ir_items.extend(type_codegen::datadef_to_code_ir_with(dd, &struct_defs));
+                ir_items.extend(type_codegen::datadef_to_code_ir_with_field_types(
+                    dd,
+                    &record_field_types,
+                ));
             }
             // Skip module/import/service/resource/interface/pipeline/extern declarations
             _ => {}
@@ -1247,32 +1267,73 @@ fn emit_module(
 }
 
 /// Build variant_name → enum_name map from type definitions.
+///
+/// Ambiguous variants keep the same deterministic lexicographic tiebreak as
+/// before, but the map is built in one pass instead of collecting, sorting,
+/// and deduplicating a candidate list per variant.
 fn build_variant_to_enum(type_defs: &[&TypeDef]) -> HashMap<String, String> {
-    let mut candidates: HashMap<String, Vec<String>> = HashMap::new();
+    let mut variant_to_enum = HashMap::new();
     for td in type_defs {
         if let TypeBody::Sum(variants) = &td.body {
+            let enum_name = td.name.as_str();
             for v in variants {
-                candidates
+                variant_to_enum
                     .entry(v.name.clone())
-                    .or_default()
-                    .push(td.name.clone());
+                    .and_modify(|smallest: &mut String| {
+                        if enum_name < smallest.as_str() {
+                            *smallest = enum_name.to_string();
+                        }
+                    })
+                    .or_insert_with(|| enum_name.to_string());
             }
         }
     }
-    candidates
-        .into_iter()
-        .map(|(variant, mut enums)| {
-            enums.sort();
-            enums.dedup();
-            (
-                variant,
-                enums
-                    .into_iter()
-                    .next()
-                    .expect("variant has at least one enum"),
-            )
-        })
-        .collect()
+    variant_to_enum
+}
+
+/// Build the cross-module function metadata in one pass over module items.
+fn build_global_fn_metadata(modules: &[(&str, &SourceFile)]) -> GlobalFnMetadata {
+    let mut return_types = HashMap::new();
+    let mut optional_return_fns = HashSet::new();
+    let mut return_ir_types = HashMap::new();
+    let mut param_types = HashMap::new();
+    let mut str_params = HashSet::new();
+
+    for (_, sf) in modules {
+        for item in &sf.items {
+            let Item::FnDef(fd) = &item.node else {
+                continue;
+            };
+
+            let rust_name = crate::type_codegen::to_snake_case(&fd.name);
+            return_types.insert(rust_name.clone(), type_expr_to_rust_name(&fd.return_type));
+            return_ir_types.insert(
+                rust_name.clone(),
+                fn_codegen::type_expr_to_ir_type(&fd.return_type),
+            );
+            if matches!(&fd.return_type, daglang_syntax::ast::TypeExpr::Optional(_)) {
+                optional_return_fns.insert(rust_name.clone());
+            }
+
+            let mut params = Vec::with_capacity(fd.params.len());
+            for (index, param) in fd.params.iter().enumerate() {
+                if matches!(&param.ty, daglang_syntax::ast::TypeExpr::Named(name) if name == "String")
+                {
+                    str_params.insert((rust_name.clone(), index));
+                }
+                params.push((param.name.clone(), type_expr_to_rust_name(&param.ty)));
+            }
+            param_types.insert(rust_name, params);
+        }
+    }
+
+    GlobalFnMetadata {
+        return_types,
+        optional_return_fns,
+        return_ir_types,
+        param_types,
+        str_params,
+    }
 }
 
 /// Build struct_name → { field_name → field_type_name } map.
@@ -1907,9 +1968,10 @@ mod generated_tests {{
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_v2_crate, build_variant_to_enum, parse_lock_dependency, type_def_signature,
+        assemble_v2_crate, build_global_fn_metadata, build_variant_to_enum, type_def_signature,
     };
     use daglang_syntax::ast::{Item, TypeDef};
+    use gunbc_ir::code_ir::IrType;
 
     fn parse_source(source: &str) -> daglang_syntax::ast::SourceFile {
         daglang_syntax::parser::parse(source)
@@ -2049,6 +2111,54 @@ type Alpha = Shared | Other
 
         let variant_map = build_variant_to_enum(&type_defs);
         assert_eq!(variant_map.get("Shared"), Some(&"Alpha".to_string()));
+    }
+
+    #[test]
+    fn build_global_fn_metadata_collects_all_indexes_in_one_pass() {
+        let sf = parse_source(
+            r#"
+module sample.meta
+
+fn MaybeName(input: String, maybe: String?) -> String? {
+  None
+}
+
+fn Count(flag: Bool, label: String) -> Int {
+  0
+}
+"#,
+        );
+
+        let metadata = build_global_fn_metadata(&[("sample_meta", &sf)]);
+
+        assert_eq!(
+            metadata.return_types.get("maybe_name"),
+            Some(&"String".to_string())
+        );
+        assert_eq!(metadata.return_types.get("count"), Some(&"Int".to_string()));
+        assert!(metadata.optional_return_fns.contains("maybe_name"));
+        assert!(!metadata.optional_return_fns.contains("count"));
+        assert_eq!(
+            metadata.return_ir_types.get("maybe_name"),
+            Some(&IrType::Optional(Box::new(IrType::Str)))
+        );
+        assert_eq!(
+            metadata.param_types.get("maybe_name"),
+            Some(&vec![
+                ("input".to_string(), "String".to_string()),
+                ("maybe".to_string(), "String".to_string()),
+            ])
+        );
+        assert_eq!(
+            metadata.param_types.get("count"),
+            Some(&vec![
+                ("flag".to_string(), "Bool".to_string()),
+                ("label".to_string(), "String".to_string()),
+            ])
+        );
+        assert!(metadata.str_params.contains(&("maybe_name".to_string(), 0)));
+        assert!(!metadata.str_params.contains(&("maybe_name".to_string(), 1)));
+        assert!(metadata.str_params.contains(&("count".to_string(), 1)));
     }
 
     #[test]
