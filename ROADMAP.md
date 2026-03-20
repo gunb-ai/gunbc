@@ -41,28 +41,40 @@ should always be able to see through the name to the structure underneath.
 
 ### What's next
 
-**PERF gate, then Wave 1.** A4 cargo check passes (0 errors), but the
-self-compiled binary cannot yet self-compile — level-3 compile hangs after
-~312s. Without this, A5 bootstrap is impossible.
+**P1 (representation inference), then Wave 1.** A4 cargo check passes (0
+errors), but the self-compiled binary cannot not self-compile — it hangs in
+the tokenizer. The root cause is not one bug but a class of problems: the
+emitter's fixed representation mapping (String for chars, Rc for all
+non-Copy types, stacker on all functions in v1) imposes per-character
+overhead that compounds across millions of operations.
 
-**P0-a (stacker):** v2 emitter now wraps recursive non-TCO functions in
-`stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || { ... })`. Only
-genuinely recursive functions are wrapped (better than v1's blanket wrapping).
+**Performance journey (2026-03-14 → 2026-03-20):**
 
-**P0-b (Copy derive):** v2 emitter now derives `Copy` for simple enums
-(all unit variants), avoiding unnecessary Rc wrapping and clone overhead.
+| Date | Bottleneck | Root cause | Fix |
+|------|-----------|------------|-----|
+| Mar 14 | Self-compile OOM | `node_type_deps` missed container deps → exponential type resolution | 2-line fix in reconcile |
+| Mar 16 | Stack overflow | Recursive descent without stack growth | P0-a: stacker in v2 emitter |
+| Mar 19 | Clone overhead / OOM | `force_clone` inflated all refcounts → O(N) every list_push | R9: V5, TCO clone strip, fold-accum extract |
+| Mar 19 | Reconcile hang | O(N²) topo_resolve + detect_cycles | Kahn's algorithm, precomputed deps_map |
+| Mar 20 | Tokenizer hang | Emitter representation: char-as-String, blanket Rc, blanket stacker, string_length O(N) | **P1: representation inference** |
 
-**P0-c (hang diagnosis):** If P0-a + P0-b don't resolve the hang, build
-the self-compiled binary and run `profile_self_compile` to identify the
-bottleneck phase/module.
+Each previous fix was a localized bug. The tokenizer bottleneck is
+structural — and the same representation issues will affect the parser,
+reconciler, and emitter when they process 400K+ bytes of .dag source
+during self-compile. Patching one phase at a time would continue the
+pattern of "fix one bottleneck, reveal the next."
+
+**P1 (representation inference)** is the systematic fix: a target-agnostic
+analysis pass that annotates values with representation decisions, which
+each backend consumes. See the P1 section below for full scope.
 
 ```bash
-# Verify P0 fixes:
-cargo test -p v2-compiler-tests --lib --quiet
-cargo test -p v2-compiler-tests -- --ignored v2_crate_self_compile_cargo_check --nocapture
+# Verify current state:
+cargo test -p v2-compiler-tests --lib --quiet     # 96 tests
+cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ```
 
-After PERF gate passes, proceed to Wave 1 (parallel multi-walk refactor lanes).
+After P1 lands, retest self-compile. Then proceed to Wave 1.
 
 ### Baseline tests
 
@@ -80,21 +92,24 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ### Critical path
 
 **Critical path summary:** A1 (done) → R9 (done) → B3 Ph1 (done) →
-A4 (done) → P0-a/P0-b (done) → **Wave 1 (reconcile optimization — PERF
-gate blocker)** → P0-c retest → **B3 Ph2a** → A5 → A6 → A7
+A4 (done) → P0-a/P0-b (done) → **P1 (representation inference)** →
+self-compile retest → **Wave 1** → **B3 Ph2a** → A5 → A6 → A7
 
 ### Immediate next actions
 
-1. **PERF gate (P0)** — P0-a (stacker wrapping) and P0-b (Copy derive) are
-   implemented in `05_emit_rust.dag`. Run the self-compile test to verify
-   the hang resolves. If not, diagnose per P0-c.
-2. **Wave 1 (parallel lanes)** — after PERF gate passes, run W1-A through
-   W1-F in parallel (disjoint ownership zones in reconcile/resolve/emit).
-3. **Wave 2 (B3 Ph2a boundary)** — single ownership surface for
+1. **P1 (representation inference)** — the PERF gate blocker. Build a
+   target-agnostic analysis pass that annotates values with ownership mode,
+   type refinement, and call graph position. Both v1 and v2 emitters
+   consume these annotations. See P1 section for scope.
+2. **Self-compile retest** — after P1, verify the self-compiled binary
+   can self-compile (`v2_crate_self_compile_cargo_check` in <5 min).
+3. **Wave 1 (parallel lanes)** — reconcile/resolve/emit cleanup lanes,
+   now unblocked by P1's representation fixes.
+4. **Wave 2 (B3 Ph2a boundary)** — single ownership surface for
    DeclaredFuncSig/ResolvedFuncSig split, SCC resolution, ResolvedGraph
    boundary, retirement of `validate_no_unresolved` + `compile_sources_lenient`.
-4. **SG-9 workaround revert** — after PERF gate confirms the codegen fixes
-   are sufficient, revert TokPos extraction and branch-aware use counting.
+5. **SG-9 workaround revert** — after P1 confirms codegen fixes are
+   sufficient, revert TokPos extraction and branch-aware use counting.
 
 ### Completed parallel lanes (2026-03-19)
 
@@ -486,7 +501,7 @@ Practical implication:
 
 ## Track A: Self-Hosting
 
-**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → A4 (done) → **PERF gate (P0)** → **Wave 1** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
+**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → A4 (done) → P0-a/b/c (done) → **P1 (repr inference)** → **Wave 1** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
 
 ### A1: Gist compilation
 
@@ -530,39 +545,246 @@ A5/A6.
 - [x] self-compile ratchet asserts semantic properties stronger than
       "non-empty file emitted" (Lane T)
 
-### PERF gate (P0): Self-compiled binary must not hang
+### PERF gate: Self-compiled binary must not hang
 
 The self-compiled binary must complete a level-3 self-compile (or at least
-not hang). Without this, A5 bootstrap is impossible. The level-2 binary
-(compiled by v2-stage0's emitter) hangs after ~312s on recursive descent
-without stack growth.
+not hang). Without this, A5 bootstrap is impossible.
 
 **P0-a (DONE):** v2 emitter wraps recursive non-TCO functions in
-`stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || { ... })` via
-`emit_fn_def_non_tco` in `05_emit_rust.dag`. Only genuinely recursive
-functions are wrapped (better than v1's blanket SG-11 wrapping).
+`stacker::maybe_grow`. Only genuinely recursive functions are wrapped
+(better than v1's blanket SG-11 wrapping).
 
 **P0-b (DONE):** v2 emitter derives `Copy` for simple enums (all unit
-variants) via `enum_derives()` in `05_emit_rust.dag`. Avoids unnecessary
-Rc wrapping and clone overhead. Emitted Cargo.toml includes `stacker = "0.1"`.
+variants), avoiding unnecessary Rc wrapping and clone overhead.
 
-**P0-c (IN PROGRESS):** Self-compile test runs but does not complete in
-reasonable time. After P0-a/P0-b, the v2-stage0 binary no longer stack
-overflows — but the reconcile phase is O(N²) on large modules, causing
-linear memory growth (~1 MB/s) and infeasible runtime. At 15 minutes the
-process reached 1 GB RSS with no sign of finishing.
+**P0-c (DONE):** Reconcile O(N²) bottleneck fixed. `topo_resolve_types`
+and `detect_type_cycles` replaced with precomputed deps_map and Kahn's
+algorithm. 96/96 tests pass.
 
-**Root cause:** The multi-walk bottleneck in `04_reconcile.dag` — repeated
-inference passes, list-based lookups, append-by-concat. This is the same
-issue identified in `PERF_AUDIT.md`. **Wave 1 multi-walk refactor is now
-the PERF gate blocker**, not stacker or Copy.
+**P0-d (DIAGNOSED — blocked on P1):** Self-compile still hangs. Profiling
+shows the tokenizer (phase 1 of 5) never completes on ~400K chars of .dag
+source. Root cause is not the tokenizer algorithm — it's the emitter's
+representation model:
 
-**Revised critical path:** P0-a/P0-b (DONE) → **Wave 1 (reconcile
-optimization)** → P0-c retest → Wave 2 → A5 → A6 → A7
+1. **char-as-String:** `char_at()` returns `String` (heap alloc per byte).
+   Character predicates (`is_digit`, `is_ident_char`) do `ch.to_string()
+   >= "0".to_string()` — 4+ heap allocs for a byte comparison. ~50 heap
+   allocs per identifier token × ~10K tokens.
+2. **string_length O(N):** `string_length(s)` calls `s.is_ascii()` which
+   scans all bytes. Called 2-3× per token on the 200KB source string.
+   Total: ~5 billion byte scans for bounds checking alone.
+3. **blanket stacker (v1 only):** v1 emitter wraps ALL functions in
+   `stacker::maybe_grow`, including leaf predicates called per character.
+   Triple-nested stacker for `is_ident_char → is_ident_start + is_digit`.
+4. **blanket Rc wrapping:** `Rc<TokPos>`, `Rc<ScanResult>`, `Rc<Token>`,
+   `Rc<TokenKind>` — all created and immediately consumed. ~4 Rc heap
+   allocs per token for values used exactly once.
+
+These same issues affect parser, reconciler, and emitter during
+self-compile — the tokenizer just hits the wall first because it processes
+raw bytes. Patching one phase at a time would continue the "fix one
+bottleneck, reveal the next" pattern from the last week. P1 is the
+systematic fix.
 
 **Acceptance:**
 - [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
 - [x] 96+ tests pass, generated crate compiles clean
+
+---
+
+## P1 — Representation Inference (PERF gate blocker)
+
+### Problem
+
+The v1 and v2 emitters use a fixed mapping from DAG types to Rust types:
+
+| DAG type | Current Rust representation | Problem |
+|---|---|---|
+| `String` (always 1 char) | `String` (heap-allocated) | Heap alloc per byte |
+| `String` (source text) | `String` | `string_length` scans all bytes |
+| `List<String>` built char-by-char then joined | `Rc<Vec<String>>` + `join("")` | N heap allocs + join pass |
+| Named struct used once | `Rc<T>` | Unnecessary Rc alloc |
+| Named struct in fold accumulator | `Rc<T>` + try_unwrap dance | O(N) fallback path |
+| `List<T>` threaded linearly | `Rc<Vec<T>>` + try_unwrap | O(N) clone if refcount > 1 |
+
+The right representation depends on usage context (linear vs shared,
+single-char vs arbitrary string, recursive vs leaf function). Neither
+emitter has a systematic way to decide this — the v1 emitter has ad-hoc
+pattern recognition (V5, accumulator extract, concat fusion), the v2
+emitter has smarter stacker wrapping but lacks V5/accumulator optimizations.
+
+### Solution: target-agnostic analysis, target-specific rendering
+
+A new analysis pass between reconcile and emit that annotates the IR with
+representation decisions. The analysis is target-agnostic (properties of
+the DAG). The rendering of those decisions is target-specific (lives in
+each backend).
+
+#### Analysis 1: Ownership mode (linearity)
+
+For each binding, determine how many times its value is consumed:
+
+| Mode | Meaning | Rust rendering |
+|------|---------|----------------|
+| `Linear` | Used exactly once | bare `T`, moved |
+| `Shared` | Used 2+ times | `Rc<T>`, cloned |
+| `Accumulator` | Fold/TCO loop variable, consumed and reproduced each iteration | `&mut T` or move semantics |
+
+**Scope:** Count uses per binding within its scope. A binding used once in
+each branch of a match counts as Linear (only one branch executes). A
+binding used in a TCO loop body that's reassigned each iteration is
+Accumulator.
+
+**What this fixes:** Eliminates `Rc<TokPos>`, `Rc<ScanResult>`,
+`Rc<Token>`, `Rc<TokenKind>` for values created and immediately consumed.
+Eliminates `Rc<Vec<T>>` + `try_unwrap` for linearly-threaded lists.
+
+**Implementation:** Walk each function body, count binding references.
+Emit annotations on the function's local bindings. The v1 emitter's
+`count_ident_uses_expr` already does partial use-counting — this
+generalizes it to a pre-pass that classifies every binding.
+
+#### Analysis 2: Type refinement
+
+Propagate constraints on value representations:
+
+| Refinement | Detection | Rust rendering |
+|-----------|-----------|----------------|
+| `Char` | `char_at()` return value; function params only compared to 1-char literals | `u8` or `char` |
+| `CachedLength` | `string_length(s)` called on value that doesn't change in scope | Hoist to `let len = s.len()` |
+| `StringBuilder` | `fold` building `List<String>` one element at a time, followed by `join(result, "")` | `String` + `push_str` |
+
+**Scope:** `Char` refinement propagates through function signatures — if
+`is_digit(ch: String)` only uses `ch` in single-char comparisons, the
+param type refines to `Char`. `CachedLength` is local (within a function
+body). `StringBuilder` is an idiom detected on fold patterns.
+
+**What this fixes:** Eliminates per-character heap allocation in tokenizer
+(~50 allocs/token → 0). Eliminates O(N) `string_length` calls on source
+string (~5B byte scans → 0). Eliminates `List<String>` + `join` in
+`scan_string_body` and `process_escapes_loop`.
+
+**Implementation:** For `Char`: scan function body for comparisons against
+1-char string literals; if ALL uses of a param are char-like, mark it.
+For `CachedLength`: detect repeated `string_length(x)` on same `x` in a
+loop body where `x` is loop-invariant. For `StringBuilder`: detect
+`fold(..., (acc, x) => list_push(acc, x))` followed by `join(result, "")`.
+
+#### Analysis 3: Call graph classification
+
+Classify each function's position in the call graph:
+
+| Classification | Meaning | Rust rendering |
+|---------------|---------|----------------|
+| `Leaf` | No calls to other DAG functions (or only to primitives) | `#[inline]`, no stacker |
+| `Interior` | Calls other DAG functions but not in any cycle | No stacker |
+| `Recursive` | In a call cycle (direct or mutual) | `stacker::maybe_grow` |
+| `TCO` | Tail-recursive (already detected) | Loop, no stacker |
+
+**Scope:** Build call graph from function definitions. Compute SCCs.
+Functions in singleton SCCs with no self-edge are Interior. Functions in
+non-trivial SCCs are Recursive. Functions making no DAG calls are Leaf.
+
+**What this fixes:** The v2 emitter already does recursive-only stacker
+wrapping. This brings the v1 emitter to parity and adds `#[inline]` on
+leaf functions. Eliminates triple-nested stacker overhead on
+per-character predicates.
+
+**Implementation:** The v2 emitter's `is_recursive` check in
+`05_emit_rust.dag` already does this for the v2 path. For v1: add a call
+graph analysis pass in `fn_codegen.rs` that mirrors the v2 logic. Both
+emitters should consume the same classification data.
+
+### Where each analysis lives
+
+| Analysis | Target-agnostic? | Where it runs | Where results are consumed |
+|----------|------------------|---------------|---------------------------|
+| Ownership mode | Yes | New pass after reconcile (or inline in reconcile) | v1: `fn_codegen.rs`; v2: `05_emit_rust.dag` |
+| Type refinement | Yes | Same pass | v1: `fn_codegen.rs`, `v2_runtime_shim.rs`; v2: `05_emit_rust.dag` |
+| Call graph | Yes | Same pass | v1: `fn_codegen.rs`; v2: `05_emit_rust.dag` |
+
+The analysis produces annotations on the IR (e.g., each `FuncSig` gets a
+`call_class` field; each binding in a function body gets an `ownership`
+annotation). The emitters read these annotations and select
+representations accordingly.
+
+### v1 vs v2 emitter strategy
+
+The v1 emitter is bootstrap scaffolding that dies at A7. But the analysis
+pass is target-agnostic — it's a property of the DAG, computed once,
+consumed by both emitters. The v1 emitter changes are consumption-side
+only (read annotations, adjust code generation). The analysis itself will
+be rewritten in .dag when the v2 emitter is self-hosted, but the design
+and acceptance criteria carry over.
+
+| Component | v1 (Rust) | v2 (.dag) | Survives A7? |
+|-----------|-----------|-----------|--------------|
+| Analysis pass | Rust code in daglang-emit | Rewritten in .dag post-A7 | Design survives, code doesn't |
+| Ownership consumption | `fn_codegen.rs` reads annotations | `05_emit_rust.dag` reads annotations | v2 version survives |
+| Type refinement consumption | `fn_codegen.rs` + `v2_runtime_shim.rs` | `05_emit_rust.dag` | v2 version survives |
+| Call graph consumption | `fn_codegen.rs` reads classification | `05_emit_rust.dag` already has `is_recursive` | v2 version survives |
+
+### Implementation order
+
+**Phase 1: Call graph classification (v1 parity with v2)**
+- Add call graph SCC analysis to v1 emitter
+- Stop blanket stacker wrapping; wrap only Recursive functions
+- Add `#[inline]` to Leaf functions
+- **Acceptance:** `is_digit`, `is_ident_start`, `emit` no longer stacker-wrapped in generated code
+
+**Phase 2: Type refinement — Char**
+- Detect single-char string params/returns in analysis pass
+- v1 emitter renders `char` or `u8` instead of `String` for refined types
+- `char_at()` returns `char` when consumer is Char-refined
+- Character predicates become byte comparisons (`ch >= b'0' && ch <= b'9'`)
+- **Acceptance:** `is_digit` in generated tokenize.rs has no `.to_string()` calls
+
+**Phase 3: Type refinement — CachedLength**
+- Detect loop-invariant `string_length(x)` calls
+- Hoist to `let __len = x.len()` before loop
+- **Acceptance:** `tokenize_loop` in generated code has no `v2_rt::string_length` call inside the loop body
+
+**Phase 4: Ownership mode — Linear**
+- Count uses per binding; classify as Linear/Shared/Accumulator
+- v1 emitter skips Rc wrapping for Linear values (bare struct, moved)
+- **Acceptance:** `ScanResult`, `TokPos` not Rc-wrapped when used exactly once in generated code
+
+**Phase 5: Type refinement — StringBuilder (stretch)**
+- Detect fold+join idiom
+- Emit `String::with_capacity` + `push_str` instead of `Rc<Vec<String>>` + `join`
+- **Acceptance:** `scan_string_body` in generated code uses a single `String` buffer
+
+### Acceptance criteria (overall P1)
+
+- [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
+- [ ] All existing tests pass (96 v2-compiler-tests, 363 daglang-emit)
+- [ ] Generated `tokenize.rs` has:
+  - [ ] No `stacker::maybe_grow` on `is_digit`, `is_ident_start`, `is_ident_char`, `emit`
+  - [ ] No `.to_string()` in character comparisons
+  - [ ] No `v2_rt::string_length` call inside `tokenize_loop`
+  - [ ] `ScanResult`, `TokPos` not `Rc`-wrapped at single-use sites
+- [ ] Analysis annotations are target-agnostic (no Rust-specific logic in analysis pass)
+- [ ] v2 emitter (`05_emit_rust.dag`) can consume the same annotations (even if consumption code is written later)
+
+### Files modified
+
+| File | Changes |
+|------|---------|
+| `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Call graph analysis, ownership counting, type refinement detection, conditional Rc wrapping, conditional stacker, #[inline] |
+| `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs` | `char_at` variant returning `char`; `string_length` caching helper |
+| `src/v1/07_emit/daglang-emit/src/render_rust.rs` | Stacker wrapping gated on call graph classification |
+| `src/v1/07_emit/daglang-emit/src/v2_crate_emit.rs` | Thread analysis results through emit context |
+| `src/v2/05_emit_rust.dag` | (Phase 5+ only) Consume annotations for StringBuilder, Linear |
+
+### Complexity improvement
+
+| Hot path | Before P1 | After P1 |
+|----------|-----------|----------|
+| Per-character predicate | stacker + 4-12 `.to_string()` heap allocs | `#[inline]` byte comparison |
+| Per-token bounds check | 2-3 × `string_length` O(200K) | 2-3 × `pos < cached_len` O(1) |
+| Per-token ScanResult | `Rc::new(ScanResult{...})` heap alloc | Bare struct, moved |
+| Per-string-char accumulation | `Rc<Vec<String>>` push + join | `String::push` (Phase 5) |
+| Estimated tokens/sec (200KB .dag) | ~100 (hangs) | ~100K+ (completes in seconds) |
 
 ### A5: Bootstrap stage 0 → 1
 
@@ -604,12 +826,13 @@ branches**, not as one long serial refactor. The rule is simple: parallelize
 by **write scope**, not by conceptual topic. If two tasks need the same top-level
 types or the same orchestration function, they are not independent lanes.
 
-#### Wave 0 — serial gate (DONE + PERF gate)
+#### Wave 0 — serial gate (DONE + P1)
 
 | Lane | Branch | Ownership | Files | Status |
 |------|--------|-----------|-------|--------|
 | G0 | `wt/a4-evidence` | Run/record the A4 evidence tests | tests + docs only | **DONE** — 0 cargo check errors |
-| P0 | `v2-compiler-convergence` | Stacker wrapping (P0-a), Copy derive (P0-b), hang diagnosis (P0-c) | `src/v2/05_emit_rust.dag` | **P0-a/P0-b DONE**, P0-c pending |
+| P0 | `v2-compiler-convergence` | Stacker wrapping (P0-a), Copy derive (P0-b), reconcile O(N²) (P0-c) | `src/v2/05_emit_rust.dag`, `src/v2/04_reconcile.dag` | **P0-a/P0-b/P0-c DONE** |
+| P1 | `wt/p1-repr-inference` | Representation inference: call graph, type refinement, ownership | `fn_codegen.rs`, `render_rust.rs`, `v2_runtime_shim.rs`, `v2_crate_emit.rs` | **IN PROGRESS** |
 
 #### Wave 1 — clean post-A4 lanes
 
