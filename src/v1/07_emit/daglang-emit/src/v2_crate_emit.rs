@@ -954,13 +954,54 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
                 continue;
             };
             let items = &sf.items;
-            module_shared_ctx.expose_visible_types(
-                items,
-                &struct_field_types,
-                &struct_field_ir_types,
-            );
 
-            let source = emit_module(items, &module_shared_ctx, &defined_type_signatures);
+            // Add this module's type names AND variant names to the visible set
+            for item in items.iter() {
+                if let Item::TypeDef(td) = &item.node {
+                    visible_type_names.insert(td.name.clone());
+                    // Also add variant names (they're keys in struct_field_types)
+                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
+                        for v in variants {
+                            visible_type_names.insert(v.name.clone());
+                        }
+                    }
+                }
+            }
+
+            // Filter struct_field_types to only include visible types
+            let module_struct_field_types: HashMap<String, HashMap<String, String>> =
+                struct_field_types
+                    .iter()
+                    .filter(|(name, _)| visible_type_names.contains(name.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+
+            // Filter struct_field_ir_types to only include visible types
+            let module_struct_field_ir_types: HashMap<
+                String,
+                Vec<(String, gunbc_ir::code_ir::IrType)>,
+            > = struct_field_ir_types
+                .iter()
+                .filter(|(name, _)| visible_type_names.contains(name.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+
+            let source = emit_module(
+                items,
+                &recursive_fields,
+                &variant_to_enum,
+                &module_struct_field_types,
+                &optional_fields,
+                &all_enum_variants,
+                &defined_type_signatures,
+                &module_struct_field_ir_types,
+                &global_fn_return_types,
+                &global_fn_return_ir_types,
+                &global_fn_param_types,
+                &enum_accessor_fields,
+                &global_optional_return_fns,
+                &global_fn_str_params,
+            );
             // Track which types this module defines with their structural signature.
             for item in items.iter() {
                 if let Item::TypeDef(td) = &item.node {
@@ -1025,16 +1066,12 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
 /// Generate a `Cargo.lock` for the crate at `crate_dir`.
 ///
 /// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
-/// This performs I/O: it first spawns `cargo generate-lockfile`, then falls back
-/// to emitting a lockfile from the workspace lock if network resolution is unavailable.
+/// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
+///
+/// The helper tries Cargo's offline resolution first so temp-crate validation
+/// stays hermetic when the needed crates are already cached locally. If the
+/// cache is incomplete, it retries without `--offline`.
 pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
-    let mut base = std::process::Command::new("cargo");
-    base.arg("generate-lockfile").current_dir(crate_dir);
-    let output = base.output()?;
-    if output.status.success() {
-        return Ok(());
-    }
-
     let mut offline = std::process::Command::new("cargo");
     offline
         .arg("generate-lockfile")
@@ -1044,19 +1081,19 @@ pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
         return Ok(());
     }
 
-    let generated_lock =
-        emit_generated_cargo_lock(V2_CRATE_NAME, V2_CRATE_VERSION, V2_CRATE_DEPENDENCIES).map_err(
-            |fallback_error| {
-                lockfile_error(format!(
-            "cargo generate-lockfile failed in {}:\n{}\nworkspace-lock fallback failed:\n{}",
-            crate_dir.display(),
-            String::from_utf8_lossy(&output.stderr),
-            fallback_error
-        ))
-            },
-        )?;
-    std::fs::write(crate_dir.join("Cargo.lock"), generated_lock)?;
-    Ok(())
+    let mut base = std::process::Command::new("cargo");
+    base.arg("generate-lockfile").current_dir(crate_dir);
+    let output = base.output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(std::io::Error::other(format!(
+        "cargo generate-lockfile failed in {}:\noffline stderr:\n{}\n\nnormal stderr:\n{}",
+        crate_dir.display(),
+        String::from_utf8_lossy(&offline_output.stderr),
+        String::from_utf8_lossy(&output.stderr)
+    )))
 }
 
 fn emit_lib_rs(modules: &[(&str, &SourceFile)]) -> String {

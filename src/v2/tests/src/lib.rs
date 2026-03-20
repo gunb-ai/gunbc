@@ -3532,7 +3532,7 @@ fn example(items: List<String>) -> Int {
         let tmp_dir = fresh_temp_dir(dir_name);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
         daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
-            .expect("failed to generate lockfile");
+            .expect("failed to generate Cargo.lock for emitted crate");
         tmp_dir
     }
 
@@ -3540,6 +3540,7 @@ fn example(items: List<String>) -> Int {
         let mut command = std::process::Command::new("cargo");
         command
             .current_dir(crate_dir)
+            .env("CARGO_NET_OFFLINE", "true")
             .env("CARGO_TARGET_DIR", crate_dir.join("target"));
         command
     }
@@ -3561,7 +3562,7 @@ fn example(items: List<String>) -> Int {
 
         let output = generated_crate_cargo(&tmp_dir)
             .arg("check")
-            .env("CARGO_NET_OFFLINE", "true")
+            .arg("--locked")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
@@ -3586,6 +3587,7 @@ fn example(items: List<String>) -> Int {
 
         let output = generated_crate_cargo(&tmp_dir)
             .arg("build")
+            .arg("--locked")
             .output()
             .expect("failed to run cargo build");
 
@@ -3616,6 +3618,7 @@ fn example(items: List<String>) -> Int {
 
         let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
+            .arg("--locked")
             .output()
             .expect("failed to run cargo test");
 
@@ -3651,6 +3654,7 @@ fn example(items: List<String>) -> Int {
         let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
             .arg("--release")
+            .arg("--locked")
             .arg("--")
             .arg("self_compile_all_modules")
             .output()
@@ -3726,6 +3730,7 @@ fn example(items: List<String>) -> Int {
         let output = generated_crate_cargo(&tmp_dir)
             .arg("test")
             .arg("--release")
+            .arg("--locked")
             .arg("--")
             .arg("gist_compile_all_modules")
             .output()
@@ -4116,8 +4121,12 @@ path = "src/lib.rs"
             std::fs::write(&cargo_toml_path, cargo_toml).expect("failed to write Cargo.toml");
         }
 
+        daglang_emit::v2_crate_emit::generate_lockfile(&tmp_dir)
+            .expect("failed to generate Cargo.lock for gist Rust output");
+
         let output = generated_crate_cargo(&tmp_dir)
             .arg("check")
+            .arg("--locked")
             .output()
             .expect("failed to run cargo check");
 
