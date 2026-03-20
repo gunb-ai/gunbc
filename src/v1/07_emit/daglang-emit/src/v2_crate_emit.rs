@@ -314,10 +314,9 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
     // type_expr_to_rust calls (which Rc-wrap Named types in this set).
     let rc_wrapped_types = type_codegen::build_rc_wrapped_types(&all_type_defs);
 
-    let recursive_fields =
-        type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
-            type_codegen::compute_recursive_fields(&all_type_defs)
-        });
+    let recursive_fields = type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
+        type_codegen::compute_recursive_fields(&all_type_defs)
+    });
 
     // 2. Build variant_to_enum map for identifier resolution
     let variant_to_enum = build_variant_to_enum(&all_type_defs);
@@ -497,74 +496,74 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         HashSet::from(["SourceSpan".to_string(), "BindingPower".to_string()]);
     // R8: Install Rc-wrapped types for all type_expr_to_rust calls within module emission
     type_codegen::with_rc_wrapped_types(&rc_wrapped_types, || {
-    for (_dag_stem, sf) in modules {
-        let Some(rust_mod) = rust_mod_for_source_file(sf) else {
-            continue;
-        };
-        let items = &sf.items;
+        for (_dag_stem, sf) in modules {
+            let Some(rust_mod) = rust_mod_for_source_file(sf) else {
+                continue;
+            };
+            let items = &sf.items;
 
-        // Add this module's type names AND variant names to the visible set
-        for item in items.iter() {
-            if let Item::TypeDef(td) = &item.node {
-                visible_type_names.insert(td.name.clone());
-                // Also add variant names (they're keys in struct_field_types)
-                if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
-                    for v in variants {
-                        visible_type_names.insert(v.name.clone());
+            // Add this module's type names AND variant names to the visible set
+            for item in items.iter() {
+                if let Item::TypeDef(td) = &item.node {
+                    visible_type_names.insert(td.name.clone());
+                    // Also add variant names (they're keys in struct_field_types)
+                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
+                        for v in variants {
+                            visible_type_names.insert(v.name.clone());
+                        }
                     }
                 }
             }
-        }
 
-        // Filter struct_field_types to only include visible types
-        let module_struct_field_types: HashMap<String, HashMap<String, String>> =
-            struct_field_types
+            // Filter struct_field_types to only include visible types
+            let module_struct_field_types: HashMap<String, HashMap<String, String>> =
+                struct_field_types
+                    .iter()
+                    .filter(|(name, _)| visible_type_names.contains(name.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+
+            // Filter struct_field_ir_types to only include visible types
+            let module_struct_field_ir_types: HashMap<
+                String,
+                Vec<(String, gunbc_ir::code_ir::IrType)>,
+            > = struct_field_ir_types
                 .iter()
                 .filter(|(name, _)| visible_type_names.contains(name.as_str()))
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
 
-        // Filter struct_field_ir_types to only include visible types
-        let module_struct_field_ir_types: HashMap<
-            String,
-            Vec<(String, gunbc_ir::code_ir::IrType)>,
-        > = struct_field_ir_types
-            .iter()
-            .filter(|(name, _)| visible_type_names.contains(name.as_str()))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        let source = emit_module(
-            items,
-            &recursive_fields,
-            &variant_to_enum,
-            &module_struct_field_types,
-            &optional_fields,
-            &all_enum_variants,
-            &defined_type_signatures,
-            &module_struct_field_ir_types,
-            &global_fn_return_types,
-            &global_fn_return_ir_types,
-            &global_fn_param_types,
-            &enum_accessor_fields,
-            &global_optional_return_fns,
-            &global_fn_str_params,
-        );
-        // Track which types this module defines with their structural signature.
-        for item in items.iter() {
-            if let Item::TypeDef(td) = &item.node {
-                defined_type_signatures
-                    .entry(td.name.clone())
-                    .or_insert_with(|| type_def_signature(td));
+            let source = emit_module(
+                items,
+                &recursive_fields,
+                &variant_to_enum,
+                &module_struct_field_types,
+                &optional_fields,
+                &all_enum_variants,
+                &defined_type_signatures,
+                &module_struct_field_ir_types,
+                &global_fn_return_types,
+                &global_fn_return_ir_types,
+                &global_fn_param_types,
+                &enum_accessor_fields,
+                &global_optional_return_fns,
+                &global_fn_str_params,
+            );
+            // Track which types this module defines with their structural signature.
+            for item in items.iter() {
+                if let Item::TypeDef(td) = &item.node {
+                    defined_type_signatures
+                        .entry(td.name.clone())
+                        .or_insert_with(|| type_def_signature(td));
+                }
             }
+            let mut content = module_prelude(sf);
+            content.push_str(&render_rust::render_rust_source_with_stacker(&source));
+            files.push(GeneratedFile {
+                rel_path: format!("src/{}.rs", rust_mod),
+                content,
+            });
         }
-        let mut content = module_prelude(sf);
-        content.push_str(&render_rust::render_rust_source_with_stacker(&source));
-        files.push(GeneratedFile {
-            rel_path: format!("src/{}.rs", rust_mod),
-            content,
-        });
-    }
     }); // end with_rc_wrapped_types
 
     // 6. Emit lib.rs with mod declarations and cross-module uses
@@ -616,17 +615,10 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
 /// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
 /// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
 ///
-/// The helper tries Cargo's normal resolution first, then retries with
-/// `--offline` so temp-crate validation remains hermetic when the needed
-/// crates are already cached locally but the environment has no network.
+/// The helper tries Cargo's offline resolution first so temp-crate validation
+/// stays hermetic when the needed crates are already cached locally. If the
+/// cache is incomplete, it retries without `--offline`.
 pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
-    let mut base = std::process::Command::new("cargo");
-    base.arg("generate-lockfile").current_dir(crate_dir);
-    let output = base.output()?;
-    if output.status.success() {
-        return Ok(());
-    }
-
     let mut offline = std::process::Command::new("cargo");
     offline
         .arg("generate-lockfile")
@@ -637,11 +629,18 @@ pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
         return Ok(());
     }
 
+    let mut base = std::process::Command::new("cargo");
+    base.arg("generate-lockfile").current_dir(crate_dir);
+    let output = base.output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+
     Err(std::io::Error::other(format!(
-        "cargo generate-lockfile failed in {}:\nnormal stderr:\n{}\n\noffline stderr:\n{}",
+        "cargo generate-lockfile failed in {}:\noffline stderr:\n{}\n\nnormal stderr:\n{}",
         crate_dir.display(),
-        String::from_utf8_lossy(&output.stderr),
-        String::from_utf8_lossy(&offline_output.stderr)
+        String::from_utf8_lossy(&offline_output.stderr),
+        String::from_utf8_lossy(&output.stderr)
     )))
 }
 

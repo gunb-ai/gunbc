@@ -494,8 +494,8 @@ mod tests {
 
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
         let registry = registry_for_two_nodes(vec![UnitClaim::write("db")], vec![]);
-        let errors =
-            validate_workflow_admission(&spec, &registry).expect_err("missing resource_id must fail");
+        let errors = validate_workflow_admission(&spec, &registry)
+            .expect_err("missing resource_id must fail");
 
         assert!(errors.iter().any(|error| matches!(
             error,

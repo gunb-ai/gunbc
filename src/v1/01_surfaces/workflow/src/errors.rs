@@ -46,9 +46,7 @@ impl fmt::Display for WorkflowAdmissionError {
                 "node '{}' references unknown process unit '{}::{}'",
                 node_id.0, process_unit.process_id.0, process_unit.unit_id.0
             ),
-            WorkflowAdmissionError::ResourceAccessMetadataInvalid {
-                error,
-            } => write!(f, "{error}"),
+            WorkflowAdmissionError::ResourceAccessMetadataInvalid { error } => write!(f, "{error}"),
             WorkflowAdmissionError::MissingRequiredClaims {
                 node_id,
                 process_unit,

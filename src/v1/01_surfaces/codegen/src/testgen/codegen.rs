@@ -6886,7 +6886,10 @@ fn try_mock_value_for_count(
     if count > 0 {
         if let Some(value) = gunbc_test::typed_witness_value(type_id, registry) {
             if cardinality.is_list() {
-                return Some(Value::List(std::sync::Arc::new(vec![value; count as usize])));
+                return Some(Value::List(std::sync::Arc::new(vec![
+                    value;
+                    count as usize
+                ])));
             }
             return Some(value);
         }
