@@ -4247,6 +4247,51 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
         panic!("expected REST spec");
     };
 
+    let body_schema = rest_spec
+        .body_schema
+        .as_ref()
+        .expect("typed REST body should carry schema metadata");
+    assert_eq!(body_schema.record_type, "ExchangeRequest");
+    assert_eq!(
+        body_schema
+            .field("grant_type")
+            .expect("grant_type metadata should be preserved"),
+        &RestBodyFieldSchema {
+            name: "grant_type".to_string(),
+            type_id: "GrantKind".to_string(),
+            literal_variants: vec![RestBodyLiteralVariant {
+                name: "GrantExchange".to_string(),
+                field_names: vec![],
+            }],
+            nested_schema: None,
+        }
+    );
+    assert_eq!(
+        body_schema
+            .field("subject_token_type")
+            .expect("subject_token_type metadata should be preserved")
+            .literal_variants,
+        vec![
+            RestBodyLiteralVariant {
+                name: "JwtToken".to_string(),
+                field_names: vec![],
+            },
+            RestBodyLiteralVariant {
+                name: "StsAccessTokenValue".to_string(),
+                field_names: vec![],
+            },
+            RestBodyLiteralVariant {
+                name: "IdTokenValue".to_string(),
+                field_names: vec![],
+            },
+            RestBodyLiteralVariant {
+                name: "Saml2Value".to_string(),
+                field_names: vec![],
+            },
+        ],
+        "typed REST body schema should preserve literal constructor metadata on RestOperationSpec"
+    );
+
     assert_eq!(
         rest_spec.body_template,
         Some(vec![
@@ -4357,8 +4402,7 @@ fn sts_typed_body_rejects_untyped_record_body() {
       }"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
-    let err =
-        lower_typed_project(&typed).expect_err("lowering should fail on an untyped STS body");
+    let err = lower_typed_project(&typed).expect_err("lowering should fail on an untyped STS body");
 
     match err {
         LowerError::InvalidTransportSpec {
