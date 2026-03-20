@@ -61,9 +61,32 @@ pub fn eval_literal(lit: &LoweredLiteral) -> Value {
 
 // ── Field access ────────────────────────────────────────────────────────────
 
-/// Field access on a Value — single implementation for both expression
-/// evaluator and DAG executor. Fails closed on missing fields, Skipped
-/// inputs, and non-record bases.
+pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
+    match base {
+        Value::Map(map) => map.get(field).cloned().ok_or_else(|| {
+            let keys: Vec<&String> = map.keys().collect();
+            EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
+        }),
+        Value::Json(json) => match json {
+            serde_json::Value::Object(obj) => Ok(obj
+                .get(field)
+                .map(|v| Value::Json(v.clone()))
+                .unwrap_or(Value::Json(serde_json::Value::Null))),
+            serde_json::Value::Null => Ok(Value::Json(serde_json::Value::Null)),
+            _ => Err(EvalError::new(format!(
+                "cannot access field '{field}' on JSON {:?}",
+                json
+            ))),
+        },
+        Value::Unit | Value::Skipped => Ok(Value::Unit),
+        _ => Err(EvalError::new(format!(
+            "cannot access field '{field}' on {:?}",
+            base
+        ))),
+    }
+}
+
+/// Detailed field access for DAG executor diagnostics.
 pub fn eval_get_field(value: &Value, field: &str) -> Result<Value, EvalError> {
     match value {
         Value::Map(fields) => fields.get(field).cloned().ok_or_else(|| {

@@ -3557,6 +3557,8 @@ fn example(items: List<String>) -> Int {
 
         let output = generated_crate_cargo(&tmp_dir)
             .arg("check")
+            .arg("--locked")
+            .arg("--offline")
             .current_dir(&tmp_dir)
             .output()
             .expect("failed to run cargo check");
@@ -3822,6 +3824,8 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+        daglang_emit::v2_crate_emit::generate_lockfile(&out_dir)
+            .expect("failed to generate lockfile");
     }
 
     // ═════════════════════════════════════════════════════════════════════

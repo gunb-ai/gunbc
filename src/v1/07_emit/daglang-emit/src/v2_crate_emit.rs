@@ -34,6 +34,13 @@ use crate::v2_runtime_shim;
 use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
+use semver::{Version, VersionReq};
+use toml::{value::Table as TomlTable, Value as TomlValue};
+
+const V2_CRATE_NAME: &str = "v2-compiler";
+const V2_CRATE_VERSION: &str = "0.1.0";
+const V2_CRATE_DEPENDENCIES: &[(&str, &str)] = &[("stacker", "0.1")];
+const CRATES_IO_SOURCE: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
 /// A generated file with its path relative to the crate root and content.
 #[derive(Debug)]
@@ -69,6 +76,20 @@ struct EmbeddedDagMarks {
     include_in_gist_resolve: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct LockPackageKey {
+    name: String,
+    version: String,
+    source: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LockDependencyRef {
+    name: String,
+    version: Option<String>,
+    source: Option<String>,
+}
+
 fn workspace_root_from_manifest_dir() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
@@ -76,6 +97,361 @@ fn workspace_root_from_manifest_dir() -> PathBuf {
         .nth(4)
         .expect("could not find workspace root from CARGO_MANIFEST_DIR")
         .to_path_buf()
+}
+
+fn lockfile_error(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::other(message.into())
+}
+
+fn lock_package_string(package: &TomlTable, key: &str) -> std::io::Result<String> {
+    package
+        .get(key)
+        .and_then(TomlValue::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| {
+            lockfile_error(format!(
+                "workspace Cargo.lock package missing string `{key}`: {package:?}"
+            ))
+        })
+}
+
+fn lock_package_optional_string(package: &TomlTable, key: &str) -> std::io::Result<Option<String>> {
+    match package.get(key) {
+        Some(TomlValue::String(value)) => Ok(Some(value.clone())),
+        Some(other) => Err(lockfile_error(format!(
+            "workspace Cargo.lock package `{key}` must be a string, got {other:?}"
+        ))),
+        None => Ok(None),
+    }
+}
+
+fn lock_package_key(package: &TomlTable) -> std::io::Result<LockPackageKey> {
+    Ok(LockPackageKey {
+        name: lock_package_string(package, "name")?,
+        version: lock_package_string(package, "version")?,
+        source: lock_package_optional_string(package, "source")?,
+    })
+}
+
+fn parse_lock_dependency(dep: &str) -> std::io::Result<LockDependencyRef> {
+    let mut parts: Vec<&str> = dep.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err(lockfile_error(
+            "workspace Cargo.lock dependency entry is empty",
+        ));
+    }
+
+    let source = parts
+        .last()
+        .and_then(|part| part.strip_prefix('('))
+        .and_then(|part| part.strip_suffix(')'))
+        .map(ToString::to_string);
+    if source.is_some() {
+        parts.pop();
+    }
+
+    let version = parts
+        .last()
+        .and_then(|part| Version::parse(part).ok().map(|_| (*part).to_string()));
+    if version.is_some() {
+        parts.pop();
+    }
+
+    if source.is_some() && version.is_none() {
+        return Err(lockfile_error(format!(
+            "workspace Cargo.lock dependency entry has source without version: {dep}"
+        )));
+    }
+
+    let name = parts.join(" ");
+    if name.is_empty() {
+        return Err(lockfile_error(format!(
+            "workspace Cargo.lock dependency entry is missing a package name: {dep}"
+        )));
+    }
+
+    Ok(LockDependencyRef {
+        name,
+        version,
+        source,
+    })
+}
+
+fn lock_requirement_matches_version(version: &str, requirement: &str) -> std::io::Result<bool> {
+    let requirement = VersionReq::parse(requirement).map_err(|error| {
+        lockfile_error(format!(
+            "invalid generated crate dependency requirement `{requirement}`: {error}"
+        ))
+    })?;
+    let version = Version::parse(version).map_err(|error| {
+        lockfile_error(format!(
+            "workspace Cargo.lock contains invalid package version `{version}`: {error}"
+        ))
+    })?;
+    Ok(requirement.matches(&version))
+}
+
+fn matching_root_lock_dependencies<'a>(
+    dep_name: &str,
+    dep_requirement: &str,
+    packages_by_name: &'a HashMap<String, Vec<LockPackageKey>>,
+) -> std::io::Result<Vec<&'a LockPackageKey>> {
+    let packages = packages_by_name.get(dep_name).ok_or_else(|| {
+        lockfile_error(format!(
+            "workspace Cargo.lock is missing generated crate dependency `{dep_name}`"
+        ))
+    })?;
+
+    let mut matching = Vec::new();
+    for package in packages {
+        if lock_requirement_matches_version(&package.version, dep_requirement)? {
+            matching.push(package);
+        }
+    }
+    Ok(matching)
+}
+
+fn resolve_root_lock_dependency(
+    dep_name: &str,
+    dep_requirement: &str,
+    packages_by_name: &HashMap<String, Vec<LockPackageKey>>,
+) -> std::io::Result<LockPackageKey> {
+    let matching = matching_root_lock_dependencies(dep_name, dep_requirement, packages_by_name)?;
+    match matching.as_slice() {
+        [package] => Ok((*package).clone()),
+        [] => Err(lockfile_error(format!(
+            "workspace Cargo.lock has no resolved version for `{dep_name}` matching `{dep_requirement}`"
+        ))),
+        _ => {
+            let registry_matches: Vec<&LockPackageKey> = matching
+                .iter()
+                .copied()
+                .filter(|package| package.source.as_deref() == Some(CRATES_IO_SOURCE))
+                .collect();
+            match registry_matches.as_slice() {
+                [package] => Ok((*package).clone()),
+                _ => Err(lockfile_error(format!(
+                    "workspace Cargo.lock resolved multiple `{dep_name}` packages matching `{dep_requirement}`: {:?}",
+                    matching
+                ))),
+            }
+        }
+    }
+}
+
+fn resolve_lock_dependency(
+    dep: &str,
+    packages_by_key: &HashMap<LockPackageKey, TomlTable>,
+    packages_by_name: &HashMap<String, Vec<LockPackageKey>>,
+    packages_by_name_version: &HashMap<(String, String), Vec<LockPackageKey>>,
+) -> std::io::Result<LockPackageKey> {
+    let dependency = parse_lock_dependency(dep)?;
+
+    match (dependency.version, dependency.source) {
+        (Some(version), Some(source)) => {
+            let key = LockPackageKey {
+                name: dependency.name,
+                version,
+                source: Some(source),
+            };
+            packages_by_key
+                .get(&key)
+                .map(|_| key.clone())
+                .ok_or_else(|| {
+                    lockfile_error(format!(
+                        "workspace Cargo.lock is missing transitive dependency {:?}",
+                        key
+                    ))
+                })
+        }
+        (Some(version), None) => {
+            let key = (dependency.name, version);
+            let matches = packages_by_name_version.get(&key).ok_or_else(|| {
+                lockfile_error(format!(
+                    "workspace Cargo.lock is missing transitive dependency `{} {}`",
+                    key.0, key.1
+                ))
+            })?;
+            match matches.as_slice() {
+                [package] => Ok(package.clone()),
+                _ => Err(lockfile_error(format!(
+                    "workspace Cargo.lock has ambiguous transitive dependency `{} {}`: {:?}",
+                    key.0, key.1, matches
+                ))),
+            }
+        }
+        (None, None) => {
+            let matches = packages_by_name.get(&dependency.name).ok_or_else(|| {
+                lockfile_error(format!(
+                    "workspace Cargo.lock is missing transitive dependency `{}`",
+                    dependency.name
+                ))
+            })?;
+            match matches.as_slice() {
+                [package] => Ok(package.clone()),
+                _ => Err(lockfile_error(format!(
+                    "workspace Cargo.lock has ambiguous transitive dependency `{}`: {:?}",
+                    dependency.name, matches
+                ))),
+            }
+        }
+        (None, Some(_)) => Err(lockfile_error(format!(
+            "workspace Cargo.lock dependency entry has source without version: {dep}"
+        ))),
+    }
+}
+
+fn emit_generated_cargo_lock(
+    crate_name: &str,
+    crate_version: &str,
+    dependencies: &[(&str, &str)],
+) -> std::io::Result<String> {
+    let workspace_lock_path = workspace_root_from_manifest_dir().join("Cargo.lock");
+    let workspace_lock = std::fs::read_to_string(&workspace_lock_path).map_err(|error| {
+        lockfile_error(format!(
+            "failed to read workspace Cargo.lock at {}: {}",
+            workspace_lock_path.display(),
+            error
+        ))
+    })?;
+    let parsed: TomlValue = toml::from_str(&workspace_lock).map_err(|error| {
+        lockfile_error(format!(
+            "failed to parse workspace Cargo.lock at {}: {}",
+            workspace_lock_path.display(),
+            error
+        ))
+    })?;
+    let lock_version = parsed
+        .get("version")
+        .and_then(TomlValue::as_integer)
+        .unwrap_or(4);
+    let packages = parsed
+        .get("package")
+        .and_then(TomlValue::as_array)
+        .ok_or_else(|| lockfile_error("workspace Cargo.lock missing package array"))?;
+
+    let package_tables: Vec<TomlTable> = packages
+        .iter()
+        .map(|package| {
+            package.as_table().cloned().ok_or_else(|| {
+                lockfile_error(format!(
+                    "workspace Cargo.lock package entry is not a table: {package:?}"
+                ))
+            })
+        })
+        .collect::<Result<_, _>>()?;
+
+    let mut packages_by_key = HashMap::new();
+    let mut packages_by_name: HashMap<String, Vec<LockPackageKey>> = HashMap::new();
+    let mut packages_by_name_version: HashMap<(String, String), Vec<LockPackageKey>> =
+        HashMap::new();
+    for package in &package_tables {
+        let key = lock_package_key(package)?;
+        packages_by_name
+            .entry(key.name.clone())
+            .or_default()
+            .push(key.clone());
+        packages_by_name_version
+            .entry((key.name.clone(), key.version.clone()))
+            .or_default()
+            .push(key.clone());
+        packages_by_key.insert(key, package.clone());
+    }
+
+    let mut selected = HashSet::new();
+    let mut pending: Vec<LockPackageKey> = dependencies
+        .iter()
+        .map(|(dep_name, dep_requirement)| {
+            resolve_root_lock_dependency(dep_name, dep_requirement, &packages_by_name)
+        })
+        .collect::<Result<_, _>>()?;
+
+    while let Some(key) = pending.pop() {
+        if !selected.insert(key.clone()) {
+            continue;
+        }
+        let package = packages_by_key.get(&key).ok_or_else(|| {
+            lockfile_error(format!(
+                "workspace Cargo.lock missing selected package {:?}",
+                key
+            ))
+        })?;
+        if let Some(package_dependencies) =
+            package.get("dependencies").and_then(TomlValue::as_array)
+        {
+            for dependency in package_dependencies {
+                let dependency = dependency.as_str().ok_or_else(|| {
+                    lockfile_error(format!(
+                        "workspace Cargo.lock dependency entry is not a string: {dependency:?}"
+                    ))
+                })?;
+                pending.push(resolve_lock_dependency(
+                    dependency,
+                    &packages_by_key,
+                    &packages_by_name,
+                    &packages_by_name_version,
+                )?);
+            }
+        }
+    }
+
+    let mut root_package = TomlTable::new();
+    root_package.insert(
+        "name".to_string(),
+        TomlValue::String(crate_name.to_string()),
+    );
+    root_package.insert(
+        "version".to_string(),
+        TomlValue::String(crate_version.to_string()),
+    );
+    root_package.insert(
+        "dependencies".to_string(),
+        TomlValue::Array(
+            dependencies
+                .iter()
+                .map(|(dep_name, _)| TomlValue::String((*dep_name).to_string()))
+                .collect(),
+        ),
+    );
+
+    let mut emitted_packages: Vec<(LockPackageKey, TomlTable)> = package_tables
+        .iter()
+        .map(
+            |package| -> std::io::Result<Option<(LockPackageKey, TomlTable)>> {
+                let key = lock_package_key(package)?;
+                Ok(selected.contains(&key).then(|| (key, package.clone())))
+            },
+        )
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    emitted_packages.push((
+        LockPackageKey {
+            name: crate_name.to_string(),
+            version: crate_version.to_string(),
+            source: None,
+        },
+        root_package,
+    ));
+    emitted_packages.sort_by(|(left_key, _), (right_key, _)| left_key.cmp(right_key));
+
+    let mut out = String::new();
+    out.push_str("# This file is automatically @generated by Cargo.\n");
+    out.push_str("# It is not intended for manual editing.\n");
+    out.push_str(&format!("version = {lock_version}\n\n"));
+    for (key, package) in emitted_packages {
+        out.push_str("[[package]]\n");
+        out.push_str(&toml::to_string(&package).map_err(|error| {
+            lockfile_error(format!(
+                "failed to serialize generated Cargo.lock package {:?}: {}",
+                key, error
+            ))
+        })?);
+        out.push('\n');
+    }
+
+    Ok(out)
 }
 
 fn dag_source_const_name(rel_path: &str) -> String {
@@ -588,7 +964,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
     });
 
     // 9. Emit Cargo.toml (standalone — not part of any workspace)
-    let mut cargo_toml = render_rust::render_cargo_toml("v2-compiler", &[("stacker", "0.1")]);
+    let mut cargo_toml = render_rust::render_cargo_toml(V2_CRATE_NAME, V2_CRATE_DEPENDENCIES);
     cargo_toml.push_str("\n[workspace]\n");
     files.push(GeneratedFile {
         rel_path: "Cargo.toml".to_string(),
@@ -610,14 +986,11 @@ pub fn write_crate(output_dir: &Path, files: &[GeneratedFile]) -> std::io::Resul
     Ok(())
 }
 
-/// Generate a `Cargo.lock` for the crate at `crate_dir` by delegating to Cargo.
+/// Generate a `Cargo.lock` for the crate at `crate_dir`.
 ///
 /// Must be called after [`write_crate`] has written the `Cargo.toml` to disk.
-/// This performs I/O: it spawns `cargo generate-lockfile` as a subprocess.
-///
-/// The helper tries Cargo's normal resolution first, then retries with
-/// `--offline` so temp-crate validation remains hermetic when the needed
-/// crates are already cached locally but the environment has no network.
+/// This performs I/O: it first spawns `cargo generate-lockfile`, then falls back
+/// to emitting a lockfile from the workspace lock if network resolution is unavailable.
 pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
     let mut base = std::process::Command::new("cargo");
     base.arg("generate-lockfile").current_dir(crate_dir);
@@ -629,19 +1002,25 @@ pub fn generate_lockfile(crate_dir: &Path) -> std::io::Result<()> {
     let mut offline = std::process::Command::new("cargo");
     offline
         .arg("generate-lockfile")
-        .arg("--offline")
-        .current_dir(crate_dir);
-    let offline_output = offline.output()?;
-    if offline_output.status.success() {
+        .current_dir(crate_dir)
+        .output()?;
+    if output.status.success() {
         return Ok(());
     }
 
-    Err(std::io::Error::other(format!(
-        "cargo generate-lockfile failed in {}:\nnormal stderr:\n{}\n\noffline stderr:\n{}",
-        crate_dir.display(),
-        String::from_utf8_lossy(&output.stderr),
-        String::from_utf8_lossy(&offline_output.stderr)
-    )))
+    let generated_lock =
+        emit_generated_cargo_lock(V2_CRATE_NAME, V2_CRATE_VERSION, V2_CRATE_DEPENDENCIES).map_err(
+            |fallback_error| {
+                lockfile_error(format!(
+            "cargo generate-lockfile failed in {}:\n{}\nworkspace-lock fallback failed:\n{}",
+            crate_dir.display(),
+            String::from_utf8_lossy(&output.stderr),
+            fallback_error
+        ))
+            },
+        )?;
+    std::fs::write(crate_dir.join("Cargo.lock"), generated_lock)?;
+    Ok(())
 }
 
 fn emit_lib_rs(modules: &[(&str, &SourceFile)]) -> String {
@@ -1527,7 +1906,9 @@ mod generated_tests {{
 
 #[cfg(test)]
 mod tests {
-    use super::{assemble_v2_crate, build_variant_to_enum, type_def_signature};
+    use super::{
+        assemble_v2_crate, build_variant_to_enum, parse_lock_dependency, type_def_signature,
+    };
     use daglang_syntax::ast::{Item, TypeDef};
 
     fn parse_source(source: &str) -> daglang_syntax::ast::SourceFile {
@@ -1703,5 +2084,29 @@ type Pair {
         };
 
         assert_eq!(type_def_signature(left), type_def_signature(right));
+    }
+
+    #[test]
+    fn parse_lock_dependency_preserves_source_qualified_identity() {
+        let parsed = parse_lock_dependency(
+            "windows-sys 0.59.0 (registry+https://github.com/rust-lang/crates.io-index)",
+        )
+        .expect("source-qualified dependency parses");
+
+        assert_eq!(parsed.name, "windows-sys");
+        assert_eq!(parsed.version.as_deref(), Some("0.59.0"));
+        assert_eq!(
+            parsed.source.as_deref(),
+            Some("registry+https://github.com/rust-lang/crates.io-index")
+        );
+    }
+
+    #[test]
+    fn parse_lock_dependency_preserves_name_only_entries() {
+        let parsed = parse_lock_dependency("object").expect("name-only dependency parses");
+
+        assert_eq!(parsed.name, "object");
+        assert_eq!(parsed.version, None);
+        assert_eq!(parsed.source, None);
     }
 }

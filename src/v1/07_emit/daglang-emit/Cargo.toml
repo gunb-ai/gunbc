@@ -11,7 +11,9 @@ daglang-lower = { path = "../../05_graph/daglang-lower" }
 daglang-syntax = { path = "../../03_source/daglang-syntax" }
 daglang-typecheck = { path = "../../04_semantics/daglang-typecheck" }
 gunbc-ir = { path = "../../00_foundation/ir" }
+semver = "1"
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 [dev-dependencies]
 daglang-resolve = { path = "../../03_source/daglang-resolve" }
