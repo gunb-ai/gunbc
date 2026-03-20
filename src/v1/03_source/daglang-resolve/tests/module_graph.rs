@@ -1476,38 +1476,6 @@ fn imported_bindings_do_not_make_downstream_module_imports_used() {
 }
 
 #[test]
-fn std_language_cleanup_extdeps_modules_are_discovered_and_have_no_unused_imports() {
-    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
-    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
-        .expect("expected real dsl graph to parse");
-    let export_index = build_module_export_index(&graph.modules);
-    let expected_modules = [
-        "extdeps.languages.go.runtime",
-        "extdeps.languages.go.types",
-        "extdeps.languages.python.types",
-        "extdeps.languages.rust.runtime",
-        "extdeps.languages.rust.types",
-    ];
-
-    for module_path in expected_modules {
-        let module = graph
-            .modules
-            .iter()
-            .find(|module| module.module_path.as_dotted() == module_path)
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected cleanup-targeted module {module_path} to be discovered in real dsl corpus"
-                )
-            });
-        let unused = find_unused_imports_with_export_index(&module.ast, &export_index);
-        assert!(
-            unused.is_empty(),
-            "expected no unused imports in cleanup-targeted module {module_path}, got {unused:?}"
-        );
-    }
-}
-
-#[test]
 fn real_corpus_has_no_unused_imports() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../dsl");
     let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
