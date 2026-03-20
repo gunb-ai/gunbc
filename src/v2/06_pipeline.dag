@@ -107,9 +107,9 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
       }
     }
 
-    // Stage 4: Type-check and validate the module graph.
-    // typecheck_and_validate runs typecheck + validate_no_unresolved,
-    // ensuring no unresolved Named references survive past this point.
+    // Stage 4: Reconcile namespaces and infer the module graph.
+    // The env-error gate inside reconcile() prevents unresolved type
+    // references from reaching emit.
     let typed = reconcile(graph: graph)
     let typed_diags = typed.diagnostics
 

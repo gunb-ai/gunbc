@@ -49,7 +49,7 @@ import v2.compiler.reconcile {
   build_params_scope, extend_scope,
   for_each_element_type_node,
   expr_span,
-  ItemInfo,
+  ItemInfo, FuncItem,
   is_typed_service_call_receiver, extract_typed_service_name
 }
 
@@ -141,9 +141,7 @@ fn emit_go_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // =========================================================================
 
 fn emit_go(typed: ResolvedGraph) -> EmitResult {
-  let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
-    map_merge(acc, tm.item_registry)
-  )
+  let registry = typed.item_registry
   let module_files = typed.modules |> map(tm => emit_go_module(typed_module: tm, registry: registry))
   let go_mod = emit_go_mod(module_name: "generated")
   let files = concat([go_mod], module_files)
@@ -565,7 +563,7 @@ fn emit_go_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      if info.kind == "func" {
+      if info.kind == FuncItem {
         info.service_names |> map(sn => service_var_name(service_name: sn))
       } else { [] }
     None => []

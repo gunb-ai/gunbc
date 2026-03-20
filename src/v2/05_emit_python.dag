@@ -40,7 +40,7 @@ import v2.compiler.reconcile {
   build_params_scope, extend_scope,
   for_each_element_type_node,
   expr_span,
-  ItemInfo,
+  ItemInfo, FuncItem,
   is_typed_service_call_receiver, extract_typed_service_name
 }
 
@@ -134,9 +134,7 @@ fn emit_py_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // =========================================================================
 
 fn emit_python(typed: ResolvedGraph) -> EmitResult {
-  let registry = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
-    map_merge(acc, tm.item_registry)
-  )
+  let registry = typed.item_registry
   let module_files = typed.modules |> map(tm => emit_py_module(typed_module: tm, registry: registry))
   let init_file = emit_init_py(modules: typed.modules)
   let requirements = emit_requirements_txt(has_services: has_service_items(typed: typed))
@@ -562,7 +560,7 @@ fn emit_py_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      if info.kind == "func" {
+      if info.kind == FuncItem {
         info.service_names |> map(sn => service_var_name(service_name: sn))
       } else { [] }
     None => []
@@ -572,7 +570,7 @@ fn emit_py_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let call_str = concat(py_ident(name: func), "(", args_str, ")")
   match callee {
     Some { value: info } =>
-      if info.kind == "func" { concat("await ", call_str) } else { call_str }
+      if info.kind == FuncItem { concat("await ", call_str) } else { call_str }
     None => call_str
   }
 }
