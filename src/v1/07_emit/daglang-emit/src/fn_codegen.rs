@@ -1092,6 +1092,22 @@ fn fill_missing_fields(
     }
     let opt_set = ctx.optional_fields.get(struct_name);
     let mut result = provided;
+    // Real emit contexts already carry declaration-order field vectors.
+    // Reuse that structure so filling optionals stays a single pass instead
+    // of sorting the HashMap keys on every record construction.
+    if let Some(field_order) = ctx.struct_field_ir_types.get(struct_name) {
+        for (field_name, _) in field_order {
+            if !provided_names.contains(field_name.as_str())
+                && opt_set.is_some_and(|s| s.contains(field_name.as_str()))
+            {
+                result.push((
+                    field_name.clone(),
+                    code_ir::Expr::Path(vec!["None".to_string()]),
+                ));
+            }
+        }
+        return result;
+    }
     let mut field_names: Vec<&String> = field_types.keys().collect();
     field_names.sort();
     for field_name in field_names {
@@ -7168,7 +7184,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_record_fills_missing_optional_fields_in_sorted_order() {
+    fn compile_record_fills_missing_optional_fields_in_declared_order() {
         let mut counter = 0usize;
         let mut ctx = CompileContext::new();
         ctx.struct_field_types.insert(
@@ -7178,8 +7194,22 @@ mod tests {
                 ("optional_b".to_string(), "Option<String>".to_string()),
                 ("optional_a".to_string(), "Option<String>".to_string()),
             ]
-            .into_iter()
-            .collect(),
+                .into_iter()
+                .collect(),
+        );
+        ctx.struct_field_ir_types.insert(
+            "Config".to_string(),
+            vec![
+                ("required".to_string(), IrType::Str),
+                (
+                    "optional_b".to_string(),
+                    IrType::Optional(Box::new(IrType::Str)),
+                ),
+                (
+                    "optional_a".to_string(),
+                    IrType::Optional(Box::new(IrType::Str)),
+                ),
+            ],
         );
         ctx.optional_fields.insert(
             "Config".to_string(),
@@ -7199,7 +7229,7 @@ mod tests {
         match ir {
             code_ir::Expr::Struct { fields, .. } => {
                 let names: Vec<_> = fields.into_iter().map(|(name, _)| name).collect();
-                assert_eq!(names, vec!["required", "optional_a", "optional_b"]);
+                assert_eq!(names, vec!["required", "optional_b", "optional_a"]);
             }
             other => panic!("expected Struct, got: {other:?}"),
         }
