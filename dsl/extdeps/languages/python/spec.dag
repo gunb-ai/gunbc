@@ -1,0 +1,53 @@
+// extdeps/languages/python/spec.dag -- Python LanguageSpec composition.
+//
+// This is the concrete compiler-owned Python target specification.
+
+module extdeps.languages.python.spec
+
+import std.languages {
+  LanguageSpec, RealizationRules,
+  AssignBind, FunctionCall, InfixOp, IfElifChain, ListComprehension,
+  TernaryExpr, IndentBlock, FStringInline, WhileTrueContinue,
+  python_language, python_statements, python_expressions, python_control_flow,
+  python_literals, python_modules, python_functions, python_errors,
+  python_type_defs, python_patterns, python_async,
+  python_collection_ops, python_string_ops, python_map_ops, python_null_coalesce,
+  python_reserved_words, python_value_semantics, python_serialization,
+  python_scaffold, python_service_calls
+}
+
+data python_realization: RealizationRules = {
+  bind_rule: AssignBind,
+  apply_rule: FunctionCall,
+  combine_rule: InfixOp,
+  switch_rule: IfElifChain,
+  replicate_rule: ListComprehension,
+  gate_rule: TernaryExpr,
+  sequence_rule: IndentBlock,
+  format_rule: FStringInline,
+  tco_rule: WhileTrueContinue
+}
+
+data python_spec: LanguageSpec = {
+  language: python_language,
+  statements: python_statements,
+  expressions: python_expressions,
+  control_flow: python_control_flow,
+  literals: python_literals,
+  modules: python_modules,
+  functions: python_functions,
+  errors: python_errors,
+  type_defs: python_type_defs,
+  patterns: python_patterns,
+  async_model: python_async,
+  collection_ops: python_collection_ops,
+  string_ops: python_string_ops,
+  map_ops: python_map_ops,
+  null_coalesce: python_null_coalesce,
+  reserved_words: python_reserved_words,
+  value_semantics: python_value_semantics,
+  serialization: python_serialization,
+  scaffold: python_scaffold,
+  service_calls: python_service_calls,
+  realization: python_realization
+}

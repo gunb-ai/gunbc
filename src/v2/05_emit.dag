@@ -31,8 +31,10 @@ import v2.std.core {
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
+  UnaryOpKind, Not, Neg,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
-  DeclaredFuncSig
+  DeclaredFuncSig,
+  ItemInfo
 }
 
 import v2.compiler.reconcile {
@@ -40,8 +42,15 @@ import v2.compiler.reconcile {
   ResolvedFuncSig, ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  ItemInfo, UniqueAccum, emit_map_has
+  UniqueAccum, emit_map_has
 }
+
+import std.languages {
+  LanguageSpec, go_spec
+}
+
+import extdeps.languages.rust.spec { rust_spec }
+import extdeps.languages.python.spec { python_spec }
 
 // =========================================================================
 // Emit result -- files plus diagnostic channel for downstream consumers.
@@ -444,12 +453,6 @@ data rust_type_map: Map<String, String> = {
   "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
 }
 
-data rust_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "None",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
 data rust_container_templates: Map<String, String> = {
   "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
   "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
@@ -460,12 +463,6 @@ data rust_container_templates: Map<String, String> = {
 data python_type_map: Map<String, String> = {
   "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
   "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
-}
-
-data python_keywords: Map<String, String> = {
-  "true": "True", "false": "False", "null": "None",
-  "and": "and", "or": "or", "not": "not ",
-  "div": "//"
 }
 
 data python_container_templates: Map<String, String> = {
@@ -480,12 +477,6 @@ data go_type_map: Map<String, String> = {
   "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
 }
 
-data go_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "nil",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
 data go_container_templates: Map<String, String> = {
   "list": "[]{0}", "set": "map[{0}]struct{}",
   "optional": "*{0}", "map": "map[{0}]{1}"
@@ -495,13 +486,18 @@ data go_container_templates: Map<String, String> = {
 // Shared leaf functions -- parameterized by language data
 // =========================================================================
 
-// Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
-fn emit_string_literal(s: String, suffix: String) -> String {
+fn apply_value_template(template: String, value: String) -> String {
+  template |> split(delimiter: "{value}") |> join(separator: value)
+}
+
+// Emit a string literal from a spec-owned template such as
+// "\"{value}\".to_string()" or "\"{value}\"".
+fn emit_string_literal(s: String, template: String) -> String {
   let escaped = s
     |> split(delimiter: "\\") |> join(separator: "\\\\")
   let escaped2 = escaped
     |> split(delimiter: "\"") |> join(separator: "\\\"")
-  concat("\"", escaped2, "\"", suffix)
+  apply_value_template(template: template, value: escaped2)
 }
 
 // Check if a binary op is null coalesce (shared across all backends).
@@ -519,17 +515,6 @@ fn is_null_coalesce(op: BinOpKind) -> Bool {
 // uses lookup() on the local data. The v1 bootstrap cannot pass data-
 // declared Maps as function parameters, so these use direct lookup.
 // =========================================================================
-
-// ---- Keyword lookup ----
-fn rust_keyword(key: String) -> String {
-  match lookup(rust_keywords, key: key) { Some { value: kw } => kw, None => key }
-}
-fn python_keyword(key: String) -> String {
-  match lookup(python_keywords, key: key) { Some { value: kw } => kw, None => key }
-}
-fn go_keyword(key: String) -> String {
-  match lookup(go_keywords, key: key) { Some { value: kw } => kw, None => key }
-}
 
 // ---- Container template lookup ----
 fn rust_container(kind: String, inner: String) -> String {
@@ -583,56 +568,78 @@ fn go_map_template() -> String {
   }
 }
 
+fn literal_from_spec(value: LiteralValue, spec: LanguageSpec) -> String {
+  match value {
+    LitStr { value: s } => emit_string_literal(s: s, template: spec.string_ops.string_literal)
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { spec.literals.true_keyword } else { spec.literals.false_keyword }
+    LitNull => spec.literals.null_keyword
+  }
+}
+
+fn bin_op_symbol_from_spec(op: BinOpKind, spec: LanguageSpec) -> String {
+  match op {
+    Add => spec.expressions.operators.add
+    Sub => spec.expressions.operators.sub
+    Mul => spec.expressions.operators.mul
+    Div => spec.expressions.operators.div
+    Mod => spec.expressions.operators.mod
+    BinEq => spec.expressions.operators.eq
+    BinNe => spec.expressions.operators.ne
+    BinLt => spec.expressions.operators.lt
+    BinGt => spec.expressions.operators.gt
+    BinLe => spec.expressions.operators.le
+    BinGe => spec.expressions.operators.ge
+    BinAnd => spec.expressions.operators.and_op
+    BinOr => spec.expressions.operators.or_op
+    NullCoalesce => "??"
+  }
+}
+
+fn unary_op_symbol_from_spec(op: UnaryOpKind, spec: LanguageSpec) -> String {
+  match op {
+    Not => spec.expressions.operators.not_op
+    Neg => spec.expressions.operators.neg
+  }
+}
+
 // ---- Literal emission ----
 fn rust_literal(value: LiteralValue) -> String {
-  match value {
-    LitStr { value: s } => emit_string_literal(s: s, suffix: ".to_string()")
-    LitInt { value: i } => to_string(value: i)
-    LitFloat { value: f } => f
-    LitBool { value: b } => if b { rust_keyword(key: "true") } else { rust_keyword(key: "false") }
-    LitNull => rust_keyword(key: "null")
-  }
+  literal_from_spec(value: value, spec: rust_spec)
 }
+
 fn python_literal(value: LiteralValue) -> String {
-  match value {
-    LitStr { value: s } => emit_string_literal(s: s, suffix: "")
-    LitInt { value: i } => to_string(value: i)
-    LitFloat { value: f } => f
-    LitBool { value: b } => if b { python_keyword(key: "true") } else { python_keyword(key: "false") }
-    LitNull => python_keyword(key: "null")
-  }
+  literal_from_spec(value: value, spec: python_spec)
 }
+
 fn go_literal(value: LiteralValue) -> String {
-  match value {
-    LitStr { value: s } => emit_string_literal(s: s, suffix: "")
-    LitInt { value: i } => to_string(value: i)
-    LitFloat { value: f } => f
-    LitBool { value: b } => if b { go_keyword(key: "true") } else { go_keyword(key: "false") }
-    LitNull => go_keyword(key: "null")
-  }
+  literal_from_spec(value: value, spec: go_spec)
 }
 
 // ---- Binary operator symbol ----
 fn rust_bin_op_symbol(op: BinOpKind) -> String {
-  match op {
-    Add => "+"  Sub => "-"  Mul => "*"  Div => rust_keyword(key: "div")  Mod => "%"
-    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
-    BinAnd => rust_keyword(key: "and")  BinOr => rust_keyword(key: "or")  NullCoalesce => "??"
-  }
+  bin_op_symbol_from_spec(op: op, spec: rust_spec)
 }
+
 fn python_bin_op_symbol(op: BinOpKind) -> String {
-  match op {
-    Add => "+"  Sub => "-"  Mul => "*"  Div => python_keyword(key: "div")  Mod => "%"
-    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
-    BinAnd => python_keyword(key: "and")  BinOr => python_keyword(key: "or")  NullCoalesce => "??"
-  }
+  bin_op_symbol_from_spec(op: op, spec: python_spec)
 }
+
 fn go_bin_op_symbol(op: BinOpKind) -> String {
-  match op {
-    Add => "+"  Sub => "-"  Mul => "*"  Div => go_keyword(key: "div")  Mod => "%"
-    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
-    BinAnd => go_keyword(key: "and")  BinOr => go_keyword(key: "or")  NullCoalesce => "??"
-  }
+  bin_op_symbol_from_spec(op: op, spec: go_spec)
+}
+
+fn rust_unary_op_symbol(op: UnaryOpKind) -> String {
+  unary_op_symbol_from_spec(op: op, spec: rust_spec)
+}
+
+fn python_unary_op_symbol(op: UnaryOpKind) -> String {
+  unary_op_symbol_from_spec(op: op, spec: python_spec)
+}
+
+fn go_unary_op_symbol(op: UnaryOpKind) -> String {
+  unary_op_symbol_from_spec(op: op, spec: go_spec)
 }
 
 // =========================================================================
@@ -712,4 +719,3 @@ fn classify_transport_kind(transport: TransportBinding) -> String {
     LocalBinding => "local"
   }
 }
-

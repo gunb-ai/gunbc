@@ -1,0 +1,55 @@
+// extdeps/languages/rust/spec.dag -- Rust LanguageSpec composition.
+//
+// This is the concrete compiler-owned Rust target specification.
+// The shared facts remain in std.languages; the composed spec value
+// lives here so adding or changing a target happens in extdeps.
+
+module extdeps.languages.rust.spec
+
+import std.languages {
+  LanguageSpec, RealizationRules,
+  LetBind, FunctionCall, InfixOp, MatchExpr, MapCollect, IfExpr,
+  BraceBlock, FormatMacro, LoopContinue,
+  rust_language, rust_statements, rust_expressions, rust_control_flow,
+  rust_literals, rust_modules, rust_functions, rust_errors,
+  rust_type_defs, rust_patterns, rust_async,
+  rust_collection_ops, rust_string_ops, rust_map_ops, rust_null_coalesce,
+  rust_reserved_words, rust_value_semantics, rust_serialization,
+  rust_scaffold, rust_service_calls
+}
+
+data rust_realization: RealizationRules = {
+  bind_rule: LetBind,
+  apply_rule: FunctionCall,
+  combine_rule: InfixOp,
+  switch_rule: MatchExpr,
+  replicate_rule: MapCollect,
+  gate_rule: IfExpr,
+  sequence_rule: BraceBlock,
+  format_rule: FormatMacro { template: "format!(\"\{fmt}\", \{args})" },
+  tco_rule: LoopContinue
+}
+
+data rust_spec: LanguageSpec = {
+  language: rust_language,
+  statements: rust_statements,
+  expressions: rust_expressions,
+  control_flow: rust_control_flow,
+  literals: rust_literals,
+  modules: rust_modules,
+  functions: rust_functions,
+  errors: rust_errors,
+  type_defs: rust_type_defs,
+  patterns: rust_patterns,
+  async_model: rust_async,
+  collection_ops: rust_collection_ops,
+  string_ops: rust_string_ops,
+  map_ops: rust_map_ops,
+  null_coalesce: rust_null_coalesce,
+  reserved_words: rust_reserved_words,
+  value_semantics: rust_value_semantics,
+  serialization: rust_serialization,
+  scaffold: rust_scaffold,
+  service_calls: rust_service_calls,
+  realization: rust_realization
+}

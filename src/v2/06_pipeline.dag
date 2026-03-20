@@ -4,7 +4,7 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> typecheck -> emit
+// Pipeline: tokenize -> parse -> resolve -> typecheck -> lower -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
@@ -16,13 +16,18 @@ module v2.compiler.pipeline
 import v2.std.core {
   Diagnostic, CompileResult, RenderTarget, SourceSpan, Error
 }
+import std.languages { LanguageSpec, go_spec }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.reconcile { reconcile, ResolvedGraph }
+import v2.compiler.lower { lower_graph }
 import v2.compiler.emit { EmitResult }
+import v2.compiler.emit_scaffold { emit_scaffold }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
+import extdeps.languages.rust.spec { rust_spec }
+import extdeps.languages.python.spec { python_spec }
 
 // =========================================================================
 // Types
@@ -52,6 +57,14 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 // Full pipeline
 // =========================================================================
 
+fn load_language_spec(target: RenderTarget) -> LanguageSpec {
+  match target {
+    Rust => rust_spec
+    Python => python_spec
+    Go => go_spec
+  }
+}
+
 // Resolve-only pipeline: tokenize -> parse -> resolve.
 // Returns diagnostics from all three stages without proceeding to typecheck.
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
@@ -70,7 +83,7 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 }
 
 // Pure compiler pipeline: sources in, compiled files out.
-// Wires tokenize -> parse -> resolve -> typecheck -> emit.
+// Wires tokenize -> parse -> resolve -> typecheck -> lower -> emit.
 // The target parameter selects the output language (Rust, Python).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileResult {
   // Stage 1: Tokenize each source file
@@ -122,7 +135,14 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
       }
     }
 
-    // Stage 5: Emit target-language files.
+    // Stage 5: Lower typed expressions into dataflow graphs.
+    // Concrete LanguageSpec data now loads from extdeps/std, even while
+    // module emission still delegates to the current target backends.
+    let spec = load_language_spec(target: target)
+    let lowered = lower_graph(typed: typed)
+    let lowered_diags = lowered.diagnostics
+
+    // Stage 6: Emit target-language files.
     // Dispatches to the appropriate renderer based on RenderTarget.
     // Precondition: no errors from any prior stage.
     let emit_result = match target {
@@ -130,12 +150,13 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
       Python => emit_python(typed: typed)
       Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: SourceSpan { start: 0, end: 0 }, module_name: "" }] }
     }
-    let emit_files = emit_result.files
+    let scaffold_files = emit_scaffold(lowered: lowered, spec: spec)
+    let emit_files = concat(emit_result.files, scaffold_files)
     let emit_diags = emit_result.diagnostics
 
     CompileResult {
       files: emit_files,
-      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags)
+      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, lowered_diags, emit_diags)
     }
   }
 }
@@ -169,18 +190,24 @@ fn compile_sources_lenient(sources: List<SourceFile>, target: RenderTarget) -> C
     let typed = reconcile(graph: graph)
     let typed_diags = typed.diagnostics
 
+    // Lower before emit so the new stage is exercised in lenient mode too.
+    let spec = load_language_spec(target: target)
+    let lowered = lower_graph(typed: typed)
+    let lowered_diags = lowered.diagnostics
+
     // No typecheck gate -- emit despite errors for bootstrap.
     let emit_result = match target {
       Rust => emit_rust(typed: typed)
       Python => emit_python(typed: typed)
       Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: SourceSpan { start: 0, end: 0 }, module_name: "" }] }
     }
-    let emit_files = emit_result.files
+    let scaffold_files = emit_scaffold(lowered: lowered, spec: spec)
+    let emit_files = concat(emit_result.files, scaffold_files)
     let emit_diags = emit_result.diagnostics
 
     CompileResult {
       files: emit_files,
-      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags)
+      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, lowered_diags, emit_diags)
     }
   }
 }

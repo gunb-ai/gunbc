@@ -31,6 +31,7 @@ import v2.std.core {
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
   ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ItemInfo, FuncItem, DataItem,
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
@@ -42,15 +43,14 @@ import v2.compiler.reconcile {
   infer_record_lit,
   normalize_access_type_node, for_each_element_type_node,
   expr_span,
-  ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
   emit_map_has
 }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart,
-  rust_keyword, rust_container, rust_primitive_type,
-  rust_literal, rust_bin_op_symbol, rust_map_template,
+  rust_container, rust_primitive_type,
+  rust_literal, rust_bin_op_symbol, rust_unary_op_symbol, rust_map_template,
   module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -1681,10 +1681,7 @@ fn is_string_typed_expr(e: Expr) -> Bool {
 
 fn emit_typed_unary_op(op: UnaryOpKind, operand: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   let expr_str = emit_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-  match op {
-    Not => concat(rust_keyword(key: "not"), expr_str)
-    Neg => concat("-", expr_str)
-  }
+  concat(rust_unary_op_symbol(op: op), expr_str)
 }
 
 fn emit_typed_lambda(params: List<String>, body: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {

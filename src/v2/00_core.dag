@@ -293,6 +293,20 @@ type DeclaredFuncEnv {
 }
 
 // =========================================================================
+// Item registry -- boundary metadata shared across reconcile, lower, emit
+// =========================================================================
+
+type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
+
+type ItemInfo {
+  name: String
+  kind: ItemKind
+  service_names: List<String>
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+}
+
+// =========================================================================
 // Node -- unified recursive structure
 //
 // Everything is a node in DAG composition. Keywords (fn, type, service)
@@ -326,6 +340,102 @@ type Node {
   config: ServiceConfig?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
+}
+
+// =========================================================================
+// Dataflow IR -- target-agnostic computational intent
+//
+// DfGraph captures WHAT a computation does without encoding HOW it
+// executes. Sequential emitters linearize it into statements. Other
+// targets can realize the same graph with different execution models.
+// =========================================================================
+
+type DfNode
+  = DfProduce { name: String, value: DfValue, resolved_type: Node? }
+  | DfRefer { name: String, source: String, resolved_type: Node? }
+  | DfBind { name: String, source: String, resolved_type: Node? }
+  | DfCompose { name: String, type_name: String?, fields: List<DfField>, resolved_type: Node? }
+  | DfSelect { name: String, source: String, field: String, resolved_type: Node? }
+  | DfApply { name: String, transform: String, inputs: List<DfInput>, resolved_type: Node? }
+  | DfCombine { name: String, op: DfOp, left: String, right: String, resolved_type: Node? }
+  | DfSwitch { name: String, scrutinee: String, arms: List<DfArm>, resolved_type: Node? }
+  | DfReplicate { name: String, source: String, element_var: String, transform_graph: DfGraph, resolved_type: Node? }
+  | DfGate { name: String, condition: String, then_graph: DfGraph, else_graph: DfGraph?, resolved_type: Node? }
+  | DfSequence { name: String, steps: List<DfGraph>, resolved_type: Node? }
+  | DfFormat { name: String, parts: List<DfFormatPart>, resolved_type: Node? }
+
+type DfGraph {
+  nodes: List<DfNode>
+  output: String
+  subgraphs: Map<String, DfSubGraph>
+}
+
+type DfSubGraph {
+  name: String
+  params: List<DfParam>
+  body: DfGraph
+  is_tco_eligible: Bool
+  captured: List<String>
+}
+
+type DfParam { name: String, resolved_type: Node? }
+type DfField { name: String, source: String }
+type DfInput { param: String, source: String }
+type DfArm { pattern: DfPattern, guard: String?, body: DfGraph }
+
+type DfFormatPart
+  = DfTextPart { value: String }
+  | DfExprPart { source: String }
+
+type DfPattern
+  = DfWildcard
+  | DfLiteralPat { value: DfValue }
+  | DfVariantPat { variant: String, bindings: List<DfPatBinding> }
+  | DfBindPat { name: String }
+
+type DfPatBinding { field: String, binding: String }
+
+type DfValue
+  = DfInt { value: Int }
+  | DfFloat { value: String }
+  | DfBool { value: Bool }
+  | DfString { value: String }
+  | DfNull
+  | DfList { elements: List<DfValue> }
+  | DfRecord { fields: List<DfFieldValue> }
+
+type DfFieldValue { name: String, value: DfValue }
+
+type DfOp
+  = DfAdd | DfSub | DfMul | DfDiv | DfMod
+  | DfEq | DfNe | DfLt | DfGt | DfLe | DfGe
+  | DfAnd | DfOr
+  | DfNullCoalesce
+  | DfNot
+
+type DfModule {
+  name: String
+  items: List<DfItem>
+}
+
+type DfItem
+  = DfFuncDef {
+      name: String,
+      params: List<Param>,
+      return_type: Node,
+      body: DfGraph,
+      is_async: Bool,
+      is_tco: Bool,
+      item_info: ItemInfo
+    }
+  | DfTypeDef { item: Node }
+  | DfServiceDef { item: Node }
+  | DfDataDef { name: String, type_node: Node, value: DfGraph, item_info: ItemInfo }
+
+type LoweredGraph {
+  modules: List<DfModule>
+  item_registry: Map<String, ItemInfo>
+  diagnostics: List<Diagnostic>
 }
 
 // =========================================================================

@@ -1,0 +1,17 @@
+// v2 scaffold emission -- target-specific project files.
+//
+// The unified emitter migration separates module/body rendering from
+// target-specific scaffolding such as Cargo.toml or requirements.txt.
+// Dispatch remains empty until per-target scaffold modules are extracted.
+
+module v2.compiler.emit_scaffold
+
+import v2.std.core {
+  LoweredGraph, TextFile
+}
+
+import std.languages { LanguageSpec }
+
+fn emit_scaffold(lowered: LoweredGraph, spec: LanguageSpec) -> List<TextFile> {
+  []
+}

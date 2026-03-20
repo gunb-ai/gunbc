@@ -78,26 +78,156 @@ mod tests {
         );
     }
 
+    fn compiler_source_rel_paths() -> Vec<&'static str> {
+        vec![
+            "dsl/std/types.dag",
+            "dsl/std/languages.dag",
+            "dsl/extdeps/languages/rust/spec.dag",
+            "dsl/extdeps/languages/python/spec.dag",
+            "src/v2/00_core.dag",
+            "src/v2/01_tokenize.dag",
+            "src/v2/02_parse.dag",
+            "src/v2/03_resolve.dag",
+            "src/v2/04_reconcile.dag",
+            "src/v2/05_lower.dag",
+            "src/v2/05_emit.dag",
+            "src/v2/05_emit_rust.dag",
+            "src/v2/05_emit_python.dag",
+            "src/v2/05_emit_scaffold.dag",
+            "src/v2/06_pipeline.dag",
+            "src/v2/07_complexity.dag",
+            "src/v2/08_artifact.dag",
+        ]
+    }
+
+    fn compiler_source_paths() -> Vec<std::path::PathBuf> {
+        let root = workspace_root();
+        compiler_source_rel_paths()
+            .into_iter()
+            .map(|rel| root.join(rel))
+            .collect()
+    }
+
+    fn compiler_crate_modules() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("std_languages", "dsl/std/languages.dag"),
+            ("rust_spec", "dsl/extdeps/languages/rust/spec.dag"),
+            ("python_spec", "dsl/extdeps/languages/python/spec.dag"),
+            ("00_core", "src/v2/00_core.dag"),
+            ("01_tokenize", "src/v2/01_tokenize.dag"),
+            ("02_parse", "src/v2/02_parse.dag"),
+            ("03_resolve", "src/v2/03_resolve.dag"),
+            ("04_reconcile", "src/v2/04_reconcile.dag"),
+            ("05_lower", "src/v2/05_lower.dag"),
+            ("05_emit", "src/v2/05_emit.dag"),
+            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
+            ("05_emit_python", "src/v2/05_emit_python.dag"),
+            ("05_emit_scaffold", "src/v2/05_emit_scaffold.dag"),
+            ("06_pipeline", "src/v2/06_pipeline.dag"),
+        ]
+    }
+
+    fn collect_variant_names_from_parsed_files(
+        parsed_files: &[(std::path::PathBuf, daglang_syntax::ast::SourceFile, String)],
+    ) -> std::collections::HashSet<String> {
+        let mut variant_names = std::collections::HashSet::new();
+        for (_path, ast, _source) in parsed_files {
+            for item in &ast.items {
+                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
+                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
+                        for v in variants {
+                            variant_names.insert(v.name.clone());
+                        }
+                    }
+                }
+            }
+        }
+        variant_names
+    }
+
+    fn evaluate_compiler_data_values(
+        parsed_files: &[(std::path::PathBuf, daglang_syntax::ast::SourceFile, String)],
+        variant_names: &std::collections::HashSet<String>,
+        fns: &HashMap<String, daglang_eval::LoweredFnBody>,
+    ) -> Result<HashMap<String, gunbc_ir::Value>, String> {
+        let mut pending = Vec::new();
+        for (_path, ast, _source) in parsed_files {
+            for item in &ast.items {
+                if let daglang_syntax::ast::Item::DataDef(dd) = &item.node {
+                    let lowered_expr =
+                        daglang_lower::expr::lower_expr_remap(&dd.value, variant_names);
+                    let body = daglang_eval::LoweredFnBody {
+                        stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
+                            "return".to_string(),
+                            lowered_expr,
+                        )])],
+                        ..Default::default()
+                    };
+                    pending.push((dd.name.clone(), body));
+                }
+            }
+        }
+
+        let mut data_values = HashMap::new();
+        let empty_inputs = HashMap::new();
+        let mut last_errors: HashMap<String, String> = HashMap::new();
+        let mut progressed = true;
+        while progressed && !pending.is_empty() {
+            progressed = false;
+            let mut next_pending = Vec::new();
+            for (name, body) in pending.into_iter() {
+                match daglang_eval::evaluate_fn_body_with_data(
+                    &body,
+                    &empty_inputs,
+                    fns,
+                    &data_values,
+                ) {
+                    Ok(result) => {
+                        if let Some(val) = result.get("return") {
+                            data_values.insert(name.clone(), val.clone());
+                            last_errors.remove(&name);
+                            progressed = true;
+                        } else {
+                            last_errors.insert(name.clone(), "missing return value".to_string());
+                            next_pending.push((name, body));
+                        }
+                    }
+                    Err(err) => {
+                        last_errors.insert(name.clone(), err.message);
+                        next_pending.push((name, body));
+                    }
+                }
+            }
+            pending = next_pending;
+        }
+
+        if pending.is_empty() {
+            Ok(data_values)
+        } else {
+            let unresolved = pending
+                .iter()
+                .map(|(name, _)| {
+                    let reason = last_errors
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| "unknown evaluation error".to_string());
+                    format!("{name}: {reason}")
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Err(format!("unresolved compiler data values:\n{unresolved}"))
+        }
+    }
+
     /// Compile all v2 compiler .dag files into a single EmbeddedCompileOutput.
     /// All fn bodies from all modules share one `fns` HashMap, enabling
     /// cross-module calls (e.g., pipeline.dag calling tokenize()).
+    ///
+    /// This intentionally avoids the stronger embedded-driver typecheck path:
+    /// the v2 bootstrap still carries permissive type issues that would block
+    /// imported data extraction long before evaluation.
     fn compile_all_modules() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
-        let root = workspace_root();
-
-        let files = vec![
-            root.join("dsl/std/types.dag"),
-            root.join("src/v2/00_core.dag"),
-            root.join("src/v2/01_tokenize.dag"),
-            root.join("src/v2/02_parse.dag"),
-            root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_reconcile.dag"),
-            root.join("src/v2/05_emit.dag"),
-            root.join("src/v2/05_emit_rust.dag"),
-            root.join("src/v2/05_emit_python.dag"),
-            root.join("src/v2/06_pipeline.dag"),
-            root.join("src/v2/08_artifact.dag"),
-            root.join("src/v2/07_complexity.dag"),
-        ];
+        let files = compiler_source_paths();
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
             .map(|p| {
@@ -119,21 +249,9 @@ mod tests {
             parsed_files.push((path.clone(), ast, source.clone()));
         }
 
-        let mut variant_names = std::collections::HashSet::new();
-        for (_path, ast, _source) in &parsed_files {
-            for item in &ast.items {
-                if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
-                    if let daglang_syntax::ast::TypeBody::Sum(variants) = &td.body {
-                        for v in variants {
-                            variant_names.insert(v.name.clone());
-                        }
-                    }
-                }
-            }
-        }
+        let variant_names = collect_variant_names_from_parsed_files(&parsed_files);
 
         let mut fns = HashMap::new();
-        let mut data_values = HashMap::new();
         for (_path, ast, _source) in &parsed_files {
             for item in &ast.items {
                 match &item.node {
@@ -144,29 +262,12 @@ mod tests {
                             return Err(format!("duplicate fn name: {}", fndef.name));
                         }
                     }
-                    daglang_syntax::ast::Item::DataDef(dd) => {
-                        let expr = &dd.value;
-                        let lowered_expr =
-                            daglang_lower::expr::lower_expr_remap(expr, &variant_names);
-                        let body = daglang_eval::LoweredFnBody {
-                            stmts: vec![daglang_eval::LoweredStmt::Return(vec![(
-                                "return".to_string(),
-                                lowered_expr,
-                            )])],
-                            ..Default::default()
-                        };
-                        if let Ok(result) =
-                            daglang_eval::evaluate_fn_body(&body, &HashMap::new(), &HashMap::new())
-                        {
-                            if let Some(val) = result.get("return") {
-                                data_values.insert(dd.name.clone(), val.clone());
-                            }
-                        }
-                    }
+                    daglang_syntax::ast::Item::DataDef(_dd) => {}
                     _ => {}
                 }
             }
         }
+        let data_values = evaluate_compiler_data_values(&parsed_files, &variant_names, &fns)?;
 
         Ok(daglang_driver::EmbeddedCompileOutput {
             fns,
@@ -179,22 +280,7 @@ mod tests {
     /// modules instead of silently overwriting. Returns the list of duplicate
     /// names if any are found.
     fn detect_duplicate_fn_names() -> Vec<String> {
-        let root = workspace_root();
-
-        let files = vec![
-            root.join("dsl/std/types.dag"),
-            root.join("src/v2/00_core.dag"),
-            root.join("src/v2/01_tokenize.dag"),
-            root.join("src/v2/02_parse.dag"),
-            root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_reconcile.dag"),
-            root.join("src/v2/05_emit.dag"),
-            root.join("src/v2/05_emit_rust.dag"),
-            root.join("src/v2/05_emit_python.dag"),
-            root.join("src/v2/06_pipeline.dag"),
-            root.join("src/v2/08_artifact.dag"),
-            root.join("src/v2/07_complexity.dag"),
-        ];
+        let files = compiler_source_paths();
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
             .map(|p| {
@@ -353,6 +439,14 @@ mod tests {
             })
             .collect();
         map.insert("bindings".to_string(), gunbc_ir::Value::Map(binding_map));
+        map.insert(
+            "recursive_types".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        map.insert(
+            "recursive_type_set".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
         gunbc_ir::Value::Map(map)
     }
 
@@ -473,6 +567,58 @@ mod tests {
         map.insert(
             "module_name".to_string(),
             gunbc_ir::Value::Str("main".to_string()),
+        );
+        map.insert(
+            "service_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn module_value(name: &str) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        map.insert(
+            "imports".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        map.insert(
+            "items".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        map.insert("span".to_string(), zero_span_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn typed_module_value(name: &str) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("module".to_string(), module_value(name));
+        map.insert(
+            "items".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
+        );
+        map.insert("type_env".to_string(), type_env_value(vec![]));
+        map.insert("func_env".to_string(), func_env_value());
+        map.insert(
+            "item_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn typed_graph_value(modules: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "modules".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(modules)),
+        );
+        map.insert(
+            "item_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "diagnostics".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
         );
         gunbc_ir::Value::Map(map)
     }
@@ -746,6 +892,16 @@ fn foo(item: String) -> String {
     }
 
     #[test]
+    fn phase0_lower_parses_strict() {
+        assert_parses_strict("src/v2/05_lower.dag");
+    }
+
+    #[test]
+    fn phase0_emit_scaffold_parses_strict() {
+        assert_parses_strict("src/v2/05_emit_scaffold.dag");
+    }
+
+    #[test]
     fn phase0_pipeline_parses_strict() {
         assert_parses_strict("src/v2/06_pipeline.dag");
     }
@@ -763,6 +919,21 @@ fn foo(item: String) -> String {
     #[test]
     fn phase0_shared_behavioral_parses_strict() {
         assert_parses_strict("dsl/std/behavioral.dag");
+    }
+
+    #[test]
+    fn phase0_shared_languages_parses_strict() {
+        assert_parses_strict("dsl/std/languages.dag");
+    }
+
+    #[test]
+    fn phase0_rust_extdep_spec_parses_strict() {
+        assert_parses_strict("dsl/extdeps/languages/rust/spec.dag");
+    }
+
+    #[test]
+    fn phase0_python_extdep_spec_parses_strict() {
+        assert_parses_strict("dsl/extdeps/languages/python/spec.dag");
     }
 
     #[test]
@@ -1138,7 +1309,7 @@ fn foo(item: String) -> String {
     #[test]
     fn phase3_compile_all_modules() {
         let output = compile_all_modules().expect("all modules should compile");
-        // Verify we got fn bodies from all 7 compiler modules
+        // Verify we got fn bodies from the compiler stages.
         assert!(
             output.fns.contains_key("tokenize"),
             "should have tokenize fn"
@@ -1157,8 +1328,190 @@ fn foo(item: String) -> String {
             "should have emit_rust fn"
         );
         assert!(
+            output.fns.contains_key("lower_graph"),
+            "should have lower_graph fn"
+        );
+        assert!(
             output.fns.contains_key("compile_sources"),
             "should have compile_sources fn"
+        );
+    }
+
+    #[test]
+    fn phase3_compiler_data_values_include_language_specs() {
+        let output = compile_all_modules().expect("all modules should compile");
+        assert!(
+            output.data_values.contains_key("rust_spec"),
+            "compiler data values should include rust_spec, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            output.data_values.contains_key("python_spec"),
+            "compiler data values should include python_spec, got: {:?}",
+            output.data_values.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn phase3_load_language_spec_uses_extdep_specs() {
+        let output = compile_all_modules().expect("all modules should compile");
+
+        let mut rust_inputs = HashMap::new();
+        rust_inputs.insert("target".to_string(), render_target_value("Rust"));
+        let rust_result =
+            returned_value(call_fn(&output, "load_language_spec", rust_inputs).expect("load rust spec ok"));
+
+        let rust_map = match rust_result {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("load_language_spec should return LanguageSpec, got: {:?}", other),
+        };
+        let rust_language = match rust_map.get("language") {
+            Some(gunbc_ir::Value::Map(map)) => map,
+            other => panic!("LanguageSpec.language missing, got: {:?}", other),
+        };
+        match rust_language.get("id") {
+            Some(gunbc_ir::Value::Str(id)) => assert_eq!(id, "rust"),
+            other => panic!("language.id missing, got: {:?}", other),
+        }
+
+        let mut python_inputs = HashMap::new();
+        python_inputs.insert("target".to_string(), render_target_value("Python"));
+        let python_result = returned_value(
+            call_fn(&output, "load_language_spec", python_inputs).expect("load python spec ok"),
+        );
+        let python_map = match python_result {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("load_language_spec should return LanguageSpec, got: {:?}", other),
+        };
+        let python_language = match python_map.get("language") {
+            Some(gunbc_ir::Value::Map(map)) => map,
+            other => panic!("LanguageSpec.language missing, got: {:?}", other),
+        };
+        match python_language.get("id") {
+            Some(gunbc_ir::Value::Str(id)) => assert_eq!(id, "python"),
+            other => panic!("language.id missing, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn phase3_lower_graph_preserves_module_names() {
+        let output = compile_all_modules().expect("all modules should compile");
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "typed".to_string(),
+            typed_graph_value(vec![typed_module_value("sample.main")]),
+        );
+
+        let lowered = returned_value(
+            call_fn(&output, "lower_graph", inputs).expect("lower_graph should succeed"),
+        );
+
+        let lowered_map = match lowered {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("lower_graph should return LoweredGraph, got: {:?}", other),
+        };
+        let modules = match lowered_map.get("modules") {
+            Some(gunbc_ir::Value::List(modules)) => modules,
+            other => panic!("lower_graph.modules should be a list, got: {:?}", other),
+        };
+        let first = modules.first().expect("expected one lowered module");
+        let first_map = match first {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("lowered module should be a map, got: {:?}", other),
+        };
+        match first_map.get("name") {
+            Some(gunbc_ir::Value::Str(name)) => assert_eq!(name, "sample.main"),
+            other => panic!("lowered module name missing, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn phase3_emit_module_renders_literals_and_operators() {
+        let output = compile_all_modules().expect("all modules should compile");
+        let source = "module test\nfn flag() -> Bool { true }\nfn sum() -> Int { 1 + 2 }";
+
+        let mut tok_inputs = HashMap::new();
+        tok_inputs.insert("source".to_string(), gunbc_ir::Value::Str(source.into()));
+        let tok_result = call_fn(&output, "tokenize", tok_inputs).expect("tokenize ok");
+        let tokens = match &tok_result["return"] {
+            gunbc_ir::Value::List(t) => t.clone(),
+            other => panic!("expected token list, got: {:?}", other),
+        };
+
+        let mut parse_inputs = HashMap::new();
+        parse_inputs.insert("tokens".to_string(), gunbc_ir::Value::List(tokens));
+        let parse_result = call_fn(&output, "parse", parse_inputs).expect("parse ok");
+        let module_val = parse_result.get("module").expect("should have 'module'");
+        let module = if let gunbc_ir::Value::Map(m) = module_val {
+            if m.contains_key("value") && !m.contains_key("name") {
+                m.get("value").unwrap().clone()
+            } else {
+                module_val.clone()
+            }
+        } else {
+            module_val.clone()
+        };
+
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert(
+            "modules".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![module])),
+        );
+        let resolve_result =
+            call_fn(&output, "resolve_modules", resolve_inputs).expect("resolve ok");
+        let graph = if let Some(ret) = resolve_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
+        };
+
+        let mut tc_inputs = HashMap::new();
+        tc_inputs.insert("graph".to_string(), graph);
+        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck ok");
+        let typed_graph = if let Some(ret) = tc_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(tc_result.into_iter().collect())
+        };
+        let typed_modules = if let gunbc_ir::Value::Map(m) = &typed_graph {
+            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
+                mods.clone()
+            } else {
+                panic!("no modules in typed graph");
+            }
+        } else {
+            panic!("typed graph not a map");
+        };
+
+        let mut emit_inputs = HashMap::new();
+        emit_inputs.insert("typed_module".to_string(), typed_modules[0].clone());
+        emit_inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        let emit_result = call_fn(&output, "emit_module", emit_inputs).expect("emit_module ok");
+        let text_file = if let Some(ret) = emit_result.get("return") {
+            ret.clone()
+        } else {
+            gunbc_ir::Value::Map(emit_result.into_iter().collect())
+        };
+        let content = match &text_file {
+            gunbc_ir::Value::Map(m) => match m.get("content") {
+                Some(gunbc_ir::Value::Str(content)) => content,
+                other => panic!("TextFile.content missing, got: {:?}", other),
+            },
+            other => panic!("emit_module should return TextFile, got: {:?}", other),
+        };
+        assert!(
+            content.contains("true"),
+            "emitted Rust should contain bool literal spelling, got:\n{}",
+            content
+        );
+        assert!(
+            content.contains("1 + 2"),
+            "emitted Rust should contain infix operator spelling, got:\n{}",
+            content
         );
     }
 
@@ -3251,17 +3604,7 @@ fn example(items: List<String>) -> Int {
     /// the v2_crate_emit module.
     #[test]
     fn v2_crate_assembly_produces_files() {
-        let v2_files = [
-            ("00_core", "src/v2/00_core.dag"),
-            ("01_tokenize", "src/v2/01_tokenize.dag"),
-            ("02_parse", "src/v2/02_parse.dag"),
-            ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_reconcile", "src/v2/04_reconcile.dag"),
-            ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-        ];
+        let v2_files = compiler_crate_modules();
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
             .iter()
@@ -3371,17 +3714,7 @@ fn example(items: List<String>) -> Int {
 
     /// Assemble and write the v2 crate to a temp directory, returning its path.
     fn assemble_v2_crate_to_dir(dir_name: &str) -> std::path::PathBuf {
-        let v2_files = [
-            ("00_core", "src/v2/00_core.dag"),
-            ("01_tokenize", "src/v2/01_tokenize.dag"),
-            ("02_parse", "src/v2/02_parse.dag"),
-            ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_reconcile", "src/v2/04_reconcile.dag"),
-            ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-        ];
+        let v2_files = compiler_crate_modules();
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
             .iter()
@@ -3738,17 +4071,7 @@ fn example(items: List<String>) -> Int {
         let out_dir = workspace_root().join("target/v2-compiler");
         let _ = std::fs::remove_dir_all(&out_dir);
 
-        let v2_files = [
-            ("00_core", "src/v2/00_core.dag"),
-            ("01_tokenize", "src/v2/01_tokenize.dag"),
-            ("02_parse", "src/v2/02_parse.dag"),
-            ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_reconcile", "src/v2/04_reconcile.dag"),
-            ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-        ];
+        let v2_files = compiler_crate_modules();
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
             .iter()

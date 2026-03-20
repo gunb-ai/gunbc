@@ -31,6 +31,8 @@ import v2.std.core {
   Error,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
+  ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
+  ItemInfo,
   ForEach,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   BinOpKind, Add, Sub, Mul, Div, Mod,
@@ -91,22 +93,6 @@ type TypeEnv {
   bindings: Map<String, TypeBinding>
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
-}
-
-// =========================================================================
-// Item registry -- maps item names to their kind and service dependencies.
-// Built during typecheck_module and stored on both TypedModule and the
-// graph boundary so emitters can consume it directly.
-// =========================================================================
-
-type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
-
-type ItemInfo {
-  name: String
-  kind: ItemKind
-  service_names: List<String>
-  is_self_recursive: Bool
-  has_non_tail_self_call: Bool
 }
 
 type ItemContribution {
