@@ -1,3 +1,7 @@
+// Integration coverage for STS lowering. Includes one non-hermetic regression
+// that reads the canonical `dsl/extdeps/cloud/gcp/sts.dag` fixture from disk.
+#![allow(clippy::disallowed_methods)]
+
 use daglang_lower::{lower_typed_project, ServiceOperationSpec};
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
@@ -48,6 +52,14 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
 fn typed_project_from_sources(sources: &[(&str, &str)]) -> TypedProject<'static> {
     typecheck_owned_module_graph(module_graph_from_sources(sources))
         .expect("typecheck should succeed")
+}
+
+fn read_repo_source(relative_path: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../")
+        .join(relative_path);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
 }
 
 fn sts_transport_module_source(body_fields: &str) -> String {
@@ -111,6 +123,92 @@ fn sts_typed_body_emits_expected_oauth_urns_in_prepared_request() {
         requested_token_type: RequestAccessToken"#,
     );
     let typed = typed_project_from_sources(&[("dsl/extdeps/cloud/gcp/sts.dag", &source)]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+    let prepare_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0.contains("prepare_transport") && node.id.0.contains("Exchange"))
+        .expect("prepare transport node for STS.Exchange should exist");
+
+    let metadata = match &prepare_node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => op
+            .service_call_metadata()
+            .expect("service metadata should be preserved"),
+        _ => panic!("expected opaque lowered node"),
+    };
+
+    let spec = metadata.spec.as_ref().expect("spec should be present");
+    let ServiceOperationSpec::Rest(rest_spec) = spec else {
+        panic!("expected REST spec");
+    };
+    let op = GenericPrepareOp {
+        spec: ServiceOperationSpec::Rest(rest_spec.clone()),
+    };
+
+    let mut inputs = HashMap::new();
+    inputs.insert(
+        "subject_token".to_string(),
+        Value::Secret(SecretString::new("tok123")),
+    );
+    inputs.insert(
+        "audience".to_string(),
+        Value::Str(
+            "projects/123/locations/global/workloadIdentityPools/pool/providers/provider"
+                .to_string(),
+        ),
+    );
+
+    let outputs = op
+        .execute(inputs)
+        .expect("prepare op should build a request");
+    match outputs.get("request") {
+        Some(Value::Request(TransportRequest::Rest(request))) => {
+            assert_eq!(request.method, HttpMethod::Post);
+            assert_eq!(request.url, "https://sts.googleapis.com/v1/token");
+            let body = request
+                .body
+                .as_ref()
+                .expect("POST request should have a body");
+            assert_eq!(
+                body["grant_type"],
+                "urn:ietf:params:oauth:grant-type:token-exchange"
+            );
+            assert_eq!(body["subject_token"], "tok123");
+            assert_eq!(
+                body["subject_token_type"],
+                "urn:ietf:params:oauth:token-type:jwt"
+            );
+            assert_eq!(
+                body["audience"],
+                "projects/123/locations/global/workloadIdentityPools/pool/providers/provider"
+            );
+            assert_eq!(
+                body["requested_token_type"],
+                "urn:ietf:params:oauth:token-type:access_token"
+            );
+        }
+        other => panic!("expected REST request, got {other:?}"),
+    }
+}
+
+#[test]
+fn canonical_sts_fixture_emits_expected_oauth_urns_in_prepared_request() {
+    let std_errors_source = read_repo_source("dsl/std/errors.dag");
+    let sts_source = read_repo_source("dsl/extdeps/cloud/gcp/sts.dag");
+    let typed = typed_project_from_sources(&[
+        ("dsl/std/errors.dag", &std_errors_source),
+        ("dsl/extdeps/cloud/gcp/sts.dag", &sts_source),
+        (
+            "dsl/tests/sts_transport_fixture_harness.dag",
+            r#"module tests.sts_transport_fixture_harness
+import extdeps.cloud.gcp.sts { gcp.STS }
+
+func run(subject_token: Secret, audience: NonEmptyStr) -> { access_token: Secret, expires_in: Int } {
+  token = gcp.STS.Exchange(subject_token: subject_token, audience: audience)
+  return { access_token: token.access_token, expires_in: token.expires_in }
+}"#,
+        ),
+    ]);
     let dag = lower_typed_project(&typed).expect("lowering should succeed");
     let prepare_node = dag
         .nodes
