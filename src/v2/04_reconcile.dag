@@ -1045,25 +1045,33 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 
 // Node-based dependency extraction.
 // Returns the list of Named type references this type-Node depends on.
+// Must recurse through container wrappers (List<T>, T?, Map<K,V>) to find
+// all referenced type names -- otherwise cycle detection misses cycles
+// that pass through containers (e.g. Expr -> resolved_type: Node? -> Node).
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
-    // The referenced type is in return_type.value.name, not n.name.
-    // n.name is the field/alias name; return_type.value.name is the type.
+    // Simple field reference: return_type is a bare type name leaf.
     [n.return_type.value.name]
-  } else if node_is_leaf(n: n) {
-    []
+  } else if n.return_type != none {
+    // Field with complex return type (List<T>, Optional<T>, Map<K,V>).
+    // Recurse into the type tree to capture transitive deps.
+    node_type_deps(n: n.return_type.value)
   } else if n.connective != none {
-    // For both Conj and Disj: recurse into each child.
-    // Conj children are fields (named_ref catches their return_types).
-    // Disj children are variants (recursion walks their field children).
+    // Product/Coproduct: recurse into children (fields or variants).
+    flat_map(n.children, child => node_type_deps(n: child))
+  } else if n.children |> count > 0 {
+    // Container or compound node: recurse into children.
     flat_map(n.children, child => node_type_deps(n: child))
   } else {
-    // Non-connective node with children: recurse into children AND return_type.
-    let child_deps = flat_map(n.children, child => node_type_deps(n: child))
-    let rt_deps = if n.return_type != none {
-      node_type_deps(n: n.return_type.value)
-    } else { [] }
-    concat(child_deps, rt_deps)
+    // Bare type name leaf (e.g. "Node" inside List<Node>).
+    // Return it as a dep unless it is a primitive or sentinel.
+    if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float"
+      || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes"
+      || n.name == "None" || n.name == "" {
+      []
+    } else {
+      [n.name]
+    }
   }
 }
 
@@ -2063,13 +2071,14 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   // matching the import resolution order: kernel < imports < local.
   // Preserve recursive_types from all environments so resolve_node_bounded
   // recognizes imported recursive types and doesn't expand them infinitely.
-  fold(envs, init: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() }, f: (acc, env) =>
-    TypeEnv {
-      bindings: map_merge(acc.bindings, env.bindings),
-      recursive_types: concat(acc.recursive_types, env.recursive_types),
-      recursive_type_set: map_merge(acc.recursive_type_set, env.recursive_type_set)
-    }
-  )
+  //
+  // Three separate folds instead of one struct-accumulator fold. When the
+  // accumulator is a bare map/list (not a struct field), Rc::try_unwrap
+  // succeeds in the generated code -- O(overlay) per merge, not O(base+overlay).
+  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
+  let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set }
 }
 
 // =========================================================================
@@ -2140,34 +2149,16 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // has a field of type MimeType), we include ALL parent type bindings,
   // not just explicitly named ones. The import list controls what the
   // module author uses directly; resolution needs the transitive picture.
-  let import_result = fold(module.resolved_imports, init: BuildTypeEnvResult {
-    env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
-    diagnostics: []
-  }, f: (acc, imp) =>
-    match map_get(parent_index, imp.module_path) {
-      Some { value: typed_parent } =>
-        BuildTypeEnvResult {
-          env: TypeEnv {
-            bindings: map_merge(acc.env.bindings, typed_parent.type_env.bindings),
-            recursive_types: concat(acc.env.recursive_types, typed_parent.type_env.recursive_types),
-            recursive_type_set: map_merge(acc.env.recursive_type_set, typed_parent.type_env.recursive_type_set)
-          },
-          diagnostics: acc.diagnostics
-        }
-      None =>
-        BuildTypeEnvResult {
-          env: acc.env,
-          diagnostics: list_push(acc.diagnostics, Diagnostic {
-            severity: Error,
-            message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"),
-            span: imp.target_module.value.span,
-            module_name: module.module.name
-          })
-        }
-    }
-  )
-  let import_env = import_result.env
-  let import_diags = import_result.diagnostics
+  //
+  // Separate folds for each map/list field so the accumulator is a bare
+  // map/list (not a struct field). Rc::try_unwrap succeeds on bare
+  // accumulators -- avoids O(N^2) full-map cloning per import.
+  let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
+  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
+  let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [Diagnostic { severity: Error, message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span, module_name: module.module.name }] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
@@ -2228,6 +2219,46 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
 }
 
+// Diagnostic variant: stops after cycle detection, before resolve_env_bindings.
+// Used by the per-module profile test to isolate whether OOM is in
+// merge+cycles vs type resolution.
+fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>) -> BuildTypeEnvResult {
+  let zero_span = SourceSpan { start: 0, end: 0 }
+  let kernel_bindings = fold(
+    ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"],
+    init: empty_map(),
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: leaf_node(name: name) })
+  )
+  let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
+  let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
+  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
+  let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
+  let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
+  let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
+    if item.connective != none {
+      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
+    } else if item.return_type != none && item.params |> count == 0 && item.body == none {
+      let alias_node = Node { name: item.name, span: item.span, children: [], connective: none, params: [], return_type: item.return_type, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: alias_node })
+    } else if item.transport == none && item.children |> count > 0 {
+      let ref_node = Node { name: item.name, span: item.span, children: [], connective: none, params: [], return_type: Some { value: leaf_node(name: item.name) }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
+    } else if item.properties |> count > 0 && item.connective == none && item.transport == none && item.return_type == none && item.params |> count == 0 {
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: leaf_node(name: item.name) })
+    } else {
+      acc
+    }
+  )
+  let local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map() }
+  let merged = merge_envs(envs: [kernel, import_env, local_env])
+  let cycle_set = detect_type_cycles(bindings: merged.bindings)
+  let cycle_map = fold(cycle_set, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cycle_map }
+  BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
+}
+
 // =========================================================================
 // Resolve a Node type reference
 //
@@ -2241,11 +2272,18 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 }
 
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {
-  // Depth limit prevents exponential blowup through structural type expansion.
-  // Each level can branch (N fields × M children per field). Depth 10 is sufficient
-  // to validate type references without O(B^D) combinatorial explosion.
-  if depth > 10 {
-    return NodeResolveResult { resolved: n, diagnostics: [] }
+  // Defensive depth limit: with topological resolution ordering, this should
+  // never fire. If it does, there is a bug in topo_resolve_types dependency analysis.
+  if depth > 100 {
+    return NodeResolveResult {
+      resolved: n,
+      diagnostics: [Diagnostic {
+        severity: Error,
+        message: concat("internal: type resolution exceeded depth 100 for '", n.name, "'"),
+        span: n.span,
+        module_name: module_name
+      }]
+    }
   }
   if n.connective != none {
     match n.connective.value {
@@ -3411,25 +3449,100 @@ type BindingResult {
 }
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>) -> EnvResolveResult {
-  // Only resolve bindings defined in this module. Imported bindings are
-  // already resolved by their parent module -- re-resolving them wastes
-  // O(N*depth) allocations and causes OOM on large cross-module type sets.
-  let results = map(map_values(env.bindings), b =>
-    if map_get(local_names, b.name) != none {
-      let result = resolve_node(n: b.resolved, env: env, module_name: module_name)
-      BindingResult { binding: TypeBinding { name: b.name, resolved: result.resolved }, diagnostics: result.diagnostics }
-    } else {
-      BindingResult { binding: b, diagnostics: [] }
+  // Resolve local types in topological (dependency) order. Each type is
+  // resolved exactly once, with all its dependencies already resolved in
+  // the environment. This is O(N * avg_fields) instead of O(B^D).
+  // Extract local binding names as a list.
+  let remaining = map(
+    filter(map_values(env.bindings), b => emit_map_has(m: local_names, key: b.name)),
+    b => b.name
+  )
+  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names)
+}
+
+// Topological resolution loop for type bindings.
+// Resolves types whose dependencies are all already resolved (or primitive/recursive),
+// updates the environment, then recurses with the remaining types.
+// Same pattern as topo_resolve_loop for function signatures (line 3135).
+fn topo_resolve_types(
+    remaining: List<String>,
+    env: TypeEnv,
+    module_name: String,
+    diagnostics: List<Diagnostic>,
+    local_names: Map<String, Bool>
+) -> EnvResolveResult {
+  if remaining |> count == 0 {
+    return EnvResolveResult { env: env, diagnostics: diagnostics }
+  }
+
+  // A type is ready when all its local dependencies are already resolved
+  // (not in remaining), primitive, or recursive (cycle-breaker).
+  let remaining_set = fold(remaining, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let ready = filter(remaining, name =>
+    match map_get(env.bindings, name) {
+      Some { value: binding } =>
+        all(node_type_deps(n: binding.resolved), dep => dep == "String" || dep == "Int" || dep == "Bool" || dep == "Float" || dep == "Secret" || dep == "Json" || dep == "Unit" || dep == "Bytes" || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
+      None => true
     }
   )
-  let resolved_bindings = map(results, r => r.binding) |> fold(init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, b)
-  )
-  let all_diags = flat_map(results, r => r.diagnostics)
-  EnvResolveResult {
-    env: TypeEnv { bindings: resolved_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
-    diagnostics: all_diags
+
+  if ready |> count == 0 {
+    // Stuck -- remaining types form undetected cycles or have missing deps.
+    // Resolve each as-is against current env to collect diagnostics.
+    // Bare map accumulator avoids O(N^2) struct-field cloning.
+    let stuck_bindings = fold(remaining, init: env.bindings, f: (acc, name) =>
+      match map_get(env.bindings, name) {
+        Some { value: binding } =>
+          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+          map_insert(acc, name, TypeBinding { name: name, resolved: result.resolved })
+        None => acc
+      }
+    )
+    let stuck_diags = flat_map(remaining, name =>
+      match map_get(env.bindings, name) {
+        Some { value: binding } =>
+          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+          result.diagnostics
+        None => []
+      }
+    )
+    return EnvResolveResult {
+      env: TypeEnv { bindings: stuck_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
+      diagnostics: concat(diagnostics, stuck_diags)
+    }
   }
+
+  // Resolve ready types against current env -- ready types' deps are all resolved
+  // in prior topo iterations, so they don't depend on each other.
+  // Bare map accumulator avoids O(N^2) struct-field cloning.
+  let next_bindings = fold(ready, init: env.bindings, f: (acc, name) =>
+    match map_get(env.bindings, name) {
+      Some { value: binding } =>
+        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+        map_insert(acc, name, TypeBinding { name: name, resolved: result.resolved })
+      None => acc
+    }
+  )
+  let next_diags = flat_map(ready, name =>
+    match map_get(env.bindings, name) {
+      Some { value: binding } =>
+        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+        result.diagnostics
+      None => []
+    }
+  )
+
+  // Remove resolved from remaining and recurse.
+  let ready_set = fold(ready, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let next_remaining = filter(remaining, name => emit_map_has(m: ready_set, key: name) == false)
+
+  topo_resolve_types(
+    remaining: next_remaining,
+    env: TypeEnv { bindings: next_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
+    module_name: module_name,
+    diagnostics: concat(diagnostics, next_diags),
+    local_names: local_names
+  )
 }
 
 // =========================================================================

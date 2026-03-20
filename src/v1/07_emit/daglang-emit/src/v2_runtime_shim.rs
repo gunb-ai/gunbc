@@ -62,8 +62,7 @@ pub fn char_at(s: impl AsRef<str>, pos: i64) -> String {
         // ASCII fast path: O(1) indexed access
         return String::from(bytes[pos] as char);
     }
-    // Non-ASCII fallback
-    s.as_ref().chars().nth(pos).map(|c| c.to_string()).unwrap_or_default()
+    panic!("non-ASCII byte at position {pos}; Unicode source not yet supported")
 }
 
 /// Return the number of characters in a string.
@@ -73,7 +72,7 @@ pub fn string_length(s: impl AsRef<str>) -> i64 {
     if s.is_ascii() {
         s.len() as i64
     } else {
-        s.chars().count() as i64
+        panic!("non-ASCII content in string_length; Unicode source not yet supported")
     }
 }
 
@@ -87,7 +86,7 @@ pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {
         // ASCII fast path: byte slicing is O(end - start)
         return s[start..end.min(s.len())].to_string();
     }
-    s.chars().skip(start).take((end - start).max(0)).collect()
+    panic!("non-ASCII byte in substring at position {start}; Unicode source not yet supported")
 }
 
 /// Check whether a string contains a given substring.

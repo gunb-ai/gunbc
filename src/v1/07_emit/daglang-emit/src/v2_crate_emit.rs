@@ -1760,6 +1760,136 @@ mod generated_tests {{
             .join();
         result.expect("profile_self_compile test panicked");
     }}
+
+    /// Per-module reconcile profile: runs tokenize+parse+resolve then
+    /// typecheck_module for each module individually with RSS+timing.
+    /// Isolates which module causes OOM/timeout in the reconcile phase.
+    #[test]
+    #[ignore]
+    fn profile_reconcile_per_module() {{
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {{
+                use std::time::Instant;
+                use std::collections::HashMap;
+
+                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+{self_compile_source_files}                ];
+
+                eprintln!("\n=== PER-MODULE RECONCILE PROFILE ({{}} sources) ===", sources.len());
+
+                // Phases 1-3: tokenize + parse + resolve (known safe, ~28MB)
+                let t0 = Instant::now();
+                let mut modules = Vec::new();
+                for source in &sources {{
+                    let tokens = crate::tokenize::tokenize(&source.content);
+                    let result = crate::parse::parse(tokens);
+                    if let Some(m) = result.module.clone() {{
+                        modules.push(m);
+                    }} else {{
+                        eprintln!("  WARN: parse failed for {{}}", source.path);
+                    }}
+                }}
+                let graph = crate::resolve::resolve_modules(
+                    std::rc::Rc::new(modules)
+                );
+                let setup_time = t0.elapsed();
+                let rss_baseline = get_rss_bytes();
+                eprintln!("  Setup (tok+parse+resolve): {{:?}}  | RSS: {{}}", setup_time, format_bytes(rss_baseline));
+                eprintln!("  Modules to reconcile: {{}}\n", graph.modules.len());
+
+                // Phase 4: typecheck each module individually
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
+
+                for resolved in graph.modules.iter() {{
+                    let name = resolved.module.name.to_string();
+                    let item_count = resolved.module.items.len();
+                    let rss_before = get_rss_bytes();
+
+                    // Print BEFORE typecheck so we know which module crashed on SIGKILL
+                    eprint!("  {{:>35}} ({{:>3}} items) ... ", name, item_count);
+
+                    let module_index = std::rc::Rc::new(mi_raw.clone());
+
+                    // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
+                    let t_unres = Instant::now();
+                    let _unres = crate::reconcile::build_type_env_unresolved(
+                        resolved.clone(),
+                        module_index.clone()
+                    );
+                    let unres_elapsed = t_unres.elapsed();
+                    let rss_after_unres = get_rss_bytes();
+                    let unres_delta = rss_after_unres.saturating_sub(rss_before);
+
+                    eprint!("cycles={{:>8.2?}}(+{{}}) ", unres_elapsed, format_bytes(unres_delta));
+
+                    if unres_delta > 256 * 1024 * 1024 {{
+                        eprintln!("");
+                        panic!("ABORT: '{{}}' cycle detection grew RSS by {{}}", name, format_bytes(unres_delta));
+                    }}
+
+                    // Sub-step 1: build_type_env (includes topo_resolve_types)
+                    let t_env = Instant::now();
+                    let env_result = crate::reconcile::build_type_env(
+                        resolved.clone(),
+                        module_index.clone()
+                    );
+                    let env_elapsed = t_env.elapsed();
+                    let rss_after_env = get_rss_bytes();
+                    let env_delta = rss_after_env.saturating_sub(rss_before);
+                    let env_errs: usize = env_result.diagnostics.iter()
+                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .count();
+
+                    eprint!("env={{:>8.2?}}(+{{}},e={{}}) ", env_elapsed, format_bytes(env_delta), env_errs);
+
+                    if env_delta > 512 * 1024 * 1024 {{
+                        eprintln!("");
+                        panic!("ABORT: '{{}}' build_type_env grew RSS by {{}}", name, format_bytes(env_delta));
+                    }}
+                    if env_elapsed.as_secs() > 10 {{
+                        eprintln!("");
+                        panic!("ABORT: '{{}}' build_type_env took {{:?}}", name, env_elapsed);
+                    }}
+
+                    // Sub-step 2: full typecheck_module
+                    let t_full = Instant::now();
+                    let tc_result = crate::reconcile::typecheck_module(
+                        resolved.clone(),
+                        module_index
+                    );
+                    let full_elapsed = t_full.elapsed();
+                    let rss_after = get_rss_bytes();
+                    let delta = rss_after.saturating_sub(rss_before);
+                    let diag_count: usize = tc_result.diagnostics.iter()
+                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .count();
+
+                    eprintln!("full={{:>8.2?}}  | RSS: {{}} (+{{}})  | errs: {{}}",
+                        full_elapsed, format_bytes(rss_after), format_bytes(delta), diag_count);
+
+                    // Guardrails: abort before OOM kills the system
+                    if delta > 512 * 1024 * 1024 {{
+                        panic!("ABORT: '{{}}' grew RSS by {{}} (>512MB)", name, format_bytes(delta));
+                    }}
+                    if full_elapsed.as_secs() > 10 {{
+                        panic!("ABORT: '{{}}' took {{:?}} (>10s)", name, full_elapsed);
+                    }}
+
+                    let typed = tc_result.typed.clone();
+                    mi_raw.insert(name, typed);
+                }}
+
+                let rss_final = get_rss_bytes();
+                eprintln!("\n  RSS final: {{}} (from baseline: +{{}})",
+                    format_bytes(rss_final),
+                    format_bytes(rss_final.saturating_sub(rss_baseline)));
+                eprintln!("=== DONE ===\n");
+            }})
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("profile_reconcile_per_module panicked");
+    }}
 }}
 "#,
         const_decls = const_decls,

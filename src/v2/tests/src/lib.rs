@@ -3547,6 +3547,42 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 
+    /// Per-module reconcile profile: isolates which module causes
+    /// OOM/timeout by running typecheck_module individually per module.
+    #[test]
+    #[ignore] // Requires cargo build; run with --ignored
+    fn v2_crate_profile_reconcile_per_module() {
+        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-reconcile-profile");
+
+        let output = std::process::Command::new("cargo")
+            .arg("test")
+            .arg("--release")
+            .arg("--")
+            .arg("--ignored")
+            .arg("profile_reconcile_per_module")
+            .arg("--nocapture")
+            .current_dir(&tmp_dir)
+            .output()
+            .expect("failed to run cargo test");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Always print the profile output
+        eprintln!("{}", stderr);
+
+        if !output.status.success() {
+            panic!(
+                "profile_reconcile_per_module failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
+                tmp_dir.display(),
+                stdout,
+                stderr
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
     /// Run the generated v2 crate's gist_resolve_all_modules test -- proves
     /// the compiled v2 compiler can tokenize, parse, and resolve the 12
     /// gist transitive dependencies (real-world DSL modules with services,
