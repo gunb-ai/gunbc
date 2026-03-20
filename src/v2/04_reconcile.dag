@@ -213,7 +213,13 @@ fn collect_typed_service_calls_into(texpr: Expr, acc: UniqueAccum) -> UniqueAccu
       ss |> fold(init: acc, f: (a, s) => collect_typed_service_calls_into(texpr: s, acc: a))
     Match { scrutinee: s, arms: arm_list, resolved_type: _, span: _ } => {
       let acc2 = collect_typed_service_calls_into(texpr: s, acc: acc)
-      arm_list |> fold(init: acc2, f: (a, arm) => collect_typed_service_calls_into(texpr: arm.body, acc: a))
+      arm_list |> fold(init: acc2, f: (a, arm) =>
+        let guard_acc = match arm.guard {
+          Some { value: g } => collect_typed_service_calls_into(texpr: g, acc: a)
+          None => a
+        }
+        collect_typed_service_calls_into(texpr: arm.body, acc: guard_acc)
+      )
     }
     BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } => {
       let acc2 = collect_typed_service_calls_into(texpr: l, acc: acc)
@@ -229,6 +235,21 @@ fn collect_typed_service_calls_into(texpr: Expr, acc: UniqueAccum) -> UniqueAccu
       els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
     Cast { expr: e, target: _, resolved_type: _, span: _ } =>
       collect_typed_service_calls_into(texpr: e, acc: acc)
+    ForEach { variable: _, collection: c, body: bd, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
+      collect_typed_service_calls_into(texpr: bd, acc: acc2)
+    }
+    Index { base: b, index: i, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: b, acc: acc)
+      collect_typed_service_calls_into(texpr: i, acc: acc2)
+    }
+    Slice { base: b, start: s, end: e, resolved_type: _, span: _ } => {
+      let acc2 = collect_typed_service_calls_into(texpr: b, acc: acc)
+      let acc3 = collect_typed_service_calls_into(texpr: s, acc: acc2)
+      collect_typed_service_calls_into(texpr: e, acc: acc3)
+    }
+    Return { value: v, resolved_type: _, span: _ } =>
+      collect_typed_service_calls_into(texpr: v, acc: acc)
     StringInterp { parts: ps, resolved_type: _, span: _ } =>
       ps |> fold(init: acc, f: (a, p) => match p {
         Interpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
