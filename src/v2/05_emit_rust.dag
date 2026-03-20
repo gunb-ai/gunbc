@@ -1126,6 +1126,126 @@ fn emit_variant_pattern(name: String, field_bindings: List<FieldBinding>, vtoe: 
 }
 
 // =========================================================================
+// Rc-aware pattern matching
+//
+// When a variant field holds an Rc-wrapped type (e.g. Expr::Literal.value
+// is Rc<LiteralValue>), nested pattern matching fails in Rust. These helpers
+// detect such fields, emit `ref field_name` in the pattern, and generate
+// a let-else prelude that destructures via .as_ref().
+// =========================================================================
+
+fn needs_rc_deref_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> Bool {
+  match pattern {
+    VariantPattern { name: n, field_bindings: fbs } =>
+      // Some/None are handled by .as_deref().cloned() on the scrutinee --
+      // the inner value is already unwrapped from Rc. Recurse into the
+      // inner binding to check for deeper Rc-wrapped fields.
+      if n == "Some" || n == "None" {
+        if fbs |> count == 1 {
+          match fbs |> first {
+            Some { value: fb } => needs_rc_deref_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types)
+            None => false
+          }
+        } else { false }
+      } else {
+        let rc_fields = fbs |> filter(fb =>
+          match fb.binding {
+            VariantPattern { name: inner_name, field_bindings: _ } =>
+              match map_get(vtoe, inner_name) {
+                Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
+                None => false
+              }
+            _ => false
+          }
+        )
+        rc_fields |> count > 0
+      }
+    _ => false
+  }
+}
+
+fn emit_pattern_rc_aware(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
+  match pattern {
+    Bind { name: n } => rust_ident(name: n)
+    LitPattern { value: v } => rust_literal(value: v)
+    VariantPattern { name: n, field_bindings: fbs } =>
+      emit_variant_pattern_rc_aware(name: n, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+    Wildcard => "_"
+  }
+}
+
+fn emit_variant_pattern_rc_aware(name: String, field_bindings: List<FieldBinding>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
+  let scrut_is_known_enum = scrut_type != "" && is_enum_type_name(type_name: scrut_type, vtoe: vtoe)
+  let qualified = if name == "Some" || name == "None" { name }
+    else if scrut_is_known_enum { concat(scrut_type, "::", name) }
+    else {
+      match map_get(vtoe, name) {
+        Some { value: parent } => concat(parent, "::", name)
+        None => name
+      }
+    }
+  if name == "Some" && field_bindings |> count == 1 {
+    match field_bindings |> first {
+      Some { value: fb } =>
+        let inner_pat = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+        concat("Some(", inner_pat, ")")
+      None => qualified
+    }
+  } else if field_bindings |> count == 0 {
+    qualified
+  } else {
+    let binding_strs = field_bindings |> map(fb =>
+      let is_rc_nested = match fb.binding {
+        VariantPattern { name: inner_name, field_bindings: _ } =>
+          match map_get(vtoe, inner_name) {
+            Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
+            None => false
+          }
+        _ => false
+      }
+      if is_rc_nested {
+        concat("ref ", rust_ident(name: fb.field_name))
+      } else {
+        let pat_str = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+        concat(rust_ident(name: fb.field_name), ": ", pat_str)
+      }
+    )
+    let bindings_str = binding_strs |> join(separator: ", ")
+    concat(qualified, " { ", bindings_str, ", .. }")
+  }
+}
+
+fn rc_pattern_preludes(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
+  match pattern {
+    VariantPattern { name: n, field_bindings: fbs } =>
+      if n == "Some" || n == "None" {
+        if fbs |> count == 1 {
+          match fbs |> first {
+            Some { value: fb } => rc_pattern_preludes(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types)
+            None => ""
+          }
+        } else { "" }
+      } else {
+        let preludes = fbs |> filter(fb =>
+          match fb.binding {
+            VariantPattern { name: inner_name, field_bindings: _ } =>
+              match map_get(vtoe, inner_name) {
+                Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
+                None => false
+              }
+            _ => false
+          }
+        ) |> map(fb =>
+          let inner_pat = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+          concat("let ", inner_pat, " = ", rust_ident(name: fb.field_name), ".as_ref() else { unreachable!() };")
+        )
+        preludes |> join(separator: " ")
+      }
+    _ => ""
+  }
+}
+
+// =========================================================================
 // Record literal helpers -- shared by Expr record lit emission
 // =========================================================================
 
@@ -1173,6 +1293,7 @@ fn is_primitive_numeric_node(n: Node) -> Bool {
 // For `none`, emit `None`.
 fn emit_var_ref(name: String, resolved_type: Node?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>) -> String {
   if name == "none" || name == "None" { "None" }
+  else if name == "true" || name == "false" { name }
   else {
     match map_get(vtoe, name) {
       Some { value: enum_name } =>
@@ -1180,14 +1301,57 @@ fn emit_var_ref(name: String, resolved_type: Node?, vtoe: Map<String, String>, r
           concat("Rc::new(", name, ")")
         } else { name }
       None =>
-        // Data constants use SCREAMING_SNAKE_CASE.
+        // Data constants use SCREAMING_SNAKE_CASE -- static references, no clone.
         match map_get(registry, name) {
           Some { value: info } =>
-            if info.kind == DataItem { to_screaming_snake(name: name) }
-            else { rust_ident(name: name) }
-          None => rust_ident(name: name)
+            let is_data = info.kind == DataItem
+            if is_data { to_screaming_snake(name: name) }
+            else {
+              // Clone only when resolved_type is known. Lambda params and match
+              // bindings have None -- cloning them breaks Rust's type inference.
+              let ident = rust_ident(name: name)
+              match resolved_type {
+                Some { value: _ } => concat(ident, ".clone()")
+                None => ident
+              }
+            }
+          None =>
+            let ident = rust_ident(name: name)
+            match resolved_type {
+              Some { value: _ } => concat(ident, ".clone()")
+              None => ident
+            }
         }
     }
+  }
+}
+
+// Emit a base expression for field access -- no .clone() on the outermost var
+// because field access auto-borrows, and .clone() before field access both
+// wastes a full struct copy and breaks Rust's type inference on match bindings.
+fn emit_typed_expr_base(texpr: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
+  match texpr {
+    Var { name: n, resolved_type: rt, span: _ } =>
+      // Emit var without .clone() for borrowing contexts.
+      if n == "none" || n == "None" { "None" }
+      else if n == "true" || n == "false" { n }
+      else {
+        match map_get(vtoe, n) {
+          Some { value: enum_name } =>
+            if emit_map_has(m: rc_types, key: enum_name) {
+              concat("Rc::new(", n, ")")
+            } else { n }
+          None =>
+            match map_get(registry, n) {
+              Some { value: info } =>
+                let is_data = info.kind == DataItem
+                if is_data { to_screaming_snake(name: n) }
+                else { rust_ident(name: n) }
+              None => rust_ident(name: n)
+            }
+        }
+      }
+    _ => emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
   }
 }
 
@@ -1220,16 +1384,18 @@ fn emit_typed_expr(texpr: Expr, registry: Map<String, ItemInfo>, scope: InferSco
         Some { value: rt } => is_enum_type_name(type_name: rt.name, vtoe: vtoe)
         None => is_enum_only_accessor(field: f)
       }
+      // Use emit_typed_expr_base for the base -- no .clone() needed because
+      // field access auto-borrows through Rc and owned values.
       if is_opt_value {
-        concat(emit_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".unwrap()")
+        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".unwrap()")
       } else if f == "first" {
-        concat(emit_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".0")
+        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".0")
       } else if f == "second" {
-        concat(emit_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".1")
+        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".1")
       } else if is_enum_field {
-        concat(emit_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".", rust_ident(name: f), "()")
+        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".", rust_ident(name: f), "()")
       } else {
-        concat(emit_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".", rust_ident(name: f), ".clone()")
+        concat(emit_typed_expr_base(texpr: b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ".", rust_ident(name: f), ".clone()")
       }
     Call { func: f, args: a, resolved_type: _, span: _ } =>
       emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
@@ -1271,13 +1437,8 @@ fn emit_typed_expr(texpr: Expr, registry: Map<String, ItemInfo>, scope: InferSco
 // Clone Var/FieldAccess arguments to prevent move issues in closures.
 // Literals and call results are already owned, no clone needed.
 fn emit_cloned_arg(texpr: Expr, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
-  let base = emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-  match texpr {
-    Var { name: _, resolved_type: _, span: _ } =>
-      if base == "None" || base == "true" || base == "false" { base }
-      else { concat(base, ".clone()") }
-    _ => base
-  }
+  // emit_var_ref already adds .clone() to variable references.
+  emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
 }
 
 // Check if a type name is an enum (appears as a value in the vtoe map).
@@ -1359,10 +1520,13 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   // Runtime functions that take &BTreeMap (read-only map access).
   let is_rt_ref_map = func == "map_get" || func == "map_keys" || func == "map_values" || func == "lookup"
     || func == "map_contains_key" || func == "map_has"
-  // For runtime calls with &BTreeMap params, pass by reference instead of clone.
-  let arg_strs = ordered_args |> map(a =>
-    if is_rt_ref_map && is_map_typed_expr(texpr: a.value) {
-      let base = emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+  // For runtime calls with &BTreeMap params, the first argument is always the map.
+  // Pass it by reference (&) instead of by value.
+  let arg_strs = ordered_args |> enumerate |> map(pair =>
+    let idx = pair.first
+    let a = pair.second
+    if is_rt_ref_map && idx == 0 {
+      let base = emit_typed_expr_base(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
       concat("&", base)
     } else {
       emit_cloned_arg(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
@@ -1371,7 +1535,8 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      if info.kind == FuncItem {
+      let is_func = info.kind == FuncItem
+      if is_func {
         info.service_names |> map(sn => service_var_name(service_name: sn))
       } else { [] }
     None => []
@@ -1389,7 +1554,8 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   match callee {
     Some { value: info } =>
-      if info.kind == FuncItem { concat(call_str, ".await?") } else { call_str }
+      let is_func = info.kind == FuncItem
+      if is_func { concat(call_str, ".await?") } else { call_str }
     None => call_str
   }
 }
@@ -1440,6 +1606,50 @@ fn emit_typed_slice(base: Expr, start: Expr, end: Expr, registry: Map<String, It
   }
 }
 
+// Extract element type string from a receiver's resolved_type (List<T> -> T's Rust type).
+fn collection_element_type(receiver_type: Node?, rc_types: Map<String, Bool>) -> String {
+  match receiver_type {
+    Some { value: rt } =>
+      if rt.name == "List" {
+        match rt.children |> first {
+          Some { value: elem_node } => emit_rust_node_type(n: elem_node, rc_types: rc_types)
+          None => "_"
+        }
+      } else { "_" }
+    None => "_"
+  }
+}
+
+// Emit a lambda expression with typed parameters for use in collection methods.
+// If the expression is a Lambda, annotate params with elem_type_str. Otherwise emit normally.
+fn emit_typed_collection_lambda(lambda_expr: Expr, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
+  match lambda_expr {
+    Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+      let param_strs = ps |> map(p => concat(rust_ident(name: p), ": ", elem_type_str))
+      let params_str = param_strs |> join(separator: ", ")
+      let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat("|", params_str, "| ", body_str)
+    _ => emit_typed_expr(texpr: lambda_expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+  }
+}
+
+// Emit a fold lambda with typed accumulator and element parameters.
+fn emit_typed_fold_lambda(lambda_expr: Expr, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
+  match lambda_expr {
+    Lambda { params: ps, body: bd, resolved_type: _, span: _ } =>
+      let param_strs = ps |> enumerate |> map(pair =>
+        let idx = pair.first
+        let p = pair.second
+        if idx == 0 { concat(rust_ident(name: p), ": ", acc_type_str) }
+        else { concat(rust_ident(name: p), ": ", elem_type_str) }
+      )
+      let params_str = param_strs |> join(separator: ", ")
+      let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat("|", params_str, "| ", body_str)
+    _ => emit_typed_expr(texpr: lambda_expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+  }
+}
+
 fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   if is_typed_service_call_receiver(receiver: receiver) {
     match extract_typed_service_name(receiver: receiver) {
@@ -1466,7 +1676,7 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
     } else if method == "first" {
       concat(recv_str, ".first().cloned()")
     } else if method == "enumerate" {
-      concat(recv_str, ".iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()")
+      concat(recv_str, ".iter().enumerate().map(|(i, v)| (i as i64, v.clone())).collect::<Vec<_>>()")
     } else if method == "chars" {
       concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
     } else if method == "string_contains" {
@@ -1476,26 +1686,60 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
       let all_arg_strs = concat([recv_str], arg_strs)
       emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
     } else if method == "map" {
-      concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
+      let first_arg_expr = match args |> first {
+        Some { value: a } => a.value
+        None => receiver
+      }
+      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat(recv_str, ".iter().cloned().map(", lambda_str, ").collect::<Vec<_>>()")
     } else if method == "filter" {
-      concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
+      let first_arg_expr = match args |> first {
+        Some { value: a } => a.value
+        None => receiver
+      }
+      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat(recv_str, ".iter().cloned().filter(", lambda_str, ").collect::<Vec<_>>()")
     } else if method == "any" {
-      concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
+      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
+      let first_arg_expr = match args |> first {
+        Some { value: a } => a.value
+        None => receiver
+      }
+      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat(recv_str, ".iter().cloned().any(", lambda_str, ")")
     } else if method == "all" {
-      concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
+      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
+      let first_arg_expr = match args |> first {
+        Some { value: a } => a.value
+        None => receiver
+      }
+      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat(recv_str, ".iter().cloned().all(", lambda_str, ")")
     } else if method == "flat_map" {
-      concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
+      let first_arg_expr = match args |> first {
+        Some { value: a } => a.value
+        None => receiver
+      }
+      let lambda_str = emit_typed_collection_lambda(lambda_expr: first_arg_expr, elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+      concat(recv_str, ".iter().cloned().flat_map(", lambda_str, ").collect::<Vec<_>>()")
     } else if method == "skip" {
       concat(recv_str, ".iter().skip(", first_arg_str, " as usize).cloned().collect::<Vec<_>>()")
     } else if method == "fold" {
+      let elem_t = collection_element_type(receiver_type: receiver.resolved_type, rc_types: rc_types)
       let init_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-      let fold_fn = match args |> skip(1) |> first {
-        Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-        None => "todo!(\"missing fold function\")"
+      let fold_fn_expr = match args |> skip(1) |> first {
+        Some { value: a } => a.value
+        None => receiver
       }
+      let fold_fn = emit_typed_fold_lambda(lambda_expr: fold_fn_expr, acc_type_str: "_", elem_type_str: elem_t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
     } else if method == "sort_by" {
       concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
+    } else if method == "append" {
+      concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
     } else {
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types))
       let args_str = arg_strs |> join(separator: ", ")
@@ -1613,13 +1857,23 @@ fn emit_typed_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String,
 }
 
 fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
-  let pat_str = emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  let has_rc = needs_rc_deref_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types)
+  let pat_str = if has_rc {
+    emit_pattern_rc_aware(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  } else {
+    emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  }
   let guard_str = match arm.guard {
     Some { value: g } => concat(" if ", emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types))
     None => ""
   }
   let body_str = emit_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-  concat("    ", pat_str, guard_str, " => ", body_str, ",")
+  if has_rc {
+    let prelude = rc_pattern_preludes(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types)
+    concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
+  } else {
+    concat("    ", pat_str, guard_str, " => ", body_str, ",")
+  }
 }
 
 fn emit_typed_if(condition: Expr, then_branch: Expr, else_branch: Expr?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
@@ -1664,6 +1918,35 @@ fn emit_record_lit_full(type_name: String?, fields: List<FieldInit>, span: Sourc
   }
 }
 
+// Check if a struct field is Optional (T?) in the type definition.
+// Only covers types where auto-wrapping is needed and safe (non-Optional
+// values assigned to Optional fields). Node/Expr types are excluded because
+// their Optional fields are usually already correctly populated.
+fn is_optional_struct_field(struct_name: String, field_name: String) -> Bool {
+  if struct_name == "Diagnostic" {
+    field_name == "span" || field_name == "module_name"
+  } else if struct_name == "Field" {
+    field_name == "return_type"
+  } else { false }
+}
+
+// Check if a value expression is already Optional (None, Some {...}, or has Optional resolved_type).
+fn is_already_optional(texpr: Expr) -> Bool {
+  match texpr {
+    Var { name: n } => n == "none" || n == "None"
+    RecordLit { type_name: tn } =>
+      match tn {
+        Some { value: name } => name == "Some" || name == "None"
+        None => false
+      }
+    _ =>
+      match texpr.resolved_type {
+        Some { value: rt } => rt.name == "Optional"
+        None => false
+      }
+  }
+}
+
 fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, rc_types: rc_types)
   // RC1: Variant names are imported via `use Enum::*;`, so no qualification needed.
@@ -1691,7 +1974,17 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_t
         } else { raw }
       } else {
         let field_strs = fields |> map(f =>
-          concat("    ", rust_ident(name: f.name), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types), ",")
+          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
+          // Auto-wrap in Some() for Optional struct fields where the value is not already Optional.
+          // Also check emitted string for "None" (LitNull emits as "None" but can't pattern-match through Rc<LiteralValue>).
+          let needs_wrap = is_optional_struct_field(struct_name: tn, field_name: f.name)
+            && is_already_optional(texpr: f.value) == false
+            && val_str != "None"
+            && starts_with_prefix(s: val_str, prefix: "Some(") == false
+          let wrapped = if needs_wrap {
+            concat("Some(", val_str, ")")
+          } else { val_str }
+          concat("    ", rust_ident(name: f.name), ": ", wrapped, ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         let raw = concat(tn, " {\n", fields_str, "\n}")
@@ -1923,13 +2216,23 @@ fn emit_typed_tco_expr(texpr: Expr, fn_name: String, params: List<Param>, regist
 }
 
 fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
-  let pat_str = emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  let has_rc = needs_rc_deref_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types)
+  let pat_str = if has_rc {
+    emit_pattern_rc_aware(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  } else {
+    emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  }
   let guard_str = match arm.guard {
     Some { value: g } => concat(" if ", emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types))
     None => ""
   }
   let body_str = emit_typed_tco_expr(texpr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types)
-  concat("    ", pat_str, guard_str, " => { ", body_str, " },")
+  if has_rc {
+    let prelude = rc_pattern_preludes(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types)
+    concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
+  } else {
+    concat("    ", pat_str, guard_str, " => { ", body_str, " },")
+  }
 }
 
 fn emit_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {

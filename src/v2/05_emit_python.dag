@@ -560,7 +560,8 @@ fn emit_py_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
-      if info.kind == FuncItem {
+      let is_func = info.kind == FuncItem
+      if is_func {
         info.service_names |> map(sn => service_var_name(service_name: sn))
       } else { [] }
     None => []
@@ -570,7 +571,8 @@ fn emit_py_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let call_str = concat(py_ident(name: func), "(", args_str, ")")
   match callee {
     Some { value: info } =>
-      if info.kind == FuncItem { concat("await ", call_str) } else { call_str }
+      let is_func = info.kind == FuncItem
+      if is_func { concat("await ", call_str) } else { call_str }
     None => call_str
   }
 }

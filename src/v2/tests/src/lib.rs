@@ -2852,8 +2852,8 @@ fn example(items: List<String>) -> Int {
             .expect("compile_sources should return files");
         let main_rs = emitted_file_content(files, "src/main_mod.rs");
         assert!(
-            main_rs.contains("v2_rt::char_at(&s, 0)")
-                && main_rs.contains("v2_rt::substring(&s, 0, 1)"),
+            main_rs.contains("v2_rt::char_at(&s.clone(), 0)")
+                && main_rs.contains("v2_rt::substring(&s.clone(), 0, 1)"),
             "string index/slice should emit string runtime helpers:\n{}",
             main_rs
         );
