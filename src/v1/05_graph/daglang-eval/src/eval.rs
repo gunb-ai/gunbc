@@ -5,6 +5,7 @@
 //! is handled by the stack machine.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use gunbc_ir::Value;
 
@@ -73,11 +74,11 @@ pub fn evaluate_collection(
         | CollectionOpKind::Filter
         | CollectionOpKind::FlatMap
         | CollectionOpKind::FilterMap
-        | CollectionOpKind::Append => Ok(Value::List(items)),
+        | CollectionOpKind::Append => Ok(Value::List(Arc::new(items))),
         CollectionOpKind::Sort | CollectionOpKind::SortBy => {
             let mut sorted = items;
             sorted.sort_by_key(sort_key);
-            Ok(Value::List(sorted))
+            Ok(Value::List(Arc::new(sorted)))
         }
         CollectionOpKind::Dedup => {
             let mut out = Vec::new();
@@ -86,7 +87,7 @@ pub fn evaluate_collection(
                     out.push(item);
                 }
             }
-            Ok(Value::List(out))
+            Ok(Value::List(Arc::new(out)))
         }
         CollectionOpKind::Join => {
             let joined = items
@@ -121,8 +122,8 @@ pub fn evaluate_collection(
                 .unwrap_or(false);
             Ok(Value::Bool(found))
         }
-        CollectionOpKind::Split => Ok(Value::List(items)),
-        CollectionOpKind::Zip => Ok(Value::List(items)),
+        CollectionOpKind::Split => Ok(Value::List(Arc::new(items))),
+        CollectionOpKind::Zip => Ok(Value::List(Arc::new(items))),
         CollectionOpKind::Skip => {
             let n = inputs
                 .get("n")
@@ -134,9 +135,9 @@ pub fn evaluate_collection(
                     }
                 })
                 .unwrap_or(0);
-            Ok(Value::List(items.into_iter().skip(n).collect()))
+            Ok(Value::List(Arc::new(items.into_iter().skip(n).collect())))
         }
-        CollectionOpKind::Enumerate => Ok(Value::List(
+        CollectionOpKind::Enumerate => Ok(Value::List(Arc::new(
             items
                 .into_iter()
                 .enumerate()
@@ -147,7 +148,7 @@ pub fn evaluate_collection(
                     Value::Map(map)
                 })
                 .collect(),
-        )),
+        ))),
     }
 }
 

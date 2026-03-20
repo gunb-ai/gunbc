@@ -13,6 +13,7 @@
 //! - EvalError type
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use gunbc_ir::Value;
 
@@ -65,7 +66,10 @@ pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
         Value::Map(map) => map
             .get(field)
             .cloned()
-            .ok_or_else(|| EvalError::new(format!("no field '{field}' in map"))),
+            .ok_or_else(|| {
+                let keys: Vec<&String> = map.keys().collect();
+                EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
+            }),
         Value::Json(json) => match json {
             serde_json::Value::Object(obj) => Ok(obj
                 .get(field)
@@ -125,9 +129,9 @@ pub fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, E
         LoweredBinOp::Add if matches!(lhs, Value::List(_)) || matches!(rhs, Value::List(_)) => {
             match (lhs, rhs) {
                 (Value::List(a), Value::List(b)) => {
-                    let mut result = a.clone();
+                    let mut result = (**a).clone();
                     result.extend(b.iter().cloned());
-                    Ok(Value::List(result))
+                    Ok(Value::List(Arc::new(result)))
                 }
                 _ => Err(EvalError::new(format!(
                     "list concat requires both sides to be lists: {:?}, {:?}",
@@ -447,7 +451,7 @@ pub fn eval_list_construct(elements: Vec<Value>) -> Result<Value, EvalError> {
             return Ok(Value::Skipped);
         }
     }
-    Ok(Value::List(elements))
+    Ok(Value::List(Arc::new(elements)))
 }
 
 // ── IR tree walkers ─────────────────────────────────────────────────────────
@@ -535,9 +539,10 @@ pub fn eval_builtin_call(
                 for (_, arg) in &args[1..] {
                     result = match (result, arg) {
                         (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
-                        (Value::List(mut a), Value::List(b)) => {
-                            a.extend(b.iter().cloned());
-                            Value::List(a)
+                        (Value::List(a), Value::List(b)) => {
+                            let mut v = Arc::try_unwrap(a).unwrap_or_else(|rc| (*rc).clone());
+                            v.extend(b.iter().cloned());
+                            Value::List(Arc::new(v))
                         }
                         (a, b) => {
                             // Fallback: convert to strings and concatenate
@@ -585,8 +590,14 @@ pub fn eval_builtin_call(
             }
         }
         "map_values" => match args.first() {
-            Some((_, Value::Map(map))) => Ok(Value::List(map.values().cloned().collect())),
+            Some((_, Value::Map(map))) => Ok(Value::List(Arc::new(map.values().cloned().collect()))),
             _ => Err(EvalError::new("'map_values' requires a map")),
+        },
+        "map_keys" => match args.first() {
+            Some((_, Value::Map(map))) => Ok(Value::List(Arc::new(
+                map.keys().cloned().map(Value::Str).collect(),
+            ))),
+            _ => Err(EvalError::new("'map_keys' requires a map")),
         },
         "empty_map" => Ok(Value::Map(BTreeMap::new())),
         "map_insert" => {
@@ -632,7 +643,15 @@ pub fn eval_builtin_call(
                 Err(EvalError::new("'map_contains_key' requires map and key"))
             }
         }
-        "Some" => Ok(args.first().map(|(_, v)| v.clone()).unwrap_or(Value::Unit)),
+        "Some" => match args.first() {
+            Some((_, value)) => {
+                let mut result = BTreeMap::new();
+                result.insert("_variant".to_string(), Value::Str("Some".to_string()));
+                result.insert("value".to_string(), value.clone());
+                Ok(Value::Map(result))
+            }
+            None => Err(EvalError::new("'Some' requires a value")),
+        },
         "code_point" => {
             let val = require_builtin_arg("c", 0, args);
             match val {
@@ -789,12 +808,29 @@ pub fn eval_builtin_call(
         "reverse" => match require_builtin_arg("list", 0, args) {
             Err(e) => Err(e),
             Ok(Value::List(list)) => {
-                let mut reversed = list.clone();
+                let mut reversed = (*list).clone();
                 reversed.reverse();
-                Ok(Value::List(reversed))
+                Ok(Value::List(Arc::new(reversed)))
             }
             _ => Err(EvalError::new("reverse requires a List")),
         },
+        // list_push(list, item) — O(1) amortized append to end of list.
+        // Uses Arc::try_unwrap for COW: in-place push when refcount=1.
+        "list_push" => {
+            if args.len() >= 2 {
+                match &args[0].1 {
+                    Value::List(list) => {
+                        let mut v = Arc::try_unwrap(list.clone())
+                            .unwrap_or_else(|rc| (*rc).clone());
+                        v.push(args[1].1.clone());
+                        Ok(Value::List(Arc::new(v)))
+                    }
+                    _ => Err(EvalError::new("list_push requires (List, item)")),
+                }
+            } else {
+                Err(EvalError::new("list_push requires list and item"))
+            }
+        }
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
             let mut map = BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(name.to_string()));

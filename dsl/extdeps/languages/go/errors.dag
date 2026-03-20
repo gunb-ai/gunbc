@@ -1,0 +1,54 @@
+// extdeps/languages/go/errors.dag -- "How does Go handle errors?"
+//
+// Multi-return error pattern, error interface, sentinel errors, and
+// error wrapping as specified in the Go Language Specification.
+//
+// Ref: Go Spec "Errors" (go.dev/ref/spec#Errors)
+//      Go Blog "Error handling and Go" (go.dev/blog/error-handling-and-go)
+//      Go Blog "Working with Errors in Go 1.13" (go.dev/blog/go1.13-errors)
+//
+// Consumers:
+//   v2/05_emit_go.dag -- error return emission, error wrapping
+
+module extdeps.languages.go.errors
+
+// -- Error interface -------------------------------------------------
+// Ref: Go Spec "Errors"
+//
+// The built-in error interface has a single method: Error() string.
+
+data error_interface: String = "error"
+data error_method: String = "Error() string"
+
+// -- Error construction ----------------------------------------------
+// Ref: pkg.go.dev/errors#New, pkg.go.dev/fmt#Errorf
+
+data errors_new_template: String = "errors.New(\"\{msg\}\")"
+data fmt_errorf_template: String = "fmt.Errorf(\"\{fmt\}\", \{args\})"
+
+// -- Multi-return pattern --------------------------------------------
+// Ref: Go Spec "Return statements", Effective Go "Multiple return values"
+//
+// Go functions that can fail return (result, error). The caller checks
+// error before using the result.
+
+data error_return_template: String = "return \{zero\}, \{err\}"
+data success_return_template: String = "return \{value\}, nil"
+data error_check_template: String = "if \{name\} != nil \{\n\treturn \{zero\}, \{name\}\n\}"
+
+// -- Error wrapping (Go 1.13+) --------------------------------------
+// Ref: pkg.go.dev/errors#Is, pkg.go.dev/errors#As
+//      pkg.go.dev/fmt#Errorf (%w verb)
+
+data errorf_wrap_template: String = "fmt.Errorf(\"\{msg\}: %w\", \{err\})"
+data errors_is_template: String = "errors.Is(\{err\}, \{target\})"
+data errors_as_template: String = "errors.As(\{err\}, &\{target\})"
+
+// -- Panic / recover ------------------------------------------------
+// Ref: Go Spec "Handling panics"
+//
+// panic/recover are for truly exceptional situations, not normal errors.
+
+data panic_template: String = "panic(\"\{msg\}\")"
+data recover_template: String = "recover()"
+data defer_recover_template: String = "defer func() \{\n\tif r := recover(); r != nil \{\n\t\t\{handler\}\n\t\}\n\}()"

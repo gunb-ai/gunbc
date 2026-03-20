@@ -9976,7 +9976,7 @@ fn json_to_value(json: &serde_json::Value) -> gunbc_ir::Value {
         }
         serde_json::Value::String(s) => gunbc_ir::Value::Str(s.clone()),
         serde_json::Value::Array(arr) => {
-            gunbc_ir::Value::List(arr.iter().map(json_to_value).collect())
+            gunbc_ir::Value::List(std::sync::Arc::new(arr.iter().map(json_to_value).collect()))
         }
         serde_json::Value::Object(map) => {
             let btree: std::collections::BTreeMap<String, gunbc_ir::Value> = map
@@ -10607,7 +10607,9 @@ fn lower_expr(
             }
         }
         // C24-P2: Tagged variant record → VariantConstruct; plain record → RecordConstruct.
-        Expr::Record(Some(tag), fields) if ctx.variant_names.contains(tag.as_str()) => {
+        Expr::Record(Some(tag), fields)
+            if ctx.variant_names.contains(tag.as_str()) || tag == "Some" || tag == "None" =>
+        {
             synthesize_variant_construct(
                 builder,
                 ctx,
