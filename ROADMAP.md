@@ -453,6 +453,42 @@ make resolved-vs-unresolved a type distinction rather than a runtime check.
 **Concrete contracts frozen in B3 Phase 2a** (see that section for details):
 - Contract 1 splits `DeclaredFuncSig` / `ResolvedFuncSig` so fabricated
   placeholders are structurally impossible at emit time.
+
+### Blocker 5: Unicode/ASCII boundary mismatch → Decision: Unicode everywhere in the language, explicit adaptation at boundaries
+
+The language contract is now fixed:
+
+- `.dag` source is UTF-8
+- strings are Unicode
+- identifiers are Unicode
+- `char_at`, `string_length`, `substring`, and `scan_*` operate on
+  Unicode scalar values, not bytes
+
+Interop contract:
+
+- `SourceSpan` stays UTF-8 byte offsets for diagnostics/tooling
+- ASCII-only target surfaces are adapters, not the language contract
+- string data must be preserved exactly; if a boundary cannot carry
+  Unicode directly, it must use an explicit encoding or return a clear
+  error
+- emitted identifiers may be mangled to backend-safe ASCII, but the
+  mangle must be deterministic and injective
+
+What this avoids:
+
+- no silent ASCII downgrade
+- no backend-specific Unicode semantics
+- no late runtime panic on valid UTF-8 source just because a backend
+  used byte indexing internally
+
+Practical implication:
+
+- Rust, Go, and Python backends must agree on Unicode-scalar string
+  semantics
+- the tokenizer/runtime split must be explicit: scalar indices for
+  string operations, byte offsets for source spans
+- direct native byte indexing/slicing is not valid lowering for
+  language-visible string operations
 - Contract 2 resolves return types in SCC topological order so callers
   never observe placeholder return types.
 - Contract 3 introduces `ResolvedGraph` / `ResolvedFuncEnv` as the
