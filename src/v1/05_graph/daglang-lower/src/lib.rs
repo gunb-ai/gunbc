@@ -67,8 +67,7 @@ pub use spec::{
     check_response_completeness, ArgvSegment, AuthRequirement, BodyEntry, ExitCodePattern,
     ExitMappingEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, MockResponseEntry,
     OutputFieldSpec, ResponseCompletenessWarning, ResponseMappingEntry, ResponseStatusPattern,
-    RestBodyFieldSchema, RestBodyLiteralVariant, RestBodySchema, RestOperationSpec,
-    ServiceOperationSpec, ShellOperationSpec, ShellOutputParsing,
+    RestOperationSpec, ServiceOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
 
 pub use expr::LoweredFnBody;
@@ -6414,6 +6413,33 @@ struct RestBodyVariantType {
     fields: Vec<(String, TypeExpr)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedRestBodyContract {
+    record_type: String,
+    fields: Vec<ResolvedRestBodyFieldContract>,
+}
+
+impl ResolvedRestBodyContract {
+    fn field(&self, name: &str) -> Option<&ResolvedRestBodyFieldContract> {
+        self.fields.iter().find(|field| field.name == name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedRestBodyFieldContract {
+    name: String,
+    type_id: String,
+    is_optional: bool,
+    literal_variants: Vec<ResolvedRestBodyLiteralVariant>,
+    nested_contract: Option<Box<ResolvedRestBodyContract>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedRestBodyLiteralVariant {
+    name: String,
+    field_names: Vec<String>,
+}
+
 impl RestBodyTypeRegistry {
     fn from_project(project: &TypedProject) -> Self {
         let mut registry = Self::default();
@@ -6489,57 +6515,57 @@ impl RestBodyTypeRegistry {
         }
     }
 
-    fn body_schema_for_expr(&self, expr: &Expr) -> Option<RestBodySchema> {
+    fn body_contract_for_expr(&self, expr: &Expr) -> Option<ResolvedRestBodyContract> {
         let Expr::Record(Some(record_type), _) = expr else {
             return None;
         };
         let mut visiting = HashSet::new();
-        self.body_schema_for_record_name(record_type, &mut visiting)
+        self.body_contract_for_record_name(record_type, &mut visiting)
     }
 
-    fn body_schema_for_record_name(
+    fn body_contract_for_record_name(
         &self,
         record_type: &str,
         visiting: &mut HashSet<String>,
-    ) -> Option<RestBodySchema> {
+    ) -> Option<ResolvedRestBodyContract> {
         let fields = self.records.get(record_type)?;
         if !visiting.insert(record_type.to_string()) {
             return None;
         }
 
-        let schema = RestBodySchema {
+        let contract = ResolvedRestBodyContract {
             record_type: record_type.to_string(),
             fields: fields
                 .iter()
-                .map(|(field_name, field_ty)| RestBodyFieldSchema {
+                .map(|(field_name, field_ty)| ResolvedRestBodyFieldContract {
                     name: field_name.clone(),
                     type_id: type_expr_to_string(field_ty),
                     is_optional: rest_body_field_is_optional(field_ty),
                     literal_variants: self.literal_variants_for_type(field_ty),
-                    nested_schema: self.body_schema_for_type(field_ty, visiting).map(Box::new),
+                    nested_contract: self.body_contract_for_type(field_ty, visiting).map(Box::new),
                 })
                 .collect(),
         };
 
         visiting.remove(record_type);
-        Some(schema)
+        Some(contract)
     }
 
-    fn body_schema_for_type(
+    fn body_contract_for_type(
         &self,
         ty: &TypeExpr,
         visiting: &mut HashSet<String>,
-    ) -> Option<RestBodySchema> {
+    ) -> Option<ResolvedRestBodyContract> {
         let (record_type, _) = self.resolve_record(ty)?;
-        self.body_schema_for_record_name(record_type, visiting)
+        self.body_contract_for_record_name(record_type, visiting)
     }
 
-    fn literal_variants_for_type(&self, ty: &TypeExpr) -> Vec<RestBodyLiteralVariant> {
+    fn literal_variants_for_type(&self, ty: &TypeExpr) -> Vec<ResolvedRestBodyLiteralVariant> {
         self.resolve_sum(ty)
             .map(|variants| {
                 variants
                     .iter()
-                    .map(|variant| RestBodyLiteralVariant {
+                    .map(|variant| ResolvedRestBodyLiteralVariant {
                         name: variant.name.clone(),
                         field_names: variant
                             .fields
@@ -6570,7 +6596,7 @@ fn record_fields_match_variant(fields: &[(String, Expr)], variant_fields: &[Stri
         })
 }
 
-fn sum_literal_contract(variants: &[RestBodyLiteralVariant]) -> String {
+fn sum_literal_contract(variants: &[ResolvedRestBodyLiteralVariant]) -> String {
     variants
         .iter()
         .map(|variant| {
@@ -6979,27 +7005,26 @@ fn derive_rest_spec(
         .map(|field| field.name.as_str())
         .collect::<HashSet<_>>();
     let output_fields = derive_output_fields(&operation.outputs);
-    let (body_template, body_schema) = match &operation.transport {
+    let body_template = match &operation.transport {
         Some(TransportBinding::Rest { body: Some(b), .. }) => {
-            let body_schema = rest_body_types.body_schema_for_expr(b);
+            let body_contract = rest_body_types.body_contract_for_expr(b);
             validate_typed_rest_body_contract(
                 service,
                 operation,
                 b,
-                body_schema.as_ref(),
+                body_contract.as_ref(),
                 data_registry,
             )?;
-            let body_template = body_template_entries_from_expr(
+            body_template_entries_from_expr(
                 service,
                 operation,
                 b,
                 &operation_input_names,
                 data_registry,
-                body_schema.as_ref(),
-            )?;
-            (body_template, body_schema)
+                body_contract.as_ref(),
+            )?
         }
-        _ => (None, None),
+        _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
         "BearerToken" => "BearerToken".to_string(),
@@ -7054,7 +7079,6 @@ fn derive_rest_spec(
         input_fields,
         output_fields,
         body_template,
-        body_schema,
         headers,
         auth_scheme,
         auth_input,
@@ -7216,7 +7240,7 @@ fn body_template_entries_from_expr(
     expr: &Expr,
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
-    body_schema: Option<&RestBodySchema>,
+    body_contract: Option<&ResolvedRestBodyContract>,
 ) -> Result<Option<Vec<BodyEntry>>, LowerError> {
     match expr {
         Expr::Record(_, fields) => {
@@ -7229,7 +7253,7 @@ fn body_template_entries_from_expr(
                     value,
                     operation_input_names,
                     data_registry,
-                    body_schema,
+                    body_contract,
                 )? {
                     entries.push(entry);
                 }
@@ -7247,7 +7271,7 @@ fn body_template_entries_from_expr(
                         value,
                         operation_input_names,
                         data_registry,
-                        body_schema,
+                        body_contract,
                     )? {
                         entries.push(entry);
                     }
@@ -7268,7 +7292,7 @@ fn body_template_entry(
     value: &Expr,
     operation_input_names: &HashSet<&str>,
     data_registry: &DataRegistry<'_>,
-    body_schema: Option<&RestBodySchema>,
+    body_contract: Option<&ResolvedRestBodyContract>,
 ) -> Result<Option<BodyEntry>, LowerError> {
     match value {
         Expr::Ident(field_name) if operation_input_names.contains(field_name.as_str()) => Ok(Some(
@@ -7282,7 +7306,7 @@ fn body_template_entry(
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
             if let Some(value) =
-                typed_rest_body_literal(service, operation, body_schema, key, value)?
+                typed_rest_body_literal(service, operation, body_contract, key, value)?
             {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
@@ -7290,26 +7314,26 @@ fn body_template_entry(
         }
         Expr::Record(_, _) | Expr::Map(_) => {
             if let Some(value) =
-                typed_rest_body_literal(service, operation, body_schema, key, value)?
+                typed_rest_body_literal(service, operation, body_contract, key, value)?
             {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
-            let nested_schema = body_schema
-                .and_then(|schema| schema.field(key))
-                .and_then(|field| field.nested_schema.as_deref());
+            let nested_contract = body_contract
+                .and_then(|contract| contract.field(key))
+                .and_then(|field| field.nested_contract.as_deref());
             let inner = body_template_entries_from_expr(
                 service,
                 operation,
                 value,
                 operation_input_names,
                 data_registry,
-                nested_schema,
+                nested_contract,
             )?;
             Ok(inner.map(|inner| BodyEntry::Nested(key.to_string(), inner)))
         }
         _ => {
             if let Some(value) =
-                typed_rest_body_literal(service, operation, body_schema, key, value)?
+                typed_rest_body_literal(service, operation, body_contract, key, value)?
             {
                 return Ok(Some(BodyEntry::Literal(key.to_string(), value)));
             }
@@ -7393,17 +7417,17 @@ fn typed_rest_body_field_wire_contract(
 fn typed_rest_body_literal(
     service: &ServiceDef,
     operation: &OperationDef,
-    body_schema: Option<&RestBodySchema>,
+    body_contract: Option<&ResolvedRestBodyContract>,
     key: &str,
     value: &Expr,
 ) -> Result<Option<String>, LowerError> {
     let field_contract = typed_rest_body_field_wire_contract(service, operation, key);
-    let Some(field_schema) = body_schema.and_then(|schema| schema.field(key)) else {
+    let Some(field_schema) = body_contract.and_then(|contract| contract.field(key)) else {
         return match field_contract {
             Some(_) => Err(missing_rest_body_field_metadata(
                 service,
                 operation,
-                body_schema,
+                body_contract,
                 key,
             )),
             None => Ok(None),
@@ -7415,7 +7439,7 @@ fn typed_rest_body_literal(
             Some(_) => Err(missing_rest_body_literal_contract(
                 service,
                 operation,
-                body_schema,
+                body_contract,
                 key,
             )),
             None => Ok(None),
@@ -7459,7 +7483,7 @@ fn validate_typed_rest_body_contract(
     service: &ServiceDef,
     operation: &OperationDef,
     body: &Expr,
-    body_schema: Option<&RestBodySchema>,
+    body_contract: Option<&ResolvedRestBodyContract>,
     data_registry: &DataRegistry<'_>,
 ) -> Result<(), LowerError> {
     let field_contracts = typed_rest_body_wire_contract(service, operation);
@@ -7467,22 +7491,22 @@ fn validate_typed_rest_body_contract(
         return Ok(());
     }
 
-    let Some(schema) = body_schema else {
+    let Some(contract) = body_contract else {
         return Err(match body {
             Expr::Record(None, _) | Expr::Map(_) => {
                 invalid_untyped_rest_body(service, operation, body)
             }
-            _ => missing_rest_body_schema(service, operation, body),
+            _ => missing_rest_body_contract(service, operation, body),
         });
     };
 
     for field_contract in field_contracts {
         let field_name = field_contract.field_name;
-        let Some(field_schema) = schema.field(field_name) else {
+        let Some(field_schema) = contract.field(field_name) else {
             return Err(missing_rest_body_field_metadata(
                 service,
                 operation,
-                body_schema,
+                body_contract,
                 field_name,
             ));
         };
@@ -7490,7 +7514,7 @@ fn validate_typed_rest_body_contract(
             return Err(missing_rest_body_literal_contract(
                 service,
                 operation,
-                body_schema,
+                body_contract,
                 field_name,
             ));
         }
@@ -7504,7 +7528,7 @@ fn validate_typed_rest_body_contract(
                 return Err(missing_typed_rest_body_contract_variant(
                     service,
                     operation,
-                    schema,
+                    contract,
                     field_name,
                     variant_contract.variant_name,
                 ));
@@ -7514,7 +7538,7 @@ fn validate_typed_rest_body_contract(
         let Some(value) = rest_body_field_value(body, field_name) else {
             if !field_schema.is_optional {
                 return Err(missing_required_typed_rest_body_field(
-                    service, operation, schema, field_name,
+                    service, operation, contract, field_name,
                 ));
             }
             continue;
@@ -7538,7 +7562,8 @@ fn validate_typed_rest_body_contract(
             continue;
         }
 
-        if typed_rest_body_literal(service, operation, body_schema, field_name, value)?.is_none() {
+        if typed_rest_body_literal(service, operation, body_contract, field_name, value)?.is_none()
+        {
             let expected = sum_literal_contract(&field_schema.literal_variants);
             return Err(invalid_typed_rest_body_value(
                 service,
@@ -7588,9 +7613,9 @@ fn typed_rest_body_expected_wire_values(
 }
 
 fn typed_rest_body_literal_matches<'a>(
-    field_schema: &'a RestBodyFieldSchema,
+    field_schema: &'a ResolvedRestBodyFieldContract,
     value: &Expr,
-) -> Result<Option<&'a RestBodyLiteralVariant>, String> {
+) -> Result<Option<&'a ResolvedRestBodyLiteralVariant>, String> {
     match value {
         Expr::Ident(name) => {
             let Some(variant) = field_schema
@@ -7622,7 +7647,7 @@ fn typed_rest_body_literal_matches<'a>(
     }
 }
 
-fn missing_rest_body_schema(
+fn missing_rest_body_contract(
     service: &ServiceDef,
     operation: &OperationDef,
     body: &Expr,
@@ -7631,7 +7656,7 @@ fn missing_rest_body_schema(
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "REST request body {} loses schema/type metadata before RestOperationSpec lowering",
+            "REST request body {} loses its resolved body-type contract before REST lowering",
             describe_transport_body_expr(body)
         ),
     }
@@ -7640,17 +7665,17 @@ fn missing_rest_body_schema(
 fn missing_rest_body_field_metadata(
     service: &ServiceDef,
     operation: &OperationDef,
-    body_schema: Option<&RestBodySchema>,
+    body_contract: Option<&ResolvedRestBodyContract>,
     field_name: &str,
 ) -> LowerError {
-    let body_type = body_schema
-        .map(|schema| schema.record_type.as_str())
+    let body_type = body_contract
+        .map(|contract| contract.record_type.as_str())
         .unwrap_or("(unknown)");
     LowerError::InvalidTransportSpec {
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "REST request body type `{body_type}` is missing schema/type metadata for field `{field_name}` on RestOperationSpec"
+            "REST request body type `{body_type}` is missing field contract metadata for `{field_name}` at the lowering boundary"
         ),
     }
 }
@@ -7658,17 +7683,17 @@ fn missing_rest_body_field_metadata(
 fn missing_rest_body_literal_contract(
     service: &ServiceDef,
     operation: &OperationDef,
-    body_schema: Option<&RestBodySchema>,
+    body_contract: Option<&ResolvedRestBodyContract>,
     field_name: &str,
 ) -> LowerError {
-    let body_type = body_schema
-        .map(|schema| schema.record_type.as_str())
+    let body_type = body_contract
+        .map(|contract| contract.record_type.as_str())
         .unwrap_or("(unknown)");
     LowerError::InvalidTransportSpec {
         service: service.name.clone(),
         operation: operation.name.clone(),
         detail: format!(
-            "REST request body type `{body_type}` is missing typed literal metadata for field `{field_name}` on RestOperationSpec"
+            "REST request body type `{body_type}` is missing typed literal contract metadata for `{field_name}` at the lowering boundary"
         ),
     }
 }
@@ -7676,7 +7701,7 @@ fn missing_rest_body_literal_contract(
 fn missing_typed_rest_body_contract_variant(
     service: &ServiceDef,
     operation: &OperationDef,
-    body_schema: &RestBodySchema,
+    body_contract: &ResolvedRestBodyContract,
     field_name: &str,
     variant_name: &str,
 ) -> LowerError {
@@ -7685,7 +7710,7 @@ fn missing_typed_rest_body_contract_variant(
         operation: operation.name.clone(),
         detail: format!(
             "REST request body type `{}` field `{field_name}` is missing typed literal constructor `{variant_name}` required by the STS wire-value contract",
-            body_schema.record_type
+            body_contract.record_type
         ),
     }
 }
@@ -7693,7 +7718,7 @@ fn missing_typed_rest_body_contract_variant(
 fn missing_required_typed_rest_body_field(
     service: &ServiceDef,
     operation: &OperationDef,
-    body_schema: &RestBodySchema,
+    body_contract: &ResolvedRestBodyContract,
     field_name: &str,
 ) -> LowerError {
     LowerError::InvalidTransportSpec {
@@ -7701,7 +7726,7 @@ fn missing_required_typed_rest_body_field(
         operation: operation.name.clone(),
         detail: format!(
             "REST request body type `{}` is missing required field `{field_name}` for the typed wire-value contract",
-            body_schema.record_type
+            body_contract.record_type
         ),
     }
 }

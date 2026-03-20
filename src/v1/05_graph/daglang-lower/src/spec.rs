@@ -140,11 +140,6 @@ pub struct RestOperationSpec {
     /// Explicit body template, if present.
     /// When None, body is built from all non-path input fields.
     pub body_template: Option<Vec<BodyEntry>>,
-    /// Structural schema/type metadata for a typed REST body literal.
-    /// Carries the record tag and per-field type contracts so downstream
-    /// lowering logic can validate typed literals without re-reading module AST.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body_schema: Option<RestBodySchema>,
     /// Extra HTTP headers.
     pub headers: Vec<(String, String)>,
     /// Auth scheme from `config { auth: BearerToken }`. Desugars to a `res:credential`
@@ -178,42 +173,6 @@ pub struct RestOperationSpec {
     /// generic provider-level synthesis.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mock_responses: Vec<MockResponseEntry>,
-}
-
-/// Structural schema metadata for a typed REST body literal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RestBodySchema {
-    pub record_type: String,
-    pub fields: Vec<RestBodyFieldSchema>,
-}
-
-impl RestBodySchema {
-    pub fn field(&self, name: &str) -> Option<&RestBodyFieldSchema> {
-        self.fields.iter().find(|field| field.name == name)
-    }
-}
-
-/// Structural type metadata for a REST body field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RestBodyFieldSchema {
-    pub name: String,
-    pub type_id: String,
-    #[serde(default)]
-    pub is_optional: bool,
-    /// Allowed typed literal constructors when this field is a sum/enum-like type.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub literal_variants: Vec<RestBodyLiteralVariant>,
-    /// Nested record schema for typed nested object literals.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub nested_schema: Option<Box<RestBodySchema>>,
-}
-
-/// Constructor contract for a typed REST body literal field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RestBodyLiteralVariant {
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub field_names: Vec<String>,
 }
 
 /// Shell protocol specification: argv template + output parsing.
@@ -526,7 +485,6 @@ mod tests {
             input_fields: vec![],
             output_fields: vec![],
             body_template: None,
-            body_schema: None,
             headers: vec![],
             auth_scheme: Some("BearerToken".to_string()),
             auth_input: Some("auth_token".to_string()),
@@ -552,7 +510,6 @@ mod tests {
             input_fields: vec![],
             output_fields: vec![],
             body_template: None,
-            body_schema: None,
             headers: vec![],
             auth_scheme: None,
             auth_input: None,

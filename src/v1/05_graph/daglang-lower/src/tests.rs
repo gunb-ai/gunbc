@@ -4267,52 +4267,6 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
         panic!("expected REST spec");
     };
 
-    let body_schema = rest_spec
-        .body_schema
-        .as_ref()
-        .expect("typed REST body should carry schema metadata");
-    assert_eq!(body_schema.record_type, "ExchangeRequest");
-    assert_eq!(
-        body_schema
-            .field("grant_type")
-            .expect("grant_type metadata should be preserved"),
-        &RestBodyFieldSchema {
-            name: "grant_type".to_string(),
-            type_id: "GrantKind".to_string(),
-            is_optional: false,
-            literal_variants: vec![RestBodyLiteralVariant {
-                name: "TokenExchange".to_string(),
-                field_names: vec![],
-            }],
-            nested_schema: None,
-        }
-    );
-    assert_eq!(
-        body_schema
-            .field("subject_token_type")
-            .expect("subject_token_type metadata should be preserved")
-            .literal_variants,
-        vec![
-            RestBodyLiteralVariant {
-                name: "Jwt".to_string(),
-                field_names: vec![],
-            },
-            RestBodyLiteralVariant {
-                name: "StsAccessToken".to_string(),
-                field_names: vec![],
-            },
-            RestBodyLiteralVariant {
-                name: "IdToken".to_string(),
-                field_names: vec![],
-            },
-            RestBodyLiteralVariant {
-                name: "Saml2".to_string(),
-                field_names: vec![],
-            },
-        ],
-        "typed REST body schema should preserve literal constructor metadata on RestOperationSpec"
-    );
-
     assert_eq!(
         rest_spec.body_template,
         Some(vec![
@@ -4331,7 +4285,7 @@ fn typed_rest_body_uses_request_metadata_instead_of_sts_specific_type_names() {
                 "urn:ietf:params:oauth:token-type:access_token".to_string()
             ),
         ]),
-        "typed REST body lowering should follow request metadata, not STS-specific type names"
+        "typed REST body lowering should follow request metadata at the lowering boundary, not STS-specific type names"
     );
 }
 
