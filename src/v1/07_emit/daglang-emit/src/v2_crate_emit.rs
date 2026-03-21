@@ -359,9 +359,9 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
     }
 
     // P1a: Compute SCC-based function classification. TCO set starts empty;
-    // the classification is conservative (all recursive functions get stacker).
-    // After compilation, functions that received TCO could be reclassified,
-    // but recursive+TCO both need stacker as a safety measure.
+    // the classification is conservative for now, so all recursive functions
+    // stay in the stacker set. Once TCO-classified functions are threaded
+    // through here, loop-lowered TCO bodies should skip stacker.
     let function_classes = fn_codegen::classify_functions(&call_graph, &HashSet::new());
     let needs_stacker: HashSet<String> = function_classes
         .iter()

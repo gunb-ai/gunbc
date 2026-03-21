@@ -72,7 +72,7 @@ pub enum FunctionClass {
 
 impl FunctionClass {
     pub fn needs_stacker(self) -> bool {
-        matches!(self, FunctionClass::Recursive | FunctionClass::Tco)
+        matches!(self, FunctionClass::Recursive)
     }
 }
 
@@ -9763,6 +9763,17 @@ mod tests {
             result.is_none(),
             "non-recursive function should return None"
         );
+    }
+
+    #[test]
+    fn tco_classification_does_not_request_stacker() {
+        let mut adj: HashMap<String, HashSet<String>> = HashMap::new();
+        adj.insert("fact".into(), HashSet::from_iter(["fact".to_string()]));
+        let tco_functions = HashSet::from_iter(["fact".to_string()]);
+        let classes = classify_functions(&adj, &tco_functions);
+        assert_eq!(classes.get("fact"), Some(&FunctionClass::Tco));
+        assert!(!classes["fact"].needs_stacker());
+        assert!(FunctionClass::Recursive.needs_stacker());
     }
 
     #[test]

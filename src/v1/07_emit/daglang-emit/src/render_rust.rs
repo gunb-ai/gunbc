@@ -189,7 +189,8 @@ fn render_fn_def(f: &FnDef, indent: usize, stacker: StackerMode<'_>) -> String {
     .unwrap();
 
     // Body — selectively wrapped with stacker::maybe_grow for stack safety.
-    // Only recursive/TCO functions need stacker; leaf functions skip it.
+    // Only non-TCO recursive functions need stacker; loop-lowered TCO and
+    // non-recursive functions skip it.
     if stacker.should_wrap(&f.name) && !f.body.is_empty() {
         let inner_pad = "    ".repeat(indent + 1);
         writeln!(
