@@ -94,6 +94,12 @@ hard failures into silent wrong behavior. (See POSTMORTEM FC-7:
 `scalar_witness_for_base` fabricated `Str("<Type>")` instead of
 returning `None`.)
 
+Sample: ownership should not compile to
+`Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())`. Either the
+compiler proves a single semantic consumer and emits the move, or it
+surfaces that the proof is missing. The clone branch is a fallback,
+even if it preserves correctness.
+
 ### Heuristics indicate lost structure
 
 Heuristics are a code smell in compiler and runtime logic. String
@@ -116,6 +122,20 @@ stage can make an exact decision. If the local change cannot safely
 repair the upstream contract yet, fail clearly or record a follow-up
 task naming where the information degraded and what explicit structure
 should replace the heuristic.
+
+Sample: on 2026-03-20 the emission-representation work was first framed
+as five per-binding lattices: flow cardinality, value width, call
+reachability, loop invariance, and build-reduce. Backends then mapped
+each lattice position to constructs like bare move vs Rc, byte vs
+String, inline vs stacker. That was cleaner than ad hoc guesses, but in
+practice it still risked becoming a heuristic matrix: pick a bucket,
+then let the backend widen to a fallback-shaped implementation. The
+stronger version kept only direct behavioral facts plus forcing
+witnesses: consumed/read/threaded/projected edges, semantic consumer
+count, escape/materialization, loop invariance, value shape. "Shared"
+needs the specific extra consume site. "Materialized" needs the
+specific escape. If no witness exists, the compiler has lost structure
+and should be fixed upstream instead of widening by default.
 
 ### No parallel implementations
 

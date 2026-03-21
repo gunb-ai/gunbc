@@ -1,31 +1,23 @@
 [workspace]
 resolver = "2"
 members = [
+    # v1 foundation -- kept as dev-dependencies for v2 test evaluation chain
     "src/v1/00_foundation/infra",
     "src/v1/00_foundation/ir",
     "src/v1/00_foundation/daglang-contract",
     "src/v1/00_foundation/delegate-macros",
-    "src/v1/02_pipeline/daglang-driver",
+    # v1 source -- parser used by v2 test harness to load .dag files
     "src/v1/03_source/daglang-syntax",
     "src/v1/03_source/daglang-resolve",
+    # v1 semantics -- transitive dep of daglang-lower
     "src/v1/04_semantics/daglang-typecheck",
+    # v1 graph -- evaluator used by v2 test harness to execute .dag functions
     "src/v1/05_graph/daglang-eval",
     "src/v1/05_graph/daglang-lower",
+    # v1 emit -- used by bootstrap tests to assemble stage0
     "src/v1/06_artifacts/daglang-derive",
     "src/v1/07_emit/daglang-emit",
-    "src/v1/08_materialize/resolve",
-    "src/v1/08_materialize/blob",
-    "src/v1/08_materialize/transport",
-    "src/v1/08_materialize/interp",
-    "src/v1/09_execute/exec",
-    "src/v1/01_surfaces/daglang-cli",
-    "src/v1/01_surfaces/cli",
-    "src/v1/01_surfaces/codegen",
-    "src/v1/01_surfaces/workflow",
-    "src/v1/10_test/test",
-    "src/v1/10_test/generated-tests",
-    "src/v1/10_test/testgen-registry",
-    "src/v1/10_test/testgen-registry-macros",
+    # v2 self-hosted compiler tests
     "src/v2/tests",
 ]
 
