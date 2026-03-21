@@ -2393,7 +2393,7 @@ fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
       let resolved_ret = if ret.return_type != none { ret.return_type.value } else { leaf_type_node(name: "Unit", span: start_span) }
       let item = Node {
         name: name, span: start_span, children: [], params: r3.params,
-        return_type: resolved_ret, uses: [],
+        return_type: Some { value: resolved_ret }, uses: [],
         body: none, connective: none, transport: none,
         properties: [], type_annotation: none,
         config: none, is_self_recursive: false, has_non_tail_self_call: false      }
@@ -2412,7 +2412,7 @@ fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
       let resolved_ret = if ret.return_type != none { ret.return_type.value } else { leaf_type_node(name: "Unit", span: start_span) }
       let item = Node {
         name: name, span: start_span, children: [], params: r3.params,
-        return_type: resolved_ret, uses: [],
+        return_type: Some { value: resolved_ret }, uses: [],
         body: none, connective: none, transport: none,
         properties: [], type_annotation: none,
         config: none, is_self_recursive: false, has_non_tail_self_call: false      }

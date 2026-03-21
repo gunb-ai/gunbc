@@ -117,12 +117,15 @@ type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>
   rc_wrapped_types: Map<String, Bool>
+  enum_variant_membership: Map<String, Bool>
+  data_rc_map_names: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>
   rc_wrapped_types: Map<String, Bool>
+  enum_variant_membership: Map<String, Bool>
 }
 
 // =========================================================================
@@ -147,7 +150,6 @@ type ItemContribution {
   func_sig: DeclaredFuncSig?
   svc_entries: List<OpEntry>
   svc_local: TypeBinding?
-  variant_locals: List<TypeBinding>
   item_info: ItemInfo
 }
 
@@ -565,7 +567,6 @@ type InferScopeComponents {
   func_sigs: Map<String, DeclaredFuncSig>
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
-  variant_locals: Map<String, TypeBinding>
 }
 
 type LocalContributionState {
@@ -573,7 +574,6 @@ type LocalContributionState {
   func_sigs: Map<String, DeclaredFuncSig>
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
-  variant_locals: Map<String, TypeBinding>
   item_registry: Map<String, ItemInfo>
   diag_chunks: List<List<Diagnostic>>
 }
@@ -581,12 +581,11 @@ type LocalContributionState {
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
     func_sigs: Map<String, DeclaredFuncSig>,
     svc_registry: Map<String, List<OpEntry>>,
-    svc_locals: Map<String, TypeBinding>,
-    variant_locals: Map<String, TypeBinding>) -> InferScopeComponents {
+    svc_locals: Map<String, TypeBinding>) -> InferScopeComponents {
   match remaining |> first {
     None => InferScopeComponents {
       func_sigs: func_sigs, svc_registry: svc_registry,
-      svc_locals: svc_locals, variant_locals: variant_locals
+      svc_locals: svc_locals
     }
     Some { value: imp } =>
       match map_get(parent_index, imp.module_path) {
@@ -605,12 +604,14 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               is_async: sig_async
             })
           )
-          // svc_registry + svc_locals + variant_locals from parent items
+          // svc_registry + svc_locals from parent items
+          // (variant_locals are derived from env.bindings in build_module_context,
+          //  which already includes all imported types — no merge needed here.)
           let parent_result = fold(typed_parent.items, init: InferScopeComponents {
             func_sigs: next_func_sigs, svc_registry: svc_registry,
-            svc_locals: svc_locals, variant_locals: variant_locals
+            svc_locals: svc_locals
           }, f: (acc, titem) =>
-            let r1 = if titem.transport != none && titem.children |> count > 0 {
+            if titem.transport != none && titem.children |> count > 0 {
               let entries = titem.children |> map(c =>
                 OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span) }
               )
@@ -618,38 +619,19 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: map_insert(acc.svc_registry, titem.name, entries),
-                svc_locals: map_insert(acc.svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) }),
-                variant_locals: acc.variant_locals
+                svc_locals: map_insert(acc.svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
               }
             } else {
               acc
             }
-            match titem.connective {
-              Some { value: Disj } =>
-                if is_recursive_type(env: env, name: titem.name) {
-                  InferScopeComponents {
-                    func_sigs: r1.func_sigs, svc_registry: r1.svc_registry,
-                    svc_locals: r1.svc_locals,
-                    variant_locals: fold(titem.children, init: r1.variant_locals, f: (vacc, child) =>
-                      map_insert(vacc, child.name, TypeBinding {
-                        name: child.name,
-                        resolved: leaf_node(name: titem.name)
-                      })
-                    )
-                  }
-                } else {
-                  r1
-                }
-              _ => r1
-            }
           )
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
             func_sigs: parent_result.func_sigs, svc_registry: parent_result.svc_registry,
-            svc_locals: parent_result.svc_locals, variant_locals: parent_result.variant_locals)
+            svc_locals: parent_result.svc_locals)
         None =>
           merge_scope_from_imports(remaining: remaining |> skip(1), parent_index: parent_index, env: env,
             func_sigs: func_sigs, svc_registry: svc_registry,
-            svc_locals: svc_locals, variant_locals: variant_locals)
+            svc_locals: svc_locals)
       }
   }
 }
@@ -933,7 +915,7 @@ fn node_is_container(n: Node) -> Bool {
 
 // Check if a type-Node represents an optional type.
 fn node_is_optional(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "optional")
+  n.name == "Optional" || n.properties |> any(p => p.name == "optional")
 }
 
 // Check if a type-Node represents a map type.
@@ -1057,7 +1039,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
-    rc_wrapped_types: empty_map()
+    rc_wrapped_types: empty_map(),
+    enum_variant_membership: empty_map(),
+    data_rc_map_names: empty_map()
   }
 }
 
@@ -1681,11 +1665,15 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
         let body_result = infer_expr(expr: arm.body, scope: arm_scope)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let guard_diags = if guard_result != none { guard_result.value.diagnostics } else { [] }
+        let guard_unwrapped = match guard_result {
+          Some { value: gr } => gr
+          None => InferResult { typed: arm.body, diagnostics: [] }
+        }
+        let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
         ArmInferResult {
           typed_arm: MatchArm {
             pattern: arm.pattern,
-            guard: if guard_result != none { Some { value: guard_result.value.typed } } else { none },
+            guard: if guard_result != none { Some { value: guard_unwrapped.typed } } else { none },
             body: body_typed
           },
           diagnostics: concat(pattern_diags, concat(guard_diags, body_diags))
@@ -2084,6 +2072,26 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: body_diags
     }
   }
+  // Zero-arg function: has body, no params, but has return_type annotation.
+  // Must be checked BEFORE data definition to avoid misclassifying `fn foo() -> T { ... }` as data.
+  else if item.body != none && item.params |> count == 0 && item.return_type != none {
+    let fn_scope = scope
+    let body_result = infer_expr(expr: item.body.value, scope: fn_scope)
+    let body_typed = body_result.typed
+    let body_diags = body_result.diagnostics
+    let resolved_ret = item.return_type.value
+    TypedItemResult {
+      item: Node {
+        name: item.name, span: item.span, children: [], params: [],
+        return_type: Some { value: resolved_ret }, uses: [], body: Some { value: body_typed },
+        connective: none, transport: item.transport,
+        properties: item.properties, type_annotation: typed_anno,
+        config: item.config,
+        is_self_recursive: false, has_non_tail_self_call: false
+      },
+      diagnostics: body_diags
+    }
+  }
   // Data definition: has body but no params, has type_annotation
   else if item.body != none && item.params |> count == 0 {
     let val_result = infer_expr(expr: item.body.value, scope: scope)
@@ -2376,7 +2384,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
-  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [Diagnostic { severity: Error, message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span, module_name: module.module.name }] })
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [Diagnostic { severity: Error, message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: Some { value: imp.target_module.value.span }, module_name: Some { value: module.module.name } }] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
@@ -2506,8 +2514,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       diagnostics: [Diagnostic {
         severity: Error,
         message: concat("internal: type resolution exceeded depth 100 for '", n.name, "'"),
-        span: n.span,
-        module_name: module_name
+        span: Some { value: n.span },
+        module_name: Some { value: module_name }
       }]
     }
   }
@@ -2652,8 +2660,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               diagnostics: [Diagnostic {
                 severity: Error,
                 message: concat("unresolved type '", n.name, "'"),
-                span: n.span,
-                module_name: module_name
+                span: Some { value: n.span },
+                module_name: Some { value: module_name }
               }]
             }
           }
@@ -3315,27 +3323,12 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
   } else {
     none
   }
-  let variant_locals = match ritem.connective {
-    Some { value: Disj } =>
-      if is_recursive_type(env: env, name: ritem.name) {
-        ritem.children |> map(child =>
-          TypeBinding {
-            name: child.name,
-            resolved: leaf_node(name: ritem.name)
-          }
-        )
-      } else {
-        []
-      }
-    _ => []
-  }
   ItemContribution {
     resolved_item: ritem,
     resolve_diagnostics: resolved.diagnostics,
     func_sig: func_sig,
     svc_entries: svc_entries,
     svc_local: svc_local,
-    variant_locals: variant_locals,
     item_info: build_item_info(item: ritem)
   }
 }
@@ -3345,7 +3338,6 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
     func_sigs: Map<String, DeclaredFuncSig>,
     svc_registry: Map<String, List<OpEntry>>,
     svc_locals: Map<String, TypeBinding>,
-    variant_locals: Map<String, TypeBinding>,
     item_registry: Map<String, ItemInfo>,
     diag_chunks: List<List<Diagnostic>>) -> LocalContributionState {
   match remaining |> first {
@@ -3355,7 +3347,6 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
         func_sigs: func_sigs,
         svc_registry: svc_registry,
         svc_locals: svc_locals,
-        variant_locals: variant_locals,
         item_registry: item_registry,
         diag_chunks: diag_chunks
       }
@@ -3373,16 +3364,12 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
         Some { value: binding } => map_insert(svc_locals, binding.name, binding)
         None => svc_locals
       }
-      let next_variant_locals = fold(contribution.variant_locals, init: variant_locals, f: (acc, binding) =>
-        map_insert(acc, binding.name, binding)
-      )
       fold_module_contributions(
         remaining: remaining |> skip(1),
         resolved_items: list_push(resolved_items, contribution.resolved_item),
         func_sigs: next_func_sigs,
         svc_registry: next_svc_registry,
         svc_locals: next_svc_locals,
-        variant_locals: next_variant_locals,
         item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
         diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics)
       )
@@ -3414,7 +3401,6 @@ fn build_module_context(contributions: List<ItemContribution>,
     func_sigs: empty_map(),
     svc_registry: empty_map(),
     svc_locals: empty_map(),
-    variant_locals: env_variant_locals,
     item_registry: empty_map(),
     diag_chunks: []
   )
@@ -3424,8 +3410,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     env: env,
     func_sigs: empty_map(),
     svc_registry: local.svc_registry,
-    svc_locals: local.svc_locals,
-    variant_locals: local.variant_locals
+    svc_locals: local.svc_locals
   )
   let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
   let resolve_result = resolve_func_sigs(
@@ -3433,7 +3418,9 @@ fn build_module_context(contributions: List<ItemContribution>,
     items: local.resolved_items,
     module_name: module_name
   )
-  let optional_locals = map_insert(merged_scope.variant_locals, "Some", TypeBinding {
+  // Variant locals come from env_variant_locals (computed once from env.bindings,
+  // which already includes all local + imported disjunction types).
+  let optional_locals = map_insert(env_variant_locals, "Some", TypeBinding {
     name: "Some", resolved: leaf_node(name: "Optional")
   })
   let optional_locals = map_insert(optional_locals, "None", TypeBinding {
@@ -3483,6 +3470,13 @@ type TypecheckModuleResult {
 
 type ResolveFuncSigsResult {
   func_env: ResolvedFuncEnv
+  diagnostics: List<Diagnostic>
+}
+
+// Accumulator for single-pass fold over function signatures:
+// collects resolved signatures and diagnostics together.
+type SigsAccum {
+  signatures: Map<String, ResolvedFuncSig>
   diagnostics: List<Diagnostic>
 }
 
@@ -3645,66 +3639,48 @@ fn topo_resolve_loop(
 
   if ready |> count == 0 {
     // Stuck -- remaining functions form cycles. All must have annotations.
-    let cycle_resolved = fold(remaining, init: resolved, f: (acc, fn_name) =>
+    let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
       match map_get(declared_sigs, fn_name) {
         Some { value: dsig } =>
           if dsig.return_type != none {
-            map_insert(acc, fn_name, declared_to_resolved(dsig: dsig))
-          } else { acc }
-        None => acc
-      }
-    )
-    let cycle_diags = remaining |> flat_map(fn_name =>
-      match map_get(declared_sigs, fn_name) {
-        Some { value: dsig } =>
-          if dsig.return_type == none {
-            [Diagnostic {
+            SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
+          } else {
+            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
               severity: Error,
               message: concat("recursive function '", fn_name, "' requires return type annotation"),
               span: none,
-              module_name: module_name
-            }]
-          } else { [] }
-        None => []
+              module_name: Some { value: module_name }
+            }) }
+          }
+        None => acc
       }
     )
     // Terminate with cycle results
-    let all_resolved = fold(map_values(declared_sigs), init: cycle_resolved, f: (acc, dsig) =>
+    let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
       if dsig.return_type != none {
         map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
       } else { acc }
     )
     return ResolveFuncSigsResult {
       func_env: ResolvedFuncEnv { signatures: all_resolved },
-      diagnostics: concat(diagnostics, cycle_diags)
+      diagnostics: concat(diagnostics, cycle_accum.diagnostics)
     }
   }
 
-  // Resolve ready functions
-  let next_resolved = fold(ready, init: resolved, f: (acc, fn_name) =>
+  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
+  let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>
         if dsig.return_type != none {
-          map_insert(acc, fn_name, declared_to_resolved(dsig: dsig))
+          SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
         } else {
-          // Unannotated non-recursive: require annotation for now.
-          // Inference from body can be added when needed.
-          acc
-        }
-      None => acc
-    }
-  )
-  let next_diags = fold(ready, init: diagnostics, f: (acc, fn_name) =>
-    match map_get(declared_sigs, fn_name) {
-      Some { value: dsig } =>
-        if dsig.return_type == none {
-          list_push(acc, Diagnostic {
+          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
             severity: Error,
             message: concat("function '", fn_name, "' requires return type annotation"),
             span: none,
-            module_name: module_name
-          })
-        } else { acc }
+            module_name: Some { value: module_name }
+          }) }
+        }
       None => acc
     }
   )
@@ -3715,12 +3691,12 @@ fn topo_resolve_loop(
 
   topo_resolve_loop(
     remaining: next_remaining,
-    resolved: next_resolved,
+    resolved: ready_accum.signatures,
     declared_sigs: declared_sigs,
     call_edges: call_edges,
     local_func_set: local_func_set,
     module_name: module_name,
-    diagnostics: next_diags
+    diagnostics: ready_accum.diagnostics
   )
 }
 
@@ -3841,6 +3817,14 @@ type BindingResult {
   diagnostics: List<Diagnostic>
 }
 
+// Accumulator for single-pass fold over type bindings:
+// collects resolved bindings and diagnostics together,
+// eliminating duplicate resolve_node calls.
+type BindingsAccum {
+  bindings: Map<String, TypeBinding>
+  diagnostics: List<Diagnostic>
+}
+
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
   // Resolve local types in topological (dependency) order. Each type is
   // resolved exactly once, with all its dependencies already resolved in
@@ -3883,46 +3867,35 @@ fn topo_resolve_types(
   if ready |> count == 0 {
     // Stuck -- remaining types form undetected cycles or have missing deps.
     // Resolve each as-is against current env to collect diagnostics.
-    // Bare map accumulator avoids O(N^2) struct-field cloning.
-    let stuck_bindings = fold(remaining, init: env.bindings, f: (acc, name) =>
+    // Single fold calls resolve_node once per name, collecting both bindings and diagnostics.
+    let stuck_accum = fold(remaining, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
       match map_get(env.bindings, name) {
         Some { value: binding } =>
           let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
-          map_insert(acc, name, TypeBinding { name: name, resolved: result.resolved })
+          BindingsAccum {
+            bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
+            diagnostics: concat(acc.diagnostics, result.diagnostics)
+          }
         None => acc
       }
     )
-    let stuck_diags = flat_map(remaining, name =>
-      match map_get(env.bindings, name) {
-        Some { value: binding } =>
-          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
-          result.diagnostics
-        None => []
-      }
-    )
     return EnvResolveResult {
-      env: TypeEnv { bindings: stuck_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
-      diagnostics: concat(diagnostics, stuck_diags)
+      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
+      diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
 
-  // Resolve ready types against current env -- ready types' deps are all resolved
-  // in prior topo iterations, so they don't depend on each other.
-  // Bare map accumulator avoids O(N^2) struct-field cloning.
-  let next_bindings = fold(ready, init: env.bindings, f: (acc, name) =>
+  // Resolve ready types against current env -- single pass calls resolve_node
+  // once per name, collecting both updated bindings and diagnostics.
+  let ready_accum = fold(ready, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
     match map_get(env.bindings, name) {
       Some { value: binding } =>
         let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
-        map_insert(acc, name, TypeBinding { name: name, resolved: result.resolved })
+        BindingsAccum {
+          bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
+          diagnostics: concat(acc.diagnostics, result.diagnostics)
+        }
       None => acc
-    }
-  )
-  let next_diags = flat_map(ready, name =>
-    match map_get(env.bindings, name) {
-      Some { value: binding } =>
-        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
-        result.diagnostics
-      None => []
     }
   )
 
@@ -3932,9 +3905,9 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { bindings: next_bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
+    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
     module_name: module_name,
-    diagnostics: concat(diagnostics, next_diags),
+    diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,
     deps_map: deps_map
   )
@@ -3960,8 +3933,8 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
       None => [Diagnostic {
         severity: Error,
         message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"),
-        span: imp.target_module.value.span,
-        module_name: resolved.module.name
+        span: Some { value: imp.target_module.value.span },
+        module_name: Some { value: resolved.module.name }
       }]
     }
   )
@@ -3984,10 +3957,19 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
       } else {
         state.rc_wrapped_types
       }
+      // Build enum_variant_membership: "EnumName|VariantName" -> true
+      let next_evm = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.enum_variant_membership, f: (acc, child) =>
+            map_insert(acc, concat(summary.name, "|", child.name), true)
+          )
+        _ => state.enum_variant_membership
+      }
       EmitInfoBuildState {
         type_summaries: next_summaries,
         variant_to_enum: next_variants,
-        rc_wrapped_types: next_rc_types
+        rc_wrapped_types: next_rc_types,
+        enum_variant_membership: next_evm
       }
     None => state
   }
@@ -3997,17 +3979,44 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
-    rc_wrapped_types: empty_map()
+    rc_wrapped_types: empty_map(),
+    enum_variant_membership: empty_map()
   }
   let built = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
       add_emit_item_summary(state: inner_state, item: item)
     )
   )
+  // R8: Detect data declarations with Map<K, V> type where V is Rc-wrapped.
+  // These statics store bare V (Rc not Sync), so lookup results need .map(Rc::new).
+  let data_rc = modules |> fold(init: empty_map(), f: (acc, typed_module) =>
+    typed_module.items |> fold(init: acc, f: (inner_acc, item) =>
+      let kind = item_kind(item: item)
+      match kind {
+        DataItem =>
+          match item.type_annotation {
+            Some { value: ta } =>
+              if ta.name == "Map" && ta.children |> count == 2 {
+                match ta.children |> skip(1) |> first {
+                  Some { value: val_type } =>
+                    if emit_map_has(m: built.rc_wrapped_types, key: val_type.name) {
+                      map_insert(inner_acc, item.name, true)
+                    } else { inner_acc }
+                  None => inner_acc
+                }
+              } else { inner_acc }
+            None => inner_acc
+          }
+        _ => inner_acc
+      }
+    )
+  )
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     variant_to_enum: built.variant_to_enum,
-    rc_wrapped_types: built.rc_wrapped_types
+    rc_wrapped_types: built.rc_wrapped_types,
+    enum_variant_membership: built.enum_variant_membership,
+    data_rc_map_names: data_rc
   }
 }
 

@@ -1908,8 +1908,8 @@ fn foo(item: String) -> String {
             "emit_rust.dag should contain emit_typed_for_each function"
         );
         assert!(
-            source.contains("into_iter"),
-            "emit_rust.dag should emit .into_iter().map() for for-loops"
+            source.contains("iter().cloned()"),
+            "emit_rust.dag should emit .iter().cloned() for for-loops"
         );
     }
 
@@ -3883,6 +3883,108 @@ fn example(items: List<String>) -> Int {
 
         let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
         daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // A5: Bootstrap stage 0 → 1
+    //
+    // Build the v2-stage0 binary (v1-emitted), use it to compile v2 .dag
+    // sources from disk, then cargo check the stage1 output.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// A5 bootstrap test: build stage0 binary, run it to compile v2 .dag
+    /// sources, then cargo check the stage1 output.
+    #[test]
+    #[ignore] // Expensive: builds binary + runs full compile + cargo check
+    fn v2_bootstrap_stage0_to_stage1() {
+        // 1. Assemble and build stage0
+        let stage0_dir = assemble_v2_crate_to_dir("v2-bootstrap-stage0");
+
+        let build_output = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to build stage0");
+
+        let build_stderr = String::from_utf8_lossy(&build_output.stderr);
+        assert!(
+            build_output.status.success(),
+            "stage0 build failed:\n{}",
+            build_stderr
+        );
+
+        // 2. Prepare source directory with all needed .dag files
+        let sources_dir = std::env::temp_dir().join("v2-bootstrap-sources");
+        let _ = std::fs::remove_dir_all(&sources_dir);
+        std::fs::create_dir_all(&sources_dir).unwrap();
+
+        // Copy v2 compiler .dag files
+        let ws = workspace_root();
+        for entry in std::fs::read_dir(ws.join("src/v2")).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                std::fs::copy(&path, sources_dir.join(entry.file_name())).unwrap();
+            }
+        }
+        // Copy transitive dependency: dsl/std/types.dag
+        std::fs::copy(ws.join("dsl/std/types.dag"), sources_dir.join("types.dag")).unwrap();
+
+        // 3. Run stage0 compile
+        let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
+        let _ = std::fs::remove_dir_all(&stage1_dir);
+
+        let stage0_bin = stage0_dir.join("target/release/v2-compiler");
+        let compile_output = std::process::Command::new(&stage0_bin)
+            .arg("compile")
+            .arg("--source-dir")
+            .arg(&sources_dir)
+            .arg("--output-dir")
+            .arg(&stage1_dir)
+            .output()
+            .expect("failed to run stage0 compile");
+
+        let compile_stderr = String::from_utf8_lossy(&compile_output.stderr);
+        eprintln!("stage0 compile output:\n{}", compile_stderr);
+
+        assert!(
+            compile_output.status.success(),
+            "stage0 compile failed:\n{}",
+            compile_stderr
+        );
+
+        // 4. Verify stage1 output exists
+        let stage1_cargo = stage1_dir.join("Cargo.toml");
+        assert!(
+            stage1_cargo.exists(),
+            "stage1 Cargo.toml not found at {:?}",
+            stage1_cargo
+        );
+
+        // 5. cargo check on stage1 output
+        let check_output = std::process::Command::new("cargo")
+            .arg("check")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage1_dir)
+            .output()
+            .expect("failed to run cargo check on stage1");
+
+        let check_stderr = String::from_utf8_lossy(&check_output.stderr);
+        if !check_output.status.success() {
+            panic!(
+                "stage1 cargo check failed (output at {:?}):\n{}",
+                stage1_dir, check_stderr
+            );
+        }
+
+        eprintln!("A5 bootstrap: stage0 → stage1 → cargo check PASSED");
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&stage0_dir);
+        let _ = std::fs::remove_dir_all(&sources_dir);
+        let _ = std::fs::remove_dir_all(&stage1_dir);
     }
 
     // ═════════════════════════════════════════════════════════════════════
