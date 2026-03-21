@@ -38,27 +38,22 @@ should always be able to see through the name to the structure underneath.
 
 ### What's next
 
-**Drive strict diagnostics to 0, retire lenient path, then P1b.**
+**Node convergence complete. Next: Track D (ownership proofs) and Track E (runtime).**
 
-The self-hosting chain is proven (A5+A6). The remaining critical path is:
-1. Drive strict pipeline diagnostics from 25 → 0 (downgrade known inference
-   gaps to warnings)
-2. Retire `compile_sources_lenient` (B3 Ph2a Contract 4)
-3. P1b: EmitGraph normalization (permanent architecture for ownership decisions)
-4. B3 Ph2b: Expr → Node dissolution
-5. B4: Transport dissolution
-6. A7 full: v1 retirement
-7. Track C: Language emission as extdeps
+The critical path through self-hosting and structural convergence is done:
+- Strict diagnostics retired (25 inference warnings remain, all non-blocking)
+- Lenient path deleted
+- P1b EmitGraph normalization landed
+- B3 Ph2b Expr→Node dissolution complete (Expr type deleted, ExprData on Node)
+- B4 Transport dissolution complete (TransportBinding/AuthConfig/HeaderDef/EnvDef deleted)
+- A7 v1 retirement done (bootstrap gated behind feature flag)
+- Track C language extdeps done (emit data in extdeps, --target flag)
 
-**Reconcile improvements (2797 → 25 diagnostics):**
-- Dynamic type permissiveness (like TypeScript `any`)
-- Error sentinel permissiveness (cascade suppression)
-- Built-in function recognition (parse_int, scan_while, lookup, etc.)
-- Zero-arg function inclusion in func_env
-- Data declarations in scope
-- Fold return type: Dynamic instead of Unit
-- Optional variant pattern matching
-- Variant constructor fallback in RecordLit
+Remaining work is structural improvement, not critical path:
+1. Track D: Static ownership proofs (eliminate try_unwrap fallbacks)
+2. Track E: Runtime/execution layer
+3. Remaining type dissolution (Token, Module, Diagnostic etc. → .dag definitions)
+4. B3 Ph2a Contract 2 (SCC-aware return type resolution)
 
 ```bash
 # Verify current state:
@@ -81,11 +76,10 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 
 ### Critical path
 
-**Critical path summary:** A1 (done) → R9 (done) → B3 Ph1 (done) →
-A4 (done, 0 errors) → P0 (done) → P1a (done) → Wave 1 (done) →
-A5 (done) → A6 (done, fixed point) → A7 Ph1 (done) →
-**strict diagnostics → 0** → **retire lenient** → **P1b** →
-**B3 Ph2b** → **B4** → **A7 full** → **Track C**
+**Critical path summary (ALL DONE):** A1 → R9 → B3 Ph1 → A4 (0 errors) →
+P0 → P1a → Wave 1 → A5 → A6 (fixed point) → A7 Ph1 → strict diag →
+retire lenient → P1b → B3 Ph2b (Expr→Node) → B4 (Transport) → A7 full →
+Track C (language extdeps)
 
 ### Completed milestones
 
@@ -98,20 +92,15 @@ A5 (done) → A6 (done, fixed point) → A7 Ph1 (done) →
 - Wave 1: All lanes (A-F) merged
 - B3 Ph2a Contracts 1+3: FuncSig split + ResolvedGraph boundary
 
-### Remaining actions
+### Completed actions (formerly "remaining")
 
-1. **Strict diagnostics 25 → 0** — downgrade remaining inference gaps
-   (enumerate, fold, chained returns) to warnings. Strict path gates on
-   Error-severity only.
-2. **Retire lenient path (B3 Ph2a Contract 4)** — delete
-   `compile_sources_lenient`, bootstrap on strict path, re-verify fixed point.
-3. **P1b (v2 normalize stage)** — new `04a_normalize.dag`. EmitGraph with
-   edge classification, consumer counts, value shape. Target-agnostic.
-4. **B3 Ph2b (Expr → Node dissolution)** — ~250 function refactor, delete
-   Expr type from `00_core.dag`.
-5. **B4 (Transport dissolution)** — TransportBinding → composed Nodes.
-6. **A7 full (v1 retirement)** — remove v1 from dependency chain.
-7. **Track C (C3+C4)** — language extdeps, `--target` CLI flag.
+1. **Strict diagnostics** — DONE (25 inference warnings, no errors)
+2. **Retire lenient path** — DONE (`compile_sources_lenient` deleted)
+3. **P1b EmitGraph** — DONE (`04a_normalize.dag` wired into pipeline)
+4. **B3 Ph2b Expr→Node** — DONE (Expr deleted, ExprData on Node, 92 tests pass)
+5. **B4 Transport** — DONE (TransportBinding/AuthConfig/HeaderDef/EnvDef deleted)
+6. **A7 full v1 retirement** — DONE (bootstrap gated behind feature flag)
+7. **Track C (C3+C4)** — DONE (emit data in extdeps, --target flag)
 
 ### Completed parallel lanes (2026-03-19)
 
@@ -127,13 +116,11 @@ All five A4 prep lanes implemented and merged:
 
 ### Explicit deferrals
 
-- full B3 Phase 2b Expr→Node pattern conversion — after Phase 2a + P1b
-- B4 transport dissolution — after B3 Ph2b
-- C3/C4 emitter architecture work — after A7 full
 - Result<T,E> — deferred to general generic syntax (post-A7)
-- Track D (D2-D4) — post-A7
-- Track E (E1-E4) — after B4/C3
+- Track D (D2-D4) — ready (P1b landed)
+- Track E (E1-E4) — ready (B4 and C3 done)
 - Track F (F2-F4) — F2 at A7, F3/F4 post-A7
+- B3 Ph2a Contract 2 (SCC-aware return types) — not yet blocking
 
 ---
 
@@ -514,11 +501,9 @@ Practical implication:
 
 ## Track A: Self-Hosting
 
-**Dependencies:** R8 (done) → A1 (done) → R9 (done) → B3 Ph1 (done) →
-A4 (done, 0 errors) → P0 (done) → P1a (done) → Wave 1 (done) →
-A5 (done) → A6 (done, fixed point) → A7 Ph1 (done) →
-**strict diag → 0** → **retire lenient** → **P1b** → **B3 Ph2b** →
-**B4** → **A7 full**
+**Dependencies (ALL DONE):** R8 → A1 → R9 → B3 Ph1 → A4 (0 errors) →
+P0 → P1a → Wave 1 → A5 → A6 (fixed point) → A7 Ph1 → strict diag →
+retire lenient → P1b → B3 Ph2b → B4 → A7 full → Track C
 
 ### A1: Gist compilation
 
@@ -1165,15 +1150,15 @@ A5 bootstrap and A6 fixed point are both proven.
 
 #### Wave 4 — remaining critical path
 
-| Step | Item | Scope | Gate |
-|------|------|-------|------|
-| 1 | Strict diagnostics 25→0 | `04_reconcile.dag` | Ratchet at 0 errors |
-| 2 | Retire lenient path | `06_pipeline.dag` | Lenient deleted, fixed point on strict |
-| 3 | P1b EmitGraph | `04a_normalize.dag` (new) | Target-agnostic EmitGraph |
-| 4 | B3 Ph2b Expr→Node | `00_core.dag`, reconcile, emit | Expr deleted |
-| 5 | B4 Transport dissolution | core, reconcile, emit | TransportBinding deleted |
-| 6 | A7 full v1 retirement | workspace manifests | v1 removed |
-| 7 | Track C language extdeps | emitters, extdeps | New target = new extdep |
+| Step | Item | Scope | Gate | Status |
+|------|------|-------|------|--------|
+| 1 | Strict diagnostics 25→0 | `04_reconcile.dag` | Ratchet at 0 errors | **DONE** |
+| 2 | Retire lenient path | `06_pipeline.dag` | Lenient deleted, fixed point on strict | **DONE** |
+| 3 | P1b EmitGraph | `04a_normalize.dag` (new) | Target-agnostic EmitGraph | **DONE** |
+| 4 | B3 Ph2b Expr→Node | `00_core.dag`, reconcile, emit | Expr deleted | **DONE** |
+| 5 | B4 Transport dissolution | core, reconcile, emit | TransportBinding deleted | **DONE** |
+| 6 | A7 full v1 retirement | workspace manifests | v1 removed | **DONE** |
+| 7 | Track C language extdeps | emitters, extdeps | New target = new extdep | **DONE** |
 
 #### R9 cleanup (parallel with any wave)
 
@@ -1338,17 +1323,21 @@ Also: batch fix F2 (string-typed field):
 - [x] `compile_sources_lenient()` deleted, bootstrap uses strict path (Contract 4)
 - [x] 460+ tests pass, generated crate compiles clean
 
-**Acceptance (Phase 2b — full convergence, after 2a verified):**
-- [ ] `Expr` type deleted from `00_core.dag`
+**Acceptance (Phase 2b — full convergence, after 2a verified): ALL MET**
+- [x] `Expr` type deleted from `00_core.dag` — replaced by `ExprData` discriminator on Node
 - [x] `validate_no_unresolved()` deleted
 - [x] `compile_sources_lenient()` deleted
-- [ ] pipeline shape is `Node → Node → Node → TextFile`
-- [ ] No String-typed fields where a closed enum is appropriate
+- [x] pipeline shape is `Node → Node → Node → TextFile`
+- [ ] No String-typed fields where a closed enum is appropriate (F2 still open)
 
-### B4: Transport dissolution (NEEDS DESIGN DECISION)
+### B4: Transport dissolution (DONE)
 
-`TransportBinding` should dissolve. Transport behavior should come from
-structure rather than a fixed enum.
+`TransportBinding` (4 variants), `AuthConfig`, `HeaderDef`, `EnvDef` deleted.
+Transport is now a Node where `name` = kind ("rest"/"shell"/"file"/"local"),
+`properties` = config as FieldInit entries, `children` = ordered argv (shell only).
+Constructor helpers (`local_transport_node`, `rest_transport_node`, etc.) and
+accessor helpers (`transport_base_url`, `transport_headers`, etc.) added to
+`00_core.dag`. All 7 consumer files updated. 92 tests pass, workspace green.
 
 ---
 
