@@ -47,7 +47,6 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
-import v2.compiler.normalize { EmitGraph }
 import v2.compiler.reconcile {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -150,10 +149,9 @@ fn emit_go_init_block_stmts(remaining: List<Node>, text: List<String>,
 // Entry point -- Go target
 // =========================================================================
 
-fn emit_go(typed: EmitGraph) -> EmitResult {
-  let graph = typed.graph
-  let registry = graph.item_registry
-  let module_files = graph.modules |> map(tm => emit_go_module(typed_module: tm, registry: registry))
+fn emit_go(typed: ResolvedGraph) -> EmitResult {
+  let registry = typed.item_registry
+  let module_files = typed.modules |> map(tm => emit_go_module(typed_module: tm, registry: registry))
   let go_mod = emit_go_mod(module_name: "generated")
   let files = concat([go_mod], module_files)
   EmitResult { files: files, diagnostics: [] }

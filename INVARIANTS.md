@@ -132,11 +132,11 @@ String, inline vs stacker. That was cleaner than ad hoc guesses, but in
 practice it still risked becoming a heuristic matrix: pick a bucket,
 then let the backend widen to a fallback-shaped implementation. The
 stronger version kept only direct behavioral facts plus forcing
-witnesses: consumed/read/threaded/projected edges, semantic consumer
-count, escape/materialization, loop invariance, value shape. "Shared"
-needs the specific extra consume site. "Materialized" needs the
-specific escape. If no witness exists, the compiler has lost structure
-and should be fixed upstream instead of widening by default.
+witnesses: consumed/read/projected edges, semantic consumer count,
+escape/materialization, loop invariance, value shape. "Shared" needs
+the specific extra consume site. "Materialized" needs the specific
+escape. If no witness exists, the compiler has lost structure and
+should be fixed upstream instead of widening by default.
 
 ### No parallel implementations
 

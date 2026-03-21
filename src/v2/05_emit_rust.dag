@@ -40,8 +40,6 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
-import v2.compiler.normalize { EmitGraph }
-
 import extdeps.languages.rust.emit {
   rust_reserved, rt_functions, rt_ref_map_functions
 }
@@ -191,21 +189,20 @@ fn is_simple_disj(item: Node) -> Bool {
 // Entry point -- Rust target
 // =========================================================================
 
-fn emit_rust(typed: EmitGraph) -> EmitResult {
-  let graph = typed.graph
-  let emit_info = graph.emit_info
+fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+  let emit_info = typed.emit_info
   let vtoe = emit_info.variant_to_enum
   let rc_types = emit_info.rc_wrapped_types
-  let registry = graph.item_registry
-  let module_files = graph.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types))
-  let test_files = graph.modules
+  let registry = typed.item_registry
+  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types))
+  let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
     |> filter(f => f.content != "")
-  let has_services = has_service_items(typed: graph)
-  let workflow_funcs = collect_workflow_funcs(modules: graph.modules, registry: registry)
-  let lib_file = emit_lib_rs(modules: graph.modules, has_services: has_services)
+  let has_services = has_service_items(typed: typed)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
+  let lib_file = emit_lib_rs(modules: typed.modules, has_services: has_services)
   let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_services)
-  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: graph.modules, has_services: has_services)
+  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services)
   let rt_file = emit_v2_rt_module()
   let dry_run_file = if has_services {
     [emit_dry_run_module()]
