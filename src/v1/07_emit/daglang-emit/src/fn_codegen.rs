@@ -737,26 +737,22 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
             count_ident_uses_expr(scrutinee, counts, weight);
             // SG-9: Match arms are exclusive — a variable used once per arm
             // is consumed only once at runtime. Use max across arms, not sum.
-            let mut arm_counts: Vec<HashMap<String, usize>> = Vec::new();
+            let mut max_in_arms = HashMap::new();
             for arm in arms {
                 let mut arm_map = HashMap::new();
                 if let Some(guard) = &arm.guard {
                     count_ident_uses_expr(guard, &mut arm_map, weight);
                 }
                 count_ident_uses_expr(&arm.body, &mut arm_map, weight);
-                arm_counts.push(arm_map);
-            }
-            for arm_map in &arm_counts {
-                for (name, &_arm_count) in arm_map {
-                    let current = counts.get(name).copied().unwrap_or(0);
-                    let max_in_arms = arm_counts
-                        .iter()
-                        .map(|m| m.get(name).copied().unwrap_or(0))
-                        .max()
-                        .unwrap_or(0);
-                    // Only add the max (not sum) since arms are exclusive
-                    counts.insert(name.clone(), current.max(max_in_arms));
+                for (name, arm_count) in arm_map {
+                    let max_count = max_in_arms.entry(name).or_insert(0);
+                    *max_count = (*max_count).max(arm_count);
                 }
+            }
+            for (name, arm_max) in max_in_arms {
+                let current = counts.get(&name).copied().unwrap_or(0);
+                // Only add the max (not sum) since arms are exclusive.
+                counts.insert(name, current.max(arm_max));
             }
         }
         ast::Expr::If(cond, then_expr, else_expr) => {
@@ -7384,6 +7380,33 @@ mod tests {
             }
             other => panic!("expected Match, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn count_ident_uses_takes_max_across_match_arms() {
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Match(
+                Box::new(Expr::Ident("scrutinee".into())),
+                vec![
+                    MatchArm {
+                        pattern: Pattern::Literal(Literal::Int(0)),
+                        guard: Some(Expr::Ident("guard".into())),
+                        body: Expr::Ident("shared".into()),
+                    },
+                    MatchArm {
+                        pattern: Pattern::Wildcard,
+                        guard: None,
+                        body: Expr::List(vec![Expr::Ident("shared".into()), Expr::Ident("shared".into())]),
+                    },
+                ],
+            ))],
+        };
+
+        let counts = count_ident_uses(&body.stmts);
+
+        assert_eq!(counts.get("scrutinee"), Some(&1));
+        assert_eq!(counts.get("guard"), Some(&1));
+        assert_eq!(counts.get("shared"), Some(&2));
     }
 
     #[test]
