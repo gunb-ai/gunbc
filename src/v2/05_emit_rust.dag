@@ -35,6 +35,11 @@ import v2.std.core {
 }
 
 import v2.compiler.normalize { EmitGraph }
+
+import extdeps.languages.rust.emit {
+  rust_reserved, rt_functions, rt_ref_map_functions
+}
+
 import v2.compiler.reconcile {
   ResolvedGraph, TypedModule,
   EmitGraphInfo,
@@ -94,48 +99,8 @@ fn emit_single_field_product_rust_type(field_node: Node, rc_types: Map<String, B
   }
 }
 
-// =========================================================================
-// Rust language facts -- from std.languages spec (rust_language, rust_literals)
-//
-// These data declarations mirror dsl/std/languages.dag exactly.
-// =========================================================================
-
-// Rust reserved words -- Ref: Rust Reference, Keywords
-// Source of truth: std.languages.rust_language.reserved_words
-data rust_reserved: List<String> = [
-  "as", "async", "await", "break", "const", "continue", "crate",
-  "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
-  "impl", "in", "let", "loop", "match", "mod", "move", "mut",
-  "pub", "ref", "return", "self", "Self", "static", "struct",
-  "super", "trait", "true", "type", "unsafe", "use", "where",
-  "while", "yield", "abstract", "become", "box", "do", "final",
-  "macro", "override", "priv", "try", "typeof", "unsized",
-  "virtual"
-]
-
-// P1a: Runtime function lookup tables -- replaces per-call string disjunctions.
-data rt_functions: Map<String, Bool> = {
-  "concat": true, "char_at": true, "string_length": true,
-  "substring": true, "string_contains": true, "scan_while": true,
-  "skip_horizontal_ws": true, "scan_to_eol": true, "scan_string_end": true,
-  "code_point": true, "from_code_point": true, "lookup": true,
-  "index_by": true, "empty_map": true, "map_insert": true,
-  "map_merge": true, "list_concat": true, "str_eq": true,
-  "filesystem_read": true, "list_push": true, "map_get": true,
-  "map_keys": true, "map_values": true,
-  "parse_int": true, "map_contains_key": true, "map_has": true
-}
-
-data rt_ref_map_functions: Map<String, Bool> = {
-  "map_get": true, "map_keys": true, "map_values": true,
-  "lookup": true, "map_contains_key": true, "map_has": true
-}
-
-// Rust type_map, keywords, and container_templates now live in
-// rust_lang_facts() in v2.compiler.emit
-
-// rust_keyword and rust_container are now shared as emit_keyword and
-// emit_container -- imported from v2.compiler.emit
+// Rust language facts (rust_reserved, rt_functions, rt_ref_map_functions)
+// imported from extdeps.languages.rust.emit -- single source of truth.
 
 // =========================================================================
 // SG-9: Tail-recursive block statement emitters.

@@ -2710,7 +2710,7 @@ fn compile_intrinsic_call(
     // empty_map() → Rc::new(HashMap::new())
     if name == "empty_map" && args.is_empty() {
         return Some(rc_wrap(code_ir::Expr::RawCode(
-            "std::collections::HashMap::<String, _>::new()".to_string(),
+            "std::collections::HashMap::new()".to_string(),
         )));
     }
 
@@ -6174,6 +6174,21 @@ fn infer_fold_result_ir_type(
                 infer_known_expr_ir_type(arg, ctx)
             }
         }),
+        // map_insert(acc, key, value) → Map<String, typeof(value)>
+        ast::Expr::Call(name, args)
+            if name == "map_insert"
+                && args.len() == 3
+                && matches!(&args[0].1, ast::Expr::Ident(n) if Some(n.as_str()) == acc_param) =>
+        {
+            let value_type = infer_known_expr_ir_type(&args[2].1, ctx)
+                .or_else(|| infer_fold_value_type_from_body(&args[2].1, ctx));
+            value_type.map(|vt| {
+                IrType::Generic(
+                    "Map".to_string(),
+                    vec![IrType::Named("String".to_string()), vt],
+                )
+            })
+        }
         ast::Expr::If(_, then_expr, Some(else_expr)) => {
             let then_ty = infer_fold_result_ir_type(then_expr, acc_param, ctx);
             let else_ty = infer_fold_result_ir_type(else_expr, acc_param, ctx);
@@ -6185,6 +6200,40 @@ fn infer_fold_result_ir_type(
         }
         ast::Expr::Block(stmts) => stmts.last().and_then(|stmt| match stmt {
             ast::Stmt::Expr(expr) => infer_fold_result_ir_type(expr, acc_param, ctx),
+            _ => None,
+        }),
+        _ => infer_known_expr_ir_type(expr, ctx),
+    }
+}
+
+/// Infer the type of a map_insert value expression that `infer_known_expr_ir_type`
+/// can't handle directly (e.g. arithmetic like `current + 1` or list concat).
+fn infer_fold_value_type_from_body(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
+    match expr {
+        ast::Expr::BinOp(_, op, _)
+            if matches!(
+                op,
+                ast::BinOp::Add
+                    | ast::BinOp::Sub
+                    | ast::BinOp::Mul
+                    | ast::BinOp::Div
+                    | ast::BinOp::Mod
+            ) =>
+        {
+            Some(IrType::Int)
+        }
+        ast::Expr::Call(name, args) if name == "concat" && !args.is_empty() => {
+            // concat(list, [elem]) → List<typeof(elem)>
+            args.iter().find_map(|(_, arg)| match arg {
+                ast::Expr::List(items) if !items.is_empty() => {
+                    let elem_type = infer_known_expr_ir_type(&items[0], ctx)?;
+                    Some(IrType::Generic("List".to_string(), vec![elem_type]))
+                }
+                _ => infer_known_expr_ir_type(arg, ctx),
+            })
+        }
+        ast::Expr::Block(stmts) => stmts.last().and_then(|stmt| match stmt {
+            ast::Stmt::Expr(e) => infer_fold_value_type_from_body(e, ctx),
             _ => None,
         }),
         _ => infer_known_expr_ir_type(expr, ctx),

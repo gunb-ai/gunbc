@@ -43,6 +43,18 @@ import v2.compiler.reconcile {
   ItemInfo, UniqueAccum, emit_map_has
 }
 
+import extdeps.languages.rust.emit {
+  rust_type_map, rust_keywords, rust_container_templates
+}
+
+import extdeps.languages.python.emit {
+  python_type_map, python_keywords, python_container_templates
+}
+
+import extdeps.languages.go.emit {
+  go_type_map, go_keywords, go_container_templates
+}
+
 // =========================================================================
 // Emit result -- files plus diagnostic channel for downstream consumers.
 // =========================================================================
@@ -479,59 +491,8 @@ fn apply_type_template2(template: String, arg0: String, arg1: String) -> String 
 // renaming, these should be replaced with imports from the extdeps.
 // =========================================================================
 
-// ---- Rust language data ----
-
-data rust_type_map: Map<String, String> = {
-  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
-}
-
-data rust_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "None",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
-data rust_container_templates: Map<String, String> = {
-  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
-  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
-}
-
-// ---- Python language data ----
-
-data python_type_map: Map<String, String> = {
-  "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
-  "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
-}
-
-data python_keywords: Map<String, String> = {
-  "true": "True", "false": "False", "null": "None",
-  "and": "and", "or": "or", "not": "not ",
-  "div": "//"
-}
-
-data python_container_templates: Map<String, String> = {
-  "list": "list[{0}]", "set": "set[{0}]",
-  "optional": "Optional[{0}]", "map": "dict[{0}, {1}]"
-}
-
-// ---- Go language data ----
-
-data go_type_map: Map<String, String> = {
-  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
-  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
-}
-
-data go_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "nil",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
-data go_container_templates: Map<String, String> = {
-  "list": "[]{0}", "set": "map[{0}]struct{}",
-  "optional": "*{0}", "map": "map[{0}]{1}"
-}
+// Language data (type maps, keywords, container templates) imported from
+// extdeps.languages.{rust,python,go}.emit -- single source of truth.
 
 // =========================================================================
 // Shared leaf functions -- parameterized by language data

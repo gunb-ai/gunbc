@@ -94,6 +94,10 @@ mod tests {
 
         let files = vec![
             root.join("dsl/std/types.dag"),
+            // Language extdeps -- emit-facing data (C3: single source of truth)
+            root.join("dsl/extdeps/languages/rust/emit.dag"),
+            root.join("dsl/extdeps/languages/python/emit.dag"),
+            root.join("dsl/extdeps/languages/go/emit.dag"),
             root.join("src/v2/00_core.dag"),
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
@@ -191,6 +195,9 @@ mod tests {
 
         let files = vec![
             root.join("dsl/std/types.dag"),
+            root.join("dsl/extdeps/languages/rust/emit.dag"),
+            root.join("dsl/extdeps/languages/python/emit.dag"),
+            root.join("dsl/extdeps/languages/go/emit.dag"),
             root.join("src/v2/00_core.dag"),
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
@@ -3419,6 +3426,11 @@ fn example(items: List<String>) -> Int {
             source_dir.join("types.dag"),
         )
         .unwrap();
+        // Copy language extdep emit data (C3)
+        for lang in &["rust", "python", "go"] {
+            let src = root.join(format!("dsl/extdeps/languages/{lang}/emit.dag"));
+            std::fs::copy(&src, source_dir.join(format!("{lang}_emit.dag"))).unwrap();
+        }
 
         // 3. Run stage0 compile
         let out_dir = std::env::temp_dir().join("v2-strict-diag-output");
@@ -3513,6 +3525,10 @@ fn example(items: List<String>) -> Int {
 
     fn assemble_v2_crate_to_dir(dir_name: &str) -> std::path::PathBuf {
         let v2_files = [
+            // Language extdeps (C3: single source of truth for language data)
+            ("rust_emit", "dsl/extdeps/languages/rust/emit.dag"),
+            ("python_emit", "dsl/extdeps/languages/python/emit.dag"),
+            ("go_emit", "dsl/extdeps/languages/go/emit.dag"),
             ("00_core", "src/v2/00_core.dag"),
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
@@ -3545,6 +3561,32 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&tmp_dir);
         daglang_emit::v2_crate_emit::write_crate(&tmp_dir, &files).expect("failed to write crate");
         tmp_dir
+    }
+
+    /// Smoke test: assemble stage0 crate and cargo check it.
+    #[test]
+    #[ignore] // Requires cargo toolchain
+    fn v2_stage0_cargo_check() {
+        let stage0_dir = assemble_v2_crate_to_dir("v2-stage0-check");
+        let output = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to run cargo check");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let error_count = stderr.matches("error[").count();
+        eprintln!("stage0 cargo check: {} errors", error_count);
+        if !output.status.success() {
+            eprintln!("{}", stderr);
+        }
+        if output.status.success() {
+            let _ = std::fs::remove_dir_all(&stage0_dir);
+        }
+        assert!(
+            output.status.success(),
+            "stage0 cargo check failed with {error_count} errors (crate at {})",
+            stage0_dir.display()
+        );
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -3594,6 +3636,11 @@ fn example(items: List<String>) -> Int {
         }
         // Copy transitive dependency: dsl/std/types.dag
         std::fs::copy(ws.join("dsl/std/types.dag"), sources_dir.join("types.dag")).unwrap();
+        // Copy language extdep emit data (C3)
+        for lang in &["rust", "python", "go"] {
+            let src = ws.join(format!("dsl/extdeps/languages/{lang}/emit.dag"));
+            std::fs::copy(&src, sources_dir.join(format!("{lang}_emit.dag"))).unwrap();
+        }
 
         // 3. Run stage0 compile
         let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
@@ -3716,6 +3763,11 @@ fn example(items: List<String>) -> Int {
             }
         }
         std::fs::copy(ws.join("dsl/std/types.dag"), sources_dir.join("types.dag")).unwrap();
+        // Copy language extdep emit data (C3)
+        for lang in &["rust", "python", "go"] {
+            let src = ws.join(format!("dsl/extdeps/languages/{lang}/emit.dag"));
+            std::fs::copy(&src, sources_dir.join(format!("{lang}_emit.dag"))).unwrap();
+        }
 
         // 3. Stage0 compiles stage1
         let stage1_dir = std::env::temp_dir().join("v2-fixed-point-stage1");

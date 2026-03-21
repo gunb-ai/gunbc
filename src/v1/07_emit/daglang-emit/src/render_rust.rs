@@ -292,7 +292,7 @@ fn render_ir_type(ty: &IrType) -> String {
             let rendered_args: Vec<String> = args.iter().map(render_ir_type).collect();
             match name.as_str() {
                 "List" => format!("Rc<Vec<{}>>", rendered_args.join(", ")),
-                "Map" => format!("std::collections::HashMap<{}>", rendered_args.join(", ")),
+                "Map" => format!("Rc<std::collections::HashMap<{}>>", rendered_args.join(", ")),
                 other => format!("{}<{}>", other, rendered_args.join(", ")),
             }
         }
@@ -330,7 +330,12 @@ fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
             matches!(ir_type, IrType::Generic(n, args) if n == "List"
                 && !args.iter().any(|a| matches!(a, IrType::Unknown)))
         }
-        // Rc::new(vec![]) also needs annotation
+        // HashMap::new() needs annotation when we know the Map type
+        Expr::RawCode(code) if code.contains("HashMap") && code.contains("new()") => {
+            matches!(ir_type, IrType::Generic(n, args) if n == "Map"
+                && !args.iter().any(|a| matches!(a, IrType::Unknown)))
+        }
+        // Rc::new(vec![]) and Rc::new(HashMap::new()) also need annotation
         Expr::Call { func, args, .. }
             if args.len() == 1
                 && matches!(func.as_ref(), Expr::Path(segments) if segments == &["Rc", "new"]) =>
