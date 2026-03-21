@@ -471,6 +471,30 @@ fn kernel_char_at_out_of_bounds_returns_unit() {
 }
 
 #[test]
+fn kernel_char_at_unicode() {
+    // char_at uses character indices, not byte offsets.
+    // "cafe\u{0301}" = c(0), a(1), f(2), e(3), combining-accent(4)
+    let body = call_and_return(
+        "char_at",
+        vec![
+            (
+                Some("s".to_string()),
+                LoweredExpr::Literal(LoweredLiteral::String("cafe\u{0301}".to_string())),
+            ),
+            (
+                Some("pos".to_string()),
+                LoweredExpr::Literal(LoweredLiteral::Int(4)),
+            ),
+        ],
+    );
+    let result = crate::evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+    assert_eq!(
+        result["return"],
+        gunbc_ir::Value::Str("\u{0301}".to_string())
+    );
+}
+
+#[test]
 fn kernel_string_length() {
     let body = call_and_return(
         "string_length",
@@ -578,6 +602,36 @@ fn kernel_substring_empty() {
     );
     let result = crate::evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
     assert_eq!(result["return"], gunbc_ir::Value::Str("".to_string()));
+}
+
+#[test]
+fn kernel_substring_unicode() {
+    // substring uses character indices, not byte offsets.
+    // "cafe\u{0301}test" = c(0) a(1) f(2) e(3) \u{0301}(4) t(5) e(6) s(7) t(8)
+    let body = call_and_return(
+        "substring",
+        vec![
+            (
+                Some("s".to_string()),
+                LoweredExpr::Literal(LoweredLiteral::String(
+                    "cafe\u{0301}test".to_string(),
+                )),
+            ),
+            (
+                Some("start".to_string()),
+                LoweredExpr::Literal(LoweredLiteral::Int(5)),
+            ),
+            (
+                Some("end".to_string()),
+                LoweredExpr::Literal(LoweredLiteral::Int(9)),
+            ),
+        ],
+    );
+    let result = crate::evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+    assert_eq!(
+        result["return"],
+        gunbc_ir::Value::Str("test".to_string())
+    );
 }
 
 #[test]

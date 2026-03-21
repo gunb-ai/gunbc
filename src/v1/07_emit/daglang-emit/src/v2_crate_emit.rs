@@ -330,6 +330,27 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    // Guard: assert no cross-module function name collisions in the flat call graph.
+    // Full module-qualification is deferred; this catches collisions early.
+    {
+        let mut seen: HashMap<String, &str> = HashMap::new();
+        for (dag_stem, sf) in modules {
+            for item in &sf.items {
+                if let Item::FnDef(fd) = &item.node {
+                    let rust_name = type_codegen::to_snake_case(&fd.name);
+                    if let Some(prev) = seen.get(&rust_name) {
+                        panic!(
+                            "function name collision: '{}' defined in both '{}' and '{}'; \
+                             call graph requires unique names across modules",
+                            rust_name, prev, dag_stem
+                        );
+                    }
+                    seen.insert(rust_name, dag_stem);
+                }
+            }
+        }
+    }
+
     // P1a: Compute SCC-based function classification. TCO set starts empty;
     // the classification is conservative (all recursive functions get stacker).
     // After compilation, functions that received TCO could be reclassified,
@@ -745,7 +766,11 @@ fn main() {
 
             eprintln!("compiling {} .dag files from {}", sources.len(), source_dir);
 
-            // Run the pipeline (Rc-wrapped types per v1 emitter R8 convention)
+            // Run the pipeline. Stage0 (this code, v1-emitted) wraps the sources
+            // list in Rc::new() because v1 renders List<T> as Rc<Vec<Rc<T>>>.
+            // Stage1 (v2-emitted) passes bare Vec<Rc<T>> because v2 renders
+            // List<T> without the outer Rc. Each stage is internally consistent
+            // with its own emitter's type representation.
             let result = pipeline::compile_sources_lenient(
                 Rc::new(sources),
                 v2_core::RenderTarget::Rust,

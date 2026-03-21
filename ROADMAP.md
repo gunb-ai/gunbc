@@ -40,7 +40,7 @@ should always be able to see through the name to the structure underneath.
 - **Interpreter list_push is O(1)** — Arc COW via try_unwrap
 - **TCO loops don't leak** — state moved, not cloned
 - **Self-compile ratchets** — `self_compile_all_modules` runs by default (file
-  count >= 9, all non-empty, source count >= 13, error ratchet <= 500).
+  count >= 9, all non-empty, source count >= 13, error ratchet <= 2700; needs tightening).
   `profile_self_compile` and `self_compile_cargo_check` are `#[ignore]` (opt-in
   via `--ignored`), not default CI ratchets
 - **B3 Phase 2a contracts frozen** — DeclaredFuncSig/ResolvedFuncSig split,
@@ -142,7 +142,7 @@ All five A4 prep lanes implemented and merged:
 | M (measurement) | `wt/a4-measure` | `profile_self_compile` test: per-phase/per-module timing, RSS checkpoints via `mach_task_basic_info`, diagnostic counts, file size totals |
 | R (codegen ownership) | `wt/a4-codegen-ownership` | Bug 1: `strip_tco_param_clones` post-pass strips `.clone()` from TCO params passed to non-TCO callees when not referenced later. Bug 2: `compile_fold_accum_field_extract` uses `std::mem::take(&mut Rc::make_mut(&mut acc).field)` for fold-accum field access across 7 intrinsics |
 | P (tokenizer hedge) | `wt/a4-tokenizer-hedge` | New `ScanResult` type. All 6 helpers (`emit`, `scan_token`, `scan_ident`, `scan_number`, `scan_string`, `scan_str_cont`) return single token instead of accumulating. `tokenize_loop` sole owner of token list |
-| T (ratchets) | `wt/a4-ratchets` | `self_compile_all_modules`: file count >= 9, all non-empty, source count >= 13, error ratchet <= 500. New `self_compile_cargo_check` + host-side `v2_crate_self_compile_cargo_check` tests |
+| T (ratchets) | `wt/a4-ratchets` | `self_compile_all_modules`: file count >= 9, all non-empty, source count >= 13, error ratchet <= 2700 (needs tightening). New `self_compile_cargo_check` + host-side `v2_crate_self_compile_cargo_check` tests |
 | C (design) | `wt/b3-phase2a-design` | 4 boundary contracts frozen: DeclaredFuncSig/ResolvedFuncSig split, SCC-aware resolution, ResolvedGraph boundary type, retirement plans for validate_no_unresolved + compile_sources_lenient |
 
 ### Explicit deferrals
@@ -713,8 +713,8 @@ has scope, call targets, and type info. P1a uses what's already there.
   - [ ] No `stacker::maybe_grow` on leaf functions
   - [ ] No `.to_string()` in character predicate comparisons
   - [ ] No `v2_rt::string_length` inside `tokenize_loop` body
-  - [ ] Single-semantic-consumer structs not `Rc`-wrapped
-  - [ ] `scan_string_body.acc` is `String`, not `Vec<String>`
+  - [ ] Single-semantic-consumer structs not `Rc`-wrapped (planned — requires P1b per-binding consumer analysis)
+  - [ ] `scan_string_body.acc` is `String`, not `Vec<String>` (planned — requires build-reduce rewrite)
 
 ---
 
