@@ -139,6 +139,50 @@ type ResourceUse {
   span: SourceSpan
 }
 
+type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap
+
+type FieldValueShape = PlainValue | OptionalValue
+
+type FieldSummary {
+  access_style: FieldAccessStyle
+  value_shape: FieldValueShape
+}
+
+type IntrinsicMethod
+  = MethodCount
+  | MethodJoin
+  | MethodSplit
+  | MethodLast
+  | MethodFirst
+  | MethodEnumerate
+  | MethodChars
+  | MethodStringContains
+  | MethodConcat
+  | MethodMap
+  | MethodFilter
+  | MethodAny
+  | MethodAll
+  | MethodFlatMap
+  | MethodSkip
+  | MethodFold
+  | MethodSortBy
+  | MethodAppend
+
+type VarBindingKind
+  = LocalValueBinding
+  | FunctionValueBinding
+  | VariantValueBinding { parent_enum: String }
+
+type CallSemantics
+  = PlainCallSemantics
+  | LookupCallSemantics { needs_rc_wrap: Bool }
+
+type MethodSemantics
+  = PlainMethodSemantics
+  | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node?, wrap_result_in_rc: Bool }
+  | RuntimeBridgeSemantics { function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool }
+  | ServiceMethodSemantics { service_name: String }
+
 // =========================================================================
 // Expressions
 // =========================================================================
@@ -150,10 +194,10 @@ type ResourceUse {
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
-  | ExprVar { name: String }
-  | ExprFieldAccess { base: Node, field: String }
-  | ExprCall { func: String, args: List<NamedArg> }
-  | ExprMethodCall { receiver: Node, method: String, args: List<NamedArg> }
+  | ExprVar { name: String, binding_kind: VarBindingKind? }
+  | ExprFieldAccess { base: Node, field: String, summary: FieldSummary? }
+  | ExprCall { func: String, args: List<NamedArg>, call_semantics: CallSemantics? }
+  | ExprMethodCall { receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics? }
   | ExprMatch { scrutinee: Node, arms: List<MatchArm> }
   | ExprIf { condition: Node, then_branch: Node, else_branch: Node? }
   | ExprLet { name: String, value: Node, body: Node? }
@@ -445,14 +489,14 @@ fn transport_env(t: Node) -> List<FieldInit> {
 
 fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: a } =>
+    ExprCall { func: f, args: a, call_semantics: _ } =>
       if f == fn_name { true }
       else { a |> any(na => expr_has_self_call(texpr: na.value, fn_name: fn_name)) }
-    ExprVar { name: _ } => false
+    ExprVar { name: _, binding_kind: _ } => false
     ExprLiteral { value: _ } => false
-    ExprFieldAccess { base: b, field: _ } =>
+    ExprFieldAccess { base: b, field: _, summary: _ } =>
       expr_has_self_call(texpr: b, fn_name: fn_name)
-    ExprMethodCall { receiver: r, method: _, args: a } =>
+    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
       expr_has_self_call(texpr: r, fn_name: fn_name)
         || a |> any(na => expr_has_self_call(texpr: na.value, fn_name: fn_name))
     ExprMatch { scrutinee: s, arms: arm_list } =>
@@ -509,18 +553,18 @@ fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: a } =>
+    ExprCall { func: f, args: a, call_semantics: _ } =>
       if f == fn_name {
         if in_tail == false { true }
         else { a |> any(na => expr_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false)) }
       } else {
         a |> any(na => expr_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
       }
-    ExprVar { name: _ } => false
+    ExprVar { name: _, binding_kind: _ } => false
     ExprLiteral { value: _ } => false
-    ExprFieldAccess { base: b, field: _ } =>
+    ExprFieldAccess { base: b, field: _, summary: _ } =>
       expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-    ExprMethodCall { receiver: r, method: _, args: a } =>
+    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
       expr_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
         || a |> any(na => expr_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
     ExprIf { condition: c, then_branch: t, else_branch: e } =>

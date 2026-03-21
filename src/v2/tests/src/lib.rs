@@ -570,6 +570,13 @@ mod tests {
         }
     }
 
+    fn emitted_file_count(files: &gunbc_ir::Value) -> usize {
+        match files {
+            gunbc_ir::Value::List(items) => items.len(),
+            other => panic!("expected files list, got: {other:?}"),
+        }
+    }
+
     fn map_field<'a>(
         value: &'a gunbc_ir::Value,
         field: &str,
@@ -2648,6 +2655,18 @@ fn example(items: List<String>) -> Int {
             }
             other => panic!("expected diagnostics list, got: {other:?}"),
         }
+
+        let files = result.get("files").expect("compile_sources should return files");
+        match files {
+            gunbc_ir::Value::List(items) => {
+                assert!(
+                    items.is_empty(),
+                    "parse errors must stop emit; got files: {:?}",
+                    items
+                );
+            }
+            other => panic!("expected files list, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -3053,6 +3072,15 @@ fn example(items: List<String>) -> Int {
             "list index should be rejected by typecheck: {:?}",
             messages
         );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
+        );
     }
 
     #[test]
@@ -3078,6 +3106,15 @@ fn example(items: List<String>) -> Int {
             "mismatched map keys should be rejected: {:?}",
             messages
         );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
+        );
     }
 
     #[test]
@@ -3101,6 +3138,15 @@ fn example(items: List<String>) -> Int {
                 .any(|message| message.contains("slice is only supported for String values")),
             "non-string slice should be rejected by typecheck: {:?}",
             messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
         );
     }
 
@@ -3158,6 +3204,15 @@ fn example(items: List<String>) -> Int {
                 .any(|message| message.contains("undefined variable 'ghost'")),
             "cross-function param names must not leak through FuncEnv: {:?}",
             messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
         );
     }
 
@@ -3421,8 +3476,9 @@ fn example(items: List<String>) -> Int {
     /// Measure reconcile diagnostics by running the bootstrap binary's
     /// compile subcommand. The generated CLI prints diagnostic count to
     /// stderr: "compiled: N files emitted, M diagnostics"
-    /// The binary uses compile_sources (strict path) which gates on
-    /// Error-severity diagnostics. Inference warnings are counted but don't block.
+    /// The binary uses compile_sources (strict path) which blocks emit on
+    /// reconcile/typecheck `Error` diagnostics. Only explicitly non-fatal
+    /// warnings continue through to reporting.
     #[cfg(feature = "v1-bootstrap")]
     #[test]
     #[ignore] // Requires building stage0 binary (~2 min)

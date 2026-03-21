@@ -34,7 +34,12 @@ import v2.std.core {
   ResourceUse,
   BinOpKind, NullCoalesce,
   ServiceConfig,
-  DeclaredFuncSig
+  DeclaredFuncSig,
+  IntrinsicMethod,
+  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
+  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
+  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
+  MethodSkip, MethodFold, MethodSortBy, MethodAppend
 }
 
 import v2.compiler.reconcile {
@@ -71,25 +76,17 @@ type BlockEmitState {
   scope: InferScope
 }
 
-type IntrinsicMethod
-  = MethodCount
-  | MethodJoin
-  | MethodSplit
-  | MethodLast
-  | MethodFirst
-  | MethodEnumerate
-  | MethodChars
-  | MethodStringContains
-  | MethodConcat
-  | MethodMap
-  | MethodFilter
-  | MethodAny
-  | MethodAll
-  | MethodFlatMap
-  | MethodSkip
-  | MethodFold
-  | MethodSortBy
-  | MethodAppend
+type TypedItemKind
+  = TypedItemTypeDef
+  | TypedItemTypeAlias
+  | TypedItemFunction
+  | TypedItemDataDef
+  | TypedItemServiceDef
+  | TypedItemResourceDef
+  | TypedItemExternFunc
+  | TypedItemUnhandled
+
+type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
 
 // Intermediate type for string interpolation segments
 type InterpPart {
@@ -107,7 +104,8 @@ fn empty_emit_scope() -> InferScope {
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
-    service_registry: empty_map()
+    service_registry: empty_map(),
+    item_registry: empty_map()
   }
 }
 
@@ -117,7 +115,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
-    service_registry: empty_map()
+    service_registry: empty_map(),
+    item_registry: typed_module.item_registry
   }
 }
 
@@ -272,7 +271,7 @@ fn emit_data_value_json(value: Node) -> String {
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    ExprVar { name: n } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }
@@ -297,7 +296,7 @@ fn emit_typed_data_value_json(value: Node) -> String {
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    ExprVar { name: n } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }
@@ -685,36 +684,35 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 // Returns: "type_def", "type_alias", "function", "data_def",
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
-fn classify_typed_item(item: Node) -> String {
+fn classify_typed_item(item: Node) -> TypedItemKind {
   if item.connective != none && item.transport == none {
-    "type_def"
+    TypedItemTypeDef
   } else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
-    "type_alias"
+    TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
-    "function"
+    TypedItemFunction
   } else if item.body != none && item.type_annotation != none {
-    "data_def"
+    TypedItemDataDef
   } else if item.transport != none && item.children |> count > 0 {
-    "service_def"
+    TypedItemServiceDef
   } else if item.transport == none && item.children |> count > 0 {
-    "resource_def"
+    TypedItemResourceDef
   } else if item.params |> count > 0 {
-    "extern_func"
+    TypedItemExternFunc
   } else {
-    "unhandled"
+    TypedItemUnhandled
   }
 }
 
 // Classify a Node's type structure based on its connective.
 // Returns: "leaf", "conj", or "disj".
-fn classify_type_structure(n: Node) -> String {
+fn classify_type_structure(n: Node) -> TypeStructureKind {
   if n.connective == none {
-    "leaf"
+    TypeLeaf
   } else {
     match n.connective.value {
-      Conj => "conj"
-      Disj => "disj"
+      Conj => TypeConj
+      Disj => TypeDisj
     }
   }
 }
-
