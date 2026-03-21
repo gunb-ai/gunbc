@@ -1829,12 +1829,20 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let recv_result = infer_expr(expr: recv, scope: scope)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-      let mc_arg_infer_results = mc_args |> map(a =>
-        let ar = infer_expr(expr: a.value, scope: scope)
-        let ar_typed = ar.typed
-        let ar_diags = ar.diagnostics
-        ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar_typed }, diagnostics: ar_diags }
-      )
+      // For collection methods with lambda args, type lambda params from
+      // the receiver's element type instead of Dynamic.
+      let has_mc_lambda = mc_args |> any(a => is_lambda_expr(e: a.value))
+      let mc_arg_infer_results = if has_mc_lambda {
+        let recv_elem_type = for_each_element_type_node(n: recv_typed.resolved_type.value)
+        mc_args |> map(a =>
+          infer_arg_with_element_type(arg: a, element_type: recv_elem_type, scope: scope)
+        )
+      } else {
+        mc_args |> map(a =>
+          let ar = infer_expr(expr: a.value, scope: scope)
+          ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+        )
+      }
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let result_type = match check_service_method_call_node(receiver_type: recv_typed.resolved_type.value, method: method_name, scope: scope) {
