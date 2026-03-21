@@ -1115,8 +1115,8 @@ fn typecheck_graph_modules_spanned(
     let available_modules = graph
         .modules
         .iter()
-        .map(|module| module.module_path.as_dotted())
-        .collect::<HashSet<_>>();
+        .map(|module| module.module_path.clone())
+        .collect::<HashSet<ModulePath>>();
     let mut errors: Vec<SpannedTypeError> = Vec::new();
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
     let context = TypecheckContext {
@@ -1139,12 +1139,11 @@ fn typecheck_graph_modules_spanned(
         let module_file = module.path.clone();
         if !options.allow_unresolved_imports {
             for import in &module.ast.imports {
-                let target = import.node.path.as_dotted();
-                if !available_modules.contains(&target) {
+                if !available_modules.contains(&import.node.path) {
                     errors.push(SpannedTypeError {
                         error: TypeError::UnresolvedImport {
                             module: module_name.clone(),
-                            target,
+                            target: import.node.path.as_dotted(),
                         },
                         file_id: module_file_id,
                         file: module_file.clone(),
