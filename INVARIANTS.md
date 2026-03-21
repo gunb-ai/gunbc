@@ -183,6 +183,23 @@ Every fabrication fallback in FC-7 existed because the producing
 stage's output type was too permissive, and the consuming stage
 compensated with a fallback instead of failing.
 
+A boundary fact table is only valid when both of these hold:
+
+1. Every entry is an exact derivation from upstream structure. If the
+   table collapses distinct bindings, guesses a classification, or drops
+   witnesses needed downstream, it is a lossy representation and is
+   already an invariant violation.
+2. A downstream stage actually consumes the table as the authority for a
+   decision. If no consumer reads it, the table is speculative metadata
+   or a parallel representation waiting to diverge.
+
+Unused or lossy fact tables are not harmless scaffolding. Unused tables
+violate "No parallel implementations" / "Single-authority metadata."
+Lossy tables violate "Explicit boundary contracts" / "Heuristics
+indicate lost structure." The default action is to delete the table
+until a concrete consumer exists, or tighten it until the missing
+distinctions are structurally preserved.
+
 ### Single-authority metadata
 
 The compiler should provide all metadata (tool definitions, output
@@ -289,6 +306,14 @@ requires credential injection infrastructure.
   every non-recursive function, making `LeafFunc` unreachable. If the
   call-graph pass is not implemented yet, the boundary needs an explicit
   unknown state rather than fabricating a false classification.
+
+- `src/v2/04a_normalize.dag`: `EmitGraph.func_facts`,
+  `EmitGraph.enum_facts`, and `EmitGraph.field_facts` are currently not
+  consumed by the Rust, Python, or Go emitters, which immediately peel
+  back to `typed.graph`. That makes the new normalize boundary
+  speculative metadata instead of authoritative boundary structure. Per
+  the invariants above, these fact maps should either be deleted until
+  emit uses them or wired through as the single source of truth.
 
 ### 2026-03-21 — transport/expr dissolution review
 
