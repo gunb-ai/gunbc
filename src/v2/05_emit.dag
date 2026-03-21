@@ -635,6 +635,17 @@ fn rust_literal(value: LiteralValue) -> String {
     LitNull => rust_keyword(key: "null")
   }
 }
+// Literal emission for pattern context -- string literals omit .to_string()
+// since Rust patterns use &str, not owned String.
+fn rust_literal_for_pattern(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: s } => emit_string_literal(s: s, suffix: "")
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { rust_keyword(key: "true") } else { rust_keyword(key: "false") }
+    LitNull => rust_keyword(key: "null")
+  }
+}
 fn python_literal(value: LiteralValue) -> String {
   match value {
     LitStr { value: s } => emit_string_literal(s: s, suffix: "")

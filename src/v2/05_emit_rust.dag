@@ -50,7 +50,8 @@ import v2.compiler.reconcile {
   expr_span,
   ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
-  emit_map_has
+  emit_map_has,
+  node_is_optional
 }
 
 import v2.compiler.emit {
@@ -61,7 +62,8 @@ import v2.compiler.emit {
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodFold, MethodSortBy, MethodAppend,
   rust_keyword, rust_container, rust_primitive_type,
-  rust_literal, rust_bin_op_symbol, rust_map_template,
+  rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
+  emit_string_literal,
   module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -107,6 +109,24 @@ data rust_reserved: List<String> = [
   "macro", "override", "priv", "try", "typeof", "unsized",
   "virtual"
 ]
+
+// P1a: Runtime function lookup tables -- replaces per-call string disjunctions.
+data rt_functions: Map<String, Bool> = {
+  "concat": true, "char_at": true, "string_length": true,
+  "substring": true, "string_contains": true, "scan_while": true,
+  "skip_horizontal_ws": true, "scan_to_eol": true, "scan_string_end": true,
+  "code_point": true, "from_code_point": true, "lookup": true,
+  "index_by": true, "empty_map": true, "map_insert": true,
+  "map_merge": true, "list_concat": true, "str_eq": true,
+  "filesystem_read": true, "list_push": true, "map_get": true,
+  "map_keys": true, "map_values": true,
+  "parse_int": true, "map_contains_key": true, "map_has": true
+}
+
+data rt_ref_map_functions: Map<String, Bool> = {
+  "map_get": true, "map_keys": true, "map_values": true,
+  "lookup": true, "map_contains_key": true, "map_has": true
+}
 
 // Rust type_map, keywords, and container_templates now live in
 // rust_lang_facts() in v2.compiler.emit
@@ -1171,10 +1191,68 @@ fn emit_simple_string_interp(parts: List<StringPart>) -> String {
 // Pattern emission -- shared by Expr match arms
 // =========================================================================
 
+// Check if a match pattern is a string literal.
+fn is_string_lit_pattern(p: MatchPattern) -> Bool {
+  match p {
+    LitPattern { value: v } =>
+      match v { LitStr { value: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+// Collect guard conditions from string literal field bindings in a pattern.
+// Returns "" if no string literal fields, or "f1 == \"v1\" && f2 == \"v2\"".
+// This is needed because Rust can't match String fields with &str literals
+// directly -- we use ref bindings + guards instead.
+fn collect_pattern_string_guards(pattern: MatchPattern) -> String {
+  match pattern {
+    VariantPattern { name: n, field_bindings: fbs } =>
+      if n == "Some" && fbs |> count == 1 {
+        match fbs |> first {
+          Some { value: fb } =>
+            if is_string_lit_pattern(p: fb.binding) {
+              match fb.binding {
+                LitPattern { value: LitStr { value: s } } =>
+                  concat("__some_val == ", emit_string_literal(s: s, suffix: ""))
+                _ => ""
+              }
+            } else {
+              collect_pattern_string_guards(pattern: fb.binding)
+            }
+          None => ""
+        }
+      } else {
+        let str_bindings = fbs |> filter(fb => is_string_lit_pattern(p: fb.binding))
+        let guards = str_bindings |> map(fb =>
+          match fb.binding {
+            LitPattern { value: LitStr { value: s } } =>
+              concat(rust_ident(name: fb.field_name), " == ", emit_string_literal(s: s, suffix: ""))
+            _ => ""
+          }
+        )
+        guards |> join(separator: " && ")
+      }
+    _ => ""
+  }
+}
+
+// Check if all match arms use string literal patterns (or wildcard).
+// When true, the scrutinee needs .as_str() conversion for Rust matching.
+fn all_arms_are_string_lit(arms: List<MatchArm>) -> Bool {
+  arms |> all(arm =>
+    match arm.pattern {
+      LitPattern { value: v } =>
+        match v { LitStr { value: _ } => true  _ => false }
+      Wildcard => true
+      _ => false
+    }
+  )
+}
+
 fn emit_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   match pattern {
     Bind { name: n } => rust_ident(name: n)
-    LitPattern { value: v } => rust_literal(value: v)
+    LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, field_bindings: fbs } =>
       emit_variant_pattern(name: n, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
     Wildcard => "_"
@@ -1199,25 +1277,39 @@ fn emit_variant_pattern(name: String, field_bindings: List<FieldBinding>, vtoe: 
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
-        let inner_pat = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
-        concat("Some(", inner_pat, ")")
+        // String literal inside Some: use ref binding, guard is collected separately.
+        if is_string_lit_pattern(p: fb.binding) {
+          "Some(ref __some_val)"
+        } else {
+          let inner_pat = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+          concat("Some(", inner_pat, ")")
+        }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
     qualified
   } else {
-    // Filter out wildcard bindings — the trailing `..` already handles unbound fields.
+    // Filter out wildcard bindings -- the trailing `..` already handles unbound fields.
     // This prevents duplicate field bindings when the reconciler produces both
     // a wildcard and an explicit binding for the same field (e.g. func: _, func: func).
     let effective_bindings = field_bindings |> filter(fb =>
       match fb.binding { Wildcard => false  _ => true }
     )
-    let binding_strs = effective_bindings |> map(fb =>
-      let pat_str = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-      concat(rust_ident(name: fb.field_name), ": ", pat_str)
-    )
-    let bindings_str = binding_strs |> join(separator: ", ")
-    concat(qualified, " { ", bindings_str, ", .. }")
+    if effective_bindings |> count == 0 {
+      concat(qualified, " { .. }")
+    } else {
+      let binding_strs = effective_bindings |> map(fb =>
+        // String literal field binding: use ref binding, guard is collected separately.
+        if is_string_lit_pattern(p: fb.binding) {
+          concat("ref ", rust_ident(name: fb.field_name))
+        } else {
+          let pat_str = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+          concat(rust_ident(name: fb.field_name), ": ", pat_str)
+        }
+      )
+      let bindings_str = binding_strs |> join(separator: ", ")
+      concat(qualified, " { ", bindings_str, ", .. }")
+    }
   }
 }
 
@@ -1263,7 +1355,7 @@ fn needs_rc_deref_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_t
 fn emit_pattern_rc_aware(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   match pattern {
     Bind { name: n } => rust_ident(name: n)
-    LitPattern { value: v } => rust_literal(value: v)
+    LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, field_bindings: fbs } =>
       emit_variant_pattern_rc_aware(name: n, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
     Wildcard => "_"
@@ -1283,8 +1375,13 @@ fn emit_variant_pattern_rc_aware(name: String, field_bindings: List<FieldBinding
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
-        let inner_pat = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
-        concat("Some(", inner_pat, ")")
+        // String literal inside Some: use ref binding, guard is collected separately.
+        if is_string_lit_pattern(p: fb.binding) {
+          "Some(ref __some_val)"
+        } else {
+          let inner_pat = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+          concat("Some(", inner_pat, ")")
+        }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
@@ -1293,24 +1390,33 @@ fn emit_variant_pattern_rc_aware(name: String, field_bindings: List<FieldBinding
     let effective_bindings = field_bindings |> filter(fb =>
       match fb.binding { Wildcard => false  _ => true }
     )
-    let binding_strs = effective_bindings |> map(fb =>
-      let is_rc_nested = match fb.binding {
-        VariantPattern { name: inner_name, field_bindings: _ } =>
-          match map_get(vtoe, inner_name) {
-            Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
-            None => false
+    if effective_bindings |> count == 0 {
+      concat(qualified, " { .. }")
+    } else {
+      let binding_strs = effective_bindings |> map(fb =>
+        // String literal field binding: use ref binding, guard is collected separately.
+        if is_string_lit_pattern(p: fb.binding) {
+          concat("ref ", rust_ident(name: fb.field_name))
+        } else {
+          let is_rc_nested = match fb.binding {
+            VariantPattern { name: inner_name, field_bindings: _ } =>
+              match map_get(vtoe, inner_name) {
+                Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
+                None => false
+              }
+            _ => false
           }
-        _ => false
-      }
-      if is_rc_nested {
-        concat("ref ", rust_ident(name: fb.field_name))
-      } else {
-        let pat_str = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-        concat(rust_ident(name: fb.field_name), ": ", pat_str)
-      }
-    )
-    let bindings_str = binding_strs |> join(separator: ", ")
-    concat(qualified, " { ", bindings_str, ", .. }")
+          if is_rc_nested {
+            concat("ref ", rust_ident(name: fb.field_name))
+          } else {
+            let pat_str = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+            concat(rust_ident(name: fb.field_name), ": ", pat_str)
+          }
+        }
+      )
+      let bindings_str = binding_strs |> join(separator: ", ")
+      concat(qualified, " { ", bindings_str, ", .. }")
+    }
   }
 }
 
@@ -1469,7 +1575,20 @@ fn emit_typed_field_access(base: Expr, field: String, registry: Map<String, Item
           EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
           StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
         }
-      None => concat(base_str, ".", rust_ident(name: field), ".clone()")
+      None =>
+        // When the field lookup fails and the field is "value", check if the
+        // base expression's resolved type is Optional. If so, emit .unwrap().
+        // Otherwise fall back to .value.clone() for struct value fields
+        // (e.g. NamedArg.value, FieldInit.value).
+        let base_is_optional = match base.resolved_type {
+          Some { value: rt } => rt.name == "Optional" || node_is_optional(n: rt)
+          None => false
+        }
+        if field == "value" && base_is_optional {
+          concat(base_str, ".clone().unwrap()")
+        } else {
+          concat(base_str, ".", rust_ident(name: field), ".clone()")
+        }
     }
   }
 }
@@ -1586,18 +1705,9 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     else { return raw }
   }
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-  let is_rt = func == "concat" || func == "char_at" || func == "string_length"
-    || func == "substring" || func == "string_contains" || func == "scan_while"
-    || func == "skip_horizontal_ws" || func == "scan_to_eol" || func == "scan_string_end"
-    || func == "code_point" || func == "from_code_point" || func == "lookup"
-    || func == "index_by" || func == "empty_map" || func == "map_insert"
-    || func == "map_merge" || func == "list_concat" || func == "str_eq"
-    || func == "filesystem_read" || func == "list_push" || func == "map_get"
-    || func == "map_keys" || func == "map_values"
-    || func == "parse_int" || func == "map_contains_key" || func == "map_has"
+  let is_rt = map_contains_key(rt_functions, func)
   // Runtime functions that take &BTreeMap (read-only map access).
-  let is_rt_ref_map = func == "map_get" || func == "map_keys" || func == "map_values" || func == "lookup"
-    || func == "map_contains_key" || func == "map_has"
+  let is_rt_ref_map = map_contains_key(rt_ref_map_functions, func)
   // For runtime calls with &BTreeMap params, the first argument is always the map.
   // Pass it by reference (&) instead of by value.
   let arg_strs = ordered_args |> enumerate |> map(pair =>
@@ -1975,10 +2085,15 @@ fn emit_typed_match(scrutinee: Expr, arms: List<MatchArm>, registry: Map<String,
   // Some(v) => v patterns where the arm body relies on Rc<T>.
   let needs_option_deref = arms_need_option_rc_deref(arms: arms, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let needs_deref = is_rc_wrapped_scrutinee(scrutinee: scrutinee, rc_types: rc_types) || arms_need_rc_deref(arms: arms, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  // When all arms are string literal patterns, convert scrutinee to &str
+  // so Rust can match &str patterns against String values.
+  let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   if needs_option_deref {
     concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
   } else if needs_deref {
     concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
+  } else if needs_as_str {
+    concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else {
     concat("match ", scrut_str, " {\n", arms_str, "\n}")
   }
@@ -1991,10 +2106,20 @@ fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: I
   } else {
     emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
   }
-  let guard_str = match arm.guard {
-    Some { value: g } => concat(" if ", emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+  // Collect guards from string literal field bindings (ref field + guard).
+  let field_guards = collect_pattern_string_guards(pattern: arm.pattern)
+  let arm_guard = match arm.guard {
+    Some { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     None => ""
   }
+  // Merge field guards with arm guard.
+  let guard_str = if field_guards != "" && arm_guard != "" {
+    concat(" if ", field_guards, " && ", arm_guard)
+  } else if field_guards != "" {
+    concat(" if ", field_guards)
+  } else if arm_guard != "" {
+    concat(" if ", arm_guard)
+  } else { "" }
   let body_str = emit_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   if has_rc {
     let prelude = rc_pattern_preludes(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2368,10 +2493,19 @@ fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>,
   } else {
     emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
   }
-  let guard_str = match arm.guard {
-    Some { value: g } => concat(" if ", emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+  // Collect guards from string literal field bindings (ref field + guard).
+  let field_guards = collect_pattern_string_guards(pattern: arm.pattern)
+  let arm_guard = match arm.guard {
+    Some { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     None => ""
   }
+  let guard_str = if field_guards != "" && arm_guard != "" {
+    concat(" if ", field_guards, " && ", arm_guard)
+  } else if field_guards != "" {
+    concat(" if ", field_guards)
+  } else if arm_guard != "" {
+    concat(" if ", arm_guard)
+  } else { "" }
   let body_str = emit_typed_tco_expr(texpr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   if has_rc {
     let prelude = rc_pattern_preludes(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)

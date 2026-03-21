@@ -54,6 +54,256 @@ use std::collections::HashSet;
 use crate::type_codegen::to_snake_case;
 
 // ---------------------------------------------------------------------------
+// Call graph SCC + function classification
+// ---------------------------------------------------------------------------
+
+/// Classification of a function based on call graph analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunctionClass {
+    /// No outgoing calls to other project functions.
+    Leaf,
+    /// Calls other functions but is not in any cycle.
+    Interior,
+    /// Part of a recursive cycle (including self-recursion).
+    Recursive,
+    /// Self-recursive with tail-call optimization applied.
+    Tco,
+}
+
+impl FunctionClass {
+    pub fn needs_stacker(self) -> bool {
+        matches!(self, FunctionClass::Recursive | FunctionClass::Tco)
+    }
+}
+
+/// Collect all function names called from a DSL expression (AST level).
+fn collect_callees_expr(expr: &ast::Expr, callees: &mut HashSet<String>) {
+    match expr {
+        ast::Expr::Call(name, args) => {
+            callees.insert(to_snake_case(name));
+            for (_, arg) in args {
+                collect_callees_expr(arg, callees);
+            }
+        }
+        ast::Expr::BinOp(l, _, r) => {
+            collect_callees_expr(l, callees);
+            collect_callees_expr(r, callees);
+        }
+        ast::Expr::UnaryOp(_, e) => collect_callees_expr(e, callees),
+        ast::Expr::FieldAccess(e, _) => collect_callees_expr(e, callees),
+        ast::Expr::If(cond, then, els) => {
+            collect_callees_expr(cond, callees);
+            collect_callees_expr(then, callees);
+            if let Some(e) = els {
+                collect_callees_expr(e, callees);
+            }
+        }
+        ast::Expr::Match(scrutinee, arms) => {
+            collect_callees_expr(scrutinee, callees);
+            for arm in arms {
+                if let Some(g) = &arm.guard {
+                    collect_callees_expr(g, callees);
+                }
+                collect_callees_expr(&arm.body, callees);
+            }
+        }
+        ast::Expr::For(_, iter, _, body) => {
+            collect_callees_expr(iter, callees);
+            match body {
+                ast::ForBody::Expr(e) => collect_callees_expr(e, callees),
+                ast::ForBody::Block(stmts) => collect_callees_stmts(stmts, callees),
+            }
+        }
+        ast::Expr::Lambda(_, body) => collect_callees_expr(body, callees),
+        ast::Expr::List(elems) => {
+            for e in elems {
+                collect_callees_expr(e, callees);
+            }
+        }
+        ast::Expr::Map(pairs) => {
+            for (k, v) in pairs {
+                collect_callees_expr(k, callees);
+                collect_callees_expr(v, callees);
+            }
+        }
+        ast::Expr::StringInterp(parts) => {
+            for part in parts {
+                if let ast::StringPart::Expr(e) = part {
+                    collect_callees_expr(e, callees);
+                }
+            }
+        }
+        ast::Expr::Record(_, fields) => {
+            for (_, e) in fields {
+                collect_callees_expr(e, callees);
+            }
+        }
+        ast::Expr::Return(fields) => {
+            for (_, e) in fields {
+                collect_callees_expr(e, callees);
+            }
+        }
+        ast::Expr::Guarded(e, g) => {
+            collect_callees_expr(e, callees);
+            collect_callees_expr(g, callees);
+        }
+        ast::Expr::After(e, _) => collect_callees_expr(e, callees),
+        ast::Expr::Block(stmts) => collect_callees_stmts(stmts, callees),
+        ast::Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                collect_callees_expr(arg, callees);
+            }
+        }
+        ast::Expr::Literal(_) | ast::Expr::Ident(_) => {}
+    }
+}
+
+fn collect_callees_stmts(stmts: &[ast::Stmt], callees: &mut HashSet<String>) {
+    for stmt in stmts {
+        match stmt {
+            ast::Stmt::Let(_, e) | ast::Stmt::Assign(_, e) | ast::Stmt::Expr(e) => {
+                collect_callees_expr(e, callees);
+            }
+            ast::Stmt::Return(fields) => {
+                for (_, e) in fields {
+                    collect_callees_expr(e, callees);
+                }
+            }
+            ast::Stmt::Node(ns) => {
+                collect_callees_expr(&ns.expr, callees);
+                if let Some(g) = &ns.when_guard {
+                    collect_callees_expr(g, callees);
+                }
+            }
+        }
+    }
+}
+
+/// Collect callees for a single function definition.
+pub fn collect_fn_callees(fd: &ast::FnDef) -> HashSet<String> {
+    let mut callees = HashSet::new();
+    collect_callees_stmts(&fd.body.stmts, &mut callees);
+    callees
+}
+
+/// Tarjan's SCC algorithm. Returns SCCs in reverse topological order
+/// (leaves first, roots last).
+pub fn tarjan_scc(adj: &HashMap<String, HashSet<String>>) -> Vec<Vec<String>> {
+    struct State<'a> {
+        adj: &'a HashMap<String, HashSet<String>>,
+        index_counter: usize,
+        stack: Vec<String>,
+        on_stack: HashSet<String>,
+        indices: HashMap<String, usize>,
+        lowlinks: HashMap<String, usize>,
+        sccs: Vec<Vec<String>>,
+    }
+
+    fn strongconnect(v: &str, state: &mut State<'_>) {
+        let idx = state.index_counter;
+        state.index_counter += 1;
+        state.indices.insert(v.to_string(), idx);
+        state.lowlinks.insert(v.to_string(), idx);
+        state.stack.push(v.to_string());
+        state.on_stack.insert(v.to_string());
+
+        if let Some(neighbors) = state.adj.get(v) {
+            for w in neighbors {
+                if !state.indices.contains_key(w.as_str()) {
+                    strongconnect(w, state);
+                    let wl = state.lowlinks[w.as_str()];
+                    let vl = state.lowlinks.get_mut(v).unwrap();
+                    if wl < *vl {
+                        *vl = wl;
+                    }
+                } else if state.on_stack.contains(w.as_str()) {
+                    let wi = state.indices[w.as_str()];
+                    let vl = state.lowlinks.get_mut(v).unwrap();
+                    if wi < *vl {
+                        *vl = wi;
+                    }
+                }
+            }
+        }
+
+        if state.lowlinks[v] == state.indices[v] {
+            let mut scc = Vec::new();
+            loop {
+                let w = state.stack.pop().unwrap();
+                state.on_stack.remove(&w);
+                scc.push(w.clone());
+                if w == v {
+                    break;
+                }
+            }
+            state.sccs.push(scc);
+        }
+    }
+
+    let mut state = State {
+        adj,
+        index_counter: 0,
+        stack: Vec::new(),
+        on_stack: HashSet::new(),
+        indices: HashMap::new(),
+        lowlinks: HashMap::new(),
+        sccs: Vec::new(),
+    };
+
+    let nodes: Vec<String> = adj.keys().cloned().collect();
+    for v in &nodes {
+        if !state.indices.contains_key(v.as_str()) {
+            strongconnect(v, &mut state);
+        }
+    }
+
+    state.sccs
+}
+
+/// Classify all functions based on the call graph and SCC decomposition.
+/// `tco_functions` is the set of functions that had TCO applied successfully.
+pub fn classify_functions(
+    adj: &HashMap<String, HashSet<String>>,
+    tco_functions: &HashSet<String>,
+) -> HashMap<String, FunctionClass> {
+    let sccs = tarjan_scc(adj);
+    let mut classifications = HashMap::new();
+
+    for scc in &sccs {
+        let is_recursive = if scc.len() > 1 {
+            true // multi-node SCC = mutual recursion
+        } else {
+            // single-node SCC: check for self-edge
+            let name = &scc[0];
+            adj.get(name).is_some_and(|callees| callees.contains(name))
+        };
+
+        if is_recursive {
+            for name in scc {
+                if tco_functions.contains(name) {
+                    classifications.insert(name.clone(), FunctionClass::Tco);
+                } else {
+                    classifications.insert(name.clone(), FunctionClass::Recursive);
+                }
+            }
+        } else {
+            let name = &scc[0];
+            let callees = adj.get(name);
+            let has_project_callees = callees.is_some_and(|c| {
+                c.iter().any(|callee| adj.contains_key(callee))
+            });
+            if has_project_callees {
+                classifications.insert(name.clone(), FunctionClass::Interior);
+            } else {
+                classifications.insert(name.clone(), FunctionClass::Leaf);
+            }
+        }
+    }
+
+    classifications
+}
+
+// ---------------------------------------------------------------------------
 // TypeExpr → IrType conversion
 // ---------------------------------------------------------------------------
 
@@ -1782,15 +2032,31 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                 let compiled_right = ctx.with_child_expr_path(ExprPathStep::BinOpRight, || {
                     compile_expr(right, ctx, counter)
                 });
-                // SG-10: For equality/inequality, strip .to_string() from operands.
-                // &str == &str and String == &str both work in Rust via PartialEq,
-                // so the .to_string() heap allocation is unnecessary.
+                // SG-10: Strip .to_string() from comparison operands.
+                // For Eq/Ne: String == &str works via PartialEq, so strip freely.
+                // For ordering (Lt/Gt/Le/Ge): PartialOrd doesn't cross types, so
+                // only strip when BOTH sides have .to_string() (yielding &str op &str).
                 let (compiled_left, compiled_right) =
                     if matches!(op, ast::BinOp::Eq | ast::BinOp::Ne) {
                         (
                             strip_to_string(compiled_left),
                             strip_to_string(compiled_right),
                         )
+                    } else if matches!(
+                        op,
+                        ast::BinOp::Lt
+                            | ast::BinOp::Gt
+                            | ast::BinOp::Le
+                            | ast::BinOp::Ge
+                    ) {
+                        if has_to_string(&compiled_left) && has_to_string(&compiled_right) {
+                            (
+                                strip_to_string(compiled_left),
+                                strip_to_string(compiled_right),
+                            )
+                        } else {
+                            (compiled_left, compiled_right)
+                        }
                     } else {
                         (compiled_left, compiled_right)
                     };
@@ -2223,10 +2489,18 @@ fn strip_clone(expr: code_ir::Expr) -> code_ir::Expr {
     }
 }
 
+/// SG-10: Check if an expression ends with `.to_string()`.
+fn has_to_string(expr: &code_ir::Expr) -> bool {
+    matches!(
+        expr,
+        code_ir::Expr::MethodCall { method, args, .. }
+            if method == "to_string" && args.is_empty()
+    )
+}
+
 /// SG-10: Strip trailing `.to_string()` from a compiled expression.
-/// Used in equality comparisons where &str == &str works directly.
-/// Context-free: strips from any expression (used for == operands where both
-/// sides can be &str).
+/// Used in comparisons where &str op &str works directly.
+/// Context-free: strips from any expression.
 fn strip_to_string(expr: code_ir::Expr) -> code_ir::Expr {
     match expr {
         code_ir::Expr::MethodCall {
@@ -2794,6 +3068,91 @@ fn compile_intrinsic_call(
                     "string_contains".to_string(),
                 ])),
                 args: vec![s, substring],
+                obligation: None,
+            })
+        }
+        // Scanner intrinsics: pass string arg by reference (O(1)) instead of
+        // clone (O(N)). These are called per-character in the tokenizer hot loop.
+        "scan_while" if args.len() == 3 => {
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
+            let pred = resolve_named_or_positional(args, "pred", 2, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "scan_while".to_string(),
+                ])),
+                args: vec![s, start, pred],
+                obligation: None,
+            })
+        }
+        "skip_horizontal_ws" if args.len() == 2 => {
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "skip_horizontal_ws".to_string(),
+                ])),
+                args: vec![s, start],
+                obligation: None,
+            })
+        }
+        "scan_to_eol" if args.len() == 2 => {
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "scan_to_eol".to_string(),
+                ])),
+                args: vec![s, start],
+                obligation: None,
+            })
+        }
+        "scan_string_end" if args.len() == 2 => {
+            let s = ref_string_arg(resolve_named_or_positional(args, "s", 0, ctx, counter));
+            let start = resolve_named_or_positional(args, "start", 1, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "scan_string_end".to_string(),
+                ])),
+                args: vec![s, start],
+                obligation: None,
+            })
+        }
+        "code_point" if args.len() == 1 => {
+            let c = ref_string_arg(resolve_named_or_positional(args, "c", 0, ctx, counter));
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "code_point".to_string(),
+                ])),
+                args: vec![c],
+                obligation: None,
+            })
+        }
+        "from_code_point" if args.len() == 1 => {
+            let cp = resolve_named_or_positional(args, "cp", 0, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "from_code_point".to_string(),
+                ])),
+                args: vec![cp],
+                obligation: None,
+            })
+        }
+        "str_eq" if args.len() == 2 => {
+            let a = ref_string_arg(resolve_named_or_positional(args, "a", 0, ctx, counter));
+            let b = ref_string_arg(resolve_named_or_positional(args, "b", 1, ctx, counter));
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "str_eq".to_string(),
+                ])),
+                args: vec![a, b],
                 obligation: None,
             })
         }
@@ -4667,7 +5026,12 @@ fn compile_rc_nested_if_let_branch(
             _ => format!("{n}: _"),
         })
         .collect();
-    let pat_str = format!("{qualified} {{ {}, .. }}", bindings.join(", "));
+    let bindings_joined = bindings.join(", ");
+    let pat_str = if bindings_joined.is_empty() {
+        format!("{qualified} {{ .. }}")
+    } else {
+        format!("{qualified} {{ {bindings_joined}, .. }}")
+    };
     let condition = format!("{pat_str} = {rc_field_name}.as_ref()");
 
     // Compile the arm body. We need to collect any non-Rc deref stmts
@@ -5131,7 +5495,12 @@ fn compile_pattern_typed(
                         }
                     })
                     .collect();
-                let pattern = format!("{} {{ {}, .. }}", qualified, field_pats.join(", "));
+                let field_pats_joined = field_pats.join(", ");
+                let pattern = if field_pats_joined.is_empty() {
+                    format!("{qualified} {{ .. }}")
+                } else {
+                    format!("{qualified} {{ {field_pats_joined}, .. }}")
+                };
                 if guards.is_empty() {
                     pattern
                 } else {
@@ -5611,7 +5980,12 @@ fn collect_rc_nested_deref_stmts(
             _ => format!("{n}: _"),
         })
         .collect();
-    let pat_str = format!("{qualified} {{ {}, .. }}", bindings.join(", "));
+    let bindings_joined = bindings.join(", ");
+    let pat_str = if bindings_joined.is_empty() {
+        format!("{qualified} {{ .. }}")
+    } else {
+        format!("{qualified} {{ {bindings_joined}, .. }}")
+    };
     out.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
         "let {pat_str} = {field_name}.as_ref() else {{ unreachable!() }}"
     ))));
@@ -6642,6 +7016,339 @@ fn try_strip_param_clone(expr: &mut code_ir::Expr, strippable: &[String]) {
     }
 }
 
+/// P1a: Hoist loop-invariant `v2_rt::string_length(&param)` calls.
+///
+/// Scans the loop body for `Call(Path(["v2_rt", "string_length"]), [Ref(Var(param))])`
+/// where `param` is in the passthrough set (never reassigned in any Recur).
+/// Replaces each occurrence with `Var("__hoist_len_{param}")` and returns
+/// `let __hoist_len_{param} = v2_rt::string_length(&__tco_p_{param})` statements
+/// to insert before the loop.
+fn hoist_invariant_string_length(
+    loop_body: &mut [code_ir::Stmt],
+    param_names: &[String],
+    passthrough_indices: &HashSet<usize>,
+) -> Vec<code_ir::Stmt> {
+    // Collect passthrough param names for quick lookup
+    let passthrough_params: HashSet<&str> = passthrough_indices
+        .iter()
+        .filter_map(|&i| param_names.get(i).map(|s| s.as_str()))
+        .collect();
+
+    // Scan for hoistable patterns and collect which targets need hoisting
+    let mut hoist_targets: HashSet<HoistTarget> = HashSet::new();
+    for stmt in loop_body.iter() {
+        collect_hoistable_sl_stmt(stmt, &passthrough_params, &mut hoist_targets);
+    }
+
+    if hoist_targets.is_empty() {
+        return Vec::new();
+    }
+
+    // Replace occurrences in the loop body
+    for stmt in loop_body.iter_mut() {
+        replace_sl_stmt(stmt, &hoist_targets);
+    }
+
+    // Generate let bindings before the loop.
+    // For &param: let __hoist_len_param = v2_rt::string_length(&__tco_p_param)
+    // For &param.field: let __hoist_len_param_field = v2_rt::string_length(&__tco_p_param.field)
+    hoist_targets
+        .iter()
+        .map(|target| {
+            let hoist_name = target.hoist_var_name();
+            let tco_var = format!("__tco_p_{}", target.param);
+            let arg_expr = match &target.field {
+                None => code_ir::Expr::Ref(Box::new(code_ir::Expr::Var(tco_var))),
+                Some(field) => code_ir::Expr::Ref(Box::new(code_ir::Expr::Field(
+                    Box::new(code_ir::Expr::Var(tco_var)),
+                    field.clone(),
+                ))),
+            };
+            code_ir::Stmt::Let {
+                name: hoist_name,
+                mutable: false,
+                expr: code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Path(vec![
+                        "v2_rt".to_string(),
+                        "string_length".to_string(),
+                    ])),
+                    args: vec![arg_expr],
+                    obligation: None,
+                },
+                ir_type: None,
+            }
+        })
+        .collect()
+}
+
+/// A hoistable string_length target: param name + optional field name.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct HoistTarget {
+    param: String,
+    field: Option<String>,
+}
+
+impl HoistTarget {
+    fn hoist_var_name(&self) -> String {
+        match &self.field {
+            Some(f) => format!("__hoist_len_{}_{}", self.param, f),
+            None => format!("__hoist_len_{}", self.param),
+        }
+    }
+}
+
+/// Check if an expression is `v2_rt::string_length(&param)` or
+/// `v2_rt::string_length(&param.field)` for a passthrough param.
+fn is_hoistable_sl(expr: &code_ir::Expr, passthrough: &HashSet<&str>) -> Option<HoistTarget> {
+    if let code_ir::Expr::Call { func, args, .. } = expr {
+        if let code_ir::Expr::Path(segments) = func.as_ref() {
+            if segments.len() == 2 && segments[0] == "v2_rt" && segments[1] == "string_length" {
+                if let Some(code_ir::Expr::Ref(inner)) = args.first() {
+                    match inner.as_ref() {
+                        code_ir::Expr::Var(name) if passthrough.contains(name.as_str()) => {
+                            return Some(HoistTarget { param: name.clone(), field: None });
+                        }
+                        // Match &param.field patterns like &source.text
+                        code_ir::Expr::Field(receiver, field_name) => {
+                            if let code_ir::Expr::Var(name) = receiver.as_ref() {
+                                if passthrough.contains(name.as_str()) {
+                                    return Some(HoistTarget {
+                                        param: name.clone(),
+                                        field: Some(field_name.clone()),
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn collect_hoistable_sl_expr(
+    expr: &code_ir::Expr,
+    passthrough: &HashSet<&str>,
+    out: &mut HashSet<HoistTarget>,
+) {
+    if let Some(target) = is_hoistable_sl(expr, passthrough) {
+        out.insert(target);
+        return;
+    }
+    match expr {
+        code_ir::Expr::Call { func, args, .. } => {
+            collect_hoistable_sl_expr(func, passthrough, out);
+            for a in args {
+                collect_hoistable_sl_expr(a, passthrough, out);
+            }
+        }
+        code_ir::Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            collect_hoistable_sl_expr(receiver, passthrough, out);
+            for a in args {
+                collect_hoistable_sl_expr(a, passthrough, out);
+            }
+        }
+        code_ir::Expr::BinOp { left, right, .. } => {
+            collect_hoistable_sl_expr(left, passthrough, out);
+            collect_hoistable_sl_expr(right, passthrough, out);
+        }
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            collect_hoistable_sl_expr(cond, passthrough, out);
+            for s in then_body {
+                collect_hoistable_sl_stmt(s, passthrough, out);
+            }
+            if let Some(stmts) = else_body {
+                for s in stmts {
+                    collect_hoistable_sl_stmt(s, passthrough, out);
+                }
+            }
+        }
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
+            collect_hoistable_sl_expr(scrutinee, passthrough, out);
+            for arm in arms {
+                for s in &arm.body {
+                    collect_hoistable_sl_stmt(s, passthrough, out);
+                }
+            }
+        }
+        code_ir::Expr::Block(stmts) => {
+            for s in stmts {
+                collect_hoistable_sl_stmt(s, passthrough, out);
+            }
+        }
+        code_ir::Expr::Closure { body, .. } => {
+            collect_hoistable_sl_expr(body, passthrough, out);
+        }
+        code_ir::Expr::UnaryOp { expr: e, .. } => {
+            collect_hoistable_sl_expr(e, passthrough, out);
+        }
+        code_ir::Expr::Ref(e) | code_ir::Expr::RefMut(e) | code_ir::Expr::Deref(e) => {
+            collect_hoistable_sl_expr(e, passthrough, out);
+        }
+        code_ir::Expr::Field(receiver, _) => {
+            collect_hoistable_sl_expr(receiver, passthrough, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_hoistable_sl_stmt(
+    stmt: &code_ir::Stmt,
+    passthrough: &HashSet<&str>,
+    out: &mut HashSet<HoistTarget>,
+) {
+    match stmt {
+        code_ir::Stmt::Let { expr, .. }
+        | code_ir::Stmt::Expr(expr)
+        | code_ir::Stmt::TailExpr(expr)
+        | code_ir::Stmt::Return(expr)
+        | code_ir::Stmt::Break(expr) => {
+            collect_hoistable_sl_expr(expr, passthrough, out);
+        }
+        code_ir::Stmt::Assign { value, .. } => {
+            collect_hoistable_sl_expr(value, passthrough, out);
+        }
+        code_ir::Stmt::BlockScope(stmts) | code_ir::Stmt::Loop { body: stmts } => {
+            for s in stmts {
+                collect_hoistable_sl_stmt(s, passthrough, out);
+            }
+        }
+        code_ir::Stmt::For { body, .. } => {
+            for s in body {
+                collect_hoistable_sl_stmt(s, passthrough, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replace `v2_rt::string_length(&param)` with the hoisted variable in expressions.
+fn replace_sl_expr(expr: &mut code_ir::Expr, hoist_targets: &HashSet<HoistTarget>) {
+    // Check if this expr itself is a hoistable call
+    if let code_ir::Expr::Call { func, args, .. } = &*expr {
+        if let code_ir::Expr::Path(segments) = func.as_ref() {
+            if segments.len() == 2 && segments[0] == "v2_rt" && segments[1] == "string_length" {
+                if let Some(code_ir::Expr::Ref(inner)) = args.first() {
+                    let target = match inner.as_ref() {
+                        code_ir::Expr::Var(name) => Some(HoistTarget { param: name.clone(), field: None }),
+                        code_ir::Expr::Field(receiver, field_name) => {
+                            if let code_ir::Expr::Var(name) = receiver.as_ref() {
+                                Some(HoistTarget { param: name.clone(), field: Some(field_name.clone()) })
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(t) = target {
+                        if hoist_targets.contains(&t) {
+                            *expr = code_ir::Expr::Var(t.hoist_var_name());
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Recurse into subexpressions
+    match expr {
+        code_ir::Expr::Call { func, args, .. } => {
+            replace_sl_expr(func, hoist_targets);
+            for a in args {
+                replace_sl_expr(a, hoist_targets);
+            }
+        }
+        code_ir::Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            replace_sl_expr(receiver, hoist_targets);
+            for a in args {
+                replace_sl_expr(a, hoist_targets);
+            }
+        }
+        code_ir::Expr::BinOp { left, right, .. } => {
+            replace_sl_expr(left, hoist_targets);
+            replace_sl_expr(right, hoist_targets);
+        }
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            replace_sl_expr(cond, hoist_targets);
+            for s in then_body {
+                replace_sl_stmt(s, hoist_targets);
+            }
+            if let Some(stmts) = else_body {
+                for s in stmts {
+                    replace_sl_stmt(s, hoist_targets);
+                }
+            }
+        }
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
+            replace_sl_expr(scrutinee, hoist_targets);
+            for arm in arms {
+                for s in &mut arm.body {
+                    replace_sl_stmt(s, hoist_targets);
+                }
+            }
+        }
+        code_ir::Expr::Block(stmts) => {
+            for s in stmts {
+                replace_sl_stmt(s, hoist_targets);
+            }
+        }
+        code_ir::Expr::Closure { body, .. } => {
+            replace_sl_expr(body, hoist_targets);
+        }
+        code_ir::Expr::UnaryOp { expr: e, .. } => {
+            replace_sl_expr(e, hoist_targets);
+        }
+        code_ir::Expr::Ref(e) | code_ir::Expr::RefMut(e) | code_ir::Expr::Deref(e) => {
+            replace_sl_expr(e, hoist_targets);
+        }
+        code_ir::Expr::Field(receiver, _) => {
+            replace_sl_expr(receiver, hoist_targets);
+        }
+        _ => {}
+    }
+}
+
+fn replace_sl_stmt(stmt: &mut code_ir::Stmt, hoist_targets: &HashSet<HoistTarget>) {
+    match stmt {
+        code_ir::Stmt::Let { expr, .. }
+        | code_ir::Stmt::Expr(expr)
+        | code_ir::Stmt::TailExpr(expr)
+        | code_ir::Stmt::Return(expr)
+        | code_ir::Stmt::Break(expr) => {
+            replace_sl_expr(expr, hoist_targets);
+        }
+        code_ir::Stmt::Assign { value, .. } => {
+            replace_sl_expr(value, hoist_targets);
+        }
+        code_ir::Stmt::BlockScope(stmts) | code_ir::Stmt::Loop { body: stmts } => {
+            for s in stmts {
+                replace_sl_stmt(s, hoist_targets);
+            }
+        }
+        code_ir::Stmt::For { body, .. } => {
+            for s in body {
+                replace_sl_stmt(s, hoist_targets);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn lower_tco_plan(
     plan: TcoPlan,
     param_names: &[String],
@@ -6720,6 +7427,20 @@ fn lower_tco_plan(
     // When a param is not referenced after the call (only in the final Recur),
     // it can be moved instead of cloned, keeping Rc refcount=1 for in-place mutation.
     strip_tco_param_clones(&mut loop_body, param_names);
+
+    // P1a: Hoist loop-invariant string_length calls on passthrough params.
+    // string_length is O(N) in the runtime — hoisting avoids recomputing it
+    // every iteration when the underlying string never changes.
+    // Detect ALL passthrough params (not just &str), since struct params like
+    // SourceRef have String fields (.text) that also need hoisting.
+    let all_passthrough: HashSet<usize> = (0..param_names.len())
+        .filter(|&i| is_tco_param_passthrough(&plan.body, i, &param_names[i]))
+        .collect();
+    let hoisted = hoist_invariant_string_length(&mut loop_body, param_names, &all_passthrough);
+    for h in hoisted.into_iter().rev() {
+        preamble.push(h);
+    }
+
     preamble.push(code_ir::Stmt::Loop { body: loop_body });
     preamble
 }
@@ -6744,7 +7465,7 @@ fn is_tco_param_passthrough_inner(
             args.get(param_idx).is_some_and(|arg| {
                 matches!(arg, code_ir::Expr::Var(name) if name == param_name)
                     || matches!(arg, code_ir::Expr::MethodCall { receiver, method, args: margs }
-                        if method == "to_string" && margs.is_empty()
+                        if (method == "to_string" || method == "clone") && margs.is_empty()
                         && matches!(receiver.as_ref(), code_ir::Expr::Var(name) if name == param_name))
             })
         }

@@ -59,42 +59,37 @@ pub fn char_at(s: impl AsRef<str>, pos: i64) -> String {
     let s = s.as_ref();
     let bytes = s.as_bytes();
     let pos = pos as usize;
-    if pos < bytes.len() && bytes[pos] < 128 {
-        // ASCII fast path: O(1) indexed access
+    if pos >= bytes.len() {
+        return String::new();
+    }
+    if bytes[pos] < 128 {
+        // ASCII byte: O(1) indexed access
         return String::from(bytes[pos] as char);
     }
-    // Unicode fallback: O(pos) walk
-    s.chars().nth(pos).map(|ch| ch.to_string()).unwrap_or_default()
+    // Multi-byte UTF-8: decode char starting at this byte position
+    s[pos..].chars().next().map(|ch| ch.to_string()).unwrap_or_default()
 }
 
-/// Return the number of characters in a string.
-/// O(1) for ASCII (byte length == char count); O(n) for multi-byte UTF-8.
+/// Return the length of a string.
+/// O(1): returns byte length, which equals char count for ASCII.
+/// char_at uses byte indexing, so all positions are byte-based.
 pub fn string_length(s: impl AsRef<str>) -> i64 {
-    let s = s.as_ref();
-    if s.is_ascii() {
-        s.len() as i64
-    } else {
-        s.chars().count() as i64
-    }
+    s.as_ref().len() as i64
 }
 
-/// Extract a substring by character indices [start, end).
-/// O(end - start) for ASCII; O(start + len) for multi-byte UTF-8.
+/// Extract a substring by byte positions [start, end).
+/// O(end - start): direct byte slice for well-formed UTF-8.
+/// Positions are byte offsets (consistent with char_at and string_length).
 pub fn substring(s: impl AsRef<str>, start: i64, end: i64) -> String {
     let s = s.as_ref();
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
-    if s.is_ascii() {
-        let start = start.min(s.len());
-        let end = end.min(s.len());
-        if start >= end {
-            return String::new();
-        }
-        // ASCII fast path: byte slicing is O(end - start)
-        return s[start..end].to_string();
+    let start = start.min(s.len());
+    let end = end.min(s.len());
+    if start >= end {
+        return String::new();
     }
-    // Unicode fallback: O(end) char walk
-    s.chars().skip(start).take(end.saturating_sub(start)).collect()
+    s[start..end].to_string()
 }
 
 /// Check whether a string contains a given substring.
@@ -162,20 +157,35 @@ pub fn str_eq(a: impl AsRef<str>, b: impl AsRef<str>) -> bool {
 // Scanner operations — used by the v2 tokenizer
 // ---------------------------------------------------------------------------
 
-/// Scan while a predicate holds, returning the end position.
-/// `pred` receives a single-character string and returns true to continue.
+/// Scan while a predicate holds, returning the end position (byte offset).
+/// `pred` receives a single-character `&str` and returns true to continue.
 /// O(k) where k = number of chars satisfying pred.
+/// All positions are byte offsets — consistent with char_at and string_length.
 pub fn scan_while(s: impl AsRef<str>, start: i64, pred: impl Fn(&str) -> bool) -> i64 {
-    let bytes = s.as_ref().as_bytes();
+    let text = s.as_ref();
+    let bytes = text.as_bytes();
     let mut pos = start.max(0) as usize;
-    if s.as_ref().is_ascii() {
-        while pos < bytes.len() && pred(&String::from(bytes[pos] as char)) {
+    // Fast path: ASCII bytes can be sliced directly.
+    // Handles both pure-ASCII strings and ASCII regions of mixed strings.
+    while pos < bytes.len() {
+        if bytes[pos] < 128 {
+            if !pred(&text[pos..pos + 1]) {
+                break;
+            }
             pos += 1;
-        }
-    } else {
-        let chars: Vec<char> = s.as_ref().chars().collect();
-        while pos < chars.len() && pred(&chars[pos].to_string()) {
-            pos += 1;
+        } else {
+            // Multi-byte UTF-8: decode one char, test, advance by char width.
+            let ch_start = pos;
+            let rest = &text[pos..];
+            if let Some(ch) = rest.chars().next() {
+                let mut buf = [0u8; 4];
+                if !pred(ch.encode_utf8(&mut buf)) {
+                    break;
+                }
+                pos += ch.len_utf8();
+            } else {
+                break;
+            }
         }
     }
     pos as i64
@@ -262,19 +272,14 @@ mod tests {
     use super::V2_RUNTIME_SOURCE;
 
     #[test]
-    fn substring_ascii_fast_path_clamps_end() {
+    fn substring_clamps_bounds() {
         assert!(
-            V2_RUNTIME_SOURCE.contains("if s.is_ascii() {")
-                && V2_RUNTIME_SOURCE.contains("let start = start.min(s.len());")
+            V2_RUNTIME_SOURCE.contains("let start = start.min(s.len());")
                 && V2_RUNTIME_SOURCE.contains("let end = end.min(s.len());")
                 && V2_RUNTIME_SOURCE.contains("if start >= end {")
                 && V2_RUNTIME_SOURCE.contains("return String::new();")
                 && V2_RUNTIME_SOURCE.contains("s[start..end].to_string()"),
-            "runtime shim should clamp ASCII substring bounds and return empty when the clamped range is invalid"
-        );
-        assert!(
-            !V2_RUNTIME_SOURCE.contains("s.is_ascii() && end <= s.len()"),
-            "runtime shim should not gate the ASCII fast path on end <= s.len()"
+            "runtime shim should clamp substring bounds and return empty when the clamped range is invalid"
         );
     }
 }

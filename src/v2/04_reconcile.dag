@@ -2257,7 +2257,7 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
 // =========================================================================
 
 // Filter each binding's deps to only names present in the binding set.
-// Primitives and external names are excluded — they can't participate in cycles.
+// Primitives and external names are excluded -- they can't participate in cycles.
 fn compute_in_graph_deps(
     all_names: List<String>,
     deps_map: Map<String, List<String>>,
@@ -2308,8 +2308,8 @@ fn kahn_remove_loop(
   kahn_remove_loop(remaining: next_remaining, local_deps: local_deps)
 }
 
-// Detect cycle-participating types using Kahn's topological removal — O(V+E).
-// Replaces per-type DFS which was O(N²×D).
+// Detect cycle-participating types using Kahn's topological removal -- O(V+E).
+// Replaces per-type DFS which was O(N^2*D).
 fn detect_type_cycles_kahn(
     deps_map: Map<String, List<String>>,
     bindings: Map<String, TypeBinding>
@@ -2416,8 +2416,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, local_env])
-  // Precompute deps once per binding — avoids repeated tree walks in cycle
-  // detection and topological resolution (was O(N²×D), now O(B)).
+  // Precompute deps once per binding -- avoids repeated tree walks in cycle
+  // detection and topological resolution (was O(N^2*D), now O(B)).
   let all_deps_map = fold(map_values(merged.bindings), init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved))
   )
