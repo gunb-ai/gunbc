@@ -29,28 +29,33 @@ should always be able to see through the name to the structure underneath.
   fold-accum field extract via `Rc::make_mut`
 - **Tokenizer ownership clean** — v1 emitter compiles helpers as returning `ScanResult`
   (single token), `tokenize_loop` is sole owner of token accumulator list
-- **String operations have ASCII fast paths** — char_at is O(1) for ASCII bytes;
-  string_length, substring, scan_* do O(n) `is_ascii()` classification per call,
-  then O(1)/O(k) if ASCII. This per-call classification is the P0-d bottleneck.
+- **String operations are O(N) in current runtime** — char_at does O(1) byte read
+  but callers convert to String for comparison (heap alloc per char). string_length,
+  substring, scan_while all call is_ascii() O(N) per invocation. scan_while also
+  heap-allocates per character even in ASCII path. See P0-d diagnosis and
+  dsl/std/primitives.dag contracts for authoritative costs. P1a eliminates these
+  by classifying value shapes so emission avoids String-for-codepoint entirely.
 - **String params don't clone** — &str in generated code, Copy semantics
 - **Node shrunk from ~544b to ≤176b** — transport/config boxed (176b test ceiling enforced)
 - **Interpreter list_push is O(1)** — Arc COW via try_unwrap
 - **TCO loops don't leak** — state moved, not cloned
-- **Self-compile ratchets** — file count >= 9, all non-empty, source count >= 13,
-  error ratchet <= 500, `profile_self_compile` + `self_compile_cargo_check` tests
+- **Self-compile ratchets** — `self_compile_all_modules` runs by default (file
+  count >= 9, all non-empty, source count >= 13, error ratchet <= 500).
+  `profile_self_compile` and `self_compile_cargo_check` are `#[ignore]` (opt-in
+  via `--ignored`), not default CI ratchets
 - **B3 Phase 2a contracts frozen** — DeclaredFuncSig/ResolvedFuncSig split,
   SCC-aware resolution, ResolvedGraph boundary type, retirement plans
 
 ### What's next
 
-**P1 (graph normalization), then Wave 1.** A4 cargo check passes (0
-errors), but the self-compiled binary cannot self-compile — it hangs in
-the tokenizer. The root cause is not one bug but a class of problems:
-the resolved graph is truthful but noisy. All edges look the same
-(consume, read, threaded, projected) so emission applies blanket
-runtime gatekeeping (Rc, stacker, String) that re-checks facts the
-graph already proved. P1 classifies edges and surfaces behavioral
-facts so emission just translates, never re-derives.
+**P1a (v1 perf unblock), then P1b (v2 normalize stage), then Wave 1.**
+A4 cargo check passes (0 errors), but the self-compiled binary cannot
+self-compile — it hangs in the tokenizer. The root cause is not one bug
+but a class of problems: the emitter applies blanket runtime gatekeeping
+(Rc, stacker, String) instead of using information already available in
+the typed AST. P1a fixes this within the v1 Rust emitter — no new IR,
+no new pipeline stage. P1b builds the permanent v2 normalize stage
+(EmitGraph, stable binding identity) after the perf gate is cleared.
 
 **Performance journey (2026-03-14 → 2026-03-20):**
 
@@ -60,7 +65,7 @@ facts so emission just translates, never re-derives.
 | Mar 16 | Stack overflow | Recursive descent without stack growth | P0-a: stacker in v2 emitter |
 | Mar 19 | Clone overhead / OOM | `force_clone` inflated all refcounts → O(N) every list_push | R9: V5, TCO clone strip, fold-accum extract |
 | Mar 19 | Reconcile hang | O(N²) topo_resolve + detect_cycles | Kahn's algorithm, precomputed deps_map |
-| Mar 20 | Tokenizer hang | Emitter representation: char-as-String, blanket Rc, blanket stacker, string_length O(N) | **P1: graph normalization** |
+| Mar 20 | Tokenizer hang | Emitter representation: char-as-String, blanket Rc, blanket stacker, string_length O(N) | **P1a: v1 perf unblock** (emitter uses typed AST info it already has) |
 
 Each previous fix was a localized bug. The tokenizer bottleneck is
 structural — and the same representation issues will affect the parser,
@@ -68,11 +73,18 @@ reconciler, and emitter when they process 400K+ bytes of .dag source
 during self-compile. Patching one phase at a time would continue the
 pattern of "fix one bottleneck, reveal the next."
 
-**P1 (graph normalization)** is the systematic fix: classify the resolved
-graph's edges (consume/read/threaded/projected), remove administrative
-noise, and produce a canonical EmitGraph with behavioral facts. Each
-backend's language model reads the EmitGraph and makes target-specific
-rendering decisions. See the P1 section below for full scope.
+**P1a (v1 perf unblock)** is the immediate fix: the v1 emitter already
+has typed AST nodes with scope, call graph, and type info. It needs to
+use that information instead of applying blanket heuristics. No new IR
+types, no new pipeline stage — changes entirely within `daglang-emit`
+Rust code.
+
+**P1b (v2 normalize stage)** is the permanent architecture: classify the
+resolved graph's edges, produce a canonical EmitGraph with behavioral
+facts and stable binding identity. Each backend's language model reads
+the EmitGraph and makes target-specific rendering decisions. Requires
+IR work (stable binding IDs or positional identity) that the current
+codebase doesn't yet support. See P1a and P1b sections below.
 
 ```bash
 # Verify current state:
@@ -80,7 +92,7 @@ cargo test -p v2-compiler-tests --lib --quiet     # 96 tests (12 ignored)
 cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ```
 
-After P1 lands, retest self-compile. Then proceed to Wave 1.
+After P1a lands, retest self-compile. Then proceed to Wave 1.
 
 ### Baseline tests
 
@@ -98,23 +110,27 @@ cargo test -p v2-compiler-tests v2_crate_cargo_check  # generated crate compiles
 ### Critical path
 
 **Critical path summary:** A1 (done) → R9 (done) → B3 Ph1 (done) →
-A4 (done) → P0-a/P0-b (done) → **P1 (graph normalization)** →
-self-compile retest → **Wave 1** → **B3 Ph2a** → A5 → A6 → A7
+A4 (done) → P0-a/P0-b (done) → **P1a (v1 perf unblock)** →
+self-compile retest → **Wave 1** → **P1b (v2 normalize stage)** →
+**B3 Ph2a** → A5 → A6 → A7
 
 ### Immediate next actions
 
-1. **P1 (graph normalization)** — the PERF gate blocker. Classify the
-   resolved graph's edges, remove administrative noise, produce a canonical
-   EmitGraph. Each backend's language model renders from the EmitGraph.
-   See P1 section for scope.
-2. **Self-compile retest** — after P1, verify the self-compiled binary
+1. **P1a (v1 perf unblock)** — changes entirely within `daglang-emit` Rust
+   code. Uses existing typed AST to make per-function and per-binding
+   decisions instead of blanket heuristics. No new pipeline stage, no new
+   IR types. See P1a section for scope.
+2. **Self-compile retest** — after P1a, verify the self-compiled binary
    can self-compile (`v2_crate_self_compile_cargo_check` in <5 min).
 3. **Wave 1 (parallel lanes)** — reconcile/resolve/emit cleanup lanes,
-   now unblocked by P1's representation fixes.
-4. **Wave 2 (B3 Ph2a boundary)** — single ownership surface for
+   now unblocked by P1a's representation fixes.
+4. **P1b (v2 normalize stage)** — new `04a_normalize.dag` module. Requires
+   stable binding identity (positional IDs or scope-qualified names).
+   Produces EmitGraph. This is the permanent architecture. See P1b section.
+5. **Wave 2 (B3 Ph2a boundary)** — single ownership surface for
    DeclaredFuncSig/ResolvedFuncSig split, SCC resolution, ResolvedGraph
    boundary, retirement of `validate_no_unresolved` + `compile_sources_lenient`.
-5. **SG-9 workaround revert** — after P1 confirms codegen fixes are
+6. **SG-9 workaround revert** — after P1a confirms codegen fixes are
    sufficient, revert TokPos extraction and branch-aware use counting.
 
 ### Completed parallel lanes (2026-03-19)
@@ -283,8 +299,8 @@ sources with 0 reconciler errors in 30ms. Emitted Rust compiles with
 | # | Violation | When | Notes |
 |---|-----------|------|-------|
 | F2 | `ItemInfo.kind` is String (`"fn"`, `"func"`, `"other"`) | B3 Phase 2 | Should be a closed enum `ItemKind = Fn \| Func \| Other`. Adding a kind = updating match arms (feature, not cost). |
-| F3 | `SemanticsCtx` uses all-String fields (backend, exec_model, etc.) | D2 timeframe | The comment "so new backends can be added without modifying this type" is exactly what the invariants warn against. Should be enums/newtypes. |
-| F4 | `PrimCost.op: String, model: String` in 07_complexity.dag | D2 timeframe | Typo in op name = silent wrong cost. Should be typed references. |
+| F3 | `SemanticsCtx` uses all-String fields (backend, exec_model, etc.) | **DONE** | Fixed: `SemanticsCtx` fields are now closed enums (`BackendKind`, `ListModel`, `MapModel`, `StringModel`) in `07_complexity.dag:106-120`. |
+| F4 | `PrimCost.op: String, model: String` in 07_complexity.dag | **DONE** | Fixed: `PrimCost.op` is now `PrimOp` (closed enum, `07_complexity.dag:51-60`), `ctx` is `SemanticsCtx` (closed enum). |
 | B4-val | `validate_no_unresolved()` is post-hoc validation (Invariant 9) | B3 | Already tracked. Delete when pipeline boundary types make unresolved structurally unrepresentable. |
 | F5 | `infer → reconcile` rename lacks contract justification | Documentation | Rename already done. Needs documented rationale tied to contract change (reconciliation = bidirectional, not just inference). |
 | F6 | `05_emit_rust.dag` re-discovers structural facts through string heuristic lists (`known_opt_fields`, `types_with_value_field`, `known_struct_with_accessor_field`, `is_rc_exclude`) | Post-B3 emitter cleanup | The reconciler/boundary already knows these facts structurally. Push them through metadata or type summaries instead of maintaining name lists in the emitter. |
@@ -295,11 +311,11 @@ sources with 0 reconciler errors in 30ms. Emitted Rust compiles with
 ## Completed: R8 — Rc-Wrap Generated Types (temporary bootstrap convergence)
 
 **Status:** R8 was the bootstrap convergence strategy that made A4 possible.
-It is **superseded by P1**. R8 applied blanket Rc wrapping to all non-Copy
+It is **superseded by P1a/P1b**. R8 applied blanket Rc wrapping to all non-Copy
 types — correct for convergence but exactly the kind of runtime gatekeeping
-P1 eliminates. P1's edge classification determines per-binding ownership:
+P1a eliminates. Per-binding consumer analysis determines ownership:
 single semantic consumer → bare move (no Rc). Shared → Rc. R8's blanket
-rule becomes a fallback that P1 progressively replaces.
+rule becomes a fallback that P1a progressively replaces.
 
 **Original structural principle (for historical context):** The DAG language
 has value semantics with no mutation. Every value is logically shared — using
@@ -308,7 +324,7 @@ Rust ownership, where using a value twice requires `.clone()`. R8 chose
 uniform Rc wrapping as the simplest correct mapping.
 
 ```text
-DAG value semantics          R8 mapping (bootstrap)    P1 mapping (per-binding)
+DAG value semantics          R8 mapping (bootstrap)    P1a mapping (per-binding)
 ─────────────────           ─────────────────────     ────────────────────────
 String                  →    &str param (Copy)         same
 Int, Bool               →    i64, bool (Copy)          same
@@ -318,11 +334,11 @@ struct Node { ... }     →    Rc<Node>                  bare Node when 1 semant
 enum TokenKind { ... }  →    Rc<TokenKind>             bare when 1 semantic consumer
 ```
 
-**R8 rule (active until P1 lands):** Every non-Copy generated type is
+**R8 rule (active until P1a lands):** Every non-Copy generated type is
 Rc-wrapped at all usage sites. `compile_ident` can emit `.clone()` freely
 on any variable — it's always O(1). No type-specific checks, no special
-cases. **P1 replaces this with per-binding decisions based on semantic
-consumer count from the EmitGraph.**
+cases. **P1a replaces this with per-binding decisions based on semantic
+consumer count from the typed AST (v1) or EmitGraph (P1b, v2).**
 
 **Types excluded from Rc-wrapping** (pure tag enums, already Copy):
 Connective, BinOpKind, UnaryOpKind, OperationModifier, RenderTarget, Severity,
@@ -516,7 +532,7 @@ Practical implication:
 
 ## Track A: Self-Hosting
 
-**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → A4 (done) → P0-a/b/c (done) → **P1 (graph normalization)** → **Wave 1** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
+**Dependencies:** R8 → A1 (done) → R9 (done) → B3 Ph1 (done) → A4 (done) → P0-a/b/c (done) → **P1a (v1 perf unblock)** → **Wave 1** → **P1b (v2 normalize)** → **B3 Ph2a** → A5 → A6 (Blocker 2) → A7
 
 ### A1: Gist compilation
 
@@ -575,7 +591,7 @@ variants), avoiding unnecessary Rc wrapping and clone overhead.
 and `detect_type_cycles` replaced with precomputed deps_map and Kahn's
 algorithm. 96/96 tests pass.
 
-**P0-d (DIAGNOSED — blocked on P1):** Self-compile still hangs. Profiling
+**P0-d (DIAGNOSED — blocked on P1a):** Self-compile still hangs. Profiling
 shows the tokenizer (phase 1 of 5) never completes on ~400K chars of .dag
 source. Root cause is not the tokenizer algorithm — it's the emitter's
 representation model:
@@ -597,8 +613,8 @@ representation model:
 These same issues affect parser, reconciler, and emitter during
 self-compile — the tokenizer just hits the wall first because it processes
 raw bytes. Patching one phase at a time would continue the "fix one
-bottleneck, reveal the next" pattern from the last week. P1 is the
-systematic fix.
+bottleneck, reveal the next" pattern from the last week. P1a is the
+immediate fix; P1b is the permanent architecture.
 
 **Acceptance:**
 - [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
@@ -606,7 +622,7 @@ systematic fix.
 
 ---
 
-## P1 — Graph Normalization (PERF gate blocker)
+## P1 — Emission Representation (split: P1a perf unblock + P1b normalize stage)
 
 ### Problem
 
@@ -622,6 +638,21 @@ The result: every character comparison heap-allocates a String, every
 struct wraps in Rc even when consumed once, every function gets a stack
 guard even when it's a leaf. These aren't missing optimizations — they
 are runtime re-checks of facts the graph already proved.
+
+This is really two problems at different scopes:
+
+- **P1a (v1 perf unblock):** The v1 emitter already has typed AST nodes
+  with scope, call graph, and type info. It applies blanket heuristics
+  instead of using this information. The fix is within existing Rust
+  emitter code — no new IR types, no new pipeline stage.
+
+- **P1b (v2 normalize stage):** The permanent architecture requires a
+  new compiler stage + representation layer (EmitGraph, normalize phase,
+  language model). The current IR (`Node` in `00_core.dag:308`) has no
+  stable binding ID — only `name: String` and `span: SourceSpan`.
+  Reconcile fabricates 22+ zero-span nodes via `leaf_node()`,
+  `optional_node()`, `container_node()`. There are no def-use links.
+  This IR work is a prerequisite for P1b, not for P1a.
 
 ### Principle: canonicalization, not optimization
 
@@ -640,17 +671,66 @@ check that duplicates what the graph already proved:
 | `String` for code points | "How long is this?" | Value is exactly one code point |
 | `Vec<String>` + `join` | "Keep intermediates" | Intermediate never observed |
 
-P1 is not an optimization pass. It is the step that converts a
-resolved-but-raw graph into a **canonical semantic-use view** for
-emission. The design rule: **if emit has to infer semantics from raw
-structure, the boundary is wrong.**
+P1a uses the typed AST to eliminate these within the v1 emitter. P1b
+makes the same facts first-class in the IR so all backends can use them.
 
-Correctness and efficiency are aligned: the runtime overhead exists
-to handle cases that can't happen (because the graph proved they can't).
-Removing it is removing redundant gatekeeping, not trading correctness
-for speed.
+The design rule: **if emit has to infer semantics from raw structure,
+the boundary is wrong.** P1a enforces this within v1 Rust code; P1b
+enforces it structurally across all backends.
 
-### What we have after reconcile
+### P1a: v1 perf unblock
+
+Changes entirely within `daglang-emit` Rust code. The v1 emitter already
+has typed AST nodes with scope, call graph, and type info from reconcile.
+It needs to use that information instead of applying blanket heuristics.
+
+**Scope:**
+- Call graph SCC → classify functions (leaf / interior / recursive / TCO)
+- Remove stacker from leaf functions
+- Use type info to avoid Rc on single-consumer structs
+- Use char_at return position to emit byte comparison instead of String
+- Cache string_length outside loops
+
+**No new IR types.** No new pipeline stage. No stable binding IDs needed.
+The v1 Rust emitter already resolves identity from the typed AST — it
+has scope, call targets, and type info. P1a uses what's already there.
+
+**Concrete deliverable:** self-compile tokenizer completes.
+
+**Files modified (P1a only):**
+
+| File | Changes |
+|------|---------|
+| `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Call graph SCC, function classification, per-binding consumer analysis |
+| `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs` | `char_at` → byte variant; length caching |
+| `src/v1/07_emit/daglang-emit/src/render_rust.rs` | Gate stacker/inline/Rc on function and binding classifications |
+
+**P1a acceptance criteria:**
+
+- [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
+- [ ] All existing tests pass (96 v2-compiler-tests, 368 daglang-emit)
+- [ ] Generated `tokenize.rs` verifiable:
+  - [ ] No `stacker::maybe_grow` on leaf functions
+  - [ ] No `.to_string()` in character predicate comparisons
+  - [ ] No `v2_rt::string_length` inside `tokenize_loop` body
+  - [ ] Single-semantic-consumer structs not `Rc`-wrapped
+  - [ ] `scan_string_body.acc` is `String`, not `Vec<String>`
+
+---
+
+### P1b: v2 normalize stage (after P1a, before A5)
+
+**Prerequisite:** IR work to support stable binding identity. The
+current IR (`Node` in `00_core.dag:308`) has no stable binding ID —
+only `name: String` and `span: SourceSpan`. Reconcile fabricates 22+
+zero-span nodes via `leaf_node()`, `optional_node()`, `container_node()`.
+There are no def-use links. Per-binding consumer counting from the
+current graph would require re-resolving scope/identity first.
+
+P1b requires either positional IDs or scope-qualified names before the
+EmitGraph can be constructed. This is IR work that does not affect P1a.
+
+### What we have after reconcile (P1b context)
 
 The full resolved program graph — every binding, every producer, every
 use site, every function body, every call target, every resolved type,
@@ -670,7 +750,7 @@ But it is **undifferentiated**. A raw edge might mean:
 These are very different for emission, but they all look like "an
 edge exists."
 
-### What this layer produces: EmitGraph
+### What P1b produces: EmitGraph
 
 The job: **classify the graph's structure correctly, discard or relabel
 administrative noise, surface the behavioral facts emission needs.**
@@ -796,10 +876,16 @@ the EmitGraph and produces target-specific rendering decisions.
 Emission prints the RenderPlan mechanically.
 
 **EmitGraph is an ID-keyed canonical view**, not a second graph. It
-preserves stable binding/function IDs from ResolvedGraph and attaches
-normalized behavioral facts and witnesses. No topology cloning — just
-a derived view over the existing structure. This avoids memory churn
-and boundary drift.
+attaches normalized behavioral facts and witnesses to stable binding/
+function identifiers. No topology cloning — just a derived view over
+the existing structure. This avoids memory churn and boundary drift.
+
+**IR prerequisite:** The current IR has no stable binding ID — only
+`name: String` and `span: SourceSpan`. Reconcile fabricates zero-span
+nodes without unique identity. Before P1b can construct an ID-keyed
+EmitGraph, either positional IDs or scope-qualified names must be added
+to the IR. This is P1b prerequisite work, not needed for P1a (which
+uses the v1 typed AST where identity is already available).
 
 The ResolvedGraph is preserved for diagnostics, proofs, and debugging.
 The EmitGraph REPLACES `EmitGraphInfo.rc_wrapped_types` and similar
@@ -807,7 +893,9 @@ blanket maps.
 
 ### Complexity guarantees
 
-Normalization is O(N) with all reference checks via hash lookup.
+Normalization is O(N) with all reference checks via map lookup (O(1) amortized
+for HashMap in v1 Rust, O(log N) for BTreeMap in v2 emitted code — the O(N) total
+holds either way since log factors are absorbed).
 
 | Walk | What it does | Visits | Complexity |
 |------|-------------|--------|------------|
@@ -826,23 +914,27 @@ node. No quadratic loops.
 **Implementation note:** Hot normalization data (per-binding facts,
 per-function classifications, edge labels) should use dense integer
 IDs and side tables (`Vec`/`IndexVec`/bitsets) for cache locality and
-low allocation overhead. Reserve hash maps for boundary lookups
-(name→ID resolution at EmitGraph construction). This also gives more
-deterministic behavior for A6 fixed-point comparison.
+low allocation overhead. Reserve map lookups for boundary operations
+(name→ID resolution at EmitGraph construction). v1 Rust uses HashMap
+(O(1) amortized); v2 emitted code currently uses BTreeMap (O(log N))
+— acceptable since log factors don't change the O(N) total, but
+sub-millisecond constant-factor claims apply to v1 only. This also
+gives more deterministic behavior for A6 fixed-point comparison.
 
 **Invariant:** Every node is visited a bounded constant number of times.
-Every reference check is a hash lookup O(1) (or indexed O(1) for dense
-tables). Producer tracking is one level deep (direct producers only);
-language model does bounded lookups for deeper tracing.
+Every reference check is a map lookup — O(1) amortized in v1 (HashMap),
+O(log N) in v2 (BTreeMap), or indexed O(1) for dense tables. Producer
+tracking is one level deep (direct producers only); language model does
+bounded lookups for deeper tracing.
 
 ### Relationship to Track D
 
-P1's edge classification (consumed vs read vs threaded) and Track D's
-ownership proofs are **one analysis at two maturity levels**. P1
-classifies edges and surfaces behavioral facts. Track D strengthens
+P1a/P1b's edge classification (consumed vs read vs threaded) and Track D's
+ownership proofs are **one analysis at two maturity levels**. P1a/P1b
+classify edges and surface behavioral facts. Track D strengthens
 the same classifications into proof obligations that eliminate
 `try_unwrap` runtime fallbacks entirely. Same edges, same
-classifications — P1 is the front half, Track D is the back half.
+classifications — P1b is the front half, Track D is the back half.
 
 ### Boundary contracts (pull-forward from Phase 2a)
 
@@ -854,28 +946,36 @@ cleanup from accidentally deepening the old permissive shape.
 used by emit, it must cross the boundary as data in the EmitGraph,
 not be rediscovered by name heuristics.
 
-### Dual implementation strategy
+### Relationship between P1a and P1b
 
-Both v1 (Rust) and v2 (.dag) need graph normalization:
-- **v1:** Unblocks PERF gate now. Bootstrap scaffolding that dies at A7.
-- **v2:** Required before A5/A6. Without normalization, stage0 works
-  but stage1 hangs on self-compile (same algorithmic bottleneck).
+P1a is a v1-only change within the existing Rust emitter. It uses
+information already available in the typed AST (scope, call graph, type
+info) to make per-function and per-binding decisions. It unblocks the
+PERF gate without new IR types.
 
-The design is target-agnostic — edge classifications, EmitGraph shape,
-and witnesses are identical in both implementations. v1 teaches the
-pattern; v2 is the permanent version.
+P1b is the permanent v2 architecture. It adds a new compiler stage
+(`04a_normalize.dag`), requires IR work (stable binding identity), and
+produces a canonical EmitGraph that all backends consume. P1b cannot
+proceed until the IR prerequisite is resolved.
 
-| Component | v1 (Rust) | v2 (.dag) | Survives A7? |
-|-----------|-----------|-----------|--------------|
-| Graph normalization | `daglang-emit` Rust code | `04a_normalize.dag` | **v2 version** survives |
+The v1 perf unblock (P1a) works because the v1 emitter already has
+identity: the typed AST from reconcile gives it scoped bindings, call
+targets, and resolved types. P1a teaches the pattern that P1b makes
+structural.
+
+| Component | P1a (v1 Rust) | P1b (v2 .dag) | Survives A7? |
+|-----------|---------------|---------------|--------------|
+| Function classification | `fn_codegen.rs` call graph SCC | `04a_normalize.dag` | **v2 version** survives |
+| Edge classification | `fn_codegen.rs` consumer analysis | `04a_normalize.dag` | **v2 version** survives |
 | Language model | `render_rust.rs` pattern matching | Per-language extdep | **v2 version** survives |
 | Rendering tables | `fn_codegen.rs` | `05_emit_rust.dag` | **v2 version** survives |
 | Other backends | Not needed for bootstrap | `05_emit_go/py.dag` | **v2 version** survives |
 
-### Implementation stages
+### P1b implementation stages
 
-Three stages. Stage 1 is a serial gate. Stage 2 runs three independent
-analyses in a single AST walk. Stage 3 post-processes into EmitGraph.
+Three stages (P1b only — P1a is simpler, see P1a section above).
+Stage 1 is a serial gate. Stage 2 runs three independent analyses in
+a single AST walk. Stage 3 post-processes into EmitGraph.
 
 ```
 Stage 1 (serial)          Stage 2 (parallel, one walk)       Stage 3 (post)
@@ -931,16 +1031,8 @@ walk over the AST:
 - **Acceptance:** `scan_string_body.acc` classified as not-materialized
   build-reduce. Rust renders as `String` + `push_str`.
 
-### Acceptance criteria (overall P1)
+### P1b acceptance criteria
 
-- [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
-- [ ] All existing tests pass (96 v2-compiler-tests, 368 daglang-emit)
-- [ ] Generated `tokenize.rs` verifiable:
-  - [ ] No `stacker::maybe_grow` on Leaf functions
-  - [ ] No `.to_string()` in character predicate comparisons
-  - [ ] No `v2_rt::string_length` inside `tokenize_loop` body
-  - [ ] Single-semantic-consumer structs not `Rc`-wrapped
-  - [ ] `scan_string_body.acc` is `String`, not `Vec<String>`
 - [ ] **Witnesses are first-class** in the EmitGraph output:
   - Every non-minimal classification carries a forcing witness
     (e.g., "shared because consumed at nodes {n42, n67}")
@@ -948,8 +1040,7 @@ walk over the AST:
     witness shape
   - Debuggable: when normalization cannot certify a narrower classification,
     the witness explains why
-- [ ] **Complexity:** normalization is O(N), all lookups via HashMap or
-  dense index
+- [ ] **Complexity:** normalization is O(N), all lookups via map or dense index
 - [ ] **Memory:** normalization peak memory overhead is bounded relative
   to ResolvedGraph size (side tables, not cloned topology)
 - [ ] EmitGraph is target-agnostic (no Rust/Go/Python/Java in normalization)
@@ -958,18 +1049,7 @@ walk over the AST:
 - [ ] **Guarantee:** no redundant runtime gatekeeping, canonical behavioral
   facts, and locally minimal target choices given those facts
 
-### Files modified
-
-**v1 (Rust bootstrap — PERF gate)**
-
-| File | Changes |
-|------|---------|
-| `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Edge classification, semantic consumer counting, call graph SCC |
-| `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs` | `char_at` → `char` variant; length caching |
-| `src/v1/07_emit/daglang-emit/src/render_rust.rs` | Render from EmitGraph facts (stacker/inline/Rc gated on classifications) |
-| `src/v1/07_emit/daglang-emit/src/v2_crate_emit.rs` | Thread EmitGraph through emit context |
-
-**v2 (.dag — permanent, required before A5/A6)**
+**P1b files (.dag — permanent, required before A5/A6)**
 
 | File | Changes |
 |------|---------|
@@ -980,9 +1060,9 @@ walk over the AST:
 | `src/v2/05_emit_python.dag` | Language model for Python (same EmitGraph interface) |
 | `src/v2/06_pipeline.dag` | Insert normalization between reconcile and emit |
 
-### Estimated impact
+### Estimated impact (P1a)
 
-| Hot path | Before P1 | After P1 |
+| Hot path | Before P1a | After P1a |
 |----------|-----------|----------|
 | Per-character predicate | stacker + `.to_string()` heap allocs | `#[inline]` byte comparison |
 | Per-token bounds check | `string_length` O(200K) per call | `pos < cached_len` O(1) |
@@ -1121,13 +1201,13 @@ branches**, not as one long serial refactor. The rule is simple: parallelize
 by **write scope**, not by conceptual topic. If two tasks need the same top-level
 types or the same orchestration function, they are not independent lanes.
 
-#### Wave 0 — serial gate (DONE + P1)
+#### Wave 0 — serial gate (DONE + P1a)
 
 | Lane | Branch | Ownership | Files | Status |
 |------|--------|-----------|-------|--------|
 | G0 | `wt/a4-evidence` | Run/record the A4 evidence tests | tests + docs only | **DONE** — 0 cargo check errors |
 | P0 | `v2-compiler-convergence` | Stacker wrapping (P0-a), Copy derive (P0-b), reconcile O(N²) (P0-c) | `src/v2/05_emit_rust.dag`, `src/v2/04_reconcile.dag` | **P0-a/P0-b/P0-c DONE** |
-| P1 | `wt/p1-graph-normalization` | Graph normalization: edge classification, semantic consumer counts, EmitGraph | `fn_codegen.rs`, `render_rust.rs`, `v2_runtime_shim.rs`, `v2_crate_emit.rs` | **IN PROGRESS** |
+| P1a | `wt/p1a-perf-unblock` | v1 emitter: call graph SCC, function classification, per-binding consumer analysis | `fn_codegen.rs`, `render_rust.rs`, `v2_runtime_shim.rs` | **IN PROGRESS** |
 
 #### Wave 1 — clean post-A4 lanes
 
@@ -1276,7 +1356,7 @@ Fixed-point equality (`stage1 output == stage2 output`) requires:
 
 #### v1-safe lane policy
 
-While self-hosting is blocked on P1, other work can proceed in parallel
+While self-hosting is blocked on P1a, other work can proceed in parallel
 under v1. Explicit policy for what is safe:
 
 **Safe now:**
@@ -1442,10 +1522,9 @@ The fix is stronger output types, not more lenient control flow.
 Convert Expr variants to Node patterns. After this, "typed" just means
 "return_type is filled in" and the pipeline shape is `Node → Node → Node → TextFile`.
 
-Also: batch fix F2/F3/F4 (string-typed fields):
+Also: batch fix F2 (string-typed field):
 - `ItemInfo.kind: String` → closed enum `ItemKind = Fn | Func | Other`
-- `SemanticsCtx` all-String fields → enums/newtypes
-- `PrimCost.op: String, model: String` → typed references
+- (F3/F4 already resolved — see audit table)
 
 **Acceptance (Phase 2a — boundary contracts):**
 - [ ] `DeclaredFuncSig` and `ResolvedFuncSig` are distinct types
@@ -1503,28 +1582,30 @@ target means writing an extdep, not editing compiler logic.
 
 ### D-ownership: Static ownership proof (eliminate try_unwrap fallbacks)
 
-**Design (updated 2026-03-20):** Track D builds on P1's edge classification.
-P1 computes **semantic consumer count** (after removing administrative edges
-like TCO threading and pass-through reads). Track D strengthens this:
+**Design (updated 2026-03-20):** Track D builds on P1a/P1b's edge classification.
+P1a (v1) and P1b (v2) compute **semantic consumer count** (after removing
+administrative edges like TCO threading and pass-through reads). Track D
+strengthens this:
 - If semantic_consumers == 1 at a try_unwrap site: emit `Rc::into_inner().expect()`
   (no fallback, panic on violation).
 - If semantic_consumers > 1: compile error — "cannot guarantee O(1) mutation,
   restructure the code."
-- If P1 hasn't classified a binding: that is a P1 completeness bug, not a
+- If P1a/P1b hasn't classified a binding: that is a completeness bug, not a
   Track D gap.
 
 This replaces ALL `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())`
 instances (14 codegen + 4 runtime sites documented in Performance Fallback
 Inventory) with statically verified moves. No runtime fallback exists.
 
-**Relationship to P1:** P1 classifies edges and counts semantic consumers.
-Track D uses those counts as proof obligations. Same edges, same
-classifications — P1 is the front half, Track D is the back half. Track D
-must NOT re-derive consumer counts from raw use_count; it reads P1's
-EmitGraph directly.
+**Relationship to P1a/P1b:** P1a (v1 emitter) and P1b (v2 EmitGraph) classify
+edges and count semantic consumers. Track D uses those counts as proof
+obligations. Same edges, same classifications — P1b is the front half,
+Track D is the back half. Track D must NOT re-derive consumer counts from
+raw use_count; it reads P1b's EmitGraph directly (or P1a's in-emitter
+analysis for the v1 path).
 
 **Staging:**
-- **After P1 lands:** Most try_unwrap sites become provable because P1's
+- **After P1a lands:** Most try_unwrap sites become provable because
   semantic consumer count correctly excludes administrative edges that
   inflated raw use_count.
 - **After A7 (deferred):** Full linear type checking in v2 compiler.
@@ -1545,9 +1626,8 @@ equivalent subexpressions are duplicated at every call site. Mitigation:
 - **Ratchet:** CostExpr node count per function/module must be bounded;
   add growth ratchets to prevent silent blowup
 
-Also: batch fix F3/F4 string-typed fields in 07_complexity.dag:
-- `SemanticsCtx` all-String fields → enums/newtypes
-- `PrimCost.op: String, model: String` → typed references
+F3/F4 already resolved: `SemanticsCtx` fields and `PrimCost.op` are now closed
+enums in `07_complexity.dag` (see audit table).
 
 ### D3: DAG composition
 
