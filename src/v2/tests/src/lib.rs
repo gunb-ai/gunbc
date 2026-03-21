@@ -3467,7 +3467,7 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&out_dir);
 
         // Ratchet: track diagnostic count. Goal is 0.
-        const DIAG_RATCHET: usize = 268;
+        const DIAG_RATCHET: usize = 126;
         assert!(
             diag_count <= DIAG_RATCHET,
             "stage0 compile diagnostic regression: {diag_count} > {DIAG_RATCHET} ratchet. \

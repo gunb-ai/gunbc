@@ -927,7 +927,7 @@ fn node_is_map(n: Node) -> Bool {
 // or an error sentinel from a prior failed lookup.
 // Both are permissive: operations on them succeed without diagnostics.
 fn node_is_dynamic(n: Node) -> Bool {
-  n.connective == none && n.children |> count == 0 && (n.name == "Dynamic" || starts_with(n.name, "<error:"))
+  n.connective == none && n.children |> count == 0 && (n.name == "Dynamic" || n.name |> string_contains(substring: "<error:"))
 }
 
 // Check if a type-Node is a leaf (primitive or named reference).
@@ -1628,8 +1628,7 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             None =>
               // Dynamic-typed expressions (e.g., lambda parameters) permit field
               // access without error -- the field type propagates as a leaf.
-              let is_dynamic = resolved_base.connective == none && resolved_base.children |> count == 0 && resolved_base.name == "Dynamic"
-              let field_diags = if is_dynamic {
+              let field_diags = if node_is_dynamic(n: resolved_base) {
                 []
               } else {
                 [inference_error(
