@@ -100,6 +100,22 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap
 
+// =========================================================================
+// Root Cause A resolution types
+//
+// These types close information gaps at the reconcile→emit boundary.
+// Reconcile attaches these to its output so emit never re-derives them.
+// =========================================================================
+
+// A-4: Distinguish variable bindings from function-as-value references.
+// lookup_in_scope returns this so emit knows whether ExprVar refers to
+// a local binding or a callable being passed as a value.
+type RefKind = Binding | FunctionRef
+
+// A-9: Track why a lambda parameter was bound to Dynamic.
+// Emit uses this to decide whether auto-wrapping is safe.
+type ParamSource = Resolved | InferredFromCollection | Unresolvable
+
 type FieldValueShape = PlainValue | OptionalValue
 
 type FieldSummary {

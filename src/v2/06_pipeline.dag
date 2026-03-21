@@ -4,7 +4,7 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> reconcile -> emit
+// Pipeline: tokenize -> parse -> resolve -> reconcile -> emit -> artifact
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
@@ -23,6 +23,7 @@ import v2.compiler.reconcile { reconcile, ResolvedGraph }
 import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
+import v2.compiler.artifact { ArtifactPlan, ArtifactOutput, Artifact, ServiceBinary, default_artifact_plan }
 
 // =========================================================================
 // Types
@@ -132,6 +133,17 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     }
     let emit_files = emit_result.files
     let emit_diags = emit_result.diagnostics
+
+    // Stage 6: Artifact planning.
+    // Wrap emitted files in a default monolith ArtifactOutput.
+    // The module names come from the resolved graph's module list.
+    let module_names = modules |> map(m => m.name)
+    let plan = default_artifact_plan(root_modules: module_names, target: "default")
+    let artifact = match plan.artifacts |> first {
+      Some { value: a } => a
+      None => Artifact { name: "default", kind: ServiceBinary, target: "default", entry_modules: module_names, dependencies: [] }
+    }
+    let _artifact_output = ArtifactOutput { artifact: artifact, files: emit_files }
 
     CompileResult {
       files: emit_files,

@@ -47,27 +47,7 @@ type DepEdge {
   to_module: String
 }
 
-// State threaded through Kahn's algorithm.
-type KahnState {
-  // Modules that have been placed in sorted order so far (ordered output).
-  sorted: List<String>
-  // O(1) membership set for sorted modules.
-  sorted_set: Map<String, Bool>
-  // Current in-degree for each module, keyed by module name.
-  in_degree_map: Map<String, Int>
-  // Module names list (for iteration).
-  module_names: List<String>
-  // Remaining unprocessed edges. Shrinks each round as edges from
-  // zero-degree nodes are consumed. Total work across all rounds
-  // is O(E) since each edge is processed exactly once.
-  edges: List<DepEdge>
-}
-
-// Result of a single Kahn iteration step (retained for compatibility).
-type KahnStepResult {
-  state: KahnState
-  progress: Bool
-}
+// (P5: KahnState/KahnStepResult removed — replaced by queue-based KahnDrainState)
 
 // Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
@@ -353,12 +333,11 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
 }
 
 // =========================================================================
-// Topological sort -- Kahn's algorithm
+// Topological sort -- Kahn's algorithm (P5: queue-based single-pass)
 //
-// Iterative approach using fold over a bounded number of steps.
-// Each step finds all zero-in-degree nodes, removes them, and
-// decrements neighbors. Terminates when no progress is made
-// (either all sorted, or a cycle exists).
+// O(M+E) single pass using an adjacency list and explicit queue of
+// zero-in-degree nodes. Each edge is processed exactly once when its
+// source node is dequeued. No per-step filter over all module names.
 // =========================================================================
 
 type TopoResult {
@@ -369,38 +348,52 @@ type TopoResult {
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
 
-  let all_edges = modules |> flat_map(m =>
+  // Build adjacency list: from_module → [to_module, ...]
+  // "from_module is imported by to_module" means when from_module is sorted,
+  // to_module's in-degree decreases.
+  let adjacency = modules |> flat_map(m =>
     m.imports |> map(imp => DepEdge { from_module: imp.module_path, to_module: m.name })
-  )
+  ) |> fold(init: empty_map(), f: fn(acc, edge) {
+    let existing = match map_get(acc, edge.from_module) {
+      Some { value: lst } => lst
+      None => []
+    }
+    map_insert(acc, edge.from_module, list_push(existing, edge.to_module))
+  })
 
   // Compute initial in-degrees directly from import counts.
-  let initial_in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
+  let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
     map_insert(acc, m.name, m.imports |> count)
   )
 
-  let initial_state = KahnState {
+  // Initial queue: all modules with in-degree 0 (no imports), sorted for determinism.
+  let initial_queue = module_names
+    |> filter(name => match map_get(in_degree_map, name) {
+      Some { value: 0 } => true
+      _ => false
+    })
+    |> sort_by(name => name)
+
+  // Process queue: dequeue node, add to sorted, decrement neighbors.
+  let result = kahn_drain(
+    queue: initial_queue,
     sorted: [],
-    sorted_set: empty_map(),
-    in_degree_map: initial_in_degree_map,
-    module_names: module_names,
-    edges: all_edges
-  }
+    in_degree_map: in_degree_map,
+    adjacency: adjacency
+  )
 
-  // Run Kahn's algorithm: iterate at most N times (one module emitted per round).
-  // Uses adjacency-map lookup via edge filtering for O(M+E) total.
   let module_count = modules |> count
-  let final_state = kahn_iterate(state: initial_state, remaining: module_count)
-
-  let sorted_count = final_state.sorted |> count
-  if sorted_count == module_count {
-    TopoResult { sorted: final_state.sorted, cycle_error: None }
+  if result.sorted |> count == module_count {
+    TopoResult { sorted: result.sorted, cycle_error: None }
   } else {
-    // Modules not in sorted output are part of a cycle
+    let sorted_set = result.sorted |> fold(init: empty_map(), f: (acc, name) =>
+      map_insert(acc, name, true)
+    )
     let cycle_members = module_names
-      |> filter(name => map_has(m: final_state.sorted_set, key: name) == false)
+      |> filter(name => map_has(m: sorted_set, key: name) == false)
     let cycle_desc = cycle_members |> join(separator: " -> ")
     TopoResult {
-      sorted: final_state.sorted,
+      sorted: result.sorted,
       cycle_error: Some { value: Diagnostic {
         severity: Error,
         message: concat("circular dependency detected: ", cycle_desc),
@@ -411,68 +404,55 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
   }
 }
 
-// Run up to `remaining` rounds of Kahn's algorithm.
-fn kahn_iterate(state: KahnState, remaining: Int) -> KahnState {
-  if remaining <= 0 {
-    return state
-  }
-  let step = kahn_step(state: state)
-  if step.progress == false {
-    return step.state
-  }
-  kahn_iterate(state: step.state, remaining: remaining - 1)
+// Drain state for queue-based Kahn.
+type KahnDrainState {
+  sorted: List<String>
+  in_degree_map: Map<String, Int>
 }
 
-// One step of Kahn's algorithm: find all zero-in-degree nodes,
-// emit them (sorted), and decrement neighbors' in-degrees.
-// Uses in_degree_map for O(1) degree lookup and sorted_set for O(1) membership.
-// Edge partition ensures each edge is processed exactly once across all rounds: O(E) total.
-fn kahn_step(state: KahnState) -> KahnStepResult {
-  let zero_nodes = state.module_names
-    |> filter(name =>
-      let deg = match map_get(state.in_degree_map, name) {
-        Some { value: d } => d
-        None => -1
-      }
-      deg == 0 && map_has(m: state.sorted_set, key: name) == false
-    )
-    |> sort_by(name => name)
-
-  if zero_nodes |> count == 0 {
-    return KahnStepResult { state: state, progress: false }
+// Process the queue of zero-in-degree nodes until empty.
+// Each dequeued node's neighbors have their in-degree decremented;
+// any that reach 0 are appended to the queue for the next round.
+fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<String, Int>, adjacency: Map<String, List<String>>) -> KahnDrainState {
+  if queue |> count == 0 {
+    return KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }
   }
 
-  let new_sorted = concat(state.sorted, zero_nodes)
-  let new_sorted_set = zero_nodes |> fold(init: state.sorted_set, f: (acc, name) =>
-    map_insert(acc, name, true)
-  )
-
-  let zero_set = zero_nodes |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, true)
-  )
-
-  let processed_edges = state.edges |> filter(e => map_has(m: zero_set, key: e.from_module))
-  let remaining_edges = state.edges |> filter(e => map_has(m: zero_set, key: e.from_module) == false)
-
-  let decremented = processed_edges |> fold(init: state.in_degree_map, f: (acc, e) =>
-    let current = match map_get(acc, e.to_module) {
-      Some { value: d } => d
-      None => -1
+  // Process all nodes in the current queue batch
+  let batch_result = queue |> fold(init: KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }, f: fn(state, node) {
+    let new_sorted = list_push(state.sorted, node)
+    // Decrement in-degree for all neighbors of this node
+    let neighbors = match map_get(adjacency, node) {
+      Some { value: ns } => ns
+      None => []
     }
-    map_insert(acc, e.to_module, current - 1)
-  )
-  let new_in_degree_map = zero_nodes |> fold(init: decremented, f: (acc, name) =>
-    map_insert(acc, name, -1)
-  )
+    let new_degrees = neighbors |> fold(init: state.in_degree_map, f: fn(deg_map, neighbor) {
+      let current = match map_get(deg_map, neighbor) {
+        Some { value: d } => d
+        None => 0
+      }
+      map_insert(deg_map, neighbor, current - 1)
+    })
+    KahnDrainState { sorted: new_sorted, in_degree_map: new_degrees }
+  })
 
-  KahnStepResult {
-    state: KahnState {
-      sorted: new_sorted,
-      sorted_set: new_sorted_set,
-      in_degree_map: new_in_degree_map,
-      module_names: state.module_names,
-      edges: remaining_edges
-    },
-    progress: true
-  }
+  // Collect newly zero-in-degree nodes (neighbors that just reached 0)
+  let new_zero = queue |> flat_map(node =>
+    match map_get(adjacency, node) {
+      Some { value: ns } => ns
+      None => []
+    }
+  ) |> filter(neighbor =>
+    match map_get(batch_result.in_degree_map, neighbor) {
+      Some { value: 0 } => true
+      _ => false
+    }
+  ) |> sort_by(name => name)
+
+  kahn_drain(
+    queue: new_zero,
+    sorted: batch_result.sorted,
+    in_degree_map: batch_result.in_degree_map,
+    adjacency: adjacency
+  )
 }
