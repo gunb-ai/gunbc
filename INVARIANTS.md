@@ -124,6 +124,12 @@ repair the upstream contract yet, fail clearly or record a follow-up
 task naming where the information degraded and what explicit structure
 should replace the heuristic.
 
+Temporary heuristics must not become invisible debt. If a heuristic is
+introduced as a staging move, the same change should record a shrinking
+ratchet for it: a named debt entry, a bounded site count, or a test that
+proves one heuristic family was removed. "Temporary" without a ratchet
+means "permanent later."
+
 Sample: on 2026-03-20 the emission-representation work was first framed
 as five per-binding lattices: flow cardinality, value width, call
 reachability, loop invariance, and build-reduce. Backends then mapped
@@ -199,6 +205,13 @@ Lossy tables violate "Explicit boundary contracts" / "Heuristics
 indicate lost structure." The default action is to delete the table
 until a concrete consumer exists, or tighten it until the missing
 distinctions are structurally preserved.
+
+New semantic boundaries must land end-to-end. A new normalize/pass/fact
+layer is not accepted just because it computes plausible metadata; at
+least one downstream consumer in the same change must read it as the
+authority for a real compilation decision. Otherwise the layer is still
+speculative metadata and should stay out of the pipeline until the
+consumer exists.
 
 ### Single-authority metadata
 
