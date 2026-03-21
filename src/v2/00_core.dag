@@ -143,28 +143,6 @@ type ResourceUse {
 // Expressions
 // =========================================================================
 
-type Expr
-  = Literal { value: LiteralValue, resolved_type: Node?, span: SourceSpan }
-  | Var { name: String, resolved_type: Node?, span: SourceSpan }
-  | FieldAccess { base: Expr, field: String, resolved_type: Node?, span: SourceSpan }
-  | Call { func: String, args: List<NamedArg>, resolved_type: Node?, span: SourceSpan }
-  | MethodCall { receiver: Expr, method: String, args: List<NamedArg>, resolved_type: Node?, span: SourceSpan }
-  | Match { scrutinee: Expr, arms: List<MatchArm>, resolved_type: Node?, span: SourceSpan }
-  | If { condition: Expr, then_branch: Expr, else_branch: Expr?, resolved_type: Node?, span: SourceSpan }
-  | Let { name: String, value: Expr, body: Expr?, resolved_type: Node?, span: SourceSpan }
-  | RecordLit { type_name: String?, fields: List<FieldInit>, resolved_type: Node?, span: SourceSpan }
-  | ListLit { elements: List<Expr>, resolved_type: Node?, span: SourceSpan }
-  | BinOp { op: BinOpKind, left: Expr, right: Expr, resolved_type: Node?, span: SourceSpan }
-  | UnaryOp { op: UnaryOpKind, operand: Expr, resolved_type: Node?, span: SourceSpan }
-  | Lambda { params: List<String>, body: Expr, resolved_type: Node?, span: SourceSpan }
-  | StringInterp { parts: List<StringPart>, resolved_type: Node?, span: SourceSpan }
-  | Block { stmts: List<Expr>, resolved_type: Node?, span: SourceSpan }
-  | Cast { expr: Expr, target: Node, resolved_type: Node?, span: SourceSpan }
-  | ForEach { variable: String, collection: Expr, body: Expr, resolved_type: Node?, span: SourceSpan }
-  | Index { base: Expr, index: Expr, resolved_type: Node?, span: SourceSpan }
-  | Slice { base: Expr, start: Expr, end: Expr, resolved_type: Node?, span: SourceSpan }
-  | Return { value: Expr, resolved_type: Node?, span: SourceSpan }
-
 // ExprData -- expression discriminator for Node-embedded expressions.
 // When a Node carries computation (expr_data != NoExprData), the Node's
 // return_type and span provide the resolved type and source location.
@@ -192,9 +170,9 @@ type ExprData
   | ExprSlice { base: Node, start: Node, end: Node }
   | ExprReturn { value: Node }
 
-type NamedArg { name: String?, value: Expr }
-type MatchArm { pattern: MatchPattern, guard: Expr?, body: Expr }
-type FieldInit { name: String, value: Expr }
+type NamedArg { name: String?, value: Node }
+type MatchArm { pattern: MatchPattern, guard: Node?, body: Node }
+type FieldInit { name: String, value: Node }
 
 type MatchPattern
   = Bind { name: String }
@@ -223,7 +201,7 @@ type UnaryOpKind = Not | Neg
 
 type StringPart
   = Text { value: String }
-  | Interpolation { expr: Expr }
+  | Interpolation { expr: Node }
 
 // =========================================================================
 // Service / Transport
@@ -232,26 +210,26 @@ type StringPart
 // =========================================================================
 
 type TransportBinding
-  = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
-  | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
-  | FileBinding { base_path: Expr }
+  = RestBinding { base_url: Node, auth: AuthConfig?, headers: List<HeaderDef> }
+  | ShellBinding { argv: List<Node>, env: List<EnvDef> }
+  | FileBinding { base_path: Node }
   | LocalBinding
 
 type ServiceConfig {
-  endpoint: Expr
-  auth: Expr?
-  rate_limit: Expr?
-  retry: Expr?
+  endpoint: Node
+  auth: Node?
+  rate_limit: Node?
+  retry: Node?
 }
 
 type AuthConfig {
   scheme: String
   header: String
-  token_expr: Expr
+  token_expr: Node
 }
 
-type HeaderDef { name: String, value: Expr }
-type EnvDef { name: String, value: Expr }
+type HeaderDef { name: String, value: Node }
+type EnvDef { name: String, value: Node }
 
 // OperationDef: parse-intermediate type. The parser reads operations using this
 // shape, then dissolves fields into Node properties and return_type.
@@ -344,7 +322,7 @@ type Node {
   return_type: Node?
   uses: List<ResourceUse>
   // Computation -- how it executes (none = externally provided)
-  body: Expr?
+  body: Node?
   // Binding -- external execution strategy
   transport: TransportBinding?
   // Metadata
