@@ -41,7 +41,7 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
     let module_lookup = modules
         .iter()
         .enumerate()
-        .map(|(index, module)| (module.module_path.as_dotted(), index))
+        .map(|(index, module)| (module.module_path.clone(), index))
         .collect::<HashMap<_, _>>();
     let mut modules = modules;
     for module in &mut modules {
@@ -49,7 +49,7 @@ fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
             .ast
             .imports
             .iter()
-            .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+            .filter_map(|import| module_lookup.get(&import.node.path).copied())
             .collect::<Vec<_>>();
     }
     ModuleGraph { modules }
@@ -346,6 +346,61 @@ service FsStorage implements Storage {
         TypeError::AmbiguousInterface { implementor, interface }
             if implementor == "FsStorage" && interface == "Storage"
     )));
+}
+
+#[test]
+fn strict_mode_accepts_resolved_multi_module_imports() {
+    let graph = module_graph_from_sources(&[
+        (
+            "sample/shared/helpers.dag",
+            r#"module sample.shared.helpers
+fn render_name(name: String) -> String { name }"#,
+        ),
+        (
+            "sample/main.dag",
+            r#"module sample.main
+import sample.shared.helpers
+fn run() -> String { render_name(name: "ok") }"#,
+        ),
+    ]);
+    let main_module = graph
+        .modules
+        .iter()
+        .find(|module| module.module_path.as_dotted() == "sample.main")
+        .expect("main module should exist");
+    let imported_path = main_module
+        .ast
+        .imports
+        .first()
+        .expect("main module should declare an import")
+        .node
+        .path
+        .clone();
+    let dependency = *main_module
+        .dependencies
+        .first()
+        .expect("main module should resolve its import dependency");
+    assert_eq!(
+        graph.modules[dependency].module_path,
+        imported_path,
+        "resolved dependency should preserve the imported ModulePath"
+    );
+
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .expect("strict mode should accept resolved multi-module imports");
+    let typed_main = typed
+        .modules()
+        .find(|module| module.module_path.as_dotted() == "sample.main")
+        .expect("typed main module should exist");
+    assert_eq!(
+        typed_main.imports().cloned().collect::<Vec<_>>(),
+        vec![imported_path]
+    );
 }
 
 #[test]
