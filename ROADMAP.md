@@ -163,12 +163,14 @@ a scaling dimension. The two anti-patterns to remove:
 1. **module-level multi-pass** — same items walked in separate passes
 2. **result-unpack** — `map(process)` then 2-3 more walks to split fields
 
+**Note:** P0–P3 are subsumed by INVARIANTS.md Root Cause A (reconcile→emit
+boundary). The real motivation is boundary completeness — reconcile must
+attach per-expression classification so emit doesn't re-scan. The perf win
+is a side effect. P4–P5 are independent performance items.
+
 | Priority | Area | Planned response |
 |----------|------|------------------|
-| P0 | `04_reconcile.dag:typecheck_module` (~42 extra walks) | Fuse around wider `ItemContribution` / `ModuleContext` types. One env build, one contribution fold. |
-| P1 | `04_reconcile.dag:resolve_expr_types` (8 unpack walks) | Direct accumulation instead of map+split. |
-| P2 | `04_reconcile.dag:infer_expr` (5 unpack sites) | Mechanical `fold_unpack` first, inline hottest sites later. |
-| P3 | `04_reconcile.dag:resolve_item_types` (7 unpack sites) | Inline accumulation. |
+| P0–P3 | `04_reconcile.dag` (62 extra walks) | Subsumed by Root Cause A — enrich reconcile output with per-expression facts. |
 | P4 | `05_emit*.dag` (registry rebuild + arg rewalks) | Widen `ResolvedGraph` to carry shared metadata. |
 | P5 | `03_resolve.dag` (kahn/module rewalks) | Defer unless profiling promotes. |
 
