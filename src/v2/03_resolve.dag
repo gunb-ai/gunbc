@@ -40,7 +40,8 @@ type ResolvedImport {
 // Internal types -- used by the topological sort and cycle detection
 // =========================================================================
 
-// An edge in the import graph: from_module imports to_module.
+// An edge in the import graph: from_module is depended on by to_module.
+// Used as an intermediate in topological_sort to build the adjacency map.
 type DepEdge {
   from_module: String
   to_module: String
@@ -97,6 +98,13 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     map_insert(acc, m.name, m)
   )
 
+  // Build per-module exported-name sets once for O(1) membership during import resolution.
+  let export_sets = modules |> fold(init: empty_map(), f: (acc, m) =>
+    let exported = get_exported_names(module: m)
+    let exported_set = fold(exported, init: empty_map(), f: (inner_acc, name) => map_insert(inner_acc, name, true))
+    map_insert(acc, m.name, exported_set)
+  )
+
   // Phase 2: resolve each module's imports.
   // Build a map from module name to resolved imports for O(1) lookup,
   // and collect diagnostics in a single pass.
@@ -104,7 +112,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
     imports_by_name: empty_map(),
     diagnostics: []
   }, f: (acc, m) =>
-    let result = resolve_module_imports(module: m, module_index: module_index)
+    let result = resolve_module_imports(module: m, module_index: module_index, export_sets: export_sets)
     ResolveAccum {
       imports_by_name: map_insert(acc.imports_by_name, m.name, result.resolved_imports),
       diagnostics: concat(acc.diagnostics, result.diagnostics)
@@ -175,9 +183,9 @@ type ModuleResolveResult {
 }
 
 // Resolve all imports for a single module.
-fn resolve_module_imports(module: Module, module_index: Map<String, Module>) -> ModuleResolveResult {
+fn resolve_module_imports(module: Module, module_index: Map<String, Module>, export_sets: Map<String, Map<String, Bool>>) -> ModuleResolveResult {
   let results = module.imports |> map(imp =>
-    resolve_import(import: imp, module_index: module_index, importing_module: module.name)
+    resolve_import(import: imp, module_index: module_index, importing_module: module.name, export_sets: export_sets)
   )
   let resolved = results
     |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
@@ -199,7 +207,8 @@ type ImportResolveResult {
 fn resolve_import(
   import: Import,
   module_index: Map<String, Module>,
-  importing_module: String
+  importing_module: String,
+  export_sets: Map<String, Map<String, Bool>>
 ) -> ImportResolveResult {
   let target = find_module(module_index: module_index, path: import.module_path)
   match target {
@@ -221,9 +230,11 @@ fn resolve_import(
     }
     Some { value: target_mod } => {
       // Validate each imported name exists in the target.
-      // Build a set from the exported names for O(1) membership checks.
-      let exported = get_exported_names(module: target_mod)
-      let exported_set = fold(exported, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+      // Use pre-computed export set for O(1) membership checks.
+      let exported_set = match map_get(export_sets, import.module_path) {
+        Some { value: set } => set
+        None => empty_map()
+      }
       let name_diags = match import.names {
         ImportAll => []
         ImportSpecific { names: specific_names } =>
@@ -302,15 +313,6 @@ fn get_variant_names(item: Node) -> List<String> {
 }
 
 // =========================================================================
-// Module dependency extraction
-// =========================================================================
-
-// Extract the module paths that a module depends on (from its imports).
-fn get_module_deps(module: Module) -> List<String> {
-  module.imports |> map(imp => imp.module_path)
-}
-
-// =========================================================================
 // Duplicate module detection
 // =========================================================================
 
@@ -366,24 +368,14 @@ type TopoResult {
 
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
-  let all_edges = modules
-    |> flat_map(m =>
-      get_module_deps(module: m) |> map(dep =>
-        DepEdge { from_module: dep, to_module: m.name }
-      )
-    )
 
-  // Compute initial in-degrees as a map for O(1) lookup.
-  // First initialize all modules to 0, then increment for each edge.
-  let zero_degrees = module_names |> fold(init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, 0)
+  let all_edges = modules |> flat_map(m =>
+    m.imports |> map(imp => DepEdge { from_module: imp.module_path, to_module: m.name })
   )
-  let initial_in_degree_map = all_edges |> fold(init: zero_degrees, f: (acc, e) =>
-    let current = match map_get(acc, e.to_module) {
-      Some { value: d } => d
-      None => 0
-    }
-    map_insert(acc, e.to_module, current + 1)
+
+  // Compute initial in-degrees directly from import counts.
+  let initial_in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
+    map_insert(acc, m.name, m.imports |> count)
   )
 
   let initial_state = KahnState {
@@ -450,12 +442,12 @@ fn kahn_step(state: KahnState) -> KahnStepResult {
     return KahnStepResult { state: state, progress: false }
   }
 
-  let zero_set = zero_nodes |> fold(init: empty_map(), f: (acc, name) =>
+  let new_sorted = concat(state.sorted, zero_nodes)
+  let new_sorted_set = zero_nodes |> fold(init: state.sorted_set, f: (acc, name) =>
     map_insert(acc, name, true)
   )
 
-  let new_sorted = concat(state.sorted, zero_nodes)
-  let new_sorted_set = zero_nodes |> fold(init: state.sorted_set, f: (acc, name) =>
+  let zero_set = zero_nodes |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
 

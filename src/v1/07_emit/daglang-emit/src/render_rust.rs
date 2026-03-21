@@ -15,6 +15,7 @@ use gunbc_ir::code_ir::{
     MatchArm, SourceFile, Stmt, StructDef,
 };
 use gunbc_ir::ValueExpr;
+use std::collections::HashSet;
 use std::fmt::Write;
 
 // ===========================================================================
@@ -23,17 +24,44 @@ use std::fmt::Write;
 
 /// Render a `SourceFile` to a complete `.rs` source string.
 pub fn render_rust_source(source: &SourceFile) -> String {
-    render_rust_source_inner(source, false)
+    render_rust_source_inner(source, StackerMode::None)
 }
 
 /// Render Rust source with `stacker::maybe_grow` wrapping on all function bodies.
 /// Used for the v2 generated crate where recursive descent functions can overflow
 /// the stack when processing large .dag files.
 pub fn render_rust_source_with_stacker(source: &SourceFile) -> String {
-    render_rust_source_inner(source, true)
+    render_rust_source_inner(source, StackerMode::All)
 }
 
-fn render_rust_source_inner(source: &SourceFile, use_stacker: bool) -> String {
+/// Render Rust source with selective `stacker::maybe_grow` wrapping.
+/// Only functions whose names are in `needs_stacker` get stack safety wrappers.
+/// Leaf functions (character predicates, etc.) skip stacker for zero overhead.
+pub fn render_rust_source_selective_stacker(
+    source: &SourceFile,
+    needs_stacker: &HashSet<String>,
+) -> String {
+    render_rust_source_inner(source, StackerMode::Selective(needs_stacker))
+}
+
+#[derive(Clone, Copy)]
+enum StackerMode<'a> {
+    None,
+    All,
+    Selective(&'a HashSet<String>),
+}
+
+impl StackerMode<'_> {
+    fn should_wrap(self, fn_name: &str) -> bool {
+        match self {
+            StackerMode::None => false,
+            StackerMode::All => true,
+            StackerMode::Selective(set) => set.contains(fn_name),
+        }
+    }
+}
+
+fn render_rust_source_inner(source: &SourceFile, stacker: StackerMode<'_>) -> String {
     let mut out = String::new();
 
     // Module-level doc comments.
@@ -45,7 +73,7 @@ fn render_rust_source_inner(source: &SourceFile, use_stacker: bool) -> String {
     }
 
     for item in &source.items {
-        out.push_str(&render_item(item, 0, use_stacker));
+        out.push_str(&render_item(item, 0, stacker));
         out.push('\n');
     }
 
@@ -95,11 +123,11 @@ fn escape_rust_str(s: &str) -> String {
 // Item rendering
 // ===========================================================================
 
-fn render_item(item: &Item, indent: usize, use_stacker: bool) -> String {
+fn render_item(item: &Item, indent: usize, stacker: StackerMode<'_>) -> String {
     let pad = "    ".repeat(indent);
     match item {
         Item::Use(import) => format!("{}{}\n", pad, render_import(import)),
-        Item::Fn(f) => render_fn_def(f, indent, use_stacker),
+        Item::Fn(f) => render_fn_def(f, indent, stacker),
         Item::Enum(e) => render_enum_def(e, indent),
         Item::Impl(i) => render_impl_block(i, indent),
         Item::Struct(s) => render_struct_def(s, indent),
@@ -118,7 +146,7 @@ fn render_import(import: &Import) -> String {
     }
 }
 
-fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
+fn render_fn_def(f: &FnDef, indent: usize, stacker: StackerMode<'_>) -> String {
     let pad = "    ".repeat(indent);
     let mut out = String::new();
 
@@ -160,8 +188,10 @@ fn render_fn_def(f: &FnDef, indent: usize, use_stacker: bool) -> String {
     )
     .unwrap();
 
-    // Body — optionally wrapped with stacker::maybe_grow for stack safety.
-    if use_stacker && !f.body.is_empty() {
+    // Body — selectively wrapped with stacker::maybe_grow for stack safety.
+    // Only non-TCO recursive functions need stacker; loop-lowered TCO and
+    // non-recursive functions skip it.
+    if stacker.should_wrap(&f.name) && !f.body.is_empty() {
         let inner_pad = "    ".repeat(indent + 1);
         writeln!(
             out,
@@ -244,7 +274,7 @@ fn render_impl_block(i: &ImplBlock, indent: usize) -> String {
         if idx > 0 {
             out.push('\n');
         }
-        out.push_str(&render_fn_def(func, indent + 1, false));
+        out.push_str(&render_fn_def(func, indent + 1, StackerMode::None));
     }
 
     writeln!(out, "{}}}", pad).unwrap();
@@ -263,7 +293,7 @@ fn render_ir_type(ty: &IrType) -> String {
             let rendered_args: Vec<String> = args.iter().map(render_ir_type).collect();
             match name.as_str() {
                 "List" => format!("Rc<Vec<{}>>", rendered_args.join(", ")),
-                "Map" => format!("std::collections::HashMap<{}>", rendered_args.join(", ")),
+                "Map" => format!("Rc<std::collections::HashMap<{}>>", rendered_args.join(", ")),
                 other => format!("{}<{}>", other, rendered_args.join(", ")),
             }
         }
@@ -301,7 +331,12 @@ fn needs_type_annotation(expr: &Expr, ir_type: &IrType) -> bool {
             matches!(ir_type, IrType::Generic(n, args) if n == "List"
                 && !args.iter().any(|a| matches!(a, IrType::Unknown)))
         }
-        // Rc::new(vec![]) also needs annotation
+        // HashMap::new() needs annotation when we know the Map type
+        Expr::RawCode(code) if code.contains("HashMap") && code.contains("new()") => {
+            matches!(ir_type, IrType::Generic(n, args) if n == "Map"
+                && !args.iter().any(|a| matches!(a, IrType::Unknown)))
+        }
+        // Rc::new(vec![]) and Rc::new(HashMap::new()) also need annotation
         Expr::Call { func, args, .. }
             if args.len() == 1
                 && matches!(func.as_ref(), Expr::Path(segments) if segments == &["Rc", "new"]) =>
@@ -429,7 +464,7 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             writeln!(out, "{}}}", pad).unwrap();
             out
         }
-        Stmt::Item(item) => render_item(item, indent, false),
+        Stmt::Item(item) => render_item(item, indent, StackerMode::None),
         Stmt::Loop { body } => {
             let mut out = format!("{}loop {{\n", pad);
             for s in body {
@@ -607,7 +642,7 @@ fn render_expr(expr: &Expr) -> String {
         Expr::UnaryOp { op, expr } => {
             format!("{}{}", op, render_operator_operand(expr))
         }
-        Expr::IntLit(n) => n.to_string(),
+        Expr::IntLit(n) => format!("{n}_i64"),
         Expr::BoolLit(b) => b.to_string(),
         Expr::Match { expr, arms } => render_match(expr, arms),
         Expr::If {
@@ -856,7 +891,7 @@ mod tests {
             doc: vec!["Greet a user.".to_string()],
             attributes: vec![],
         };
-        let rendered = render_fn_def(&f, 0, false);
+        let rendered = render_fn_def(&f, 0, StackerMode::None);
         assert!(rendered.contains("/// Greet a user."), "doc comment");
         assert!(
             rendered.contains("pub fn greet(name: String) -> String {"),
@@ -992,7 +1027,7 @@ mod tests {
             args: vec!["n".to_string()],
             body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
         };
-        assert_eq!(render_expr(&expr), "|n| n >= 2");
+        assert_eq!(render_expr(&expr), "|n| n >= 2_i64");
     }
 
     #[test]
@@ -1060,7 +1095,7 @@ mod tests {
         let rendered = render_expr(&expr);
         assert_eq!(
             rendered,
-            "Config { name: \"custom\", count: 42, ..defaults }"
+            "Config { name: \"custom\", count: 42_i64, ..defaults }"
         );
     }
 

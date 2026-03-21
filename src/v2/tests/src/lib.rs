@@ -9,6 +9,14 @@
 mod tests {
     use std::collections::HashMap;
 
+    /// Local replacement for CompileOutput.
+    /// Contains lowered function bodies and data values — everything the
+    /// v1 evaluator needs to execute v2 .dag functions.
+    struct CompileOutput {
+        fns: HashMap<String, daglang_eval::LoweredFnBody>,
+        data_values: HashMap<String, gunbc_ir::Value>,
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     fn workspace_root() -> std::path::PathBuf {
@@ -81,11 +89,15 @@ mod tests {
     /// Compile all v2 compiler .dag files into a single EmbeddedCompileOutput.
     /// All fn bodies from all modules share one `fns` HashMap, enabling
     /// cross-module calls (e.g., pipeline.dag calling tokenize()).
-    fn compile_all_modules() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
+    fn compile_all_modules() -> Result<CompileOutput, String> {
         let root = workspace_root();
 
         let files = vec![
             root.join("dsl/std/types.dag"),
+            // Language extdeps -- emit-facing data (C3: single source of truth)
+            root.join("dsl/extdeps/languages/rust/emit.dag"),
+            root.join("dsl/extdeps/languages/python/emit.dag"),
+            root.join("dsl/extdeps/languages/go/emit.dag"),
             root.join("src/v2/00_core.dag"),
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
@@ -168,10 +180,9 @@ mod tests {
             }
         }
 
-        Ok(daglang_driver::EmbeddedCompileOutput {
+        Ok(CompileOutput {
             fns,
             data_values,
-            pipelines: HashMap::new(),
         })
     }
 
@@ -183,6 +194,9 @@ mod tests {
 
         let files = vec![
             root.join("dsl/std/types.dag"),
+            root.join("dsl/extdeps/languages/rust/emit.dag"),
+            root.join("dsl/extdeps/languages/python/emit.dag"),
+            root.join("dsl/extdeps/languages/go/emit.dag"),
             root.join("src/v2/00_core.dag"),
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
@@ -226,7 +240,7 @@ mod tests {
 
     /// Helper: call a DSL function by name with given inputs and return outputs.
     fn call_fn(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         fn_name: &str,
         inputs: HashMap<String, gunbc_ir::Value>,
     ) -> Result<HashMap<String, gunbc_ir::Value>, String> {
@@ -278,7 +292,7 @@ mod tests {
     }
 
     fn compile_sources_with_target(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         sources: &[(&str, &str)],
         target: &str,
     ) -> HashMap<String, gunbc_ir::Value> {
@@ -303,7 +317,7 @@ mod tests {
     }
 
     fn compile_sources_with(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         sources: &[(&str, &str)],
     ) -> HashMap<String, gunbc_ir::Value> {
         compile_sources_with_target(output, sources, "Rust")
@@ -314,6 +328,12 @@ mod tests {
         span.insert("start".to_string(), gunbc_ir::Value::Int(0));
         span.insert("end".to_string(), gunbc_ir::Value::Int(0));
         gunbc_ir::Value::Map(span)
+    }
+
+    fn no_expr_data_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("_variant".to_string(), gunbc_ir::Value::Str("NoExprData".to_string()));
+        gunbc_ir::Value::Map(map)
     }
 
     fn named_type_value(name: &str) -> gunbc_ir::Value {
@@ -330,6 +350,33 @@ mod tests {
         map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
+        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("expr_data".to_string(), no_expr_data_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn make_expr_node_value(
+        expr_data: gunbc_ir::Value,
+        return_type: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), gunbc_ir::Value::Str(String::new()));
+        map.insert("span".to_string(), span);
+        map.insert("children".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("connective".to_string(), gunbc_ir::Value::Unit);
+        map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("return_type".to_string(), return_type);
+        map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("body".to_string(), gunbc_ir::Value::Unit);
+        map.insert("transport".to_string(), gunbc_ir::Value::Unit);
+        map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
+        map.insert("config".to_string(), gunbc_ir::Value::Unit);
+        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("expr_data".to_string(), expr_data);
         gunbc_ir::Value::Map(map)
     }
 
@@ -434,14 +481,17 @@ mod tests {
         literal: gunbc_ir::Value,
         span: gunbc_ir::Value,
     ) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
+        let mut expr_data = std::collections::BTreeMap::new();
+        expr_data.insert(
             "_variant".to_string(),
-            gunbc_ir::Value::Str("Literal".to_string()),
+            gunbc_ir::Value::Str("ExprLiteral".to_string()),
         );
-        map.insert("value".to_string(), literal);
-        map.insert("span".to_string(), span);
-        gunbc_ir::Value::Map(map)
+        expr_data.insert("value".to_string(), literal);
+        make_expr_node_value(
+            gunbc_ir::Value::Map(expr_data),
+            gunbc_ir::Value::Unit,
+            span,
+        )
     }
 
     fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
@@ -808,7 +858,7 @@ fn foo(item: String) -> String {
     /// Extract fn bodies and data values from the tokenizer module.
     /// Uses direct AST-level lowering (bypasses DAG wiring) to avoid
     /// DAG-level expression resolution failures for pure fn bodies.
-    fn compile_tokenizer_module() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
+    fn compile_tokenizer_module() -> Result<CompileOutput, String> {
         let root = workspace_root();
 
         // Read sources
@@ -898,10 +948,9 @@ fn foo(item: String) -> String {
             }
         }
 
-        Ok(daglang_driver::EmbeddedCompileOutput {
+        Ok(CompileOutput {
             fns,
             data_values,
-            pipelines: HashMap::new(),
         })
     }
 
@@ -1857,14 +1906,17 @@ fn foo(item: String) -> String {
         let func = items.first().expect("expected parsed function item");
         let body = map_field(func, "body");
         let body = map_field(body, "value");
-        let binop = expect_variant(body, "BinOp");
+        // After Expr->Node dissolution, expression data is in the expr_data field
+        let expr_data = map_field(body, "expr_data");
+        let binop = expect_variant(expr_data, "ExprBinOp");
         match binop.get("op") {
             Some(gunbc_ir::Value::Enum { variant, .. }) if variant == "NullCoalesce" => {}
             other => panic!("expected null-coalesce binop, got: {other:?}"),
         }
 
         let left = binop.get("left").expect("binop should have left child");
-        let left_var = expect_variant(left, "Var");
+        let left_data = map_field(left, "expr_data");
+        let left_var = expect_variant(left_data, "ExprVar");
         assert_eq!(
             left_var.get("name"),
             Some(&gunbc_ir::Value::Str("a".to_string())),
@@ -1872,11 +1924,13 @@ fn foo(item: String) -> String {
         );
 
         let right = binop.get("right").expect("binop should have right child");
-        let method_call = expect_variant(right, "MethodCall");
+        let right_data = map_field(right, "expr_data");
+        let method_call = expect_variant(right_data, "ExprMethodCall");
         let receiver = method_call
             .get("receiver")
             .expect("method call should have receiver");
-        let receiver_var = expect_variant(receiver, "Var");
+        let receiver_data = map_field(receiver, "expr_data");
+        let receiver_var = expect_variant(receiver_data, "ExprVar");
         assert_eq!(
             receiver_var.get("name"),
             Some(&gunbc_ir::Value::Str("b".to_string())),
@@ -1908,8 +1962,8 @@ fn foo(item: String) -> String {
             "emit_rust.dag should contain emit_typed_for_each function"
         );
         assert!(
-            source.contains("into_iter"),
-            "emit_rust.dag should emit .into_iter().map() for for-loops"
+            source.contains("iter().cloned()"),
+            "emit_rust.dag should emit .iter().cloned() for for-loops"
         );
     }
 
@@ -2358,7 +2412,7 @@ fn example(items: List<String>) -> Int {
     /// Helper: tokenize + parse a source string through the v2 pipeline,
     /// returning the parsed Module value.
     fn v2_tokenize_and_parse(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         source: &str,
     ) -> gunbc_ir::Value {
         let mut tok_inputs = HashMap::new();
@@ -3361,134 +3415,160 @@ fn example(items: List<String>) -> Int {
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Phase 4+5: v2 → Rust crate assembly
+    // B3-2a prep: strict pipeline diagnostic measurement
     // ═════════════════════════════════════════════════════════════════════
 
-    /// Parse all v2 .dag files and assemble them into a Rust crate via
-    /// the v2_crate_emit module.
+    /// Measure reconcile diagnostics by running the bootstrap binary's
+    /// compile subcommand. The generated CLI prints diagnostic count to
+    /// stderr: "compiled: N files emitted, M diagnostics"
+    /// The binary uses compile_sources (strict path) which gates on
+    /// Error-severity diagnostics. Inference warnings are counted but don't block.
+    #[cfg(feature = "v1-bootstrap")]
     #[test]
-    fn v2_crate_assembly_produces_files() {
-        let v2_files = [
-            ("00_core", "src/v2/00_core.dag"),
-            ("01_tokenize", "src/v2/01_tokenize.dag"),
-            ("02_parse", "src/v2/02_parse.dag"),
-            ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_reconcile", "src/v2/04_reconcile.dag"),
-            ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-        ];
+    #[ignore] // Requires building stage0 binary (~2 min)
+    fn v2_strict_compile_diagnostic_count() {
+        // 1. Build stage0
+        let stage0_dir = assemble_v2_crate_to_dir("v2-strict-diag-stage0");
 
-        let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
-            .iter()
-            .map(|(stem, path)| {
-                let source = read_v2_file(path);
-                let result = daglang_syntax::parser::parse_to_result(&source);
-                assert!(
-                    result.is_ok(),
-                    "{} had parse errors: {:?}",
-                    path,
-                    result.diagnostics
-                );
-                (stem.to_string(), result.ast)
-            })
-            .collect();
+        let build_output = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to run cargo build");
 
-        let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
-            .iter()
-            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf))
-            .collect();
-
-        let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
-
-        // Should produce: 7 module files + lib.rs + v2_rt.rs + Cargo.toml = 10 files
-        let file_names: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         assert!(
-            file_names.contains(&"Cargo.toml"),
-            "missing Cargo.toml in {:?}",
-            file_names
-        );
-        assert!(
-            file_names.contains(&"src/lib.rs"),
-            "missing src/lib.rs in {:?}",
-            file_names
-        );
-        assert!(
-            file_names.contains(&"src/v2_rt.rs"),
-            "missing src/v2_rt.rs in {:?}",
-            file_names
-        );
-        assert!(
-            file_names.contains(&"src/v2_core.rs"),
-            "missing src/v2_core.rs in {:?}",
-            file_names
+            build_output.status.success(),
+            "stage0 cargo build failed:\n{}",
+            String::from_utf8_lossy(&build_output.stderr)
         );
 
-        // All generated .rs files should be non-empty
-        for f in &files {
-            assert!(!f.content.is_empty(), "{} is empty", f.rel_path);
+        let stage0_bin = stage0_dir.join("target/release/v2-compiler");
+
+        // 2. Copy .dag sources to temp dir
+        let source_dir = std::env::temp_dir().join("v2-strict-diag-sources");
+        let _ = std::fs::remove_dir_all(&source_dir);
+        std::fs::create_dir_all(&source_dir).unwrap();
+
+        let root = workspace_root();
+        // Copy all .dag files from src/v2/
+        for entry in std::fs::read_dir(root.join("src/v2")).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                std::fs::copy(&path, source_dir.join(entry.file_name())).unwrap();
+            }
         }
-    }
+        // Copy transitive dependency: dsl/std/types.dag
+        std::fs::copy(
+            root.join("dsl/std/types.dag"),
+            source_dir.join("types.dag"),
+        )
+        .unwrap();
+        // Copy language extdep emit data (C3)
+        for lang in &["rust", "python", "go"] {
+            let src = root.join(format!("dsl/extdeps/languages/{lang}/emit.dag"));
+            std::fs::copy(&src, source_dir.join(format!("{lang}_emit.dag"))).unwrap();
+        }
 
-    /// The recursive type detection should identify Expr as needing Box<>.
-    #[test]
-    fn v2_recursive_types_detected() {
-        let source = read_v2_file("src/v2/00_core.dag");
-        let result = daglang_syntax::parser::parse_to_result(&source);
-        assert!(result.is_ok());
+        // 3. Run stage0 compile
+        let out_dir = std::env::temp_dir().join("v2-strict-diag-output");
+        let _ = std::fs::remove_dir_all(&out_dir);
 
-        let type_defs: Vec<&daglang_syntax::ast::TypeDef> = result
-            .ast
-            .items
-            .iter()
-            .filter_map(|item| match &item.node {
-                daglang_syntax::ast::Item::TypeDef(td) => Some(td),
-                _ => None,
+        let compile_output = std::process::Command::new(&stage0_bin)
+            .arg("compile")
+            .arg("--source-dir")
+            .arg(&source_dir)
+            .arg("--output-dir")
+            .arg(&out_dir)
+            .output()
+            .expect("failed to run stage0 compile");
+
+        let stderr = String::from_utf8_lossy(&compile_output.stderr);
+
+        #[allow(clippy::disallowed_macros)]
+        {
+            eprintln!("=== Stage0 compile stderr ===");
+            eprintln!("{stderr}");
+        }
+
+        // 4. Parse diagnostic count from stderr
+        // Format: "compiled: N files emitted, M diagnostics"
+        let diag_count: usize = stderr
+            .lines()
+            .find_map(|line| {
+                if let Some(rest) = line.strip_prefix("compiled:") {
+                    rest.split(',')
+                        .nth(1)?
+                        .trim()
+                        .strip_suffix("diagnostics")?
+                        .trim()
+                        .parse()
+                        .ok()
+                } else {
+                    None
+                }
             })
-            .collect();
+            .unwrap_or_else(|| {
+                panic!("could not parse diagnostic count from stderr:\n{stderr}")
+            });
 
-        let recursive_fields = daglang_emit::type_codegen::compute_recursive_fields(&type_defs);
+        #[allow(clippy::disallowed_macros)]
+        eprintln!("Reconcile diagnostic count: {diag_count}");
 
-        // Expr should have recursive fields (e.g. FieldAccess::base is Expr)
-        let has_expr_recursive = recursive_fields.iter().any(|(ty, _)| ty == "Expr");
         assert!(
-            has_expr_recursive,
-            "Expr should have recursive fields, got: {:?}",
-            recursive_fields
+            compile_output.status.success(),
+            "stage0 compile failed:\n{stderr}"
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&stage0_dir);
+        let _ = std::fs::remove_dir_all(&source_dir);
+        let _ = std::fs::remove_dir_all(&out_dir);
+
+        // Ratchet: track diagnostic count. Goal is 0.
+        const DIAG_RATCHET: usize = 25;
+        assert!(
+            diag_count <= DIAG_RATCHET,
+            "stage0 compile diagnostic regression: {diag_count} > {DIAG_RATCHET} ratchet. \
+             See stderr for details."
         );
     }
 
-    /// v2 builtins (char_at, string_length, etc.) should be recognized by the
-    /// builtin contract registry.
-    #[test]
-    fn v2_builtins_registered() {
-        use gunbc_ir::patterns::collection::contract_for_name;
+    // ═════════════════════════════════════════════════════════════════════
+    // Phase 4+5: v2 → Rust crate assembly (superseded tests removed)
+    //
+    // The 13 v2_crate_* integration tests that used the v1 emitter
+    // (assemble_v2_crate) have been removed. They are superseded by:
+    //   - v2_bootstrap_stage0_to_stage1 (A5: builds stage0, compiles stage1)
+    //   - v2_bootstrap_fixed_point (A6: proves stage1 == stage2)
+    // ═════════════════════════════════════════════════════════════════════
 
-        assert!(
-            contract_for_name("char_at").is_some(),
-            "char_at not registered"
-        );
-        assert!(
-            contract_for_name("string_length").is_some(),
-            "string_length not registered"
-        );
-        assert!(
-            contract_for_name("substring").is_some(),
-            "substring not registered"
-        );
-        assert!(
-            contract_for_name("lookup").is_some(),
-            "lookup not registered"
-        );
-        assert!(contract_for_name("with").is_some(), "with not registered");
-    }
+    // [ARCHIVED] v2_crate_assembly_produces_files — superseded by A5 bootstrap
+    // [ARCHIVED] v2_recursive_types_detected — v1-specific type_codegen test
+    // [ARCHIVED] v2_builtins_registered — v1-specific pattern registry
+    // [ARCHIVED] v2_crate_cargo_check — subsumed by A5 bootstrap
+    // [ARCHIVED] v2_crate_cargo_build — subsumed by A5 bootstrap
+    // [ARCHIVED] v2_crate_cargo_test — v1-emitter generated tests
+    // [ARCHIVED] v2_crate_self_compile — subsumed by A6 fixed point
+    // [ARCHIVED] v2_crate_self_compile_cargo_check — subsumed by A6 fixed point
+    // [ARCHIVED] v2_crate_profile_reconcile_per_module — profiling, not correctness
+    // [ARCHIVED] v2_crate_gist_resolve — gist pipeline via v1
+    // [ARCHIVED] v2_crate_gist_compile — gist pipeline via v1
+    // [ARCHIVED] v2_crate_profile_gist — profiling via v1
+    // [ARCHIVED] v2_crate_emit_to_target — convenience wrapper
 
-    // ── v2 crate assembly helpers ──────────────────────────────────────
+    // ── v2 crate assembly helpers (v1-bootstrap feature) ───────────────
+    // These functions require the v1 emitter to assemble stage0. Gated
+    // behind the v1-bootstrap feature so normal unit tests don't need it.
 
-    /// Assemble and write the v2 crate to a temp directory, returning its path.
+    #[cfg(feature = "v1-bootstrap")]
     fn assemble_v2_crate_to_dir(dir_name: &str) -> std::path::PathBuf {
         let v2_files = [
+            // Language extdeps (C3: single source of truth for language data)
+            ("rust_emit", "dsl/extdeps/languages/rust/emit.dag"),
+            ("python_emit", "dsl/extdeps/languages/python/emit.dag"),
+            ("go_emit", "dsl/extdeps/languages/go/emit.dag"),
             ("00_core", "src/v2/00_core.dag"),
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
@@ -3522,367 +3602,308 @@ fn example(items: List<String>) -> Int {
         tmp_dir
     }
 
-    // ── v2 crate compilation gate tests ─────────────────────────────────
-    //
-    // Evidence summary for the v2 self-hosted compiler:
-    //
-    //   Syntactic correctness:  94 parser tests (daglang-syntax), 315 codegen unit tests (daglang-emit)
-    //   Type correctness:       cargo check passes on ~10,500 lines of generated Rust (v2_crate_cargo_check)
-    //   Link correctness:       cargo build succeeds — all trait impls resolve (v2_crate_cargo_build)
-    //   Semantic correctness:   phase 3 interpreter tests prove v2 logic works on real input through all 5 stages
-    //   Runtime correctness:    generated tests prove emitted Rust executes correctly (v2_crate_cargo_test)
-
-    /// Type-check the generated v2 crate (cargo check).
+    /// Smoke test: assemble stage0 crate and cargo check it.
     #[test]
-    fn v2_crate_cargo_check() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-check");
-
+    #[ignore] // Requires cargo toolchain
+    #[cfg(feature = "v1-bootstrap")]
+    #[allow(clippy::disallowed_macros)]
+    fn v2_stage0_cargo_check() {
+        let stage0_dir = assemble_v2_crate_to_dir("v2-stage0-check");
         let output = std::process::Command::new("cargo")
             .arg("check")
-            .current_dir(&tmp_dir)
+            .current_dir(&stage0_dir)
             .output()
             .expect("failed to run cargo check");
-
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let error_count = stderr.matches("error[").count();
+        eprintln!("stage0 cargo check: {} errors", error_count);
         if !output.status.success() {
-            panic!(
-                "cargo check failed (crate at {}):\n{}",
-                tmp_dir.display(),
-                stderr
-            );
-        }
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Build the generated v2 crate (cargo build) — proves linking succeeds.
-    #[test]
-    #[ignore] // Slower than check; run with --ignored
-    fn v2_crate_cargo_build() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-build");
-
-        let output = std::process::Command::new("cargo")
-            .arg("build")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo build");
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            panic!(
-                "cargo build failed (crate at {}):\n{}",
-                tmp_dir.display(),
-                stderr
-            );
-        }
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Run the generated v2 crate's emitted tests — proves runtime correctness.
-    ///
-    /// The tests come FROM the crate assembly (emit_test_module), not from this
-    /// test harness. This is Phase 1 / D6: the compiler tests itself through
-    /// generated tests.
-    #[test]
-    #[ignore] // Requires cargo build; run with --ignored
-    fn v2_crate_cargo_test() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-test");
-
-        // The generated crate already contains src/generated_tests.rs and the
-        // corresponding `mod generated_tests;` in lib.rs — no injection needed.
-
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            panic!(
-                "cargo test failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                stdout,
-                stderr
-            );
-        }
-
-        // Verify that the emitted tests actually ran (not just compiled)
-        assert!(
-            stdout.contains("test generated_tests"),
-            "expected generated_tests to appear in test output:\n{}",
-            stdout
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Run the generated v2 crate's self_compile_all_modules test — proves
-    /// the compiled v2 compiler can compile its own 9 .dag sources through
-    /// the full pipeline (tokenize -> parse -> resolve -> typecheck -> emit).
-    #[test]
-    #[ignore] // Requires cargo build + full pipeline; run with --ignored
-    fn v2_crate_self_compile() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-self-compile");
-
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .arg("--release")
-            .arg("--")
-            .arg("self_compile_all_modules")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            panic!(
-                "self_compile_all_modules failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                stdout,
-                stderr
-            );
-        }
-
-        assert!(
-            stdout.contains("self_compile_all_modules"),
-            "expected self_compile_all_modules to appear in test output:\n{}",
-            stdout
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Run the generated v2 crate's self_compile_cargo_check test — proves
-    /// the self-compiled output passes `cargo check` (type-correct Rust).
-    #[test]
-    #[ignore] // Requires cargo build + full pipeline + cargo check; run with --ignored
-    fn v2_crate_self_compile_cargo_check() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-self-compile-cargo-check");
-
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .arg("--release")
-            .arg("--")
-            .arg("--ignored")
-            .arg("self_compile_cargo_check")
-            .arg("--nocapture")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            panic!(
-                "self_compile_cargo_check failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                stdout,
-                stderr
-            );
-        }
-
-        assert!(
-            stdout.contains("self_compile_cargo_check"),
-            "expected self_compile_cargo_check to appear in test output:\n{}",
-            stdout
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Per-module reconcile profile: isolates which module causes
-    /// OOM/timeout by running typecheck_module individually per module.
-    #[test]
-    #[ignore] // Requires cargo build; run with --ignored
-    fn v2_crate_profile_reconcile_per_module() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-reconcile-profile");
-
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .arg("--release")
-            .arg("--")
-            .arg("--ignored")
-            .arg("profile_reconcile_per_module")
-            .arg("--nocapture")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        // Always print the profile output
-        eprintln!("{}", stderr);
-
-        if !output.status.success() {
-            panic!(
-                "profile_reconcile_per_module failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                stdout,
-                stderr
-            );
-        }
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Run the generated v2 crate's gist_resolve_all_modules test -- proves
-    /// the compiled v2 compiler can tokenize, parse, and resolve the 12
-    /// gist transitive dependencies (real-world DSL modules with services,
-    /// resources, patterns, and func definitions).
-    #[test]
-    #[ignore] // Requires cargo build + full pipeline; run with --ignored
-    fn v2_crate_gist_resolve() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-resolve");
-
-        // Run in release mode — debug mode is 20x+ slower due to stacker wrapping
-        // and unoptimized code, making 1,515 lines of gist source infeasible.
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .arg("--release")
-            .arg("--")
-            .arg("gist_resolve_all_modules")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            panic!(
-                "gist_resolve_all_modules failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                stdout,
-                stderr
-            );
-        }
-
-        assert!(
-            stdout.contains("gist_resolve_all_modules"),
-            "expected gist_resolve_all_modules to appear in test output:\n{}",
-            stdout
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Run the generated v2 crate's gist_compile_all_modules test -- proves
-    /// the compiled v2 compiler can tokenize, parse, resolve, typecheck,
-    /// and emit the gist transitive dependency chain without OOM.
-    #[test]
-    #[ignore] // Requires cargo build + full pipeline; run with --ignored
-    fn v2_crate_gist_compile() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-gist-compile");
-
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .arg("--release")
-            .arg("--")
-            .arg("gist_compile_all_modules")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            panic!(
-                "gist_compile_all_modules failed (crate at {}):\nstdout:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                stdout,
-                stderr
-            );
-        }
-
-        assert!(
-            stdout.contains("gist_compile_all_modules"),
-            "expected gist_compile_all_modules to appear in test output:\n{}",
-            stdout
-        );
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Profile the gist pipeline by stage (tokenize/parse/resolve) in release mode.
-    /// Reports per-file and per-stage wall-clock times.
-    #[test]
-    #[ignore]
-    fn v2_crate_profile_gist() {
-        let tmp_dir = assemble_v2_crate_to_dir("v2-compiler-profile");
-
-        let output = std::process::Command::new("cargo")
-            .arg("test")
-            .arg("--release")
-            .arg("--")
-            .arg("profile_gist_pipeline")
-            .arg("--nocapture")
-            .arg("--ignored")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo test");
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        // Always print output for profiling
-        #[allow(clippy::disallowed_macros)]
-        {
             eprintln!("{}", stderr);
-            println!("{}", stdout);
+        }
+        if output.status.success() {
+            let _ = std::fs::remove_dir_all(&stage0_dir);
+        }
+        assert!(
+            output.status.success(),
+            "stage0 cargo check failed with {error_count} errors (crate at {})",
+            stage0_dir.display()
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // A5: Bootstrap stage 0 → 1
+    //
+    // Build the v2-stage0 binary (v1-emitted), use it to compile v2 .dag
+    // sources from disk, then cargo check the stage1 output.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// A5 bootstrap test: build stage0 binary, run it to compile v2 .dag
+    /// sources, then cargo check the stage1 output.
+    #[cfg(feature = "v1-bootstrap")]
+    #[test]
+    #[ignore] // Expensive: builds binary + runs full compile + cargo check
+    fn v2_bootstrap_stage0_to_stage1() {
+        // 1. Assemble and build stage0
+        let stage0_dir = assemble_v2_crate_to_dir("v2-bootstrap-stage0");
+
+        let build_output = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to build stage0");
+
+        let build_stderr = String::from_utf8_lossy(&build_output.stderr);
+        assert!(
+            build_output.status.success(),
+            "stage0 build failed:\n{}",
+            build_stderr
+        );
+
+        // 2. Prepare source directory with all needed .dag files
+        let sources_dir = std::env::temp_dir().join("v2-bootstrap-sources");
+        let _ = std::fs::remove_dir_all(&sources_dir);
+        std::fs::create_dir_all(&sources_dir).unwrap();
+
+        // Copy v2 compiler .dag files
+        let ws = workspace_root();
+        for entry in std::fs::read_dir(ws.join("src/v2")).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                std::fs::copy(&path, sources_dir.join(entry.file_name())).unwrap();
+            }
+        }
+        // Copy transitive dependency: dsl/std/types.dag
+        std::fs::copy(ws.join("dsl/std/types.dag"), sources_dir.join("types.dag")).unwrap();
+        // Copy language extdep emit data (C3)
+        for lang in &["rust", "python", "go"] {
+            let src = ws.join(format!("dsl/extdeps/languages/{lang}/emit.dag"));
+            std::fs::copy(&src, sources_dir.join(format!("{lang}_emit.dag"))).unwrap();
         }
 
-        if !output.status.success() {
+        // 3. Run stage0 compile
+        let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
+        let _ = std::fs::remove_dir_all(&stage1_dir);
+
+        let stage0_bin = stage0_dir.join("target/release/v2-compiler");
+        let compile_output = std::process::Command::new(&stage0_bin)
+            .arg("compile")
+            .arg("--source-dir")
+            .arg(&sources_dir)
+            .arg("--output-dir")
+            .arg(&stage1_dir)
+            .output()
+            .expect("failed to run stage0 compile");
+
+        let compile_stderr = String::from_utf8_lossy(&compile_output.stderr);
+        eprintln!("stage0 compile output:\n{}", compile_stderr);
+
+        assert!(
+            compile_output.status.success(),
+            "stage0 compile failed:\n{}",
+            compile_stderr
+        );
+
+        // 4. Verify stage1 output exists
+        let stage1_cargo = stage1_dir.join("Cargo.toml");
+        assert!(
+            stage1_cargo.exists(),
+            "stage1 Cargo.toml not found at {:?}",
+            stage1_cargo
+        );
+
+        // 5. cargo check on stage1 output
+        let check_output = std::process::Command::new("cargo")
+            .arg("check")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage1_dir)
+            .output()
+            .expect("failed to run cargo check on stage1");
+
+        let check_stderr = String::from_utf8_lossy(&check_output.stderr);
+        if !check_output.status.success() {
             panic!(
-                "profile_gist_pipeline failed (crate at {}):\nstderr:\n{}",
-                tmp_dir.display(),
-                stderr
+                "stage1 cargo check failed (output at {:?}):\n{}",
+                stage1_dir, check_stderr
             );
         }
 
-        let _ = std::fs::remove_dir_all(&tmp_dir);
+        eprintln!("A5 bootstrap: stage0 → stage1 → cargo check PASSED");
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&stage0_dir);
+        let _ = std::fs::remove_dir_all(&sources_dir);
+        let _ = std::fs::remove_dir_all(&stage1_dir);
     }
 
-    /// Generate the v2 crate to target/v2-compiler/ for inspection.
-    /// Does not clean up — the crate persists for manual browsing/running.
+    // ═════════════════════════════════════════════════════════════════════
+    // A6: Fixed point — stage1 output == stage2 output
+    //
+    // Build stage0 (v1-emitted), compile stage1, build stage1, compile
+    // stage2, then assert stage1 and stage2 source files are byte-identical.
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// Collect all file paths relative to `root`, excluding `target/` directories.
+    #[cfg(feature = "v1-bootstrap")]
+    fn collect_source_files(root: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        let mut files = std::collections::BTreeMap::new();
+        fn walk(dir: &std::path::Path, root: &std::path::Path, files: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                let rel = path.strip_prefix(root).unwrap().to_string_lossy().to_string();
+                if rel.starts_with("target") || rel == "Cargo.lock" {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk(&path, root, files);
+                } else {
+                    files.insert(rel, std::fs::read(&path).unwrap());
+                }
+            }
+        }
+        walk(root, root, &mut files);
+        files
+    }
+
+    /// A6 fixed-point test: build stage0, compile stage1, build stage1,
+    /// compile stage2, assert stage1 == stage2 byte-for-byte.
+    #[cfg(feature = "v1-bootstrap")]
     #[test]
-    #[ignore]
-    #[allow(clippy::disallowed_macros)]
-    fn v2_crate_emit_to_target() {
-        let out_dir = workspace_root().join("target/v2-compiler");
-        let _ = std::fs::remove_dir_all(&out_dir);
+    #[ignore] // Expensive: builds two binaries + two full compiles
+    fn v2_bootstrap_fixed_point() {
+        // 1. Assemble and build stage0 (v1-emitted)
+        let stage0_dir = assemble_v2_crate_to_dir("v2-fixed-point-stage0");
 
-        let v2_files = [
-            ("00_core", "src/v2/00_core.dag"),
-            ("01_tokenize", "src/v2/01_tokenize.dag"),
-            ("02_parse", "src/v2/02_parse.dag"),
-            ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_reconcile", "src/v2/04_reconcile.dag"),
-            ("05_emit", "src/v2/05_emit.dag"),
-            ("05_emit_rust", "src/v2/05_emit_rust.dag"),
-            ("05_emit_python", "src/v2/05_emit_python.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-        ];
+        let build0 = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to build stage0");
+        assert!(
+            build0.status.success(),
+            "stage0 build failed:\n{}",
+            String::from_utf8_lossy(&build0.stderr)
+        );
 
-        let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
-            .iter()
-            .map(|(stem, path)| {
-                let source = read_v2_file(path);
-                let result = daglang_syntax::parser::parse_to_result(&source);
-                (stem.to_string(), result.ast)
-            })
-            .collect();
+        // 2. Prepare source directory with all .dag files
+        let sources_dir = std::env::temp_dir().join("v2-fixed-point-sources");
+        let _ = std::fs::remove_dir_all(&sources_dir);
+        std::fs::create_dir_all(&sources_dir).unwrap();
 
-        let modules: Vec<(&str, &daglang_syntax::ast::SourceFile)> = parsed
-            .iter()
-            .map(|(stem, sf): &(String, daglang_syntax::ast::SourceFile)| (stem.as_str(), sf))
-            .collect();
+        let ws = workspace_root();
+        for entry in std::fs::read_dir(ws.join("src/v2")).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                std::fs::copy(&path, sources_dir.join(entry.file_name())).unwrap();
+            }
+        }
+        std::fs::copy(ws.join("dsl/std/types.dag"), sources_dir.join("types.dag")).unwrap();
+        // Copy language extdep emit data (C3)
+        for lang in &["rust", "python", "go"] {
+            let src = ws.join(format!("dsl/extdeps/languages/{lang}/emit.dag"));
+            std::fs::copy(&src, sources_dir.join(format!("{lang}_emit.dag"))).unwrap();
+        }
 
-        let files = daglang_emit::v2_crate_emit::assemble_v2_crate(&modules);
-        daglang_emit::v2_crate_emit::write_crate(&out_dir, &files).expect("failed to write crate");
+        // 3. Stage0 compiles stage1
+        let stage1_dir = std::env::temp_dir().join("v2-fixed-point-stage1");
+        let _ = std::fs::remove_dir_all(&stage1_dir);
+
+        let stage0_bin = stage0_dir.join("target/release/v2-compiler");
+        let compile1 = std::process::Command::new(&stage0_bin)
+            .arg("compile")
+            .arg("--source-dir")
+            .arg(&sources_dir)
+            .arg("--output-dir")
+            .arg(&stage1_dir)
+            .output()
+            .expect("failed to run stage0 compile");
+        assert!(
+            compile1.status.success(),
+            "stage0 → stage1 compile failed:\n{}",
+            String::from_utf8_lossy(&compile1.stderr)
+        );
+
+        // 4. Build stage1 binary
+        let build1 = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage1_dir)
+            .output()
+            .expect("failed to build stage1");
+        assert!(
+            build1.status.success(),
+            "stage1 build failed:\n{}",
+            String::from_utf8_lossy(&build1.stderr)
+        );
+
+        // 5. Stage1 compiles stage2
+        let stage2_dir = std::env::temp_dir().join("v2-fixed-point-stage2");
+        let _ = std::fs::remove_dir_all(&stage2_dir);
+
+        let stage1_bin = stage1_dir.join("target/release/v2_compiled");
+        let compile2 = std::process::Command::new(&stage1_bin)
+            .arg("compile")
+            .arg("--source-dir")
+            .arg(&sources_dir)
+            .arg("--output-dir")
+            .arg(&stage2_dir)
+            .output()
+            .expect("failed to run stage1 compile");
+        assert!(
+            compile2.status.success(),
+            "stage1 → stage2 compile failed:\n{}",
+            String::from_utf8_lossy(&compile2.stderr)
+        );
+
+        // 6. Compare stage1 and stage2 source files (byte-identical)
+        let stage1_files = collect_source_files(&stage1_dir);
+        let stage2_files = collect_source_files(&stage2_dir);
+
+        let stage1_keys: std::collections::BTreeSet<_> = stage1_files.keys().collect();
+        let stage2_keys: std::collections::BTreeSet<_> = stage2_files.keys().collect();
+        assert_eq!(
+            stage1_keys, stage2_keys,
+            "File sets differ.\nOnly in stage1: {:?}\nOnly in stage2: {:?}",
+            stage1_keys.difference(&stage2_keys).collect::<Vec<_>>(),
+            stage2_keys.difference(&stage1_keys).collect::<Vec<_>>()
+        );
+
+        for (path, content1) in &stage1_files {
+            let content2 = &stage2_files[path];
+            if content1 != content2 {
+                let s1 = String::from_utf8_lossy(content1);
+                let s2 = String::from_utf8_lossy(content2);
+                // Find first divergence point
+                let diverge_pos = s1.chars().zip(s2.chars())
+                    .position(|(a, b)| a != b)
+                    .unwrap_or(std::cmp::min(s1.len(), s2.len()));
+                let context_start = diverge_pos.saturating_sub(100);
+                let context_end = std::cmp::min(diverge_pos + 200, std::cmp::min(s1.len(), s2.len()));
+                panic!(
+                    "FIXED POINT FAILED: {} differs\n\
+                     stage1 len={}, stage2 len={}, first divergence at byte {}\n\
+                     --- stage1[{}..{}] ---\n{}\n\
+                     --- stage2[{}..{}] ---\n{}",
+                    path, content1.len(), content2.len(), diverge_pos,
+                    context_start, context_end, &s1[context_start..std::cmp::min(context_end, s1.len())],
+                    context_start, context_end, &s2[context_start..std::cmp::min(context_end, s2.len())]
+                );
+            }
+        }
+
+        // FIXED POINT PROVEN
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&stage0_dir);
+        let _ = std::fs::remove_dir_all(&sources_dir);
+        let _ = std::fs::remove_dir_all(&stage1_dir);
+        let _ = std::fs::remove_dir_all(&stage2_dir);
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -3891,7 +3912,7 @@ fn example(items: List<String>) -> Int {
     // ═════════════════════════════════════════════════════════════════════
 
     fn emitted_python_module(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         source: &str,
         module_path: &str,
     ) -> String {
