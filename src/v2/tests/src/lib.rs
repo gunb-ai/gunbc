@@ -3364,38 +3364,6 @@ fn example(items: List<String>) -> Int {
     // B3-2a prep: strict pipeline diagnostic measurement
     // ═════════════════════════════════════════════════════════════════════
 
-    /// Helper: count error/warning diagnostics from a Value::List of diagnostics.
-    fn count_diagnostics(diagnostics: &gunbc_ir::Value) -> (Vec<String>, Vec<String>) {
-        match diagnostics {
-            gunbc_ir::Value::List(items) => {
-                let mut errors = Vec::new();
-                let mut warnings = Vec::new();
-                for item in items.iter() {
-                    if let gunbc_ir::Value::Map(map) = item {
-                        let msg = match map.get("message") {
-                            Some(gunbc_ir::Value::Str(s)) => s.clone(),
-                            _ => "<no message>".to_string(),
-                        };
-                        let is_error = match map.get("severity") {
-                            Some(gunbc_ir::Value::Map(sev_map)) => {
-                                sev_map.contains_key("Error")
-                            }
-                            Some(gunbc_ir::Value::Str(s)) => s == "Error",
-                            _ => false,
-                        };
-                        if is_error {
-                            errors.push(msg);
-                        } else {
-                            warnings.push(msg);
-                        }
-                    }
-                }
-                (errors, warnings)
-            }
-            other => panic!("expected diagnostics list, got: {other:?}"),
-        }
-    }
-
     /// Measure reconcile diagnostics by running the bootstrap binary's
     /// compile subcommand. The generated CLI prints diagnostic count to
     /// stderr: "compiled: N files emitted, M diagnostics"
@@ -3499,7 +3467,7 @@ fn example(items: List<String>) -> Int {
         let _ = std::fs::remove_dir_all(&out_dir);
 
         // Ratchet: track diagnostic count. Goal is 0.
-        const DIAG_RATCHET: usize = 2797;
+        const DIAG_RATCHET: usize = 268;
         assert!(
             diag_count <= DIAG_RATCHET,
             "stage0 compile diagnostic regression: {diag_count} > {DIAG_RATCHET} ratchet. \
