@@ -2240,33 +2240,20 @@ fn run(value: Int where range(min: 5, max: 1)) -> Int { value }"#,
 }
 
 #[test]
-fn content_unknown_refinement_typechecks_and_preserves_predicate() {
+fn content_unknown_refinement_is_rejected() {
     let graph = module_graph_from_sources(&[(
         "unknown_content_refinement.dag",
         r#"module sample.refinement
 fn run(value: String where content(Unknown)) -> String { value }"#,
     )]);
-    typecheck_module_graph(&graph).expect("content(Unknown) should typecheck");
-
-    let module = &graph.modules[0];
-    let param_ty = module
-        .ast
-        .items
-        .iter()
-        .find_map(|item| match &item.node {
-            daglang_syntax::ast::Item::FnDef(def) if def.name == "run" => Some(&def.params[0].ty),
-            _ => None,
-        })
-        .expect("expected run parameter type");
-    let mut registry = gunbc_ir::type_registry::TypeRegistry::with_core_types();
-    let dag = resolve_field_type_dag(param_ty, &mut registry).expect("type dag should resolve");
-
-    assert_eq!(
-        gunbc_ir::contract::predicates(&dag),
-        vec![gunbc_ir::type_op::Predicate::Content(
-            gunbc_ir::type_op::ContentEncoding::Unknown
-        )]
-    );
+    let errors = typecheck_module_graph(&graph).expect_err("content(Unknown) should fail");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsatisfiableRefinement { ty, constraint }
+            if ty == "String"
+                && constraint
+                    == "unknown content encoding `Unknown` — expected one of: Text, UTF8, ASCII, Latin1, Binary"
+    )));
 }
 
 #[test]
