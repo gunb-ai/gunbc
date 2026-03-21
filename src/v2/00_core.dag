@@ -12,7 +12,7 @@
 // Dependency chain:
 //   kernel primitives (String, Int, Bool, List, Map)
 //     <- std.types (FilePath, NonEmptyStr, SourceSpan)
-//       <- v2.std.core (Token, AST, Expr, CompileResult)
+//       <- v2.std.core (Token, AST, ExprData, CompileResult)
 //         <- v2.compiler.* (tokenize, parse, typecheck, emit)
 
 module v2.std.core

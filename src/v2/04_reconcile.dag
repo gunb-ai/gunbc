@@ -1608,8 +1608,9 @@ fn arg_has_name(arg: NamedArg, name: String) -> Bool {
 // Infer a fold lambda arg with accumulator + element typing.
 // First param gets accumulator type, last param gets element type.
 fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_type: Node) -> ArgInferResult {
-  match arg.value {
-    Lambda { params: lam_params, body: lam_body, span: lam_span } =>
+  match arg.value.expr_data {
+    ExprLambda { params: lam_params, body: lam_body } =>
+      let lam_span = arg.value.span
       let param_count = lam_params |> count
       let lam_locals = fold(lam_params |> enumerate, init: scope.locals, f: (acc_locals, pair) =>
         if pair.first == 0 {
@@ -1627,11 +1628,11 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         module_name: scope.module_name,
         service_registry: scope.service_registry
       }
-      let body_result = infer_expr(expr: lam_body, scope: typed_lam_scope)
-      let typed_lam = Lambda { params: lam_params, body: body_result.typed, resolved_type: Some { value: body_result.typed.resolved_type.value }, span: lam_span }
+      let body_result = infer_expr(texpr: lam_body, scope: typed_lam_scope)
+      let typed_lam = make_expr_node(expr_data: ExprLambda { params: lam_params, body: body_result.typed }, return_type: Some { value: body_result.typed.return_type.value }, span: lam_span)
       ArgInferResult { typed_arg: NamedArg { name: arg.name, value: typed_lam }, diagnostics: body_result.diagnostics }
     _ =>
-      let ar = infer_expr(expr: arg.value, scope: scope)
+      let ar = infer_expr(texpr: arg.value, scope: scope)
       ArgInferResult { typed_arg: NamedArg { name: arg.name, value: ar.typed }, diagnostics: ar.diagnostics }
   }
 }
@@ -1774,13 +1775,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
         match init_arg {
           Some { value: ia } =>
-            let init_result = infer_expr(expr: ia.value, scope: scope)
+            let init_result = infer_expr(texpr: ia.value, scope: scope)
             Some { value: ArgInferResult { typed_arg: NamedArg { name: ia.name, value: init_result.typed }, diagnostics: init_result.diagnostics } }
           None => none
         }
       } else { none }
       let call_fold_acc_type = match call_fold_info {
-        Some { value: fi } => fi.typed_arg.value.resolved_type.value
+        Some { value: fi } => fi.typed_arg.value.return_type.value
         None => leaf_node(name: "Dynamic")
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 {
@@ -1851,11 +1852,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             method_type.value
           }
           InferResult {
-<<<<<<< Updated upstream
-            typed: MethodCall { receiver: receiver, method: func_name, args: remaining, resolved_type: Some { value: bridge_result_type }, span: span },
-=======
-            typed: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: func_name, args: remaining }, return_type: Some { value: method_type.value }, span: span),
->>>>>>> Stashed changes
+            typed: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: func_name, args: remaining }, return_type: Some { value: bridge_result_type }, span: span),
             diagnostics: arg_diags
           }
         } else if func_name == "empty_map" {
@@ -1898,10 +1895,9 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let recv_result = infer_expr(texpr: recv, scope: scope)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-<<<<<<< Updated upstream
       // Type lambda args from receiver's element type instead of Dynamic.
       // For fold: also infer init arg to type accumulator param.
-      let recv_elem_type = for_each_element_type_node(n: recv_typed.resolved_type.value)
+      let recv_elem_type = for_each_element_type_node(n: recv_typed.return_type.value)
       let fold_info = if method_name == "fold" && mc_args |> count >= 2 {
         let init_arg = match mc_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
           Some { value: a } => Some { value: a }
@@ -1909,13 +1905,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
         match init_arg {
           Some { value: ia } =>
-            let init_result = infer_expr(expr: ia.value, scope: scope)
+            let init_result = infer_expr(texpr: ia.value, scope: scope)
             Some { value: ArgInferResult { typed_arg: NamedArg { name: ia.name, value: init_result.typed }, diagnostics: init_result.diagnostics } }
           None => none
         }
       } else { none }
       let fold_acc_type = match fold_info {
-        Some { value: fi } => fi.typed_arg.value.resolved_type.value
+        Some { value: fi } => fi.typed_arg.value.return_type.value
         None => leaf_node(name: "Dynamic")
       }
       let mc_arg_infer_results = mc_args |> enumerate |> map(idx_pair =>
@@ -1939,26 +1935,12 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let result_type = if method_name == "fold" && fold_info != none {
         fold_acc_type
       } else {
-        match check_service_method_call_node(receiver_type: recv_typed.resolved_type.value, method: method_name, scope: scope) {
+        match check_service_method_call_node(receiver_type: recv_typed.return_type.value, method: method_name, scope: scope) {
           Some { value: svc_type } => svc_type
-          None => match infer_method_call_type_node(receiver_type: recv_typed.resolved_type.value, method: method_name) {
+          None => match infer_method_call_type_node(receiver_type: recv_typed.return_type.value, method: method_name) {
             Some { value: rt } => rt
-            None => recv_typed.resolved_type.value
+            None => recv_typed.return_type.value
           }
-=======
-      // Type lambda args from receiver's element type instead of Dynamic
-      let recv_elem_type = for_each_element_type_node(n: recv_typed.return_type.value)
-      let mc_arg_infer_results = mc_args |> map(a =>
-        infer_arg_with_element_type(arg: a, element_type: recv_elem_type, scope: scope)
-      )
-      let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
-      let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
-      let result_type = match check_service_method_call_node(receiver_type: recv_typed.return_type.value, method: method_name, scope: scope) {
-        Some { value: svc_type } => svc_type
-        None => match infer_method_call_type_node(receiver_type: recv_typed.return_type.value, method: method_name) {
-          Some { value: rt } => rt
-          None => recv_typed.return_type.value
->>>>>>> Stashed changes
         }
       }
       let mc_texpr = make_expr_node(expr_data: ExprMethodCall { receiver: recv_typed, method: method_name, args: typed_mc_args }, return_type: Some { value: result_type }, span: span)
