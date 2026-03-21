@@ -27,12 +27,13 @@ should always be able to see through the name to the structure underneath.
 - **R9 codegen ownership complete** — force_clone removed, V5 functional record
   update, SG-10 string comparison, type-directed clone, TCO param clone strip,
   fold-accum field extract via `Rc::make_mut`
-- **Tokenizer ownership clean** — helpers return `ScanResult` (single token),
-  `tokenize_loop` is sole owner of token accumulator list
-- **String operations are O(1) for ASCII** — char_at, string_length, substring, scan_*
-  have ASCII fast paths; O(n) fallback for multi-byte UTF-8
+- **Tokenizer ownership clean** — v1 emitter compiles helpers as returning `ScanResult`
+  (single token), `tokenize_loop` is sole owner of token accumulator list
+- **String operations have ASCII fast paths** — char_at is O(1) for ASCII bytes;
+  string_length, substring, scan_* do O(n) `is_ascii()` classification per call,
+  then O(1)/O(k) if ASCII. This per-call classification is the P0-d bottleneck.
 - **String params don't clone** — &str in generated code, Copy semantics
-- **Node shrunk from ~544b to ~120b** — transport/config boxed
+- **Node shrunk from ~544b to ≤176b** — transport/config boxed (176b test ceiling enforced)
 - **Interpreter list_push is O(1)** — Arc COW via try_unwrap
 - **TCO loops don't leak** — state moved, not cloned
 - **Self-compile ratchets** — file count >= 9, all non-empty, source count >= 13,
@@ -708,6 +709,13 @@ classification. "Shared because we didn't analyze it" is a compiler
 bug. "Shared because binding X is consumed at lines 42 and 67" is
 correct.
 
+**Witness compactness:** Witnesses are compact by default — only the
+minimum needed to prove non-minimality. "Shared" needs 2 consume-site
+IDs. "General text" needs 1 widening use. "Materialized" needs 1
+escape witness. Full witness expansion (all sites) is lazy/debug-only.
+This keeps the proof story strong without witness storage becoming the
+new memory tax.
+
 ### How backends use the EmitGraph
 
 The EmitGraph says **what happens to each value**. Each backend brings
@@ -809,14 +817,23 @@ Normalization is O(N) with all reference checks via hash lookup.
 | TCO admin edges | Mark re-passed params as administrative | Each TCO recursive call | O(F_tco × P) |
 | **Total** | | | **O(N)** |
 
-For self-compile scale (N ≈ 100K nodes, F ≈ 200 functions, C ≈ 1000
-call sites): sub-millisecond. All data structures are HashMap. No walk
-visits all nodes for each node. No quadratic loops.
+For self-compile scale (N ≈ 100K nodes, F ≈ 660 functions, C ≈ 2000+
+call sites): linear and comfortably below parse/reconcile cost. Actual
+measured time to be ratcheted after implementation — allocation and
+cache behavior affect constants. No walk visits all nodes for each
+node. No quadratic loops.
+
+**Implementation note:** Hot normalization data (per-binding facts,
+per-function classifications, edge labels) should use dense integer
+IDs and side tables (`Vec`/`IndexVec`/bitsets) for cache locality and
+low allocation overhead. Reserve hash maps for boundary lookups
+(name→ID resolution at EmitGraph construction). This also gives more
+deterministic behavior for A6 fixed-point comparison.
 
 **Invariant:** Every node is visited a bounded constant number of times.
-Every reference check is a hash lookup O(1). Producer tracking is
-one level deep (direct producers only); language model does bounded
-hash lookups for deeper tracing.
+Every reference check is a hash lookup O(1) (or indexed O(1) for dense
+tables). Producer tracking is one level deep (direct producers only);
+language model does bounded lookups for deeper tracing.
 
 ### Relationship to Track D
 
@@ -837,59 +854,80 @@ cleanup from accidentally deepening the old permissive shape.
 used by emit, it must cross the boundary as data in the EmitGraph,
 not be rediscovered by name heuristics.
 
-### v1 bootstrap strategy
+### Dual implementation strategy
 
-The v1 emitter is bootstrap scaffolding that dies at A7. But edge
-classification and behavioral facts are target-agnostic — the design
-carries forward even when the v1 code is deleted.
+Both v1 (Rust) and v2 (.dag) need graph normalization:
+- **v1:** Unblocks PERF gate now. Bootstrap scaffolding that dies at A7.
+- **v2:** Required before A5/A6. Without normalization, stage0 works
+  but stage1 hangs on self-compile (same algorithmic bottleneck).
+
+The design is target-agnostic — edge classifications, EmitGraph shape,
+and witnesses are identical in both implementations. v1 teaches the
+pattern; v2 is the permanent version.
 
 | Component | v1 (Rust) | v2 (.dag) | Survives A7? |
 |-----------|-----------|-----------|--------------|
-| Graph normalization | Rust code in daglang-emit | Rewritten in `.dag` post-A7 | **Design + classifications** survive |
-| Rendering tables | `fn_codegen.rs` / `render_rust.rs` | `05_emit_rust.dag` | v2 version survives |
-| Other backends | Not needed for bootstrap | `05_emit_go/py.dag` | v2 version survives |
+| Graph normalization | `daglang-emit` Rust code | `04a_normalize.dag` | **v2 version** survives |
+| Language model | `render_rust.rs` pattern matching | Per-language extdep | **v2 version** survives |
+| Rendering tables | `fn_codegen.rs` | `05_emit_rust.dag` | **v2 version** survives |
+| Other backends | Not needed for bootstrap | `05_emit_go/py.dag` | **v2 version** survives |
 
-### Implementation phases
+### Implementation stages
 
-Each phase classifies one kind of edge or surfaces one behavioral
-fact. Order: function-level first (cheapest, most impact), then
-binding-level, then region-level.
+Three stages. Stage 1 is a serial gate. Stage 2 runs three independent
+analyses in a single AST walk. Stage 3 post-processes into EmitGraph.
 
-**Phase 1: Function classification**
+```
+Stage 1 (serial)          Stage 2 (parallel, one walk)       Stage 3 (post)
+┌───────────────┐    ┌──────────────────────────────────┐    ┌──────────────┐
+│ Call graph SCC │───▶│ 2a: Edge classification          │───▶│ Semantic     │
+│ → function    │    │ 2b: Value shape (two-level)      │    │ consumer     │
+│   class.      │    │ 2c: Loop invariance              │    │ count +      │
+└───────────────┘    └──────────────────────────────────┘    │ build-reduce │
+                                                             │ + witnesses  │
+                                                             └──────────────┘
+```
+
+**Stage 1: Function classification** (serial gate)
 - Build call graph SCC, classify every function as leaf / interior /
   recursive / TCO
 - Separate semantic params from threaded state in TCO functions
+- **Gate:** Stage 2 reads function classifications. Cannot parallelize.
 - **Acceptance:** `is_digit`, `is_ident_start`, `emit` classified Leaf.
   No stacker on any Leaf. No function left unclassified.
 
-**Phase 2: Edge classification**
-- Classify every edge as consumed / read / threaded / projected
+**Stage 2: Single AST walk** (three independent analyses, one pass)
+
+After Stage 1, these three analyses read function classifications but
+are independent of each other — they can execute in a single combined
+walk over the AST:
+
+- **2a: Edge classification**
+  - Classify every edge as consumed / read / threaded / projected
+  - Tag administrative edges (TCO threading, pass-throughs) for removal
+  - **Acceptance:** `tokenize_loop.source` has 0 consume edges, classified
+    read-for-duration. `ScanResult`, `TokPos` have 1 semantic consumer
+    where used once — not Rc-wrapped.
+
+- **2b: Value shape (two-level)**
+  - Level 1: **one Unicode scalar** vs **general text** (semantic,
+    language contract remains Unicode scalars per Blocker 5)
+  - Level 2: **ASCII-proven** vs **arbitrary scalar** (source-cursor-local;
+    the language model chooses `u8`/`byte` only on ASCII-proven paths)
+  - **Acceptance:** `is_digit.ch` classified one-scalar + ASCII-proven.
+    No `.to_string()` in character predicates.
+
+- **2c: Loop invariance**
+  - Classify bindings in TCO/fold bodies: variant vs invariant
+  - Invariant computations (e.g. `string_length(x)`) hoisted
+  - **Acceptance:** `tokenize_loop` has no `string_length` inside loop.
+
+**Stage 3: Post-processing** (depends on Stage 2)
 - Compute semantic consumer count (excluding administrative edges)
-- **Acceptance:** `tokenize_loop.source` has 0 consume edges, classified
-  read-for-duration. `ScanResult`, `TokPos` have 1 semantic consumer
-  where used once — not Rc-wrapped.
-
-**Phase 3: Value shape (two-level)**
-- Interprocedural: trace String binding production sites
-- Level 1: **one Unicode scalar** vs **general text** (semantic distinction,
-  language contract remains Unicode scalars per Blocker 5)
-- Level 2: **ASCII-proven** vs **arbitrary scalar** (only when source is
-  compiler-internal, e.g., `.dag` source cursor — the language model
-  can choose `u8` only on ASCII-proven paths, `char`/`u32` otherwise)
-- The language model decides: ASCII-proven scalar → Rust `u8`, Go `byte`.
-  Arbitrary scalar → Rust `char`, Java `char`. General text → Rust
-  `String`, Java `String`.
-- **Acceptance:** `is_digit.ch` classified one-scalar + ASCII-proven. No
-  `.to_string()` in character predicates.
-
-**Phase 4: Loop invariance**
-- Classify bindings in TCO/fold bodies: variant vs invariant
-- Invariant computations (e.g. `string_length(x)`) hoisted
-- **Acceptance:** `tokenize_loop` has no `string_length` inside loop.
-
-**Phase 5: Build-reduce**
-- Identify accumulator + terminal reduction patterns
-- Classify intermediate: materialized (escapes) vs not materialized
+- Identify accumulator + terminal reduction (build-reduce) patterns
+- Classify intermediates: materialized (escapes) vs not materialized
+- Attach forcing witnesses to every non-minimal classification
+- Assemble EmitGraph
 - **Acceptance:** `scan_string_body.acc` classified as not-materialized
   build-reduce. Rust renders as `String` + `push_str`.
 
@@ -910,12 +948,19 @@ binding-level, then region-level.
     witness shape
   - Debuggable: when normalization cannot certify a narrower classification,
     the witness explains why
-- [ ] **Complexity:** normalization is O(N), all lookups via HashMap
+- [ ] **Complexity:** normalization is O(N), all lookups via HashMap or
+  dense index
+- [ ] **Memory:** normalization peak memory overhead is bounded relative
+  to ResolvedGraph size (side tables, not cloned topology)
 - [ ] EmitGraph is target-agnostic (no Rust/Go/Python/Java in normalization)
 - [ ] Adding a new backend requires zero changes to normalization
 - [ ] v2 emitter can consume the same EmitGraph
+- [ ] **Guarantee:** no redundant runtime gatekeeping, canonical behavioral
+  facts, and locally minimal target choices given those facts
 
-### Files modified (v1 bootstrap)
+### Files modified
+
+**v1 (Rust bootstrap — PERF gate)**
 
 | File | Changes |
 |------|---------|
@@ -923,7 +968,17 @@ binding-level, then region-level.
 | `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs` | `char_at` → `char` variant; length caching |
 | `src/v1/07_emit/daglang-emit/src/render_rust.rs` | Render from EmitGraph facts (stacker/inline/Rc gated on classifications) |
 | `src/v1/07_emit/daglang-emit/src/v2_crate_emit.rs` | Thread EmitGraph through emit context |
-| `src/v2/05_emit_rust.dag` | (later) Consume EmitGraph |
+
+**v2 (.dag — permanent, required before A5/A6)**
+
+| File | Changes |
+|------|---------|
+| `src/v2/04a_normalize.dag` | New module: graph normalization (edge classification, value shape, loop invariance, witnesses) |
+| `src/v2/05_emit.dag` | Consume EmitGraph instead of raw ResolvedGraph |
+| `src/v2/05_emit_rust.dag` | Language model reads EmitGraph facts, replaces blanket `rc_types` map |
+| `src/v2/05_emit_go.dag` | Language model for Go (same EmitGraph interface) |
+| `src/v2/05_emit_python.dag` | Language model for Python (same EmitGraph interface) |
+| `src/v2/06_pipeline.dag` | Insert normalization between reconcile and emit |
 
 ### Estimated impact
 
@@ -934,6 +989,73 @@ binding-level, then region-level.
 | Per-token ScanResult | `Rc::new(ScanResult{...})` heap alloc | Bare struct, moved |
 | Per-string-char accumulation | `Rc<Vec<String>>` push + join | `String::push_str` |
 | Estimated tokens/sec (200KB) | ~100 (hangs) | ~100K+ (completes in seconds) |
+
+### Performance contract tests (all stages, v1 + v2)
+
+Every pipeline stage returns **structural metrics** alongside its result.
+Tests assert bounds on those metrics — no wall clocks, no machine
+dependence. This catches algorithmic regressions (O(N²) introduced)
+regardless of hardware speed.
+
+**Metrics per stage:**
+
+| Stage | Key metrics | Bounds |
+|-------|------------|--------|
+| Tokenize | char_visits, token_count | char_visits ≤ 2 × source_len, tokens ≤ source_len |
+| Parse | node_visits, ast_nodes | node_visits ≤ 2 × token_count, ast_nodes ≤ token_count |
+| Resolve | module_visits, import_lookups | module_visits ≤ modules × max_imports |
+| Reconcile | type_visits, kahn_iterations | type_visits ≤ C × bindings, kahn_iters ≤ type_count |
+| Normalize | node_visits, output_bindings, witness_ids | visits ≤ 4 × N, output ≤ input, witnesses ≤ 2 × non_minimal |
+| Emit | node_visits, output_lines | visits ≤ C × N, lines proportional to nodes |
+
+**Three structural properties tested:**
+
+1. **Algorithmic complexity** — operation count bounded by `C × input_size`.
+   If someone introduces a quadratic loop, the count blows up even on
+   small inputs. Catches the class of bug, not the symptom.
+
+2. **Allocation proportionality** — output size bounded by input size.
+   Normalization doesn't produce more bindings than it consumes.
+   Witnesses don't exceed `2 × non_minimal_count`. If a stage inflates
+   data, it's a bug.
+
+3. **Termination** — iterative algorithms (Kahn's, topo sort) assert
+   `iterations ≤ input_elements`. Recursive walks assert
+   `max_depth ≤ input_depth + K`. Each iteration/frame must make progress.
+
+**Contract shape:**
+
+```
+// Returned alongside every stage result
+struct StageMetrics {
+    node_visits: usize,
+    max_recursion_depth: usize,
+    output_elements: usize,
+    loop_iterations: usize,
+}
+
+// Tests — structural, not temporal
+assert!(metrics.node_visits <= 4 * input_node_count);
+assert!(metrics.output_elements <= input_element_count);
+assert!(metrics.loop_iterations <= input_element_count);
+assert!(metrics.max_recursion_depth <= input_depth + 2);
+```
+
+**Implementation:**
+- **v1 (Rust):** `StageMetrics` struct returned in a tuple with stage output.
+  Counts via `AtomicUsize` increment at visit sites (zero-cost in release
+  builds behind `#[cfg(debug_assertions)]` or a feature flag).
+- **v2 (.dag):** Metrics threaded as accumulator alongside stage output.
+  Same bounds, same contract shape, testable by the v1 interpreter.
+- **Auto-generation (future):** Test generation produces metric-bound
+  assertions for all graph shapes, not just hand-picked examples.
+
+**Acceptance:**
+- [ ] Every pipeline stage in v1 returns `StageMetrics`
+- [ ] Every pipeline stage in v2 returns metrics alongside result
+- [ ] Bounds are asserted in unit tests for each stage
+- [ ] Self-compile input passes all metric bounds
+- [ ] Adding a new stage requires defining its metric bounds
 
 ### A5: Bootstrap stage 0 → 1
 
@@ -1413,19 +1535,52 @@ EmitGraph directly.
 Infer symbolic summaries from typed expressions/functions. Per-function
 `ComplexitySummary` with `work`, `span`, `output_size` as symbolic `CostExpr`.
 
+**CostExpr growth risk:** Symbolic formulas can grow faster than the
+graph they summarize if callee summaries are inlined naively or
+equivalent subexpressions are duplicated at every call site. Mitigation:
+- `CostExpr` must be a shared DAG with interning/hash-consing
+- Memoize summaries per function or SCC
+- Prefer conservative upper bounds + local simplification over
+  aggressive exact symbolic expansion
+- **Ratchet:** CostExpr node count per function/module must be bounded;
+  add growth ratchets to prevent silent blowup
+
 Also: batch fix F3/F4 string-typed fields in 07_complexity.dag:
 - `SemanticsCtx` all-String fields → enums/newtypes
 - `PrimCost.op: String, model: String` → typed references
 
 ### D3: DAG composition
 
-Compose summaries over lowered DAG. DAG work = sum of node work, span =
-longest dependency path, loop work = iteration count × body work.
+Compose summaries over lowered DAG. Span = longest dependency path,
+loop work = iteration count × body work.
+
+**Exclusive branches:** "DAG work = sum of node work" is only exact
+when all nodes in the region definitely execute. For exclusive choices
+(match arms, short-circuit), plain summation is a worst-case upper
+bound, not exact cost. The tighter rule: condition cost + max(branches),
+not sum of all branches. The roadmap should be explicit that
+composition produces **worst-case bounds**, not exact costs, when
+exclusive structure is present.
+
+**Recursive SCC summaries:** Acyclic composition is straightforward,
+but recursive cost summaries need one of: (1) user annotations for
+recurrence depth, (2) a restricted recurrence solver for common
+patterns (linear recursion, divide-and-conquer), or (3) fail-closed
+with "unbounded" classification. This mirrors the return-type
+resolution strategy — infer what we can, error on what we can't.
 
 ### D4: Proofs and reporting
 
 Surface complexity as proof/report. Policy checks can reject unbounded
 workflows.
+
+### Track D acceptance criteria
+
+- [ ] `CostExpr` node count per function bounded by ratchet
+- [ ] `CostExpr` uses hash-consing / interning (no duplicated subtrees)
+- [ ] Recursive SCC summaries: infer linear/divide-and-conquer, annotate
+  others, error on unresolvable — never silently produce unbounded
+- [ ] Exclusive-branch composition uses `max(branches)`, not `sum`
 
 ---
 
