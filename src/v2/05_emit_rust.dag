@@ -1676,7 +1676,7 @@ fn emit_typed_field_access(base: Expr, field: String, registry: Map<String, Item
         // Fallback: resolve base type from expression or scope
         let base_type_node = resolve_expr_type_node(texpr: base, scope: scope)
         let base_is_optional = match base_type_node {
-          Some { value: rt } => rt.name == "Optional" || node_is_optional(n: rt)
+          Some { value: rt } => node_is_optional(n: rt)
           None => false
         }
         if field == "value" && base_is_optional {

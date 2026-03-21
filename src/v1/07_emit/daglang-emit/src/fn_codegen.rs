@@ -188,6 +188,9 @@ pub fn collect_fn_callees(fd: &ast::FnDef) -> HashSet<String> {
 
 /// Tarjan's SCC algorithm. Returns SCCs in reverse topological order
 /// (leaves first, roots last).
+///
+/// Uses recursive `strongconnect`. Safe because the input is the compiler's
+/// own call graph (~660 functions), well within default stack limits.
 pub fn tarjan_scc(adj: &HashMap<String, HashSet<String>>) -> Vec<Vec<String>> {
     struct State<'a> {
         adj: &'a HashMap<String, HashSet<String>>,
