@@ -23,10 +23,10 @@ should always be able to see through the name to the structure underneath.
 - **A7 Phase 1 complete** — 13 superseded v1-emitter tests retired
 - **Strict pipeline diagnostics: 25** (ratchet, down from 2797) — remaining 25
   are real type inference gaps (enumerate, fold, chained returns), not false positives
-- **B3 Phase 2a contracts partially implemented:**
+- **B3 Phase 2a contracts implemented:**
   - `DeclaredFuncSig` / `ResolvedFuncSig` are distinct types (Contract 1: DONE)
   - `ResolvedGraph` boundary enforced — emit accepts only `ResolvedGraph` (Contract 3: DONE)
-  - `compile_sources_lenient` still exists (Contract 4: pending, needs diagnostics at 0)
+  - `compile_sources_lenient` deleted, bootstrap uses strict path (Contract 4: DONE)
 - **Wave 1 complete** — all 5 lanes (A, B, C, D, E, F) merged
 - **460+ tests pass** — 368 daglang-emit + 92+ v2-compiler-tests
 - **Generated crate compiles** — `v2_crate_cargo_check` passes in <7s

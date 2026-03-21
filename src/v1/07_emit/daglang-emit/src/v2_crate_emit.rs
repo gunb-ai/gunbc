@@ -771,7 +771,7 @@ fn main() {
             // Stage1 (v2-emitted) passes bare Vec<Rc<T>> because v2 renders
             // List<T> without the outer Rc. Each stage is internally consistent
             // with its own emitter's type representation.
-            let result = pipeline::compile_sources_lenient(
+            let result = pipeline::compile_sources(
                 Rc::new(sources),
                 v2_core::RenderTarget::Rust,
             );
@@ -1447,7 +1447,7 @@ mod generated_tests {{
         result.expect("self-parse-all test panicked");
     }}
 
-    /// Bootstrap self-compile: runs the full pipeline using compile_sources_lenient
+    /// Bootstrap self-compile: runs the full pipeline using compile_sources
     /// which skips the typecheck error gate. The v2 typechecker has false positives
     /// on recursive types and incomplete inference. The emitter produces structurally
     /// correct code; Rust's type checker is the final arbiter.
@@ -1460,7 +1460,7 @@ mod generated_tests {{
 {self_compile_source_files}                ];
 
                 let source_count = sources.len();
-                let result = crate::pipeline::compile_sources_lenient(
+                let result = crate::pipeline::compile_sources(
                     std::rc::Rc::new(sources),
                     crate::v2_core::RenderTarget::Rust,
                 );
@@ -1518,7 +1518,7 @@ mod generated_tests {{
                 let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
 {self_compile_source_files}                ];
 
-                let result = crate::pipeline::compile_sources_lenient(
+                let result = crate::pipeline::compile_sources(
                     std::rc::Rc::new(sources),
                     crate::v2_core::RenderTarget::Rust,
                 );

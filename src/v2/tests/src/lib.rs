@@ -3367,8 +3367,8 @@ fn example(items: List<String>) -> Int {
     /// Measure reconcile diagnostics by running the bootstrap binary's
     /// compile subcommand. The generated CLI prints diagnostic count to
     /// stderr: "compiled: N files emitted, M diagnostics"
-    /// The binary uses compile_sources_lenient which still collects all
-    /// diagnostics — it just doesn't gate on them.
+    /// The binary uses compile_sources (strict path) which gates on
+    /// Error-severity diagnostics. Inference warnings are counted but don't block.
     #[test]
     #[ignore] // Requires building stage0 binary (~2 min)
     fn v2_strict_compile_diagnostic_count() {
