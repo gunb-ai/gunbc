@@ -27,7 +27,7 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
-  Text, Interpolation
+  Text, Interpolation, Param
 }
 
 // =========================================================================
@@ -238,9 +238,9 @@ fn cost_par(a: CostExpr, b: CostExpr) -> CostExpr {
   CostMax { left: a, right: b }
 }
 
-// Loop cost: iterations × body.
-fn cost_loop(iterations: SizeExpr, body: CostExpr) -> CostExpr {
-  CostMul { left: CostSum { binder: "_iter", upper: iterations, body: body }, right: CostConst { value: 1 } }
+// Loop cost: sum of body over binder from 0 to upper.
+fn cost_loop(binder: String, iterations: SizeExpr, body: CostExpr) -> CostExpr {
+  CostSum { binder: binder, upper: iterations, body: body }
 }
 
 // Conditional cost: condition + max(branches). NOT sum.
@@ -249,6 +249,46 @@ fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
     CostMax { left: acc, right: b }
   })
   CostAdd { left: condition, right: max_branch }
+}
+
+// =========================================================================
+// Size variable extraction
+//
+// Chase receiver expressions to find the originating variable name.
+// ExprMethodCall chains like `items |> filter(f) |> map(g)` are nested:
+// the outermost has receiver = ExprMethodCall(filter, receiver = ExprVar(items)).
+// Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
+// =========================================================================
+
+fn is_size_preserving_method(mname: String) -> Bool {
+  mname == "map" || mname == "filter" || mname == "flat_map" ||
+  mname == "skip" || mname == "enumerate" || mname == "sort_by" ||
+  mname == "reverse" || mname == "concat"
+}
+
+fn receiver_size_var(recv: Node) -> SizeExpr {
+  match recv.expr_data {
+    ExprVar { name: vname } =>
+      SizeLen { collection: vname }
+    ExprFieldAccess { base: _, field: fname } =>
+      SizeLen { collection: fname }
+    ExprMethodCall { receiver: inner_recv, method: mname, args: _ } =>
+      if is_size_preserving_method(mname: mname) {
+        receiver_size_var(recv: inner_recv)
+      } else {
+        SizeLen { collection: "__expr" }
+      }
+    _ =>
+      SizeLen { collection: "__expr" }
+  }
+}
+
+fn size_binder_name(size: SizeExpr) -> String {
+  match size {
+    SizeLen { collection: c } => concat("_", c)
+    SizeVar { name: n } => n
+    _ => "_i"
+  }
 }
 
 // =========================================================================
@@ -265,6 +305,206 @@ type ComplexityReport {
   function_summaries: Map<String, ComplexitySummary>
   violations: List<ComplexityViolation>
   intern_table: CostInternTable
+  formatted: String
+}
+
+fn empty_complexity_report() -> ComplexityReport {
+  ComplexityReport {
+    function_summaries: empty_map(),
+    violations: [],
+    intern_table: empty_intern_table(),
+    formatted: ""
+  }
+}
+
+// =========================================================================
+// Cost simplification
+//
+// Constant folding and zero/one elimination. Applied to summaries before
+// caching so the stored CostExpr trees are compact.
+// =========================================================================
+
+fn simplify_cost(expr: CostExpr) -> CostExpr {
+  match expr {
+    CostConst { value: _ } => expr
+    CostUnknown { reason: _ } => expr
+    PrimCost { op: _, args: _, ctx: _ } => expr
+    CostAdd { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)
+      let sr = simplify_cost(expr: r)
+      match sl {
+        CostConst { value: 0 } => sr
+        CostConst { value: a } => match sr {
+          CostConst { value: 0 } => sl
+          CostConst { value: b } => CostConst { value: a + b }
+          _ => CostAdd { left: sl, right: sr }
+        }
+        _ => match sr {
+          CostConst { value: 0 } => sl
+          _ => CostAdd { left: sl, right: sr }
+        }
+      }
+    CostMul { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)
+      let sr = simplify_cost(expr: r)
+      match sl {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        CostConst { value: 1 } => sr
+        _ => match sr {
+          CostConst { value: 0 } => CostConst { value: 0 }
+          CostConst { value: 1 } => sl
+          _ => CostMul { left: sl, right: sr }
+        }
+      }
+    CostMax { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)
+      let sr = simplify_cost(expr: r)
+      match sl {
+        CostConst { value: 0 } => sr
+        _ => match sr {
+          CostConst { value: 0 } => sl
+          _ => CostMax { left: sl, right: sr }
+        }
+      }
+    CostSum { binder: b, upper: u, body: bd } =>
+      let sbd = simplify_cost(expr: bd)
+      match sbd {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        _ => CostSum { binder: b, upper: u, body: sbd }
+      }
+  }
+}
+
+// =========================================================================
+// Complexity classification and formatting
+//
+// Walks a simplified CostExpr and produces a human-readable O() string.
+// =========================================================================
+
+fn format_size(size: SizeExpr) -> String {
+  match size {
+    SizeLen { collection: c } => concat("|", c, "|")
+    SizeVar { name: n } => n
+    SizeConst { value: v } => to_string(v)
+    SizeAdd { left: l, right: r } => concat(format_size(size: l), " + ", format_size(size: r))
+    SizeMax { left: l, right: r } => concat("max(", format_size(size: l), ", ", format_size(size: r), ")")
+  }
+}
+
+fn has_cost_sum(expr: CostExpr) -> Bool {
+  match expr {
+    CostSum { binder: _, upper: _, body: _ } => true
+    CostAdd { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
+    CostMul { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
+    CostMax { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
+    _ => false
+  }
+}
+
+fn classify_complexity(expr: CostExpr) -> String {
+  let s = simplify_cost(expr: expr)
+  match s {
+    CostConst { value: _ } => "O(1)"
+    CostUnknown { reason: _ } => "O(?)"
+    PrimCost { op: _, args: _, ctx: _ } => "O(1)"
+    CostSum { binder: _, upper: u, body: bd } =>
+      if has_cost_sum(expr: bd) {
+        // Nested iteration
+        let inner = classify_complexity(expr: bd)
+        concat("O(", format_size(size: u), " * ", inner, ")")
+      } else {
+        concat("O(", format_size(size: u), ")")
+      }
+    CostAdd { left: l, right: r } =>
+      // Dominant term: if either side has a CostSum, use that classification
+      let lc = classify_complexity(expr: l)
+      let rc = classify_complexity(expr: r)
+      if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
+        // Both sides iterate — report the left (additive, so same class)
+        lc
+      } else if has_cost_sum(expr: l) {
+        lc
+      } else if has_cost_sum(expr: r) {
+        rc
+      } else {
+        "O(1)"
+      }
+    CostMul { left: l, right: r } =>
+      let lc = classify_complexity(expr: l)
+      let rc = classify_complexity(expr: r)
+      if lc == "O(1)" { rc }
+      else if rc == "O(1)" { lc }
+      else { concat(lc, " * ", rc) }
+    CostMax { left: l, right: r } =>
+      let lc = classify_complexity(expr: l)
+      let rc = classify_complexity(expr: r)
+      if has_cost_sum(expr: l) { lc }
+      else if has_cost_sum(expr: r) { rc }
+      else { lc }
+  }
+}
+
+// Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
+fn collect_size_vars_from_size(size: SizeExpr) -> List<String> {
+  match size {
+    SizeLen { collection: c } =>
+      if c == "__expr" { [] } else { [c] }
+    SizeAdd { left: l, right: r } =>
+      concat(collect_size_vars_from_size(size: l), collect_size_vars_from_size(size: r))
+    SizeMax { left: l, right: r } =>
+      concat(collect_size_vars_from_size(size: l), collect_size_vars_from_size(size: r))
+    _ => []
+  }
+}
+
+fn collect_size_vars(expr: CostExpr) -> List<String> {
+  match expr {
+    CostSum { binder: _, upper: u, body: bd } =>
+      concat(collect_size_vars_from_size(size: u), collect_size_vars(expr: bd))
+    CostAdd { left: l, right: r } =>
+      concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    CostMul { left: l, right: r } =>
+      concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    CostMax { left: l, right: r } =>
+      concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    _ => []
+  }
+}
+
+// Deduplicate a list of strings using a map accumulator.
+fn deduplicate(items: List<String>) -> List<String> {
+  let result = items |> fold(init: { seen: empty_map(), out: [] }, f: fn(acc, item) {
+    match map_get(acc.seen, item) {
+      Some { value: _ } => acc
+      None => {
+        seen: map_insert(acc.seen, item, true),
+        out: list_push(acc.out, item)
+      }
+    }
+  })
+  result.out
+}
+
+fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
+  let class = classify_complexity(expr: summary.work)
+  let vars = deduplicate(items: collect_size_vars(expr: summary.work))
+  let where_clause = if vars |> count == 0 {
+    ""
+  } else {
+    let parts = vars |> map(v => concat("|", v, "|"))
+    concat("  where ", parts |> join(separator: ", "))
+  }
+  concat(name, ": ", class, where_clause)
+}
+
+fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
+  let lines = entries |> flat_map(entry =>
+    match map_get(summaries, entry.name) {
+      Some { value: summary } => [format_func_complexity(name: entry.name, summary: summary)]
+      None => []
+    }
+  )
+  lines |> join(separator: "\n")
 }
 
 // =========================================================================
@@ -282,6 +522,7 @@ type ComplexityReport {
 type FuncEntry {
   name: String
   body: Node
+  params: List<Param>
 }
 
 // Result of get_or_compute_summary: updated table + the summary.
@@ -383,13 +624,22 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       }
 
     ExprMethodCall { receiver: recv, method: mname, args: mc_args } =>
-      // fold method: cost is loop over collection
-      if mname == "fold" {
-        let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
+      let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
+      let size = receiver_size_var(recv: recv)
+      let binder = size_binder_name(size: size)
+      // Iteration methods: loop over collection, apply lambda body per element
+      if mname == "map" || mname == "filter" || mname == "flat_map" ||
+         mname == "any" || mname == "all" || mname == "enumerate" ||
+         mname == "sort_by" || mname == "skip" || mname == "fold" {
+        // Extract the function/lambda argument
         let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
-        let body_result = match f_arg {
-          Some { value: fa } =>
-            cost_of_expr(texpr: fa.value, func_index: func_index, table: recv_r.table)
+        let lambda_arg = match f_arg {
+          Some { value: fa } => Some { value: fa.value }
+          None => mc_args |> map(a => a.value) |> first
+        }
+        let body_result = match lambda_arg {
+          Some { value: la } =>
+            cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
           None =>
             SummaryResult {
               summary: ComplexitySummary {
@@ -402,7 +652,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               table: recv_r.table
             }
         }
-        let loop_work = cost_loop(iterations: SizeVar { name: "n" }, body: body_result.summary.work)
+        let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: recv_r.summary.work, b: loop_work),
@@ -413,8 +663,38 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           },
           table: body_result.table
         }
+      // Linear scan methods: iterate with O(1) per element
+      } else if mname == "count" || mname == "join" || mname == "first" ||
+                mname == "last" || mname == "string_contains" ||
+                mname == "chars" || mname == "split" {
+        let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: loop_work),
+            span: cost_seq(a: recv_r.summary.span, b: loop_work),
+            output_size: empty_map(),
+            assumptions: recv_r.summary.assumptions,
+            certainty: recv_r.summary.certainty
+          },
+          table: recv_r.table
+        }
+      // O(1) methods: constant cost
+      } else if mname == "append" || mname == "get" || mname == "map_get" ||
+                mname == "map_insert" || mname == "with" || mname == "list_push" ||
+                mname == "map_has" || mname == "map_contains_key" ||
+                mname == "length" || mname == "string_length" {
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+            span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
+            output_size: empty_map(),
+            assumptions: recv_r.summary.assumptions,
+            certainty: recv_r.summary.certainty
+          },
+          table: recv_r.table
+        }
+      // Default: receiver cost + 1 for the method + arg costs
       } else {
-        let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
         let args_result = mc_args |> fold(init: SummaryResult {
           summary: ComplexitySummary {
             work: CostConst { value: 0 },
@@ -563,7 +843,9 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
     ExprForEach { variable: _, collection: c, body: bd } =>
       let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
       let bd_r = cost_of_expr(texpr: bd, func_index: func_index, table: c_r.table)
-      let loop_work = cost_loop(iterations: SizeVar { name: "n" }, body: bd_r.summary.work)
+      let size = receiver_size_var(recv: c)
+      let binder = size_binder_name(size: size)
+      let loop_work = cost_loop(binder: binder, iterations: size, body: bd_r.summary.work)
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_seq(a: c_r.summary.work, b: loop_work),
