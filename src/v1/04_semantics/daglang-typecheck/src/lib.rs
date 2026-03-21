@@ -6460,12 +6460,10 @@ fn validate_type_expr(
                         }
                     }
                     Refinement::Content(enc) => {
-                        if canonical_content_encoding(enc).is_none() {
+                        if let Err(constraint) = parse_surface_content_encoding(enc) {
                             errors.push(TypeError::UnsatisfiableRefinement {
                                 ty: type_expr_to_string(inner),
-                                constraint: format!(
-                                    "unknown content encoding `{enc}` — expected one of: Text, UTF8, ASCII, Latin1, Binary"
-                                ),
+                                constraint,
                             });
                         }
                     }
@@ -6553,24 +6551,27 @@ fn resolve_generic_arity(
     None
 }
 
-fn canonical_content_encoding(raw: &str) -> Option<String> {
-    match raw {
-        // `Unknown` is an internal lattice top, not a user-authored refinement.
-        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" => Some(raw.to_string()),
-        _ => None,
-    }
-}
+const SURFACE_CONTENT_ENCODINGS: &[(&str, gunbc_ir::type_op::ContentEncoding)] = &[
+    ("Text", gunbc_ir::type_op::ContentEncoding::Text),
+    ("UTF8", gunbc_ir::type_op::ContentEncoding::UTF8),
+    ("ASCII", gunbc_ir::type_op::ContentEncoding::ASCII),
+    ("Latin1", gunbc_ir::type_op::ContentEncoding::Latin1),
+    ("Binary", gunbc_ir::type_op::ContentEncoding::Binary),
+];
 
-fn str_to_content_encoding(raw: &str) -> Option<gunbc_ir::type_op::ContentEncoding> {
-    use gunbc_ir::type_op::ContentEncoding;
-    match raw {
-        "Text" => Some(ContentEncoding::Text),
-        "UTF8" => Some(ContentEncoding::UTF8),
-        "ASCII" => Some(ContentEncoding::ASCII),
-        "Latin1" => Some(ContentEncoding::Latin1),
-        "Binary" => Some(ContentEncoding::Binary),
-        _ => None,
-    }
+fn parse_surface_content_encoding(raw: &str) -> Result<gunbc_ir::type_op::ContentEncoding, String> {
+    SURFACE_CONTENT_ENCODINGS
+        .iter()
+        .find_map(|(name, encoding)| (*name == raw).then_some(*encoding))
+        .ok_or_else(|| {
+            let expected = SURFACE_CONTENT_ENCODINGS
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            // `Unknown` is an internal lattice top, not a user-authored refinement.
+            format!("unknown content encoding `{raw}` — expected one of: {expected}")
+        })
 }
 
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
@@ -6640,7 +6641,9 @@ fn refinement_to_predicate(refinement: &Refinement) -> Option<gunbc_ir::type_op:
             })
         }
         Refinement::NonEmpty => Some(Predicate::NonEmpty),
-        Refinement::Content(enc) => str_to_content_encoding(enc).map(Predicate::Content),
+        Refinement::Content(enc) => parse_surface_content_encoding(enc)
+            .ok()
+            .map(Predicate::Content),
         Refinement::Width(expr) => extract_int_literal(expr).and_then(|v| {
             u16::try_from(v)
                 .ok()

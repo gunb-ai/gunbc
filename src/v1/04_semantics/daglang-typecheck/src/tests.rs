@@ -2257,6 +2257,26 @@ fn run(value: String where content(Unknown)) -> String { value }"#,
 }
 
 #[test]
+fn valid_content_refinement_is_preserved_in_typed_registry() {
+    let graph = module_graph_from_sources(&[(
+        "valid_content_refinement.dag",
+        r#"module sample.refinement
+type Utf8String = String where content(UTF8)
+fn run(value: Utf8String) -> Utf8String { value }"#,
+    )]);
+    let typed = typecheck_module_graph(&graph).expect("content(UTF8) should typecheck");
+
+    let utf8_string = typed
+        .dsl_type_registry()
+        .get_by_name("Utf8String")
+        .expect("type alias should be registered");
+    let predicates = gunbc_ir::contract::predicates(utf8_string);
+    assert!(predicates.contains(&gunbc_ir::type_op::Predicate::Content(
+        gunbc_ir::type_op::ContentEncoding::UTF8,
+    )));
+}
+
+#[test]
 fn generic_arity_mismatch_is_reported() {
     let graph = module_graph_from_sources(&[(
         "generic_arity_mismatch.dag",
