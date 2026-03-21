@@ -995,9 +995,19 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   if node_is_leaf(n: left) && node_is_leaf(n: right) {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
-  // Both products: compare names
+  // Both products/coproducts: compare names, connectives, and children pairwise
   else if left.connective != none && right.connective != none {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    else if left.connective != right.connective { false }
+    else if left.children |> count != right.children |> count { false }
+    else {
+      left.children |> enumerate |> all(pair =>
+        match right.children |> skip(pair.first) |> first {
+          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child)
+          None => false
+        }
+      )
+    }
   }
   // Leaf vs product/coproduct: compare leaf name with product/coproduct name
   else if node_is_leaf(n: left) && right.connective != none {
@@ -1505,6 +1515,39 @@ fn for_each_element_type_node(n: Node) -> Node {
   }
 }
 
+// Check if a named arg has a specific name.
+fn arg_has_name(arg: NamedArg, name: String) -> Bool {
+  if arg.name == none { false } else { arg.name.value == name }
+}
+
+// Infer a fold lambda arg with accumulator typing.
+// The first lambda param gets the accumulator type, rest get Dynamic.
+fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node) -> ArgInferResult {
+  match arg.value {
+    Lambda { params: lam_params, body: lam_body, span: lam_span } =>
+      let lam_locals = fold(lam_params |> enumerate, init: scope.locals, f: (acc_locals, pair) =>
+        if pair.first == 0 {
+          map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: acc_type })
+        } else {
+          map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: leaf_node(name: "Dynamic") })
+        }
+      )
+      let typed_lam_scope = InferScope {
+        type_env: scope.type_env,
+        func_env: scope.func_env,
+        locals: lam_locals,
+        module_name: scope.module_name,
+        service_registry: scope.service_registry
+      }
+      let body_result = infer_expr(expr: lam_body, scope: typed_lam_scope)
+      let typed_lam = Lambda { params: lam_params, body: body_result.typed, resolved_type: Some { value: body_result.typed.resolved_type.value }, span: lam_span }
+      ArgInferResult { typed_arg: NamedArg { name: arg.name, value: typed_lam }, diagnostics: body_result.diagnostics }
+    _ =>
+      let ar = infer_expr(expr: arg.value, scope: scope)
+      ArgInferResult { typed_arg: NamedArg { name: arg.name, value: ar.typed }, diagnostics: ar.diagnostics }
+  }
+}
+
 // -------------------------------------------------------------------------
 // infer_expr: the main recursive function
 //
@@ -1576,11 +1619,45 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       }
 
     Call { func: func_name, args: call_args, span: span } =>
-      let arg_infer_results = call_args |> map(a =>
-        let ar = infer_expr(expr: a.value, scope: scope)
-        let ar_typed = ar.typed
-        let ar_diags = ar.diagnostics
-        ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar_typed }, diagnostics: ar_diags }
+      // For fold calls: infer init arg first, type the lambda accumulator
+      let call_fold_info = if func_name == "fold" && call_args |> count >= 3 {
+        // In Call form: fold(list, init_value, lambda) -- init is arg index 1 (after list)
+        let init_arg = match call_args |> skip(1) |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
+          Some { value: a } => Some { value: a }
+          None => call_args |> skip(1) |> first
+        }
+        match init_arg {
+          Some { value: ia } =>
+            let init_result = infer_expr(expr: ia.value, scope: scope)
+            Some { value: ArgInferResult { typed_arg: NamedArg { name: ia.name, value: init_result.typed }, diagnostics: init_result.diagnostics } }
+          None => none
+        }
+      } else { none }
+      let call_fold_acc_type = match call_fold_info {
+        Some { value: fi } => fi.typed_arg.value.resolved_type.value
+        None => leaf_node(name: "Dynamic")
+      }
+      let arg_infer_results = call_args |> enumerate |> map(idx_pair =>
+        let a = idx_pair.second
+        let idx = idx_pair.first
+        let is_init_arg = arg_has_name(arg: a, name: "init") || (a.name == none && idx == 1)
+        if func_name == "fold" && call_fold_info != none && idx >= 1 && is_init_arg {
+          // Init arg already inferred
+          match call_fold_info {
+            Some { value: fi } => fi
+            None =>
+              let ar = infer_expr(expr: a.value, scope: scope)
+              ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+          }
+        } else if func_name == "fold" && call_fold_info != none && idx >= 2 {
+          // Function arg -- type lambda's accumulator param
+          infer_fold_lambda_arg(arg: a, scope: scope, acc_type: call_fold_acc_type)
+        } else {
+          let ar = infer_expr(expr: a.value, scope: scope)
+          let ar_typed = ar.typed
+          let ar_diags = ar.diagnostics
+          ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar_typed }, diagnostics: ar_diags }
+        }
       )
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
@@ -1609,8 +1686,14 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
             None => Literal { value: LitNull, resolved_type: Some { value: leaf_node(name: "Unit") }, span: span }
           }
           let remaining = typed_args |> skip(1)
+          // For fold: override return type with init arg's type
+          let bridge_result_type = if func_name == "fold" && call_fold_info != none {
+            call_fold_acc_type
+          } else {
+            method_type.value
+          }
           InferResult {
-            typed: MethodCall { receiver: receiver, method: func_name, args: remaining, resolved_type: Some { value: method_type.value }, span: span },
+            typed: MethodCall { receiver: receiver, method: func_name, args: remaining, resolved_type: Some { value: bridge_result_type }, span: span },
             diagnostics: arg_diags
           }
         } else {
@@ -1639,19 +1722,56 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       let recv_result = infer_expr(expr: recv, scope: scope)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-      let mc_arg_infer_results = mc_args |> map(a =>
-        let ar = infer_expr(expr: a.value, scope: scope)
-        let ar_typed = ar.typed
-        let ar_diags = ar.diagnostics
-        ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar_typed }, diagnostics: ar_diags }
+      // Fold: infer init arg first, use its type for the accumulator param and return type
+      let fold_info = if method_name == "fold" && mc_args |> count >= 2 {
+        // Find the init arg (named "init" or first positional)
+        let init_arg = match mc_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
+          Some { value: a } => Some { value: a }
+          None => mc_args |> first
+        }
+        match init_arg {
+          Some { value: ia } =>
+            let init_result = infer_expr(expr: ia.value, scope: scope)
+            Some { value: ArgInferResult { typed_arg: NamedArg { name: ia.name, value: init_result.typed }, diagnostics: init_result.diagnostics } }
+          None => none
+        }
+      } else { none }
+      let fold_acc_type = match fold_info {
+        Some { value: fi } => fi.typed_arg.value.resolved_type.value
+        None => leaf_node(name: "Dynamic")
+      }
+      let mc_arg_infer_results = mc_args |> enumerate |> map(idx_pair =>
+        let a = idx_pair.second
+        let idx = idx_pair.first
+        let is_init_arg = arg_has_name(arg: a, name: "init") || (a.name == none && idx == 0)
+        // For fold: skip re-inferring the init arg (already inferred), type the lambda's accumulator
+        if method_name == "fold" && fold_info != none && is_init_arg {
+          match fold_info {
+            Some { value: fi } => fi
+            None =>
+              let ar = infer_expr(expr: a.value, scope: scope)
+              ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+          }
+        } else if method_name == "fold" && fold_info != none {
+          // This is the function arg -- type the lambda's accumulator param
+          infer_fold_lambda_arg(arg: a, scope: scope, acc_type: fold_acc_type)
+        } else {
+          let ar = infer_expr(expr: a.value, scope: scope)
+          ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+        }
       )
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
-      let result_type = match check_service_method_call_node(receiver_type: recv_typed.resolved_type.value, method: method_name, scope: scope) {
-        Some { value: svc_type } => svc_type
-        None => match infer_method_call_type_node(receiver_type: recv_typed.resolved_type.value, method: method_name) {
-          Some { value: rt } => rt
-          None => recv_typed.resolved_type.value
+      // For fold: override return type with init arg's type
+      let result_type = if method_name == "fold" && fold_info != none {
+        fold_acc_type
+      } else {
+        match check_service_method_call_node(receiver_type: recv_typed.resolved_type.value, method: method_name, scope: scope) {
+          Some { value: svc_type } => svc_type
+          None => match infer_method_call_type_node(receiver_type: recv_typed.resolved_type.value, method: method_name) {
+            Some { value: rt } => rt
+            None => recv_typed.resolved_type.value
+          }
         }
       }
       let texpr = MethodCall { receiver: recv_typed, method: method_name, args: typed_mc_args, resolved_type: Some { value: result_type }, span: span }

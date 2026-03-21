@@ -50,7 +50,8 @@ import v2.compiler.reconcile {
   expr_span,
   ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
-  emit_map_has
+  emit_map_has,
+  node_is_optional
 }
 
 import v2.compiler.emit {
@@ -1469,7 +1470,16 @@ fn emit_typed_field_access(base: Expr, field: String, registry: Map<String, Item
           EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
           StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
         }
-      None => concat(base_str, ".", rust_ident(name: field), ".clone()")
+      None =>
+        let base_is_optional = match base.resolved_type {
+          Some { value: rt } => node_is_optional(n: rt)
+          None => false
+        }
+        if field == "value" && base_is_optional {
+          concat(base_str, ".clone().unwrap()")
+        } else {
+          concat(base_str, ".", rust_ident(name: field), ".clone()")
+        }
     }
   }
 }
@@ -1841,11 +1851,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
     }
     MethodSortBy =>
-      if elem_type_str != "_" {
-        concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| __key_fn(a.clone()).partial_cmp(&__key_fn(b.clone())).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
-      } else {
-        concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
-      }
+      concat("{ let mut __sorted = ", recv_str, ".clone(); let __key_fn = ", first_arg_str, "; __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
     MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
   }
 }
