@@ -6210,16 +6210,15 @@ fn infer_fold_result_ir_type(
 /// can't handle directly (e.g. arithmetic like `current + 1` or list concat).
 fn infer_fold_value_type_from_body(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
     match expr {
-        ast::Expr::BinOp(_, op, _)
-            if matches!(
-                op,
-                ast::BinOp::Add
-                    | ast::BinOp::Sub
-                    | ast::BinOp::Mul
-                    | ast::BinOp::Div
-                    | ast::BinOp::Mod
-            ) =>
-        {
+        ast::Expr::BinOp(
+            _,
+            ast::BinOp::Add
+            | ast::BinOp::Sub
+            | ast::BinOp::Mul
+            | ast::BinOp::Div
+            | ast::BinOp::Mod,
+            _,
+        ) => {
             Some(IrType::Int)
         }
         ast::Expr::Call(name, args) if name == "concat" && !args.is_empty() => {
