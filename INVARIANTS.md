@@ -37,8 +37,8 @@ language grows by one type, one expression form, or one transport, how
 many files need editing? The sustainable compiler is one where that
 number is 1. Every invariant below serves that goal.
 
-Active liabilities and their measured costs are tracked in
-`src/v1/SUSTAINABILITY.md`.
+Active liabilities and their measured costs are tracked in the
+**Open Debt** section at the bottom of this file.
 
 The invariant headings in this document are also the canonical theme
 labels for ratchets, review feedback, and queue planning. A review queue
@@ -289,3 +289,36 @@ requires credential injection infrastructure.
   every non-recursive function, making `LeafFunc` unreachable. If the
   call-graph pass is not implemented yet, the boundary needs an explicit
   unknown state rather than fabricating a false classification.
+
+### 2026-03-21 — transport/expr dissolution review
+
+Fixed:
+
+| # | Violation | Fix |
+|---|-----------|-----|
+| TD-1 | `LitString` typo in `auth_properties` and `find_property_string` (variant does not exist) | Fixed to `LitStr` (3 sites in `00_core.dag`). Latent — no test breakage because `auth_properties` never called in current test paths. |
+| TD-4 | Dead `parent_enum == "Expr"` in `05_emit_rust.dag` variant construction | 7 lines removed. |
+| TD-5 | Dead `classify_transport_kind()` in `05_emit.dag`, imported but never called | Function deleted, imports removed from Go/Python emitters. |
+| TD-6 | Stale DESIGN.md Layer 2 documented old `TransportBinding` sum type | Updated to Node-based transport model. |
+
+---
+
+## Open Debt
+
+### Structural
+
+| # | Severity | Invariant | Description |
+|---|----------|-----------|-------------|
+| TD-2 | HIGH | No case enumeration / No parallel implementations | String-keyed dispatch `transport.name == "rest"` across 3 emitters (21 sites). Adding a transport kind requires editing all 3. Fix: closed enum `TransportKind` or structural fact dispatch. |
+| TD-3 | MEDIUM | No duplicate representations / Single-authority metadata | Hardcoded `config_names` list in `transport_headers()` (`00_core.dag`). Same field names in constructors, accessors, and filter — triple representation. |
+| F2 | MEDIUM | No case enumeration for open sets | `ItemInfo.kind` is String (`"fn"`, `"func"`, `"other"`) in `04_reconcile.dag`. Should be closed enum `ItemKind`. |
+| F6 | MEDIUM | Single-authority metadata | `05_emit_rust.dag` re-discovers structural facts through string heuristic lists (`known_opt_fields`, `types_with_value_field`, etc.). Reconciler already knows these. |
+| F7 | MEDIUM | No case enumeration for open sets | `emit_typed_method_call` in `05_emit_rust.dag` is a growing `if method == ...` ladder for special lowerings. |
+| TD-7 | MEDIUM | No fallbacks that fabricate | 5 `LitNull` fabrication fallbacks in `emit_typed_call` (`05_emit_rust.dag:1754,1755,1763,1764,1789`). Sentinel when arguments missing. |
+
+### Cleanup
+
+| # | Severity | Description |
+|---|----------|-------------|
+| F5 | LOW | `infer → reconcile` rename lacks documented contract justification. |
+| SG-9 | LOW | .dag workarounds for force_clone (TokPos extraction, branch-aware use counting). Revert after verification at scale — may be redundant after R9. |
