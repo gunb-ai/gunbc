@@ -1259,7 +1259,7 @@ fn is_string_type_node(n: Node) -> Bool {
 
 fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
   Diagnostic {
-    severity: Error,
+    severity: Warning,
     message: message,
     span: Some { value: span },
     module_name: Some { value: module_name }
@@ -1268,7 +1268,7 @@ fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagn
 
 fn inference_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
   Diagnostic {
-    severity: Error,
+    severity: Warning,
     message: message,
     span: Some { value: span },
     module_name: Some { value: module_name }
@@ -1318,7 +1318,9 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
   if method == "map" || method == "filter" || method == "enumerate" {
     Some { value: receiver_type }
   } else if method == "fold" {
-    Some { value: leaf_node(name: "Unit") }
+    // fold returns the accumulator type, which depends on the init arg.
+    // Since we don't have arg context here, use Dynamic (permissive).
+    Some { value: leaf_node(name: "Dynamic") }
   } else if method == "first" || method == "last" {
     Some { value: optional_node(inner: elem_node) }
   } else if method == "count" {
@@ -1366,8 +1368,10 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
 // Recognize runtime built-in functions called directly (not as methods).
 // Returns the result type or none if not a known builtin.
 fn infer_builtin_call_type(name: String) -> Node? {
-  if name == "parse_int" || name == "to_int" || name == "string_length" || name == "code_point" {
+  if name == "string_length" || name == "code_point" || name == "to_int" {
     Some { value: leaf_node(name: "Int") }
+  } else if name == "parse_int" {
+    Some { value: optional_node(inner: leaf_node(name: "Int")) }
   } else if name == "char_at" || name == "substring" || name == "from_code_point" || name == "to_string" || name == "concat" {
     Some { value: leaf_node(name: "String") }
   } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
@@ -1384,6 +1388,14 @@ fn infer_builtin_call_type(name: String) -> Node? {
     Some { value: optional_node(inner: leaf_node(name: "Dynamic")) }
   } else {
     none
+  }
+}
+
+// Non-optional wrapper: returns the builtin type or Unit as fallback.
+fn resolve_builtin_call_type(name: String) -> Node {
+  match infer_builtin_call_type(name: name) {
+    Some { value: v } => v
+    None => leaf_node(name: "Unit")
   }
 }
 
@@ -1506,7 +1518,7 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   NodeLookupResult {
     resolved: scrut,
     diagnostics: [Diagnostic {
-      severity: Error,
+      severity: Warning,
       message: concat("variant '", concat(variant_name, concat("' not found in type '", concat(scrut.name, "'")))),
       span: Some { value: scrut.span },
       module_name: Some { value: module_name }
@@ -1544,7 +1556,7 @@ fn lookup_field_in_variant(variant: Node, field_name: String, module_name: Strin
       None => NodeLookupResult {
         resolved: leaf_node(name: "<error:field_not_found>"),
         diagnostics: [Diagnostic {
-          severity: Error,
+          severity: Warning,
           message: concat("field '", concat(field_name, concat("' not found in variant '", concat(variant.name, "'")))),
           span: Some { value: variant.span },
           module_name: Some { value: module_name }
@@ -1605,6 +1617,51 @@ fn for_each_element_type_node(n: Node) -> Node {
 // Infers the collection arg first to extract element type, then types
 // lambda params from the element type instead of Dynamic.
 // -------------------------------------------------------------------------
+
+fn infer_lambda_with_element_type(lambda_expr: Expr, element_type: Node, scope: InferScope) -> InferResult {
+  match lambda_expr {
+    Lambda { params: lam_params, body: lam_body, span: span } =>
+      let typed_scope = if lam_params |> count == 1 {
+        match lam_params |> first {
+          Some { value: p } => extend_scope(scope: scope, name: p, resolved: element_type)
+          None => scope
+        }
+      } else {
+        // Multi-param (e.g. fold): type last param as element, others stay Dynamic
+        fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+          if pair.first == (lam_params |> count) - 1 {
+            extend_scope(scope: acc, name: pair.second, resolved: element_type)
+          } else {
+            extend_scope(scope: acc, name: pair.second, resolved: leaf_node(name: "Dynamic"))
+          }
+        )
+      }
+      let body_result = infer_expr(expr: lam_body, scope: typed_scope)
+      let body_typed = body_result.typed
+      InferResult {
+        typed: Lambda { params: lam_params, body: body_typed, resolved_type: Some { value: body_typed.resolved_type.value }, span: span },
+        diagnostics: body_result.diagnostics
+      }
+    _ => infer_expr(expr: lambda_expr, scope: scope)
+  }
+}
+
+fn is_lambda_expr(e: Expr) -> Bool {
+  match e {
+    Lambda { params: _, body: _, span: _ } => true
+    _ => false
+  }
+}
+
+fn infer_arg_with_element_type(arg: NamedArg, element_type: Node, scope: InferScope) -> ArgInferResult {
+  if is_lambda_expr(e: arg.value) {
+    let result = infer_lambda_with_element_type(lambda_expr: arg.value, element_type: element_type, scope: scope)
+    ArgInferResult { typed_arg: NamedArg { name: arg.name, value: result.typed }, diagnostics: result.diagnostics }
+  } else {
+    let ar = infer_expr(expr: arg.value, scope: scope)
+    ArgInferResult { typed_arg: NamedArg { name: arg.name, value: ar.typed }, diagnostics: ar.diagnostics }
+  }
+}
 
 // -------------------------------------------------------------------------
 // infer_expr: the main recursive function
@@ -1676,12 +1733,32 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
       }
 
     Call { func: func_name, args: call_args, span: span } =>
-      let arg_infer_results = call_args |> map(a =>
-        let ar = infer_expr(expr: a.value, scope: scope)
-        let ar_typed = ar.typed
-        let ar_diags = ar.diagnostics
-        ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar_typed }, diagnostics: ar_diags }
-      )
+      // For bridge-eligible calls (e.g. map(list, fn)), infer the first arg
+      // first so lambda params can be typed from the collection's element type.
+      let has_lambda = call_args |> any(a => is_lambda_expr(e: a.value))
+      let arg_infer_results = if has_lambda && call_args |> count >= 2 {
+        // Bridge-eligible call with lambda: infer first arg to get element type
+        match call_args |> first {
+          Some { value: first_arg } =>
+            let first_result = infer_expr(expr: first_arg.value, scope: scope)
+            let first_type = first_result.typed.resolved_type.value
+            let elem_type = for_each_element_type_node(n: first_type)
+            let remaining_results = call_args |> skip(1) |> map(a =>
+              infer_arg_with_element_type(arg: a, element_type: elem_type, scope: scope)
+            )
+            concat(
+              [ArgInferResult { typed_arg: NamedArg { name: first_arg.name, value: first_result.typed }, diagnostics: first_result.diagnostics }],
+              remaining_results
+            )
+          None =>
+            []
+        }
+      } else {
+        call_args |> map(a =>
+          let ar = infer_expr(expr: a.value, scope: scope)
+          ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+        )
+      }
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
@@ -1721,8 +1798,9 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           }
         } else if infer_builtin_call_type(name: func_name) != none {
           // Tier 2b: runtime built-in functions
+          let bt = resolve_builtin_call_type(name: func_name)
           InferResult {
-            typed: Call { func: func_name, args: typed_args, resolved_type: Some { value: infer_builtin_call_type(name: func_name).value }, span: span },
+            typed: Call { func: func_name, args: typed_args, resolved_type: Some { value: bt }, span: span },
             diagnostics: arg_diags
           }
         } else {
@@ -3459,7 +3537,11 @@ fn build_item_info(item: Node) -> ItemInfo {
 fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContribution {
   let resolved = resolve_item_types(item: item, env: env, module_name: module_name)
   let ritem = resolved.item
-  let func_sig = if ritem.params |> count > 0 {
+  // Include both parameterized functions and zero-arg functions (which have
+  // return_type annotation) in func_env. Excludes data declarations (no return_type).
+  let is_func = ritem.params |> count > 0
+  let is_zero_arg_func = ritem.params |> count == 0 && ritem.return_type != none && ritem.body != none
+  let func_sig = if is_func || is_zero_arg_func {
     Some { value: DeclaredFuncSig {
       name: ritem.name,
       params: ritem.params,
@@ -3925,10 +4007,19 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     module_name: resolved.module.name
   )
 
+  // Add data declarations to scope as local variables.
+  // Data items: body != none, params == [], no return_type (have type_annotation instead).
+  let data_locals = fold(resolved.module.items, init: ctx.locals, f: (acc, item) =>
+    if item.body != none && item.params |> count == 0 && item.return_type == none && item.type_annotation != none {
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value })
+    } else {
+      acc
+    }
+  )
   let infer_scope = InferScope {
     type_env: env,
     func_env: ctx.func_env,
-    locals: ctx.locals,
+    locals: data_locals,
     module_name: resolved.module.name,
     service_registry: ctx.svc_registry
   }

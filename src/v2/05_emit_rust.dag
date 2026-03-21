@@ -3439,7 +3439,7 @@ fn emit_compile_match_arm() -> String {
     "                }\n",
     "            }\n",
     "            eprintln!(\"compiling {} .dag files from {}\", sources.len(), source_dir);\n",
-    "            let result = ", pipeline_mod, "::compile_sources_lenient(\n",
+    "            let result = ", pipeline_mod, "::compile_sources(\n",
     "                sources,\n",
     "                ", core_mod, "::RenderTarget::Rust,\n",
     "            );\n",
