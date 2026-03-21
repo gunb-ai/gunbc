@@ -817,12 +817,17 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
         }
       Disj =>
         if n.name == "Optional" {
-          // Unwrap Optional and look up in inner
           match n.children |> first {
             Some { value: inner } =>
-              match lookup_field_type_node(n: inner, field_name: field_name) {
-                Some { value: inner_result } => Some { value: optional_node(inner: inner_result) }
-                None => None
+              if field_name == "value" {
+                // .value on Optional means unwrap -- return inner type
+                Some { value: inner }
+              } else {
+                // Look up field in inner type, wrap result in Optional
+                match lookup_field_type_node(n: inner, field_name: field_name) {
+                  Some { value: inner_result } => Some { value: optional_node(inner: inner_result) }
+                  None => None
+                }
               }
             None => None
           }
@@ -1176,7 +1181,7 @@ fn build_type_summary(item: Node) -> TypeSummary? {
 
 fn lookup_emit_field_summary(emit_info: EmitGraphInfo, base_type: Node, field: String) -> FieldSummary? {
   let normed = normalize_access_type_node(n: base_type)
-  if field == "value" && node_is_optional(n: normed) {
+  if field == "value" && (normed.name == "Optional" || node_is_optional(n: normed)) {
     Some { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else {
     match lookup_emit_type_summary(emit_info: emit_info, type_name: normed.name) {

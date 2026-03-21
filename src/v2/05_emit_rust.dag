@@ -1849,11 +1849,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
     MethodLast => concat(recv_str, ".last().cloned()")
     MethodFirst => concat(recv_str, ".first().cloned()")
     MethodEnumerate =>
-      if elem_type_str != "_" {
-        concat(recv_str, ".iter().enumerate().map(|(i, v): (usize, &", elem_type_str, ")| (i as i64, v.clone())).collect::<Vec<_>>()")
-      } else {
-        concat(recv_str, ".iter().enumerate().map(|(i, v)| (i as i64, v.clone())).collect::<Vec<_>>()")
-      }
+      concat(recv_str, ".iter().enumerate().map(|(i, v)| (i as i64, v.clone())).collect::<Vec<_>>()")
     MethodChars => concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
     MethodStringContains => concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
     MethodConcat => {
@@ -1871,7 +1867,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
                 None => "__x"
               }
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              let type_ann = concat(" let ", p, " = __elem;")
               concat("{ let mut __result = Vec::new(); for __elem in ", recv_str, ".iter().cloned() {", type_ann, " __result.push(", body_str, "); } __result }")
             _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
           }
@@ -1887,7 +1883,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
                 None => "__x"
               }
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              let type_ann = concat(" let ", p, " = __elem;")
               concat("{ let mut __result = Vec::new(); for __elem in ", recv_str, ".iter().cloned() {", type_ann, " if ", body_str, " { __result.push(", p, "); } } __result }")
             _ => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
           }
@@ -1903,7 +1899,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
                 None => "__x"
               }
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              let type_ann = concat(" let ", p, " = __elem;")
               concat("{ let mut __found = false; for __elem in ", recv_str, ".iter().cloned() {", type_ann, " if ", body_str, " { __found = true; break; } } __found }")
             _ => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
           }
@@ -1919,7 +1915,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
                 None => "__x"
               }
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              let type_ann = concat(" let ", p, " = __elem;")
               concat("{ let mut __all = true; for __elem in ", recv_str, ".iter().cloned() {", type_ann, " if !(", body_str, ") { __all = false; break; } } __all }")
             _ => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
           }
@@ -1935,7 +1931,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
                 None => "__x"
               }
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              let type_ann = if elem_type_str != "_" { concat(" let ", p, ": ", elem_type_str, " = __elem;") } else { concat(" let ", p, " = __elem;") }
+              let type_ann = concat(" let ", p, " = __elem;")
               concat("{ let mut __result = Vec::new(); for __elem in ", recv_str, ".iter().cloned() {", type_ann, " __result.extend(", body_str, "); } __result }")
             _ => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
           }
@@ -1954,7 +1950,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Expr, 
       if elem_type_str != "_" {
         concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| __key_fn(a.clone()).partial_cmp(&__key_fn(b.clone())).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
       } else {
-        concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
+        concat("{ let __key_fn = ", first_arg_str, "; let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a, b| __key_fn(a.clone()).partial_cmp(&__key_fn(b.clone())).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
       }
     MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
   }
