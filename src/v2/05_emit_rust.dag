@@ -2133,12 +2133,26 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
     match classify_intrinsic_method(method: method) {
       Some { value: intrinsic } =>
         emit_intrinsic_typed_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      None => {
-        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-        let args_str = arg_strs |> join(separator: ", ")
-        concat(recv_str, ".", rust_ident(name: method), "(", args_str, ")")
-      }
+      None =>
+        // Runtime functions bridged from Call to MethodCall by the reconciler:
+        // reconstruct as v2_rt::func(receiver, args...) free function call.
+        let is_rt = map_contains_key(rt_functions, method)
+        let is_rt_ref_map = map_contains_key(rt_ref_map_functions, method)
+        if is_rt {
+          let recv_str = if is_rt_ref_map {
+            concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+          } else {
+            emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          }
+          let arg_strs = args |> map(a => emit_cloned_arg(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+          let all_strs = concat([recv_str], arg_strs)
+          concat("v2_rt::", rust_ident(name: method), "(", all_strs |> join(separator: ", "), ")")
+        } else {
+          let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+          let args_str = arg_strs |> join(separator: ", ")
+          concat(recv_str, ".", rust_ident(name: method), "(", args_str, ")")
+        }
     }
   }
 }
