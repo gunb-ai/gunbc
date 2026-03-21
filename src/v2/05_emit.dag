@@ -21,10 +21,12 @@ import v2.std.core {
   Import,
   Node,
   Connective, Conj, Disj,
-  Field, Param, Expr,
-  Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
-  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp,
-  Block, Cast, ForEach, Index, Slice,
+  Field, Param,
+  ExprData, NoExprData,
+  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
+  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
+  ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
   NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
   LiteralValue, TransportBinding,
@@ -120,12 +122,12 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 }
 
 // scope_after_expr: extend scope with let-binding type for bodyless lets.
-// With Expr, the resolved type is read directly from the sub-expression.
-fn scope_after_expr(texpr: Expr, scope: InferScope) -> InferScope {
-  match texpr {
-    Let { name: name, value: value, body: body, resolved_type: _, span: _ } =>
+// After Expr->Node dissolution, resolved type is on Node.return_type.
+fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
+  match texpr.expr_data {
+    ExprLet { name: name, value: value, body: body } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: value.resolved_type.value)
+        extend_scope(scope: scope, name: name, resolved: value.return_type.value)
       } else {
         scope
       }
@@ -251,51 +253,51 @@ fn has_nested_records_node(n: Node) -> Bool {
 // JSON emission for data values -- used with serde_json::json!() macro
 // =========================================================================
 
-fn emit_data_value_json(value: Expr) -> String {
-  match value {
-    Literal { value: v, span: _ } => match v {
+fn emit_data_value_json(value: Node) -> String {
+  match value.expr_data {
+    ExprLiteral { value: v } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
       LitNull => "null"
     }
-    ListLit { elements: els, span: _ } => {
+    ExprListLit { elements: els } => {
       let el_strs = els |> map(e => emit_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    RecordLit { type_name: _, fields: fs, span: _ } => {
+    ExprRecordLit { type_name: _, fields: fs } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_data_value_json(value: f.value))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    Var { name: n, span: _ } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { name: n } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }
 
-// Typed variant -- operates on Expr directly, no typed_expr_to_expr needed.
-fn emit_typed_data_value_json(value: Expr) -> String {
-  match value {
-    Literal { value: v, resolved_type: _, span: _ } => match v {
+// Typed variant -- operates on Node directly.
+fn emit_typed_data_value_json(value: Node) -> String {
+  match value.expr_data {
+    ExprLiteral { value: v } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
       LitNull => "null"
     }
-    ListLit { elements: els, resolved_type: _, span: _ } => {
+    ExprListLit { elements: els } => {
       let el_strs = els |> map(e => emit_typed_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } => {
+    ExprRecordLit { type_name: _, fields: fs } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_typed_data_value_json(value: f.value))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    Var { name: n, resolved_type: _, span: _ } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { name: n } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }

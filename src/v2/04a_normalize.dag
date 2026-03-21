@@ -16,10 +16,11 @@ module v2.compiler.normalize
 
 import v2.std.core {
   Node, Conj, Disj,
-  Expr, Var, Let, Call, MethodCall, Match, If, Lambda,
-  FieldAccess, RecordLit, ListLit, BinOp, UnaryOp,
-  StringInterp, Block, Cast, ForEach, Index, Slice, Return,
-  Literal, NamedArg, MatchArm, FieldInit, StringPart, Text, Interpolation,
+  ExprData, NoExprData,
+  ExprVar, ExprLet, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLambda,
+  ExprFieldAccess, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp,
+  ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
+  ExprLiteral, NamedArg, MatchArm, FieldInit, StringPart, Text, Interpolation,
   MatchPattern, VariantPattern, FieldBinding,
   Diagnostic, SourceSpan, TextFile
 }
@@ -159,7 +160,7 @@ fn record_binding(accum: EdgeAccum, name: String, position: ScopePosition) -> Ed
 // Classify edges in a named argument list (function call arguments are consumed).
 fn classify_args(args: List<NamedArg>, accum: EdgeAccum) -> EdgeAccum {
   fold(args, init: accum, f: (acc, arg) =>
-    classify_expr_edges(expr: arg.value, context: Consumed, accum: acc)
+    classify_expr_edges(texpr: arg.value, context: Consumed, accum: acc)
   )
 }
 
@@ -167,7 +168,7 @@ fn classify_args(args: List<NamedArg>, accum: EdgeAccum) -> EdgeAccum {
 fn classify_arms(arms: List<MatchArm>, accum: EdgeAccum) -> EdgeAccum {
   fold(arms, init: accum, f: (acc, arm) =>
     let pat_acc = classify_pattern_bindings(pattern: arm.pattern, accum: acc)
-    classify_expr_edges(expr: arm.body, context: Read, accum: pat_acc)
+    classify_expr_edges(texpr: arm.body, context: Read, accum: pat_acc)
   )
 }
 
@@ -185,7 +186,7 @@ fn classify_pattern_bindings(pattern: MatchPattern, accum: EdgeAccum) -> EdgeAcc
 // Classify edges in field init lists (record literal fields are consumed).
 fn classify_field_inits(fields: List<FieldInit>, accum: EdgeAccum) -> EdgeAccum {
   fold(fields, init: accum, f: (acc, fi) =>
-    classify_expr_edges(expr: fi.value, context: Consumed, accum: acc)
+    classify_expr_edges(texpr: fi.value, context: Consumed, accum: acc)
   )
 }
 
@@ -195,103 +196,105 @@ fn classify_interp_parts(parts: List<StringPart>, accum: EdgeAccum) -> EdgeAccum
     match part {
       Text { value: _ } => acc
       Interpolation { expr: e } =>
-        classify_expr_edges(expr: e, context: Read, accum: acc)
+        classify_expr_edges(texpr: e, context: Read, accum: acc)
     }
   )
 }
 
 // Classify edges in a list of expressions (list literal elements are consumed).
-fn classify_expr_list(exprs: List<Expr>, context: EdgeKind, accum: EdgeAccum) -> EdgeAccum {
+fn classify_expr_list(exprs: List<Node>, context: EdgeKind, accum: EdgeAccum) -> EdgeAccum {
   fold(exprs, init: accum, f: (acc, e) =>
-    classify_expr_edges(expr: e, context: context, accum: acc)
+    classify_expr_edges(texpr: e, context: context, accum: acc)
   )
 }
 
-// Main expression edge classifier. Walks the full Expr tree.
+// Main expression edge classifier. Walks the full expression Node tree.
 // `context` is the edge kind for the current position (how the parent uses this expr).
-fn classify_expr_edges(expr: Expr, context: EdgeKind, accum: EdgeAccum) -> EdgeAccum {
-  match expr {
-    Literal { value: _, resolved_type: _, span: _ } => accum
+fn classify_expr_edges(texpr: Node, context: EdgeKind, accum: EdgeAccum) -> EdgeAccum {
+  match texpr.expr_data {
+    ExprLiteral { value: _ } => accum
 
-    Var { name: n, resolved_type: _, span: s } =>
-      record_edge(accum: accum, name: n, kind: context, site: s)
+    ExprVar { name: n } =>
+      record_edge(accum: accum, name: n, kind: context, site: texpr.span)
 
-    FieldAccess { base: b, field: _, resolved_type: _, span: s } =>
-      classify_expr_edges(expr: b, context: Projected, accum: accum)
+    ExprFieldAccess { base: b, field: _ } =>
+      classify_expr_edges(texpr: b, context: Projected, accum: accum)
 
-    Call { func: _, args: a, resolved_type: _, span: _ } =>
+    ExprCall { func: _, args: a } =>
       classify_args(args: a, accum: accum)
 
-    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
-      let recv_acc = classify_expr_edges(expr: r, context: Consumed, accum: accum)
+    ExprMethodCall { receiver: r, method: _, args: a } =>
+      let recv_acc = classify_expr_edges(texpr: r, context: Consumed, accum: accum)
       classify_args(args: a, accum: recv_acc)
 
-    Match { scrutinee: sc, arms: arms, resolved_type: _, span: _ } =>
-      let sc_acc = classify_expr_edges(expr: sc, context: Read, accum: accum)
+    ExprMatch { scrutinee: sc, arms: arms } =>
+      let sc_acc = classify_expr_edges(texpr: sc, context: Read, accum: accum)
       classify_arms(arms: arms, accum: sc_acc)
 
-    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
-      let c_acc = classify_expr_edges(expr: c, context: Read, accum: accum)
-      let t_acc = classify_expr_edges(expr: t, context: context, accum: c_acc)
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      let c_acc = classify_expr_edges(texpr: c, context: Read, accum: accum)
+      let t_acc = classify_expr_edges(texpr: t, context: context, accum: c_acc)
       match e {
         Some { value: else_expr } =>
-          classify_expr_edges(expr: else_expr, context: context, accum: t_acc)
+          classify_expr_edges(texpr: else_expr, context: context, accum: t_acc)
         None => t_acc
       }
 
-    Let { name: n, value: v, body: b, resolved_type: _, span: _ } =>
-      let v_acc = classify_expr_edges(expr: v, context: Consumed, accum: accum)
+    ExprLet { name: n, value: v, body: b } =>
+      let v_acc = classify_expr_edges(texpr: v, context: Consumed, accum: accum)
       let bind_acc = record_binding(accum: v_acc, name: n, position: LetBinding)
       match b {
         Some { value: body_expr } =>
-          classify_expr_edges(expr: body_expr, context: context, accum: bind_acc)
+          classify_expr_edges(texpr: body_expr, context: context, accum: bind_acc)
         None => bind_acc
       }
 
-    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+    ExprRecordLit { type_name: _, fields: fs } =>
       classify_field_inits(fields: fs, accum: accum)
 
-    ListLit { elements: es, resolved_type: _, span: _ } =>
+    ExprListLit { elements: es } =>
       classify_expr_list(exprs: es, context: Consumed, accum: accum)
 
-    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
-      let l_acc = classify_expr_edges(expr: l, context: Read, accum: accum)
-      classify_expr_edges(expr: r, context: Read, accum: l_acc)
+    ExprBinOp { op: _, left: l, right: r } =>
+      let l_acc = classify_expr_edges(texpr: l, context: Read, accum: accum)
+      classify_expr_edges(texpr: r, context: Read, accum: l_acc)
 
-    UnaryOp { op: _, operand: o, resolved_type: _, span: _ } =>
-      classify_expr_edges(expr: o, context: Read, accum: accum)
+    ExprUnaryOp { op: _, operand: o } =>
+      classify_expr_edges(texpr: o, context: Read, accum: accum)
 
-    Lambda { params: ps, body: b, resolved_type: _, span: _ } =>
+    ExprLambda { params: ps, body: b } =>
       let param_acc = fold(ps, init: accum, f: (acc, p) =>
         record_binding(accum: acc, name: p, position: LambdaBinding)
       )
-      classify_expr_edges(expr: b, context: context, accum: param_acc)
+      classify_expr_edges(texpr: b, context: context, accum: param_acc)
 
-    StringInterp { parts: ps, resolved_type: _, span: _ } =>
+    ExprStringInterp { parts: ps } =>
       classify_interp_parts(parts: ps, accum: accum)
 
-    Block { stmts: ss, resolved_type: _, span: _ } =>
+    ExprBlock { stmts: ss } =>
       classify_expr_list(exprs: ss, context: context, accum: accum)
 
-    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
-      classify_expr_edges(expr: e, context: context, accum: accum)
+    ExprCast { expr: e, target: _ } =>
+      classify_expr_edges(texpr: e, context: context, accum: accum)
 
-    ForEach { variable: v, collection: c, body: b, resolved_type: _, span: _ } =>
-      let c_acc = classify_expr_edges(expr: c, context: Consumed, accum: accum)
+    ExprForEach { variable: v, collection: c, body: b } =>
+      let c_acc = classify_expr_edges(texpr: c, context: Consumed, accum: accum)
       let bind_acc = record_binding(accum: c_acc, name: v, position: ForEachBinding)
-      classify_expr_edges(expr: b, context: context, accum: bind_acc)
+      classify_expr_edges(texpr: b, context: context, accum: bind_acc)
 
-    Index { base: b, index: i, resolved_type: _, span: _ } =>
-      let b_acc = classify_expr_edges(expr: b, context: Read, accum: accum)
-      classify_expr_edges(expr: i, context: Read, accum: b_acc)
+    ExprIndex { base: b, index: i } =>
+      let b_acc = classify_expr_edges(texpr: b, context: Read, accum: accum)
+      classify_expr_edges(texpr: i, context: Read, accum: b_acc)
 
-    Slice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
-      let b_acc = classify_expr_edges(expr: b, context: Read, accum: accum)
-      let s_acc = classify_expr_edges(expr: s, context: Read, accum: b_acc)
-      classify_expr_edges(expr: e, context: Read, accum: s_acc)
+    ExprSlice { base: b, start: s, end: e } =>
+      let b_acc = classify_expr_edges(texpr: b, context: Read, accum: accum)
+      let s_acc = classify_expr_edges(texpr: s, context: Read, accum: b_acc)
+      classify_expr_edges(texpr: e, context: Read, accum: s_acc)
 
-    Return { value: v, resolved_type: _, span: _ } =>
-      classify_expr_edges(expr: v, context: Consumed, accum: accum)
+    ExprReturn { value: v } =>
+      classify_expr_edges(texpr: v, context: Consumed, accum: accum)
+
+    NoExprData => accum
   }
 }
 
@@ -355,7 +358,7 @@ fn analyze_func(item: Node, info: ItemInfo) -> FuncFacts {
       let param_acc = fold(item.params, init: empty_accum(), f: (acc, p) =>
         record_binding(accum: acc, name: p.name, position: ParamBinding)
       )
-      classify_expr_edges(expr: body, context: Consumed, accum: param_acc)
+      classify_expr_edges(texpr: body, context: Consumed, accum: param_acc)
     None => empty_accum()
   }
   let binding_facts = count_consumers(accum: accum)
