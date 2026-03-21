@@ -9,6 +9,14 @@
 mod tests {
     use std::collections::HashMap;
 
+    /// Local replacement for CompileOutput.
+    /// Contains lowered function bodies and data values — everything the
+    /// v1 evaluator needs to execute v2 .dag functions.
+    struct CompileOutput {
+        fns: HashMap<String, daglang_eval::LoweredFnBody>,
+        data_values: HashMap<String, gunbc_ir::Value>,
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     fn workspace_root() -> std::path::PathBuf {
@@ -81,7 +89,7 @@ mod tests {
     /// Compile all v2 compiler .dag files into a single EmbeddedCompileOutput.
     /// All fn bodies from all modules share one `fns` HashMap, enabling
     /// cross-module calls (e.g., pipeline.dag calling tokenize()).
-    fn compile_all_modules() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
+    fn compile_all_modules() -> Result<CompileOutput, String> {
         let root = workspace_root();
 
         let files = vec![
@@ -91,6 +99,7 @@ mod tests {
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
             root.join("src/v2/04_reconcile.dag"),
+            root.join("src/v2/04a_normalize.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
@@ -168,10 +177,9 @@ mod tests {
             }
         }
 
-        Ok(daglang_driver::EmbeddedCompileOutput {
+        Ok(CompileOutput {
             fns,
             data_values,
-            pipelines: HashMap::new(),
         })
     }
 
@@ -188,6 +196,7 @@ mod tests {
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
             root.join("src/v2/04_reconcile.dag"),
+            root.join("src/v2/04a_normalize.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
@@ -226,7 +235,7 @@ mod tests {
 
     /// Helper: call a DSL function by name with given inputs and return outputs.
     fn call_fn(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         fn_name: &str,
         inputs: HashMap<String, gunbc_ir::Value>,
     ) -> Result<HashMap<String, gunbc_ir::Value>, String> {
@@ -278,7 +287,7 @@ mod tests {
     }
 
     fn compile_sources_with_target(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         sources: &[(&str, &str)],
         target: &str,
     ) -> HashMap<String, gunbc_ir::Value> {
@@ -303,7 +312,7 @@ mod tests {
     }
 
     fn compile_sources_with(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         sources: &[(&str, &str)],
     ) -> HashMap<String, gunbc_ir::Value> {
         compile_sources_with_target(output, sources, "Rust")
@@ -808,7 +817,7 @@ fn foo(item: String) -> String {
     /// Extract fn bodies and data values from the tokenizer module.
     /// Uses direct AST-level lowering (bypasses DAG wiring) to avoid
     /// DAG-level expression resolution failures for pure fn bodies.
-    fn compile_tokenizer_module() -> Result<daglang_driver::EmbeddedCompileOutput, String> {
+    fn compile_tokenizer_module() -> Result<CompileOutput, String> {
         let root = workspace_root();
 
         // Read sources
@@ -898,10 +907,9 @@ fn foo(item: String) -> String {
             }
         }
 
-        Ok(daglang_driver::EmbeddedCompileOutput {
+        Ok(CompileOutput {
             fns,
             data_values,
-            pipelines: HashMap::new(),
         })
     }
 
@@ -2358,7 +2366,7 @@ fn example(items: List<String>) -> Int {
     /// Helper: tokenize + parse a source string through the v2 pipeline,
     /// returning the parsed Module value.
     fn v2_tokenize_and_parse(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         source: &str,
     ) -> gunbc_ir::Value {
         let mut tok_inputs = HashMap::new();
@@ -3369,6 +3377,7 @@ fn example(items: List<String>) -> Int {
     /// stderr: "compiled: N files emitted, M diagnostics"
     /// The binary uses compile_sources (strict path) which gates on
     /// Error-severity diagnostics. Inference warnings are counted but don't block.
+    #[cfg(feature = "v1-bootstrap")]
     #[test]
     #[ignore] // Requires building stage0 binary (~2 min)
     fn v2_strict_compile_diagnostic_count() {
@@ -3498,9 +3507,10 @@ fn example(items: List<String>) -> Int {
     // [ARCHIVED] v2_crate_profile_gist — profiling via v1
     // [ARCHIVED] v2_crate_emit_to_target — convenience wrapper
 
-    // ── v2 crate assembly helpers ──────────────────────────────────────
+    // ── v2 crate assembly helpers (v1-bootstrap feature) ───────────────
+    // These functions require the v1 emitter to assemble stage0. Gated
+    // behind the v1-bootstrap feature so normal unit tests don't need it.
 
-    /// Assemble and write the v2 crate to a temp directory, returning its path.
     fn assemble_v2_crate_to_dir(dir_name: &str) -> std::path::PathBuf {
         let v2_files = [
             ("00_core", "src/v2/00_core.dag"),
@@ -3508,6 +3518,7 @@ fn example(items: List<String>) -> Int {
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
             ("04_reconcile", "src/v2/04_reconcile.dag"),
+            ("04a_normalize", "src/v2/04a_normalize.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
@@ -3545,6 +3556,7 @@ fn example(items: List<String>) -> Int {
 
     /// A5 bootstrap test: build stage0 binary, run it to compile v2 .dag
     /// sources, then cargo check the stage1 output.
+    #[cfg(feature = "v1-bootstrap")]
     #[test]
     #[ignore] // Expensive: builds binary + runs full compile + cargo check
     fn v2_bootstrap_stage0_to_stage1() {
@@ -3646,6 +3658,7 @@ fn example(items: List<String>) -> Int {
     // ═════════════════════════════════════════════════════════════════════
 
     /// Collect all file paths relative to `root`, excluding `target/` directories.
+    #[cfg(feature = "v1-bootstrap")]
     fn collect_source_files(root: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
         let mut files = std::collections::BTreeMap::new();
         fn walk(dir: &std::path::Path, root: &std::path::Path, files: &mut std::collections::BTreeMap<String, Vec<u8>>) {
@@ -3669,6 +3682,7 @@ fn example(items: List<String>) -> Int {
 
     /// A6 fixed-point test: build stage0, compile stage1, build stage1,
     /// compile stage2, assert stage1 == stage2 byte-for-byte.
+    #[cfg(feature = "v1-bootstrap")]
     #[test]
     #[ignore] // Expensive: builds two binaries + two full compiles
     fn v2_bootstrap_fixed_point() {
@@ -3805,7 +3819,7 @@ fn example(items: List<String>) -> Int {
     // ═════════════════════════════════════════════════════════════════════
 
     fn emitted_python_module(
-        output: &daglang_driver::EmbeddedCompileOutput,
+        output: &CompileOutput,
         source: &str,
         module_path: &str,
     ) -> String {

@@ -34,6 +34,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import v2.compiler.normalize { EmitGraph }
 import v2.compiler.reconcile {
   ResolvedGraph, TypedModule,
   EmitGraphInfo,
@@ -219,20 +220,21 @@ fn is_simple_disj(item: Node) -> Bool {
 // Entry point -- Rust target
 // =========================================================================
 
-fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let emit_info = typed.emit_info
+fn emit_rust(typed: EmitGraph) -> EmitResult {
+  let graph = typed.graph
+  let emit_info = graph.emit_info
   let vtoe = emit_info.variant_to_enum
   let rc_types = emit_info.rc_wrapped_types
-  let registry = typed.item_registry
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types))
-  let test_files = typed.modules
+  let registry = graph.item_registry
+  let module_files = graph.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types))
+  let test_files = graph.modules
     |> map(tm => emit_test_file(typed_module: tm))
     |> filter(f => f.content != "")
-  let has_services = has_service_items(typed: typed)
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
-  let lib_file = emit_lib_rs(modules: typed.modules, has_services: has_services)
+  let has_services = has_service_items(typed: graph)
+  let workflow_funcs = collect_workflow_funcs(modules: graph.modules, registry: registry)
+  let lib_file = emit_lib_rs(modules: graph.modules, has_services: has_services)
   let cargo = emit_cargo_toml(crate_name: "v2_compiled", has_services: has_services)
-  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services)
+  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: graph.modules, has_services: has_services)
   let rt_file = emit_v2_rt_module()
   let dry_run_file = if has_services {
     [emit_dry_run_module()]
@@ -2147,6 +2149,39 @@ fn emit_typed_method_call(receiver: Expr, method: String, args: List<NamedArg>, 
           let arg_strs = args |> map(a => emit_cloned_arg(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
           let all_strs = concat([recv_str], arg_strs)
           concat("v2_rt::", rust_ident(name: method), "(", all_strs |> join(separator: ", "), ")")
+        } else if method == "get" {
+          // get(list, index) bridged to MethodCall — emit as list[index as usize].cloned()
+          let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          let index_str = match args |> first {
+            Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            None => "0"
+          }
+          concat(list_str, ".get((", index_str, ") as usize).cloned()")
+        } else if method == "with" {
+          // with(struct, { overrides }) bridged to MethodCall — emit struct update syntax
+          let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          let type_name = match receiver {
+            Var { resolved_type: vrt } =>
+              match vrt { Some { value: rt } => rt.name  None => "<error:unknown_with_type>" }
+            FieldAccess { resolved_type: frt } =>
+              match frt { Some { value: rt } => rt.name  None => "<error:unknown_with_type>" }
+            _ => "<error:unknown_with_type>"
+          }
+          let update_arg = match args |> first {
+            Some { value: a } => a.value
+            None => Literal { value: LitNull, resolved_type: none, span: SourceSpan { start: 0, end: 0 } }
+          }
+          let field_strs = match update_arg {
+            RecordLit { fields: fs, resolved_type: _, span: _, type_name: _ } =>
+              fs |> map(f => concat(rust_ident(name: f.name), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
+            _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
+          }
+          let fields_str = field_strs |> join(separator: ", ")
+          let needs_rc = emit_map_has(m: rc_types, key: type_name)
+          let spread = if needs_rc { concat("(*", base_str, ").clone()") } else { concat(base_str, ".clone()") }
+          let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
+          if needs_rc { concat("Rc::new(", raw, ")") }
+          else { raw }
         } else {
           let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
           let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))

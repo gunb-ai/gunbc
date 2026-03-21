@@ -636,7 +636,7 @@ fn render_expr(expr: &Expr) -> String {
         Expr::UnaryOp { op, expr } => {
             format!("{}{}", op, render_operator_operand(expr))
         }
-        Expr::IntLit(n) => n.to_string(),
+        Expr::IntLit(n) => format!("{n}_i64"),
         Expr::BoolLit(b) => b.to_string(),
         Expr::Match { expr, arms } => render_match(expr, arms),
         Expr::If {
@@ -1021,7 +1021,7 @@ mod tests {
             args: vec!["n".to_string()],
             body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
         };
-        assert_eq!(render_expr(&expr), "|n| n >= 2");
+        assert_eq!(render_expr(&expr), "|n| n >= 2_i64");
     }
 
     #[test]
@@ -1089,7 +1089,7 @@ mod tests {
         let rendered = render_expr(&expr);
         assert_eq!(
             rendered,
-            "Config { name: \"custom\", count: 42, ..defaults }"
+            "Config { name: \"custom\", count: 42_i64, ..defaults }"
         );
     }
 

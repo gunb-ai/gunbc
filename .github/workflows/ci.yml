@@ -43,7 +43,7 @@ jobs:
             cargo-${{ runner.os }}-
 
       - name: Lint
-        run: cargo clippy --workspace --exclude gunbc-codegen -- -D warnings && cargo clippy -p gunbc-codegen --lib -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --exclude gunbc-codegen
+        run: cargo test --workspace

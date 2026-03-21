@@ -33,6 +33,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import v2.compiler.normalize { EmitGraph }
 import v2.compiler.reconcile {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -137,11 +138,12 @@ fn emit_py_init_block_stmts(remaining: List<Expr>, text: List<String>,
 // Entry point -- Python target
 // =========================================================================
 
-fn emit_python(typed: ResolvedGraph) -> EmitResult {
-  let registry = typed.item_registry
-  let module_files = typed.modules |> map(tm => emit_py_module(typed_module: tm, registry: registry))
-  let init_file = emit_init_py(modules: typed.modules)
-  let requirements = emit_requirements_txt(has_services: has_service_items(typed: typed))
+fn emit_python(typed: EmitGraph) -> EmitResult {
+  let graph = typed.graph
+  let registry = graph.item_registry
+  let module_files = graph.modules |> map(tm => emit_py_module(typed_module: tm, registry: registry))
+  let init_file = emit_init_py(modules: graph.modules)
+  let requirements = emit_requirements_txt(has_services: has_service_items(typed: graph))
   let files = concat([requirements, init_file], module_files)
   EmitResult { files: files, diagnostics: [] }
 }

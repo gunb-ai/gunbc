@@ -2710,7 +2710,7 @@ fn compile_intrinsic_call(
     // empty_map() → Rc::new(HashMap::new())
     if name == "empty_map" && args.is_empty() {
         return Some(rc_wrap(code_ir::Expr::RawCode(
-            "std::collections::HashMap::new()".to_string(),
+            "std::collections::HashMap::<String, _>::new()".to_string(),
         )));
     }
 
@@ -3778,6 +3778,30 @@ fn compile_intrinsic_call(
                     ir_type: None,
                 },
                 code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(values))),
+            ]))
+        }
+        // map_keys(map) → Rc-unwrap HashMap, into_keys, collect into Vec<String>.
+        "map_keys" if args.len() == 1 => {
+            let rc_var = fresh(counter, "rc");
+            let map_var = fresh(counter, "map_unwrapped");
+            let keys = fresh(counter, "keys");
+            Some(code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_bind(&rc_var, collection.clone()),
+                code_ir::Stmt::let_bind(
+                    &map_var,
+                    code_ir::Expr::RawCode(format!(
+                        "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
+                    )),
+                ),
+                code_ir::Stmt::Let {
+                    name: keys.clone(),
+                    mutable: false,
+                    expr: code_ir::Expr::RawCode(format!(
+                        "{map_var}.into_keys().collect::<Vec<_>>()"
+                    )),
+                    ir_type: None,
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(keys)),
             ]))
         }
         // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.

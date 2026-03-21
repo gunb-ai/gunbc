@@ -4,7 +4,7 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> typecheck -> emit
+// Pipeline: tokenize -> parse -> resolve -> reconcile -> normalize -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
@@ -20,6 +20,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.reconcile { reconcile, ResolvedGraph }
+import v2.compiler.normalize { normalize, EmitGraph }
 import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
@@ -122,12 +123,16 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
       }
     }
 
-    // Stage 5: Emit target-language files.
+    // Stage 5: Normalize -- compute target-agnostic behavioral facts.
+    // Edge classification, consumer counts, function classification.
+    let emit_graph = normalize(graph: typed)
+
+    // Stage 6: Emit target-language files.
     // Dispatches to the appropriate renderer based on RenderTarget.
     // Precondition: no errors from any prior stage.
     let emit_result = match target {
-      Rust => emit_rust(typed: typed)
-      Python => emit_python(typed: typed)
+      Rust => emit_rust(typed: emit_graph)
+      Python => emit_python(typed: emit_graph)
       Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: Some { value: SourceSpan { start: 0, end: 0 } }, module_name: Some { value: "" } }] }
     }
     let emit_files = emit_result.files

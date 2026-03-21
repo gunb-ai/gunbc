@@ -101,19 +101,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derived_codegen_input_patterns_include_codegen_ir_and_dag() {
+    fn derived_codegen_input_patterns_include_ir_and_dag() {
         let (globs, files) = codegen_input_patterns();
-        assert!(
-            globs.iter().any(|g| g.ends_with("codegen/src/**/*.rs")),
-            "expected codegen source glob, got {globs:?}"
-        );
+        // gunbc-codegen is no longer in the workspace (v1 retirement).
+        // Only gunbc-ir patterns are expected.
         assert!(
             globs.iter().any(|g| g.ends_with("ir/src/**/*.rs")),
             "expected ir source glob, got {globs:?}"
-        );
-        assert!(
-            files.iter().any(|f| f.ends_with("codegen/Cargo.toml")),
-            "expected codegen manifest path, got {files:?}"
         );
         assert!(
             files.iter().any(|f| f.ends_with("ir/Cargo.toml")),

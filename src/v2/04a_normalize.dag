@@ -1,0 +1,508 @@
+// v2 normalize stage -- target-agnostic behavioral facts for emission.
+//
+// Pipeline position: reconcile -> normalize -> emit
+//
+// Takes a ResolvedGraph (fully typed, no unresolved Named references) and
+// produces an EmitGraph: the same modules + pre-computed behavioral facts
+// that emitters consume without re-derivation.
+//
+// All facts computed here are target-agnostic. No Rust, Python, or Go
+// concepts. Emitters read these facts and translate to target syntax.
+//
+// Invariant 6: "DAG nodes are facts, rendering is separate."
+// This module computes the facts. Renderers only render.
+
+module v2.compiler.normalize
+
+import v2.std.core {
+  Node, Conj, Disj,
+  Expr, Var, Let, Call, MethodCall, Match, If, Lambda,
+  FieldAccess, RecordLit, ListLit, BinOp, UnaryOp,
+  StringInterp, Block, Cast, ForEach, Index, Slice, Return,
+  Literal, NamedArg, MatchArm, FieldInit, StringPart, Text, Interpolation,
+  MatchPattern, VariantPattern, FieldBinding,
+  Diagnostic, SourceSpan, TextFile
+}
+
+import v2.compiler.reconcile {
+  ResolvedGraph, TypedModule, EmitGraphInfo, TypeSummary,
+  ItemInfo, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
+  ItemKind, TypeEnv, ResolvedFuncEnv, ResolvedFuncSig,
+  TypeBinding
+}
+
+import v2.compiler.emit { EmitResult }
+
+// =========================================================================
+// Types -- EmitGraph and its components
+// =========================================================================
+
+// Edge classification: how a binding is used at a particular site.
+type EdgeKind
+  = Consumed    // passed as argument to a function (ownership transfer)
+  | Read        // used in a context that only reads (field access base, etc.)
+  | Threaded    // passed through without transformation (admin edge)
+  | Projected   // partially accessed (field extraction)
+
+// A single use of a binding at a specific site.
+type BindingEdge {
+  binding_name: String
+  kind: EdgeKind
+  site: SourceSpan
+}
+
+// Scope position: where a binding was introduced.
+type ScopePosition
+  = ParamBinding
+  | LetBinding
+  | MatchArmBinding
+  | ForEachBinding
+  | LambdaBinding
+
+// Behavioral facts about a single binding within a function.
+type BindingFacts {
+  name: String
+  scope_position: ScopePosition
+  consumer_count: Int
+  edges: List<BindingEdge>
+}
+
+// Function classification derived from call graph structure.
+type FuncClassification
+  = LeafFunc       // no calls to user-defined functions
+  | InteriorFunc   // calls other functions but not itself
+  | RecursiveFunc  // calls itself, has non-tail self-calls
+  | TcoFunc        // calls itself, all self-calls in tail position
+
+// Behavioral facts about a single function.
+type FuncFacts {
+  name: String
+  classification: FuncClassification
+  binding_facts: Map<String, BindingFacts>
+}
+
+// Pre-computed enum structural facts.
+type EnumFacts {
+  has_complex_variants: Bool
+  shared_field_names: List<String>
+}
+
+// Pre-computed field facts (target-agnostic).
+type FieldFacts {
+  needs_indirection: Bool
+}
+
+// EmitGraph: the normalize-to-emit boundary type.
+// Wraps ResolvedGraph with pre-computed behavioral facts.
+// Emitters receive this instead of ResolvedGraph.
+type EmitGraph {
+  graph: ResolvedGraph
+  func_facts: Map<String, FuncFacts>
+  enum_facts: Map<String, EnumFacts>
+  field_facts: Map<String, FieldFacts>
+}
+
+// =========================================================================
+// Function classification
+// =========================================================================
+
+// Classify a function from its ItemInfo metadata.
+// ItemInfo already tracks is_self_recursive and has_non_tail_self_call.
+fn classify_func(info: ItemInfo) -> FuncClassification {
+  if info.is_self_recursive {
+    if info.has_non_tail_self_call {
+      RecursiveFunc
+    } else {
+      TcoFunc
+    }
+  } else {
+    // Cannot distinguish leaf from interior without call-graph analysis.
+    // For now, all non-recursive functions are classified as interior.
+    // Phase 2 will add call-graph SCC walk to distinguish.
+    InteriorFunc
+  }
+}
+
+// =========================================================================
+// Expression edge classification
+//
+// Walk an expression tree, tracking binding introductions and uses.
+// Each Var reference produces an edge classified by its syntactic context.
+// =========================================================================
+
+type EdgeAccum {
+  edges: List<BindingEdge>
+  bindings: Map<String, BindingFacts>
+}
+
+fn empty_accum() -> EdgeAccum {
+  EdgeAccum { edges: [], bindings: empty_map() }
+}
+
+fn merge_accums(a: EdgeAccum, b: EdgeAccum) -> EdgeAccum {
+  EdgeAccum {
+    edges: concat(a.edges, b.edges),
+    bindings: map_merge(a.bindings, b.bindings)
+  }
+}
+
+fn record_edge(accum: EdgeAccum, name: String, kind: EdgeKind, site: SourceSpan) -> EdgeAccum {
+  let edge = BindingEdge { binding_name: name, kind: kind, site: site }
+  EdgeAccum { edges: list_push(accum.edges, edge), bindings: accum.bindings }
+}
+
+fn record_binding(accum: EdgeAccum, name: String, position: ScopePosition) -> EdgeAccum {
+  let facts = BindingFacts { name: name, scope_position: position, consumer_count: 0, edges: [] }
+  EdgeAccum { edges: accum.edges, bindings: map_insert(accum.bindings, name, facts) }
+}
+
+// Classify edges in a named argument list (function call arguments are consumed).
+fn classify_args(args: List<NamedArg>, accum: EdgeAccum) -> EdgeAccum {
+  fold(args, init: accum, f: (acc, arg) =>
+    classify_expr_edges(expr: arg.value, context: Consumed, accum: acc)
+  )
+}
+
+// Classify edges in match arms.
+fn classify_arms(arms: List<MatchArm>, accum: EdgeAccum) -> EdgeAccum {
+  fold(arms, init: accum, f: (acc, arm) =>
+    let pat_acc = classify_pattern_bindings(pattern: arm.pattern, accum: acc)
+    classify_expr_edges(expr: arm.body, context: Read, accum: pat_acc)
+  )
+}
+
+// Record bindings introduced by match patterns.
+fn classify_pattern_bindings(pattern: MatchPattern, accum: EdgeAccum) -> EdgeAccum {
+  match pattern {
+    VariantPattern { name: n, field_bindings: fs } =>
+      fold(fs, init: accum, f: (acc, fb) =>
+        record_binding(accum: acc, name: fb.field_name, position: MatchArmBinding)
+      )
+    _ => accum
+  }
+}
+
+// Classify edges in field init lists (record literal fields are consumed).
+fn classify_field_inits(fields: List<FieldInit>, accum: EdgeAccum) -> EdgeAccum {
+  fold(fields, init: accum, f: (acc, fi) =>
+    classify_expr_edges(expr: fi.value, context: Consumed, accum: acc)
+  )
+}
+
+// Classify edges in string interpolation parts.
+fn classify_interp_parts(parts: List<StringPart>, accum: EdgeAccum) -> EdgeAccum {
+  fold(parts, init: accum, f: (acc, part) =>
+    match part {
+      Text { value: _ } => acc
+      Interpolation { expr: e } =>
+        classify_expr_edges(expr: e, context: Read, accum: acc)
+    }
+  )
+}
+
+// Classify edges in a list of expressions (list literal elements are consumed).
+fn classify_expr_list(exprs: List<Expr>, context: EdgeKind, accum: EdgeAccum) -> EdgeAccum {
+  fold(exprs, init: accum, f: (acc, e) =>
+    classify_expr_edges(expr: e, context: context, accum: acc)
+  )
+}
+
+// Main expression edge classifier. Walks the full Expr tree.
+// `context` is the edge kind for the current position (how the parent uses this expr).
+fn classify_expr_edges(expr: Expr, context: EdgeKind, accum: EdgeAccum) -> EdgeAccum {
+  match expr {
+    Literal { value: _, resolved_type: _, span: _ } => accum
+
+    Var { name: n, resolved_type: _, span: s } =>
+      record_edge(accum: accum, name: n, kind: context, site: s)
+
+    FieldAccess { base: b, field: _, resolved_type: _, span: s } =>
+      classify_expr_edges(expr: b, context: Projected, accum: accum)
+
+    Call { func: _, args: a, resolved_type: _, span: _ } =>
+      classify_args(args: a, accum: accum)
+
+    MethodCall { receiver: r, method: _, args: a, resolved_type: _, span: _ } =>
+      let recv_acc = classify_expr_edges(expr: r, context: Consumed, accum: accum)
+      classify_args(args: a, accum: recv_acc)
+
+    Match { scrutinee: sc, arms: arms, resolved_type: _, span: _ } =>
+      let sc_acc = classify_expr_edges(expr: sc, context: Read, accum: accum)
+      classify_arms(arms: arms, accum: sc_acc)
+
+    If { condition: c, then_branch: t, else_branch: e, resolved_type: _, span: _ } =>
+      let c_acc = classify_expr_edges(expr: c, context: Read, accum: accum)
+      let t_acc = classify_expr_edges(expr: t, context: context, accum: c_acc)
+      match e {
+        Some { value: else_expr } =>
+          classify_expr_edges(expr: else_expr, context: context, accum: t_acc)
+        None => t_acc
+      }
+
+    Let { name: n, value: v, body: b, resolved_type: _, span: _ } =>
+      let v_acc = classify_expr_edges(expr: v, context: Consumed, accum: accum)
+      let bind_acc = record_binding(accum: v_acc, name: n, position: LetBinding)
+      match b {
+        Some { value: body_expr } =>
+          classify_expr_edges(expr: body_expr, context: context, accum: bind_acc)
+        None => bind_acc
+      }
+
+    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } =>
+      classify_field_inits(fields: fs, accum: accum)
+
+    ListLit { elements: es, resolved_type: _, span: _ } =>
+      classify_expr_list(exprs: es, context: Consumed, accum: accum)
+
+    BinOp { op: _, left: l, right: r, resolved_type: _, span: _ } =>
+      let l_acc = classify_expr_edges(expr: l, context: Read, accum: accum)
+      classify_expr_edges(expr: r, context: Read, accum: l_acc)
+
+    UnaryOp { op: _, operand: o, resolved_type: _, span: _ } =>
+      classify_expr_edges(expr: o, context: Read, accum: accum)
+
+    Lambda { params: ps, body: b, resolved_type: _, span: _ } =>
+      let param_acc = fold(ps, init: accum, f: (acc, p) =>
+        record_binding(accum: acc, name: p, position: LambdaBinding)
+      )
+      classify_expr_edges(expr: b, context: context, accum: param_acc)
+
+    StringInterp { parts: ps, resolved_type: _, span: _ } =>
+      classify_interp_parts(parts: ps, accum: accum)
+
+    Block { stmts: ss, resolved_type: _, span: _ } =>
+      classify_expr_list(exprs: ss, context: context, accum: accum)
+
+    Cast { expr: e, target: _, resolved_type: _, span: _ } =>
+      classify_expr_edges(expr: e, context: context, accum: accum)
+
+    ForEach { variable: v, collection: c, body: b, resolved_type: _, span: _ } =>
+      let c_acc = classify_expr_edges(expr: c, context: Consumed, accum: accum)
+      let bind_acc = record_binding(accum: c_acc, name: v, position: ForEachBinding)
+      classify_expr_edges(expr: b, context: context, accum: bind_acc)
+
+    Index { base: b, index: i, resolved_type: _, span: _ } =>
+      let b_acc = classify_expr_edges(expr: b, context: Read, accum: accum)
+      classify_expr_edges(expr: i, context: Read, accum: b_acc)
+
+    Slice { base: b, start: s, end: e, resolved_type: _, span: _ } =>
+      let b_acc = classify_expr_edges(expr: b, context: Read, accum: accum)
+      let s_acc = classify_expr_edges(expr: s, context: Read, accum: b_acc)
+      classify_expr_edges(expr: e, context: Read, accum: s_acc)
+
+    Return { value: v, resolved_type: _, span: _ } =>
+      classify_expr_edges(expr: v, context: Consumed, accum: accum)
+  }
+}
+
+// =========================================================================
+// Binding consumer count computation
+// =========================================================================
+
+// Count how many edges target each binding and attach to BindingFacts.
+fn count_consumers(accum: EdgeAccum) -> Map<String, BindingFacts> {
+  // Group edges by binding name and count.
+  let edge_counts = fold(accum.edges, init: empty_map(), f: (counts, edge) =>
+    let current = match map_get(counts, edge.binding_name) {
+      Some { value: c } => c
+      None => 0
+    }
+    map_insert(counts, edge.binding_name, current + 1)
+  )
+  // Attach counts + edges to binding facts.
+  let binding_edges = fold(accum.edges, init: empty_map(), f: (groups, edge) =>
+    let current = match map_get(groups, edge.binding_name) {
+      Some { value: es } => es
+      None => []
+    }
+    map_insert(groups, edge.binding_name, list_push(current, edge))
+  )
+  // Merge into existing binding facts.
+  fold(map_keys(accum.bindings), init: accum.bindings, f: (facts, binding_key) =>
+    match map_get(facts, binding_key) {
+      Some { value: bf } =>
+        let count = match map_get(edge_counts, binding_key) {
+          Some { value: c } => c
+          None => 0
+        }
+        let edges = match map_get(binding_edges, binding_key) {
+          Some { value: es } => es
+          None => []
+        }
+        map_insert(facts, binding_key, BindingFacts {
+          name: bf.name,
+          scope_position: bf.scope_position,
+          consumer_count: count,
+          edges: edges
+        })
+      None => facts
+    }
+  )
+}
+
+// =========================================================================
+// Per-function analysis
+// =========================================================================
+
+// Analyze a single function item: classify + extract binding facts from body.
+fn analyze_func(item: Node, info: ItemInfo) -> FuncFacts {
+  let classification = classify_func(info: info)
+  // Extract function body (the last expression in the body).
+  let body_expr = item.body
+  let accum = match body_expr {
+    Some { value: body } =>
+      // Record param bindings first.
+      let param_acc = fold(item.params, init: empty_accum(), f: (acc, p) =>
+        record_binding(accum: acc, name: p.name, position: ParamBinding)
+      )
+      classify_expr_edges(expr: body, context: Consumed, accum: param_acc)
+    None => empty_accum()
+  }
+  let binding_facts = count_consumers(accum: accum)
+  FuncFacts { name: info.name, classification: classification, binding_facts: binding_facts }
+}
+
+// =========================================================================
+// Enum structural analysis (target-agnostic)
+// =========================================================================
+
+// Detect whether an enum (Disj type) has any variant with fields.
+fn compute_has_complex_variants(item: Node) -> Bool {
+  item.children |> any(c => c.connective != none)
+}
+
+// Find field names shared across all fielded variants of an enum.
+fn compute_shared_field_names(item: Node) -> List<String> {
+  let fielded = item.children |> filter(v => v.connective != none)
+  match fielded |> first {
+    None => []
+    Some { value: first_variant } =>
+      let candidate_names = first_variant.children |> map(c => c.name)
+      // Keep only names that appear in every fielded variant.
+      candidate_names |> filter(name =>
+        fielded |> all(v =>
+          v.children |> any(c => c.name == name)
+        )
+      )
+  }
+}
+
+// Analyze a type definition item for enum facts.
+fn analyze_type_for_enum_facts(item: Node) -> EnumFacts? {
+  match item.connective {
+    Some { value: conn } =>
+      match conn {
+        Disj =>
+          Some { value: EnumFacts {
+            has_complex_variants: compute_has_complex_variants(item: item),
+            shared_field_names: compute_shared_field_names(item: item)
+          }}
+        Conj => none
+      }
+    None => none
+  }
+}
+
+// =========================================================================
+// Field indirection analysis (target-agnostic)
+//
+// A field needs indirection when it refers to its own containing type
+// (directly recursive) and the type is Rc-wrapped. This is a structural
+// property, not a Rust-specific one -- any language with value semantics
+// needs indirection for recursive types.
+// =========================================================================
+
+fn compute_field_indirection(
+  item: Node,
+  rc_wrapped_types: Map<String, Bool>,
+  recursive_type_names: Map<String, Bool>
+) -> Map<String, FieldFacts> {
+  let type_name = item.name
+  fold(item.children, init: empty_map(), f: (acc, child) =>
+    let child_type_name = if child.return_type != none {
+      child.return_type.value.name
+    } else {
+      child.name
+    }
+    let is_recursive_ref = match map_get(recursive_type_names, child_type_name) {
+      Some { value: _ } => true
+      None => false
+    }
+    let is_rc = match map_get(rc_wrapped_types, child_type_name) {
+      Some { value: _ } => true
+      None => false
+    }
+    let needs_indirection = is_recursive_ref && is_rc
+    let key = concat(type_name, ".", child.name)
+    map_insert(acc, key, FieldFacts { needs_indirection: needs_indirection })
+  )
+}
+
+// =========================================================================
+// Main normalize entry point
+// =========================================================================
+
+// Normalize: compute target-agnostic behavioral facts from the resolved graph.
+// Pure function. No I/O. O(N) in total AST size.
+fn normalize(graph: ResolvedGraph) -> EmitGraph {
+  let registry = graph.item_registry
+
+  // Phase 1: Function classification + binding analysis.
+  let func_facts = fold(graph.modules, init: empty_map(), f: (acc, typed_module) =>
+    fold(typed_module.items, init: acc, f: (inner_acc, item) =>
+      let info = match map_get(registry, item.name) {
+        Some { value: i } => i
+        None => ItemInfo { name: item.name, kind: OtherItem, service_names: [], is_self_recursive: false, has_non_tail_self_call: false }
+      }
+      match info.kind {
+        FnItem =>
+          let facts = analyze_func(item: item, info: info)
+          map_insert(inner_acc, item.name, facts)
+        FuncItem =>
+          let facts = analyze_func(item: item, info: info)
+          map_insert(inner_acc, item.name, facts)
+        _ => inner_acc
+      }
+    )
+  )
+
+  // Phase 2: Enum structural analysis.
+  let enum_facts = fold(graph.modules, init: empty_map(), f: (acc, typed_module) =>
+    fold(typed_module.items, init: acc, f: (inner_acc, item) =>
+      match analyze_type_for_enum_facts(item: item) {
+        Some { value: ef } => map_insert(inner_acc, item.name, ef)
+        None => inner_acc
+      }
+    )
+  )
+
+  // Phase 3: Field indirection analysis.
+  // Collect all recursive type names from all module type envs.
+  let recursive_names = fold(graph.modules, init: empty_map(), f: (acc, tm) =>
+    fold(tm.type_env.recursive_types, init: acc, f: (inner_acc, name) =>
+      map_insert(inner_acc, name, true)
+    )
+  )
+  let rc_types = graph.emit_info.rc_wrapped_types
+  let field_facts = fold(graph.modules, init: empty_map(), f: (acc, typed_module) =>
+    fold(typed_module.items, init: acc, f: (inner_acc, item) =>
+      match item.connective {
+        Some { value: _ } =>
+          let item_field_facts = compute_field_indirection(
+            item: item,
+            rc_wrapped_types: rc_types,
+            recursive_type_names: recursive_names
+          )
+          map_merge(inner_acc, item_field_facts)
+        None => inner_acc
+      }
+    )
+  )
+
+  EmitGraph {
+    graph: graph,
+    func_facts: func_facts,
+    enum_facts: enum_facts,
+    field_facts: field_facts
+  }
+}
