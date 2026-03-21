@@ -41,12 +41,14 @@ should always be able to see through the name to the structure underneath.
 
 ### What's next
 
-**P1 (representation inference), then Wave 1.** A4 cargo check passes (0
-errors), but the self-compiled binary cannot not self-compile — it hangs in
-the tokenizer. The root cause is not one bug but a class of problems: the
-emitter's fixed representation mapping (String for chars, Rc for all
-non-Copy types, stacker on all functions in v1) imposes per-character
-overhead that compounds across millions of operations.
+**P1 (graph normalization), then Wave 1.** A4 cargo check passes (0
+errors), but the self-compiled binary cannot self-compile — it hangs in
+the tokenizer. The root cause is not one bug but a class of problems:
+the resolved graph is truthful but noisy. All edges look the same
+(consume, read, threaded, projected) so emission applies blanket
+runtime gatekeeping (Rc, stacker, String) that re-checks facts the
+graph already proved. P1 classifies edges and surfaces behavioral
+facts so emission just translates, never re-derives.
 
 **Performance journey (2026-03-14 → 2026-03-20):**
 
@@ -592,255 +594,291 @@ systematic fix.
 
 ---
 
-## P1 — Representation Inference (PERF gate blocker)
+## P1 — Graph Normalization (PERF gate blocker)
 
 ### Problem
 
-The emitters use a fixed mapping from DAG types to target representations.
-The right representation is determined by how values are used in the
-computation graph — information that's visible in the DAG but not
-currently derived. The result: every character comparison heap-allocates
-a String, every struct wraps in Rc even when consumed once, every
-function gets a stack guard even when it's a leaf.
+After reconcile, the resolved graph is **truthful but noisy**. Every
+edge looks the same — but edges mean different things: destructive
+consumption, read-only access, TCO threading, field projection,
+pass-through to helpers. The current pipeline collapses all of this
+into `rc_wrapped_types: Map<String, Bool>` — a per-type-name blanket
+decision. Emission then re-derives semantic facts from raw structure
+(or doesn't, and emits redundant runtime gatekeeping).
 
-### Principle: inference, not optimization
+The result: every character comparison heap-allocates a String, every
+struct wraps in Rc even when consumed once, every function gets a stack
+guard even when it's a leaf. These aren't missing optimizations — they
+are runtime re-checks of facts the graph already proved.
 
-The DAG language's source-level type names (`String`, `List<T>`) are
-upper bounds. The actual representation of each binding is the **meet**
-(most refined position consistent with all uses) in each property's
-lattice. This meet is unique and deterministic — there's exactly one
-minimal representation per binding.
+### Principle: canonicalization, not optimization
 
-This is representation **inference**, not optimization:
-- The analysis DETERMINES the representation, it doesn't SUGGEST a refinement
-- There is no "conservative fallback" — the meet IS the answer
-- If the meet is the lattice top (most general), the code genuinely needs it
-- An analysis that computes a non-principal representation is **a bug**,
-  not a "safe conservative choice"
+The graph's purpose is **static intent analysis** — cardinality
+constraints, set algebra, data flow proofs. All of that gatekeeping
+is for the graph layer. By the time we reach emission, the proofs are
+done. Emission should not need to redo them at runtime.
 
-The guarantee is the same as Hindley-Milner principal types: the system
-computes the unique most-refined representation, or the program is ill-formed.
-No silent degradation to a wasteful path.
+Every piece of runtime overhead in current generated code is a runtime
+check that duplicates what the graph already proved:
 
-### Representation lattices
-
-Every representation-relevant property is visible in the graph structure:
-
-| Graph property | What you see | How to derive it |
+| Runtime overhead | Re-checks at runtime | Graph already proved |
 |---|---|---|
-| **Flow cardinality** | Count consumers of a binding | 1 = linear, N = shared |
-| **Value width** | Value from `char_at()`, consumed only in `== "x"` | Always single element of collection type |
-| **Call reachability** | SCC analysis of function call edges | Leaf / Interior / Recursive / TCO |
-| **Loop invariance** | Binding from outside fold/TCO, consumed inside, never reassigned | Doesn't change per iteration |
-| **Build-reduce** | Fold accumulates into collection, then single reduction consumes it | Intermediate collection never observed |
+| `Rc::try_unwrap` | "Is refcount 1?" | Binding has one semantic consumer |
+| `stacker::maybe_grow` | "Will I overflow?" | Function is a leaf |
+| `String` for code points | "How long is this?" | Value is exactly one code point |
+| `Vec<String>` + `join` | "Keep intermediates" | Intermediate never observed |
 
-These are **properties of the computation**, not properties of any target
-language. The analysis derives them once. Each backend consults a small
-rendering table:
+P1 is not an optimization pass. It is the step that converts a
+resolved-but-raw graph into a **canonical semantic-use view** for
+emission. The design rule: **if emit has to infer semantics from raw
+structure, the boundary is wrong.**
 
-```
-flow_cardinality=1:
-  rust → bare T, move
-  go   → value receiver
-  py   → (nothing — GC)
+Correctness and efficiency are aligned: the runtime overhead exists
+to handle cases that can't happen (because the graph proved they can't).
+Removing it is removing redundant gatekeeping, not trading correctness
+for speed.
 
-value_width=scalar(String):
-  rust → char / u8
-  go   → byte / rune
-  py   → (nothing — str is fine)
+### What we have after reconcile
 
-call_reachability=leaf:
-  rust → #[inline], no stacker
-  go   → (nothing)
-  py   → (nothing)
+The full resolved program graph — every binding, every producer, every
+use site, every function body, every call target, every resolved type,
+every loop/TCO/fold boundary, every metadata fact reconcile learned.
 
-loop_invariant(string_length(x)):
-  rust → let __len = x.len();
-  go   → __len := len(x)
-  py   → __len = len(x)
+That is enough. The information is not missing.
 
-build_reduce(fold → List<String>, join("")):
-  rust → String::with_capacity + push_str
-  go   → strings.Builder
-  py   → [].join() (already idiomatic)
-```
+But it is **undifferentiated**. A raw edge might mean:
 
-Five lattices, a rendering table per backend. The analysis computes
-the meet in each lattice for every binding. The renderers translate
-lattice positions to target constructs.
+- "this value is destructively consumed"
+- "this value is only read"
+- "this value is threaded into the next loop iteration"
+- "this is a field projection"
+- "this intermediate escapes its scope"
+- "this intermediate does not escape"
 
-**Hard invariant:** The analysis records only semantic facts (linear,
-shared, single-code-point, leaf, loop-invariant, single-owner-threaded).
-It never records target concepts (Rc, &mut, char, u8, #[inline],
-stacker). Rust-flavored conclusions belong in the Rust rendering table,
-never in the analysis. If a graph property's name mentions a target
+These are very different for emission, but they all look like "an
+edge exists."
+
+### What this layer produces: EmitGraph
+
+The job: **classify the graph's structure correctly, discard or relabel
+administrative noise, surface the behavioral facts emission needs.**
+
+The output is an **EmitGraph** — a derived canonical view (the full
+`ResolvedGraph` is preserved for diagnostics/proofs/debugging).
+
+**Per binding — behavioral facts:**
+- Edge kind: **consumed** / **read** / **threaded** / **projected**
+- Semantic consumer count (administrative edges excluded)
+- Escape: does the value leave its defining scope?
+- Accumulator: is this a loop accumulator?
+- Loop-invariant: is this value constant across iterations?
+- Value shape: single element vs general collection/text
+- Materialization: must the intermediate exist, or is it internal
+  to a build-reduce step?
+
+**Per function:**
+- Call position: leaf / interior / recursive / TCO
+- Param classification: semantic input vs threaded state
+- Stack growth relevance
+
+**Per region (loop/fold/TCO body):**
+- Build-reduce pairings
+- Invariant computations
+- Materialization boundaries
+
+**Hard invariant:** The EmitGraph records only behavioral facts about
+the computation. It never records target concepts (Rc, &mut, char,
+StringBuilder, stacker). If any fact in the EmitGraph mentions a target
 language, it is wrong.
 
-**Relationship to Track D:** P1's ownership analysis (flow cardinality)
-and Track D's ownership proof are **one analysis at two maturity levels**,
-not two separate systems. P1 computes the principal representation from
-usage constraints. Track D strengthens the same lattice into proof
-obligations that eliminate `try_unwrap` runtime fallbacks entirely. Same
-classification, same lattice — P1 is the front half, Track D is the
-back half.
+**No-fallback rule:** Every non-minimal classification must have a
+**forcing witness** — a specific edge or use site that forces the wider
+classification. "Shared because we didn't analyze it" is a compiler
+bug. "Shared because binding X is consumed at lines 42 and 67" is
+correct.
 
-**Unicode/performance boundary:** P1's value-width analysis (scalar text
-refinement) is a **backend-local lowering on proven paths**, not a change
-to language-visible string semantics. The language contract remains
-Unicode scalars (Blocker 5). The compiler may internally use a byte
-cursor for lexing ASCII-safe `.dag` source, but that is a backend
-optimization, not a semantic change. To make this explicit: introduce
-a compiler-internal source view abstraction (e.g., `SourceView` /
-`Cursor`) distinct from language-level `String`. The tokenizer operates
-on the cursor; the language sees Unicode text. This stops tokenizer
-optimizations from fighting Blocker 5.
+### How backends use the EmitGraph
+
+The EmitGraph says **what happens to each value**. Each backend brings
+**its own knowledge of its target language**. The rendering is the
+intersection:
+
+```
+scan_string_body.acc:
+  EmitGraph says: accumulator, build-by-append, single terminal
+                  consumer, intermediate not observed, reduces to text
+
+  Rust knows:  String is mutable       → String + push_str
+  Java knows:  String is immutable     → StringBuilder + append
+  Go knows:    string is immutable     → strings.Builder
+  Python knows: str concat is O(n²)    → list + "".join()
+  PSPICE:      accumulator + reduction → summing junction
+
+is_digit.ch:
+  EmitGraph says: read-only, single-element text, no mutation
+
+  Rust:  u8, byte comparison
+  Java:  char, char comparison
+  Go:    byte, byte comparison
+  PSPICE: single-bit-width signal line
+
+tokenize_loop.source:
+  EmitGraph says: read-for-duration, never consumed, threaded (admin)
+
+  Rust:  &SourceRef (borrow)
+  Java:  SourceRef (GC, immutable ref is fine)
+  Go:    *SourceRef
+  PSPICE: constant input port
+```
+
+Adding a new backend (Java, PSPICE) does not change the EmitGraph
+layer. The backend brings its own rendering knowledge. The behavioral
+facts are stable across all targets.
+
+### Concrete trace: `01_tokenize.dag`
+
+**`is_digit.ch`** — Raw graph: 2 edges, both comparisons. Classified:
+2 read edges, 0 consume edges. Value shape: single-element (all callers
+pass `char_at()` result). Function: leaf (no .dag calls). EmitGraph
+says: read-only single-element text, leaf function. Rust renders
+mechanically: `#[inline] fn is_digit(ch: u8) -> bool { ch >= b'0' }`.
+
+**`scan_string_body.acc`** — Raw graph: 3 recursive edges (list_push),
+3 terminal edges (join). Classified: accumulator (build-by-append in
+TCO body), terminal consumer (join reduces to text), intermediate never
+escapes. EmitGraph says: build-reduce, intermediate not materialized.
+Rust renders mechanically: `String` + `push_str`, no `join` needed.
+
+**`tokenize_loop.source`** — Raw graph: 5 edges. Classified: 1 TCO
+threading (administrative), 2 pass-through reads to helpers, 2 field
+projections. Semantic consumers: 0 destructive. EmitGraph says:
+read-for-duration, never consumed. Rust renders mechanically:
+`&SourceRef`.
+
+**`tokenize_loop.tokens`** — Raw graph: 3 edges. Classified: 1 append
+(list_push — accumulator), 1 TCO threading (administrative, IS the
+list_push result), 1 terminal (returned in struct). Semantic consumers:
+1 per iteration. EmitGraph says: sole-owner accumulator. Rust renders
+mechanically: `Vec<Token>`, no Rc, push in place.
 
 ### Where this lives in the pipeline
 
 ```
-tokenize → parse → resolve → reconcile → infer → emit
-                                            ↑        ↑
-                                     representation  rendering tables
-                                     facts per       (per-backend)
-                                     binding
+tokenize → parse → resolve → reconcile → normalize → emit
+                                            ↑            ↑
+                                     ResolvedGraph    EmitGraph
+                                     (truthful,       (canonical,
+                                      noisy)           classified)
 ```
 
-Inference runs after reconcile (which produces typed modules with
-resolved call targets). It computes the principal representation for
-each binding — the unique most-refined lattice position consistent
-with all constraints from production and use sites. The output
-REPLACES `EmitGraphInfo.rc_wrapped_types` (the current blanket map)
-with per-binding representation facts. Each backend translates these
-facts through its rendering table.
+Normalization reads the full ResolvedGraph and produces a derived
+EmitGraph with edge classifications, semantic consumer counts, and
+behavioral facts. The ResolvedGraph is preserved. The EmitGraph
+REPLACES `EmitGraphInfo.rc_wrapped_types` and similar blanket maps.
 
-### Concrete trace: `01_tokenize.dag`
+### Relationship to Track D
 
-Three bindings, three different lattice computations:
-
-**`is_digit.ch`** — Source type: `String`. Production: all callers
-pass `char_at()` result. Uses: `>=`/`<=` against single-char literals.
-Meet: `value_width=single-code-point`, `call_reachability=leaf`.
-Rust renders as: `#[inline] fn is_digit(ch: u8) -> bool { ch >= b'0' }`.
-
-**`scan_string_body.acc`** — Source type: `List<String>`. Production:
-`[]` at root. Iteration: `list_push(acc, ch)`. Terminal: `join(acc, "")`.
-`acc` never escapes the function. Meet: `build_reduce=fused` (intermediate
-never observed). Rust renders as: `String` with `push_str` per char.
-
-**`tokenize_loop.tokens`** — Source type: `List<Token>`. One consumer
-per TCO iteration (list_push). Meet: `flow_cardinality=linear`.
-Rust renders as: `Vec<Token>` (bare, moved, no Rc).
+P1's edge classification (consumed vs read vs threaded) and Track D's
+ownership proofs are **one analysis at two maturity levels**. P1
+classifies edges and surfaces behavioral facts. Track D strengthens
+the same classifications into proof obligations that eliminate
+`try_unwrap` runtime fallbacks entirely. Same edges, same
+classifications — P1 is the front half, Track D is the back half.
 
 ### Boundary contracts (pull-forward from Phase 2a)
 
-Even though full Phase 2a migration stays in Wave 2, the **type shells**
-for `DeclaredFuncSig`, `ResolvedFuncSig`, and `ResolvedGraph` should be
-frozen and visible now, before Wave 1 cleanup lands. This prevents
-parallel cleanup from accidentally deepening the old permissive shape.
-The full migration can follow; the names and contracts come first.
+The **type shells** for `DeclaredFuncSig`, `ResolvedFuncSig`, and
+`ResolvedGraph` should be frozen now, before Wave 1. This prevents
+cleanup from accidentally deepening the old permissive shape.
 
-**Boundary invariant:** If metadata is learned during reconcile and used
-by emit, it must cross the boundary as data, not be rediscovered by name
-heuristics later. This is the same disease as the representation issue —
-facts recomputed too late from weaker information.
+**Boundary invariant:** If metadata is learned during reconcile and
+used by emit, it must cross the boundary as data in the EmitGraph,
+not be rediscovered by name heuristics.
 
 ### v1 bootstrap strategy
 
-The v1 emitter is bootstrap scaffolding that dies at A7. But the graph
-properties are target-agnostic — the design carries forward even when
-the v1 code is deleted. The v1 implementation teaches the right pattern;
-the v2 implementation in `.dag` is the permanent version.
+The v1 emitter is bootstrap scaffolding that dies at A7. But edge
+classification and behavioral facts are target-agnostic — the design
+carries forward even when the v1 code is deleted.
 
 | Component | v1 (Rust) | v2 (.dag) | Survives A7? |
 |-----------|-----------|-----------|--------------|
-| Representation inference | Rust code in daglang-emit | Rewritten in `.dag` post-A7 | **Design + lattices** survive |
+| Graph normalization | Rust code in daglang-emit | Rewritten in `.dag` post-A7 | **Design + classifications** survive |
 | Rendering tables | `fn_codegen.rs` / `render_rust.rs` | `05_emit_rust.dag` | v2 version survives |
 | Other backends | Not needed for bootstrap | `05_emit_go/py.dag` | v2 version survives |
 
 ### Implementation phases
 
-Each phase adds one lattice to the inference. Acceptance criteria are
-**completeness requirements**: the lattice must handle all patterns
-in the DAG language that could refine a binding's position, not just
-known hot spots. If user code doesn't match any refinement rule, the
-analysis must produce the lattice top — and that must be provably correct
-(the code genuinely needs that representation), not an analysis gap.
+Each phase classifies one kind of edge or surfaces one behavioral
+fact. Order: function-level first (cheapest, most impact), then
+binding-level, then region-level.
 
-**Phase 1: Call reachability lattice** `Leaf → Interior → Recursive → TCO`
-- Build call graph SCC in v1 emitter
-- Every function gets exactly one position — no fallback to "assume recursive"
-- Rendering: Leaf → `#[inline]`, no stacker. Recursive → stacker. TCO → loop.
-- **Completeness:** all .dag functions reachable from call graph. No function
-  left unclassified.
-- **Acceptance:** `is_digit`, `is_ident_start`, `emit` classified Leaf in
-  generated code. No stacker on any Leaf function.
+**Phase 1: Function classification**
+- Build call graph SCC, classify every function as leaf / interior /
+  recursive / TCO
+- Separate semantic params from threaded state in TCO functions
+- **Acceptance:** `is_digit`, `is_ident_start`, `emit` classified Leaf.
+  No stacker on any Leaf. No function left unclassified.
 
-**Phase 2: Value width lattice** `single-code-point → general-text`
-- Interprocedural: trace each String binding's production site
-- Production by `char_at()` or single-char literal → single-code-point
-- Any use requiring general-text (concat, substring) widens to general-text
-- **Completeness:** all String-typed bindings get a width. Every production
-  pattern in the language maps to a lattice position.
-- **Acceptance:** `is_digit.ch` inferred as `single-code-point`. No
-  `.to_string()` in character predicate comparisons.
+**Phase 2: Edge classification**
+- Classify every edge as consumed / read / threaded / projected
+- Compute semantic consumer count (excluding administrative edges)
+- **Acceptance:** `tokenize_loop.source` has 0 consume edges, classified
+  read-for-duration. `ScanResult`, `TokPos` have 1 semantic consumer
+  where used once — not Rc-wrapped.
 
-**Phase 3: Loop invariance lattice** `invariant → variant`
-- Detect bindings from outside fold/TCO consumed inside, never reassigned
-- `string_length(x)` where `x` is loop-invariant → hoist
-- **Completeness:** all bindings in TCO/fold bodies classified.
-- **Acceptance:** `tokenize_loop` has no `v2_rt::string_length` inside loop body.
+**Phase 3: Value shape**
+- Interprocedural: trace String binding production sites
+- Classify: single-element (from `char_at()` or single-char literal)
+  vs general text
+- **Acceptance:** `is_digit.ch` classified single-element. No
+  `.to_string()` in character predicates.
 
-**Phase 4: Flow cardinality lattice** `linear → shared`
-- Count consumers of each binding within its scope
-- 1 consumer = linear (move). >1 = shared (Rc or clone).
-- **Completeness:** every binding gets a count. No binding defaults to
-  "shared" without evidence.
-- **Acceptance:** `ScanResult`, `TokPos` not `Rc`-wrapped when used once.
+**Phase 4: Loop invariance**
+- Classify bindings in TCO/fold bodies: variant vs invariant
+- Invariant computations (e.g. `string_length(x)`) hoisted
+- **Acceptance:** `tokenize_loop` has no `string_length` inside loop.
 
-**Phase 5: Build-reduce lattice** `fused → materialized`
-- Detect: accumulator built by `list_push` in TCO/fold, consumed by
-  single reduction (`join`, `count`, `first`), never escapes
-- **Completeness:** all fold/TCO accumulator patterns classified.
-- **Acceptance:** `scan_string_body.acc` rendered as `String` with
-  `push_str`, not `Vec<String>` + `join`.
+**Phase 5: Build-reduce**
+- Identify accumulator + terminal reduction patterns
+- Classify intermediate: materialized (escapes) vs not materialized
+- **Acceptance:** `scan_string_body.acc` classified as not-materialized
+  build-reduce. Rust renders as `String` + `push_str`.
 
 ### Acceptance criteria (overall P1)
 
 - [ ] `v2_crate_self_compile_cargo_check` completes in <5 minutes
 - [ ] All existing tests pass (96 v2-compiler-tests, 363 daglang-emit)
-- [ ] Generated `tokenize.rs` verifiable assertions:
+- [ ] Generated `tokenize.rs` verifiable:
   - [ ] No `stacker::maybe_grow` on Leaf functions
   - [ ] No `.to_string()` in character predicate comparisons
   - [ ] No `v2_rt::string_length` inside `tokenize_loop` body
-  - [ ] Single-use structs not `Rc`-wrapped
+  - [ ] Single-semantic-consumer structs not `Rc`-wrapped
   - [ ] `scan_string_body.acc` is `String`, not `Vec<String>`
-- [ ] Every lattice is **complete**: all patterns in the language that
-  could refine a binding's position are handled. No pattern produces
-  a non-principal representation.
-- [ ] Inference is target-agnostic (no Rust/Go/Python logic in analysis)
-- [ ] Each backend's rendering table is self-contained and extensible:
-  adding a lattice position = one table entry per backend
-- [ ] v2 emitter can consume the same representation facts
+- [ ] Every non-minimal classification has a **forcing witness**
+- [ ] EmitGraph is target-agnostic (no Rust/Go/Python/Java in normalization)
+- [ ] Adding a new backend requires zero changes to normalization
+- [ ] v2 emitter can consume the same EmitGraph
 
 ### Files modified (v1 bootstrap)
 
 | File | Changes |
 |------|---------|
-| `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Graph analysis (SCC, use count, char detection, loop invariance), rendering table consumption |
+| `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Edge classification, semantic consumer counting, call graph SCC |
 | `src/v1/07_emit/daglang-emit/src/v2_runtime_shim.rs` | `char_at` → `char` variant; length caching |
-| `src/v1/07_emit/daglang-emit/src/render_rust.rs` | Stacker/inline gated on call reachability |
-| `src/v1/07_emit/daglang-emit/src/v2_crate_emit.rs` | Thread graph properties through emit context |
-| `src/v2/05_emit_rust.dag` | (later) Consume graph properties |
+| `src/v1/07_emit/daglang-emit/src/render_rust.rs` | Render from EmitGraph facts (stacker/inline/Rc gated on classifications) |
+| `src/v1/07_emit/daglang-emit/src/v2_crate_emit.rs` | Thread EmitGraph through emit context |
+| `src/v2/05_emit_rust.dag` | (later) Consume EmitGraph |
 
 ### Estimated impact
 
 | Hot path | Before P1 | After P1 |
 |----------|-----------|----------|
-| Per-character predicate | stacker + 4-12 `.to_string()` heap allocs | `#[inline]` byte comparison |
-| Per-token bounds check | 2-3 × `string_length` O(200K) | 2-3 × `pos < cached_len` O(1) |
+| Per-character predicate | stacker + `.to_string()` heap allocs | `#[inline]` byte comparison |
+| Per-token bounds check | `string_length` O(200K) per call | `pos < cached_len` O(1) |
 | Per-token ScanResult | `Rc::new(ScanResult{...})` heap alloc | Bare struct, moved |
-| Per-string-char accumulation | `Rc<Vec<String>>` push + join | `String::push` (Phase 5) |
-| Estimated tokens/sec (200KB .dag) | ~100 (hangs) | ~100K+ (completes in seconds) |
+| Per-string-char accumulation | `Rc<Vec<String>>` push + join | `String::push_str` |
+| Estimated tokens/sec (200KB) | ~100 (hangs) | ~100K+ (completes in seconds) |
 
 ### A5: Bootstrap stage 0 → 1
 
