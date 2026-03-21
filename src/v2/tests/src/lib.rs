@@ -3562,6 +3562,7 @@ fn example(items: List<String>) -> Int {
     // These functions require the v1 emitter to assemble stage0. Gated
     // behind the v1-bootstrap feature so normal unit tests don't need it.
 
+    #[cfg(feature = "v1-bootstrap")]
     fn assemble_v2_crate_to_dir(dir_name: &str) -> std::path::PathBuf {
         let v2_files = [
             // Language extdeps (C3: single source of truth for language data)
@@ -3604,6 +3605,8 @@ fn example(items: List<String>) -> Int {
     /// Smoke test: assemble stage0 crate and cargo check it.
     #[test]
     #[ignore] // Requires cargo toolchain
+    #[cfg(feature = "v1-bootstrap")]
+    #[allow(clippy::disallowed_macros)]
     fn v2_stage0_cargo_check() {
         let stage0_dir = assemble_v2_crate_to_dir("v2-stage0-check");
         let output = std::process::Command::new("cargo")

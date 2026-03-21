@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 description = "Integration tests for the v2 self-hosted compiler"
 
+[features]
+v1-bootstrap = []
+
 [dependencies]
 
 [dev-dependencies]
