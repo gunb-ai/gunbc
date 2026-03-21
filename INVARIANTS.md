@@ -306,6 +306,38 @@ Fixed:
 | TD-5 | Dead `classify_transport_kind()` in `05_emit.dag`, imported but never called | Function deleted, imports removed from Go/Python emitters. |
 | TD-6 | Stale DESIGN.md Layer 2 documented old `TransportBinding` sum type | Updated to Node-based transport model. |
 
+### 2026-03-21 — semantic-boundary review
+
+Classified as invariant violations:
+
+- Rust emission still repairs semantics downstream instead of consuming a
+  fully classified boundary: `emit_typed_field_access` branches on
+  `.typed`, `.value`, `is_likely_optional_receiver(...)`, and
+  `emit_typed_expr` conditionally appends `.map(Rc::new)` via
+  `lookup_on_data_needs_rc_wrap(...)`. This violates "Heuristics
+  indicate lost structure" / "Explicit boundary contracts."
+- `lookup_in_scope` falls back to `lookup_func_sig(...).return_type` for
+  function-as-value references. That fabricates a non-callable value from
+  a callable binding and violates "Explicit boundary contracts" / "No
+  fallbacks that fabricate."
+- `node_type_equals` still contains permissive compatibility rules
+  (`Dynamic` matches anything, plus same-name/same-connective/same-child-count
+  fallback) that hide missing earlier normalization. This violates "No
+  fallbacks that fabricate" / "Explicit boundary contracts."
+- Reconcile downgrades semantic gaps to `Warning`
+  (`access_error` / `inference_error`), and `compile_sources` gates only
+  on `Error`, so emit still runs on known inference/access gaps. This is
+  a warning-permissive boundary rather than a fail-closed one.
+
+Not invariant violations by themselves:
+
+- Roadmap/docs drift (`A7 full retirement`, `P1b done`, acceptance text
+  that still names future work).
+- Loose ratchets (`SELF_COMPILE_ERROR_RATCHET == 2700`) and unlanded
+  StageMetrics/performance-contract work. These are backlog/test debt,
+  not direct invariant violations until a concrete boundary or algorithm
+  violates a stated rule.
+
 ---
 
 ## Open Debt
@@ -316,10 +348,12 @@ Fixed:
 |---|----------|-----------|-------------|
 | TD-2 | HIGH | No case enumeration / No parallel implementations | String-keyed dispatch `transport.name == "rest"` across 3 emitters (21 sites). Adding a transport kind requires editing all 3. Fix: closed enum `TransportKind` or structural fact dispatch. |
 | TD-3 | MEDIUM | No duplicate representations / Single-authority metadata | Hardcoded `config_names` list in `transport_headers()` (`00_core.dag`). Same field names in constructors, accessors, and filter — triple representation. |
-| F2 | MEDIUM | No case enumeration for open sets | `ItemInfo.kind` is String (`"fn"`, `"func"`, `"other"`) in `04_reconcile.dag`. Should be closed enum `ItemKind`. |
-| F6 | MEDIUM | Single-authority metadata | `05_emit_rust.dag` re-discovers structural facts through string heuristic lists (`known_opt_fields`, `types_with_value_field`, etc.). Reconciler already knows these. |
+| F6 | HIGH | Heuristics indicate lost structure / Explicit boundary contracts | `05_emit_rust.dag` still repairs field/call semantics downstream: `emit_typed_field_access` falls back to `.value`, `.typed`, `is_likely_optional_receiver(...)`, and `emit_typed_expr` conditionally appends `.map(Rc::new)` via `lookup_on_data_needs_rc_wrap(...)`. Reconcile must carry exact access/call facts so emit becomes a dumb consumer. |
 | F7 | MEDIUM | No case enumeration for open sets | `emit_typed_method_call` in `05_emit_rust.dag` is a growing `if method == ...` ladder for special lowerings. |
 | TD-7 | MEDIUM | No fallbacks that fabricate | 5 `LitNull` fabrication fallbacks in `emit_typed_call` (`05_emit_rust.dag:1754,1755,1763,1764,1789`). Sentinel when arguments missing. |
+| SB-1 | HIGH | Explicit boundary contracts / No fallbacks that fabricate | `lookup_in_scope` in `04_reconcile.dag` falls back to `lookup_func_sig(...).return_type` when a name is not a lexical binding. A function reference is therefore modeled as the function's result type instead of as a callable value. |
+| SB-2 | MEDIUM | No fallbacks that fabricate / Explicit boundary contracts | `node_type_equals` in `04_reconcile.dag` still treats `Dynamic` as universally compatible and ends with a broad same-name/same-connective/same-child-count fallback. This masks missing normalization and can collapse distinct types. |
+| SB-3 | MEDIUM | Explicit boundary contracts | Reconcile emits `Warning` for `access_error` / `inference_error`, while `compile_sources` gates only on `Error`. Emit therefore runs on known semantic gaps; the reconcile→emit boundary is still warning-permissive rather than fail-closed. |
 
 ### Cleanup
 
