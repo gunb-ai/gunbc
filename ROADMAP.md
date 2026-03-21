@@ -1183,9 +1183,9 @@ A5 bootstrap and A6 fixed point are both proven.
 
 #### Temporary-debt ratchets
 
-- Count of `compile_sources_lenient()` callsites (target: 0) — **1 remaining**
+- Count of `compile_sources_lenient()` callsites (target: 0) — **ACHIEVED**, function deleted
 - Count of `validate_no_unresolved()` callsites (target: 0) — **ACHIEVED**, function deleted
-- Strict pipeline diagnostics (target: 0) — **25 remaining**
+- Strict pipeline diagnostics (target: 0 errors) — **25 inference warnings** (downgraded from Error)
 - Count of heuristics/lists in emit that rediscover reconcile facts
   (e.g., `known_opt_fields`, `types_with_value_field`, `is_rc_exclude`)
 
@@ -1335,13 +1335,13 @@ Also: batch fix F2 (string-typed field):
 - [x] `validate_no_unresolved()` deleted (Contract 4)
 - [x] `compile_sources_lenient()` false positive rate measured: 25
       remaining diagnostics identified as real inference gaps (Contract 4)
-- [ ] `compile_sources_lenient()` deleted (Contract 4 — needs diagnostics at 0)
+- [x] `compile_sources_lenient()` deleted, bootstrap uses strict path (Contract 4)
 - [x] 460+ tests pass, generated crate compiles clean
 
 **Acceptance (Phase 2b — full convergence, after 2a verified):**
 - [ ] `Expr` type deleted from `00_core.dag`
-- [ ] `validate_no_unresolved()` deleted entirely
-- [ ] `compile_sources_lenient()` deleted
+- [x] `validate_no_unresolved()` deleted
+- [x] `compile_sources_lenient()` deleted
 - [ ] pipeline shape is `Node → Node → Node → TextFile`
 - [ ] No String-typed fields where a closed enum is appropriate
 
