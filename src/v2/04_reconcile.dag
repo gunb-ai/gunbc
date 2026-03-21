@@ -783,7 +783,13 @@ fn ok_infer(texpr: Expr) -> InferResult {
 fn lookup_in_scope(scope: InferScope, name: String) -> Node? {
   match map_get(scope.locals, name) {
     Some { value: binding } => Some { value: binding.resolved }
-    None => None
+    None =>
+      // Fallback: check func_env for function-as-value references
+      // (e.g., `pred: is_digit` passes a function as a predicate argument).
+      match lookup_func_sig(func_env: scope.func_env, name: name) {
+        Some { value: fsig } => Some { value: fsig.return_type }
+        None => None
+      }
   }
 }
 
@@ -1357,6 +1363,30 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
   }
 }
 
+// Recognize runtime built-in functions called directly (not as methods).
+// Returns the result type or none if not a known builtin.
+fn infer_builtin_call_type(name: String) -> Node? {
+  if name == "parse_int" || name == "to_int" || name == "string_length" || name == "code_point" {
+    Some { value: leaf_node(name: "Int") }
+  } else if name == "char_at" || name == "substring" || name == "from_code_point" || name == "to_string" || name == "concat" {
+    Some { value: leaf_node(name: "String") }
+  } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
+    Some { value: leaf_node(name: "Int") }
+  } else if name == "lookup" || name == "map_get" {
+    Some { value: optional_node(inner: leaf_node(name: "Dynamic")) }
+  } else if name == "map_insert" || name == "map_merge" || name == "with" {
+    Some { value: leaf_node(name: "Map") }
+  } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
+    Some { value: leaf_node(name: "Bool") }
+  } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
+    Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
+  } else if name == "Some" {
+    Some { value: optional_node(inner: leaf_node(name: "Dynamic")) }
+  } else {
+    none
+  }
+}
+
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
   let normed = normalize_access_type_node(n: base_type)
   if normed.connective == none && normed.children |> count == 0 && normed.name == "String" {
@@ -1687,6 +1717,12 @@ fn infer_expr(expr: Expr, scope: InferScope) -> InferResult {
           // Built-in: empty_map() → Map
           InferResult {
             typed: Call { func: func_name, args: typed_args, resolved_type: Some { value: leaf_node(name: "Map") }, span: span },
+            diagnostics: arg_diags
+          }
+        } else if infer_builtin_call_type(name: func_name) != none {
+          // Tier 2b: runtime built-in functions
+          InferResult {
+            typed: Call { func: func_name, args: typed_args, resolved_type: Some { value: infer_builtin_call_type(name: func_name).value }, span: span },
             diagnostics: arg_diags
           }
         } else {

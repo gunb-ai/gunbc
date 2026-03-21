@@ -10,14 +10,14 @@ should always be able to see through the name to the structure underneath.
 
 ---
 
-## Current State (2026-03-20)
+## Current State (2026-03-21)
 
 ### What works
 
-- **464 tests pass** — 368 daglang-emit + 96 v2-compiler-tests (12 ignored)
+- **466 tests pass** — 368 daglang-emit + 98 v2-compiler-tests (92 pass, 6 ignored)
 - **Generated crate compiles** — `v2_crate_cargo_check` passes in <7s
-- **A4 ACHIEVED** — self-compiled output passes `cargo check` with 0 errors
-  (error reduction: 7118 → 3917 → 58 → 0)
+- **A4 IN PROGRESS** — self-compiled output cargo check at 77 errors
+  (error reduction: 7118 → 3917 → 449 → 251 → 77)
 - **B3 Phase 1 complete** — TypedExpr (19 variants) eliminated. Expr carries
   `resolved_type: Node?` directly. TypedNode merged into Node. One AST
   instead of two — halves expression memory for self-compile.
