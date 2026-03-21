@@ -18,7 +18,6 @@ Self-hosting pipeline complete. All structural convergence landed:
 - **A1-A7:** Full pipeline, self-compile (0 errors), bootstrap, fixed point, v1 retired
 - **B1-B4:** TypeExpr→Node, Expr→ExprData on Node, Transport→Node (all sum types dissolved)
 - **C1-C4:** Language extdeps, `--target` CLI flag
-- **P1b:** EmitGraph normalization (`04a_normalize.dag`)
 - **R1-R9:** Codegen ownership, Rc-wrap, TCO clone strip, fold-accum extract
 
 92 v2-compiler-tests pass, 460+ workspace tests, generated crate compiles clean.
@@ -32,7 +31,7 @@ cargo test --workspace --quiet                     # full workspace
 
 ## Track D: Runtime Complexity Analysis
 
-**Eliminates performance fallbacks. All prerequisites met (P1b landed).**
+**Eliminates performance fallbacks. All prerequisites met.**
 
 ### D1: Cost algebra (DONE — types defined in dsl/std/complexity.dag)
 
