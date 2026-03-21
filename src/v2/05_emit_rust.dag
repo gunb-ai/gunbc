@@ -1891,7 +1891,7 @@ fn extend_scope_for_lambda(receiver: Node, param_name: String, scope: InferScope
   }
 }
 
-fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator_type: Node?, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.return_type, rc_types: rc_types)
@@ -1984,7 +1984,12 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, receiver: Node, 
     MethodFold => {
       let init_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let fold_fn = match args |> skip(1) |> first {
-        Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        Some { value: a } =>
+          let acc_type_str = match fold_accumulator_type {
+            Some { value: acc_type } => emit_rust_node_type(n: acc_type, rc_types: rc_types)
+            None => "_"
+          }
+          emit_typed_fold_lambda(lambda_expr: a.value, acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None => "todo!(\"missing fold function\")"
       }
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
@@ -2047,8 +2052,8 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _, wrap_result_in_rc: wrap_result_in_rc } } => {
-      let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, wrap_result_in_rc: wrap_result_in_rc } } => {
+      let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       if wrap_result_in_rc { concat(lowered, ".map(Rc::new)") } else { lowered }
     }
     Some { value: RuntimeBridgeSemantics { function_name: function_name, pass_receiver_by_ref: pass_receiver_by_ref, wrap_result_in_rc: wrap_result_in_rc } } =>

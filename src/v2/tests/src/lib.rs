@@ -2705,6 +2705,43 @@ fn example(items: List<String>) -> Int {
     }
 
     #[test]
+    fn phase6_fold_lambda_uses_reconciled_accumulator_type() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn sum(xs: List<Int>) -> Int {\n  xs |> fold(init: 0, f: fn(acc, x) { acc + x })\n}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "fold pipeline should not produce diagnostics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        assert!(
+            main_rs.contains(".fold(0, "),
+            "fold should lower to Rust fold:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("|acc: i64, x: i64|"),
+            "fold lambda should use reconciled accumulator and element types:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
     fn phase6_anonymous_record_literal_fails_closed_without_named_type() {
         let output = compile_all_modules().expect("compilation should succeed");
         let mut span = std::collections::BTreeMap::new();
