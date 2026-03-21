@@ -17,13 +17,16 @@ import v2.std.core {
   Node,
   Connective, Conj, Disj,
   Param, MatchArm,
-  MatchPattern, FieldBinding, LiteralValue, TransportBinding,
+  MatchPattern, FieldBinding, LiteralValue,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
-  ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ServiceConfig,
   DeclaredFuncSig,
+  local_transport_node,
+  transport_has_auth, transport_auth_header_name,
+  transport_headers, transport_env,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall,
   ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
@@ -936,7 +939,7 @@ fn emit_py_service_def(
 ) -> String {
   let depth = 0
   let safe_name = sanitize_service_name(name: item.name)
-  let transport = if item.transport == none { LocalBinding } else { item.transport.value }
+  let transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
   let init_method = emit_py_service_init(transport: transport, config: item.config)
   let op_children = item.children
   let methods = op_children |> map(op_node =>
@@ -948,32 +951,25 @@ fn emit_py_service_def(
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_service_init(transport: TransportBinding, config: ServiceConfig?) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: a, headers: _ } => {
-      let auth_param = match a {
-        Some { value: _ } => ", auth_token: str"
-        None => ""
-      }
-      let auth_assign = match a {
-        Some { value: _ } => "\n    self.auth_token = auth_token"
-        None => ""
-      }
-      concat("def __init__(self, base_url: str", auth_param, "):\n",
-        "    self.base_url = base_url", auth_assign)
-    }
-    ShellBinding { argv: _, env: _ } =>
-      concat("def __init__(self, working_dir: str | None = None):\n",
-        "    self.working_dir = working_dir")
-    FileBinding { base_path: _ } =>
-      concat("def __init__(self, base_path: str):\n",
-        "    self.base_path = base_path")
-    LocalBinding =>
-      "def __init__(self):\n    pass"
+fn emit_py_service_init(transport: Node, config: ServiceConfig?) -> String {
+  let kind = transport.name
+  if kind == "rest" {
+    let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
+    let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
+    concat("def __init__(self, base_url: str", auth_param, "):\n",
+      "    self.base_url = base_url", auth_assign)
+  } else if kind == "shell" {
+    concat("def __init__(self, working_dir: str | None = None):\n",
+      "    self.working_dir = working_dir")
+  } else if kind == "file" {
+    concat("def __init__(self, base_path: str):\n",
+      "    self.base_path = base_path")
+  } else {
+    "def __init__(self):\n    pass"
   }
 }
 
-fn emit_py_operation_method(service_name: String, transport: TransportBinding, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
     concat(py_ident(name: p.name), ": ", emit_py_node_type(n: p.type_expr))
   )
@@ -994,23 +990,23 @@ fn emit_py_operation_method(service_name: String, transport: TransportBinding, o
     make_indent(level: depth + 1), body)
 }
 
-fn emit_py_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_py_rest_call(op_name: op_name, auth: a, headers: hs)
-    ShellBinding { argv: _, env: envs } =>
-      emit_py_shell_call(op_name: op_name, env: envs)
-    FileBinding { base_path: _ } =>
-      emit_py_file_call(op_name: op_name)
-    LocalBinding =>
-      emit_py_local_call(op_name: op_name)
+fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
+  let kind = transport.name
+  if kind == "rest" {
+    emit_py_rest_call(op_name: op_name, transport: transport)
+  } else if kind == "shell" {
+    emit_py_shell_call(op_name: op_name, transport: transport)
+  } else if kind == "file" {
+    emit_py_file_call(op_name: op_name)
+  } else {
+    emit_py_local_call(op_name: op_name)
   }
 }
 
-fn emit_py_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>) -> String {
+fn emit_py_rest_call(op_name: String, transport: Node) -> String {
   let self_base_url = concat("{", "self.base_url", "}")
   let url_line = concat("url = f\"", self_base_url, "/", py_ident(name: op_name), "\"")
-  let headers_dict = emit_py_headers_dict(auth: auth, headers: headers)
+  let headers_dict = emit_py_headers_dict(transport: transport)
   let session_lines = concat(
     "async with aiohttp.ClientSession() as session:\n",
     "    async with session.post(url, headers=headers) as response:\n",
@@ -1019,13 +1015,16 @@ fn emit_py_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef
   concat(url_line, "\n", headers_dict, "\n", session_lines)
 }
 
-fn emit_py_headers_dict(auth: AuthConfig?, headers: List<HeaderDef>) -> String {
-  let auth_entry = match auth {
-    Some { value: ac } =>
-      concat("\"", ac.header, "\": self.auth_token, ")
-    None => ""
-  }
-  let header_entries = headers |> map(h =>
+fn emit_py_headers_dict(transport: Node) -> String {
+  let auth_entry = if transport_has_auth(t: transport) {
+    let header_name = match transport_auth_header_name(t: transport) {
+      Some { value: h } => h
+      None => "Authorization"
+    }
+    concat("\"", header_name, "\": self.auth_token, ")
+  } else { "" }
+  let hdrs = transport_headers(t: transport)
+  let header_entries = hdrs |> map(h =>
     concat("\"", h.name, "\": _unimplemented(\"header value emission for '", h.name, "'\")")
   )
   let all_entries = if auth_entry == "" {
@@ -1036,8 +1035,9 @@ fn emit_py_headers_dict(auth: AuthConfig?, headers: List<HeaderDef>) -> String {
   concat("headers = {", all_entries, "}")
 }
 
-fn emit_py_shell_call(op_name: String, env: List<EnvDef>) -> String {
-  let env_dict_entries = env |> map(e =>
+fn emit_py_shell_call(op_name: String, transport: Node) -> String {
+  let envs = transport_env(t: transport)
+  let env_dict_entries = envs |> map(e =>
     concat("\"", e.name, "\": _unimplemented(\"env value emission for '", e.name, "'\")")
   )
   let env_str = concat("{", env_dict_entries |> join(separator: ", "), "}")

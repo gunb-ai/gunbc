@@ -34,9 +34,9 @@ import v2.std.core {
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
-  TransportBinding, RestBinding, ShellBinding, FileBinding, LocalBinding,
+  local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   ServiceConfig, OperationDef,
-  AuthConfig, HeaderDef, EnvDef, OperationModifier, Idempotent, Readonly, Hermetic,
+  OperationModifier, Idempotent, Readonly, Hermetic,
   CapabilityDef,
   Token, TokenKind,
   KwModule, KwImport, KwType, KwFn, KwFunc, KwService, KwResource,
@@ -88,7 +88,7 @@ type ImportResult { import: Import, state: ParserState, err: Diagnostic? }
 type VariantResult { variant: Variant, state: ParserState, err: Diagnostic? }
 type PredResult { predicate: FieldInit, state: ParserState, err: Diagnostic? }
 type ParamResult { param: Param, state: ParserState, err: Diagnostic? }
-type TransportResult { transport: TransportBinding, state: ParserState, err: Diagnostic? }
+type TransportResult { transport: Node, state: ParserState, err: Diagnostic? }
 type OpResult { operation: OperationDef, state: ParserState, err: Diagnostic? }
 type CapResult { capability: CapabilityDef, state: ParserState, err: Diagnostic? }
 type PatternResult { pattern: MatchPattern, state: ParserState, err: Diagnostic? }
@@ -130,7 +130,7 @@ type LambdaCheckResult { is_lambda: Bool, params: List<String>, state: ParserSta
 type IdentCollectResult { success: Bool, params: List<String>, state: ParserState, err: Diagnostic? }
 type RangeArgsResult { min_val: Int?, max_val: Int?, state: ParserState, err: Diagnostic? }
 type NamedIntResult { arg_name: String, arg_value: Int, state: ParserState, err: Diagnostic? }
-type ServiceBodyResult { config: ServiceConfig?, transport: TransportBinding, operations: List<OperationDef>, state: ParserState, err: Diagnostic? }
+type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<OperationDef>, state: ParserState, err: Diagnostic? }
 type IOResult { inputs: List<Field>, outputs: List<Field>, state: ParserState, err: Diagnostic? }
 type ResPropResult { properties: List<FieldInit>, capabilities: List<CapabilityDef>, state: ParserState, err: Diagnostic? }
 type ResponsesResult { responses: List<FieldInit>, state: ParserState, err: Diagnostic? }
@@ -140,7 +140,7 @@ type RespEntriesResult { entries: List<FieldInit>, state: ParserState, err: Diag
 type MockEntriesResult { entries: List<FieldInit>, state: ParserState, err: Diagnostic? }
 type OpBodyResult {
   inputs: List<Field>, outputs: List<Field>,
-  modifier_props: List<FieldInit>, transport: TransportBinding?,
+  modifier_props: List<FieldInit>, transport: Node?,
   exit_props: List<FieldInit>, response_props: List<FieldInit>,
   mock_props: List<FieldInit>,
   state: ParserState, err: Diagnostic?
@@ -1399,12 +1399,12 @@ fn parse_service_body(tokens: List<Token>, state: ParserState) -> ServiceBodyRes
   parse_service_entries(
     tokens: tokens, state: state,
     config: none,
-    transport: LocalBinding,
+    transport: local_transport_node(span: current_span(tokens: tokens, state: state)),
     operations: []
   )
 }
 
-fn parse_service_entries(tokens: List<Token>, state: ParserState, config: ServiceConfig?, transport: TransportBinding, operations: List<OperationDef>) -> ServiceBodyResult {
+fn parse_service_entries(tokens: List<Token>, state: ParserState, config: ServiceConfig?, transport: Node, operations: List<OperationDef>) -> ServiceBodyResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
     ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: none }
@@ -1480,7 +1480,8 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
 }
 
 fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> TransportResult {
-  let dummy = LocalBinding
+  let span = current_span(tokens: tokens, state: state)
+  let dummy = local_transport_node(span: span)
   let k = peek_kind(tokens: tokens, state: state)
   match k {
     Some { value: Ident { name: "rest" } } => {
@@ -1518,75 +1519,79 @@ fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> Transport
     }
     _ => {
       // Default: local binding
-      let result = TransportResult { transport: LocalBinding, state: state, err: none }
+      let result = TransportResult { transport: local_transport_node(span: span), state: state, err: none }
       result
     }
   }
 }
 
 fn parse_rest_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
-  // Parse base_url and optional auth/headers
-  parse_rest_fields(tokens: tokens, state: state, base_url: none, auth: none, headers: [])
+  // Parse base_url (auth/headers always empty at parse time)
+  parse_rest_fields(tokens: tokens, state: state, base_url: none)
 }
 
-fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?, auth: AuthConfig?, headers: List<HeaderDef>) -> TransportResult {
+fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -> TransportResult {
   let s = skip_newlines(tokens: tokens, state: state)
+  let span = current_span(tokens: tokens, state: s)
+  let dummy = local_transport_node(span: span)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
     let bu = match base_url {
       Some { value: e } => e
       None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, return_type: none, span: SourceSpan { start: 0, end: 0 })
     }
-    TransportResult { transport: RestBinding { base_url: bu, auth: auth, headers: headers }, state: s, err: none }
+    TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: [], span: span), state: s, err: none }
   } else {
     let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return TransportResult { transport: LocalBinding, state: r.state, err: r.err } }
+    if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
     let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
-    if has_err(err: r2.err) { return TransportResult { transport: LocalBinding, state: r2.state, err: r2.err } }
+    if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
     let r3 = parse_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return TransportResult { transport: LocalBinding, state: r3.state, err: r3.err } }
+    if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
     let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
     let s2 = if e.consumed { e.state } else { r3.state }
     match fname {
-      "base_url" => parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr }, auth: auth, headers: headers)
-      _ => parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, auth: auth, headers: headers)
+      "base_url" => parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr })
+      _ => parse_rest_fields(tokens: tokens, state: s2, base_url: base_url)
     }
   }
 }
 
 fn parse_shell_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
-  // Parse argv and optional env
-  parse_shell_fields(tokens: tokens, state: state, argv: [], env: [])
+  // Parse argv (env always empty at parse time)
+  parse_shell_fields(tokens: tokens, state: state, argv: [])
 }
 
-fn parse_shell_fields(tokens: List<Token>, state: ParserState, argv: List<Node>, env: List<EnvDef>) -> TransportResult {
+fn parse_shell_fields(tokens: List<Token>, state: ParserState, argv: List<Node>) -> TransportResult {
   let s = skip_newlines(tokens: tokens, state: state)
+  let span = current_span(tokens: tokens, state: s)
+  let dummy = local_transport_node(span: span)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
-    TransportResult { transport: ShellBinding { argv: argv, env: env }, state: s, err: none }
+    TransportResult { transport: shell_transport_node(argv: argv, env: [], span: span), state: s, err: none }
   } else {
     let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return TransportResult { transport: LocalBinding, state: r.state, err: r.err } }
+    if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
     let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
-    if has_err(err: r2.err) { return TransportResult { transport: LocalBinding, state: r2.state, err: r2.err } }
+    if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
     match fname {
       "argv" => {
         let r3 = expect(tokens: tokens, state: r2.state, tag: "LBracket")
-        if has_err(err: r3.err) { return TransportResult { transport: LocalBinding, state: r3.state, err: r3.err } }
+        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
         let r4 = parse_expr_list_until(tokens: tokens, state: r3.state, end_tag: "RBracket")
-        if has_err(err: r4.err) { return TransportResult { transport: LocalBinding, state: r4.state, err: r4.err } }
+        if has_err(err: r4.err) { return TransportResult { transport: dummy, state: r4.state, err: r4.err } }
         let r5 = expect(tokens: tokens, state: r4.state, tag: "RBracket")
-        if has_err(err: r5.err) { return TransportResult { transport: LocalBinding, state: r5.state, err: r5.err } }
+        if has_err(err: r5.err) { return TransportResult { transport: dummy, state: r5.state, err: r5.err } }
         let e = eat(tokens: tokens, state: r5.state, tag: "Comma")
         let s2 = if e.consumed { e.state } else { r5.state }
-        parse_shell_fields(tokens: tokens, state: s2, argv: r4.exprs, env: env)
+        parse_shell_fields(tokens: tokens, state: s2, argv: r4.exprs)
       }
       _ => {
         let r3 = parse_expr(tokens: tokens, state: r2.state)
-        if has_err(err: r3.err) { return TransportResult { transport: LocalBinding, state: r3.state, err: r3.err } }
+        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
         let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
         let s2 = if e.consumed { e.state } else { r3.state }
-        parse_shell_fields(tokens: tokens, state: s2, argv: argv, env: env)
+        parse_shell_fields(tokens: tokens, state: s2, argv: argv)
       }
     }
   }
@@ -1598,20 +1603,22 @@ fn parse_file_binding_body(tokens: List<Token>, state: ParserState) -> Transport
 
 fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) -> TransportResult {
   let s = skip_newlines(tokens: tokens, state: state)
+  let span = current_span(tokens: tokens, state: s)
+  let dummy = local_transport_node(span: span)
   if check(tokens: tokens, state: s, tag: "RBrace") || at_end(tokens: tokens, state: s) {
     let bp = match base_path {
       Some { value: e } => e
       None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, return_type: none, span: SourceSpan { start: 0, end: 0 })
     }
-    TransportResult { transport: FileBinding { base_path: bp }, state: s, err: none }
+    TransportResult { transport: file_transport_node(base_path: bp, span: span), state: s, err: none }
   } else {
     let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return TransportResult { transport: LocalBinding, state: r.state, err: r.err } }
+    if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
     let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
-    if has_err(err: r2.err) { return TransportResult { transport: LocalBinding, state: r2.state, err: r2.err } }
+    if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
     let r3 = parse_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return TransportResult { transport: LocalBinding, state: r3.state, err: r3.err } }
+    if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
     let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
     let s2 = if e.consumed { e.state } else { r3.state }
     match fname {
@@ -1712,7 +1719,7 @@ fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String
 fn parse_op_body_entries(
   tokens: List<Token>, state: ParserState,
   inputs: List<Field>, outputs: List<Field>,
-  modifier_props: List<FieldInit>, transport: TransportBinding?,
+  modifier_props: List<FieldInit>, transport: Node?,
   exit_props: List<FieldInit>, response_props: List<FieldInit>, mock_props: List<FieldInit>
 ) -> OpBodyResult {
   let s = skip_newlines(tokens: tokens, state: state)

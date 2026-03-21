@@ -33,7 +33,7 @@ import v2.std.core {
   make_expr_node,
   Diagnostic, Severity, Warning,
   ResourceUse,
-  TransportBinding, ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ServiceConfig,
   Error,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
@@ -43,7 +43,7 @@ import v2.std.core {
   BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
   MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
-  RestBinding, ShellBinding, FileBinding, LocalBinding,
+  make_transport_node, local_transport_node,
   Text, Interpolation
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
@@ -500,27 +500,12 @@ type StringPartResolveResult {
 }
 
 type TransportResolveResult {
-  transport: TransportBinding
+  transport: Node
   diagnostics: List<Diagnostic>
 }
 
 type ServiceConfigResolveResult {
   config: ServiceConfig
-  diagnostics: List<Diagnostic>
-}
-
-type AuthConfigResolveResult {
-  config: AuthConfig
-  diagnostics: List<Diagnostic>
-}
-
-type HeaderResolveResult {
-  header: HeaderDef
-  diagnostics: List<Diagnostic>
-}
-
-type EnvDefResolveResult {
-  env_def: EnvDef
   diagnostics: List<Diagnostic>
 }
 
@@ -3037,7 +3022,7 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
   let default_result = if field.default_value == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: field.default_value.value, env: env, module_name: module_name)
   }
@@ -3065,7 +3050,7 @@ fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
   let default_result = if param.default_value == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: param.default_value.value, env: env, module_name: module_name)
   }
@@ -3126,7 +3111,7 @@ fn resolve_field_init(field_init: FieldInit, env: TypeEnv, module_name: String) 
 
 fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
   let guard_result = if arm.guard == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: arm.guard.value, env: env, module_name: module_name)
   }
@@ -3163,60 +3148,28 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
   }
 }
 
-fn resolve_header_def(header: HeaderDef, env: TypeEnv, module_name: String) -> HeaderResolveResult {
-  let value_result = resolve_expr_types(texpr: header.value, env: env, module_name: module_name)
-  let value_expr = value_result.expr
-  let value_diags = value_result.diagnostics
-  HeaderResolveResult {
-    header: HeaderDef { name: header.name, value: value_expr },
-    diagnostics: value_diags
-  }
-}
-
-fn resolve_env_def(env_def: EnvDef, env: TypeEnv, module_name: String) -> EnvDefResolveResult {
-  let value_result = resolve_expr_types(texpr: env_def.value, env: env, module_name: module_name)
-  let value_expr = value_result.expr
-  let value_diags = value_result.diagnostics
-  EnvDefResolveResult {
-    env_def: EnvDef { name: env_def.name, value: value_expr },
-    diagnostics: value_diags
-  }
-}
-
-fn resolve_auth_config(config: AuthConfig, env: TypeEnv, module_name: String) -> AuthConfigResolveResult {
-  let token_result = resolve_expr_types(texpr: config.token_expr, env: env, module_name: module_name)
-  let token_expr = token_result.expr
-  let token_diags = token_result.diagnostics
-  AuthConfigResolveResult {
-    config: AuthConfig {
-      scheme: config.scheme,
-      header: config.header,
-      token_expr: token_expr
-    },
-    diagnostics: token_diags
-  }
-}
+// resolve_header_def, resolve_env_def, resolve_auth_config deleted — transport dissolution
 
 fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: String) -> ServiceConfigResolveResult {
   let endpoint_result = resolve_expr_types(texpr: config.endpoint, env: env, module_name: module_name)
   let endpoint_expr = endpoint_result.expr
   let endpoint_diags = endpoint_result.diagnostics
   let auth_result = if config.auth == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: config.auth.value, env: env, module_name: module_name)
   }
   let auth_expr = auth_result.expr
   let auth_diags = auth_result.diagnostics
   let rate_result = if config.rate_limit == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: config.rate_limit.value, env: env, module_name: module_name)
   }
   let rate_expr = rate_result.expr
   let rate_diags = rate_result.diagnostics
   let retry_result = if config.retry == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: config.retry.value, env: env, module_name: module_name)
   }
@@ -3233,54 +3186,24 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
 }
 
-fn resolve_transport_binding(transport: TransportBinding, env: TypeEnv, module_name: String) -> TransportResolveResult {
-  match transport {
-    RestBinding { base_url: base_url, auth: auth, headers: headers } =>
-      let base_result = resolve_expr_types(texpr: base_url, env: env, module_name: module_name)
-      let base_expr = base_result.expr
-      let base_diags = base_result.diagnostics
-      let auth_result = if auth == none {
-        AuthConfigResolveResult {
-          config: AuthConfig { scheme: "", header: "", token_expr: Literal { value: LitNull, span: no_span() } },
-          diagnostics: []
-        }
-      } else {
-        resolve_auth_config(config: auth.value, env: env, module_name: module_name)
-      }
-      let auth_config = auth_result.config
-      let auth_diags = auth_result.diagnostics
-      let header_results = map(headers, h => resolve_header_def(header: h, env: env, module_name: module_name))
-      let resolved_headers = map(header_results, hr => hr.header)
-      let header_diags = flat_map(header_results, hr => hr.diagnostics)
-      TransportResolveResult {
-        transport: RestBinding {
-          base_url: base_expr,
-          auth: if auth == none { none } else { Some { value: auth_config } },
-          headers: resolved_headers
-        },
-        diagnostics: concat(base_diags, auth_diags, header_diags)
-      }
-    ShellBinding { argv: argv, env: env_defs } =>
-      let argv_results = map(argv, arg => resolve_expr_types(texpr: arg, env: env, module_name: module_name))
-      let env_results = map(env_defs, entry => resolve_env_def(env_def: entry, env: env, module_name: module_name))
-      let resolved_argv = map(argv_results, r => r.expr)
-      let resolved_env_defs = map(env_results, r => r.env_def)
-      let argv_diags = flat_map(argv_results, r => r.diagnostics)
-      let env_diags = flat_map(env_results, r => r.diagnostics)
-      TransportResolveResult {
-        transport: ShellBinding { argv: resolved_argv, env: resolved_env_defs },
-        diagnostics: concat(argv_diags, env_diags)
-      }
-    FileBinding { base_path: base_path } =>
-      let base_result = resolve_expr_types(texpr: base_path, env: env, module_name: module_name)
-      let base_expr = base_result.expr
-      let base_diags = base_result.diagnostics
-      TransportResolveResult {
-        transport: FileBinding { base_path: base_expr },
-        diagnostics: base_diags
-      }
-    LocalBinding =>
-      TransportResolveResult { transport: LocalBinding, diagnostics: [] }
+fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
+  if transport.name == "local" {
+    TransportResolveResult { transport: transport, diagnostics: [] }
+  } else {
+    // Generic resolution: resolve all property values and children
+    let prop_results = map(transport.properties, p =>
+      let val_result = resolve_expr_types(texpr: p.value, env: env, module_name: module_name)
+      FieldInitResolveResult { field_init: FieldInit { name: p.name, value: val_result.expr }, diagnostics: val_result.diagnostics }
+    )
+    let resolved_props = map(prop_results, pr => pr.field_init)
+    let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
+    let child_results = map(transport.children, c => resolve_expr_types(texpr: c, env: env, module_name: module_name))
+    let resolved_children = map(child_results, cr => cr.expr)
+    let child_diags = flat_map(child_results, cr => cr.diagnostics)
+    TransportResolveResult {
+      transport: make_transport_node(name: transport.name, properties: resolved_props, children: resolved_children, span: transport.span),
+      diagnostics: concat(prop_diags, child_diags)
+    }
   }
 }
 
@@ -3556,7 +3479,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve body if present
   let body_resolved = if item.body == none {
-    ExprResolveResult { expr: Literal { value: LitNull, span: no_span() }, diagnostics: [] }
+    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
   } else {
     resolve_expr_types(texpr: item.body.value, env: env, module_name: module_name)
   }
@@ -3574,7 +3497,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve transport if present
   let transport_resolved = if item.transport == none {
-    TransportResolveResult { transport: LocalBinding, diagnostics: [] }
+    TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: [] }
   } else {
     resolve_transport_binding(transport: item.transport.value, env: env, module_name: module_name)
   }
@@ -3584,7 +3507,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   // Resolve config if present
   let config_resolved = if item.config == none {
     ServiceConfigResolveResult {
-      config: ServiceConfig { endpoint: Literal { value: LitNull, span: no_span() }, auth: none, rate_limit: none, retry: none },
+      config: ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), auth: none, rate_limit: none, retry: none },
       diagnostics: []
     }
   } else {

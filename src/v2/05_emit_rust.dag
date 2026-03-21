@@ -27,12 +27,16 @@ import v2.std.core {
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
   NamedArg, MatchArm, FieldInit,
-  MatchPattern, FieldBinding, TransportBinding,
+  MatchPattern, FieldBinding,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
-  ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ServiceConfig,
+  local_transport_node,
+  transport_base_url, transport_base_path,
+  transport_has_auth, transport_auth_token, transport_auth_header_name,
+  transport_headers, transport_argv, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
@@ -88,7 +92,7 @@ import v2.compiler.emit {
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
   classify_intrinsic_method,
-  classify_typed_item, classify_type_structure, classify_transport_kind
+  classify_typed_item, classify_type_structure
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -1152,7 +1156,7 @@ fn needs_reference_node(n: Node) -> Bool {
 // =========================================================================
 // Simple expression emission -- for transport binding / mock prop nodes
 //
-// Transport bindings (AuthConfig, HeaderDef, EnvDef) and mock properties
+// Transport Node properties and mock properties
 // use simple ExprData forms (not post-reconciliation expressions). These are always simple forms:
 // ExprLiteral, ExprVar, ExprFieldAccess, ExprStringInterp. This function handles just
 // those cases, replacing the full emit_expr tree.
@@ -2745,40 +2749,39 @@ fn emit_service_def(
   registry: Map<String, ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: item.name)
-  let transport = if item.transport == none { LocalBinding } else { item.transport.value }
+  let transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
   let struct_def = emit_service_struct(name: safe_name, transport: transport, config: item.config)
   let op_children = item.children
   let impl_block = emit_service_impl(name: safe_name, transport: transport, op_children: op_children, registry: registry)
   concat(struct_def, "\n\n", impl_block)
 }
 
-fn emit_service_struct(name: String, transport: TransportBinding, config: ServiceConfig?) -> String {
+fn emit_service_struct(name: String, transport: Node, config: ServiceConfig?) -> String {
   let derives = "#[derive(Debug, Clone)]"
   let config_fields = emit_service_config_fields(transport: transport, config: config)
   let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
   concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
-fn emit_service_config_fields(transport: TransportBinding, config: ServiceConfig?) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: a, headers: _ } => {
-      let base = "    pub base_url: String,"
-      let auth_field = match a {
-        Some { value: _ } => "\n    pub auth_token: String,"
-        None => ""
-      }
-      concat(base, auth_field)
+fn emit_service_config_fields(transport: Node, config: ServiceConfig?) -> String {
+  if transport.name == "rest" {
+    let base = "    pub base_url: String,"
+    let auth_field = if transport_has_auth(t: transport) {
+      "\n    pub auth_token: String,"
+    } else {
+      ""
     }
-    ShellBinding { argv: _, env: _ } =>
-      "    pub working_dir: Option<String>,"
-    FileBinding { base_path: _ } =>
-      "    pub base_path: String,"
-    LocalBinding =>
-      "    // No configuration needed for local binding."
+    concat(base, auth_field)
+  } else if transport.name == "shell" {
+    "    pub working_dir: Option<String>,"
+  } else if transport.name == "file" {
+    "    pub base_path: String,"
+  } else {
+    "    // No configuration needed for local binding."
   }
 }
 
-fn emit_service_impl(name: String, transport: TransportBinding, op_children: List<Node>, registry: Map<String, ItemInfo>) -> String {
+fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>) -> String {
   let depth = 0
   let new_method = emit_service_new_method(name: name, transport: transport)
   let method_strs = op_children |> map(op_node =>
@@ -2791,52 +2794,50 @@ fn emit_service_impl(name: String, transport: TransportBinding, op_children: Lis
 
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
 // For REST services, also accepts base_url; for Shell, working_dir; etc.
-fn emit_service_new_method(name: String, transport: TransportBinding) -> String {
-  match transport {
-    RestBinding { base_url: bu, auth: a, headers: _ } => {
-      let base_url_default = match bu.expr_data {
+fn emit_service_new_method(name: String, transport: Node) -> String {
+  if transport.name == "rest" {
+    let base_url_default = match transport_base_url(t: transport) {
+      Some { value: bu } => match bu.expr_data {
         ExprLiteral { value: LitStr { value: s } } => s
         _ => "http://localhost"
       }
-      let auth_param = match a {
-        Some { value: _ } => ", auth_token: String"
-        None => ""
-      }
-      let auth_field = match a {
-        Some { value: _ } => "\n            auth_token,"
-        None => ""
-      }
-      concat(
-        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-        "    ", name, " {\n",
-        "        base_url: \"", base_url_default, "\".to_string(),", auth_field, "\n",
-        "        dry_run,\n",
-        "    }\n",
-        "}")
+      None => "http://localhost"
     }
-    ShellBinding { argv: _, env: _ } =>
-      concat(
-        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-        "    ", name, " {\n",
-        "        working_dir: None,\n",
-        "        dry_run,\n",
-        "    }\n",
-        "}")
-    FileBinding { base_path: _ } =>
-      concat(
-        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-        "    ", name, " {\n",
-        "        base_path: \".\".to_string(),\n",
-        "        dry_run,\n",
-        "    }\n",
-        "}")
-    LocalBinding =>
-      concat(
-        "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-        "    ", name, " {\n",
-        "        dry_run,\n",
-        "    }\n",
-        "}")
+    let auth_field = if transport_has_auth(t: transport) {
+      "\n            auth_token,"
+    } else {
+      ""
+    }
+    concat(
+      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+      "    ", name, " {\n",
+      "        base_url: \"", base_url_default, "\".to_string(),", auth_field, "\n",
+      "        dry_run,\n",
+      "    }\n",
+      "}")
+  } else if transport.name == "shell" {
+    concat(
+      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+      "    ", name, " {\n",
+      "        working_dir: None,\n",
+      "        dry_run,\n",
+      "    }\n",
+      "}")
+  } else if transport.name == "file" {
+    concat(
+      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+      "    ", name, " {\n",
+      "        base_path: \".\".to_string(),\n",
+      "        dry_run,\n",
+      "    }\n",
+      "}")
+  } else {
+    concat(
+      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+      "    ", name, " {\n",
+      "        dry_run,\n",
+      "    }\n",
+      "}")
   }
 }
 
@@ -2866,7 +2867,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
   }
 }
 
-fn emit_operation_method(service_name: String, transport: TransportBinding, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
     concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
   )
@@ -2919,30 +2920,37 @@ fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props
   }
 }
 
-fn emit_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_rest_call(op_name: op_name, auth: a, headers: hs, registry: registry, depth: depth)
-    ShellBinding { argv: _, env: envs } =>
-      emit_shell_call(op_name: op_name, env: envs, registry: registry, depth: depth)
-    FileBinding { base_path: _ } =>
-      emit_file_call(op_name: op_name)
-    LocalBinding =>
-      emit_local_call(op_name: op_name)
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
+  if transport.name == "rest" {
+    emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
+  } else if transport.name == "shell" {
+    emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
+  } else if transport.name == "file" {
+    emit_file_call(op_name: op_name)
+  } else {
+    emit_local_call(op_name: op_name)
   }
 }
 
-fn emit_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let client_init = "let client = reqwest::Client::new();"
   let url_line = concat("let url = format!(\"{}/{}\", self.base_url, \"",
     rust_ident(name: op_name), "\");")
-  let auth_line = match auth {
-    Some { value: ac } =>
-      concat("let request = client.post(&url)\n    .header(\"",
-        ac.header, "\", ", emit_simple_expr(expr: ac.token_expr), ");")
-    None =>
-      "let request = client.post(&url);"
+  let header_name = match transport_auth_header_name(t: transport) {
+    Some { value: h } => h
+    None => "Authorization"
   }
+  let token_node = match transport_auth_token(t: transport) {
+    Some { value: tn } => emit_simple_expr(expr: tn)
+    None => "\"\""
+  }
+  let auth_line = if transport_has_auth(t: transport) {
+    concat("let request = client.post(&url)\n    .header(\"",
+      header_name, "\", ", token_node, ");")
+  } else {
+    "let request = client.post(&url);"
+  }
+  let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
       emit_simple_expr(expr: h.value), ");")
@@ -2955,10 +2963,11 @@ fn emit_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, 
   all_lines |> join(separator: "\n")
 }
 
-fn emit_shell_call(op_name: String, env: List<EnvDef>, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let cmd_line = concat("let output = std::process::Command::new(\"",
     rust_ident(name: op_name), "\")")
-  let env_lines = env |> map(e =>
+  let env_entries = transport_env(t: transport)
+  let env_lines = env_entries |> map(e =>
     concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"

@@ -26,13 +26,16 @@ import v2.std.core {
   Node,
   Connective, Conj, Disj,
   Field, Variant, Param, MatchArm,
-  MatchPattern, FieldBinding, LiteralValue, TransportBinding,
+  MatchPattern, FieldBinding, LiteralValue,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
-  ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ServiceConfig,
   DeclaredFuncSig,
+  local_transport_node,
+  transport_has_auth, transport_auth_header_name,
+  transport_headers, transport_argv, transport_env,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall,
   ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
@@ -944,7 +947,7 @@ fn emit_go_service_def(
   registry: Map<String, ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: item.name)
-  let transport = if item.transport == none { LocalBinding } else { item.transport.value }
+  let transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
   let struct_def = emit_go_service_struct(name: safe_name, transport: transport)
   // After dissolution, operation children are identified by having params
   let op_children = item.children |> filter(c => c.params |> count > 0)
@@ -955,22 +958,18 @@ fn emit_go_service_def(
   concat(struct_def, "\n\n", methods_str)
 }
 
-fn emit_go_service_struct(name: String, transport: TransportBinding) -> String {
-  let fields = match transport {
-    RestBinding { base_url: _, auth: a, headers: _ } => {
-      let base = "\tBaseURL string"
-      let auth_field = match a {
-        Some { value: _ } => "\n\tAuthToken string"
-        None => ""
-      }
-      concat(base, auth_field)
-    }
-    ShellBinding { argv: _, env: _ } =>
-      "\tWorkingDir string"
-    FileBinding { base_path: _ } =>
-      "\tBasePath string"
-    LocalBinding =>
-      ""
+fn emit_go_service_struct(name: String, transport: Node) -> String {
+  let kind = transport.name
+  let fields = if kind == "rest" {
+    let base = "\tBaseURL string"
+    let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
+    concat(base, auth_field)
+  } else if kind == "shell" {
+    "\tWorkingDir string"
+  } else if kind == "file" {
+    "\tBasePath string"
+  } else {
+    ""
   }
   if fields == "" {
     concat("type ", name, " struct{}")
@@ -979,7 +978,7 @@ fn emit_go_service_struct(name: String, transport: TransportBinding) -> String {
   }
 }
 
-fn emit_go_operation_method(service_name: String, transport: TransportBinding, op_node: Node, registry: Map<String, ItemInfo>) -> String {
+fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>) -> String {
   let input_params = op_node.params |> map(p =>
     concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: p.type_expr))
   )
@@ -997,31 +996,34 @@ fn emit_go_operation_method(service_name: String, transport: TransportBinding, o
     body, "\n}")
 }
 
-fn emit_go_transport_call(transport: TransportBinding, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: a, headers: hs } =>
-      emit_go_rest_call(op_name: op_name, auth: a, headers: hs, depth: depth)
-    ShellBinding { argv: _, env: envs } =>
-      emit_go_shell_call(op_name: op_name, env: envs, depth: depth)
-    FileBinding { base_path: _ } =>
-      emit_go_file_call(op_name: op_name, depth: depth)
-    LocalBinding =>
-      emit_go_local_call(op_name: op_name, depth: depth)
+fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
+  let kind = transport.name
+  if kind == "rest" {
+    emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
+  } else if kind == "shell" {
+    emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
+  } else if kind == "file" {
+    emit_go_file_call(op_name: op_name, depth: depth)
+  } else {
+    emit_go_local_call(op_name: op_name, depth: depth)
   }
 }
 
-fn emit_go_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef>, depth: Int) -> String {
+fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   let url_line = concat(prefix, "url := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BaseURL)")
   let body_line = concat(prefix, "reqBody := bytes.NewBuffer(nil)")
   let req_line = concat(prefix, "req, err := http.NewRequest(\"POST\", url, reqBody)\n",
     "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}")
-  let auth_line = match auth {
-    Some { value: ac } =>
-      concat(prefix, "req.Header.Set(\"", ac.header, "\", c.AuthToken)")
-    None => ""
-  }
-  let header_lines = headers |> map(h =>
+  let auth_line = if transport_has_auth(t: transport) {
+    let header_name = match transport_auth_header_name(t: transport) {
+      Some { value: h } => h
+      None => "Authorization"
+    }
+    concat(prefix, "req.Header.Set(\"", header_name, "\", c.AuthToken)")
+  } else { "" }
+  let hdrs = transport_headers(t: transport)
+  let header_lines = hdrs |> map(h =>
     concat(prefix, "panic(\"header value emission not implemented for '", h.name, "'\")")
   )
   let send_lines = concat(
@@ -1041,11 +1043,12 @@ fn emit_go_rest_call(op_name: String, auth: AuthConfig?, headers: List<HeaderDef
   all_lines |> join(separator: "\n")
 }
 
-fn emit_go_shell_call(op_name: String, env: List<EnvDef>, depth: Int) -> String {
+fn emit_go_shell_call(op_name: String, transport: Node, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   let cmd_line = concat(prefix, "cmd := exec.Command(\"", to_snake(name: op_name), "\")")
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
-  let env_lines = env |> map(e =>
+  let envs = transport_env(t: transport)
+  let env_lines = envs |> map(e =>
     concat(prefix, "panic(\"env value emission not implemented for '", e.name, "'\")")
   )
   let run_lines = concat(

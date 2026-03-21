@@ -29,11 +29,11 @@ import v2.std.core {
   ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
   NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
-  LiteralValue, TransportBinding,
+  LiteralValue,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
-  ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ServiceConfig,
   DeclaredFuncSig
 }
 
@@ -720,11 +720,7 @@ fn classify_type_structure(n: Node) -> String {
 
 // Classify a transport binding into its kind.
 // Returns: "rest", "shell", "file", or "local".
-fn classify_transport_kind(transport: TransportBinding) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: _, headers: _ } => "rest"
-    ShellBinding { argv: _, env: _ } => "shell"
-    FileBinding { base_path: _ } => "file"
-    LocalBinding => "local"
-  }
+// After transport dissolution, the kind IS the transport node's name.
+fn classify_transport_kind(transport: Node) -> String {
+  transport.name
 }
