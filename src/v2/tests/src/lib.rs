@@ -332,6 +332,12 @@ mod tests {
         gunbc_ir::Value::Map(span)
     }
 
+    fn no_expr_data_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("_variant".to_string(), gunbc_ir::Value::Str("NoExprData".to_string()));
+        gunbc_ir::Value::Map(map)
+    }
+
     fn named_type_value(name: &str) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
@@ -346,6 +352,33 @@ mod tests {
         map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
         map.insert("config".to_string(), gunbc_ir::Value::Unit);
+        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("expr_data".to_string(), no_expr_data_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn make_expr_node_value(
+        expr_data: gunbc_ir::Value,
+        return_type: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), gunbc_ir::Value::Str(String::new()));
+        map.insert("span".to_string(), span);
+        map.insert("children".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("connective".to_string(), gunbc_ir::Value::Unit);
+        map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("return_type".to_string(), return_type);
+        map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("body".to_string(), gunbc_ir::Value::Unit);
+        map.insert("transport".to_string(), gunbc_ir::Value::Unit);
+        map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+        map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
+        map.insert("config".to_string(), gunbc_ir::Value::Unit);
+        map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
+        map.insert("expr_data".to_string(), expr_data);
         gunbc_ir::Value::Map(map)
     }
 
@@ -450,14 +483,17 @@ mod tests {
         literal: gunbc_ir::Value,
         span: gunbc_ir::Value,
     ) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
+        let mut expr_data = std::collections::BTreeMap::new();
+        expr_data.insert(
             "_variant".to_string(),
-            gunbc_ir::Value::Str("Literal".to_string()),
+            gunbc_ir::Value::Str("ExprLiteral".to_string()),
         );
-        map.insert("value".to_string(), literal);
-        map.insert("span".to_string(), span);
-        gunbc_ir::Value::Map(map)
+        expr_data.insert("value".to_string(), literal);
+        make_expr_node_value(
+            gunbc_ir::Value::Map(expr_data),
+            gunbc_ir::Value::Unit,
+            span,
+        )
     }
 
     fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
@@ -1872,14 +1908,17 @@ fn foo(item: String) -> String {
         let func = items.first().expect("expected parsed function item");
         let body = map_field(func, "body");
         let body = map_field(body, "value");
-        let binop = expect_variant(body, "BinOp");
+        // After Expr->Node dissolution, expression data is in the expr_data field
+        let expr_data = map_field(body, "expr_data");
+        let binop = expect_variant(expr_data, "ExprBinOp");
         match binop.get("op") {
             Some(gunbc_ir::Value::Enum { variant, .. }) if variant == "NullCoalesce" => {}
             other => panic!("expected null-coalesce binop, got: {other:?}"),
         }
 
         let left = binop.get("left").expect("binop should have left child");
-        let left_var = expect_variant(left, "Var");
+        let left_data = map_field(left, "expr_data");
+        let left_var = expect_variant(left_data, "ExprVar");
         assert_eq!(
             left_var.get("name"),
             Some(&gunbc_ir::Value::Str("a".to_string())),
@@ -1887,11 +1926,13 @@ fn foo(item: String) -> String {
         );
 
         let right = binop.get("right").expect("binop should have right child");
-        let method_call = expect_variant(right, "MethodCall");
+        let right_data = map_field(right, "expr_data");
+        let method_call = expect_variant(right_data, "ExprMethodCall");
         let receiver = method_call
             .get("receiver")
             .expect("method call should have receiver");
-        let receiver_var = expect_variant(receiver, "Var");
+        let receiver_data = map_field(receiver, "expr_data");
+        let receiver_var = expect_variant(receiver_data, "ExprVar");
         assert_eq!(
             receiver_var.get("name"),
             Some(&gunbc_ir::Value::Str("b".to_string())),

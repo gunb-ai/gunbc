@@ -255,13 +255,13 @@ fn v2_core_dag_defines_expr_type() {
     let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
     assert!(result.is_ok());
 
-    let has_expr = result.ast.items.iter().any(|item| {
+    let has_expr_data = result.ast.items.iter().any(|item| {
         matches!(
             &item.node,
-            daglang_syntax::ast::Item::TypeDef(td) if td.name == "Expr"
+            daglang_syntax::ast::Item::TypeDef(td) if td.name == "ExprData"
         )
     });
-    assert!(has_expr, "core.dag should define an 'Expr' type");
+    assert!(has_expr_data, "core.dag should define an 'ExprData' type");
 }
 
 #[test]

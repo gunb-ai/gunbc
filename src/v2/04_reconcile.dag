@@ -3858,7 +3858,7 @@ type CallEdge {
 fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: item.name, expr: item.body.value, local_func_set: local_func_set)
+      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set)
     } else {
       []
     }
