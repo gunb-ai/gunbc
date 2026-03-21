@@ -6232,6 +6232,11 @@ fn infer_fold_value_type_from_body(expr: &ast::Expr, ctx: &CompileContext) -> Op
                 _ => infer_known_expr_ir_type(arg, ctx),
             })
         }
+        // list_push(list, elem) → List<typeof(elem)>
+        ast::Expr::Call(name, args) if name == "list_push" && args.len() == 2 => {
+            let elem_type = infer_known_expr_ir_type(&args[1].1, ctx)?;
+            Some(IrType::Generic("List".to_string(), vec![elem_type]))
+        }
         ast::Expr::Block(stmts) => stmts.last().and_then(|stmt| match stmt {
             ast::Stmt::Expr(e) => infer_fold_value_type_from_body(e, ctx),
             _ => None,
