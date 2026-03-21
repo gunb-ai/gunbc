@@ -81,7 +81,7 @@ import v2.compiler.emit {
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
   classify_intrinsic_method,
-  classify_typed_item, classify_type_structure, classify_transport_kind
+  classify_typed_item, classify_type_structure
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)

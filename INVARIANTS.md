@@ -264,3 +264,28 @@ controlled environments with sandboxed credentials (CI runners with
 scoped tokens, disposable cloud resources). Proves end-to-end behavior
 including HTTP transport and cloud API interactions. Not yet implemented;
 requires credential injection infrastructure.
+
+## Branch Review Findings
+
+### 2026-03-21 — `v2-compiler-convergence`
+
+- `src/v2/04a_normalize.dag`: `EmitGraph.func_facts.binding_facts` is
+  keyed only by raw variable name, so shadowed bindings collapse into a
+  single entry. That violates the normalize boundary contract: the type
+  claims per-binding facts but cannot represent two distinct bindings
+  named `x` in different scopes.
+
+- `src/v2/04a_normalize.dag`: `classify_arms` hardcodes `Read` for every
+  match-arm body instead of threading the parent edge context through the
+  arm. A value consumed through a `match` therefore reaches
+  `EmitGraph.func_facts` with the wrong usage classification.
+
+- `src/v2/04a_normalize.dag`: `classify_pattern_bindings` records
+  `FieldBinding.field_name` instead of the variable introduced by
+  `FieldBinding.binding`, and ignores non-variant bind patterns. Match
+  locals therefore receive missing or incorrect `BindingFacts`.
+
+- `src/v2/04a_normalize.dag`: `classify_func` returns `InteriorFunc` for
+  every non-recursive function, making `LeafFunc` unreachable. If the
+  call-graph pass is not implemented yet, the boundary needs an explicit
+  unknown state rather than fabricating a false classification.

@@ -72,7 +72,7 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   classify_intrinsic_method,
-  classify_typed_item, classify_type_structure, classify_transport_kind
+  classify_typed_item, classify_type_structure
 }
 
 fn emit_single_field_product_py_type(field_node: Node) -> String {

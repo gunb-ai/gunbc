@@ -365,8 +365,8 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
 }
 
 fn auth_properties(scheme: String, header_name: String, token_expr: Node, span: SourceSpan) -> List<FieldInit> {
-  let scheme_expr = make_expr_node(expr_data: ExprLiteral { value: LitString { value: scheme } }, return_type: none, span: span)
-  let header_expr = make_expr_node(expr_data: ExprLiteral { value: LitString { value: header_name } }, return_type: none, span: span)
+  let scheme_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: scheme } }, return_type: none, span: span)
+  let header_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: header_name } }, return_type: none, span: span)
   [
     FieldInit { name: "auth_scheme", value: scheme_expr },
     FieldInit { name: "auth_header", value: header_expr },
@@ -388,7 +388,7 @@ fn find_property(props: List<FieldInit>, prop_name: String) -> Node? {
 fn find_property_string(props: List<FieldInit>, prop_name: String) -> String? {
   match find_property(props: props, prop_name: prop_name) {
     Some { value: n } => match n.expr_data {
-      ExprLiteral { value: LitString { value: s } } => Some { value: s }
+      ExprLiteral { value: LitStr { value: s } } => Some { value: s }
       _ => none
     }
     None => none

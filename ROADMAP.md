@@ -276,6 +276,18 @@ sources with 0 reconciler errors in 30ms. Emitted Rust compiles with
 | F6 | `05_emit_rust.dag` re-discovers structural facts through string heuristic lists (`known_opt_fields`, `types_with_value_field`, `known_struct_with_accessor_field`, `is_rc_exclude`) | Post-B3 emitter cleanup | The reconciler/boundary already knows these facts structurally. Push them through metadata or type summaries instead of maintaining name lists in the emitter. |
 | F7 | `emit_typed_method_call` in `05_emit_rust.dag` is a growing string-dispatch ladder for special lowerings | Post-B3 emitter cleanup | Keep the fallback `.method(...)` path, but move special lowerings behind a clearer lowering table / metadata boundary so adding one lowering does not require editing a long `if method == ...` chain. |
 
+### Found in transport/expr dissolution review (2026-03-21)
+
+| # | Violation | Severity | Status | Notes |
+|---|-----------|----------|--------|-------|
+| TD-1 | `LitString` typo in `auth_properties` and `find_property_string` — variant does not exist, should be `LitStr` | CRITICAL | **FIXED** | 3 occurrences in `00_core.dag:368,369,391`. No test breakage because `auth_properties` is never called in current test paths — bug was latent. |
+| TD-2 | String-keyed dispatch `transport.name == "rest"` across 3 emitters (21 sites) — case enumeration on what was a closed enum | HIGH | Open | Transport kinds are finite and known. The `if/else` chains duplicate the same dispatch in `05_emit_rust.dag`, `05_emit_go.dag`, `05_emit_python.dag`. Adding a transport kind requires editing all 3. Fix: closed enum `TransportKind` or structural fact dispatch. |
+| TD-3 | Hardcoded `config_names` list in `transport_headers()` filters by `["base_url", "auth_scheme", "auth_header", "auth_token"]` | MEDIUM | Open | Same field names scattered across constructors, accessors, and this filter — triple representation. Adding an auth field requires 3 edits. |
+| TD-4 | Dead code `parent_enum == "Expr"` in `05_emit_rust.dag` variant construction — never matches after Expr deletion | LOW | **FIXED** | 7 lines removed. |
+| TD-5 | Dead `classify_transport_kind()` in `05_emit.dag` — imported by Go/Python emitters but never called | LOW | **FIXED** | Function deleted, imports removed. |
+| TD-6 | Stale DESIGN.md Layer 2 documented old `TransportBinding` sum type | LOW | **FIXED** | Updated to describe Node-based transport model. |
+| TD-7 | 5 `LitNull` fabrication fallbacks in `emit_typed_call` — sentinel when arguments missing | PRE-EXISTING | Open | `05_emit_rust.dag:1754,1755,1763,1764,1789`. Not introduced by this branch. Violates "no fallbacks that fabricate." |
+
 ---
 
 ## Completed: R8 — Rc-Wrap Generated Types (temporary bootstrap convergence)

@@ -2455,14 +2455,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_t
           } else { val_str }
           concat("    ", rust_ident(name: f.name), ": ", wrapped, ",")
         )
-        // Add missing Optional fields for known enum variants.
-        // ExprData variants don't have resolved_type -- it's on the Node.
-        let parent_enum = match map_get(vtoe, tn) { Some { value: en } => en  None => "" }
-        let has_resolved_type = fields |> any(f => f.name == "resolved_type")
-        let extra_fields = if parent_enum == "Expr" && has_resolved_type == false {
-          ["    resolved_type: None,"]
-        } else { [] }
-        let all_field_strs = concat(field_strs, extra_fields)
+        let all_field_strs = field_strs
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
         let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: parent_enum)

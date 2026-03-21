@@ -718,9 +718,3 @@ fn classify_type_structure(n: Node) -> String {
   }
 }
 
-// Classify a transport binding into its kind.
-// Returns: "rest", "shell", "file", or "local".
-// After transport dissolution, the kind IS the transport node's name.
-fn classify_transport_kind(transport: Node) -> String {
-  transport.name
-}
