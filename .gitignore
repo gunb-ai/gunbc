@@ -30,6 +30,7 @@ coverage/
 .vscode/
 *.swp
 *.swo
+*.bak
 *~
 
 # --- OS metadata (from os) ---

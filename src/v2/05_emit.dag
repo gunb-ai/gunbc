@@ -21,17 +21,19 @@ import v2.std.core {
   Import,
   Node,
   Connective, Conj, Disj,
-  Field, Param, Expr,
-  Literal, Var, FieldAccess, Call, MethodCall, Match, If, Let,
-  RecordLit, ListLit, BinOp, UnaryOp, Lambda, StringInterp,
-  Block, Cast, ForEach, Index, Slice,
+  Field, Param,
+  ExprData, NoExprData,
+  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
+  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
+  ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
   NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
-  LiteralValue, TransportBinding,
+  LiteralValue,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
-  ServiceConfig, AuthConfig, HeaderDef, EnvDef,
+  ServiceConfig,
   DeclaredFuncSig
 }
 
@@ -41,6 +43,18 @@ import v2.compiler.reconcile {
   TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   ItemInfo, UniqueAccum, emit_map_has
+}
+
+import extdeps.languages.rust.emit {
+  rust_type_map, rust_keywords, rust_container_templates
+}
+
+import extdeps.languages.python.emit {
+  python_type_map, python_keywords, python_container_templates
+}
+
+import extdeps.languages.go.emit {
+  go_type_map, go_keywords, go_container_templates
 }
 
 // =========================================================================
@@ -108,12 +122,12 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 }
 
 // scope_after_expr: extend scope with let-binding type for bodyless lets.
-// With Expr, the resolved type is read directly from the sub-expression.
-fn scope_after_expr(texpr: Expr, scope: InferScope) -> InferScope {
-  match texpr {
-    Let { name: name, value: value, body: body, resolved_type: _, span: _ } =>
+// After Expr->Node dissolution, resolved type is on Node.return_type.
+fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
+  match texpr.expr_data {
+    ExprLet { name: name, value: value, body: body } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: value.resolved_type.value)
+        extend_scope(scope: scope, name: name, resolved: value.return_type.value)
       } else {
         scope
       }
@@ -239,51 +253,51 @@ fn has_nested_records_node(n: Node) -> Bool {
 // JSON emission for data values -- used with serde_json::json!() macro
 // =========================================================================
 
-fn emit_data_value_json(value: Expr) -> String {
-  match value {
-    Literal { value: v, span: _ } => match v {
+fn emit_data_value_json(value: Node) -> String {
+  match value.expr_data {
+    ExprLiteral { value: v } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
       LitNull => "null"
     }
-    ListLit { elements: els, span: _ } => {
+    ExprListLit { elements: els } => {
       let el_strs = els |> map(e => emit_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    RecordLit { type_name: _, fields: fs, span: _ } => {
+    ExprRecordLit { type_name: _, fields: fs } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_data_value_json(value: f.value))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    Var { name: n, span: _ } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { name: n } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }
 
-// Typed variant -- operates on Expr directly, no typed_expr_to_expr needed.
-fn emit_typed_data_value_json(value: Expr) -> String {
-  match value {
-    Literal { value: v, resolved_type: _, span: _ } => match v {
+// Typed variant -- operates on Node directly.
+fn emit_typed_data_value_json(value: Node) -> String {
+  match value.expr_data {
+    ExprLiteral { value: v } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
       LitInt { value: i } => to_string(value: i)
       LitFloat { value: f } => f
       LitBool { value: b } => if b { "true" } else { "false" }
       LitNull => "null"
     }
-    ListLit { elements: els, resolved_type: _, span: _ } => {
+    ExprListLit { elements: els } => {
       let el_strs = els |> map(e => emit_typed_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    RecordLit { type_name: _, fields: fs, resolved_type: _, span: _ } => {
+    ExprRecordLit { type_name: _, fields: fs } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_typed_data_value_json(value: f.value))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    Var { name: n, resolved_type: _, span: _ } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { name: n } => concat("\"", escape_json_string(s: n), "\"")
     _ => "null"
   }
 }
@@ -479,59 +493,8 @@ fn apply_type_template2(template: String, arg0: String, arg1: String) -> String 
 // renaming, these should be replaced with imports from the extdeps.
 // =========================================================================
 
-// ---- Rust language data ----
-
-data rust_type_map: Map<String, String> = {
-  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
-}
-
-data rust_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "None",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
-data rust_container_templates: Map<String, String> = {
-  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
-  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
-}
-
-// ---- Python language data ----
-
-data python_type_map: Map<String, String> = {
-  "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
-  "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
-}
-
-data python_keywords: Map<String, String> = {
-  "true": "True", "false": "False", "null": "None",
-  "and": "and", "or": "or", "not": "not ",
-  "div": "//"
-}
-
-data python_container_templates: Map<String, String> = {
-  "list": "list[{0}]", "set": "set[{0}]",
-  "optional": "Optional[{0}]", "map": "dict[{0}, {1}]"
-}
-
-// ---- Go language data ----
-
-data go_type_map: Map<String, String> = {
-  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
-  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
-}
-
-data go_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "nil",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
-data go_container_templates: Map<String, String> = {
-  "list": "[]{0}", "set": "map[{0}]struct{}",
-  "optional": "*{0}", "map": "map[{0}]{1}"
-}
+// Language data (type maps, keywords, container templates) imported from
+// extdeps.languages.{rust,python,go}.emit -- single source of truth.
 
 // =========================================================================
 // Shared leaf functions -- parameterized by language data
@@ -629,6 +592,17 @@ fn go_map_template() -> String {
 fn rust_literal(value: LiteralValue) -> String {
   match value {
     LitStr { value: s } => emit_string_literal(s: s, suffix: ".to_string()")
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { rust_keyword(key: "true") } else { rust_keyword(key: "false") }
+    LitNull => rust_keyword(key: "null")
+  }
+}
+// Literal emission for pattern context -- string literals omit .to_string()
+// since Rust patterns use &str, not owned String.
+fn rust_literal_for_pattern(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: s } => emit_string_literal(s: s, suffix: "")
     LitInt { value: i } => to_string(value: i)
     LitFloat { value: f } => f
     LitBool { value: b } => if b { rust_keyword(key: "true") } else { rust_keyword(key: "false") }
@@ -744,13 +718,3 @@ fn classify_type_structure(n: Node) -> String {
   }
 }
 
-// Classify a transport binding into its kind.
-// Returns: "rest", "shell", "file", or "local".
-fn classify_transport_kind(transport: TransportBinding) -> String {
-  match transport {
-    RestBinding { base_url: _, auth: _, headers: _ } => "rest"
-    ShellBinding { argv: _, env: _ } => "shell"
-    FileBinding { base_path: _ } => "file"
-    LocalBinding => "local"
-  }
-}

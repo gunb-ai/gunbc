@@ -94,29 +94,5 @@ data float_types: List<String> = ["float32", "float64"]
 
 data type_conversion_template: String = "\{type\}(\{expr\})"
 
-// -- Emission-facing maps --------------------------------------------
-// These provide the Map<String, String> format that the v2 emitter
-// consumes. Derived from the facts above and from the Go Spec.
-// When the language gains map-from-list primitives, these become computed.
-
-// DAG primitive name -> Go type name.
-// Derived from: go_primitives[].dag_name -> go_primitives[].go_name
-data emit_type_map: Map<String, String> = {
-  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
-  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
-}
-
-// Literal and operator keyword translations.
-// Ref: Go Spec "Keywords", "Operators and punctuation"
-data emit_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "nil",
-  "and": "&&", "or": "||", "not": "!",
-  "div": "/"
-}
-
-// Container type templates. {0} = element type, {1} = second type (maps).
-// Ref: Go Spec "Slice types", "Map types"
-data emit_container_templates: Map<String, String> = {
-  "list": "[]{0}", "set": "map[{0}]struct{}",
-  "optional": "*{0}", "map": "map[{0}]{1}"
-}
+// Emission-facing maps (go_type_map, go_keywords, go_container_templates)
+// now live in extdeps.languages.go.emit -- single source of truth.

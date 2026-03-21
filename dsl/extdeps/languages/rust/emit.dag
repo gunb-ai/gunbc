@@ -1,0 +1,72 @@
+// extdeps/languages/rust/emit.dag -- Rust language facts for the v2 emitter.
+//
+// Single source of truth for Rust-specific data consumed by the emitter.
+// No imports -- these are leaf data declarations.
+//
+// Ref: The Rust Reference (doc.rust-lang.org/reference)
+//      Rust Standard Library (doc.rust-lang.org/std)
+//
+// Consumers:
+//   v2/05_emit.dag       -- type mapping, keywords, container templates
+//   v2/05_emit_rust.dag  -- reserved words, runtime function tables
+
+module extdeps.languages.rust.emit
+
+// -- Type mapping --------------------------------------------------------
+// DAG abstract type -> Rust concrete type.
+// Ref: Rust Reference 10.1 "Types"
+data rust_type_map: Map<String, String> = {
+  "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
+  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
+}
+
+// -- Keyword/operator translation ----------------------------------------
+// DAG keywords/operators -> Rust syntax.
+// Ref: Rust Reference 8.2 "Expressions"
+data rust_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "None",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+// -- Container type templates --------------------------------------------
+// {0} = element type, {1} = second type (maps).
+// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::BTreeMap
+data rust_container_templates: Map<String, String> = {
+  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
+  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
+}
+
+// -- Reserved words ------------------------------------------------------
+// Ref: Rust Reference, Appendix A: Keywords
+data rust_reserved: List<String> = [
+  "as", "async", "await", "break", "const", "continue", "crate",
+  "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
+  "impl", "in", "let", "loop", "match", "mod", "move", "mut",
+  "pub", "ref", "return", "self", "Self", "static", "struct",
+  "super", "trait", "true", "type", "unsafe", "use", "where",
+  "while", "yield", "abstract", "become", "box", "do", "final",
+  "macro", "override", "priv", "try", "typeof", "unsized",
+  "virtual"
+]
+
+// -- Runtime function lookup tables --------------------------------------
+// Maps of functions backed by v2_rt at runtime.
+// Used by the emitter to decide calling convention (v2_rt:: prefix, &-ref args).
+data rt_functions: Map<String, Bool> = {
+  "concat": true, "char_at": true, "string_length": true,
+  "substring": true, "string_contains": true, "scan_while": true,
+  "skip_horizontal_ws": true, "scan_to_eol": true, "scan_string_end": true,
+  "code_point": true, "from_code_point": true, "lookup": true,
+  "index_by": true, "empty_map": true, "map_insert": true,
+  "map_merge": true, "list_concat": true, "str_eq": true,
+  "filesystem_read": true, "list_push": true, "map_get": true,
+  "map_keys": true, "map_values": true,
+  "parse_int": true, "map_contains_key": true, "map_has": true
+}
+
+// Runtime functions that take map arguments by reference.
+data rt_ref_map_functions: Map<String, Bool> = {
+  "map_get": true, "map_keys": true, "map_values": true,
+  "lookup": true, "map_contains_key": true, "map_has": true
+}

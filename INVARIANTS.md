@@ -37,8 +37,8 @@ language grows by one type, one expression form, or one transport, how
 many files need editing? The sustainable compiler is one where that
 number is 1. Every invariant below serves that goal.
 
-Active liabilities and their measured costs are tracked in
-`src/v1/SUSTAINABILITY.md`.
+Active liabilities and their measured costs are tracked in the
+**Open Debt** section at the bottom of this file.
 
 The invariant headings in this document are also the canonical theme
 labels for ratchets, review feedback, and queue planning. A review queue
@@ -95,6 +95,12 @@ hard failures into silent wrong behavior. (See POSTMORTEM FC-7:
 `scalar_witness_for_base` fabricated `Str("<Type>")` instead of
 returning `None`.)
 
+Sample: ownership should not compile to
+`Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())`. Either the
+compiler proves a single semantic consumer and emits the move, or it
+surfaces that the proof is missing. The clone branch is a fallback,
+even if it preserves correctness.
+
 ### Heuristics indicate lost structure
 
 Heuristics are a code smell in compiler and runtime logic. String
@@ -117,6 +123,26 @@ stage can make an exact decision. If the local change cannot safely
 repair the upstream contract yet, fail clearly or record a follow-up
 task naming where the information degraded and what explicit structure
 should replace the heuristic.
+
+Temporary heuristics must not become invisible debt. If a heuristic is
+introduced as a staging move, the same change should record a shrinking
+ratchet for it: a named debt entry, a bounded site count, or a test that
+proves one heuristic family was removed. "Temporary" without a ratchet
+means "permanent later."
+
+Sample: on 2026-03-20 the emission-representation work was first framed
+as five per-binding lattices: flow cardinality, value width, call
+reachability, loop invariance, and build-reduce. Backends then mapped
+each lattice position to constructs like bare move vs Rc, byte vs
+String, inline vs stacker. That was cleaner than ad hoc guesses, but in
+practice it still risked becoming a heuristic matrix: pick a bucket,
+then let the backend widen to a fallback-shaped implementation. The
+stronger version kept only direct behavioral facts plus forcing
+witnesses: consumed/read/projected edges, semantic consumer count,
+escape/materialization, loop invariance, value shape. "Shared" needs
+the specific extra consume site. "Materialized" needs the specific
+escape. If no witness exists, the compiler has lost structure and
+should be fixed upstream instead of widening by default.
 
 ### No parallel implementations
 
@@ -162,6 +188,30 @@ that is the root cause — not the absence of a validation function.
 Every fabrication fallback in FC-7 existed because the producing
 stage's output type was too permissive, and the consuming stage
 compensated with a fallback instead of failing.
+
+A boundary fact table is only valid when both of these hold:
+
+1. Every entry is an exact derivation from upstream structure. If the
+   table collapses distinct bindings, guesses a classification, or drops
+   witnesses needed downstream, it is a lossy representation and is
+   already an invariant violation.
+2. A downstream stage actually consumes the table as the authority for a
+   decision. If no consumer reads it, the table is speculative metadata
+   or a parallel representation waiting to diverge.
+
+Unused or lossy fact tables are not harmless scaffolding. Unused tables
+violate "No parallel implementations" / "Single-authority metadata."
+Lossy tables violate "Explicit boundary contracts" / "Heuristics
+indicate lost structure." The default action is to delete the table
+until a concrete consumer exists, or tighten it until the missing
+distinctions are structurally preserved.
+
+New semantic boundaries must land end-to-end. A new normalize/pass/fact
+layer is not accepted just because it computes plausible metadata; at
+least one downstream consumer in the same change must read it as the
+authority for a real compilation decision. Otherwise the layer is still
+speculative metadata and should stay out of the pipeline until the
+consumer exists.
 
 ### Single-authority metadata
 
@@ -244,3 +294,195 @@ controlled environments with sandboxed credentials (CI runners with
 scoped tokens, disposable cloud resources). Proves end-to-end behavior
 including HTTP transport and cloud API interactions. Not yet implemented;
 requires credential injection infrastructure.
+
+## Branch Review Findings
+
+### 2026-03-21 — `v2-compiler-convergence`
+
+- Deleted `src/v2/04a_normalize.dag` and removed the extra
+  reconcile→normalize→emit boundary. The stage introduced unused and
+  lossy fact tables (`func_facts`, `enum_facts`, `field_facts`) that
+  were not consumed by any emitter, and some entries were already
+  degraded (shadowed bindings collapsed by name, match-arm context lost,
+  placeholder function classifications). Emit now consumes the existing
+  reconcile boundary directly again until an exact, authoritative
+  emitter-facing index is needed.
+
+### 2026-03-21 — transport/expr dissolution review
+
+Fixed:
+
+| # | Violation | Fix |
+|---|-----------|-----|
+| TD-1 | `LitString` typo in `auth_properties` and `find_property_string` (variant does not exist) | Fixed to `LitStr` (3 sites in `00_core.dag`). Latent — no test breakage because `auth_properties` never called in current test paths. |
+| TD-4 | Dead `parent_enum == "Expr"` in `05_emit_rust.dag` variant construction | 7 lines removed. |
+| TD-5 | Dead `classify_transport_kind()` in `05_emit.dag`, imported but never called | Function deleted, imports removed from Go/Python emitters. |
+| TD-6 | Stale DESIGN.md Layer 2 documented old `TransportBinding` sum type | Updated to Node-based transport model. |
+
+### 2026-03-21 — semantic-boundary review
+
+Classified as invariant violations:
+
+- Rust emission still repairs semantics downstream instead of consuming a
+  fully classified boundary: `emit_typed_field_access` branches on
+  `.typed`, `.value`, `is_likely_optional_receiver(...)`, and
+  `emit_typed_expr` conditionally appends `.map(Rc::new)` via
+  `lookup_on_data_needs_rc_wrap(...)`. This violates "Heuristics
+  indicate lost structure" / "Explicit boundary contracts."
+- `lookup_in_scope` falls back to `lookup_func_sig(...).return_type` for
+  function-as-value references. That fabricates a non-callable value from
+  a callable binding and violates "Explicit boundary contracts" / "No
+  fallbacks that fabricate."
+- `node_type_equals` still contains permissive compatibility rules
+  (`Dynamic` matches anything, plus same-name/same-connective/same-child-count
+  fallback) that hide missing earlier normalization. This violates "No
+  fallbacks that fabricate" / "Explicit boundary contracts."
+- Reconcile downgrades semantic gaps to `Warning`
+  (`access_error` / `inference_error`), and `compile_sources` gates only
+  on `Error`, so emit still runs on known inference/access gaps. This is
+  a warning-permissive boundary rather than a fail-closed one.
+
+Not invariant violations by themselves:
+
+- Roadmap/docs drift (`A7 full retirement`, `P1b done`, acceptance text
+  that still names future work).
+- Loose ratchets (`SELF_COMPILE_ERROR_RATCHET == 2700`) and unlanded
+  StageMetrics/performance-contract work. These are backlog/test debt,
+  not direct invariant violations until a concrete boundary or algorithm
+  violates a stated rule.
+
+---
+
+## Open Debt
+
+Three root causes account for ~50 individual sites. Fixing the root causes
+eliminates the symptoms; fixing symptoms individually is whack-a-mole.
+
+---
+
+### Root Cause A: Reconcile→Emit Boundary is Information-Lossy
+
+**Invariants violated:** Explicit boundary contracts, Heuristics indicate lost
+structure, No fallbacks that fabricate.
+
+**The problem:** Reconcile computes semantic facts (field access style, method
+classification, function-vs-value, fold accumulator type, optional unwrap,
+call→method bridging, Rc ownership) but does not attach them to output nodes.
+Emit receives typed Nodes with `return_type` populated and must re-derive
+everything else — producing 16+ compensation patterns including heuristic
+scans, string-dispatch ladders, and global map lookups.
+
+**Design decision required:** Define the reconcile→emit boundary contract.
+Reconcile must attach per-expression classification so emit only translates.
+Candidate approach: enrich ExprData variants with the facts reconcile already
+computes (access style on ExprFieldAccess, intrinsic ID on ExprMethodCall,
+callable-vs-value on ExprVar, accumulator type on fold calls).
+
+This replaces the Multi-Walk Refactor Program P0–P3 items in ROADMAP.md —
+the real motivation is boundary completeness, not performance. The perf win
+is a side effect of not re-scanning.
+
+| # | What reconcile computes | Where it's lost | How emit compensates |
+|---|------------------------|-----------------|---------------------|
+| A-1 | Field access style (StoredField / EnumAccessor / OptionalUnwrap) — `build_field_summaries_*` at `04_reconcile.dag:1070-1175` | Not attached to ExprFieldAccess nodes | `emit_typed_field_access` calls `lookup_emit_field_summary_in_scope` at codegen time (redundant); `is_likely_optional_receiver` scans all type_summaries; `is_optional_field_in_any_type` / `is_enum_accessor_in_any_type` do global sweeps (`05_emit_rust.dag:1576-1601`) |
+| A-2 | Method classification (which intrinsic, return type shape) — `infer_method_call_type_node` at `04_reconcile.dag:1284-1340` | Only return type attached; no method-kind tag | Emit re-dispatches via `classify_intrinsic_method` (`05_emit.dag:195-212`) and `emit_typed_method_call` ladder (`05_emit_rust.dag:2091+`). 40+ string branches in reconcile, ~20 in emit. |
+| A-3 | Call→MethodCall bridging — `04_reconcile.dag:1825-1841` | Bridge decision not recorded on node | Emit reverse-engineers via `rt_functions` / `rt_ref_map_functions` map lookups (`05_emit_rust.dag:2093-2103`) |
+| A-4 | Function-as-value reference — `lookup_in_scope` fallback to `lookup_func_sig` at `04_reconcile.dag:751-754` | ExprVar node gets return type only; callable-vs-value distinction lost | Emit cannot distinguish function reference from local binding (SB-1). Fabricates value type from callable's return type. |
+| A-5 | Fold accumulator type — computed at `04_reconcile.dag:1756-1788` | Not attached to MethodCall node | Emit has no access; falls back to Dynamic for unresolvable cases |
+| A-6 | Rc-wrapping requirement — known per type during reconcile | Not per-expression; stored only in global `rc_types` map | Emit uses 4 fallback strategies: `is_rc_wrapped_scrutinee` (line 2151), `arms_need_rc_deref` (line 2162), `arms_need_option_rc_deref` (line 2216), `lookup_on_data_needs_rc_wrap` (line 1852 — extracts table name string from first arg) |
+| A-7 | Variant→parent enum mapping — resolved during type resolution | Only available via global `vtoe` map, not per-expression | Emit builds module-local vtoe disambiguation (`05_emit_rust.dag:430-467`); `emit_var_ref` does fallback lookup (line 1508) |
+| A-8 | Dynamic/error type propagation — `node_is_dynamic` at `04_reconcile.dag:900` | Error state encoded as `string_contains("<error:")` in type name | Emit replicates check at `05_emit_rust.dag:1473`; `node_type_equals` treats Dynamic as universally compatible (SB-2) |
+| A-9 | Lambda parameter types — unresolved when collection type is Dynamic | Bound to `Dynamic` in `extend_scope_for_lambda` (`05_emit_rust.dag:1959`) | Auto-wrap disabled entirely (`let needs_wrap = false` at line 2445) because `is_already_optional` can't detect Optional inside Dynamic-typed lambdas |
+| A-10 | Primitive/collection type identity — structurally known | Only available as type name strings | Emit hardcodes `"Int"`, `"Bool"`, `"Float"`, `"List"`, `"Map"`, `"Set"`, `"String"` in name-matching functions (`05_emit_rust.dag:1145-1150`, `882-908`, `1488-1494`) |
+
+**Previously tracked as:** F6, F7, SB-1, SB-2
+
+---
+
+### Root Cause B: Closed Sets Dispatched as Strings
+
+**Invariants violated:** No case enumeration for open sets, No parallel
+implementations.
+
+**The problem:** Several finite, known-at-compile-time sets are encoded as
+strings and dispatched via `if x == "..."` ladders across multiple files.
+Adding a value to any set requires editing every dispatch site — there is
+no compiler-enforced exhaustiveness.
+
+**Design decision required (methods only):** Are method/builtin intrinsics a
+closed compiler-known set (→ enum) or structural DSL-defined facts the
+compiler discovers? The language thesis says "smart facts + dumb compiler,"
+so methods should eventually be data declarations in `.dag`. Pragmatically,
+an `IntrinsicId` enum is the right intermediate step — it centralizes the
+set and gives exhaustiveness checking. The enum definition becomes the single
+authority; reconcile tags each call with an `IntrinsicId`; emit matches on
+the enum instead of strings.
+
+Transport kind, item kind, and type structure are mechanical enum conversions
+with no design ambiguity.
+
+| # | Closed set | Values | Dispatch sites | Files affected |
+|---|-----------|--------|---------------|----------------|
+| B-1 | Transport kind | rest, shell, file, local | 21 | 04_reconcile, 05_emit_rust, 05_emit_go, 05_emit_python |
+| B-2 | Item kind (`classify_typed_item`) | type_def, type_alias, function, data_def, service_def, resource_def, extern_func, unhandled | 8 dispatch chains | 05_emit, 05_emit_rust, 05_emit_go, 05_emit_python |
+| B-3 | Type structure (`classify_type_structure`) | leaf, conj, disj | 3 dispatch chains | 05_emit, 05_emit_rust, 05_emit_go, 05_emit_python |
+| B-4 | Method/builtin intrinsics | ~35 methods + ~20 builtins | ~60 string branches | 04_reconcile (inference), 05_emit (classification), 05_emit_rust (lowering) |
+| B-5 | Operation modifiers | idempotent, readonly, hermetic | 1 filter expression | 05_emit_rust:2836 |
+| B-6 | Config property names | base_url, auth_scheme, auth_header, auth_token | `config_names` list + constructors + accessors | 00_core.dag (triple representation) |
+
+**Previously tracked as:** TD-2, TD-3, F7 (partially — the emit-side ladder is Root Cause A)
+
+---
+
+### Root Cause C: Errors Propagate as Valid-Looking Fabrications
+
+**Invariants violated:** No fallbacks that fabricate, Explicit boundary
+contracts, Correctness by construction.
+
+**The problem:** When the compiler encounters an error (missing argument,
+unresolved type, unknown function), it fabricates a valid-looking node
+(LitNull, Dynamic, `<error:*>` string) and continues. This lets broken
+programs reach emit, which generates invalid target code containing
+sentinels like `<error:unknown_with_type>` or empty strings.
+
+**Design decision required:** Structural error representation. Currently
+error state is encoded as:
+- `LitNull` with `return_type: none` (37 sites across parser/reconcile/emit)
+- `Dynamic` type name (universal compat in `node_type_equals`)
+- `<error:*>` strings detected by `string_contains` (2 check sites, 4 production sites)
+- `Warning` severity for semantic errors (`access_error`, `inference_error`)
+
+The fix: make error a structural variant — either an `ExprError` in ExprData
+or a flag on Node — so downstream phases can test `is_error(node)` without
+string parsing. Emit skips error nodes (or emits `compile_error!()`) instead
+of translating fabricated values. Reconcile promotes `access_error` /
+`inference_error` to Error severity so `compile_sources` gates correctly.
+
+Parser LitNull recovery (23 sites in `02_parse.dag`) is a separate concern —
+parser error recovery that produces dummy nodes with attached error
+diagnostics is standard practice. The issue is that reconcile and emit don't
+recognize these as error nodes and try to process them normally.
+
+| # | Pattern | Sites | Where |
+|---|---------|-------|-------|
+| C-1 | LitNull sentinel for missing arguments | 5 | `05_emit_rust.dag:1751,1752,1760,1761,1786` |
+| C-2 | LitNull sentinel for missing defaults/config | 9 | `04_reconcile.dag:3025,3053,3114,3158,3165,3172,3272,3293,3510` |
+| C-3 | LitNull dummy for parser error recovery | 23 | `02_parse.dag` (throughout) |
+| C-4 | `<error:*>` placeholder types | 4 production | `04_reconcile.dag:1531,1698,1861,2255` |
+| C-5 | `<error:*>` detection via string_contains | 2 check | `04_reconcile.dag:900`, `05_emit_rust.dag:1473` |
+| C-6 | `<error:unknown_*>` sentinels in emit | 2 | `05_emit_rust.dag:1766,2117` |
+| C-7 | Dynamic as universal compatibility | multiple | `node_type_equals` in `04_reconcile.dag:901+`; `extend_scope_for_lambda` in `05_emit_rust.dag:1959` |
+| C-8 | Warning severity for semantic errors | 2 helpers | `access_error` / `inference_error` at `04_reconcile.dag:1236,1245`; `compile_sources` gates on Error only |
+| C-9 | Empty node / empty string fabrication | 2 | `05_emit_rust.dag:819` (empty Node for missing field), `05_emit_rust.dag:3368` (LitNull → "") |
+| C-10 | `Rc::try_unwrap` clone fallback (v1) | 1 | `fn_codegen.rs:3783` — blocked on Track D ownership proof |
+
+**Previously tracked as:** TD-7, SB-2, SB-3
+
+---
+
+### Cleanup
+
+| # | Severity | Description |
+|---|----------|-------------|
+| F5 | LOW | `infer → reconcile` rename lacks documented contract justification. |
+| SG-9 | LOW | .dag workarounds for force_clone (TokPos extraction, branch-aware use counting). Revert after verification at scale — may be redundant after R9. |

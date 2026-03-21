@@ -331,19 +331,13 @@ itself a Required binding. The recursion bottoms out at kernel types.
 ## Layer 2: Normalized Core Syntax
 
 Tokens (unchanged, ~75 variants). AST Items (unchanged — 7 Item
-variants). Expressions (unchanged — 16 Expr variants). The parser
-performs desugarings (`|>` → MethodCall, `pattern`/`interface` →
+variants). Expressions: ExprData discriminator on Node (21 variants).
+The parser performs desugarings (`|>` → MethodCall, `pattern`/`interface` →
 FuncDef) — the AST represents core syntax, not every surface spelling.
 
-Service/Transport at AST level:
-
-```dag
-type TransportBinding
-  = RestBinding { base_url: Expr, auth: AuthConfig?, headers: List<HeaderDef> }
-  | ShellBinding { argv: List<Expr>, env: List<EnvDef> }
-  | FileBinding { base_path: Expr }
-  | LocalBinding
-```
+Transport is a Node where `name` = kind ("rest"/"shell"/"file"/"local"),
+`properties` = config as FieldInit entries, `children` = ordered argv
+(shell only). Constructor helpers in `00_core.dag`.
 
 ## Layer 3: Semantic Model
 

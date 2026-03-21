@@ -804,7 +804,7 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
 
 fn render_literal(lit: &Literal, opts: RenderOpts) -> String {
     match lit {
-        Literal::Int(n) => n.to_string(),
+        Literal::Int(n) => format!("{n}_i64"),
         Literal::Float(f) => format!("{f:?}"),
         Literal::String(s) => {
             let escaped = escape_rust_string(s);
@@ -2258,7 +2258,7 @@ mod tests {
         let items = datadef_to_code_ir(&dd);
         match &items[0] {
             code_ir::Item::Raw(s) => {
-                assert_eq!(s, "pub static BOX_WIDTH: i64 = 60;");
+                assert_eq!(s, "pub static BOX_WIDTH: i64 = 60_i64;");
             }
             _ => panic!("expected Raw"),
         }
