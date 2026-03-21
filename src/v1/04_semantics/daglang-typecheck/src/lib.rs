@@ -6465,7 +6465,7 @@ fn validate_type_expr(
                             errors.push(TypeError::UnsatisfiableRefinement {
                                 ty: type_expr_to_string(inner),
                                 constraint: format!(
-                                    "unknown content encoding `{enc}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                                    "unknown content encoding `{enc}` — expected one of: Text, UTF8, ASCII, Latin1, Binary"
                                 ),
                             });
                         }
@@ -6556,7 +6556,8 @@ fn resolve_generic_arity(
 
 fn canonical_content_encoding(raw: &str) -> Option<String> {
     match raw {
-        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => Some(raw.to_string()),
+        // `Unknown` is an internal lattice top, not a user-authored refinement.
+        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" => Some(raw.to_string()),
         _ => None,
     }
 }
@@ -6569,7 +6570,6 @@ fn str_to_content_encoding(raw: &str) -> Option<gunbc_ir::type_op::ContentEncodi
         "ASCII" => Some(ContentEncoding::ASCII),
         "Latin1" => Some(ContentEncoding::Latin1),
         "Binary" => Some(ContentEncoding::Binary),
-        "Unknown" => Some(ContentEncoding::Unknown),
         _ => None,
     }
 }

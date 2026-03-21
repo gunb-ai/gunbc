@@ -2185,6 +2185,23 @@ fn run(value: Int where range(min: 5, max: 1)) -> Int { value }"#,
 }
 
 #[test]
+fn content_unknown_refinement_is_rejected() {
+    let graph = module_graph_from_sources(&[(
+        "unknown_content_refinement.dag",
+        r#"module sample.refinement
+fn run(value: String where content(Unknown)) -> String { value }"#,
+    )]);
+    let errors = typecheck_module_graph(&graph).expect_err("content(Unknown) should fail");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnsatisfiableRefinement { ty, constraint }
+            if ty == "String"
+                && constraint
+                    == "unknown content encoding `Unknown` — expected one of: Text, UTF8, ASCII, Latin1, Binary"
+    )));
+}
+
+#[test]
 fn generic_arity_mismatch_is_reported() {
     let graph = module_graph_from_sources(&[(
         "generic_arity_mismatch.dag",
