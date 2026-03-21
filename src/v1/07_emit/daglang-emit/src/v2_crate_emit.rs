@@ -276,6 +276,13 @@ fn collect_embedded_dag_sources() -> Vec<EmbeddedDagSource> {
 }
 
 fn rust_mod_for_module_path(path: &str) -> String {
+    // extdeps.languages.rust.emit → rust_emit (language + leaf to avoid collision)
+    if let Some(rest) = path.strip_prefix("extdeps.languages.") {
+        let parts: Vec<&str> = rest.split('.').collect();
+        if parts.len() >= 2 {
+            return format!("{}_{}", parts[0], parts[parts.len() - 1]).replace('-', "_");
+        }
+    }
     let leaf = path.rsplit('.').next().unwrap_or(path);
     match leaf {
         "core" => "v2_core".to_string(),
@@ -533,6 +540,35 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         })
         .collect();
 
+    // Cross-module data names: all data declarations across all modules.
+    // Needed so that imported data references (e.g., `rust_type_map` imported
+    // from extdeps) are correctly emitted as SCREAMING_SNAKE_CASE statics.
+    let global_data_names: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd) => Some(dd.name.clone()),
+                _ => None,
+            })
+        })
+        .collect();
+    let global_data_map_names: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd) => {
+                    if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Generic(name, _) if name == "Map")
+                    {
+                        Some(dd.name.clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+        })
+        .collect();
+
     // 5. Emit each module, tracking type definitions to suppress exact duplicates
     // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
     // structurally identical types get their duplicate definitions suppressed,
@@ -597,6 +633,8 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &enum_accessor_fields,
             &global_optional_return_fns,
             &global_fn_str_params,
+            &global_data_names,
+            &global_data_map_names,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -856,7 +894,10 @@ fn module_prelude(source_file: &SourceFile) -> String {
         }
         if dotted != current_module {
             let rust_mod = rust_mod_for_module_path(&dotted);
-            prelude.push_str(&format!("use crate::{}::*;\n", rust_mod));
+            let current_rust_mod = rust_mod_for_module_path(&current_module);
+            if rust_mod != current_rust_mod {
+                prelude.push_str(&format!("use crate::{}::*;\n", rust_mod));
+            }
         }
     }
 
@@ -896,32 +937,32 @@ fn emit_module(
     enum_accessor_fields: &HashMap<String, HashSet<String>>,
     optional_return_fns: &HashSet<String>,
     global_fn_str_params: &HashSet<(String, usize)>,
+    global_data_names: &HashSet<String>,
+    global_data_map_names: &HashSet<String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
-    // Collect data names for compile context
-    let data_names: HashSet<String> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::DataDef(dd) => Some(dd.name.clone()),
-            _ => None,
-        })
-        .collect();
+    // Collect data names for compile context — union of local and cross-module.
+    // Cross-module data is needed so that imported data references (e.g., from
+    // extdeps) are correctly emitted as SCREAMING_SNAKE_CASE statics.
+    let mut data_names: HashSet<String> = global_data_names.clone();
+    data_names.extend(items.iter().filter_map(|item| match &item.node {
+        Item::DataDef(dd) => Some(dd.name.clone()),
+        _ => None,
+    }));
 
     // Collect data names that are Map types (need `&` reference instead of `.clone()`)
-    let data_map_names: HashSet<String> = items
-        .iter()
-        .filter_map(|item| match &item.node {
-            Item::DataDef(dd) => {
-                if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Generic(name, _) if name == "Map") {
-                    Some(dd.name.clone())
-                } else {
-                    None
-                }
+    let mut data_map_names: HashSet<String> = global_data_map_names.clone();
+    data_map_names.extend(items.iter().filter_map(|item| match &item.node {
+        Item::DataDef(dd) => {
+            if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Generic(name, _) if name == "Map") {
+                Some(dd.name.clone())
+            } else {
+                None
             }
-            _ => None,
-        })
-        .collect();
+        }
+        _ => None,
+    }));
 
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
