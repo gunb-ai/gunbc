@@ -1643,8 +1643,8 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
           EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
           StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
         }
-      // Dynamic-typed bases have no reconcile summary; fall back to field clone.
-      None => concat(base_str, ".", rust_ident(name: field), ".clone()")
+      // Every field access must have a summary set by reconcile.
+      None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
     }
   }
 }

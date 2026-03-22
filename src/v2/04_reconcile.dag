@@ -2058,32 +2058,41 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: base_diags
           }
         None =>
-          match check_service_field_access_node(base_type: base_typed.return_type.value, field: field_name, scope: scope) {
-            Some { value: svc_type } =>
-              let fa_texpr = make_expr_node(
-                expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: none },
-                return_type: Some { value: svc_type },
-                span: span
-              )
-              InferResult {
-                typed: fa_texpr,
-                diagnostics: base_diags
-              }
-            None =>
-              let error_message = if node_is_dynamic(n: resolved_base) {
-                concat("cannot resolve field '", concat(field_name, "' on Dynamic base"))
-              } else {
-                concat("no field '", field_name, "' on type")
-              }
-              let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
-              InferResult {
-                typed: fa_texpr,
-                diagnostics: concat(base_diags, [inference_error(
-                  message: error_message,
-                  span: span,
-                  module_name: scope.module_name
-                )])
-              }
+          // Dynamic bases: field access is always permitted (type unknown).
+          if node_is_dynamic(n: resolved_base) {
+            let fa_texpr = make_expr_node(
+              expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
+              return_type: Some { value: leaf_node(name: "Dynamic") },
+              span: span
+            )
+            InferResult {
+              typed: fa_texpr,
+              diagnostics: base_diags
+            }
+          } else {
+            match check_service_field_access_node(base_type: base_typed.return_type.value, field: field_name, scope: scope) {
+              Some { value: svc_type } =>
+                let fa_texpr = make_expr_node(
+                  expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
+                  return_type: Some { value: svc_type },
+                  span: span
+                )
+                InferResult {
+                  typed: fa_texpr,
+                  diagnostics: base_diags
+                }
+              None =>
+                let error_message = concat("no field '", field_name, "' on type")
+                let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
+                InferResult {
+                  typed: fa_texpr,
+                  diagnostics: concat(base_diags, [inference_error(
+                    message: error_message,
+                    span: span,
+                    module_name: scope.module_name
+                  )])
+                }
+            }
           }
       }
 
