@@ -3,8 +3,8 @@
 // Encoding lattice for classifying byte-sequence interpretation.
 // This is a type-level vocabulary; the lattice structure
 // (subtyping, join, meet) is defined in the Rust ContentEncoding enum.
-// `Unknown` is the internal lattice top; user-authored `content(...)`
-// refinements must name one of the concrete encodings below.
+// `Unknown` is the lattice top and remains part of the user-authored
+// `content(...)` vocabulary for explicitly unconstrained content.
 
 module std.encoding
 

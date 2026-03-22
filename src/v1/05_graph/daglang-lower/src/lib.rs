@@ -4111,11 +4111,23 @@ fn resolve_loop_body_service_endpoint(
 fn clone_loop_body_callable_node(
     source_dag: &Dag<LoweredOp>,
     endpoint: &LoweredEndpoint,
+    all_fn_bodies: &std::collections::BTreeMap<String, LoweredFnBody>,
     suffix: &str,
 ) -> Option<(Node<LoweredOp>, LoweredEndpoint)> {
     let mut node = source_dag
         .get_node(&NodeId::new(endpoint.node_id.clone()))?
         .clone();
+    if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+        kind: CallableKind::Fn,
+        name,
+        fn_body,
+        ..
+    }) = &mut node.body
+    {
+        if fn_body.is_none() {
+            *fn_body = all_fn_bodies.get(name).cloned().map(Box::new);
+        }
+    }
     let node_id = format!("{}_{}", endpoint.node_id, suffix);
     node.id = NodeId::new(node_id.clone());
     node.static_fingerprint = None;
@@ -4251,21 +4263,11 @@ fn wire_loop_body_named_args(
     args: &[(Option<String>, Expr)],
     dest_node_id: &str,
 ) {
-    let empty_arg_map = HashMap::new();
-    let empty_node_outputs = HashMap::new();
     for (arg_name, arg_expr) in args {
         let Some(arg_name) = arg_name.as_deref() else {
             continue;
         };
-        wire_pattern_arg_to_prepare(
-            builder,
-            ctx,
-            arg_name,
-            arg_expr,
-            dest_node_id,
-            &empty_arg_map,
-            &empty_node_outputs,
-        );
+        wire_caller_expr_to_node(builder, ctx, arg_expr, dest_node_id, arg_name);
     }
 }
 
@@ -4328,11 +4330,13 @@ fn make_loop_body_dag_from_stmts(
     let empty_data = HashMap::<String, serde_json::Value>::new();
     let mut bound_callable_sources = HashMap::<String, LoweredEndpoint>::new();
     let mut bound_service_sources = HashMap::<String, ServiceTransportEndpoint>::new();
+    let mut trailing_return_source = None::<LoweredEndpoint>;
     let empty_expanded = HashMap::<String, PatternExpansionResult>::new();
     let empty_locals = HashMap::new();
     let empty_endpoints_full = HashMap::new();
 
     for (stmt_index, stmt) in site.body_stmts.iter().enumerate() {
+        let is_tail_stmt = stmt_index + 1 == site.body_stmts.len();
         let (binding_name, expr) = match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => (Some(name.as_str()), expr),
             Stmt::Node(node_stmt) => (Some(node_stmt.name.as_str()), &node_stmt.expr),
@@ -4352,7 +4356,7 @@ fn make_loop_body_dag_from_stmts(
                 };
                 let suffix = format!("body_call_{index}_{stmt_index}");
                 let Some((node, cloned_endpoint)) =
-                    clone_loop_body_callable_node(source_dag, endpoint, &suffix)
+                    clone_loop_body_callable_node(source_dag, endpoint, ctx.all_fn_bodies, &suffix)
                 else {
                     continue;
                 };
@@ -4384,7 +4388,10 @@ fn make_loop_body_dag_from_stmts(
                     cloned_endpoint.node_id.as_str(),
                 );
                 if let Some(binding_name) = binding_name {
-                    bound_callable_sources.insert(binding_name.to_string(), cloned_endpoint);
+                    bound_callable_sources
+                        .insert(binding_name.to_string(), cloned_endpoint.clone());
+                } else if is_tail_stmt {
+                    trailing_return_source = Some(cloned_endpoint);
                 }
             }
             Expr::ServiceCall(path, args) => {
@@ -4428,7 +4435,9 @@ fn make_loop_body_dag_from_stmts(
                     cloned_endpoint.prepare_node_id.as_str(),
                 );
                 if let Some(binding_name) = binding_name {
-                    bound_service_sources.insert(binding_name.to_string(), cloned_endpoint);
+                    bound_service_sources.insert(binding_name.to_string(), cloned_endpoint.clone());
+                } else if is_tail_stmt {
+                    trailing_return_source = Some(cloned_endpoint.parse.clone());
                 }
             }
             _ => {}
@@ -4468,16 +4477,26 @@ fn make_loop_body_dag_from_stmts(
         local_let_bindings: &local_let_bindings,
         ..expansion_ctx
     };
-    if wire_callable_return_outputs(
+    let return_wiring = wire_callable_return_outputs(
         &mut builder,
         &return_ctx,
         site.body_stmts.as_slice(),
         &body_target,
-    )
-    .is_err()
-    {
-        // Loop body return wiring failed — cannot construct body DAG.
+    );
+    if return_wiring.is_err() && trailing_return_source.is_none() {
+        // Loop body return wiring failed and there is no pre-cloned trailing
+        // call/service source to reuse as the implicit loop-body result.
         return Ok(None);
+    }
+    if !builder.has_edge_to_port(body_target.node_id.as_str(), "__out:result") {
+        if let Some(source) = &trailing_return_source {
+            builder.add_edge(
+                source.node_id.as_str(),
+                source.primary_output.as_str(),
+                body_target.node_id.as_str(),
+                "__out:result",
+            );
+        }
     }
 
     let resolved_element_type = Some(element_port_type.clone());
@@ -8260,6 +8279,7 @@ fn add_service_call_edges(
                 ..fn_ctx
             };
             wire_for_loop_iterables(builder, &loop_ctx, stmts, target);
+            wire_for_loop_passthrough_bindings(builder, &loop_ctx, stmts, target);
             // Skip return wiring for fn items: FnBodyCallableOp evaluates
             // the body directly. Enabling passthrough wiring for these items
             // would be unsafe because callable endpoints are shared and
@@ -10372,14 +10392,17 @@ fn collect_return_bindings(stmts: &[Stmt], output_ports: &[Port]) -> Vec<(String
         let mut trailing_expr = None;
         for stmt in stmts {
             match stmt {
-                Stmt::Expr(expr) => trailing_expr = Some(expr),
-                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Node(..) | Stmt::Return(_) => {
+                Stmt::Expr(expr) => trailing_expr = Some(expr.clone()),
+                Stmt::Node(node_stmt) => {
+                    trailing_expr = Some(Expr::Ident(node_stmt.name.clone()));
+                }
+                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Return(_) => {
                     trailing_expr = None;
                 }
             }
         }
         if let Some(expr) = trailing_expr {
-            return vec![(output_names[0].clone(), expr.clone())];
+            return vec![(output_names[0].clone(), expr)];
         }
     }
 
@@ -12307,6 +12330,23 @@ fn wire_for_loop_iterables(
                     );
                 }
             }
+        }
+    }
+}
+
+/// Wire `with(...)` passthrough bindings into their corresponding loop node inputs.
+fn wire_for_loop_passthrough_bindings(
+    builder: &mut DagBuilder,
+    ctx: &LoweringContext<'_>,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+) {
+    let for_sites = detect_for_loops_in_stmts(stmts);
+    for (index, site) in for_sites.iter().enumerate() {
+        let loop_node_id = format!("{}::cf_for_{index}", target.node_id);
+        for passthrough in &site.passthrough {
+            let expr = Expr::Ident(passthrough.clone());
+            wire_caller_expr_to_node(builder, ctx, &expr, loop_node_id.as_str(), passthrough);
         }
     }
 }

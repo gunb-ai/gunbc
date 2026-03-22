@@ -332,11 +332,7 @@ impl Executable for SubDagDispatchOp {
                 continue;
             }
             if port_name.0 == PortName::DEPS {
-                input_mocks.set_input(
-                    node_id.0,
-                    port_name.0,
-                    Value::List(std::sync::Arc::new(Vec::new())),
-                );
+                input_mocks.set_input(node_id.0, port_name.0, Value::List(std::sync::Arc::new(Vec::new())));
             }
         }
         let execution = gunbc_test::boundary::execute_via_engine_with_inputs(
@@ -1326,8 +1322,48 @@ mod tests {
     use daglang_lower::{
         CallableKind, CallableObligation, PrimitiveLiteral, PrimitiveOpKind, TransportObligation,
     };
+    use daglang_resolve::{ModuleGraph, ResolvedModule};
+    use daglang_syntax::parser;
+    use daglang_typecheck::typecheck_owned_module_graph;
     use gunbc_exec::{execute_dag, BoundaryMocks, ExecuteConfig, ExecutionMode};
-    use gunbc_ir::{Node, Port};
+    use gunbc_ir::{Node, Port, Value};
+    use std::path::PathBuf;
+
+    fn module_graph_from_sources(sources: &[(&str, &str)]) -> ModuleGraph {
+        let modules = sources
+            .iter()
+            .map(|(path, source)| {
+                let ast = parser::parse(source).expect("source should parse");
+                let module_path = ast
+                    .module_path
+                    .as_ref()
+                    .map(|module| module.node.clone())
+                    .expect("module declaration is required");
+                ResolvedModule {
+                    path: PathBuf::from(path),
+                    ast,
+                    module_path,
+                    dependencies: Vec::new(),
+                    source: source.to_string(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let module_lookup = modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| (module.module_path.clone(), index))
+            .collect::<HashMap<_, _>>();
+        let mut modules = modules;
+        for module in &mut modules {
+            module.dependencies = module
+                .ast
+                .imports
+                .iter()
+                .filter_map(|import| module_lookup.get(&import.node.path).copied())
+                .collect::<Vec<_>>();
+        }
+        ModuleGraph { modules }
+    }
 
     fn callable_node(
         id: &str,
@@ -1384,6 +1420,79 @@ mod tests {
 
     // NOTE: resolve_tools_infra_entrypoint_emits_plan_summary test moved to
     // gunbc-tests (requires GunbcExternResolver for tools.infra::infra dispatch).
+
+    #[test]
+    fn for_expression_with_passthrough_bindings_executes_end_to_end() {
+        let typed = typecheck_owned_module_graph(module_graph_from_sources(&[(
+            "sample/for_scope_exec.dag",
+            r#"module sample.for_scope_exec
+type Repo {
+  name: String
+}
+fn render(repo: Repo, owner: String) -> String {
+  repo.name + ":" + owner
+}
+func run(repos: List<Repo>, owner: String) -> { out: List<String> } {
+  result = for repo in with(repos, { owner: owner }) { render(repo: repo, owner: owner) }
+  return { out: result }
+}"#,
+        )]))
+        .expect("typecheck should succeed");
+        let lowered = daglang_lower::lower_to_output(&typed).expect("lowering should succeed");
+        let resolved = crate::builder::resolve_compiled_dsl(
+            "sample/for_scope_exec.dag",
+            crate::builder::BuildOpts {
+                entry_func: Some("run"),
+                ..Default::default()
+            },
+            crate::builder::CompileLoweredResult {
+                dag: lowered.dag,
+                dsl_type_registry: typed.dsl_type_registry().clone(),
+                inferred_entrypoints: lowered.inferred_entrypoints,
+                callable_properties: std::collections::BTreeMap::new(),
+            },
+        )
+        .expect("entrypoint slice should resolve");
+
+        let repo = |name: &str| {
+            Value::Map(std::collections::BTreeMap::from([(
+                "name".to_string(),
+                Value::Str(name.to_string()),
+            )]))
+        };
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input(
+            "sample.for_scope_exec::run",
+            "repos",
+            Value::List(std::sync::Arc::new(vec![repo("alpha"), repo("beta")])),
+        );
+        mocks.set_input(
+            "sample.for_scope_exec::run",
+            "owner",
+            Value::Str("octocat".to_string()),
+        );
+
+        let log = execute_dag(
+            &resolved.dag,
+            ExecuteConfig {
+                mode: ExecutionMode::Real,
+                input_mocks: Some(&mocks),
+                ..Default::default()
+            },
+        )
+        .expect("entrypoint execution should succeed");
+
+        let run_entry = log
+            .get("sample.for_scope_exec::run")
+            .expect("entrypoint should execute");
+        assert_eq!(
+            run_entry.outputs.get("out"),
+            Some(&Value::List(std::sync::Arc::new(vec![
+                Value::Str("alpha:octocat".to_string()),
+                Value::Str("beta:octocat".to_string()),
+            ])))
+        );
+    }
 
     #[test]
     fn resolve_pipeline_node_is_skipped() {
@@ -1993,11 +2102,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(std::sync::Arc::new(vec![
-                Value::Int(1),
-                Value::Int(2),
-                Value::Int(3),
-            ])),
+            Value::List(std::sync::Arc::new(vec![Value::Int(1), Value::Int(2), Value::Int(3)])),
         );
         let outputs = result
             .execute(inputs)

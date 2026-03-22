@@ -23,4 +23,7 @@ serde_json = { workspace = true }
 compile = ["dep:daglang-driver"]
 
 [dev-dependencies]
+daglang-resolve = { path = "../../03_source/daglang-resolve" }
+daglang-syntax = { path = "../../03_source/daglang-syntax" }
+daglang-typecheck = { path = "../../04_semantics/daglang-typecheck" }
 gunbc-test = { path = "../../10_test/test" }

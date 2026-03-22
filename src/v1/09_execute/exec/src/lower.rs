@@ -543,6 +543,14 @@ fn lower_loop_subdag<T: Clone>(
                 unpack_node.inputs.push(parent_port.clone());
             }
         }
+        for port_name in &extra_input_ports {
+            if unpack_node.outputs.iter().any(|p| p.name.0 == *port_name) {
+                continue;
+            }
+            if let Some(parent_port) = parent_node.inputs.iter().find(|p| p.name.0 == *port_name) {
+                unpack_node.outputs.push(parent_port.clone());
+            }
+        }
     }
 
     // Build port mapping for parent: the parent's input ports map to unpack,

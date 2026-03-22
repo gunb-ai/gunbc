@@ -292,8 +292,9 @@ pub fn classify_functions(
         } else {
             let name = &scc[0];
             let callees = adj.get(name);
-            let has_project_callees =
-                callees.is_some_and(|c| c.iter().any(|callee| adj.contains_key(callee)));
+            let has_project_callees = callees.is_some_and(|c| {
+                c.iter().any(|callee| adj.contains_key(callee))
+            });
             if has_project_callees {
                 classifications.insert(name.clone(), FunctionClass::Interior);
             } else {
@@ -2046,7 +2047,10 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext, counter: &mut usize) -> 
                         )
                     } else if matches!(
                         op,
-                        ast::BinOp::Lt | ast::BinOp::Gt | ast::BinOp::Le | ast::BinOp::Ge
+                        ast::BinOp::Lt
+                            | ast::BinOp::Gt
+                            | ast::BinOp::Le
+                            | ast::BinOp::Ge
                     ) {
                         if has_to_string(&compiled_left) && has_to_string(&compiled_right) {
                             (
@@ -6250,9 +6254,15 @@ fn infer_fold_value_type_from_body(expr: &ast::Expr, ctx: &CompileContext) -> Op
     match expr {
         ast::Expr::BinOp(
             _,
-            ast::BinOp::Add | ast::BinOp::Sub | ast::BinOp::Mul | ast::BinOp::Div | ast::BinOp::Mod,
+            ast::BinOp::Add
+            | ast::BinOp::Sub
+            | ast::BinOp::Mul
+            | ast::BinOp::Div
+            | ast::BinOp::Mod,
             _,
-        ) => Some(IrType::Int),
+        ) => {
+            Some(IrType::Int)
+        }
         ast::Expr::Call(name, args) if name == "concat" && !args.is_empty() => {
             // concat(list, [elem]) → List<typeof(elem)>
             args.iter().find_map(|(_, arg)| match arg {
@@ -7218,10 +7228,7 @@ fn is_hoistable_sl(expr: &code_ir::Expr, passthrough: &HashSet<&str>) -> Option<
                 if let Some(code_ir::Expr::Ref(inner)) = args.first() {
                     match inner.as_ref() {
                         code_ir::Expr::Var(name) if passthrough.contains(name.as_str()) => {
-                            return Some(HoistTarget {
-                                param: name.clone(),
-                                field: None,
-                            });
+                            return Some(HoistTarget { param: name.clone(), field: None });
                         }
                         // Match &param.field patterns like &source.text
                         code_ir::Expr::Field(receiver, field_name) => {
@@ -7259,7 +7266,9 @@ fn collect_hoistable_sl_expr(
                 collect_hoistable_sl_expr(a, passthrough, out);
             }
         }
-        code_ir::Expr::MethodCall { receiver, args, .. } => {
+        code_ir::Expr::MethodCall {
+            receiver, args, ..
+        } => {
             collect_hoistable_sl_expr(receiver, passthrough, out);
             for a in args {
                 collect_hoistable_sl_expr(a, passthrough, out);
@@ -7284,10 +7293,7 @@ fn collect_hoistable_sl_expr(
                 }
             }
         }
-        code_ir::Expr::Match {
-            expr: scrutinee,
-            arms,
-        } => {
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
             collect_hoistable_sl_expr(scrutinee, passthrough, out);
             for arm in arms {
                 for s in &arm.body {
@@ -7354,16 +7360,10 @@ fn replace_sl_expr(expr: &mut code_ir::Expr, hoist_targets: &HashSet<HoistTarget
             if segments.len() == 2 && segments[0] == "v2_rt" && segments[1] == "string_length" {
                 if let Some(code_ir::Expr::Ref(inner)) = args.first() {
                     let target = match inner.as_ref() {
-                        code_ir::Expr::Var(name) => Some(HoistTarget {
-                            param: name.clone(),
-                            field: None,
-                        }),
+                        code_ir::Expr::Var(name) => Some(HoistTarget { param: name.clone(), field: None }),
                         code_ir::Expr::Field(receiver, field_name) => {
                             if let code_ir::Expr::Var(name) = receiver.as_ref() {
-                                Some(HoistTarget {
-                                    param: name.clone(),
-                                    field: Some(field_name.clone()),
-                                })
+                                Some(HoistTarget { param: name.clone(), field: Some(field_name.clone()) })
                             } else {
                                 None
                             }
@@ -7389,7 +7389,9 @@ fn replace_sl_expr(expr: &mut code_ir::Expr, hoist_targets: &HashSet<HoistTarget
                 replace_sl_expr(a, hoist_targets);
             }
         }
-        code_ir::Expr::MethodCall { receiver, args, .. } => {
+        code_ir::Expr::MethodCall {
+            receiver, args, ..
+        } => {
             replace_sl_expr(receiver, hoist_targets);
             for a in args {
                 replace_sl_expr(a, hoist_targets);
@@ -7414,10 +7416,7 @@ fn replace_sl_expr(expr: &mut code_ir::Expr, hoist_targets: &HashSet<HoistTarget
                 }
             }
         }
-        code_ir::Expr::Match {
-            expr: scrutinee,
-            arms,
-        } => {
+        code_ir::Expr::Match { expr: scrutinee, arms } => {
             replace_sl_expr(scrutinee, hoist_targets);
             for arm in arms {
                 for s in &mut arm.body {

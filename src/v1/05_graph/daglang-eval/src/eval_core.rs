@@ -63,10 +63,13 @@ pub fn eval_literal(lit: &LoweredLiteral) -> Value {
 
 pub fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
     match base {
-        Value::Map(map) => map.get(field).cloned().ok_or_else(|| {
-            let keys: Vec<&String> = map.keys().collect();
-            EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
-        }),
+        Value::Map(map) => map
+            .get(field)
+            .cloned()
+            .ok_or_else(|| {
+                let keys: Vec<&String> = map.keys().collect();
+                EvalError::new(format!("no field '{field}' in map (keys: {keys:?})"))
+            }),
         Value::Json(json) => match json {
             serde_json::Value::Object(obj) => Ok(obj
                 .get(field)
@@ -587,9 +590,7 @@ pub fn eval_builtin_call(
             }
         }
         "map_values" => match args.first() {
-            Some((_, Value::Map(map))) => {
-                Ok(Value::List(Arc::new(map.values().cloned().collect())))
-            }
+            Some((_, Value::Map(map))) => Ok(Value::List(Arc::new(map.values().cloned().collect()))),
             _ => Err(EvalError::new("'map_values' requires a map")),
         },
         "map_keys" => match args.first() {
@@ -819,8 +820,8 @@ pub fn eval_builtin_call(
             if args.len() >= 2 {
                 match &args[0].1 {
                     Value::List(list) => {
-                        let mut v =
-                            Arc::try_unwrap(list.clone()).unwrap_or_else(|rc| (*rc).clone());
+                        let mut v = Arc::try_unwrap(list.clone())
+                            .unwrap_or_else(|rc| (*rc).clone());
                         v.push(args[1].1.clone());
                         Ok(Value::List(Arc::new(v)))
                     }

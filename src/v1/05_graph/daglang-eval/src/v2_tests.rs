@@ -613,7 +613,9 @@ fn kernel_substring_unicode() {
         vec![
             (
                 Some("s".to_string()),
-                LoweredExpr::Literal(LoweredLiteral::String("cafe\u{0301}test".to_string())),
+                LoweredExpr::Literal(LoweredLiteral::String(
+                    "cafe\u{0301}test".to_string(),
+                )),
             ),
             (
                 Some("start".to_string()),
@@ -626,7 +628,10 @@ fn kernel_substring_unicode() {
         ],
     );
     let result = crate::evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
-    assert_eq!(result["return"], gunbc_ir::Value::Str("test".to_string()));
+    assert_eq!(
+        result["return"],
+        gunbc_ir::Value::Str("test".to_string())
+    );
 }
 
 #[test]

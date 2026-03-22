@@ -1767,9 +1767,7 @@ fn eval_intrinsic_inner(
                         keyed.push((key, item.clone()));
                     }
                     keyed.sort_by(|a, b| a.0.cmp(&b.0));
-                    Ok(Value::List(Arc::new(
-                        keyed.into_iter().map(|(_, v)| v).collect(),
-                    )))
+                    Ok(Value::List(Arc::new(keyed.into_iter().map(|(_, v)| v).collect())))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
                 _ => Err(EvalError::new("sort_by requires a list")),
@@ -1808,9 +1806,7 @@ fn eval_intrinsic_inner(
                 (Value::Str(s), Some((_, e))) => Ok(Value::Bool(
                     s.contains(&value_to_string(&eval_expr(e, env, ctx)?)),
                 )),
-                _ => Err(EvalError::new(
-                    "string_contains requires string and substring",
-                )),
+                _ => Err(EvalError::new("string_contains requires string and substring")),
             }
         }
         "split" => {
@@ -2833,10 +2829,7 @@ mod tests {
         let r = evaluate_stack(&body, &inp, &HashMap::new(), &HashMap::new()).unwrap();
         assert_eq!(
             r["return"],
-            Value::List(Arc::new(vec![
-                Value::Str("a".into()),
-                Value::Str("b".into())
-            ]))
+            Value::List(Arc::new(vec![Value::Str("a".into()), Value::Str("b".into())]))
         );
     }
 

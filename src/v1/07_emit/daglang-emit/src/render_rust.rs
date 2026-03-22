@@ -293,10 +293,7 @@ fn render_ir_type(ty: &IrType) -> String {
             let rendered_args: Vec<String> = args.iter().map(render_ir_type).collect();
             match name.as_str() {
                 "List" => format!("Rc<Vec<{}>>", rendered_args.join(", ")),
-                "Map" => format!(
-                    "Rc<std::collections::HashMap<{}>>",
-                    rendered_args.join(", ")
-                ),
+                "Map" => format!("Rc<std::collections::HashMap<{}>>", rendered_args.join(", ")),
                 other => format!("{}<{}>", other, rendered_args.join(", ")),
             }
         }
@@ -1011,9 +1008,7 @@ mod tests {
     #[test]
     fn render_expr_method_call_parenthesizes_deref_receiver() {
         let expr = Expr::MethodCall {
-            receiver: Box::new(
-                Expr::Field(Box::new(Expr::var("item")), "return_type".to_string()).deref(),
-            ),
+            receiver: Box::new(Expr::Field(Box::new(Expr::var("item")), "return_type".to_string()).deref()),
             method: "unwrap".to_string(),
             args: vec![],
         };
