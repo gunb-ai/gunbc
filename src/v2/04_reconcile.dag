@@ -435,6 +435,11 @@ type AccessCheckResultNode {
   diagnostics: List<Diagnostic>
 }
 
+type KnownMethodResolution {
+  semantics: MethodSemantics?
+  result_type: Node?
+}
+
 type ArmInferResult {
   typed_arm: MatchArm
   diagnostics: List<Diagnostic>
@@ -1524,6 +1529,116 @@ fn classify_runtime_bridge_method(method: String, wrap_result_in_rc: Bool) -> Me
     Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: false, wrap_result_in_rc: wrap_result_in_rc } }
   } else {
     none
+  }
+}
+
+fn method_receiver_element_node(receiver_type: Node) -> Node {
+  let normed = normalize_access_type_node(n: receiver_type)
+  if normed.connective == none && normed.children |> count == 1 {
+    match normed.children |> first {
+      Some { value: el } => el
+      None => receiver_type
+    }
+  } else {
+    receiver_type
+  }
+}
+
+fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMethod, fold_accumulator_type: Node?) -> Node? {
+  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
+  match intrinsic {
+    MethodMap => Some { value: receiver_type }
+    MethodFilter => Some { value: receiver_type }
+    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
+    MethodFirst => Some { value: optional_node(inner: elem_node) }
+    MethodLast => Some { value: optional_node(inner: elem_node) }
+    MethodCount => Some { value: leaf_node(name: "Int") }
+    MethodJoin => Some { value: leaf_node(name: "String") }
+    MethodAny => Some { value: leaf_node(name: "Bool") }
+    MethodAll => Some { value: leaf_node(name: "Bool") }
+    MethodSplit => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    MethodChars => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    MethodFlatMap => Some { value: receiver_type }
+    MethodSkip => Some { value: receiver_type }
+    MethodFold => fold_accumulator_type
+    MethodSortBy => Some { value: receiver_type }
+    MethodAppend => Some { value: receiver_type }
+    MethodStringContains => Some { value: leaf_node(name: "Bool") }
+    MethodConcat => Some { value: receiver_type }
+  }
+}
+
+fn infer_runtime_bridge_method_type_node(receiver_type: Node, function_name: String) -> Node? {
+  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
+  if function_name == "get" {
+    Some { value: optional_node(inner: elem_node) }
+  } else if function_name == "list_push" || function_name == "with" || function_name == "map_insert" || function_name == "map_merge" {
+    Some { value: receiver_type }
+  } else if function_name == "map_get" {
+    Some { value: optional_node(inner: elem_node) }
+  } else if function_name == "map_has" || function_name == "emit_map_has" || function_name == "map_contains_key" || function_name == "contains" {
+    Some { value: leaf_node(name: "Bool") }
+  } else if function_name == "map_values" {
+    Some { value: container_node(kind_name: "List", element: elem_node) }
+  } else if function_name == "map_keys" {
+    Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+  } else if function_name == "char_at" || function_name == "string_at" {
+    Some { value: leaf_node(name: "String") }
+  } else if function_name == "string_length" || function_name == "length" {
+    Some { value: leaf_node(name: "Int") }
+  } else if function_name == "starts_with" || function_name == "ends_with" {
+    Some { value: leaf_node(name: "Bool") }
+  } else if function_name == "to_string" || function_name == "trim" || function_name == "to_lower" || function_name == "to_upper" || function_name == "replace" || function_name == "substring" {
+    Some { value: leaf_node(name: "String") }
+  } else if function_name == "to_int" {
+    Some { value: leaf_node(name: "Int") }
+  } else if function_name == "empty_map" {
+    Some { value: leaf_node(name: "Map") }
+  } else if function_name == "reverse" || function_name == "lookup" {
+    Some { value: receiver_type }
+  } else {
+    none
+  }
+}
+
+fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, scope: InferScope) -> KnownMethodResolution {
+  let wrap_result_in_rc = if method_name == "map_get" {
+    data_lookup_needs_rc_wrap(receiver: receiver, scope: scope)
+  } else {
+    false
+  }
+  match check_service_method_call_node(receiver_type: receiver_type, method: method_name, scope: scope) {
+    Some { value: service_type } =>
+      KnownMethodResolution {
+        semantics: Some { value: ServiceMethodSemantics { service_name: receiver_type.name } },
+        result_type: Some { value: service_type }
+      }
+    None =>
+      match classify_reconciled_intrinsic_method(method: method_name) {
+        Some { value: intrinsic } =>
+          KnownMethodResolution {
+            semantics: Some { value: IntrinsicMethodSemantics {
+              intrinsic: intrinsic,
+              fold_accumulator_type: fold_accumulator_type,
+              wrap_result_in_rc: wrap_result_in_rc
+            } },
+            result_type: infer_intrinsic_method_type_node(
+              receiver_type: receiver_type,
+              intrinsic: intrinsic,
+              fold_accumulator_type: fold_accumulator_type
+            )
+          }
+        None =>
+          match classify_runtime_bridge_method(method: method_name, wrap_result_in_rc: wrap_result_in_rc) {
+            Some { value: runtime_semantics } =>
+              KnownMethodResolution {
+                semantics: Some { value: runtime_semantics },
+                result_type: infer_runtime_bridge_method_type_node(receiver_type: receiver_type, function_name: method_name)
+              }
+            None =>
+              KnownMethodResolution { semantics: none, result_type: none }
+          }
+      }
   }
 }
 

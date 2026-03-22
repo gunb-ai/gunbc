@@ -886,6 +886,16 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // =========================================================================
 
 fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
+  // Callable type: function used as a value -- emit impl Fn(ParamTypes) -> RetType.
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_rust_node_type(n: p.type_expr, rc_types: rc_types))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
+      None => "()"
+    }
+    return concat("impl Fn(", param_str, ") -> ", ret_str)
+  }
   let kind = classify_type_structure(n: n)
   if kind == TypeLeaf {
     emit_rust_node_type_leaf(n: n, rc_types: rc_types)

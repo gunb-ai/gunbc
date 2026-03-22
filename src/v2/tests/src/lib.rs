@@ -106,6 +106,7 @@ mod tests {
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
+            root.join("src/v2/05_emit_go.dag"),
             root.join("src/v2/06_pipeline.dag"),
             root.join("src/v2/08_artifact.dag"),
             root.join("src/v2/07_complexity.dag"),
@@ -205,6 +206,7 @@ mod tests {
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
+            root.join("src/v2/05_emit_go.dag"),
             root.join("src/v2/06_pipeline.dag"),
             root.join("src/v2/08_artifact.dag"),
             root.join("src/v2/07_complexity.dag"),
@@ -3981,6 +3983,63 @@ fn describe(lb: Label) -> String {
         );
     }
 
+    #[test]
+    fn v2_go_pipeline_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module smoke
+
+type Point { x: Int  y: Int }
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}
+";
+
+        let result = compile_sources_with_target(&output, &[("smoke.dag", source)], "Go");
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "go pipeline smoke: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_count = emitted_file_count(files);
+        assert!(
+            file_count >= 2,
+            "go pipeline smoke: expected go.mod plus at least one module file, got {}",
+            file_count,
+        );
+
+        let go_mod = emitted_file_content(files, "go.mod");
+        assert!(
+            go_mod.contains("module generated"),
+            "emitted Go module manifest should declare module generated:\n{}",
+            &go_mod[..go_mod.len().min(500)],
+        );
+
+        let smoke_go = emitted_file_content(files, "smoke.go");
+        assert!(
+            smoke_go.contains("package smoke"),
+            "emitted Go should contain 'package smoke':\n{}",
+            &smoke_go[..smoke_go.len().min(500)],
+        );
+        assert!(
+            smoke_go.contains("type Point struct"),
+            "emitted Go should contain 'type Point struct':\n{}",
+            &smoke_go[..smoke_go.len().min(500)],
+        );
+    }
+
     // ═════════════════════════════════════════════════════════════════════
     // B3-2a prep: strict pipeline diagnostic measurement
     // ═════════════════════════════════════════════════════════════════════
@@ -4142,6 +4201,7 @@ fn describe(lb: Label) -> String {
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
+            ("05_emit_go", "src/v2/05_emit_go.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
             ("07_complexity", "src/v2/07_complexity.dag"),
             ("08_artifact", "src/v2/08_artifact.dag"),

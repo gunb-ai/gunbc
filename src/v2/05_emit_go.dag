@@ -356,6 +356,16 @@ fn emit_go_type_alias(name: String, base: Node) -> String {
 // =========================================================================
 
 fn emit_go_node_type(n: Node) -> String {
+  // Callable type: function used as a value -- emit func(ParamTypes) RetType.
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_go_node_type(n: p.type_expr))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: rt } => concat(" ", emit_go_node_type(n: rt))
+      None => ""
+    }
+    return concat("func(", param_str, ")", ret_str)
+  }
   let kind = classify_type_structure(n: n)
   if kind == TypeLeaf {
     emit_go_node_type_leaf(n: n)

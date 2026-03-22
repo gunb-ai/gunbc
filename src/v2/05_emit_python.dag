@@ -348,6 +348,16 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node) -> String 
 // =========================================================================
 
 fn emit_py_node_type(n: Node) -> String {
+  // Callable type: function used as a value -- emit Callable[[ParamTypes], RetType].
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_py_node_type(n: p.type_expr))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: rt } => emit_py_node_type(n: rt)
+      None => "None"
+    }
+    return concat("Callable[[", param_str, "], ", ret_str, "]")
+  }
   let kind = classify_type_structure(n: n)
   if kind == TypeLeaf {
     emit_py_node_type_leaf(n: n)
