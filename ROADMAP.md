@@ -107,8 +107,8 @@ Concrete acceptance:
 | `03_resolve.dag` | Cleanest authority boundary | Good reference stage for future stage boundaries. |
 | `04_reconcile.dag` | Main structural hotspot (4871 LOC) | Mixed concerns: inference, type resolution, method classification, emit metadata prep, type env management. This is the Phase 1 hotspot. |
 | `05_emit*.dag` | Partial shared composition | `05_emit.dag` owns helpers/context but not tree traversal. Rust (3634 LOC), Python (1202 LOC), and Go (1226 LOC) still own full 22-arm `ExprData` dispatchers. TCO is duplicated 3x. `classify_typed_item` is already shared and called by all three emitters. Go main expression emission still ends in `_ => /* unhandled expr */`. |
-| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | complexity is real and already wired into the current pipeline. ownership is real but still not pipeline-wired. Both still duplicate expression walking logic. |
-| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Honest boundary shape, incomplete integration | `06_pipeline.dag` owns compile flow and calls complexity but not ownership or artifact planning. `Artifact.target` is still a `String`. `09_trace.dag` is correctly an external contract, not an interpreter stage. |
+| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | complexity and ownership are both real and now pipeline-wired through `compile_sources`. Both still duplicate expression walking logic. |
+| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Honest boundary shape, incomplete integration | `06_pipeline.dag` now returns complexity, ownership, and a default artifact plan. Artifact planning is still single-artifact compatibility mode, and `Artifact.target` is still a `String`. `09_trace.dag` is correctly an external contract, not an interpreter stage. |
 
 ### Active Ratchets
 
@@ -361,8 +361,8 @@ R9.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P3.1 | Verify parity with remaining v1 paths | Planned | Enumerate what v1 still compiles that v2 does not |
-| P3.2 | Ownership wiring + authoritative compile bundle | Planned | complexity is already wired; ownership is not |
-| P3.3 | Artifact planning above emit | Planned | `infer whole graph -> plan artifacts -> emit per artifact` |
+| P3.2 | Ownership wiring + authoritative compile bundle | In progress | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`; unsupported obligations/reporting still need consolidation |
+| P3.3 | Artifact planning above emit | In progress | Default single-artifact planning now runs between infer and emit; real partitioning and per-artifact orchestration remain |
 | P3.4 | Runtime shim dissolution | Planned | Move the remaining v1 runtime shim pieces into `.dag` runtime templates |
 | P3.5 | Archive v1 | Planned | Remove v1 from the default compile path and archive it |
 
