@@ -1,955 +1,622 @@
-# gunbc Roadmap — v2 Bootstrap Completion
+# gunbc Roadmap
 
-This roadmap tracks the remaining work to close out bootstrapping, retire
-v1, reach the target architecture, and begin landing small real business
-features in parallel.
+## Architectural Thesis
 
-## Milestones
+**Node and DAG are the only compiler primitives.**
+
+The compiler is a generic graph processor. It reads `.dag` source, builds
+a graph of `Node`s, applies structural rules, and emits target code. All
+domain knowledge, including types, cardinality, containers, optionality,
+and target-language facts, should live in `.dag` definitions, not in the
+compiler implementation.
+
+This thesis dissolves compiler knowledge in three layers:
+
+| Layer | What dissolves | Compiler stops knowing | Status |
+|-------|----------------|------------------------|--------|
+| **L1: Types** | `BuiltinTypeKind`, `Conj`/`Disj`, `node_is_*`, type constructors | What `Optional`, `List`, `Map`, `Int`, etc. mean | **Active — 489 violations** |
+| **L2: Expressions** | `ExprData` semantic knowledge | What `if`, `for`, `match`, `let`, etc. mean | Future — after bootstrap and shared emit |
+| **L3: Syntax** | Hardcoded parser branches | How to parse surface syntax like `if cond { body }` | Future — data-driven parser |
+
+L1 is the urgent layer. Every new feature that touches types currently
+adds more compiler-side knowledge and more string checks. L2 and L3 are
+real targets, but they are not blocking bootstrap or the current
+migration.
+
+---
+
+## How To Read This Roadmap
+
+This file now has one canonical schedule and three supporting
+decompositions.
+
+- **Phases are the canonical execution order.** If another section seems
+  to imply a different ordering, the phase plan wins.
+- **`M*` tracks** describe cross-cutting architecture migrations that span
+  more than one phase.
+- **`R*` targets** describe the desired end state of specific compiler
+  modules once the naming cleanup lands.
+- **`S*` passes** describe technical refactors that cut across phases and
+  tracks.
+
+The repo is still in the middle of a rename/relocation cleanup. Some
+sections refer to current filenames, and some refer to target filenames.
+Use this map:
+
+| Current file | Target file after M1 | Meaning |
+|--------------|----------------------|---------|
+| `04_reconcile.dag` | `04_infer.dag` | Stage 4 is infer/typecheck, not "reconcile" |
+| `06_pipeline.dag` | `compile.dag` | Compiler driver/orchestrator, not a sixth stage |
+| `07_complexity.dag` | `complexity.dag` | Proof/report layer, not a numbered stage |
+| `07_ownership.dag` | `ownership.dag` | Proof/obligation layer, not a numbered stage |
+| `08_artifact.dag` | `artifact.dag` | Artifact planning layer, not a numbered stage |
+| `09_trace.dag` | `trace.dag` | Runtime/debug contract, not a numbered stage |
+
+Until M1 lands, the current filenames remain the truth in the repo. The
+target names are the names this roadmap should converge on.
+
+---
+
+## End Goal
+
+The compiler is a generic graph processor. It reads `.dag` source, builds
+a graph of `Node`s, applies structural rules defined in `.dag`, and emits
+target artifacts. Adding a type, expression, language, transport, or
+runtime contract should mean editing `.dag` files, not compiler code.
+
+Concrete acceptance:
+
+- Zero type-world knowledge in the compiler (L1 complete)
+- One shared emit walker drives all target languages through a common
+  compiler-owned spine
+- Language-specific facts live in `dsl/extdeps/languages/*`; program-
+  dependent lowering lives in compiler-owned adapters
+- Ownership and complexity proofs are wired into the compile pipeline
+- At least one real program (`gist`) compiles and runs end to end
+- v1 is archived
+- Compiler-internal structure converges onto `Node` compositions
+
+---
+
+## Completed Milestones
 
 | Milestone | Gate | Date |
 |-----------|------|------|
-| Self-compile pipeline | v2 processes own .dag through all 5 stages | 2026-03 |
-| Bootstrap A5 | v1 → stage0 → stage1 (cargo check ✓) | 2026-03 |
+| Self-compile pipeline | v2 processes its own `.dag` through all 5 core stages | 2026-03 |
+| Bootstrap A5 | v1 -> stage0 -> stage1 (`cargo check`) | 2026-03 |
 | Fixed point A6 | stage1 output == stage2 output (byte-identical) | 2026-03 |
-| A7 Phase 1 | Self-compile: 0 cargo check errors | 2026-03 |
-| TypeExpr→Node | 8 TypeExpr variants deleted | 2026-03 |
-| Expr→Node | 21 Expr variants deleted, ExprData discriminator on Node | 2026-03 |
-| Transport dissolution | TransportBinding (4 variants) deleted | 2026-03 |
-| Node/TypedNode unified IR | W1–W13 complete, 129 tests passing | 2026-03 |
-| Performance audit | 50,000x improvement (tokenize+parse: 24ms) | 2026-03 |
-| OOM fix | node_type_deps container-wrapped cycle detection | 2026-03 |
-
-## Status Summary
-
-- Phase 1 strict soundness is complete
-- Bootstrap fixed-point re-verification is in progress (emission casing
-  mismatch fixed; residual mismatches may surface during stage1 builds)
-- Phases 2–5 remain ahead as roadmap work
+| A7 Phase 1 | Self-compile reached 0 `cargo check` errors | 2026-03 |
+| TypeExpr -> Node | 8 `TypeExpr` variants deleted | 2026-03 |
+| Expr -> Node | 21 `Expr` variants deleted, `ExprData` now lives on `Node` | 2026-03 |
+| Transport dissolution | `TransportBinding` deleted | 2026-03 |
+| Node/TypedNode unified IR | W1-W13 complete, 129 tests passing | 2026-03 |
+| Performance audit | tokenize+parse down to ~24ms | 2026-03 |
+| OOM fix | `node_type_deps` cycle detection stabilized | 2026-03 |
 
 ---
 
-## Current Compositional State (2026-03-22 Audit)
+## Current State (2026-03-22 Audit)
 
-This audit is not a new roadmap phase. It is a map of where the compiler
-currently behaves like the `extdeps/` compositional model and where it still
-collapses layer authority.
+### Compositional Audit
 
-| Layer | Current state | Meaning for the next passes |
-|------|------|------|
-| `00_core.dag` | Strong foundation, mostly target-agnostic | `Node`/`ExprData`/transport modeling is the right base. Core now owns kernel-type authority and the shared self-call classifier; remaining ownership leakage sits downstream in reconcile/emit rather than on core types. |
-| `01_tokenize.dag` | Mostly clean syntax leaf | Tokenization is structurally isolated; bootstrap-specific Rc commentary and `SourceRef` are still host-artifact leakage. |
-| `02_parse.dag` | Strong compositional lowering | Service/resource syntax already dissolves into uniform `Node` structure and records facts like `namespace_root` structurally. |
-| `03_resolve.dag` | Cleanest authority boundary | Pure import graph construction with almost no target leakage. Keep using this as the reference for stage boundaries. |
-| `04_reconcile.dag` | Main structural hotspot (4871 LOC) | 5+ mixed concerns: type inference (~1500), type resolution (~800), method classification/call analysis (~650, 80+ string comparisons), emitter metadata prep (~300, IR/rendering conflation), type env management (~400). Target-agnostic but concept-overloaded. |
-| `05_emit*.dag` | Partial extdeps-style composition | Shared emit (799 LOC) owns helpers/context but 0 expression dispatch. Rust (3634 LOC, 23-arm dispatcher), Python (1202 LOC, 18 arms), Go (1226 LOC, 17 arms) each own full walkers. 3 separate TCO walkers duplicate Let/If/Match/Block. Python TCO has silent fallthrough; Go TCO crashes on unhandled expressions. |
-| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | Best examples of compositional modeling: proof objects, not runtime execution. complexity (1441 LOC) and ownership (307 LOC) both independently walk all ExprData variants — 3 total parallel walks including reconcile. Ownership is not wired into pipeline (complexity is). |
-| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` (177 LOC) owns compile flow but does not call ownership or artifact planning. `08_artifact.dag` (235 LOC) has real boundary verification logic but `Artifact.target` is still a `String`. `09_trace.dag` (221 LOC) is an external contract, not pipeline-wired. |
+| Area | Current state | Meaning for the next passes |
+|------|---------------|-----------------------------|
+| `00_core.dag` | Strong foundation, mostly target-agnostic | `Node`/`ExprData`/transport modeling is the right base. Remaining ownership leakage is downstream, not on core types. |
+| `01_tokenize.dag` | Mostly clean syntax leaf | Good example of a narrow stage boundary. |
+| `02_parse.dag` | Strong compositional lowering | Service/resource syntax already dissolves into uniform `Node` structure. |
+| `03_resolve.dag` | Cleanest authority boundary | Good reference stage for future stage boundaries. |
+| `04_reconcile.dag` | Main structural hotspot (4871 LOC) | Mixed concerns: inference, type resolution, method classification, emit metadata prep, type env management. This is the Phase 1 hotspot. |
+| `05_emit*.dag` | Partial shared composition | `05_emit.dag` owns helpers/context but not tree traversal. Rust (3634 LOC), Python (1202 LOC), and Go (1226 LOC) still own full 22-arm `ExprData` dispatchers. TCO is duplicated 3x. `classify_typed_item` is already shared and called by all three emitters. Go main expression emission still ends in `_ => /* unhandled expr */`. |
+| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | complexity and ownership are both real and now pipeline-wired through `compile_sources`. Both still duplicate expression walking logic. |
+| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Honest boundary shape, incomplete integration | `06_pipeline.dag` now returns complexity, ownership, and a default artifact plan, and emit dispatch now follows that plan. Artifact planning is still single-artifact compatibility mode, but `Artifact.target` is now typed as `RenderTarget`. `09_trace.dag` is correctly an external contract, not an interpreter stage. |
 
-### Audit Reconciliation
+### Active Ratchets
 
-This section reconciles the audit above with the existing phase plan.
+#### Phase-Blocking Ratchet: Diagnostics
 
-- The v2 audit in `INVARIANTS.md` (repo root) is directionally correct, but several
-  items in the roadmap need reinterpretation based on what has already landed.
-- Theme 4 and Theme 6 are cross-cutting prerequisites that remove duplicate
-  authority and dead branches before deeper semantic changes.
-- P1.8 is complete: `07_complexity.dag` has `intrinsic_method_cost_shape(...)`,
-  `cost_of_expr(...)` reads reconcile-provided `method_semantics`,
-  `receiver_size_var(...)` follows semantics instead of string names, and
-  `04_reconcile.dag` resolves known method semantics/result types in one helper.
-  Remaining work is renderer-leaf dispatch and source-level classifiers that
-  still map strings into those enums.
-- P4.1: shared emit already imports language type/keyword/container data from
-  `extdeps.languages.*`. Remaining duplication is per-target reserved-word/runtime
-  tables, especially in the Python and Go renderers.
-- Trace: `09_trace.dag` is an external runtime contract, not an in-compiler
-  interpreter. Remaining decision is whether runtime adapters/source maps get
-  wired into the pipeline or remain explicitly external.
+`src/v2/tests/src/lib.rs` still enforces `DIAG_RATCHET = 25`. Only this
+ratchet blocks Phase 2.
 
-### Structural Pass Order
+Current status:
 
-These passes cut across phases. They should be executed in this order because each one
-reduces the cost or risk of the next.
+- Done: enumerate return type
+- Done: fold accumulator threading
+- Done: callable/function-value type representation
+- Done: structured `ErrorCategory`
+- Remaining: `map_insert` / `map_merge`
+- Remaining: chained field access fallout after map fixes
+- Remaining: tighten `node_type_equals`, and do it last
 
-| Pass | Theme | What it changes first |
-|------|------|------|
-| S1 | Theme 4 | Done: `kernel_types` and `is_kernel_type` are single-authority in `00_core.dag` |
-| S2 | Theme 6 | Done: pipeline owns compilation only, artifact is explicit-only, trace is an external contract |
-| S3 | Theme 3 | Done: known-method resolution is centralized and complexity follows semantics; renderer/runtime cleanup remains |
-| S3.5 | Theme 3/5 | Extract emitter metadata (EmitGraphInfo, TypeSummary, FieldSummary, MethodSemantics) from reconcile into a post-inference pass; reconcile should infer types, not prepare rendering data |
-| S4 | Theme 5 | Move Rust-only ownership/render policy out of core + reconcile |
-| S5 | Theme 1 | Fuse 3 duplicated `ExprData` walks (reconcile, complexity, ownership) into shared `fold_expr` with callbacks |
-| S6 | Theme 2 | Shared emit dispatch with per-target leaves |
-| S7 | Theme 7 | Final fabrication fallback cleanup and Dynamic-site audit; `04_reconcile.dag` has 80+ string literal comparisons across 7 dispatch patterns for method classification |
+#### Architectural Ratchet: L1 Type Knowledge Dissolution
 
-Phase 1 strict soundness is complete. S1–S3 are done. The structural
-passes (S3.5–S7) continue as cross-cutting work alongside Phases 2–5.
+Approximate audit: **489 matched references across 8 files** as of
+2026-03-22. This is still a hand-audited count, not yet a scripted CI
+ratchet. Use it directionally until the migration stabilizes.
 
-### Compositional Refactor Targets (post-M1)
+| Category | Count | What the compiler still "knows" |
+|----------|-------|----------------------------------|
+| Connective field + `Conj` / `Disj` | 265 | Product vs coproduct semantics |
+| Type constructors | 121 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
+| Type-name comparisons | 59 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| `node_is_*` predicate calls | 24 | Type-specific dispatch helpers |
+| `builtin_type_kind()` calls | 20 | Hardcoded builtin classification |
 
-These targets assume M1 renames are complete. Each entry references the
-target DAG models in `src/v2/DESIGN.md` (Compositional stage targets) and
-cross-references the S-passes/M-tracks that deliver them.
+L1 acceptance:
 
-| ID | Stage | Current | Target | Cross-refs |
-|----|-------|---------|--------|------------|
-| R1 | `00_core.dag` | C — conflated kernel + emit types | A — kernel vocabulary only | S3.5, S4 |
-| R2 | `01_tokenize.dag` | A — gold standard | A — no change | — |
-| R3 | `02_parse.dag` | B+ — inherits core width | A — inherits R1 cleanup | R1 |
-| R4 | `03_resolve.dag` | A — gold standard | A — no change | — |
-| R5 | `04_infer.dag` | D — 5 concerns, 80+ string comparisons | B+ — data tables, no emit metadata | S3.5, S7 |
-| R6 | `05_emit*.dag` | D — 3 parallel walkers | B+ — one fold, LanguageSpec-driven | S5, S6, M6, P4.2, P4.3 |
-| R7 | `07_complexity.dag` | B+ — independent walker | A — fold consumer | S5 |
-| R8 | `07_ownership.dag` | A- — unwired | A — wired into pipeline | M2 |
-| R9 | `compile.dag` | B- — incomplete | A — complete orchestration | M1, M2, M3 |
-
-#### R1. Core vocabulary scoping (00_core.dag)
-
-What changes:
-
-- Move `FieldSummary`, `TypeSummary`, `EmitGraphInfo`, `EmitInfoBuildState`
-  out of core into the emit layer (they are produced and consumed only by emit)
-- Move `RenderTarget` to `compile.dag` (orchestration concern)
-
-Acceptance criteria:
-
-- `00_core.dag` has zero types that only emit or pipeline orchestration consume
-- No downstream module imports a rendering type from core
-- All tests pass with types at their new locations
-
-Cleanup / deletion:
-
-- Delete re-exports or compatibility aliases for moved types
-- Delete any comments in core referencing "emit info" or "render target"
-
-#### R2–R4. Tokenize, parse, resolve — no refactor needed
-
-These stages follow the gold-standard compositional pattern. `02_parse.dag`
-import list shrinks automatically when R1 narrows core.
-
-#### R5. Infer data tables (04_infer.dag)
-
-What changes:
-
-- Replace 80+ string literal method comparisons with a single data table:
-  `data intrinsic_methods: Map<String, IntrinsicMethod>` (same pattern as
-  tokenizer's `data keywords: Map<String, TokenKind>`)
-- Extract EmitGraphInfo computation out of infer — either into emit itself
-  or into a thin post-infer pass (S3.5)
-- Output type becomes `InferredGraph` with no `emit_info` field
-
-Acceptance criteria:
-
-- Zero string literal method dispatch in infer — all via table lookup
-- Infer output type contains no rendering metadata (no EmitGraphInfo,
-  TypeSummary, or FieldSummary)
-- Adding a new intrinsic method = one table entry, not new match arms
-- All tests pass
-
-Cleanup / deletion:
-
-- Delete every `if method_name == "..."` string comparison for method
-  classification (currently 80+ across 7 dispatch patterns)
-- Delete `emit_info` field from infer output type
-- Delete `EmitInfoBuildState` accumulator from infer
-- Delete any helper in infer that builds TypeSummary or FieldSummary
-  (moves to emit layer)
-
-#### R6. Shared emit fold + target adapters (05_emit*.dag)
-
-What changes:
-
-- One ExprData fold in `05_emit.dag` replaces 3 per-target dispatchers
-  (Rust 23-arm, Python 18-arm, Go 17-arm)
-- One TCO walker replaces 3 per-target TCO walkers
-  (currently 3x duplication of Let/If/Match/Block)
-- `LanguageSpec` from `dsl/std/languages.dag` parameterizes shared emit
-- Per-target files shrink to irreducible rendering hooks
-
-Acceptance criteria:
-
-- No per-target file owns a full ExprData dispatcher
-- No per-target file owns a separate TCO walker
-- Python TCO silent fallthrough is eliminated
-- Go TCO crash on unhandled expression is eliminated
-- `classify_typed_item` is either wired or deleted (not dead code)
-- Adding a new ExprData variant = one match arm in shared emit, not N
-  arms across N targets
-- `LanguageSpec` is the source of truth for type maps, keywords,
-  container templates — no inline duplicates in per-target files
-
-Cleanup / deletion:
-
-- Delete per-target ExprData dispatchers after shared fold lands
-- Delete per-target TCO walkers after shared TCO implementation lands
-- Delete `classify_typed_item` if still uncalled after refactor
-- Delete inline keyword/type-map/reserved-word declarations that
-  duplicate data in `LanguageSpec` or `extdeps/languages/*/emit.dag`
-- Delete any triple-duplicated data (std.languages + extdeps + inline
-  emit) — one source of truth only
-
-#### R7. Complexity fold consumer (07_complexity.dag)
-
-What changes:
-
-- After shared `fold_expr` lands (S5), complexity becomes a fold consumer
-  instead of maintaining its own ExprData walker
-- Cost computation logic is unchanged — only the traversal method changes
-
-Acceptance criteria:
-
-- Complexity does not own an independent ExprData walk
-- Cost algebra types and computation logic unchanged
-- All complexity tests pass
-
-Cleanup / deletion:
-
-- Delete the standalone ExprData match in complexity (replaced by fold
-  callback)
-
-#### R8. Ownership pipeline wiring (07_ownership.dag)
-
-What changes:
-
-- `compile.dag` calls `analyze_ownership` alongside `build_complexity_report`
-- Ownership proofs included in PipelineResult
-- Emit can read proofs for Rust clone/borrow decisions
-
-Acceptance criteria:
-
-- `compile.dag` imports and calls ownership analysis
-- PipelineResult includes ownership proofs
-- Proofs are accessible to emit (at minimum for Rust target)
-- All tests pass
-
-Cleanup / deletion:
-
-- Delete comments noting ownership is "not wired"
-- Delete manual clone/borrow heuristics in emit that ownership proofs
-  replace (if any exist)
-
-#### R9. Pipeline completeness (compile.dag)
-
-What changes:
-
-- `Backend` enum defined here (moved from core's `RenderTarget`)
-- Ownership analysis wired (R8)
-- Artifact planning wired when M3 lands
-
-Acceptance criteria:
-
-- `Backend`/`RenderTarget` is defined in compile.dag, not in 00_core.dag
-- All proof/analysis stages are called (complexity + ownership)
-- Pipeline failure at any stage produces clear diagnostics, not silent skip
-
-Cleanup / deletion:
-
-- Delete `RenderTarget` from `00_core.dag` after move
-- Delete comments noting ownership/artifact are "not wired"
-
-#### Execution order
-
-R5 is the bootstrap-critical refactor. The heuristics previously introduced
-to reduce self-compile cargo check errors (Dynamic permissiveness,
-fold-returns-Dynamic, var→func_env fallback, recursive field-access
-resolution) were all symptoms of string-based method dispatch in reconcile.
-R5 fixes the entire class at once via data tables — the same pattern that
-makes tokenize gold-standard.
-
-Priority order (bootstrap-integrated):
-
-```
-1. M1 (renames)        — mechanical prerequisite
-2. R5 (data tables)    — holistic bootstrap fix: replaces 80+ string
-   │                     comparisons with typed method contracts
-   ├── R1 (core scoping) — can happen during or right after R5
-   └── re-measure bootstrap errors (most should disappear)
-3. R6 (shared emit fold) — fixes remaining emission divergence
-   └── R7 (complexity fold consumer)
-4. R8 + R9 (ownership wiring + pipeline completeness)
-5. Resume bootstrap error reduction on correct infrastructure
-```
-
-R2–R4 are no-ops. R3 (parse) inherits R1's cleanup automatically.
+- `BuiltinTypeKind` deleted
+- `builtin_type_kind()` deleted
+- `node_is_*` predicates deleted or replaced with property reads
+- `optional_node()`, `container_node()`, `pair_node()` deleted
+- `connective` field removed from `Node`
+- Zero type-name string matching in the compiler
+- Fixed point still holds
 
 ---
 
-## Architecture Migration Workboard
-
-This board turns the current v2 gap analysis into executable migration
-work. It is cross-cutting rather than phase-local: the point is to make
-the target architecture in `src/v2/DESIGN.md` land incrementally without
-creating another temporary system that has to be maintained forever.
+## Canonical Execution Order
+
+Use this as the source of truth for sequencing.
+
+| Order | Phase | What it does | Blocking gate |
+|-------|-------|--------------|---------------|
+| 1 | Phase 1 | Naming cleanup, bootstrap-critical inference cleanup, and the start of L1 dissolution | Diagnostics ratchet reaches 0; M1 naming map lands |
+| 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly |
+| 3 | Phase 3 | Compile bundle, ownership/artifact wiring, and v1 retirement | v2 can compile everything v1 still matters for |
+| 4 | Phase 4 | Shared emit spine, generated tests as projections, DAG backend boundary | New backend = language facts + compiler-owned adapter, with no shared-core changes |
+| 5 | Phase 5 | Remaining convergence work after bootstrap shape is stable | One `Node`-centric internal model across compiler structure |
 
-The gap analysis is complete enough to schedule this work now. Future
-audits may refine scope, but the main migration seams are already clear.
-
-### Parallel tracks
-
-| ID | Track | Status | Depends on | Can run in parallel with |
-|----|------|--------|------------|---------------------------|
-| M1 | Stage/module naming cleanup | Planned | none | M2, M4 |
-| M2 | Compile bundle + projection contracts | Planned | none | M1, M3, M4 |
-| M3 | Artifact planning above emit | Planned | none | M1, M2, M4 |
-| M4 | Proof/obligation derivation contract | Planned | none | M1, M2, M3 |
-| M5 | Generated tests as first-class projection | Planned | M3, M4 | M6 |
-| M6 | Shared emit spine + target adapters | Planned | M3 | M5, M7 |
-| M7 | DAG backend/runtime boundary | Planned | M2, M3, M4 | M6 |
-| M8 | Mixed-backend artifact boundaries | Planned | M3, M5, M7 | none |
+Important clarifications:
 
-### M1. Stage/module naming cleanup
+- Phase 1 is the only intentionally overlapping phase. **Diagnostics are
+  blocking. L1 is not.** Once diagnostics hit 0, Phase 2 can start even
+  if L1 is still being reduced.
+- M1 belongs at the front of the roadmap, not at the end. The rest of the
+  document uses the target names on purpose.
+- `M*`, `R*`, and `S*` are support structures for this phase order, not
+  competing schedules.
 
-Current state:
+---
 
-- `04_reconcile.dag` still has the old name even though the intended
-  role is infer/typecheck
-- `06_pipeline.dag` is the compiler driver, not a sixth stage
-- numbered/unnumbered responsibilities are still mixed in names and docs
+## Phase 1: Naming, Soundness, and L1 Type Dissolution
 
-Work:
+This phase combines the work from the rename/relocation effort and the
+type-dissolution effort because both touch the same files and the same
+stage boundaries.
 
-- rename `04_reconcile.dag` -> `04_infer.dag`
-- rename `06_pipeline.dag` -> `compile.dag`
-- move `RenderTarget` enum out of `00_core.dag` into `compile.dag` or
-  a targets metadata module (adding a new target should not require
-  editing core)
-- update imports, tests, docs, and bootstrap references
-- ratchet the naming rule: numbered files are only core transformation
-  stages
+Only diagnostics block Phase 2. L1 continues in parallel after that.
 
-Acceptance criteria:
+### Why Phase 1 Goes First
 
-- all imports/tests/docs use `04_infer` (not `04_reconcile`) and `compile` (not `06_pipeline`)
-- no numbered module remains that is not a core lowering stage
-- the design/roadmap language no longer refers to the driver as "stage 6"
+- The roadmap and `src/v2/DESIGN.md` already assume the target module
+  names. Delaying M1 makes every later section harder to read.
+- `04_reconcile.dag` is the bootstrap-critical hotspot. The remaining
+  diagnostics and the highest-value L1 work both live there.
+- Property-first fixes let one change improve correctness and reduce L1
+  debt at the same time.
 
-Deletion / cleanup:
+### Phase 1 Workboard
 
-- delete compatibility aliases or doc references for `06_pipeline`
-- delete `04_reconcile` references once callers migrate
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P1.1 | Naming cleanup (M1) | Planned | Rename non-stage numbered files to their target names and move `RenderTarget` out of core |
+| P1.2 | Infer cleanup via data tables (R5, S3.5, S7) | Planned | Bootstrap-critical cleanup of string-keyed method handling and emit metadata leakage |
+| P1.3 | Diagnostics ratchet -> 0 | In progress | Only this item blocks Phase 2 |
+| P1.4 | L1 Optional/cardinality | Planned | Property-first optionality and cardinality |
+| P1.5 | L1 Containers | Planned | `List` / `Map` / `Set` properties and structural traversal |
+| P1.6 | L1 Primitives | Planned | `Int` / `String` / `Bool` / `Float` / `Unit` / `Bytes` / `Json` / `Secret` |
+| P1.7 | L1 Connective dissolution | Planned | Last large L1 step; remove `connective` from `Node` |
+| P1.8 | Delete residual type primitives | Planned | Delete remaining constructors, predicates, and builtin classifiers |
 
-### M2. Compile bundle + projection contracts
+### P1.1 Naming Cleanup Scope
 
-Current state:
+This is one mechanical batch. Do it once and let the rest of the roadmap
+read naturally afterward.
 
-- compile interfaces are still mostly flat stage outputs or target-first
-  entrypoints
-- proofs/tests/reports are not yet surfaced as first-class outputs
-- downstream components do not yet consume typed projections from one
-  authoritative bundle
-- `07_ownership.dag` is real and working (clean obligation model, no
-  fallbacks) but `06_pipeline.dag` does not import or call it;
-  complexity is wired, ownership is not
+- `04_reconcile.dag` -> `04_infer.dag`
+- `06_pipeline.dag` -> `compile.dag`
+- `07_complexity.dag` -> `complexity.dag`
+- `07_ownership.dag` -> `ownership.dag`
+- `08_artifact.dag` -> `artifact.dag`
+- `09_trace.dag` -> `trace.dag`
+- Move `RenderTarget` out of `00_core.dag` into `compile.dag` or a
+  backend metadata module
+- Update imports, bootstrap references, tests, docs, and roadmap wording
 
-Work:
+Acceptance:
 
-- define the authoritative compile result/bundle shape
-- include typed graph, artifact plan, emitted runtime artifacts,
-  validation artifacts, proof/report artifacts, obligations, and
-  diagnostics in that bundle
-- define typed projection/view contracts so downstream systems can peel
-  off only the slices they need
-- wire ownership analysis into the pipeline alongside complexity
+- No numbered file remains that is not a core lowering stage
+- Docs/tests/imports use `04_infer` and `compile`
+- The design language no longer refers to the driver as "stage 6"
 
-Acceptance criteria:
+### P1.2-P1.3 Diagnostic Fix Detail
 
-- there is one authoritative compile bundle/result contract
-- runtime/test/proof/report consumers can read typed views without
-  depending on ad hoc side channels
-- unsupported obligations are visible in the bundle/diagnostics, not
-  silently dropped
-- ownership analysis runs in the pipeline and its output is included in
-  the compile bundle
+These are the concrete remaining correctness items behind the current
+diagnostic ratchet.
 
-Deletion / cleanup:
+| Fix | Status | Notes |
+|-----|--------|-------|
+| Enumerate return type | Done | `List<Tuple<Int, T>>` now flows through inference |
+| Fold accumulator threading | Done | `fold_accumulator_type` follows init-arg type |
+| Callable/function-value type | Done | Callable type representation exists |
+| Structured `ErrorCategory` | Done | Error classification moved off ad hoc strings |
+| `map_insert` / `map_merge` result typing | Remaining | Still returns a bare `Map` leaf in the wrong places |
+| Chained field access | Remaining | Depends on the map fixes to stop collapsing structure |
+| Tighten `node_type_equals` | Remaining, last | Remove permissive `Dynamic` and structural fallbacks after inference stops fabricating them |
 
-- delete hidden side-effect outputs that are not represented in the
-  compile contract
-- delete whole-system assumptions that compile only returns "files +
-  diagnostics"
+### P1.4-P1.8 L1 Family Order
 
-### M3. Artifact planning above emit
+#### Optional / Cardinality
 
-Current state:
+Move optionality to `.dag`-defined properties. The compiler should read
+properties, not `n.name == "Optional"`, and emitters should render from
+those same properties.
 
-- the top-level compile path still assumes one target for the whole
-  compile
-- `Artifact.target` is still stringly or under-modeled
-- `artifact.dag` is not yet the selector of backends/boundaries for real
-  compile flows
+#### Containers
 
-Work:
+Move `List`, `Map`, and `Set` behavior to structural properties. Fix the
+current "bare leaf vs parameterized map" inconsistency as part of this
+step.
 
-- move the canonical ordering to:
-  `infer whole graph -> plan artifacts -> emit per artifact`
-- make artifact target a typed backend, not a `String`
-- keep the current single-target compile path only as a compatibility
-  wrapper around a default one-artifact plan
+#### Primitives
 
-Acceptance criteria:
+Move copy semantics, literal forms, method availability, and similar facts
+for `Int`, `String`, `Bool`, `Float`, `Unit`, `Bytes`, `Json`, and
+`Secret` into `.dag`.
 
-- artifact planning runs after infer and before emit in the primary
-  compile path
-- `emit_artifact(...)` becomes the primary emit interface
-- the single-target CLI/API path is implemented as a wrapper over a
-  default artifact plan
+#### Connective Dissolution
 
-Deletion / cleanup:
+This is the largest L1 step and must go last. Remove `connective` from
+`Node` only after optionality, containers, and primitives already read
+properties instead of shape shortcuts.
 
-- delete the assumption that a whole project has exactly one target
-- delete stringly artifact target fields after callers migrate
+#### Residual Primitive Deletion
 
-### M4. Proof/obligation derivation contract
+After consumers have switched, delete the old constructors, builtin
+classifiers, and predicate helpers.
 
-Current state:
+### Phase 1 Exit Criteria
 
-- `complexity.dag` and `ownership.dag` are real, but they still read
-  partly like ad hoc analysis sidecars
-- proofs, reports, and residual runtime obligations are not yet expressed
-  through one shared contract
+- `cargo test -p gunbc-dag-tests v2_strict_compile_diagnostic_count -- --ignored` passes
+- M1 naming cleanup is complete
+- Fixed point still holds after every structural change
+- Phase 2 may start once diagnostics hit 0, even if the L1 ratchet is not
+  yet at 0
 
-Work:
+---
 
-- define the shared vocabulary for projection roles and obligation
-  outcomes
-- make proof/analysis modules derive first-class outputs from the same
-  typed graph as code emission
-- require every proof family to end in one of three states:
-  discharged statically, lowered to executable validation, or explicit
-  `Unsupported`
+## Phase 2: Gist End to End
 
-Acceptance criteria:
+**Gate:** `gist.dag` plus its transitive dependencies compile to Rust,
+`cargo build` succeeds, and the emitted program runs correctly in dry-run
+mode.
 
-- the proof/test/report model is documented as a shared projection model
-- at least `complexity` and `ownership` fit that model explicitly
-- unsupported proof obligations cannot disappear silently
+### Current Status
 
-Deletion / cleanup:
+- Service operation bodies are already real in `05_emit_rust.dag`
+- `main.rs` workflow dispatch is already emitted
+- The remaining blocker is verification through a built stage0 binary
 
-- delete doc language that treats proofs/tests as second-class cleanup
-- delete future tendencies to smuggle rewrites into proof derivation
-  modules
+### Why This Is Still Blocked
 
-### M5. Generated tests as a first-class projection
+The v1 interpreter path cannot handle the full multi-module compile
+through `compile_sources` because of lowered lambda scoping issues. That
+means the real verification path is the stage0 binary, not the v1
+interpreter.
 
-Current state:
+The current acceptable path is:
 
-- generated tests still exist, but only through a narrow Rust-specific
-  path
-- test generation is not yet an artifact-level/shared contract
+1. Build stage0 via `v2_bootstrap_fixed_point`
+2. Use the resulting binary to compile `gist`
+3. Build and run the emitted Rust crate in dry-run mode
 
-Work:
+### Phase 2 Workboard
 
-- preserve the current Rust `mock_response` path during migration
-- derive runtime validation obligations from the typed graph plus
-  boundary/fixture metadata
-- surface generated tests as first-class artifact outputs rather than as
-  a hidden emitter detail
-- require each backend either to discharge its test obligations or to
-  return explicit `Unsupported`
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P2.1 | Gist pipeline test | Partial | Test scaffolding exists; real verification still needs stage0 |
+| P2.2 | Service operation bodies | Done | reqwest, `Command`, auth injection, dry-run mocking already landed |
+| P2.3 | `main.rs` workflow dispatch | Done | Workflow subcommands and dispatch match arms already land |
+| P2.4 | Multi-module extdep imports | Needs verification | Requires stage0-based end-to-end proof |
+| P2.5 | Emitted crate build/run | Needs verification | Same stage0 blocker |
 
-Acceptance criteria:
+### Current Emitted Bundle Shape
 
-- Rust generated tests survive the emit refactor
-- generated tests are represented in the artifact/compile contract
-- at least one backend discharges hermetic generated tests through the
-  shared contract
-- missing backend validation support is explicit, not silent
+Today the emitted Rust crate is already conceptually the right bundle:
 
-Deletion / cleanup:
+```text
+output_dir/
+├── Cargo.toml
+├── src/
+│   ├── main.rs
+│   ├── lib.rs
+│   ├── v2_rt.rs
+│   ├── gist.rs
+│   ├── github_api.rs
+│   ├── git.rs
+│   └── ...
+```
 
-- delete Rust-only ownership of test generation once the shared contract
-  exists
-- delete stale claims that multi-backend generated tests already exist
+That bundle currently comes out of `06_pipeline.dag` plus the Rust
+emitter. After M1 it should be understood as the output of `compile.dag`.
 
-### M6. Shared emit spine + target adapters
+### Phase 2 Exit Criteria
 
-Current state:
+- `cargo test -p gunbc-dag-tests v2_gist_full_pipeline -- --ignored` passes
+- The emitted gist crate builds and runs in dry-run mode
+- No v1-only post-processing step is required to make the crate buildable
 
-- `05_emit.dag` has shared helpers/context, but Rust/Python/Go still own
-  full expression and TCO walkers (Rust: 23-arm ExprData dispatcher +
-  9-arm TCO walker, 3634 LOC; Python: 18+7 arms, 1202 LOC; Go: 17+7
-  arms, 1226 LOC)
-- 4 expression kinds (Let/If/Match/Block) are duplicated 3x in TCO
-  walkers
-- `classify_typed_item` exists in shared emit but is not called by any
-  emitter
-- Python TCO walker has no else arm (silent fallthrough); Go TCO walker
-  has no wildcard (crash on unhandled expression)
-- target policy is still split across shared emit and target files
+---
 
-Work:
+## Phase 3: Compile Contract, Pipeline Completion, and v1 Retirement
 
-- move traversal/dispatch into shared emit
-- wire or replace the unused `classify_typed_item` in shared emit
-- fix Python/Go TCO silent failure modes before or during extraction
-- reduce target files to compiler-owned adapters under `src/v2/targets/*`
-- keep `dsl/extdeps/languages/*` declarative only
-- make adding a backend mean adding language facts plus an adapter, not a
-  fourth whole emitter
+**Gate:** v2 compiles everything that still matters from v1, ownership is
+pipeline-wired, artifact planning is real, and v1 is no longer on the
+critical path.
 
-Acceptance criteria:
+This phase owns the compile contract work: M2, M3, and M4, plus R8 and
+R9.
 
-- no target adapter owns a full whole-tree `ExprData` dispatcher
-- no target adapter owns a separate whole-tree TCO walker
-- shared emit can drive Rust/Python/Go through one traversal spine
-- no silent fallthrough or crash path in TCO dispatch
+### Phase 3 Workboard
 
-Deletion / cleanup:
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P3.1 | Verify parity with remaining v1 paths | Planned | Enumerate what v1 still compiles that v2 does not |
+| P3.2 | Ownership wiring + authoritative compile bundle | In progress | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
+| P3.3 | Artifact planning above emit | In progress | Default single-artifact planning now runs between infer and emit through the real artifact contract; real partitioning and per-artifact orchestration remain |
+| P3.4 | Runtime shim dissolution | Planned | Move the remaining v1 runtime shim pieces into `.dag` runtime templates |
+| P3.5 | Archive v1 | Planned | Remove v1 from the default compile path and archive it |
 
-- delete per-target whole-expression dispatchers after shared dispatch
-  lands
-- delete duplicate TCO walkers after shared TCO dispatch lands
+### Key Decisions for Phase 3
 
-### M7. DAG backend/runtime boundary
+- The compile result stops being just `files + diagnostics`
+- Ownership becomes a first-class pipeline output, not a side analysis
+- Artifact planning becomes part of the real compile flow, not a side
+  module with stringly targets
+- Unsupported proof or validation obligations must surface explicitly
 
-Current state:
+### Phase 3 Exit Criteria
 
-- DAG execution is now modeled correctly as downstream of compile, but no
-  canonical DAG backend exists yet
-- there is no runtime/interpreter consuming a v2 DAG artifact
+- The compile bundle has one authoritative typed shape
+- ownership is included alongside complexity in the pipeline output
+- artifact planning runs between infer and emit in the primary compile path
+- v1 is no longer required for normal compilation
 
-Work:
+---
 
-- add `Dag` as a first-class backend
-- define the canonical DAG artifact/bundle schema
-- add a compiler-owned DAG target adapter
-- keep execution in `runtimes/dag/*` or equivalent downstream runtime
-  modules
+## Phase 4: Shared Emit, Projections, and Backend Boundaries
 
-Acceptance criteria:
+**Gate:** adding a new backend means writing language facts plus a
+compiler-owned adapter, with no changes to the shared compiler core.
 
-- compiler can emit a canonical DAG artifact without embedding an
-  interpreter in the core stages
-- the DAG runtime boundary is explicit in code/docs
-- interpretation/JIT remain runtime strategies over the same artifact
+This phase owns M5, M6, and M7. M8 follows only after the Phase 4
+contract is real.
 
-Deletion / cleanup:
+### Design Rules for Phase 4
 
-- delete wording or interfaces that assume compile outputs are only
-  native source files
-- delete any design drift back toward an interpreter embedded in the
-  compile stages
+- Shared emit owns traversal
+- Compiler-owned target adapters own program-dependent lowering
+- `dsl/extdeps/languages/*` stays declarative
+- Generated tests are first-class outputs, not Rust-only emitter details
+- The DAG backend remains a compile target; execution stays in a runtime
 
-### M8. Mixed-backend artifact boundaries
+### Phase 4 Workboard
 
-Current state:
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P4.1 | `LanguageSpec` becomes the single authority | Planned | Shared emit already imports extdep language tables; remaining duplication must collapse into one contract |
+| P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor; Rust/Python/Go still own full tree dispatch today |
+| P4.3 | Generated tests as first-class projection | Planned | Preserve the current Rust path while generalizing the contract |
+| P4.4 | DAG backend/runtime boundary | Planned | Add canonical DAG artifact and keep execution downstream |
+| P4.5 | Typed backend plumbing and CLI surface | Planned | Backend selection should stop being stringly |
+| P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
 
-- the design now allows per-artifact backends, but the compiler does not
-  yet really plan or validate mixed-backend boundaries
-- backend mixing is still more conceptual than executable
+### Current Phase 4 Risks
 
-Work:
+- Shared emit is still helper-only; traversal is still per target
+- Go main expression emission still contains a placeholder fallback
+- `LanguageSpec` exists, but emit does not yet read it as the single
+  source of truth
+- Generated tests are still mostly a Rust-specific path
 
-- make artifact planning choose backend per artifact
-- express cross-artifact boundaries explicitly and lower them through
-  known boundary kinds
-- generate boundary adapters/contracts/tests from those boundary plans
+### Phase 4 Exit Criteria
 
-Acceptance criteria:
+- No backend owns a whole-tree `ExprData` dispatcher
+- No backend owns a separate whole-tree TCO walker
+- `LanguageSpec` is the single authority for language facts
+- Generated tests are first-class artifact outputs
+- The DAG backend emits a canonical artifact without embedding an
+  interpreter in the compiler stages
 
-- at least one explicit boundary kind can generate both a runtime adapter
-  and a hermetic validation artifact
-- mixed-backend compilation works at artifact boundaries, not through ad
-  hoc per-node backend mixing
-- boundary compatibility remains a proofable property, not just a runtime
-  hope
+---
 
-Deletion / cleanup:
+## Phase 5: Convergence (L2 Preparation)
 
-- delete ad hoc direct backend-to-backend assumptions that bypass
-  artifact boundaries
-- delete stringly boundary target handling once typed backends land
+**Gate:** one `Node`-centric internal model flows through the compiler,
+with the naming cleanup already landed and the bootstrap architecture
+stable enough to make the deeper dissolutions worth doing.
 
-### Suggested execution order
+This phase is intentionally later. It should happen after the naming,
+pipeline, and shared emit boundaries stop moving.
 
-The tracks are parallelizable, but the least-wasteful order is:
+### Phase 5 Workboard
 
-1. M1 + M4
-2. M2 + M3
-3. M5 + M6
-4. M7
-5. M8
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P5.1 | Token dissolution | Planned | Replace `Token` / `TokenKind` structures with `Node` compositions |
+| P5.2 | Module/import dissolution | Planned | Dissolve `Module`, `Import`, and `ImportNames` into `Node` compositions |
+| P5.3 | Diagnostic / compile-output dissolution | Planned | Dissolve `Diagnostic`, `Severity`, `CompileResult`, and `TextFile` where it is still valuable |
+| P5.4 | Service/support type dissolution | Planned | Verify which service-layer types still need to move |
+| P5.5 | Residual semantic enum cleanup | Planned | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation where appropriate |
 
-This order keeps interface and ownership decisions ahead of the bigger
-refactors, preserves generated tests during the emit migration, and
-avoids building a DAG backend on top of the wrong compile contract.
+### Phase 5 Exit Criteria
+
+- Target filenames from M1 are fully normalized
+- Compiler-internal structure is consistently `Node`-centric
+- Each convergence step survives re-bootstrap and fixed-point verification
+- The compiler is in a clean place to start real L2 work
+
+---
+
+## Cross-Cutting Reference
+
+The sections below support the phase plan above. They do not override it.
+
+### Structural Pass Order (`S*`)
+
+| Pass | Primary phase | Meaning |
+|------|---------------|---------|
+| S1 | Done | Theme 4: `kernel_types` / `is_kernel_type` are single-authority in core |
+| S2 | Done | Theme 6: pipeline owns compilation only; artifact/trace are honest side systems |
+| S3 | Done | Theme 3: known-method resolution is centralized; complexity follows semantics |
+| S3.5 | Phase 1 | Extract emit metadata out of infer/reconcile |
+| S4 | Phase 1 | Move Rust-only ownership/render policy out of core + infer |
+| S5 | Phase 4 | Fuse duplicated `ExprData` walks behind shared fold machinery |
+| S6 | Phase 4 | Shared emit dispatch with per-target leaves |
+| S7 | Phase 1 / Phase 4 | Remove fabrication fallbacks and finish residual string-keyed cleanup |
+
+### Compositional Refactor Targets (`R*`)
+
+These are written in post-M1 names.
+
+| ID | Module | Current -> Target | Primary phase | Note |
+|----|--------|-------------------|---------------|------|
+| R1 | `00_core.dag` | C -> A | Phase 1 / 3 | Remove emit/pipeline-only types from core |
+| R2 | `01_tokenize.dag` | A -> A | Done | No structural refactor required |
+| R3 | `02_parse.dag` | B+ -> A | Phase 1 follow-through | Mostly inherits R1 cleanup |
+| R4 | `03_resolve.dag` | A -> A | Done | No structural refactor required |
+| R5 | `04_infer.dag` | D -> B+ | Phase 1 | Bootstrap-critical infer cleanup |
+| R6 | `05_emit*.dag` | D -> B+ | Phase 4 | Shared traversal plus target adapters |
+| R7 | `complexity.dag` | B+ -> A | Phase 4 | Convert complexity into a fold consumer |
+| R8 | `ownership.dag` | A- -> A | Phase 3 | Wire ownership into the pipeline |
+| R9 | `compile.dag` | B- -> A | Phase 3 | Complete orchestration and typed backend flow |
+
+Practical notes:
+
+- **R5 is the bootstrap-critical refactor.** It is the first high-value
+  cleanup inside the current infer/reconcile hotspot.
+- **R6 is the highest-risk refactor.** Do it only after the compile
+  contract and naming cleanup are stable enough to support it.
+- **R8 and R9 are Phase 3 work.** They should not wait for deep
+  convergence.
+
+### Architecture Migration Tracks (`M*`)
+
+| ID | Track | Primary phase | Depends on | Outcome |
+|----|-------|---------------|------------|---------|
+| M1 | Stage/module naming cleanup | Phase 1 | none | Target filenames and stage naming are coherent |
+| M2 | Compile bundle + projection contracts | Phase 3 | M1 | One authoritative compile result shape |
+| M3 | Artifact planning above emit | Phase 3 | M2 | `infer -> plan -> emit` is real |
+| M4 | Proof/obligation derivation contract | Phase 3 | none | Proofs/tests/reports share one contract and unsupported is explicit |
+| M5 | Generated tests as first-class projection | Phase 4 | M3, M4 | Generated tests become artifact outputs, not a Rust side path |
+| M6 | Shared emit spine + target adapters | Phase 4 | M3 | Shared traversal plus compiler-owned adapters |
+| M7 | DAG backend/runtime boundary | Phase 4 | M2, M3, M4 | Canonical DAG artifact with runtime kept downstream |
+| M8 | Mixed-backend artifact boundaries | Late Phase 4 / later | M3, M5, M7 | Typed boundary plans and generated validation across artifacts |
 
 ---
 
 ## Business Feature Track: Agent Workflow Vertical Slice
 
-This track is intentionally parallel to compiler convergence. The goal
-is to get one real agent integration working as soon as possible
-without waiting for the full target
-architecture to be complete.
+This track stays parallel to compiler convergence. Its job is to prove one
+real business integration without forking the architecture.
 
-The principle is:
+### Guardrails
 
-- do not block on perfect compiler convergence before proving business
-  value
-- keep the first integration narrow, typed, and auditable
-- use the integration work to pressure-test the compiler/runtime
-  contracts, not to build a parallel ad hoc system
-- do not solve the full agent platform first; land one minimal cloud
-  agent happy path that is operationally real
+- Do not block all product value on perfect compiler convergence
+- Keep the first integration narrow, typed, and auditable
+- Use the first real integration to pressure-test compiler/runtime
+  contracts
+- Do not build a parallel ad hoc system around compiler gaps
 
-### First task: cloud agent API integration
+### Preferred First Integration
 
-The first business task is deliberately small:
+The first target remains the Cursor cloud agent API / Composer 2 surface.
+The exact upstream API shape must be re-verified against current docs when
+implementation starts. This roadmap item is about the integration shape,
+not freezing an external API contract in advance.
 
-- model the cloud agent API in `.dag`
-- model auth upsert for that provider as a workflow
-- run one end-to-end happy path through that model:
-  authenticate -> launch agent with simple prompt -> add follow-up ->
-  delete agent
-- observe what structural/compiler/runtime challenges the integration
-  reveals
+### Business Track Timing
 
-Today the preferred target is the Cursor cloud agent API / Composer 2
-surface. The exact external API shape should be verified against the
-current upstream docs when implementation starts; this roadmap item is
-about the integration shape and the questions it should answer.
+- AG1 modeling can start once Phase 2 proves the compiler can emit a real
+  program
+- Modeling work can overlap with late Phase 2 if it does not need the full
+  compile path yet
+- AG2 and AG3 should not outrun the compiler contract they depend on
 
-### AG1. Model the cloud agent API in `.dag`
+### AG Workboard
 
-Current state:
+| ID | Item | Status | Acceptance |
+|----|------|--------|------------|
+| AG1 | Model the cloud agent API in `.dag` | Planned | One typed lifecycle covers credentials, request payload, agent/run handle, optional follow-up handle, result payload, and cleanup |
+| AG2 | Run one end-to-end happy path | Planned | `auth upsert -> launch -> follow-up -> delete` works end to end and is auditable |
+| AG3 | Record the integration challenges | Planned | Real friction points are written down, classified, and fed back into the main roadmap |
 
-- there is no first-class `.dag` model yet for a cloud agent API
-- agent integrations are still conceptual rather than encoded as typed
-  compiler/runtime inputs and outputs
+### Generated Validation Expectations
 
-Work:
-
-- define the narrowest useful `.dag` model for one cloud agent request
-  lifecycle:
-  credential/secret reference, request payload, agent/run handle,
-  optional follow-up/session handle, result payload, and delete/cleanup
-  operations
-- define auth upsert for the provider as part of that lifecycle:
-  detect missing credential, instruct an admin where to create it,
-  reconcile it into secret storage, validate it, and return a ready
-  handle
-- keep the model transport-oriented and concrete rather than inventing a
-  generic agent ontology up front
-- make secret references and cleanup/deletion explicit in the model
-
-Acceptance criteria:
-
-- one cloud agent request/response lifecycle can be represented as a
-  typed `.dag` program
-- auth upsert for the provider can also be represented as a typed `.dag`
-  workflow, not as undocumented setup glue
-- credentials/secrets are modeled as explicit references/handles, not
-  plain payload data
-- cleanup/deletion is part of the model, not an out-of-band note
-
-Deletion / cleanup:
-
-- delete any prototype modeling that encodes secrets as ordinary payloads
-- delete generic agent abstractions that are not required for the first
-  integration
-
-### AG2. Run one end-to-end happy path
-
-Current state:
-
-- no real cloud-agent-backed workflow is running through the v2 model yet
-
-Work:
-
-- wire one happy path from auth upsert -> request -> launch agent ->
-  add follow-up -> delete agent
-- support only the minimal state needed for follow-up/resume if the API
-  actually requires it
-- capture run metadata/audit output so the lifecycle is inspectable
-- explicitly defer PR management/review flows until the base lifecycle is
-  working cleanly
-
-Acceptance criteria:
-
-- one `.dag`-modeled auth-upsert workflow can guide/administer manual key
-  provisioning into GCP Secret Manager, validate it, and return a ready
-  handle
-- one `.dag`-modeled workflow can authenticate and perform:
-  launch -> follow-up -> delete
-- the happy path is auditable end to end
-- state persistence is either unnecessary or explicitly modeled as a
-  minimal handle-based contract
-- a cleanup/deletion path exists for any secret/state/run artifacts we
-  create
-- PR management/review automation is not required for this first slice
-
-Deletion / cleanup:
-
-- delete demo-only glue once the real happy path works
-
-### Generated validation for the first workflow
-
-The first workflow should carry generated validation from day 0. Keep it
-narrow and tied to the exact lifecycle above.
+The first workflow should carry generated validation from day 0.
 
 Generated unit-style validation:
 
-- auth upsert returns `NeedsManualProvision` when the Cursor key is
-  missing
-- auth upsert returns invalid/failed validation when `/v0/me` rejects the
-  supplied key
-- auth upsert returns a ready handle when the key exists and validates
-- launch request shaping is correct for a simple prompt
-- follow-up request shaping is correct for an existing agent handle
-- delete request shaping is correct for an existing agent handle
+- Missing key returns `NeedsManualProvision`
+- Invalid key fails explicit validation
+- Valid key returns a ready handle
+- Launch, follow-up, and delete request shaping are correct
 
 Generated integration-style validation:
 
-- auth upsert -> launch -> follow-up -> delete succeeds against mocked
-  Cursor responses
-- cleanup removes or invalidates any local state/handles created for the
-  workflow
-- follow-up after delete fails in a controlled/typed way
-- repeated delete is either idempotent or produces an explicit expected
-  error contract
+- `auth upsert -> launch -> follow-up -> delete` succeeds against mocked
+  responses
+- Cleanup invalidates any local state/handles created for the workflow
+- Follow-up after delete fails in a controlled, typed way
+- Repeated delete is either idempotent or returns an explicit expected
+  error
 
-Optional live/manual smoke:
+Review bar:
 
-- one ignored/manual test exercises the real Cursor API against a safe
-  test repo and key
-
-Review/acceptance bar for these generated tests:
-
-- the unit tests must prove meaningful contract behavior, not merely that
-  generated fields equal the same literals used to generate them
-- the integration tests must validate an actual lifecycle boundary:
-  auth validation, launch, follow-up, delete, or cleanup semantics
-- at least one negative-path case must exist for auth validation and for
+- Tests must prove meaningful contract behavior, not tautologies
+- At least one negative-path case exists for auth validation and
   post-delete behavior
-- failures must be human-legible: a reviewer should be able to tell what
-  contract regressed without reading generator internals
-- if a generated test only reasserts something already proven
-  structurally by the compiler, move that check into proof/compile-time
-  validation instead of keeping a tautological runtime test
-
-Reasoning/guarantee output required for this workflow:
-
-- the workflow should emit a readable summary of:
-  what is proven structurally, what is validated by generated tests, and
-  what remains unsupported
-- reviewers should not need to read generator internals to understand the
-  coverage/guarantee split
-- adding new generated tests later should read as an additive safety
-  upgrade, not a patch required to keep unseen structures functioning
-
-We should be happy with the first generated test set when:
-
-- it covers the happy path and the most important failure edges
-- each test is traceable to a concrete residual runtime obligation
-- reviewers agree the tests would catch a realistic integration
-  regression
-- removing or breaking a key contract in the workflow would actually make
-  at least one generated test fail
-- a human can easily explain the guarantee ledger for the workflow:
-  what is compile-time guaranteed, what is runtime-validated, and what is
-  still unsupported
+- Failures are human-legible without reading generator internals
+- Anything already proven structurally by the compiler should move into
+  compile-time proof, not remain as a tautological runtime test
 
 Out of scope for the first workflow:
 
 - PR creation/review/follow-up management
-- repository discovery/listing beyond what is required to launch one
-  agent
-- artifact download flows unless the happy path proves they are needed
-
-### AG3. Record the integration challenges
-
-Current state:
-
-- we do not yet know which parts of the cloud agent API map cleanly into
-  the current `.dag` model and which parts force design changes
-
-Work:
-
-- document the concrete friction points revealed by AG1/AG2
-- classify each challenge as:
-  model gap, compiler gap, runtime gap, secret/state-management gap, or
-  upstream API mismatch
-- feed the reusable parts back into the architecture/migration board
-
-Examples of likely challenge areas:
-
-- auth/secret acquisition and refresh
-- auth upsert boundaries: what is manual provider provisioning vs what is
-  automated in our system
-- whether follow-up state is a hard API requirement or optional sugar
-- async/polling/webhook vs synchronous completion
-- file/tool attachments and result typing
-- deletion semantics for agent runs, state, and stored artifacts
-
-Acceptance criteria:
-
-- there is a written challenge list from a real integration attempt
-- each challenge is classified and attached to a concrete follow-up task
-- the result informs the compiler roadmap instead of living as tribal
-  knowledge
-
-### Relationship to compiler convergence
-
-- AG1 should inform M2, M3, and M4 rather than fork around them
-- AG2 should stay narrow and avoid forcing premature generality into the
-  compiler
-- AG3 should create concrete follow-up work for the migration board when
-  the integration exposes real gaps
+- Repository discovery beyond what the happy path needs
+- Artifact download flows unless the happy path proves they are required
 
 ---
 
-## Phase 1: Strict Soundness — COMPLETE
+## Backlog
 
-All P1 items implemented (2026-03-22): type inference gaps (Tuple,
-fold, map_insert, chaining), tightened type equality, callable type,
-field-access kind, exhaustive complexity matching, non-ignored smoke
-test, ErrorCategory enum with fail-closed diagnostics.
+Items below are real, but they are not on the critical path for the
+current phase order.
 
-**Ratchet:** `DIAG_RATCHET` in `src/v2/tests/src/lib.rs`.
+### Language Features
 
----
+| Item | Why deferred |
+|------|--------------|
+| General generic syntax | Special-cased `Result` / `Option` is enough for bootstrap scope |
+| Full linear type checking | Ownership proof work has started, but full proof remains beyond the current migration |
+| Widen V5 | The conservative version covers current hot paths |
 
-## Phase 2: Gist End-to-End — IN PROGRESS
+### Compiler Improvements
 
-**Gate:** `gist.dag` + 11 transitive deps → Rust → `cargo build` → `cargo run --
-dry-run` → correct output.
+| Item | Why deferred |
+|------|--------------|
+| Anonymous record target resolution | Must fail closed, but is not blocking active phases |
+| Collection intrinsic semantics in shared IR | Worth doing after shared emit is real |
+| Generated self-hosting tests and stage contracts | Valuable once the compile contract settles |
+| TCO backend contract | Should be cleaned up during/after shared emit extraction |
+| SCC-aware return type resolution | Not currently blocking bootstrap |
 
-**Status (2026-03-22):**
-- P2.2: Done — emit_rust.dag has real transport call emission (reqwest,
-  Command, auth injection, dry-run mocking).
-- P2.3: Done — main.rs generation with workflow subcommands, clap args
-  with defaults, function dispatch match arms.
-- P2.1, P2.4, P2.5: Blocked on stage0 binary.
+### Open Invariant Follow-Ups
 
-**Blocker:** The v1 interpreter cannot handle multi-module .dag files
-through `compile_sources` (lambda scoping issue: "unbound variable: t").
-This means gist E2E verification requires building and running the
-stage0 binary (~2 min build). The interpreter limitation does not need
-a fix — it will become irrelevant when v1 is retired (Phase 3).
-
-| ID | Item | Status |
-|----|------|--------|
-| P2.1 | Gist pipeline test | Partial — interpreter blocked, tests scaffolded |
-| P2.2 | Service operation bodies | Done (pre-existing) |
-| P2.3 | Main.rs workflow dispatch | Done (pre-existing) |
-| P2.4 | Multi-module extdep imports | Needs stage0 verification |
-| P2.5 | End-to-end build+run test | Needs stage0 binary |
-
-**Files:** `05_emit_rust.dag`, `06_pipeline.dag`, `03_resolve.dag`,
-`dsl/extdeps/languages/rust/runtime.dag`, `src/v2/tests/src/lib.rs`
-
----
-
-## Phase 3: v1 Retirement
-
-**Gate:** v2 compiles everything v1 can. v1 is no longer needed for any
-compilation path. S76–S81 bootstrap scaffolding is dead code.
-
-**Prerequisite:** Phase 2 complete (gist builds and runs).
-
-| ID | Item | What |
-|----|------|------|
-| P3.1 | Verify parity | Enumerate all .dag files v1 compiles. Verify v2 produces equivalent output. Port any remaining v1-only paths. |
-| P3.2 | Runtime shim dissolution | 21 functions in `v2_runtime_shim.rs` → template strings in `dsl/extdeps/languages/rust/runtime.dag`. Update `emit_v2_rt_module()` to read from runtime.dag. Functions: concat, char_at, string_length, substring, string_contains, lookup, index_by, to_string, empty_map, map_insert, map_merge, list_concat, str_eq, scan_while, skip_horizontal_ws, scan_to_eol, scan_string_end, code_point, from_code_point, filesystem_read, Concat trait. |
-| P3.3 | Scaffolding verification | S76–S81 are only called by `assemble_v2_crate()`. Once v2 self-compile and gist work without v1, mark `#[deprecated]`. |
-| P3.4 | Archive v1 | Move `src/v1/` → `archive/v1/`. Update Cargo workspace. Update CLAUDE.md. |
-
----
-
-## Phase 4: Generic Emitter + Language Extdeps
-
-**Gate:** Adding a new target language = writing a language extdep.
-Zero compiler changes required.
-
-**Prerequisite:** Phase 3 complete (v1 retired).
-
-| ID | Item | What |
-|----|------|------|
-| P4.1 | Import aliasing | Blocker: `05_emit.dag:578-594` duplicates language data inline because all three extdeps define same-named declarations and imports lack `as` aliasing. Add `import { name as alias }` to tokenizer, parser, resolver. |
-| P4.2 | LanguageSpec wiring | `LanguageSpec` exists in `dsl/std/languages.dag` (1367 lines, comprehensive) but no emitter reads it. `reserved_words` and `type_map` are triple-duplicated: in `std.languages`, in `extdeps/languages/{lang}/emit.dag`, and inline in `05_emit_python.dag`/`05_emit_go.dag`. Add `load_language_spec(target) -> LanguageSpec`. Pass through emit functions. Delete duplicate declarations. |
-| P4.3 | Extract generic emit core | ~70% duplication across 3 emitter files (rust: 3606, python: 1168, go: 1195 lines). Extract shared skeleton: item dispatch, type structure classification, expression dispatch. Parameterize by LanguageSpec. Per-language files shrink to irreducible transforms (Rust: ownership/clone/borrow; Python: exceptions/comprehensions; Go: multi-return/interfaces). |
-| P4.4 | `--target` CLI flag | `compile_sources` already takes `target: RenderTarget`. Wire through bootstrap main.rs Compile subcommand. |
-| P4.5 | Validate equivalence | Self-compile + gist → same output with generic emitter. Fixed point holds. |
-
-**Architecture:**
-```
-compiler core (language-agnostic)
-    ↓ reads
-LanguageSpec interface (.dag contract)
-    ↓ filled by
-language extdep (dsl/extdeps/languages/rust/)
-    ↓ rendered by
-thin semantic renderer (irreducible differences only)
-    ↓ produces
-target source files
-```
-
----
-
-## Phase 5: Convergence
-
-**Gate:** One type (Node) flows through the entire pipeline. `04_infer.dag`
-(renamed from `04_reconcile.dag`). Each dissolution step validated by
-re-bootstrapping and proving stage1 == stage2.
-
-**Prerequisite:** Phase 4 complete (generic emitter).
-
-| ID | Item | What |
-|----|------|------|
-| P5.1 | Rename | `04_reconcile.dag` → `04_infer.dag`. Update all imports and test references. Re-bootstrap → fixed point. |
-| P5.2 | Token dissolution | Token (`:30`) + TokenKind (77 variants, `:35-78`) → Node compositions. Largest dissolution. 4-step: add Node constructors → dual-write → migrate parser → delete types. |
-| P5.3 | Module dissolution | Module (`:92`), Import (`:103`), ImportNames (`:99`) → Node Conj compositions. Update parser (produces) and resolver (consumes). |
-| P5.4 | Diagnostic dissolution | Diagnostic (`:346`), Severity (`:353`), CompileResult (`:336`), TextFile (`:341`) → Node compositions. Update all producers/consumers. |
-| P5.5 | Service types | ServiceConfig (`:293`), OperationDef (`:302`), CapabilityDef (`:316`) — may already dissolve during parsing. Verify; convert if not. |
-| P5.6 | Semantic types | IntrinsicMethod (17 variants), BuiltinTypeKind (15 variants), VarBindingKind, FieldAccessStyle, etc. Closed enums stay as .dag type definitions producing Nodes. TransportKind already redundant. |
-
-P5.2–P5.6 are independent; each must re-bootstrap and prove fixed point.
-
-After convergence:
-```
-source → parse → resolve → infer → emit
-           ↓        ↓        ↓       ↓
-         Nodes    Nodes    Nodes   TextFiles
-         (raw)  (imports  (types
-                 linked)  filled)
-```
-
----
-
-## Deferred (in BACKLOG.md)
-
-These items are tracked but not blocking bootstrap closure:
-
-- Root Cause B: closed sets as strings (mechanical enum conversions)
-- General generic syntax (`type Foo<T> = ...`)
-- Full linear type checking (D-ownership sufficient for now)
-- B3 Ph2a: SCC-aware return type resolution
-- Widen V5: non-takeable fields in functional record update
-- Anonymous record target resolution
-- TCO backend contract
-
----
-
-## Ordering
-
-```
-P1 done (complete)
-
-P2.1 → P2.4 → P2.5 (blocked on stage0 binary)
-P2.2, P2.3 done
-
-P2 done ───→ P3.1 → P3.2 → P3.3 → P3.4
-
-P3 done ───→ P4.1 → P4.2 → P4.3 → P4.4 → P4.5
-
-P4 done ───→ P5.1 → P5.2 ─┐
-                    P5.3 ─┤
-                    P5.4 ─┼─→ all independent, each re-bootstraps
-                    P5.5 ─┤
-                    P5.6 ─┘
-```
+| Item | What remains |
+|------|--------------|
+| Residual closed sets represented as strings | Finish the infer/source classifier cleanup and remove the remaining leaf-level string dispatch |
+| Fabricating fallbacks | Remove placeholder or error-masking paths such as the Go emitter wildcard and residual error-as-value sites |
+| Error normalization | Promote semantic warning-as-error boundaries where appropriate and normalize producer sites |
 
 ---
 
@@ -959,7 +626,11 @@ P4 done ───→ P5.1 → P5.2 ─┐
 |------|---------|------|
 | Unit tests | `cargo test --workspace --exclude gunbc-dag-tests` | After every change |
 | Clippy | `cargo clippy --all-targets -- -D warnings` | After every change |
-| 0 diagnostics | `cargo test -p gunbc-dag-tests v2_strict_compile_diagnostic_count -- --ignored` | End of Phase 1 |
-| Fixed point | `cargo test -p gunbc-dag-tests v2_bootstrap_fixed_point -- --ignored` | After any .dag change |
+| Diagnostics ratchet | `cargo test -p gunbc-dag-tests v2_strict_compile_diagnostic_count -- --ignored` | End of Phase 1 |
+| Fixed point | `cargo test -p gunbc-dag-tests v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
 | Gist pipeline | `cargo test -p gunbc-dag-tests v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
-| Gist e2e | `cargo test -p gunbc-dag-tests v2_gist_end_to_end -- --ignored` | End of Phase 2 |
+
+Manual Phase 2 smoke still exists in addition to the automated test:
+build the emitted gist crate and run it in dry-run mode. There is not yet
+a dedicated `v2_gist_end_to_end` test in the tree, so the roadmap should
+not pretend that one exists.

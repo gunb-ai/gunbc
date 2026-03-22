@@ -108,8 +108,9 @@ mod tests {
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/05_emit_go.dag"),
             root.join("src/v2/06_pipeline.dag"),
-            root.join("src/v2/08_artifact.dag"),
             root.join("src/v2/07_complexity.dag"),
+            root.join("src/v2/07_ownership.dag"),
+            root.join("src/v2/08_artifact.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -208,8 +209,9 @@ mod tests {
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/05_emit_go.dag"),
             root.join("src/v2/06_pipeline.dag"),
-            root.join("src/v2/08_artifact.dag"),
             root.join("src/v2/07_complexity.dag"),
+            root.join("src/v2/07_ownership.dag"),
+            root.join("src/v2/08_artifact.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -950,6 +952,11 @@ fn foo(item: String) -> String {
     #[test]
     fn phase0_complexity_parses_strict() {
         assert_parses_strict("src/v2/07_complexity.dag");
+    }
+
+    #[test]
+    fn phase0_ownership_parses_strict() {
+        assert_parses_strict("src/v2/07_ownership.dag");
     }
 
     #[test]
@@ -4045,6 +4052,21 @@ fn origin() -> Point {
             "emitted Go should contain 'type Point struct':\n{}",
             &smoke_go[..smoke_go.len().min(500)],
         );
+
+        let artifact_plan = result
+            .get("artifact_plan")
+            .expect("compile_sources should return artifact_plan");
+        let artifacts = match map_field(artifact_plan, "artifacts") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected artifact list, got: {:?}", other),
+        };
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "go pipeline smoke should still plan a single artifact: {:?}",
+            artifacts
+        );
+        expect_variant(map_field(&artifacts[0], "target"), "Go");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -4211,6 +4233,7 @@ fn origin() -> Point {
             ("05_emit_go", "src/v2/05_emit_go.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
             ("07_complexity", "src/v2/07_complexity.dag"),
+            ("07_ownership", "src/v2/07_ownership.dag"),
             ("08_artifact", "src/v2/08_artifact.dag"),
         ];
 
@@ -4779,6 +4802,163 @@ fn count_items(items: List<String>) -> Int {
         assert!(
             !formatted.contains("count_items: O(|items|), space"),
             "count_items should NOT show space (scalar output), report:\n{}", formatted
+        );
+    }
+
+    #[test]
+    fn test_compile_sources_returns_ownership_proofs() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module ownership_smoke
+
+fn identity(x: Int) -> Int { x }
+
+fn sum_twice(x: Int) -> Int { x + x }
+"#;
+
+        let result = compile_sources_with_target(&output, &[("ownership.dag", source)], "Rust");
+
+        let ownership = result
+            .get("ownership")
+            .expect("compile_sources should return ownership");
+        let proofs = match ownership {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected ownership to be a List, got: {:?}", other),
+        };
+
+        let identity = proofs
+            .iter()
+            .find(|proof| match map_field(proof, "func_name") {
+                gunbc_ir::Value::Str(name) => name == "identity",
+                _ => false,
+            })
+            .unwrap_or_else(|| panic!("missing ownership proof for identity: {:?}", proofs));
+        let identity_decisions = match map_field(identity, "decisions") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected decisions to be a List, got: {:?}", other),
+        };
+        assert!(
+            identity_decisions.iter().any(|decision| match decision {
+                gunbc_ir::Value::Map(map) => {
+                    matches!(map.get("_variant"), Some(gunbc_ir::Value::Str(tag)) if tag == "SoleOwner")
+                        && matches!(map.get("binding"), Some(gunbc_ir::Value::Str(binding)) if binding == "x")
+                        && matches!(map.get("site"), Some(gunbc_ir::Value::Str(site)) if site == "return")
+                }
+                _ => false,
+            }),
+            "identity should mark x as a sole owner: {:?}",
+            identity_decisions
+        );
+
+        let sum_twice = proofs
+            .iter()
+            .find(|proof| match map_field(proof, "func_name") {
+                gunbc_ir::Value::Str(name) => name == "sum_twice",
+                _ => false,
+            })
+            .unwrap_or_else(|| panic!("missing ownership proof for sum_twice: {:?}", proofs));
+        let sum_twice_decisions = match map_field(sum_twice, "decisions") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected decisions to be a List, got: {:?}", other),
+        };
+        assert!(
+            sum_twice_decisions.iter().any(|decision| match decision {
+                gunbc_ir::Value::Map(map) => {
+                    matches!(map.get("_variant"), Some(gunbc_ir::Value::Str(tag)) if tag == "Unclassified")
+                        && matches!(map.get("binding"), Some(gunbc_ir::Value::Str(binding)) if binding == "x")
+                }
+                _ => false,
+            }),
+            "sum_twice should leave x unclassified under the current analysis: {:?}",
+            sum_twice_decisions
+        );
+    }
+
+    #[test]
+    fn test_compile_sources_returns_default_artifact_plan() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module artifact_smoke
+
+fn main() -> Int { 1 }
+"#;
+
+        let result = compile_sources_with_target(&output, &[("artifact.dag", source)], "Rust");
+
+        let artifact_plan = result
+            .get("artifact_plan")
+            .expect("compile_sources should return artifact_plan");
+        let artifacts = match map_field(artifact_plan, "artifacts") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected artifact list, got: {:?}", other),
+        };
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "default artifact planning should produce exactly one artifact: {:?}",
+            artifacts
+        );
+
+        let artifact = &artifacts[0];
+        assert!(
+            matches!(map_field(artifact, "name"), gunbc_ir::Value::Str(name) if name == "default"),
+            "default plan should name the artifact 'default': {:?}",
+            artifact
+        );
+        expect_variant(map_field(artifact, "target"), "Rust");
+
+        let entry_modules = match map_field(artifact, "entry_modules") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected entry_modules list, got: {:?}", other),
+        };
+        assert!(
+            entry_modules.iter().any(|module_name| {
+                matches!(module_name, gunbc_ir::Value::Str(name) if name == "artifact_smoke")
+            }),
+            "default plan should include compiled module names: {:?}",
+            entry_modules
+        );
+    }
+
+    #[test]
+    fn test_compile_sources_returns_empty_ownership_on_parse_error() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "module broken\nfn missing( -> Int { 1 }\n";
+        let result = compile_sources_with_target(&output, &[("broken.dag", source)], "Rust");
+
+        let ownership = result
+            .get("ownership")
+            .expect("compile_sources should return ownership even on parse errors");
+        match ownership {
+            gunbc_ir::Value::List(items) => assert!(
+                items.is_empty(),
+                "ownership should be empty on parse failure, got: {:?}",
+                items
+            ),
+            other => panic!("expected ownership to be a List, got: {:?}", other),
+        }
+
+        let artifact_plan = result
+            .get("artifact_plan")
+            .expect("compile_sources should return artifact_plan even on parse errors");
+        let artifacts = match map_field(artifact_plan, "artifacts") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected artifact list, got: {:?}", other),
+        };
+        assert!(
+            artifacts.is_empty(),
+            "artifact planning should be empty on parse failure, got: {:?}",
+            artifacts
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            !messages.is_empty(),
+            "parse error case should surface diagnostics"
         );
     }
 
