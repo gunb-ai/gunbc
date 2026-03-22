@@ -16,14 +16,15 @@ The fix is not to patch each symptom. The fix is to write the compiler
 in its own language, so the compiler's invariants are enforced by the
 compiler itself.
 
-The compiler is a pure transform: `.dag files → generated files`. It
-reads source, analyzes it, and emits target-language source code. There
-is no interpreter in the compiler. Interpretation is a downstream
-concern — a consumer of the compiler's output, not part of the compiler
-itself.
+The compiler is a pure transform: `.dag files → backend artifacts`. It
+reads source, analyzes it, and lowers the program to a chosen backend.
+There is no interpreter stage embedded in the compiler pipeline.
+Interpretation, when supported, is a downstream concern: the compiler
+may emit a canonical DAG artifact, and a separate runtime/interpreter
+may consume that artifact.
 
 ```
-.dag source → [compiler] → emitted source files → [target runtime]
+.dag source → [compiler] → backend artifact → [target runtime / interpreter]
 ```
 
 ## What went wrong with v0/v1
@@ -49,10 +50,11 @@ embedded in the compiler. This created the parallel implementation
 problem: fn bodies had both an AST evaluator AND a DAG executor path,
 and they diverged.
 
-The fix: the compiler emits files. Period. If you want to run the
-program, run the emitted files with the appropriate runtime. The
-compiler and the runtime are separate programs with a file boundary
-between them.
+The fix: the compiler lowers programs to backend artifacts, and runtime
+execution stays outside the compiler. For native targets that artifact
+is emitted source files. For a future DAG target it is a canonical DAG
+program/bundle. In both cases, the compiler and the runtime are
+separate programs with a boundary between them.
 
 ## Core principle: types are values, not references
 
@@ -115,20 +117,245 @@ copies.
 └────┬──────┘
      ▼
 ┌─────────┐
-│  Emit    │  TypedGraph → List<TextFile>
+│  Emit    │  TypedGraph → backend artifact files
 └────┬──────┘
      ▼
-  output files (.rs, .py, .json, ...)
+  output files (.rs, .py, .dag.json, ...)
 ```
 
 Five stages, each a pure function. The compiler goes from typed AST
-directly to output files.
+directly to backend artifact files.
 
-The emitter is pluggable — it takes a `TypedGraph` and a `Backend`
-and produces files. Different backends produce different languages.
+For project compilation, artifact planning happens in orchestration
+after infer and before repeated per-artifact emit. That planning step is
+intentionally not a numbered core stage.
+
+### End-state file layout
+
+Numbers are reserved for the true linear transformation stages of the
+compiler. If a file is numbered, it must be one step in the
+source-to-files transform and it must be callable as a pure stage.
+
+```
+src/v2/
+  00_core.dag         -- shared compiler vocabulary and structural types
+  01_tokenize.dag     -- source text -> tokens
+  02_parse.dag        -- tokens -> parsed modules
+  03_resolve.dag      -- parsed modules -> import-resolved graph
+  04_infer.dag        -- resolved graph -> typed graph
+  05_emit.dag         -- typed artifact/subgraph + target -> backend artifact(s)
+
+  compile.dag         -- compiler driver/orchestrator; wires stages together
+  complexity.dag      -- analysis over typed graph; not a core compile stage
+  ownership.dag       -- analysis/proof layer over typed graph; not a core compile stage
+  artifact.dag        -- artifact planning/partitioning; sits above per-artifact emit
+  trace.dag           -- runtime/source-map trace contracts; side-system
+  tools/
+    interpret.dag     -- convenience tool: compile to DAG backend, then run it
+  runtimes/
+    dag/
+      interpreter.dag -- executes canonical DAG artifacts; not part of compile pipeline
+
+  targets/
+    rust/
+      adapter.dag     -- Rust-specific lowering from typed DAG facts to shared emit hooks
+    python/
+      adapter.dag     -- Python-specific lowering
+    go/
+      adapter.dag     -- Go-specific lowering
+    dag/
+      adapter.dag     -- compiler-owned lowering to canonical DAG artifact
+
+dsl/extdeps/languages/
+  rust/
+    emit.dag          -- declarative Rust syntax/type/runtime/import facts
+    types.dag
+    runtime.dag
+    imports.dag
+    ...
+  python/
+    ...
+  go/
+    ...
+```
+
+The key naming rule:
+
+- numbered files = pure transformation stages only
+- unnumbered files = orchestration or adjacent analyses
+- `targets/<lang>/adapter.dag` = compiler-owned target lowering
+- `dsl/extdeps/languages/<lang>/*` = declarative language facts, not compiler graph walks
+
+This means `06_pipeline.dag` is not the right end-state name. It is not
+"stage 6". It is the driver for the whole compiler, so the end-state
+name should be `compile.dag` or `driver.dag`.
+
+### Module classes
+
+Not every compiler-adjacent module is a pipeline stage. The end-state
+classification is:
+
+- Core stages:
+  `00_core`, `01_tokenize`, `02_parse`, `03_resolve`, `04_infer`,
+  `05_emit`.
+  These are the only numbered files. They define the linear
+  source-to-backend transform.
+
+- Analyses / proof layers:
+  `complexity.dag`, `ownership.dag`.
+  These consume the typed graph and produce reports, proofs, or
+  diagnostics. They may run by default inside `compile.dag`, but they do
+  not define new program meaning and they are not additional lowering
+  stages.
+
+- Orchestration / build planning:
+  `compile.dag`, `artifact.dag`.
+  `compile.dag` wires the core stages and chooses which analyses run.
+  `artifact.dag` plans buildable units, backend targets, and boundaries
+  after infer and before per-artifact emit. It sits in orchestration,
+  not as a numbered core stage.
+
+- Runtime / debugging boundary:
+  `trace.dag`, `tools/interpret.dag`, `runtimes/dag/*`.
+  These describe execution traces, source remapping, convenience tooling,
+  and DAG runtime behavior. They consume backend artifacts or runtime
+  events; they are not compile stages.
+
+Current standing of the main non-stage modules:
+
+- `complexity.dag`: real and useful today; an always-on analysis in the
+  current driver, but still conceptually an analysis layer
+- `artifact.dag`: honest future orchestration model; explicit-plan-only
+  today, not yet driving compilation; end-state is to sit above emit as
+  the selector of artifact targets and boundaries
+- `trace.dag`: honest runtime/debug contract; normalized schema, not part
+  of compile-time execution
+
+### Ownership model
+
+The compiler owns target adapters. The language facts do not.
+
+Why:
+
+- the adapter knows about compiler IR (`Node`, typed graphs, scope, emit context)
+- the adapter applies target rules to a specific program
+- the extdeps language modules should remain declarative and reusable
+
+So the split is:
+
+- `src/v2/targets/<lang>/adapter.dag`:
+  compiler-owned meta-domain modeling for code generation
+- `dsl/extdeps/languages/<lang>/*`:
+  language-owned facts such as keywords, type templates, import syntax,
+  runtime templates, ownership/value-semantics tables
+
+Program-dependent decisions stay on the compiler side. Examples include:
+
+- whether a typed DAG shape must be Rc-wrapped in Rust
+- how a particular match arm lowers under Rust ownership constraints
+- how a runtime bridge call should be shaped for this typed program
+
+Those are not universal Rust facts. They are compiler analyses that use
+Rust facts.
+
+### Emitter end state
+
+The scalable end state is not "no target files". The scalable end state
+is "no target-owned traversal".
+
+`05_emit.dag` should own:
+
+- shared per-artifact item traversal
+- shared expression dispatch
+- shared TCO dispatch
+- shared service/resource traversal
+- common emit context construction
+
+`artifact.dag` should own:
+
+- partitioning the typed whole-program graph into artifacts
+- choosing a backend per artifact
+- declaring explicit boundary kinds between artifacts
+- driving repeated calls into `05_emit.dag`, once per artifact
+
+Each target adapter should own only irreducible target-specific lowering:
+
+- leaf syntax/rendering hooks
+- target-only ownership/calling-convention adjustments
+- target-only runtime bridge shaping
+- target-only statement/expression forms when truly unavoidable
+
+With that structure, adding a new target does not require adding a new
+compiler pipeline stage or another full copy of the emitter. It only
+adds:
+
+1. a language fact package under `dsl/extdeps/languages/<lang>/`
+2. optionally, a thin compiler-owned adapter under `src/v2/targets/<lang>/`
+
+Simple targets may need only language facts. Harder targets such as Rust
+need both a fact package and an adapter.
+
+The DAG target is special:
+
+- it is compiler-owned, not extdeps-owned
+- it defines the canonical executable/portable DAG artifact for v2
+- it exists so interpretation can be supported without embedding an
+  interpreter in the core compiler stages
+
+### Interpretation and DAG backend
+
+Long-term DAG interpretation is supported, but it does not become a new
+compiler stage.
+
+The stable end-state model is:
+
+1. the core compiler pipeline remains:
+   `tokenize -> parse -> resolve -> infer -> emit`
+2. one backend target is `Dag`
+3. `targets/dag/adapter.dag` lowers the typed graph to a canonical DAG
+   artifact
+4. `runtimes/dag/interpreter.dag` executes that artifact
+5. `tools/interpret.dag` is just a convenience wrapper:
+   `compile(target: Dag) -> run(interpreter, artifact)`
+
+This preserves the key invariant:
+
+- no interpreter logic is mixed into tokenize/parse/resolve/infer
+- no parallel "compile path" vs "interpreter path" inside the core stages
+- interpretation is just another downstream consumer of the compiler's
+  backend output
+
+If DAG artifacts become first-class, `05_emit.dag` may eventually be
+renamed to `05_backend.dag`. The architectural rule stays the same:
+stage 5 owns backend lowering; execution stays downstream.
+
+The emitter is pluggable — it takes a typed artifact/subgraph plus a
+`Backend` and produces files. Different backends produce different
+languages or artifact formats, but the traversal belongs in shared emit,
+not in per-target whole-compiler files.
+
+At project scope, artifact planning sits above emit. The end-state
+interfaces are:
 
 ```dag
-type Backend = Rust | Python
+type Backend = Rust | Python | Go | Dag
+
+func infer_sources(sources: List<SourceFile>) -> TypedGraph
+func plan_artifacts(typed: TypedGraph, rule: PartitionRule) -> ArtifactPlan
+func emit_artifact(typed: TypedGraph, artifact: Artifact) -> ArtifactOutput
+func compile_project(sources: List<SourceFile>, rule: PartitionRule?) -> BuildResult
+```
+
+Interface consequences:
+
+- `Artifact.target` should be a typed `Backend`, not a `String`
+- the compiler should stop treating "one target for the whole compile"
+  as the primary long-term interface
+- the current single-target flow remains as a compatibility wrapper that
+  constructs a default one-artifact plan and then calls per-artifact emit
+
+```dag
+type Backend = Rust | Python | Go | Dag
 
 func compile(root: FilePath, backend: Backend) -> CompileResult {
   let sources = discover_and_read(root: root)
@@ -136,10 +363,9 @@ func compile(root: FilePath, backend: Backend) -> CompileResult {
   let parsed = map(tokenized, t => parse(tokens: t))
   let graph = resolve_modules(modules: parsed)
   let typed = typecheck(graph: graph)
-  let files = match backend {
-    Rust => emit_rust(typed: typed)
-    Python => emit_python(typed: typed)
-  }
+  let plan = default_single_artifact_plan(typed: typed, backend: backend)
+  let outputs = plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
+  let files = outputs |> flat_map(output => output.files)
   CompileResult { files: files, diagnostics: typed.diagnostics }
 }
 ```
@@ -378,9 +604,9 @@ fn emit_type_app(name: String, args: List<TypeExpr>) -> String {
 "Option" is absent — optionality is handled via cardinality on the
 binding site.
 
-## Layer 5: Pipeline Composition
+## Layer 5: Compiler Composition
 
-Each stage has a well-typed return. The pipeline is linear composition.
+Each stage has a well-typed return. The compile pipeline is linear composition.
 Wrapper types (`StageResult`, `TokenizeResult`, `ParseStageResult`) are
 eliminated — each stage function already has a well-typed return.
 
@@ -403,7 +629,7 @@ Concept Layer 3: Concrete services / concrete compiler constructs
   v2.providers.github.gists, v2.targets.rust.type_emit
 
 Concept Layer 4: Workflows / tools / pipeline
-  v2.compiler.pipeline, v2.tools.codegen
+  v2.compiler.compile, v2.tools.codegen
 ```
 
 How layers intersect pipeline stages:

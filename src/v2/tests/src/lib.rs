@@ -625,15 +625,7 @@ mod tests {
             gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         map.insert(
-            "rc_wrapped_types".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
-        map.insert(
             "enum_variant_membership".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
-        map.insert(
-            "data_rc_map_names".to_string(),
             gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         gunbc_ir::Value::Map(map)
@@ -3016,13 +3008,19 @@ func run(name: String = helper()) -> String\n\
         inputs.insert("span".to_string(), span);
         inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         inputs.insert("scope".to_string(), scope);
+        inputs.insert(
+            "rc_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert("emit_info".to_string(), empty_emit_info_value());
 
         let rendered = returned_value(
-            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+            call_fn(&output, "emit_record_lit_full", inputs)
+                .expect("emit_record_lit_full should succeed"),
         );
         let main_rs = match rendered {
             gunbc_ir::Value::Str(rendered) => rendered,
-            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+            other => panic!("emit_record_lit_full should return a string, got: {:?}", other),
         };
 
         assert!(
@@ -3089,13 +3087,19 @@ func run(name: String = helper()) -> String\n\
         inputs.insert("span".to_string(), span);
         inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         inputs.insert("scope".to_string(), scope);
+        inputs.insert(
+            "rc_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert("emit_info".to_string(), empty_emit_info_value());
 
         let rendered = returned_value(
-            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+            call_fn(&output, "emit_record_lit_full", inputs)
+                .expect("emit_record_lit_full should succeed"),
         );
         let main_rs = match rendered {
             gunbc_ir::Value::Str(rendered) => rendered,
-            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+            other => panic!("emit_record_lit_full should return a string, got: {:?}", other),
         };
 
         assert!(
@@ -3486,15 +3490,18 @@ fn from_method() -> User? {\n\
     fn phase6_go_runtime_bridge_methods_keep_method_style_receivers() {
         let main_go = read_v2_file("src/v2/05_emit_go.dag");
         assert!(
-            main_go.contains("fn emit_go_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool")
+            main_go.contains("fn emit_go_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String")
                 && main_go.contains("concat(recv_str, \".\", go_export_ident(name: function_name), \"(\", args_str, \")\")"),
-            "Go runtime bridges should lower as receiver-style method calls and keep the receiver-semantics fields wired through:\n{}",
+            "Go runtime bridges should lower as receiver-style method calls without carrying Rust-only ownership flags:\n{}",
             main_go
         );
         assert!(
+            !main_go.contains("pass_receiver_by_ref")
+                && !main_go.contains("wrap_result_in_rc")
+                &&
             !main_go.contains("let all_args = concat([recv_str], arg_strs)")
                 && !main_go.contains("concat(go_export_ident(name: function_name), \"(\", all_args |> join(separator: \", \"), \")\")"),
-            "Go runtime bridges should not rewrite receivers into leading positional args:\n{}",
+            "Go runtime bridges should not rewrite receivers into leading positional args or retain Rust-only flags:\n{}",
             main_go
         );
     }

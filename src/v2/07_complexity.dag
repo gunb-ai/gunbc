@@ -22,7 +22,7 @@ module v2.compiler.complexity
 import v2.std.core {
   Node,
   ExprData, NoExprData,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
@@ -336,9 +336,9 @@ fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
 
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
-    Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _, wrap_result_in_rc: _ } } =>
+    Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } } =>
       is_size_preserving_intrinsic_method(method: method)
-    Some { value: RuntimeBridgeSemantics { function_name: fname, pass_receiver_by_ref: _, wrap_result_in_rc: _ } } =>
+    Some { value: RuntimeBridgeSemantics { function_name: fname } } =>
       fname == "reverse"
     _ => false
   }
@@ -787,6 +787,18 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: table
       }
 
+    ExprError { kind: _, message: _ } =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 0 },
+          span: CostConst { value: 0 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }
+
     ExprVar { name: _ } =>
       SummaryResult {
         summary: ComplexitySummary {
@@ -875,10 +887,10 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       // RuntimeBridgeSemantics covers O(1) bridge methods (map_get, list_push, etc.).
       // Plain/Service/None fall through to default cost.
       match ms {
-        Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _, wrap_result_in_rc: _ } } =>
+        Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } } =>
           let shape = intrinsic_method_cost_shape(method: im)
           cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index)
-        Some { value: RuntimeBridgeSemantics { function_name: _, pass_receiver_by_ref: _, wrap_result_in_rc: _ } } =>
+        Some { value: RuntimeBridgeSemantics { function_name: _ } } =>
           // All runtime bridge methods are O(1)
           SummaryResult {
             summary: ComplexitySummary {
@@ -1328,6 +1340,7 @@ fn count_self_calls(texpr: Node, fn_name: String) -> Int {
     ExprStringInterp { parts: _ } => 0
     ExprVar { name: _ } => 0
     ExprLiteral { value: _ } => 0
+    ExprError { kind: _, message: _ } => 0
     NoExprData => 0
   }
 }

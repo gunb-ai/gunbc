@@ -102,7 +102,6 @@ type InterpPart {
 // A-1:  field_access_index — (type_name, field_name) → FieldAccessStyle
 // A-2:  intrinsic_index   — method_name → IntrinsicMethod
 // A-3:  bridge_index      — func_name → Bool (was Call bridged to MethodCall)
-// A-6:  rc_index          — type_name → Bool (Rust-only, Rc-wrapped)
 // A-7:  vtoe_index        — variant_name → parent_enum_name
 // A-10: primitive_set     — type_name → Bool (is primitive)
 // =========================================================================
@@ -111,7 +110,6 @@ type EmitContext {
   field_access_index: Map<String, FieldSummary>
   intrinsic_index: Map<String, IntrinsicMethod>
   bridge_index: Map<String, Bool>
-  rc_index: Map<String, Bool>
   vtoe_index: Map<String, String>
   primitive_set: Map<String, Bool>
 }
@@ -234,8 +232,6 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
   let intrinsic_idx = build_intrinsic_index()
   // A-3: bridge index -- empty by default, populated by target-specific emitters
   let bridge_idx = empty_map()
-  // A-6: Rc index -- from rc_wrapped_types
-  let rc_idx = info.rc_wrapped_types
   // A-7: vtoe index -- from variant_to_enum
   let vtoe_idx = info.variant_to_enum
   // A-10: primitive set
@@ -246,7 +242,6 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
     field_access_index: field_idx,
     intrinsic_index: intrinsic_idx,
     bridge_index: bridge_idx,
-    rc_index: rc_idx,
     vtoe_index: vtoe_idx,
     primitive_set: prim_set
   }
@@ -282,13 +277,6 @@ fn ctx_is_intrinsic(ctx: EmitContext, method: String) -> IntrinsicMethod? {
 
 fn ctx_is_primitive(ctx: EmitContext, name: String) -> Bool {
   match map_get(ctx.primitive_set, name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
-fn ctx_is_rc_wrapped(ctx: EmitContext, name: String) -> Bool {
-  match map_get(ctx.rc_index, name) {
     Some { value: _ } => true
     None => false
   }

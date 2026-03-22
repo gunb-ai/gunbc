@@ -29,12 +29,12 @@ collapses layer authority.
 
 | Layer | Current state | Meaning for the next passes |
 |------|------|------|
-| `00_core.dag` | Strong foundation, contaminated by target policy | `Node`/`ExprData`/transport modeling is the right base, but `needs_rc_wrap`, `wrap_result_in_rc`, and `pass_receiver_by_ref` do not belong in core. |
+| `00_core.dag` | Strong foundation, mostly target-agnostic | `Node`/`ExprData`/transport modeling is the right base. Core now owns kernel-type authority and the shared self-call classifier; remaining ownership leakage sits downstream in reconcile/emit rather than on core types. |
 | `01_tokenize.dag` | Mostly clean syntax leaf | Tokenization is structurally isolated; bootstrap-specific Rc commentary and `SourceRef` are still host-artifact leakage. |
 | `02_parse.dag` | Strong compositional lowering | Service/resource syntax already dissolves into uniform `Node` structure and records facts like `namespace_root` structurally. |
 | `03_resolve.dag` | Cleanest authority boundary | Pure import graph construction with almost no target leakage. Keep using this as the reference for stage boundaries. |
-| `04_reconcile.dag` | Main structural hotspot | Owns too many concerns at once: typing, call analysis, method classification, Rust ownership hints, and emitter metadata. |
-| `05_emit*.dag` | Partial extdeps-style composition | Shared emit imports language facts from `extdeps.languages.*`, but target policy is still split between reconcile and the per-target renderers. |
+| `04_reconcile.dag` | Main structural hotspot | Owns too many concerns at once: typing, call analysis, method classification, and emitter metadata. The Rust ownership hints have now mostly been pushed out. |
+| `05_emit*.dag` | Partial extdeps-style composition | Shared emit imports language facts from `extdeps.languages.*`, and Rust now derives Rc decisions locally, but target policy is still split between shared emit and the per-target renderers. |
 | `07_complexity.dag` / `07_ownership.dag` | Good proof layers | These are the best examples of compositional modeling of the compiler itself: proof objects, not runtime execution. Remaining issue is duplicated expression walking and the remaining classifier/renderer string dispatch. |
 | `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` now owns only the real compile path and Go dispatch. `08_artifact.dag` is explicit-plan-only. `09_trace.dag` is now a normalized runtime trace contract, still not pipeline-wired. |
 
@@ -102,8 +102,8 @@ These can be done in parallel. P1.4 is mostly resolved by P1.2+P1.3.
 
 | ID | Item | What | File |
 |----|------|------|------|
-| P1.1 | Tuple type | `enumerate` returns `List<Tuple<Int, T>>`, not `List<T>`. Define Tuple in `dsl/std/types.dag`. Change `infer_method_call_type_node:1554` to construct `List<Tuple<Int, element>>`. Update emit to render `(T0, T1)`. | `04_reconcile.dag`, `05_emit_rust.dag` |
-| P1.2 | Fold accumulator | `fold` returns Dynamic (`:1559`). Extract init-arg type in ExprCall handler BEFORE resolving method return. Pass as `accumulator_hint: Node?` into `infer_method_call_type_node`. | `04_reconcile.dag` |
+| P1.1 | Tuple type | `enumerate` returns `List<Tuple<Int, T>>`, not `List<T>`. Define Tuple in `dsl/std/types.dag`. Change known-method return-type inference in `04_reconcile.dag` to construct `List<Tuple<Int, element>>`. Update emit to render `(T0, T1)`. | `04_reconcile.dag`, `05_emit_rust.dag` |
+| P1.2 | Fold accumulator | `fold` returns Dynamic. Extract init-arg type in ExprCall handler BEFORE resolving known-method return and thread it into method resolution. | `04_reconcile.dag` |
 | P1.3 | map_insert structure | `infer_builtin_call_type:1617` returns bare `Map`. Return first arg's type instead (preserves key/value structure). Same for `map_merge`, `with`. | `04_reconcile.dag` |
 | P1.4 | Field access chaining | Resolved by P1.2+P1.3 — chained `.bar` fails because upstream returns Dynamic. Verify; fix residual cases in `lookup_field_type_node`. | `04_reconcile.dag` |
 

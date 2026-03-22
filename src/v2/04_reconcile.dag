@@ -125,21 +125,17 @@ type TypeSummary {
   name: String
   repr: TypeRepr
   field_summaries: Map<String, FieldSummary>
-  rc_wrapped: Bool
 }
 
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>
-  rc_wrapped_types: Map<String, Bool>
   enum_variant_membership: Map<String, Bool>
-  data_rc_map_names: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>
-  rc_wrapped_types: Map<String, Bool>
   enum_variant_membership: Map<String, Bool>
 }
 
@@ -1128,9 +1124,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
-    rc_wrapped_types: empty_map(),
-    enum_variant_membership: empty_map(),
-    data_rc_map_names: empty_map()
+    enum_variant_membership: empty_map()
   }
 }
 
@@ -1151,10 +1145,6 @@ fn emit_info_is_enum_type(emit_info: EmitGraphInfo, type_name: String) -> Bool {
       }
     None => false
   }
-}
-
-fn emit_info_is_rc_wrapped_type(emit_info: EmitGraphInfo, type_name: String) -> Bool {
-  emit_map_has(m: emit_info.rc_wrapped_types, key: normalize_emit_type_name(type_name: type_name))
 }
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
@@ -1259,16 +1249,14 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       Some { value: TypeSummary {
         name: normalize_emit_type_name(type_name: item.name),
         repr: StructRepr,
-        field_summaries: build_struct_field_summaries(children: item.children),
-        rc_wrapped: true
+        field_summaries: build_struct_field_summaries(children: item.children)
       } }
     Disj =>
       let unit_only = item.children |> all(child => child.children |> count == 0)
       Some { value: TypeSummary {
         name: normalize_emit_type_name(type_name: item.name),
         repr: EnumRepr { unit_only: unit_only },
-        field_summaries: build_enum_field_summaries(variants: item.children),
-        rc_wrapped: unit_only == false
+        field_summaries: build_enum_field_summaries(variants: item.children)
       } }
   }
 }
@@ -1394,37 +1382,8 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   }
 }
 
-fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
-  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_map())
-}
-
-fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
-  let normed = normalize_access_type_node(n: type_node)
-  if normed.connective != none {
-    match normed.connective.value {
-      Conj => true
-      Disj => normed.children |> any(child => child.children |> count > 0)
-    }
-  } else {
-    let canonical = normalize_type_name(name: normed.name)
-    if normed.return_type != none {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      type_needs_rc_seen(env: env, type_node: normed.return_type.value, seen: next_seen)
-    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
-      false
-    } else {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      match lookup_type(env: env, name: normed.name) {
-        Some { value: resolved } =>
-          if resolved.connective == none && resolved.return_type == none && resolved.name == normed.name && resolved.children |> count == 0 {
-            false
-          } else {
-            type_needs_rc_seen(env: env, type_node: resolved, seen: next_seen)
-          }
-        None => false
-      }
-    }
-  }
+fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
+  resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
 }
 
 fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
@@ -1439,32 +1398,6 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   } else {
     none
   }
-}
-
-fn data_lookup_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool {
-  let is_data_binding = match receiver.expr_data {
-    ExprVar { name: binding_name, binding_kind: _ } =>
-      match map_get(scope.item_registry, binding_name) {
-        Some { value: info } => info.kind == DataItem
-        None => false
-      }
-    _ => false
-  }
-  if is_data_binding == false {
-    return false
-  }
-  match receiver.return_type {
-    Some { value: receiver_type } =>
-      match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
-        Some { value: value_type } => type_needs_rc(env: scope.type_env, type_node: value_type)
-        None => false
-      }
-    None => false
-  }
-}
-
-fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
-  resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
@@ -1518,15 +1451,15 @@ fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
   else { none }
 }
 
-fn classify_runtime_bridge_method(method: String, wrap_result_in_rc: Bool) -> MethodSemantics? {
+fn classify_runtime_bridge_method(method: String) -> MethodSemantics? {
   if method == "map_get" || method == "map_has" || method == "emit_map_has" || method == "map_values" || method == "map_keys" || method == "map_contains_key" {
-    Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: true, wrap_result_in_rc: wrap_result_in_rc } }
+    Some { value: RuntimeBridgeSemantics { function_name: method } }
   } else if method == "get" || method == "with" || method == "list_push" || method == "map_insert" || method == "map_merge"
     || method == "char_at" || method == "string_at" || method == "string_length" || method == "length"
     || method == "starts_with" || method == "ends_with" || method == "to_string" || method == "trim"
     || method == "to_lower" || method == "to_upper" || method == "replace" || method == "substring"
     || method == "to_int" || method == "empty_map" || method == "contains" || method == "reverse" || method == "lookup" {
-    Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: false, wrap_result_in_rc: wrap_result_in_rc } }
+    Some { value: RuntimeBridgeSemantics { function_name: method } }
   } else {
     none
   }
@@ -1602,11 +1535,6 @@ fn infer_runtime_bridge_method_type_node(receiver_type: Node, function_name: Str
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, scope: InferScope) -> KnownMethodResolution {
-  let wrap_result_in_rc = if method_name == "map_get" {
-    data_lookup_needs_rc_wrap(receiver: receiver, scope: scope)
-  } else {
-    false
-  }
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, scope: scope) {
     Some { value: service_type } =>
       KnownMethodResolution {
@@ -1619,8 +1547,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
           KnownMethodResolution {
             semantics: Some { value: IntrinsicMethodSemantics {
               intrinsic: intrinsic,
-              fold_accumulator_type: fold_accumulator_type,
-              wrap_result_in_rc: wrap_result_in_rc
+              fold_accumulator_type: fold_accumulator_type
             } },
             result_type: infer_intrinsic_method_type_node(
               receiver_type: receiver_type,
@@ -1629,7 +1556,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
             )
           }
         None =>
-          match classify_runtime_bridge_method(method: method_name, wrap_result_in_rc: wrap_result_in_rc) {
+          match classify_runtime_bridge_method(method: method_name) {
             Some { value: runtime_semantics } =>
               KnownMethodResolution {
                 semantics: Some { value: runtime_semantics },
@@ -2336,11 +2263,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Tier 2b: runtime built-in functions
           let bt = resolve_builtin_call_type(name: func_name)
           let call_semantics = if func_name == "lookup" {
-            let receiver = match typed_args |> first {
-              Some { value: first_arg } => first_arg.value
-              None => internal_expr_error_node(message: "lookup call missing receiver", span: span)
-            }
-            Some { value: LookupCallSemantics { needs_rc_wrap: data_lookup_needs_rc_wrap(receiver: receiver, scope: scope) } }
+            Some { value: LookupCallSemantics }
           } else {
             Some { value: PlainCallSemantics }
           }
@@ -4843,11 +4766,6 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
           )
         _ => state.variant_to_enum
       }
-      let next_rc_types = if summary.rc_wrapped {
-        map_insert(state.rc_wrapped_types, summary.name, true)
-      } else {
-        state.rc_wrapped_types
-      }
       // Build enum_variant_membership: "EnumName|VariantName" -> true
       let next_evm = match summary.repr {
         EnumRepr { unit_only: _ } =>
@@ -4859,7 +4777,6 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
       EmitInfoBuildState {
         type_summaries: next_summaries,
         variant_to_enum: next_variants,
-        rc_wrapped_types: next_rc_types,
         enum_variant_membership: next_evm
       }
     None => state
@@ -4870,7 +4787,6 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
-    rc_wrapped_types: empty_map(),
     enum_variant_membership: empty_map()
   }
   let built = modules |> fold(init: init, f: (state, typed_module) =>
@@ -4878,36 +4794,10 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
       add_emit_item_summary(state: inner_state, item: item)
     )
   )
-  // R8: Detect data declarations with Map<K, V> type where V is Rc-wrapped.
-  // These statics store bare V (Rc not Sync), so lookup results need .map(Rc::new).
-  let data_rc = modules |> fold(init: empty_map(), f: (acc, typed_module) =>
-    typed_module.items |> fold(init: acc, f: (inner_acc, item) =>
-      let kind = item_kind(item: item)
-      match kind {
-        DataItem =>
-          match item.type_annotation {
-            Some { value: ta } =>
-              if ta.name == "Map" && ta.children |> count == 2 {
-                match ta.children |> skip(1) |> first {
-                  Some { value: val_type } =>
-                    if emit_map_has(m: built.rc_wrapped_types, key: val_type.name) {
-                      map_insert(inner_acc, item.name, true)
-                    } else { inner_acc }
-                  None => inner_acc
-                }
-              } else { inner_acc }
-            None => inner_acc
-          }
-        _ => inner_acc
-      }
-    )
-  )
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     variant_to_enum: built.variant_to_enum,
-    rc_wrapped_types: built.rc_wrapped_types,
-    enum_variant_membership: built.enum_variant_membership,
-    data_rc_map_names: data_rc
+    enum_variant_membership: built.enum_variant_membership
   }
 }
 

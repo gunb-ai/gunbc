@@ -405,11 +405,11 @@ ad-hoc scans with `ctx_*` helpers.
 | # | What reconcile computes | Where it's lost | How emit compensates |
 |---|------------------------|-----------------|---------------------|
 | A-1 | Field access style (StoredField / EnumAccessor / OptionalUnwrap) — `build_field_summaries_*` at `04_reconcile.dag:1070-1175` | Not attached to ExprFieldAccess nodes | `emit_typed_field_access` calls `lookup_emit_field_summary_in_scope` at codegen time (redundant); `is_likely_optional_receiver` scans all type_summaries; `is_optional_field_in_any_type` / `is_enum_accessor_in_any_type` do global sweeps (`05_emit_rust.dag:1576-1601`) |
-| A-2 | Method classification (which intrinsic, return type shape) — `infer_method_call_type_node` at `04_reconcile.dag:1284-1340` | Only return type attached; no method-kind tag | Emit re-dispatches via `classify_intrinsic_method` (`05_emit.dag:195-212`) and `emit_typed_method_call` ladder (`05_emit_rust.dag:2091+`). 40+ string branches in reconcile, ~20 in emit. |
-| A-3 | Call→MethodCall bridging — `04_reconcile.dag:1825-1841` | Bridge decision not recorded on node | Emit reverse-engineers via `rt_functions` / `rt_ref_map_functions` map lookups (`05_emit_rust.dag:2093-2103`) |
+| A-2 | Known-method classification + result type — `resolve_known_method_node` in `04_reconcile.dag` | `ExprMethodCall` now carries `method_semantics`; remaining loss is that renderer leaf helpers still branch on `method` strings for target syntax | Complexity no longer compensates. Emit still has per-target method-name ladders and runtime helper tables. |
+| A-3 | Call→MethodCall bridging — ExprCall handler rewrites bridged calls to `ExprMethodCall` | No longer lost after reconcile; bridged calls remain structurally distinct downstream | Emit no longer needs to rediscover bridged method shape, but Rust still carries target-specific runtime helper maps for ownership/rendering. |
 | A-4 | Function-as-value reference — `lookup_in_scope` fallback to `lookup_func_sig` at `04_reconcile.dag:751-754` | ExprVar node gets return type only; callable-vs-value distinction lost | Emit cannot distinguish function reference from local binding (SB-1). Fabricates value type from callable's return type. |
-| A-5 | Fold accumulator type — computed at `04_reconcile.dag:1756-1788` | Not attached to MethodCall node | Emit has no access; falls back to Dynamic for unresolvable cases |
-| A-6 | Rc-wrapping requirement — known per type during reconcile | Not per-expression; stored only in global `rc_types` map | Emit uses 4 fallback strategies: `is_rc_wrapped_scrutinee` (line 2151), `arms_need_rc_deref` (line 2162), `arms_need_option_rc_deref` (line 2216), `lookup_on_data_needs_rc_wrap` (line 1852 — extracts table name string from first arg) |
+| A-5 | Fold accumulator type — computed during method resolution | No longer lost on typed method nodes; carried in `IntrinsicMethodSemantics.fold_accumulator_type` | Downstream consumers can read it from `method_semantics`; remaining work is deleting renderer-local fallbacks. |
+| A-6 | Rc-wrapping requirement — derivable from type summaries and scope types | Not attached per expression; Rust emit still re-derives it from a module-local `rc_types` map plus Rust-local match analysis | Emit now centralizes match probing through `RcPatternAnalysis`/`RcMatchAnalysis`; lookup-specific wrapping on data maps remains separate |
 | A-7 | Variant→parent enum mapping — resolved during type resolution | Only available via global `vtoe` map, not per-expression | Emit builds module-local vtoe disambiguation (`05_emit_rust.dag:430-467`); `emit_var_ref` does fallback lookup (line 1508) |
 | A-8 | Dynamic/error type propagation — `node_is_dynamic` at `04_reconcile.dag:900` | Error state encoded as `string_contains("<error:")` in type name | Emit replicates check at `05_emit_rust.dag:1473`; `node_type_equals` treats Dynamic as universally compatible (SB-2) |
 | A-9 | Lambda parameter types — unresolved when collection type is Dynamic | Bound to `Dynamic` in `extend_scope_for_lambda` (`05_emit_rust.dag:1959`) | Auto-wrap disabled entirely (`let needs_wrap = false` at line 2445) because `is_already_optional` can't detect Optional inside Dynamic-typed lambdas |
@@ -515,10 +515,13 @@ The 7 themes compress to 3 root causes. Understanding them prevents recurrence.
 
 **I. The IR conflates domain facts with rendering strategy.**
 
-`MethodSemantics` has `wrap_result_in_rc`, `pass_receiver_by_ref`, `needs_rc_wrap` —
-fields that only make sense if compiling to Rust. They live in `00_core.dag`, so
-every downstream consumer destructures fields it doesn't care about. Python and Go
-pattern-match `wrap_result_in_rc: _` everywhere.
+The clearest example was shared semantics carrying Rust policy.
+`MethodSemantics` used to carry `wrap_result_in_rc` and `pass_receiver_by_ref`,
+and `CallSemantics` used to carry `needs_rc_wrap` — fields that only made sense
+if compiling to Rust. Those fields are now gone from `00_core.dag`, but the
+lesson remains: once target policy enters shared semantics, every downstream
+consumer starts destructuring facts it doesn't own. Python and Go previously had
+to pattern-match Rust-only fields they did not use.
 
 Once the IR carries rendering hints, the boundary between "what the program is" and
 "how to render it" blurs. Reconcile starts computing Rc decisions. Emit starts
@@ -548,8 +551,8 @@ number of walks (target: 5) and never add a new one without deleting an existing
 When reconcile needed kernel types, it defined `is_primitive_name()`. When emit needed
 them, it defined `build_primitive_set()`. When complexity needed method costs, it
 defined `classify_method_cost()`. Each file solved its local problem by copying. Dead
-stubs (artifact, trace, `build_module_vtoe`) are the flip side: code written
-speculatively, never connected to an authority. This is Themes 4 and 6.
+stubs (artifact, trace) are the flip side: code written speculatively, never connected
+to an authority. This is Themes 4 and 6.
 
 Prevention: import-first discipline. Before defining a list or classifier, check if an
 upstream module already has one. If not, define it in the lowest shared module, then
@@ -567,65 +570,66 @@ gets missed during cleanup. Items marked DELETE must not exist; items marked
 GONE mean the surrounding function/field no longer exists in that file.
 
 **`00_core.dag`**
-- [ ] `kernel_types: List<String>` exists (canonical list, 8 entries)
-- [ ] `is_kernel_type(name: String) -> Bool` exists, uses `kernel_types`
-- [ ] `LookupCallSemantics` has no `needs_rc_wrap` field
-- [ ] `IntrinsicMethodSemantics` has no `wrap_result_in_rc` field
-- [ ] `RuntimeBridgeSemantics` has no `wrap_result_in_rc` or `pass_receiver_by_ref` fields
-- [ ] `expr_has_self_call` GONE (fused into `analyze_expr_calls` in reconcile)
-- [ ] `expr_has_non_tail_self_call` GONE (fused into `analyze_expr_calls` in reconcile)
+- [x] `kernel_types: List<String>` exists (canonical list, 8 entries)
+- [x] `is_kernel_type(name: String) -> Bool` exists, uses `kernel_types`
+- [x] `LookupCallSemantics` has no `needs_rc_wrap` field
+- [x] `IntrinsicMethodSemantics` has no `wrap_result_in_rc` field
+- [x] `RuntimeBridgeSemantics` has no `wrap_result_in_rc` or `pass_receiver_by_ref` fields
+- [x] `expr_self_call_info(...)` exists and computes both recursion facts in one walk
+- [ ] `expr_has_self_call` GONE (compat wrapper removable after downstream imports stop depending on it)
+- [ ] `expr_has_non_tail_self_call` GONE (compat wrapper removable after downstream imports stop depending on it)
 
 **`03_resolve.dag`**
-- [ ] `kernel_type_names()` DELETE — callers import `kernel_types` from core
+- [x] `kernel_type_names()` DELETE — callers import `kernel_types` from core
 
 **`04_reconcile.dag`**
-- [ ] `is_primitive_name()` DELETE — callers import `is_kernel_type` from core
-- [ ] `build_type_env` kernel list (lines 3157-3164) replaced with `kernel_types` import
-- [ ] `build_type_env_unresolved` kernel list (lines 3260-3264) replaced with `kernel_types` import
-- [ ] `node_is_named_ref` inline kernel exclusion (lines 968-978) uses `is_kernel_type`
-- [ ] `type_needs_rc` GONE (moved to emit_rust)
-- [ ] `type_needs_rc_seen` GONE (moved to emit_rust)
-- [ ] `data_lookup_needs_rc_wrap` GONE (moved to emit_rust)
-- [ ] `rc_wrapped: Bool` GONE from TypeSummary
-- [ ] `rc_wrapped_types: Map<String, Bool>` GONE from EmitGraphInfo
-- [ ] `rc_wrapped_types: Map<String, Bool>` GONE from EmitStateAccum
-- [ ] `emit_info_is_rc_wrapped_type` GONE (moved to emit_rust)
-- [ ] All `rc_wrapped_types` accumulation logic GONE from `build_emit_graph_info`
+- [x] `is_primitive_name()` DELETE — callers import `is_kernel_type` from core
+- [x] `build_type_env` kernel list (lines 3157-3164) replaced with `kernel_types` import
+- [x] `build_type_env_unresolved` kernel list (lines 3260-3264) replaced with `kernel_types` import
+- [x] `node_is_named_ref` inline kernel exclusion (lines 968-978) uses `is_kernel_type`
+- [x] `type_needs_rc` GONE (moved to emit_rust)
+- [x] `type_needs_rc_seen` GONE (moved to emit_rust)
+- [x] `data_lookup_needs_rc_wrap` GONE (moved to emit_rust as `rust_lookup_receiver_needs_rc_wrap`)
+- [x] `rc_wrapped: Bool` GONE from TypeSummary
+- [x] `rc_wrapped_types: Map<String, Bool>` GONE from EmitGraphInfo
+- [x] `rc_wrapped_types: Map<String, Bool>` GONE from EmitStateAccum
+- [x] `emit_info_is_rc_wrapped_type` GONE (moved to emit_rust)
+- [x] All `rc_wrapped_types` accumulation logic GONE from `build_emit_graph_info`
 - [ ] `infer_expr` and type resolution fused into single walk (`infer_and_resolve_expr`)
 - [ ] `collect_calls_in_expr` + `expr_has_self_call` + `expr_has_non_tail_self_call` fused into `analyze_expr_calls` returning `CallAnalysis`
 - [ ] Dynamic sites audited: each classified as Correct/Lazy/Fixed, ≤5 justified remaining
 - [ ] No string-based method dispatch downstream of the classifiers in reconcile
 
 **`05_emit.dag`**
-- [ ] `build_primitive_set()` DELETE — callers import `kernel_types` from core
-- [ ] `ctx_is_rc_wrapped` GONE (Rc concern moved to emit_rust)
+- [x] `build_primitive_set()` DELETE — callers import `kernel_types` from core
+- [x] `ctx_is_rc_wrapped` GONE (Rc concern moved to emit_rust)
 - [ ] Shared `emit_typed_expr` dispatch exists (single 20-arm match, target parameter)
 - [ ] Shared TCO dispatcher with `TcoSyntax` config exists
 - [ ] Shared service/transport traversal exists
 
 **`05_emit_rust.dag`**
-- [ ] `build_module_vtoe` stub (lines 461-463) DELETE
-- [ ] `emit_record_lit` compat wrapper (lines 2331-2334) DELETE (tests updated to call `emit_record_lit_full`)
-- [ ] `resolve_expr_type_node` (lines 2364-2389) DELETE
-- [ ] `build_rc_decision_map` pre-pass exists (computes all Rc decisions once)
-- [ ] `type_needs_rc`, `type_needs_rc_seen` live here (moved from reconcile)
-- [ ] `data_lookup_needs_rc_wrap` lives here (moved from reconcile)
-- [ ] All 6 Rc-probing heuristics consolidated into `build_rc_decision_map`
+- [x] `build_module_vtoe` stub DELETE
+- [x] `emit_record_lit` compat wrapper DELETE (tests updated to call `emit_record_lit_full`)
+- [x] `resolve_expr_type_node` DELETE
+- [x] Rc decision map is derived once in Rust emit entry/module wrappers from `type_summaries`
+- [x] `type_needs_rc`, `type_needs_rc_seen` live here (moved from reconcile)
+- [x] `rust_lookup_receiver_needs_rc_wrap` lives here (moved from reconcile)
+- [x] All 6 Rc-probing heuristics consolidated into the Rust-side Rc pre-pass
 - [ ] `emit_typed_expr` 20-arm match GONE (replaced by leaf functions called from shared dispatch)
 - [ ] `emit_typed_tco_expr` parallel walk GONE (replaced by shared TCO dispatcher)
-- [ ] All 19 intrinsic methods handled (no fallback arms)
+- [x] All 18 intrinsic methods handled (no fallback arms)
 
 **`05_emit_python.dag`**
 - [ ] `_unimplemented` placeholders (lines 1063, 1076) GONE — real emission or compile error
 - [ ] `emit_py_typed_expr` 20-arm match GONE (replaced by leaf functions)
-- [ ] All 19 intrinsic methods handled (currently 7)
+- [ ] All 18 intrinsic methods handled (currently 7)
 - [ ] No silent fallback for unhandled methods
 
 **`05_emit_go.dag`**
 - [ ] `/* unhandled expr */` wildcard (line 592) GONE — match is exhaustive
-- [ ] Dead `if wrap_result_in_rc` identity branch (line 659) GONE
+- [x] Dead `if wrap_result_in_rc` identity branch (line 659) GONE
 - [ ] `emit_go_typed_expr` 20-arm match GONE (replaced by leaf functions)
-- [ ] All 19 intrinsic methods handled (currently 7)
+- [ ] All 18 intrinsic methods handled (currently 7)
 - [ ] No silent fallback for unhandled methods
 
 **`06_pipeline.dag`**
@@ -694,11 +698,11 @@ consumers import, then import it. A fact defined at the use site will be copied 
 next use site.
 
 **Cross-cutting verification:**
-- [ ] `grep -r '"String", "Int", "Bool"' src/v2/` returns only `00_core.dag`
-- [ ] `grep -r 'wrap_result_in_rc' src/v2/` returns only `05_emit_rust.dag`
-- [ ] `grep -r 'pass_receiver_by_ref' src/v2/` returns only `05_emit_rust.dag`
-- [ ] `grep -r 'needs_rc_wrap' src/v2/` returns only `05_emit_rust.dag`
-- [ ] `rg -n '\b(needs_rc_wrap|wrap_result_in_rc|pass_receiver_by_ref|Rc|borrow)\b' src/v2/00_core.dag` returns 0 results
+- [x] `rg -n '"String", "Int", "Bool"' src/v2/*.dag` returns only `00_core.dag`
+- [x] `rg -n 'wrap_result_in_rc' src/v2/*.dag` returns 0 results
+- [x] `rg -n 'pass_receiver_by_ref' src/v2/*.dag` returns 0 results
+- [x] `rg -n 'needs_rc_wrap' src/v2/*.dag` returns only `05_emit_rust.dag`
+- [x] `rg -n '\b(needs_rc_wrap|wrap_result_in_rc|pass_receiver_by_ref|Rc|borrow)\b' src/v2/00_core.dag` returns 0 results
 - [ ] `grep -r '"Dynamic"' src/v2/` returns ≤5 results in `04_reconcile.dag`, all with justification comments
 - [ ] `grep -r '_unimplemented\|/\* unhandled' src/v2/` returns 0 results
 - [ ] `grep -rn 'ExprLiteral.*ExprVar.*ExprCall' src/v2/` — full 20-arm ExprData matches exist only in: `infer_and_resolve_expr`, `analyze_expr_calls`, `walk_expr` (ownership), `cost_of_expr`, `emit_typed_expr` (shared). Total: 5 walks, down from 11+.
@@ -740,7 +744,7 @@ from core.
 | Artifact/Boundary types | Keep — forward-looking, types are cheap |
 | Go pipeline dispatch (returns error despite emit_go existing) | Add `import emit_go`, wire `Go => emit_go(typed: typed)` |
 | Trace `import std.types` | Fix to `import v2.std.core` |
-| `build_module_vtoe` stub | Delete |
+| `build_module_vtoe` stub | Deleted |
 | `resolve_sources` duplication | Extract shared tokenize→parse→resolve helper |
 | `emit_record_lit` compat wrapper | Update tests, delete wrapper |
 | Pipeline header comment | Fix to match reality |
@@ -787,25 +791,27 @@ string (source) → reconcile → IntrinsicMethod (enum)
 
 **Invariant:** DAG nodes are facts, rendering is separate.
 
-**Problem:** Rc wrapping (6 heuristic fns in emit_rust, `type_needs_rc` in reconcile,
-`wrap_result_in_rc` flag flowing to Go where it's dead), DryRunMode Rust-only.
+**Problem:** Rc wrapping still spans multiple places inside the Rust renderer
+(`type_needs_rc`, pattern-deref heuristics, lookup-specific wrapping, DryRunMode),
+even though the Rust-only fields and shared Rc indexes have now been removed from
+core/reconcile/shared emit.
 
 **Design:** Reconcile produces target-agnostic facts only. Rust-specific ownership
 decisions move to a Rust-specific pre-pass within emit_rust.
 
 Move FROM reconcile to emit_rust:
-- `type_needs_rc`, `type_needs_rc_seen` → Rust renderer pre-pass
-- `data_lookup_needs_rc_wrap` → Rust renderer
-- `rc_wrapped` on TypeSummary → RustTypeSummary (new Rust-only type)
+- `type_needs_rc`, `type_needs_rc_seen` → Rust renderer pre-pass [done]
+- `data_lookup_needs_rc_wrap` → Rust renderer (`rust_lookup_receiver_needs_rc_wrap`) [done]
+- `rc_wrapped` on TypeSummary → deleted from shared summaries; Rust derives Rc status locally [done]
 
 Move FROM emit shared to emit_rust:
-- `resolve_expr_type_node` (already resolved by reconcile)
-- All 6 Rc-probing heuristics → compute once in `build_rc_decision_map` pre-pass
+- `resolve_expr_type_node` → deleted; emitter now trusts typed nodes plus narrow local fallback [done]
+- All 6 Rc-probing heuristics → compute once in a Rust-side pre-pass via `RcPatternAnalysis` / `RcMatchAnalysis` [done]
 
 Clean up MethodSemantics:
-- `wrap_result_in_rc` on IntrinsicMethodSemantics/RuntimeBridgeSemantics → Rust-only context
-- `pass_receiver_by_ref` on RuntimeBridgeSemantics → same
-- `needs_rc_wrap` on LookupCallSemantics → same
+- `wrap_result_in_rc` on IntrinsicMethodSemantics/RuntimeBridgeSemantics → Rust-only context [done in core semantics]
+- `pass_receiver_by_ref` on RuntimeBridgeSemantics → same [done in core semantics]
+- `needs_rc_wrap` on LookupCallSemantics → same [done in core semantics]
 
 Target-agnostic facts reconcile SHOULD provide:
 - "This type is recursive" (structural via children/connective)
@@ -821,27 +827,26 @@ Target-agnostic facts reconcile SHOULD provide:
 
 **Invariant:** No parallel implementations. No duplicate representations.
 
-**Problem:** 8+ complete 20-arm ExprData walks. Reconcile alone has 5. Adding one
+**Problem:** 8+ complete 20-arm ExprData walks. Reconcile still has 4. Adding one
 expression kind edits 10+ match arms.
 
 **Current reconcile walks:**
 1. `infer_expr` — type inference (20 arms)
 2. `resolve_expr_types` — type resolution (20 arms)
 3. `collect_calls_in_expr` — call graph edges (20 arms)
-4. `expr_has_self_call` — self-recursion detection (20 arms)
-5. `expr_has_non_tail_self_call` — TCO eligibility (20 arms)
+4. `expr_self_call_info` — shared self-recursion + TCO eligibility walker in `00_core.dag` (20 arms, wrapped by `expr_has_self_call` / `expr_has_non_tail_self_call`)
 
 **Fused design:**
 
 Walk A (`infer_and_resolve_expr`): Combines (1) and (2). Infer each subexpression's
 type, resolve it in the same traversal. Single 20-arm match.
 
-Walk B (`analyze_expr_calls`): Combines (3), (4), and (5). Returns
+Walk B (`analyze_expr_calls`): Combines (3) and the shared self-call analysis. Returns
 `CallAnalysis { all_calls, has_self_call, has_non_tail_self_call }`.
 
 Complexity module: `cost_of_expr` + `count_self_calls` → fuse into one walk.
 
-Result: 5 reconcile walks → 2. Cost of adding ExprData variant drops from 10+ to ~4.
+Current reduction: the separate self-call/TCO walks have already been collapsed to one shared core walk. Final target remains 4 reconcile walks → 2. Cost of adding ExprData variant drops from 10+ to ~4.
 
 **Effort:** ~4-5 hours. Medium risk — reconcile is the largest file.
 
@@ -852,7 +857,7 @@ Result: 5 reconcile walks → 2. Cost of adding ExprData variant drops from 10+ 
 **Invariant:** No parallel implementations.
 
 **Problem:** 3× expression dispatch (60 match arms), 3× TCO, 3× services,
-3× resources, 3× data. Python/Go only handle 7/19 intrinsic methods with
+3× resources, 3× data. Python/Go only handle 7/18 intrinsic methods with
 silent fabricating fallbacks.
 
 **Design:** One shared expression dispatch in `05_emit.dag`, per-target leaf
@@ -874,7 +879,7 @@ Per-target files shrink to leaf renderers only (`target_literal`, `target_call`,
 per-target syntax config (`TcoSyntax { loop_open, break_prefix, continue_kw }`).
 
 After Theme 3, each renderer provides `render_intrinsic(intrinsic, recv, args) -> String`
-covering all 19 intrinsics.
+covering all 18 intrinsics.
 
 **Prerequisite:** Theme 5 (move Rc to emit_rust) — otherwise shared dispatch
 must thread Rust-specific state that Python/Go ignore.
@@ -899,7 +904,7 @@ must thread Rust-specific state that Python/Go ignore.
 | Fabrication | Action |
 |-------------|--------|
 | `Dynamic` as permissive wildcard (~25 reconcile sites) | Audit each: keep justified, fix lazy inference, convert error-masking to diagnostic. Target: <5 justified. |
-| Python/Go intrinsic fallthrough (7/19) | Implement all 19 per language (Theme 2). Until then, emit `raise NotImplementedError` / `panic` with context. |
+| Python/Go intrinsic fallthrough (7/18) | Implement all 18 per language (Theme 2). Until then, emit `raise NotImplementedError` / `panic` with context. |
 | Go `/* unhandled expr */` wildcard | Make match exhaustive — add remaining ExprData arms. |
 | Transport panic/unimplemented | Emit language-specific compile error with context. |
 | `plan_artifacts` ignoring config | Delete stubs (Theme 6). |
