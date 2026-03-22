@@ -114,17 +114,19 @@ pub enum SurfaceContentEncoding {
     ASCII,
     Latin1,
     Binary,
+    Unknown,
 }
 
 impl SurfaceContentEncoding {
-    /// User-authored `content(...)` refinements must choose a concrete encoding.
-    /// `Unknown` remains an internal lattice top and is never surface-authored.
-    pub const ALL: [Self; 5] = [
+    /// User-authored `content(...)` refinements follow the DSL encoding variants,
+    /// including `Unknown` to express unconstrained content-bearing values.
+    pub const ALL: [Self; 6] = [
         Self::Text,
         Self::UTF8,
         Self::ASCII,
         Self::Latin1,
         Self::Binary,
+        Self::Unknown,
     ];
 
     pub fn parse(raw: &str) -> Option<Self> {
@@ -134,6 +136,7 @@ impl SurfaceContentEncoding {
             "ASCII" => Some(Self::ASCII),
             "Latin1" => Some(Self::Latin1),
             "Binary" => Some(Self::Binary),
+            "Unknown" => Some(Self::Unknown),
             _ => None,
         }
     }
@@ -145,6 +148,7 @@ impl SurfaceContentEncoding {
             Self::ASCII => "ASCII",
             Self::Latin1 => "Latin1",
             Self::Binary => "Binary",
+            Self::Unknown => "Unknown",
         }
     }
 }
@@ -173,6 +177,7 @@ impl From<SurfaceContentEncoding> for ContentEncoding {
             SurfaceContentEncoding::ASCII => Self::ASCII,
             SurfaceContentEncoding::Latin1 => Self::Latin1,
             SurfaceContentEncoding::Binary => Self::Binary,
+            SurfaceContentEncoding::Unknown => Self::Unknown,
         }
     }
 }
@@ -655,19 +660,18 @@ mod tests {
     }
 
     #[test]
-    fn test_surface_content_encoding_excludes_unknown() {
+    fn test_surface_content_encoding_includes_unknown() {
         let surface_names = SurfaceContentEncoding::ALL
             .iter()
             .map(|encoding| encoding.as_str())
             .collect::<Vec<_>>();
         assert_eq!(
             surface_names,
-            vec!["Text", "UTF8", "ASCII", "Latin1", "Binary"]
+            vec!["Text", "UTF8", "ASCII", "Latin1", "Binary", "Unknown"]
         );
-        assert_eq!(SurfaceContentEncoding::parse("Unknown"), None);
         assert_eq!(
-            ContentEncoding::from(SurfaceContentEncoding::parse("Text").unwrap()),
-            ContentEncoding::Text
+            ContentEncoding::from(SurfaceContentEncoding::parse("Unknown").unwrap()),
+            ContentEncoding::Unknown
         );
     }
 

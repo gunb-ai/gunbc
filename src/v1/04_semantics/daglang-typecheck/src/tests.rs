@@ -2239,39 +2239,39 @@ fn run(value: Int where range(min: 5, max: 1)) -> Int { value }"#,
 }
 
 #[test]
-fn content_unknown_refinement_is_rejected() {
+fn invalid_content_refinement_is_rejected() {
     let graph = module_graph_from_sources(&[(
         "unknown_content_refinement.dag",
         r#"module sample.refinement
-fn run(value: String where content(Unknown)) -> String { value }"#,
+fn run(value: String where content(NotAnEncoding)) -> String { value }"#,
     )]);
-    let errors = typecheck_module_graph(&graph).expect_err("content(Unknown) should fail");
+    let errors = typecheck_module_graph(&graph).expect_err("invalid content encoding should fail");
     assert!(errors.iter().any(|error| matches!(
         error,
         TypeError::UnsatisfiableRefinement { ty, constraint }
             if ty == "String"
                 && constraint
-                    == "unknown content encoding `Unknown` — expected one of: Text, UTF8, ASCII, Latin1, Binary"
+                    == "unknown content encoding `NotAnEncoding` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
     )));
 }
 
 #[test]
-fn valid_content_refinement_is_preserved_in_typed_registry() {
+fn content_unknown_refinement_is_preserved_in_typed_registry() {
     let graph = module_graph_from_sources(&[(
-        "valid_content_refinement.dag",
+        "unknown_content_refinement.dag",
         r#"module sample.refinement
-type Utf8String = String where content(UTF8)
-fn run(value: Utf8String) -> Utf8String { value }"#,
+type UnknownContentString = String where content(Unknown)
+fn run(value: UnknownContentString) -> UnknownContentString { value }"#,
     )]);
-    let typed = typecheck_module_graph(&graph).expect("content(UTF8) should typecheck");
+    let typed = typecheck_module_graph(&graph).expect("content(Unknown) should typecheck");
 
-    let utf8_string = typed
+    let unknown_content_string = typed
         .dsl_type_registry()
-        .get_by_name("Utf8String")
+        .get_by_name("UnknownContentString")
         .expect("type alias should be registered");
-    let predicates = gunbc_ir::contract::predicates(utf8_string);
+    let predicates = gunbc_ir::contract::predicates(unknown_content_string);
     assert!(predicates.contains(&gunbc_ir::type_op::Predicate::Content(
-        gunbc_ir::type_op::ContentEncoding::UTF8,
+        gunbc_ir::type_op::ContentEncoding::Unknown,
     )));
 }
 
