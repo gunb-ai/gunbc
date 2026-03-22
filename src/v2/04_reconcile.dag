@@ -2045,6 +2045,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_typed.return_type.value)
+      // Error base: propagate without adding cascading diagnostics.
+      if node_is_error_type(n: resolved_base) {
+        InferResult {
+          typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
+          diagnostics: base_diags
+        }
+      } else {
       match lookup_field_type_node(n: resolved_base, field_name: field_name) {
         Some { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_typed.return_type.value, env: scope.type_env, field: field_name)
@@ -2094,6 +2101,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                 }
             }
           }
+      }
       }
 
     ExprCall { func: func_name, args: call_args, call_semantics: _ } =>
