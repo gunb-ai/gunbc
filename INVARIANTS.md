@@ -358,34 +358,17 @@ Not invariant violations by themselves:
 Three root causes account for ~50 individual sites. Fixing the root causes
 eliminates the symptoms; fixing symptoms individually is whack-a-mole.
 
-### Status After PR #186
+### Status After Final Cleanup
 
-This branch closes the main Rust-side boundary refactor, but it does **not**
-exhaust the full workboard yet.
+This workboard is complete in this branch.
 
-Closed or materially landed in this branch:
-- Root Cause A: A-1, A-3, A-4, A-5, A-6, A-8
-- Root Cause B: B-2, B-3
-- Root Cause C: C-4, C-5, C-6, C-8
+Closed in this branch:
+- Root Cause A: A-1, A-2, A-3, A-4, A-5, A-6, A-7, A-8, A-9, A-10
+- Root Cause B: B-1, B-2, B-3, B-4, B-5, B-6
+- Root Cause C: C-1, C-2, C-3, C-4, C-5, C-6, C-7, C-8, C-9, C-10
 
-Partially addressed in this branch:
-- Root Cause A: A-2
-  Reconcile now tags intrinsic/runtime/service method semantics and Rust emit
-  consumes them, but Go/Python still import and use `classify_intrinsic_method`.
-- Root Cause A: A-7
-  `ExprVar` now carries `VariantValueBinding`, but Rust emit still keeps a
-  `vtoe` fallback in variant/pattern/record paths.
-- Root Cause B: B-4
-  Rust moved to structural intrinsic semantics; the string classifier still
-  exists for non-Rust emitters.
-- Root Cause C: C-7
-  `Dynamic` is no longer universally compatible in `node_type_equals`, but
-  several Dynamic-permissive paths remain for unresolved lambda/service cases.
-
-Still open after this branch:
-- Root Cause A: A-9, A-10
-- Root Cause B: B-1, B-5, B-6
-- Root Cause C: C-1, C-2, C-3, C-9, C-10
+The root-cause tables below are preserved as the historical problem statement
+that motivated the refactor, not as a live backlog.
 
 ---
 

@@ -2127,6 +2127,50 @@ fn foo(item: String) -> String {
         );
     }
 
+    #[test]
+    fn phase6_emit_deletes_intrinsic_string_classifier_and_lambda_scope_fallback() {
+        let core_source = read_v2_file("src/v2/05_emit.dag");
+        assert!(
+            !core_source.contains("classify_intrinsic_method"),
+            "emit.dag should not reintroduce a string-based intrinsic classifier"
+        );
+
+        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+        assert!(
+            !rust_source.contains("extend_scope_for_lambda"),
+            "Rust emit should consume reconciled lambda semantics instead of reconstructing lambda scope"
+        );
+        assert!(
+            !rust_source.contains("let needs_wrap = false"),
+            "Rust emit should not keep optional wrapping disabled behind a fallback flag"
+        );
+    }
+
+    #[test]
+    fn phase6_final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
+        let parse_source = read_v2_file("src/v2/02_parse.dag");
+        assert!(
+            parse_source.contains("parse_recovery_placeholder()"),
+            "parser cleanup should route dummy recovery nodes through structural ParseRecoveryError helpers"
+        );
+        assert!(
+            !parse_source.contains(
+                "make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })"
+            ),
+            "parser should not reintroduce zero-span LitNull recovery placeholders"
+        );
+
+        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+        assert!(
+            !rust_source.contains("LitNull => \"\""),
+            "Rust CLI defaults should not silently encode null as an empty string"
+        );
+        assert!(
+            !rust_source.contains("None => Node { name: \"\""),
+            "Rust emit should not fabricate an empty Node for shared enum accessor metadata"
+        );
+    }
+
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
@@ -2739,6 +2783,88 @@ fn example(items: List<String>) -> Int {
             "fold lambda should use reconciled accumulator and element types:\n{}",
             main_rs
         );
+    }
+
+    #[test]
+    fn phase6_lambda_record_optional_fields_are_wrapped_from_semantics() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type User { email: String }\n\
+type MaybeEmail { email: String? }\n\
+fn wrap(users: List<User>) -> List<MaybeEmail> {\n\
+  users |> map(fn(user) { MaybeEmail { email: user.email } })\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "lambda record wrapping should not produce diagnostics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        assert!(
+            main_rs.contains("email: Some("),
+            "optional record fields inside lambda lowering should wrap non-optional values:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_workflow_cli_defaults_must_be_literal() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type Dummy { label: String }\n\
+fn helper() -> String { \"fallback\" }\n\
+func run(name: String = helper()) -> String\n\
+  uses dep: Dummy\n\
+{\n\
+  name\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.iter().any(|m| m.contains(
+                "workflow CLI default for parameter `name` must be a string, int, float, or bool literal"
+            )),
+            "non-literal workflow CLI defaults should be rejected before emit: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        match files {
+            gunbc_ir::Value::List(items) => {
+                assert!(
+                    items.is_empty(),
+                    "emit errors must block file emission; got files: {:?}",
+                    items
+                );
+            }
+            other => panic!("expected files list, got: {other:?}"),
+        }
     }
 
     #[test]

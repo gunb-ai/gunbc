@@ -25,10 +25,12 @@ import v2.std.core {
   ServiceConfig,
   DeclaredFuncSig,
   local_transport_node,
+  TransportKind, RestTransport, ShellTransport, FileTransport,
+  is_transport_kind,
   transport_has_auth, transport_auth_header_name,
   transport_headers, transport_env,
   ExprData, NoExprData,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall,
+  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
   ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
   ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
@@ -37,6 +39,8 @@ import v2.std.core {
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars,
+  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
+  RuntimeBridgeSemantics, ServiceMethodSemantics,
   Text, Interpolation,
   expr_has_self_call, expr_has_non_tail_self_call
 }
@@ -59,6 +63,7 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   python_keyword, python_container, python_primitive_type,
   python_literal, python_bin_op_symbol, python_map_template,
+  emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -73,7 +78,6 @@ import v2.compiler.emit {
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
-  classify_intrinsic_method,
   classify_typed_item, classify_type_structure
 }
 
@@ -505,7 +509,7 @@ fn emit_py_pattern(pattern: MatchPattern) -> String {
   match pattern {
     Bind { name: n } => py_ident(name: n)
     LitPattern { value: v } => python_literal(value: v)
-    VariantPattern { name: n, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       emit_py_variant_pattern(name: n, field_bindings: fbs)
     Wildcard => "_"
   }
@@ -526,20 +530,21 @@ fn emit_py_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> 
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match texpr.expr_data {
     ExprLiteral { value: v } => python_literal(value: v)
+    ExprError { kind: _, message: message } => concat("raise RuntimeError(", emit_string_literal(value: message), ")")
     ExprVar { name: n, binding_kind: _ } => py_ident(name: n)
     ExprFieldAccess { base: b, field: f, summary: _ } =>
       concat(emit_py_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth), ".", py_ident(name: f))
     ExprCall { func: f, args: a, call_semantics: _ } =>
       emit_py_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth)
-    ExprMethodCall { receiver: r, method: m, args: a, method_semantics: _ } =>
-      emit_py_typed_method_call(receiver: r, method: m, args: a, registry: registry, scope: scope, depth: depth)
+    ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
+      emit_py_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth)
     ExprMatch { scrutinee: s, arms: arm_list } =>
       emit_py_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
       emit_py_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
     ExprLet { name: n, value: v, body: bd } =>
       emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
-    ExprRecordLit { type_name: tn, fields: fs } =>
+    ExprRecordLit { type_name: tn, fields: fs, parent_enum: _ } =>
       emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
     ExprListLit { elements: els } =>
       emit_py_typed_list_lit(elements: els, registry: registry, scope: scope, depth: depth)
@@ -547,7 +552,7 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
       emit_py_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope, depth: depth)
     ExprUnaryOp { op: o, operand: e } =>
       emit_py_typed_unary_op(op: o, operand: e, registry: registry, scope: scope, depth: depth)
-    ExprLambda { params: ps, body: bd } =>
+    ExprLambda { params: ps, body: bd, semantics: _ } =>
       emit_py_typed_lambda(params: ps, body: bd, registry: registry, scope: scope, depth: depth)
     ExprStringInterp { parts: ps } =>
       emit_py_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth)
@@ -627,37 +632,50 @@ fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, arg
   }
 }
 
-fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  if is_typed_service_call_receiver(receiver: receiver) {
-    match extract_typed_service_name(receiver: receiver) {
-      Some { value: svc_name } => {
-        let var_name = service_var_name(service_name: svc_name)
-        let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
-        let args_str = arg_strs |> join(separator: ", ")
-        concat("await ", var_name, ".", py_ident(name: method), "(", args_str, ")")
-      }
-      None =>
-        "raise NotImplementedError(\"unsupported service receiver\")"
+fn emit_py_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+  let all_args = concat([recv_str], arg_strs)
+  concat(py_ident(name: function_name), "(", all_args |> join(separator: ", "), ")")
+}
+
+fn emit_py_plain_method_call(receiver: Node, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+  let args_str = arg_strs |> join(separator: ", ")
+  concat(recv_str, ".", py_ident(name: method), "(", args_str, ")")
+}
+
+fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  match method_semantics {
+    Some { value: ServiceMethodSemantics { service_name: svc_name } } => {
+      let var_name = service_var_name(service_name: svc_name)
+      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+      let args_str = arg_strs |> join(separator: ", ")
+      concat("await ", var_name, ".", py_ident(name: method), "(", args_str, ")")
     }
-  } else {
-    match classify_intrinsic_method(method: method) {
-      Some { value: intrinsic } =>
-        match emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth) {
-          Some { value: lowered } => lowered
-          None => {
-            let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _, wrap_result_in_rc: _ } } =>
+      match emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth) {
+        Some { value: lowered } => lowered
+        None => emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
+      }
+    Some { value: RuntimeBridgeSemantics { function_name: function_name, pass_receiver_by_ref: _, wrap_result_in_rc: _ } } =>
+      emit_py_runtime_bridge_method_call(function_name: function_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+    Some { value: PlainMethodSemantics } =>
+      emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
+    None =>
+      if is_typed_service_call_receiver(receiver: receiver) {
+        match extract_typed_service_name(receiver: receiver) {
+          Some { value: svc_name } =>
+            let var_name = service_var_name(service_name: svc_name)
             let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
             let args_str = arg_strs |> join(separator: ", ")
-            concat(recv_str, ".", py_ident(name: method), "(", args_str, ")")
-          }
+            concat("await ", var_name, ".", py_ident(name: method), "(", args_str, ")")
+          None => "raise NotImplementedError(\"unsupported service receiver\")"
         }
-      None => {
-        let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-        let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
-        let args_str = arg_strs |> join(separator: ", ")
-        concat(recv_str, ".", py_ident(name: method), "(", args_str, ")")
+      } else {
+        emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
       }
-    }
   }
 }
 
@@ -953,16 +971,15 @@ fn emit_py_service_def(
 }
 
 fn emit_py_service_init(transport: Node, config: ServiceConfig?) -> String {
-  let kind = transport.name
-  if kind == "rest" {
+  if is_transport_kind(t: transport, kind: RestTransport) {
     let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
     let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
     concat("def __init__(self, base_url: str", auth_param, "):\n",
       "    self.base_url = base_url", auth_assign)
-  } else if kind == "shell" {
+  } else if is_transport_kind(t: transport, kind: ShellTransport) {
     concat("def __init__(self, working_dir: str | None = None):\n",
       "    self.working_dir = working_dir")
-  } else if kind == "file" {
+  } else if is_transport_kind(t: transport, kind: FileTransport) {
     concat("def __init__(self, base_path: str):\n",
       "    self.base_path = base_path")
   } else {
@@ -992,12 +1009,11 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  let kind = transport.name
-  if kind == "rest" {
+  if is_transport_kind(t: transport, kind: RestTransport) {
     emit_py_rest_call(op_name: op_name, transport: transport)
-  } else if kind == "shell" {
+  } else if is_transport_kind(t: transport, kind: ShellTransport) {
     emit_py_shell_call(op_name: op_name, transport: transport)
-  } else if kind == "file" {
+  } else if is_transport_kind(t: transport, kind: FileTransport) {
     emit_py_file_call(op_name: op_name)
   } else {
     emit_py_local_call(op_name: op_name)

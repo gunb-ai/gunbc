@@ -26,10 +26,11 @@ import v2.std.core {
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node,
+  make_expr_node, make_expr_error_node,
   NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  ExprErrorKind, ParseRecoveryError,
   BinOpKind, Add, Sub, Mul, Div, Mod,
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
@@ -118,6 +119,17 @@ type ExprsResult { exprs: List<Node>, state: ParserState, err: Diagnostic? }
 type ArmsResult { arms: List<MatchArm>, state: ParserState, err: Diagnostic? }
 type ModsResult { modifiers: List<OperationModifier>, state: ParserState, err: Diagnostic? }
 type BindingsResult { field_bindings: List<FieldBinding>, state: ParserState, err: Diagnostic? }
+
+fn parse_recovery_expr(span: SourceSpan, message: String) -> Node {
+  make_expr_error_node(kind: ParseRecoveryError, message: message, span: span)
+}
+
+fn parse_recovery_placeholder() -> Node {
+  parse_recovery_expr(
+    span: SourceSpan { start: 0, end: 0 },
+    message: "parser recovery placeholder"
+  )
+}
 
 // Optional results
 type OptRetResult { return_type: Node?, state: ParserState, err: Diagnostic? }
@@ -917,7 +929,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         let max_fields = if r2.max_val != none {
           [FieldInit { name: "max", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.max_val.value } }, return_type: none, span: zero_span) }]
         } else { [] }
-        let result = PredResult { predicate: FieldInit { name: "Range", value: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: concat(min_fields, max_fields) }, return_type: none, span: zero_span) }, state: r3.state, err: none }
+        let result = PredResult { predicate: FieldInit { name: "Range", value: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: concat(min_fields, max_fields), parent_enum: none }, return_type: none, span: zero_span) }, state: r3.state, err: none }
         result
       }
       _ => {
@@ -2505,7 +2517,7 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
 // =========================================================================
 
 fn parse_block(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "LBrace")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
@@ -2575,7 +2587,7 @@ fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
 // Parse bare assignment: name = expr -> desugar to Let { name, value, body: none }
 fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let name = r.name
@@ -2712,7 +2724,7 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
 // Produces MethodCall { receiver, method, args }.
 // Supports: lhs |> method, lhs |> method(args), lhs |> method(name: arg)
 fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span: SourceSpan) -> ExprResult {
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let method = r.name
@@ -2803,7 +2815,11 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
             Some { value: kind } => kind_tag(kind: kind)
             None => "EOF"
           }
-          ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }), state: state, err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) } }
+          ExprResult {
+            expr: parse_recovery_expr(span: span, message: "expected expression, found {tag}"),
+            state: state,
+            err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) }
+          }
         }
       }
     }
@@ -2824,7 +2840,7 @@ fn parse_lambda_body(tokens: List<Token>, state: ParserState) -> ExprResult {
   }
   if is_block {
     let r = parse_lambda_stmts(tokens: tokens, state: s, acc: [])
-    if has_err(err: r.err) { return ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }), state: r.state, err: r.err } }
+    if has_err(err: r.err) { return ExprResult { expr: parse_recovery_placeholder(), state: r.state, err: r.err } }
     let span = current_span(tokens: tokens, state: s)
     if count(r.stmts) == 1 {
       ExprResult { expr: first(r.stmts).value, state: r.state, err: none }
@@ -2862,7 +2878,7 @@ fn parse_ident_expr(tokens: List<Token>, state: ParserState, name: String) -> Ex
     let adv2 = advance(tokens: tokens, state: s)
     let r = parse_lambda_body(tokens: tokens, state: adv2.state)
     if has_err(err: r.err) { return r }
-    ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: [name], body: r.expr }, return_type: none, span: span), state: r.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: [name], body: r.expr, semantics: none }, return_type: none, span: span), state: r.state, err: none }
   } else {
     if is_uppercase_start(name: name) && check(tokens: tokens, state: s, tag: "LBrace") {
       parse_record_literal(tokens: tokens, state: s, name: name, span: span)
@@ -2949,7 +2965,7 @@ fn make_call_expr(lhs: Node, args: List<NamedArg>, span: SourceSpan) -> Node {
 // =========================================================================
 
 fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, span: SourceSpan) -> ExprResult {
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "LBracket")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = r.state
@@ -3025,7 +3041,7 @@ fn parse_arg_list_acc(tokens: List<Token>, state: ParserState, acc: List<NamedAr
 }
 
 fn parse_single_arg(tokens: List<Token>, state: ParserState) -> ArgResult {
-  let dummy_arg = NamedArg { name: none, value: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+  let dummy_arg = NamedArg { name: none, value: parse_recovery_placeholder() }
   // Try to parse as a named argument (ident: value or keyword: value).
   // Uses expect_name which handles both identifiers and keywords.
   let is_name_token = is_ident(tokens: tokens, state: state) || is_keyword_name(tokens: tokens, state: state)
@@ -3067,7 +3083,7 @@ fn parse_single_arg(tokens: List<Token>, state: ParserState) -> ArgResult {
 
 fn parse_match(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "KwMatch")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
@@ -3176,7 +3192,7 @@ fn parse_match_arms_acc(tokens: List<Token>, state: ParserState, acc: List<Match
 // =========================================================================
 
 fn parse_match_arm(tokens: List<Token>, state: ParserState) -> ArmResult {
-  let dummy_arm = MatchArm { pattern: Wildcard, guard: none, body: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+  let dummy_arm = MatchArm { pattern: Wildcard, guard: none, body: parse_recovery_placeholder() }
   let r = parse_pattern(tokens: tokens, state: state)
   if has_err(err: r.err) { return ArmResult { arm: dummy_arm, state: r.state, err: r.err } }
   let pat = r.pattern
@@ -3213,7 +3229,7 @@ fn parse_match_arm_body(tokens: List<Token>, state: ParserState) -> ExprResult {
   }
   if is_block {
     let r = parse_match_arm_stmts(tokens: tokens, state: state, acc: [])
-    if has_err(err: r.err) { return ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }), state: r.state, err: r.err } }
+    if has_err(err: r.err) { return ExprResult { expr: parse_recovery_placeholder(), state: r.state, err: r.err } }
     let span = current_span(tokens: tokens, state: state)
     if count(r.stmts) == 1 {
       ExprResult { expr: first(r.stmts).value, state: r.state, err: none }
@@ -3392,9 +3408,9 @@ fn parse_variant_pattern(tokens: List<Token>, state: ParserState, name: String) 
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
     let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBrace")
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
-    PatternResult { pattern: VariantPattern { name: name, field_bindings: r.field_bindings }, state: r2.state, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, state: r2.state, err: none }
   } else {
-    PatternResult { pattern: VariantPattern { name: name, field_bindings: [] }, state: state, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, state: state, err: none }
   }
 }
 
@@ -3436,7 +3452,7 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc
 
 fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "KwIf")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
@@ -3472,7 +3488,7 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
 
 fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "KwLet")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
@@ -3495,7 +3511,7 @@ fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
 
 fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "KwReturn")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
@@ -3510,7 +3526,7 @@ fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
 
 fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "KwFor")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
@@ -3538,7 +3554,7 @@ fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
 // =========================================================================
 
 fn parse_record_literal(tokens: List<Token>, state: ParserState, name: String, span: SourceSpan) -> ExprResult {
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "LBrace")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
@@ -3550,7 +3566,7 @@ fn parse_record_literal(tokens: List<Token>, state: ParserState, name: String, s
   let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
 
-  ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: Some { value: name }, fields: r.fields }, return_type: none, span: span), state: r2.state, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: Some { value: name }, fields: r.fields, parent_enum: none }, return_type: none, span: span), state: r2.state, err: none }
 }
 
 fn parse_field_init_list(tokens: List<Token>, state: ParserState) -> FieldInitsResult {
@@ -3571,7 +3587,7 @@ fn parse_field_init_list_acc(tokens: List<Token>, state: ParserState, acc: List<
 }
 
 fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult {
-  let dummy_fi = FieldInit { name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+  let dummy_fi = FieldInit { name: "", value: parse_recovery_placeholder() }
   if is_ident(tokens: tokens, state: state) || is_keyword_name(tokens: tokens, state: state) {
     let name_r = expect_name(tokens: tokens, state: state)
     if has_err(err: name_r.err) { return FieldInitResult { field: dummy_fi, state: name_r.state, err: name_r.err } }
@@ -3612,7 +3628,7 @@ fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult 
 
 fn parse_list_literal(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "LBracket")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
@@ -3654,20 +3670,20 @@ fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_tag: S
 
 fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, tag: "LParen")
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
   if check(tokens: tokens, state: s, tag: "RParen") {
     let adv = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [] }, return_type: none, span: span), state: adv.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [], parent_enum: none }, return_type: none, span: span), state: adv.state, err: none }
   } else {
     let lambda_r = try_lambda_params(tokens: tokens, state: s)
     if lambda_r.is_lambda {
       let r = parse_lambda_body(tokens: tokens, state: lambda_r.state)
       if has_err(err: r.err) { return r }
-      ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: lambda_r.params, body: r.expr }, return_type: none, span: span), state: r.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: lambda_r.params, body: r.expr, semantics: none }, return_type: none, span: span), state: r.state, err: none }
     } else {
       let r = parse_expr(tokens: tokens, state: s)
       if has_err(err: r.err) { return r }
@@ -3688,7 +3704,7 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 
 fn parse_fn_lambda(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy = parse_recovery_placeholder()
   // Consume 'fn'
   let r1 = expect(tokens: tokens, state: state, tag: "KwFn")
   if has_err(err: r1.err) { return ExprResult { expr: dummy, state: r1.state, err: r1.err } }
@@ -3704,7 +3720,7 @@ fn parse_fn_lambda(tokens: List<Token>, state: ParserState) -> ExprResult {
   // Parse body: { ... }
   let body_r = parse_brace_expr(tokens: tokens, state: s)
   if has_err(err: body_r.err) { return body_r }
-  ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: params_r.params, body: body_r.expr }, return_type: none, span: span), state: body_r.state, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: params_r.params, body: body_r.expr, semantics: none }, return_type: none, span: span), state: body_r.state, err: none }
 }
 
 // Collect comma-separated identifiers for fn lambda params.
@@ -3792,7 +3808,11 @@ fn parse_string_interp(tokens: List<Token>, state: ParserState) -> ExprResult {
       }
       parse_interp_parts(tokens: tokens, state: adv.state, parts: parts_init, span: span)
     }
-    _ => ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 }), state: state, err: Some { value: parse_error(msg: "expected string interpolation", span: span) } }
+    _ => ExprResult {
+      expr: parse_recovery_expr(span: span, message: "expected string interpolation"),
+      state: state,
+      err: Some { value: parse_error(msg: "expected string interpolation", span: span) }
+    }
   }
 }
 
@@ -3836,13 +3856,13 @@ fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<Strin
 
 fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
-  let dummy_expr = make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })
+  let dummy_expr = parse_recovery_placeholder()
   let adv = advance(tokens: tokens, state: state)
   let s = skip_newlines(tokens: tokens, state: adv.state)
 
   if check(tokens: tokens, state: s, tag: "RBrace") {
     let adv2 = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [] }, return_type: none, span: span), state: adv2.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [], parent_enum: none }, return_type: none, span: span), state: adv2.state, err: none }
   } else {
     let k = peek_kind(tokens: tokens, state: s)
     match k {
@@ -3878,14 +3898,14 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
           let s2 = skip_newlines(tokens: tokens, state: r.state)
           let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: r.fields }, return_type: none, span: span), state: r2.state, err: none }
+          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: r.fields, parent_enum: none }, return_type: none, span: span), state: r2.state, err: none }
         } else if check(tokens: tokens, state: s, tag: "LitStr") && peek_is_colon_after_ident(tokens: tokens, state: s) {
           let r = parse_field_init_list(tokens: tokens, state: s)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
           let s2 = skip_newlines(tokens: tokens, state: r.state)
           let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: r.fields }, return_type: none, span: span), state: r2.state, err: none }
+          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: r.fields, parent_enum: none }, return_type: none, span: span), state: r2.state, err: none }
         } else {
           let r = parse_stmts(tokens: tokens, state: s)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }

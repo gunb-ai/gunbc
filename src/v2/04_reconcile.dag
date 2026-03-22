@@ -26,11 +26,11 @@ import v2.std.core {
   Field, Variant, Param,
   Connective, Conj, Disj,
   ExprData, NoExprData,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node,
+  make_expr_node, make_expr_error_node,
   Diagnostic, Severity, Warning,
   ResourceUse,
   ServiceConfig,
@@ -49,6 +49,15 @@ import v2.std.core {
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
+  LambdaSemantics,
+  ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
+  BuiltinTypeKind,
+  BuiltinInt, BuiltinFloat, BuiltinBool, BuiltinString, BuiltinList,
+  BuiltinMap, BuiltinSet, BuiltinOptional, BuiltinUnit, BuiltinBytes,
+  BuiltinJson, BuiltinSecret, BuiltinDynamic, BuiltinError, BuiltinCustom,
+  builtin_type_kind,
+  TransportKind, LocalTransport,
+  is_transport_kind,
   BinOpKind, Add, Sub, Mul, Div, Mod,
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
   BinAnd, BinOr, NullCoalesce,
@@ -264,9 +273,9 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccu
     }
     ExprUnaryOp { op: _, operand: e } =>
       collect_typed_service_calls_into(texpr: e, acc: acc)
-    ExprLambda { params: _, body: bd } =>
+    ExprLambda { params: _, body: bd, semantics: _ } =>
       collect_typed_service_calls_into(texpr: bd, acc: acc)
-    ExprRecordLit { type_name: _, fields: fs } =>
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
       fs |> fold(init: acc, f: (a, f) => collect_typed_service_calls_into(texpr: f.value, acc: a))
     ExprListLit { elements: els } =>
       els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
@@ -758,6 +767,14 @@ fn error_type_node() -> Node {
   leaf_node(name: "Error")
 }
 
+fn semantic_expr_error_node(message: String, span: SourceSpan) -> Node {
+  make_expr_error_node(kind: SemanticExprError, message: message, span: span)
+}
+
+fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
+  make_expr_error_node(kind: InternalExprError, message: message, span: span)
+}
+
 fn node_is_error_type(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
   normed.connective == none && normed.children |> count == 0 && normed.name == "Error"
@@ -934,7 +951,7 @@ fn node_is_map(n: Node) -> Bool {
 // or an error sentinel from a prior failed lookup.
 // Both are permissive: operations on them succeed without diagnostics.
 fn node_is_dynamic(n: Node) -> Bool {
-  n.connective == none && n.children |> count == 0 && n.name == "Dynamic"
+  builtin_type_kind(n: normalize_access_type_node(n: n)) == BuiltinDynamic
 }
 
 // Check if a type-Node is a leaf (primitive or named reference).
@@ -1292,13 +1309,11 @@ fn node_type_deps(n: Node) -> List<String> {
 }
 
 fn is_int_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.connective == none && normed.children |> count == 0 && normed.name == "Int"
+  builtin_type_kind(n: normalize_access_type_node(n: n)) == BuiltinInt
 }
 
 fn is_string_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.connective == none && normed.children |> count == 0 && normed.name == "String"
+  builtin_type_kind(n: normalize_access_type_node(n: n)) == BuiltinString
 }
 
 fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
@@ -1406,6 +1421,44 @@ fn classify_runtime_bridge_method(method: String, wrap_result_in_rc: Bool) -> Me
     Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: false, wrap_result_in_rc: wrap_result_in_rc } }
   } else {
     none
+  }
+}
+
+fn lambda_semantics_from_param_types(param_types: List<Node>) -> LambdaSemantics {
+  LambdaSemantics { param_types: param_types }
+}
+
+fn lambda_param_types_from_scope(scope: InferScope, params: List<String>) -> List<Node> {
+  params |> map(param_name =>
+    match map_get(scope.locals, param_name) {
+      Some { value: binding } => binding.resolved
+      None => leaf_node(name: "Dynamic")
+    }
+  )
+}
+
+fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_type: Node, scope: InferScope) -> MatchPattern {
+  match pattern {
+    VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
+      let resolved_scrut = resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)
+      let inferred_parent = if node_is_optional(n: resolved_scrut) && (variant_name == "Some" || variant_name == "None") {
+        Some { value: "Optional" }
+      } else if resolved_scrut.connective != none {
+        match resolved_scrut.connective.value {
+          Disj => Some { value: resolved_scrut.name }
+          _ => none
+        }
+      } else { none }
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name)
+      let annotated_bindings = bindings |> map(binding =>
+        let field_lookup = lookup_field_in_variant(variant: variant_lookup.resolved, field_name: binding.field_name, module_name: scope.module_name)
+        FieldBinding {
+          field_name: binding.field_name,
+          binding: annotate_pattern_parent_enums(pattern: binding.binding, scrutinee_type: field_lookup.resolved, scope: scope)
+        }
+      )
+      VariantPattern { name: variant_name, parent_enum: inferred_parent, field_bindings: annotated_bindings }
+    _ => pattern
   }
 }
 
@@ -1664,9 +1717,16 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
 }
 
 fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String) -> NodeLookupResult {
-  // Dynamic scrutinee: variant lookup succeeds silently with Dynamic type.
   if node_is_dynamic(n: scrut) {
-    NodeLookupResult { resolved: leaf_node(name: "Dynamic"), diagnostics: [] }
+    NodeLookupResult {
+      resolved: error_type_node(),
+      diagnostics: [Diagnostic {
+        severity: Error,
+        message: concat("cannot resolve variant '", concat(variant_name, "' on Dynamic scrutinee")),
+        span: Some { value: scrut.span },
+        module_name: Some { value: module_name }
+      }]
+    }
   } else {
     let direct_match = scrut.children |> filter(c => c.name == variant_name) |> first
     let fallback = if node_is_optional(n: scrut) && variant_name == "Some" {
@@ -1682,9 +1742,16 @@ fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String
 }
 
 fn lookup_field_in_variant(variant: Node, field_name: String, module_name: String) -> NodeLookupResult {
-  // Dynamic variant: field lookup succeeds silently with Dynamic type.
   if node_is_dynamic(n: variant) {
-    NodeLookupResult { resolved: leaf_node(name: "Dynamic"), diagnostics: [] }
+    NodeLookupResult {
+      resolved: error_type_node(),
+      diagnostics: [Diagnostic {
+        severity: Error,
+        message: concat("cannot resolve field '", concat(field_name, "' on Dynamic variant")),
+        span: Some { value: variant.span },
+        module_name: Some { value: module_name }
+      }]
+    }
   } else {
     match variant.children |> filter(c => c.name == field_name) |> first {
       Some { value: field_child } =>
@@ -1708,7 +1775,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
     Bind { name: n } => PatternScopeResult { scope: extend_scope(scope: scope, name: n, resolved: scrutinee_type), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
-    VariantPattern { name: vname, field_bindings: bindings } =>
+    VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)
       // Find variant child by name in the Disj node
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name)
@@ -1757,9 +1824,18 @@ fn arg_has_name(arg: NamedArg, name: String) -> Bool {
 // First param gets accumulator type, last param gets element type.
 fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_type: Node) -> ArgInferResult {
   match arg.value.expr_data {
-    ExprLambda { params: lam_params, body: lam_body } =>
+    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
       let lam_span = arg.value.span
       let param_count = lam_params |> count
+      let param_types = lam_params |> enumerate |> map(pair =>
+        if pair.first == 0 {
+          acc_type
+        } else if pair.first == param_count - 1 {
+          elem_type
+        } else {
+          leaf_node(name: "Dynamic")
+        }
+      )
       let lam_locals = fold(lam_params |> enumerate, init: scope.locals, f: (acc_locals, pair) =>
         if pair.first == 0 {
           map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: acc_type })
@@ -1778,7 +1854,15 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         item_registry: scope.item_registry
       }
       let body_result = infer_expr(texpr: lam_body, scope: typed_lam_scope)
-      let typed_lam = make_expr_node(expr_data: ExprLambda { params: lam_params, body: body_result.typed }, return_type: Some { value: body_result.typed.return_type.value }, span: lam_span)
+      let typed_lam = make_expr_node(
+        expr_data: ExprLambda {
+          params: lam_params,
+          body: body_result.typed,
+          semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
+        },
+        return_type: Some { value: body_result.typed.return_type.value },
+        span: lam_span
+      )
       ArgInferResult { typed_arg: NamedArg { name: arg.name, value: typed_lam }, diagnostics: body_result.diagnostics }
     _ =>
       let ar = infer_expr(texpr: arg.value, scope: scope)
@@ -1795,8 +1879,19 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
 
 fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: InferScope) -> InferResult {
   match lambda_expr.expr_data {
-    ExprLambda { params: lam_params, body: lam_body } =>
+    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
       let span = lambda_expr.span
+      let param_types = if lam_params |> count == 1 {
+        [element_type]
+      } else {
+        lam_params |> enumerate |> map(pair =>
+          if pair.first == (lam_params |> count) - 1 {
+            element_type
+          } else {
+            leaf_node(name: "Dynamic")
+          }
+        )
+      }
       let typed_scope = if lam_params |> count == 1 {
         match lam_params |> first {
           Some { value: p } => extend_scope(scope: scope, name: p, resolved: element_type)
@@ -1815,7 +1910,15 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
       let body_result = infer_expr(texpr: lam_body, scope: typed_scope)
       let body_typed = body_result.typed
       InferResult {
-        typed: make_expr_node(expr_data: ExprLambda { params: lam_params, body: body_typed }, return_type: Some { value: body_typed.return_type.value }, span: span),
+        typed: make_expr_node(
+          expr_data: ExprLambda {
+            params: lam_params,
+            body: body_typed,
+            semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
+          },
+          return_type: Some { value: body_typed.return_type.value },
+          span: span
+        ),
         diagnostics: body_result.diagnostics
       }
     _ => infer_expr(texpr: lambda_expr, scope: scope)
@@ -1824,7 +1927,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
 
 fn is_lambda_expr(e: Node) -> Bool {
   match e.expr_data {
-    ExprLambda { params: _, body: _ } => true
+    ExprLambda { params: _, body: _, semantics: _ } => true
     _ => false
   }
 }
@@ -1851,6 +1954,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
     ExprLiteral { value: lit } =>
       let span = texpr.span
       ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, return_type: Some { value: infer_literal_node(lit: lit) }, span: span))
+
+    ExprError { kind: kind, message: message } =>
+      let span = texpr.span
+      InferResult {
+        typed: make_expr_error_node(kind: kind, message: message, span: span),
+        diagnostics: [inference_error(message: message, span: span, module_name: scope.module_name)]
+      }
 
     ExprVar { name: name, binding_kind: _ } =>
       let span = texpr.span
@@ -1918,26 +2028,19 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                 diagnostics: base_diags
               }
             None =>
-              // Dynamic-typed expressions (e.g., lambda parameters) permit field
-              // access without error -- the field type propagates as a leaf.
-              let field_diags = if node_is_dynamic(n: resolved_base) {
-                []
+              let error_message = if node_is_dynamic(n: resolved_base) {
+                concat("cannot resolve field '", concat(field_name, "' on Dynamic base"))
               } else {
-                [inference_error(
-                  message: concat("no field '", field_name, "' on type"),
-                  span: span,
-                  module_name: scope.module_name
-                )]
+                concat("no field '", field_name, "' on type")
               }
-              let result_type = if node_is_dynamic(n: resolved_base) { leaf_node(name: "Dynamic") } else { error_type_node() }
-              let fa_texpr = make_expr_node(
-                expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: none },
-                return_type: Some { value: result_type },
-                span: span
-              )
+              let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
               InferResult {
                 typed: fa_texpr,
-                diagnostics: concat(base_diags, field_diags)
+                diagnostics: concat(base_diags, [inference_error(
+                  message: error_message,
+                  span: span,
+                  module_name: scope.module_name
+                )])
               }
           }
       }
@@ -2026,7 +2129,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Known collection method -- bridge Call to MethodCall
           let receiver = match typed_args |> first {
             Some { value: ta } => ta.value
-            None => make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: Some { value: leaf_node(name: "Unit") }, span: span)
+            None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
           }
           let remaining = typed_args |> skip(1)
           // For fold: override return type with init arg's type
@@ -2077,7 +2180,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let call_semantics = if func_name == "lookup" {
             let receiver = match typed_args |> first {
               Some { value: first_arg } => first_arg.value
-              None => make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: Some { value: leaf_node(name: "Unit") }, span: span)
+              None => internal_expr_error_node(message: "lookup call missing receiver", span: span)
             }
             Some { value: LookupCallSemantics { needs_rc_wrap: data_lookup_needs_rc_wrap(receiver: receiver, scope: scope) } }
           } else {
@@ -2209,7 +2312,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let scrut_typed = scrut_result.typed
       let scrut_diags = scrut_result.diagnostics
       let arm_infer_results = arms |> map(arm =>
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: arm.pattern, scrutinee_type: scrut_typed.return_type.value)
+        let typed_pattern = annotate_pattern_parent_enums(pattern: arm.pattern, scrutinee_type: scrut_typed.return_type.value, scope: scope)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_type: scrut_typed.return_type.value)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm.guard != none {
@@ -2227,7 +2331,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
         ArmInferResult {
           typed_arm: MatchArm {
-            pattern: arm.pattern,
+            pattern: typed_pattern,
             guard: if guard_result != none { Some { value: guard_unwrapped.typed } } else { none },
             body: body_typed
           },
@@ -2331,7 +2435,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
       }
 
-    ExprRecordLit { type_name: tn, fields: field_inits } =>
+    ExprRecordLit { type_name: tn, fields: field_inits, parent_enum: _ } =>
       let span = texpr.span
       infer_record_lit(type_name: tn, field_inits: field_inits, span: span, scope: scope)
 
@@ -2384,13 +2488,21 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         diagnostics: operand_diags
       }
 
-    ExprLambda { params: lam_params, body: lam_body } =>
+    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
       let span = texpr.span
       let lam_scope = extend_scope_with_params(scope: scope, params: lam_params)
       let body_result = infer_expr(texpr: lam_body, scope: lam_scope)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let lam_texpr = make_expr_node(expr_data: ExprLambda { params: lam_params, body: body_typed }, return_type: Some { value: body_typed.return_type.value }, span: span)
+      let lam_texpr = make_expr_node(
+        expr_data: ExprLambda {
+          params: lam_params,
+          body: body_typed,
+          semantics: Some { value: lambda_semantics_from_param_types(param_types: lambda_param_types_from_scope(scope: lam_scope, params: lam_params)) }
+        },
+        return_type: Some { value: body_typed.return_type.value },
+        span: span
+      )
       InferResult {
         typed: lam_texpr,
         diagnostics: body_diags
@@ -2521,7 +2633,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
     _ =>
       let span = texpr.span
       InferResult {
-        typed: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: Some { value: error_type_node() }, span: span),
+        typed: make_expr_error_node(kind: InternalExprError, message: "unhandled expression variant in infer_expr", span: span),
         diagnostics: [inference_error(
           message: "unhandled expression variant in infer_expr",
           span: span,
@@ -2567,7 +2679,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
       params: [], return_type: none, uses: [],
       body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
     }
-    let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: typed_fields }, return_type: Some { value: anon_node }, span: span)
+    let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: typed_fields, parent_enum: none }, return_type: Some { value: anon_node }, span: span)
     InferResult {
       typed: texpr,
       diagnostics: fi_diags
@@ -2578,6 +2690,23 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     // Variant constructors like Some/None live in scope.locals with resolved
     // pointing to the parent type name (e.g. leaf_node(name: "Optional")).
     let type_lookup = lookup_type(env: scope.type_env, name: type_name.value)
+    let local_variant_parent = match lookup_in_scope(scope: scope, name: type_name.value) {
+      Some { value: local_node } =>
+        match lookup_type(env: scope.type_env, name: local_node.name) {
+          Some { value: parent } =>
+            if parent.connective != none {
+              match parent.connective.value {
+                Disj =>
+                  if parent.children |> any(child => child.name == type_name.value) {
+                    Some { value: local_node.name }
+                  } else { none }
+                _ => none
+              }
+            } else { none }
+          None => none
+        }
+      None => none
+    }
     let effective_lookup = match type_lookup {
       Some { value: _ } => type_lookup
       None =>
@@ -2602,7 +2731,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
         module_name: scope.module_name
       )]
     }
-    let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: type_name, fields: typed_fields }, return_type: Some { value: resolved_node }, span: span)
+    let texpr = make_expr_node(
+      expr_data: ExprRecordLit { type_name: type_name, fields: typed_fields, parent_enum: local_variant_parent },
+      return_type: Some { value: resolved_node },
+      span: span
+    )
     InferResult {
       typed: texpr,
       diagnostics: concat(fi_diags, type_diags)
@@ -2798,7 +2931,7 @@ fn check_match_exhaustiveness(
         // Collect covered variant names from VariantPattern arms.
         let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
           match arm.pattern {
-            VariantPattern { name: n, field_bindings: _ } => map_insert(acc, n, true)
+            VariantPattern { name: n, parent_enum: _, field_bindings: _ } => map_insert(acc, n, true)
             _ => acc
           }
         )
@@ -3253,7 +3386,17 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: depth + 1)
           }
         None =>
-          if n.name == "String" || n.name == "Int" || n.name == "Bool" || n.name == "Float" || n.name == "Secret" || n.name == "Json" || n.name == "Unit" || n.name == "Bytes" {
+          let builtin_kind = builtin_type_kind(n: n)
+          if builtin_kind == BuiltinString
+            || builtin_kind == BuiltinInt
+            || builtin_kind == BuiltinBool
+            || builtin_kind == BuiltinFloat
+            || builtin_kind == BuiltinSecret
+            || builtin_kind == BuiltinJson
+            || builtin_kind == BuiltinUnit
+            || builtin_kind == BuiltinBytes
+            || builtin_kind == BuiltinDynamic
+            || builtin_kind == BuiltinError {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {
@@ -3290,19 +3433,23 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
   let type_result = resolve_node(n: field.type_expr, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
-  let default_result = if field.default_value == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: field.default_value.value, env: env, module_name: module_name)
+  let default_resolved = match field.default_value {
+    Some { value: default_value } => Some { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
+    None => none
   }
-  let default_expr = default_result.expr
-  let default_diags = default_result.diagnostics
+  let default_diags = match default_resolved {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
   FieldResult {
     field: Field {
       name: field.name,
       type_expr: type_resolved,
       optional: field.optional,
-      default_value: if field.default_value == none { none } else { Some { value: default_expr } },
+      default_value: match default_resolved {
+        Some { value: result } => Some { value: result.expr }
+        None => none
+      },
       from_key: field.from_key,
       span: field.span
     },
@@ -3318,18 +3465,22 @@ fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult
   let type_result = resolve_node(n: param.type_expr, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
   let type_diags = type_result.diagnostics
-  let default_result = if param.default_value == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: param.default_value.value, env: env, module_name: module_name)
+  let default_resolved = match param.default_value {
+    Some { value: default_value } => Some { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
+    None => none
   }
-  let default_expr = default_result.expr
-  let default_diags = default_result.diagnostics
+  let default_diags = match default_resolved {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
   ParamResult {
     param: Param {
       name: param.name,
       type_expr: type_resolved,
-      default_value: if param.default_value == none { none } else { Some { value: default_expr } },
+      default_value: match default_resolved {
+        Some { value: result } => Some { value: result.expr }
+        None => none
+      },
       span: param.span
     },
     diagnostics: concat(type_diags, default_diags)
@@ -3379,20 +3530,24 @@ fn resolve_field_init(field_init: FieldInit, env: TypeEnv, module_name: String) 
 }
 
 fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
-  let guard_result = if arm.guard == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: arm.guard.value, env: env, module_name: module_name)
+  let guard_result = match arm.guard {
+    Some { value: guard } => Some { value: resolve_expr_types(texpr: guard, env: env, module_name: module_name) }
+    None => none
   }
-  let guard_expr = guard_result.expr
-  let guard_diags = guard_result.diagnostics
+  let guard_diags = match guard_result {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
   let body_result = resolve_expr_types(texpr: arm.body, env: env, module_name: module_name)
   let body_expr = body_result.expr
   let body_diags = body_result.diagnostics
   MatchArmResolveResult {
     arm: MatchArm {
       pattern: arm.pattern,
-      guard: if arm.guard == none { none } else { Some { value: guard_expr } },
+      guard: match guard_result {
+        Some { value: result } => Some { value: result.expr }
+        None => none
+      },
       body: body_expr
     },
     diagnostics: concat(guard_diags, body_diags)
@@ -3423,40 +3578,52 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   let endpoint_result = resolve_expr_types(texpr: config.endpoint, env: env, module_name: module_name)
   let endpoint_expr = endpoint_result.expr
   let endpoint_diags = endpoint_result.diagnostics
-  let auth_result = if config.auth == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: config.auth.value, env: env, module_name: module_name)
+  let auth_result = match config.auth {
+    Some { value: auth } => Some { value: resolve_expr_types(texpr: auth, env: env, module_name: module_name) }
+    None => none
   }
-  let auth_expr = auth_result.expr
-  let auth_diags = auth_result.diagnostics
-  let rate_result = if config.rate_limit == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: config.rate_limit.value, env: env, module_name: module_name)
+  let auth_diags = match auth_result {
+    Some { value: result } => result.diagnostics
+    None => []
   }
-  let rate_expr = rate_result.expr
-  let rate_diags = rate_result.diagnostics
-  let retry_result = if config.retry == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: config.retry.value, env: env, module_name: module_name)
+  let rate_result = match config.rate_limit {
+    Some { value: rate_limit } => Some { value: resolve_expr_types(texpr: rate_limit, env: env, module_name: module_name) }
+    None => none
   }
-  let retry_expr = retry_result.expr
-  let retry_diags = retry_result.diagnostics
+  let rate_diags = match rate_result {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
+  let retry_result = match config.retry {
+    Some { value: retry } => Some { value: resolve_expr_types(texpr: retry, env: env, module_name: module_name) }
+    None => none
+  }
+  let retry_diags = match retry_result {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
   ServiceConfigResolveResult {
     config: ServiceConfig {
       endpoint: endpoint_expr,
-      auth: if config.auth == none { none } else { Some { value: auth_expr } },
-      rate_limit: if config.rate_limit == none { none } else { Some { value: rate_expr } },
-      retry: if config.retry == none { none } else { Some { value: retry_expr } }
+      auth: match auth_result {
+        Some { value: result } => Some { value: result.expr }
+        None => none
+      },
+      rate_limit: match rate_result {
+        Some { value: result } => Some { value: result.expr }
+        None => none
+      },
+      retry: match retry_result {
+        Some { value: result } => Some { value: result.expr }
+        None => none
+      }
     },
     diagnostics: concat(endpoint_diags, auth_diags, rate_diags, retry_diags)
   }
 }
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
-  if transport.name == "local" {
+  if is_transport_kind(t: transport, kind: LocalTransport) {
     TransportResolveResult { transport: transport, diagnostics: [] }
   } else {
     // Generic resolution: resolve all property values and children
@@ -3480,6 +3647,16 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
   match texpr.expr_data {
     ExprLiteral { value: _ } =>
       ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprError { kind: kind, message: message } =>
+      ExprResolveResult {
+        expr: make_expr_error_node(kind: kind, message: message, span: texpr.span),
+        diagnostics: [Diagnostic {
+          severity: Error,
+          message: message,
+          span: Some { value: texpr.span },
+          module_name: Some { value: module_name }
+        }]
+      }
     ExprVar { name: _, binding_kind: _ } =>
       ExprResolveResult { expr: texpr, diagnostics: [] }
 
@@ -3537,18 +3714,22 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let then_result = resolve_expr_types(texpr: then_branch, env: env, module_name: module_name)
       let then_expr = then_result.expr
       let then_diags = then_result.diagnostics
-      let else_result = if else_branch == none {
-        ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-      } else {
-        resolve_expr_types(texpr: else_branch.value, env: env, module_name: module_name)
+      let else_result = match else_branch {
+        Some { value: eb } => Some { value: resolve_expr_types(texpr: eb, env: env, module_name: module_name) }
+        None => none
       }
-      let else_expr = else_result.expr
-      let else_diags = else_result.diagnostics
+      let else_diags = match else_result {
+        Some { value: result } => result.diagnostics
+        None => []
+      }
       ExprResolveResult {
         expr: make_expr_node(expr_data: ExprIf {
           condition: cond_expr,
           then_branch: then_expr,
-          else_branch: if else_branch == none { none } else { Some { value: else_expr } }
+          else_branch: match else_result {
+            Some { value: result } => Some { value: result.expr }
+            None => none
+          }
         }, return_type: texpr.return_type, span: span),
         diagnostics: concat(cond_diags, then_diags, else_diags)
       }
@@ -3558,29 +3739,33 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let value_result = resolve_expr_types(texpr: value, env: env, module_name: module_name)
       let value_expr = value_result.expr
       let value_diags = value_result.diagnostics
-      let body_result = if body == none {
-        ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-      } else {
-        resolve_expr_types(texpr: body.value, env: env, module_name: module_name)
+      let body_result = match body {
+        Some { value: b } => Some { value: resolve_expr_types(texpr: b, env: env, module_name: module_name) }
+        None => none
       }
-      let body_expr = body_result.expr
-      let body_diags = body_result.diagnostics
+      let body_diags = match body_result {
+        Some { value: result } => result.diagnostics
+        None => []
+      }
       ExprResolveResult {
         expr: make_expr_node(expr_data: ExprLet {
           name: name,
           value: value_expr,
-          body: if body == none { none } else { Some { value: body_expr } }
+          body: match body_result {
+            Some { value: result } => Some { value: result.expr }
+            None => none
+          }
         }, return_type: texpr.return_type, span: span),
         diagnostics: concat(value_diags, body_diags)
       }
 
-    ExprRecordLit { type_name: type_name, fields: fields } =>
+    ExprRecordLit { type_name: type_name, fields: fields, parent_enum: parent_enum } =>
       let span = texpr.span
       let field_results = map(fields, field_init => resolve_field_init(field_init: field_init, env: env, module_name: module_name))
       let resolved_fields = map(field_results, fr => fr.field_init)
       let field_diags = flat_map(field_results, fr => fr.diagnostics)
       ExprResolveResult {
-        expr: make_expr_node(expr_data: ExprRecordLit { type_name: type_name, fields: resolved_fields }, return_type: texpr.return_type, span: span),
+        expr: make_expr_node(expr_data: ExprRecordLit { type_name: type_name, fields: resolved_fields, parent_enum: parent_enum }, return_type: texpr.return_type, span: span),
         diagnostics: field_diags
       }
 
@@ -3617,13 +3802,13 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         diagnostics: operand_diags
       }
 
-    ExprLambda { params: params, body: body } =>
+    ExprLambda { params: params, body: body, semantics: semantics } =>
       let span = texpr.span
       let body_result = resolve_expr_types(texpr: body, env: env, module_name: module_name)
       let body_expr = body_result.expr
       let body_diags = body_result.diagnostics
       ExprResolveResult {
-        expr: make_expr_node(expr_data: ExprLambda { params: params, body: body_expr }, return_type: texpr.return_type, span: span),
+        expr: make_expr_node(expr_data: ExprLambda { params: params, body: body_expr, semantics: semantics }, return_type: texpr.return_type, span: span),
         diagnostics: body_diags
       }
 
@@ -3747,13 +3932,18 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let use_diags = flat_map(use_results, ur => ur.diagnostics)
 
   // Resolve body if present
-  let body_resolved = if item.body == none {
-    ExprResolveResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), diagnostics: [] }
-  } else {
-    resolve_expr_types(texpr: item.body.value, env: env, module_name: module_name)
+  let body_resolved = match item.body {
+    Some { value: body } => Some { value: resolve_expr_types(texpr: body, env: env, module_name: module_name) }
+    None => none
   }
-  let resolved_body = if item.body == none { none } else { Some { value: body_resolved.expr } }
-  let body_diags = body_resolved.diagnostics
+  let resolved_body = match body_resolved {
+    Some { value: result } => Some { value: result.expr }
+    None => none
+  }
+  let body_diags = match body_resolved {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
@@ -3774,16 +3964,18 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let transport_diags = transport_resolved.diagnostics
 
   // Resolve config if present
-  let config_resolved = if item.config == none {
-    ServiceConfigResolveResult {
-      config: ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: no_span()), auth: none, rate_limit: none, retry: none },
-      diagnostics: []
-    }
-  } else {
-    resolve_service_config(config: item.config.value, env: env, module_name: module_name)
+  let config_resolved = match item.config {
+    Some { value: config } => Some { value: resolve_service_config(config: config, env: env, module_name: module_name) }
+    None => none
   }
-  let resolved_config = if item.config == none { none } else { Some { value: config_resolved.config } }
-  let config_diags = config_resolved.diagnostics
+  let resolved_config = match config_resolved {
+    Some { value: result } => Some { value: result.config }
+    None => none
+  }
+  let config_diags = match config_resolved {
+    Some { value: result } => result.diagnostics
+    None => []
+  }
 
   // Resolve properties
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
@@ -4100,9 +4292,9 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
       )
     ExprUnaryOp { op: _, operand: e } =>
       collect_calls_in_expr(caller: caller, texpr: e, local_func_set: local_func_set)
-    ExprLambda { params: _, body: bd } =>
+    ExprLambda { params: _, body: bd, semantics: _ } =>
       collect_calls_in_expr(caller: caller, texpr: bd, local_func_set: local_func_set)
-    ExprRecordLit { type_name: _, fields: fs } =>
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
       flat_map(fs, fi => collect_calls_in_expr(caller: caller, texpr: fi.value, local_func_set: local_func_set))
     ExprListLit { elements: els } =>
       flat_map(els, el => collect_calls_in_expr(caller: caller, texpr: el, local_func_set: local_func_set))

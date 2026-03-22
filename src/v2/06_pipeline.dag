@@ -132,9 +132,10 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     }
     let emit_files = emit_result.files
     let emit_diags = emit_result.diagnostics
+    let emit_errors = emit_diags |> filter(d => d.severity == Error)
 
     CompileResult {
-      files: emit_files,
+      files: if emit_errors |> count > 0 { [] } else { emit_files },
       diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags)
     }
   }

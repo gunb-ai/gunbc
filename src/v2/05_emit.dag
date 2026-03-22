@@ -34,12 +34,7 @@ import v2.std.core {
   ResourceUse,
   BinOpKind, NullCoalesce,
   ServiceConfig,
-  DeclaredFuncSig,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodFold, MethodSortBy, MethodAppend
+  DeclaredFuncSig
 }
 
 import v2.compiler.reconcile {
@@ -188,28 +183,6 @@ fn unique_strings(items: List<String>) -> List<String> {
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
   result.result
-}
-
-fn classify_intrinsic_method(method: String) -> IntrinsicMethod? {
-  if method == "count" { Some { value: MethodCount } }
-  else if method == "join" { Some { value: MethodJoin } }
-  else if method == "split" { Some { value: MethodSplit } }
-  else if method == "last" { Some { value: MethodLast } }
-  else if method == "first" { Some { value: MethodFirst } }
-  else if method == "enumerate" { Some { value: MethodEnumerate } }
-  else if method == "chars" { Some { value: MethodChars } }
-  else if method == "string_contains" { Some { value: MethodStringContains } }
-  else if method == "concat" { Some { value: MethodConcat } }
-  else if method == "map" { Some { value: MethodMap } }
-  else if method == "filter" { Some { value: MethodFilter } }
-  else if method == "any" { Some { value: MethodAny } }
-  else if method == "all" { Some { value: MethodAll } }
-  else if method == "flat_map" { Some { value: MethodFlatMap } }
-  else if method == "skip" { Some { value: MethodSkip } }
-  else if method == "fold" { Some { value: MethodFold } }
-  else if method == "sort_by" { Some { value: MethodSortBy } }
-  else if method == "append" { Some { value: MethodAppend } }
-  else { none }
 }
 
 // =========================================================================
