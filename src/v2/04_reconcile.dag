@@ -100,6 +100,22 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap
 
+// =========================================================================
+// Root Cause A resolution types
+//
+// These types close information gaps at the reconcile→emit boundary.
+// Reconcile attaches these to its output so emit never re-derives them.
+// =========================================================================
+
+// A-4: Distinguish variable bindings from function-as-value references.
+// lookup_in_scope returns this so emit knows whether ExprVar refers to
+// a local binding or a callable being passed as a value.
+type RefKind = Binding | FunctionRef
+
+// A-9: Track why a lambda parameter was bound to Dynamic.
+// Emit uses this to decide whether auto-wrapping is safe.
+type ParamSource = Resolved | InferredFromCollection | Unresolvable
+
 type FieldValueShape = PlainValue | OptionalValue
 
 type FieldSummary {
@@ -2380,7 +2396,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
         is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
-        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true)
+        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
+        expr_data: NoExprData
       },
       diagnostics: body_diags
     }
@@ -3321,7 +3338,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_elements = map(element_results, er => er.expr)
       let element_diags = flat_map(element_results, er => er.diagnostics)
       ExprResolveResult {
-        expr: ListLit { elements: resolved_elements, span: span },
+        expr: make_expr_node(expr_data: ExprListLit { elements: resolved_elements }, return_type: texpr.return_type, span: span),
         diagnostics: element_diags
       }
 
@@ -3564,7 +3581,7 @@ fn build_item_info(item: Node) -> ItemInfo {
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
         is_self_recursive: false,
-        has_non_tail_self_call: false, expr_data: NoExprData
+        has_non_tail_self_call: false
       }
     FnItem =>
       ItemInfo {
@@ -3580,7 +3597,7 @@ fn build_item_info(item: Node) -> ItemInfo {
         kind: kind,
         service_names: [],
         is_self_recursive: false,
-        has_non_tail_self_call: false, expr_data: NoExprData
+        has_non_tail_self_call: false
       }
   }
 }
