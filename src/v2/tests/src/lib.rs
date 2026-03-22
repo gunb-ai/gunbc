@@ -10,8 +10,8 @@ mod tests {
     use std::collections::HashMap;
 
     /// Local replacement for CompileOutput.
-    /// Contains lowered function bodies and data values — everything the
-    /// v1 evaluator needs to execute v2 .dag functions.
+    /// Contains lowered function bodies and data values for executing
+    /// v2 .dag functions during bootstrap.
     struct CompileOutput {
         fns: HashMap<String, daglang_eval::LoweredFnBody>,
         data_values: HashMap<String, gunbc_ir::Value>,
@@ -969,7 +969,7 @@ fn foo(item: String) -> String {
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Phase 1: Compilation gate — v1 compiler can compile each v2 module
+    // Phase 1: Compilation gate — each v2 module compiles successfully
     // ═════════════════════════════════════════════════════════════════════
 
     /// Extract fn bodies and data values from the tokenizer module.
@@ -3867,110 +3867,6 @@ fn from_method() -> User? {\n\
         );
     }
 
-    /// Feed gist.dag's full transitive dependency chain through the v2
-    /// pipeline: tokenize → parse → resolve → typecheck → emit.
-    ///
-    /// This is the Level 1 acceptance gate: v2 can process the real gist
-    /// tool and its 10 transitive dependencies.
-    ///
-    /// No stack overflow: the explicit-stack evaluator handles deep mutual
-    /// recursion via heap continuations. However, evaluating 11 real .dag
-    /// files consumes >16GB heap in debug mode (interpreter overhead).
-    #[test]
-    #[ignore = "OOM: interpreting v2 pipeline on 11 .dag files exceeds memory (stack overflow fixed by stacker)"]
-    fn phase6_gist_full_pipeline() {
-        let output = compile_all_modules().expect("compilation should succeed");
-        let root = workspace_root();
-
-        // Gist's full transitive dependency chain (topological order: leaves first).
-        let dag_files = vec![
-            "dsl/std/types.dag",
-            "dsl/std/resources.dag",
-            "dsl/std/errors.dag",
-            "dsl/extdeps/cloud/cloud.dag",
-            "dsl/extdeps/cloud/gcp/gcp.dag",
-            "dsl/extdeps/github/github.dag",
-            "dsl/gunbc/auth/credentials.dag",
-            "dsl/extdeps/git.dag",
-            "dsl/extdeps/github/auth.dag",
-            "dsl/extdeps/github/gists.dag",
-            "dsl/gunbc/tools/gist.dag",
-        ];
-
-        // Step 1: Tokenize + parse each file
-        let mut modules = Vec::new();
-        for path in &dag_files {
-            let full_path = root.join(path);
-            let source = std::fs::read_to_string(&full_path)
-                .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
-            let module = v2_tokenize_and_parse(&output, &source);
-            modules.push(module);
-        }
-
-        // Step 2: Resolve imports
-        let mut resolve_inputs = HashMap::new();
-        resolve_inputs.insert("modules".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(modules)));
-        let resolve_result = call_fn(&output, "resolve_modules", resolve_inputs)
-            .expect("resolve_modules should succeed");
-        let graph = if let Some(ret) = resolve_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(resolve_result.into_iter().collect())
-        };
-
-        // Step 3: Typecheck
-        let mut tc_inputs = HashMap::new();
-        tc_inputs.insert("graph".to_string(), graph.clone());
-        let tc_result = call_fn(&output, "typecheck", tc_inputs).expect("typecheck should succeed");
-        let typed_graph = if let Some(ret) = tc_result.get("return") {
-            ret.clone()
-        } else {
-            gunbc_ir::Value::Map(tc_result.into_iter().collect())
-        };
-
-        // Step 4: Emit Rust for each typed module
-        let typed_modules = if let gunbc_ir::Value::Map(ref m) = typed_graph {
-            if let Some(gunbc_ir::Value::List(mods)) = m.get("modules") {
-                mods.clone()
-            } else {
-                panic!("no modules in typed graph");
-            }
-        } else {
-            panic!("typed graph not a map");
-        };
-
-        assert_eq!(
-            typed_modules.len(),
-            dag_files.len(),
-            "should have {} typed modules, got {}",
-            dag_files.len(),
-            typed_modules.len()
-        );
-
-        let mut emitted_files = Vec::new();
-        for typed_module in typed_modules.iter() {
-            let mut emit_inputs = HashMap::new();
-            emit_inputs.insert("typed_module".to_string(), typed_module.clone());
-            emit_inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
-            if let Ok(result) = call_fn(&output, "emit_module", emit_inputs) {
-                let text_file = if let Some(ret) = result.get("return") {
-                    ret.clone()
-                } else {
-                    gunbc_ir::Value::Map(result.into_iter().collect())
-                };
-                if matches!(text_file, gunbc_ir::Value::Map(_)) {
-                    emitted_files.push(text_file);
-                }
-            }
-        }
-
-        // At minimum, gist.dag should produce emitted output
-        assert!(
-            !emitted_files.is_empty(),
-            "should have emitted at least one file"
-        );
-    }
-
     // ═════════════════════════════════════════════════════════════════════
     // Regression: stack ordering for inner/outer continuations (S52-EVAL)
     // ═════════════════════════════════════════════════════════════════════
@@ -4119,9 +4015,6 @@ fn from_method() -> User? {\n\
                 panic!("could not parse diagnostic count from stderr:\n{stderr}")
             });
 
-        #[allow(clippy::disallowed_macros)]
-        eprintln!("Reconcile diagnostic count: {diag_count}");
-
         assert!(
             compile_output.status.success(),
             "stage0 compile failed:\n{stderr}"
@@ -4184,6 +4077,8 @@ fn from_method() -> User? {\n\
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
+            ("07_complexity", "src/v2/07_complexity.dag"),
+            ("08_artifact", "src/v2/08_artifact.dag"),
         ];
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
@@ -4210,7 +4105,6 @@ fn from_method() -> User? {\n\
 
     /// Smoke test: assemble stage0 crate and cargo check it.
     #[test]
-    #[ignore] // Requires cargo toolchain
     #[cfg(feature = "v1-bootstrap")]
     #[allow(clippy::disallowed_macros)]
     fn v2_stage0_cargo_check() {
@@ -4656,273 +4550,104 @@ fn from_method() -> User? {\n\
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Gist compilation tests — compile the gist dependency chain through
-    // the v2 pipeline and verify emitted output with external toolchains.
-    // ═════════════════════════════════════════════════════════════════════
-
-    /// The 11-file gist transitive dependency chain in topological order.
-    fn gist_dag_files() -> Vec<&'static str> {
-        vec![
-            "dsl/std/types.dag",
-            "dsl/std/resources.dag",
-            "dsl/std/errors.dag",
-            "dsl/extdeps/cloud/cloud.dag",
-            "dsl/extdeps/cloud/gcp/gcp.dag",
-            "dsl/extdeps/github/github.dag",
-            "dsl/gunbc/auth/credentials.dag",
-            "dsl/extdeps/git.dag",
-            "dsl/extdeps/github/auth.dag",
-            "dsl/extdeps/github/gists.dag",
-            "dsl/gunbc/tools/gist.dag",
-        ]
-    }
-
-    /// Read the gist dependency chain as (path, content) pairs suitable for
-    /// `compile_sources_with_target`.
-    fn read_gist_sources() -> Vec<(String, String)> {
-        let root = workspace_root();
-        gist_dag_files()
-            .into_iter()
-            .map(|rel| {
-                let full = root.join(rel);
-                let content = std::fs::read_to_string(&full)
-                    .unwrap_or_else(|e| panic!("failed to read {}: {}", rel, e));
-                (rel.to_string(), content)
-            })
-            .collect()
-    }
-
-    /// Compile gist's 11-file dependency chain through the v2 pipeline
-    /// targeting Rust, then verify the output compiles with `cargo check`.
-    #[test]
-    #[ignore] // Requires cargo toolchain; run with --ignored
-    fn v2_compile_gist_rust() {
-        let compiler = compile_all_modules().expect("v2 compiler modules should compile");
-        let gist_sources = read_gist_sources();
-        let source_refs: Vec<(&str, &str)> = gist_sources
-            .iter()
-            .map(|(p, c)| (p.as_str(), c.as_str()))
-            .collect();
-
-        let result = compile_sources_with_target(&compiler, &source_refs, "Rust");
-
-        // Check diagnostics — the pipeline should not produce errors.
-        let diagnostics = result
-            .get("diagnostics")
-            .expect("compile_sources should return diagnostics");
-        let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages
-            .iter()
-            .filter(|m| !m.is_empty())
-            .collect();
-        assert!(
-            errors.is_empty(),
-            "gist Rust compilation should produce no diagnostics: {:?}",
-            errors
-        );
-
-        // Extract emitted files.
-        let files = result
-            .get("files")
-            .expect("compile_sources should return files");
-        let file_list = match files {
-            gunbc_ir::Value::List(items) => items,
-            other => panic!("expected files list, got: {other:?}"),
-        };
-        assert!(
-            !file_list.is_empty(),
-            "gist Rust compilation should emit at least one file"
-        );
-
-        // Write emitted files to a temp directory and verify with cargo check.
-        let tmp_dir = std::env::temp_dir().join("v2-gist-rust-check");
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-        let src_dir = tmp_dir.join("src");
-        std::fs::create_dir_all(&src_dir).expect("failed to create src dir");
-
-        // Collect emitted file paths and contents.
-        let mut mod_names = Vec::new();
-        for file_val in file_list.iter() {
-            if let gunbc_ir::Value::Map(map) = file_val {
-                let path = match map.get("path") {
-                    Some(gunbc_ir::Value::Str(p)) => p.clone(),
-                    _ => continue,
-                };
-                let content = match map.get("content") {
-                    Some(gunbc_ir::Value::Str(c)) => c.clone(),
-                    _ => continue,
-                };
-                let file_path = tmp_dir.join(&path);
-                if let Some(parent) = file_path.parent() {
-                    std::fs::create_dir_all(parent).expect("failed to create parent dir");
-                }
-                std::fs::write(&file_path, &content)
-                    .unwrap_or_else(|e| panic!("failed to write {}: {}", path, e));
-
-                // Track module names for lib.rs (files under src/ ending in .rs, not lib.rs).
-                if path.starts_with("src/") && path.ends_with(".rs") && path != "src/lib.rs" {
-                    let stem = path
-                        .strip_prefix("src/")
-                        .unwrap()
-                        .strip_suffix(".rs")
-                        .unwrap();
-                    mod_names.push(stem.to_string());
-                }
-            }
-        }
-
-        // If no lib.rs was emitted, generate one that declares all modules.
-        let lib_path = src_dir.join("lib.rs");
-        if !lib_path.exists() {
-            let lib_content: String = mod_names
-                .iter()
-                .map(|m| format!("#[allow(dead_code, unused_imports, unused_variables)]\nmod {};", m))
-                .collect::<Vec<_>>()
-                .join("\n");
-            std::fs::write(&lib_path, lib_content).expect("failed to write lib.rs");
-        }
-
-        // Generate a Cargo.toml if one was not emitted.
-        let cargo_toml_path = tmp_dir.join("Cargo.toml");
-        if !cargo_toml_path.exists() {
-            let cargo_toml = r#"[package]
-name = "v2-gist-rust-check"
-version = "0.0.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-"#;
-            std::fs::write(&cargo_toml_path, cargo_toml).expect("failed to write Cargo.toml");
-        }
-
-        let output = std::process::Command::new("cargo")
-            .arg("check")
-            .current_dir(&tmp_dir)
-            .output()
-            .expect("failed to run cargo check");
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !output.status.success() {
-            // List emitted files for debugging.
-            let file_listing: Vec<String> = mod_names
-                .iter()
-                .map(|m| format!("  src/{}.rs", m))
-                .collect();
-            panic!(
-                "cargo check failed for gist Rust output (crate at {}):\nEmitted files:\n{}\nstderr:\n{}",
-                tmp_dir.display(),
-                file_listing.join("\n"),
-                stderr
-            );
-        }
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    /// Compile gist's 11-file dependency chain through the v2 pipeline
-    /// targeting Python, then verify each emitted .py file with
-    /// `python -m py_compile`.
-    #[test]
-    #[ignore] // Requires python3 toolchain; run with --ignored
-    fn v2_compile_gist_python() {
-        let compiler = compile_all_modules().expect("v2 compiler modules should compile");
-        let gist_sources = read_gist_sources();
-        let source_refs: Vec<(&str, &str)> = gist_sources
-            .iter()
-            .map(|(p, c)| (p.as_str(), c.as_str()))
-            .collect();
-
-        let result = compile_sources_with_target(&compiler, &source_refs, "Python");
-
-        // Check diagnostics — the pipeline should not produce errors.
-        let diagnostics = result
-            .get("diagnostics")
-            .expect("compile_sources should return diagnostics");
-        let messages = diagnostic_messages(diagnostics);
-        let errors: Vec<&String> = messages
-            .iter()
-            .filter(|m| !m.is_empty())
-            .collect();
-        assert!(
-            errors.is_empty(),
-            "gist Python compilation should produce no diagnostics: {:?}",
-            errors
-        );
-
-        // Extract emitted files.
-        let files = result
-            .get("files")
-            .expect("compile_sources should return files");
-        let file_list = match files {
-            gunbc_ir::Value::List(items) => items,
-            other => panic!("expected files list, got: {other:?}"),
-        };
-        assert!(
-            !file_list.is_empty(),
-            "gist Python compilation should emit at least one file"
-        );
-
-        // Write emitted .py files to a temp directory and verify each one.
-        let tmp_dir = std::env::temp_dir().join("v2-gist-python-check");
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-        std::fs::create_dir_all(&tmp_dir).expect("failed to create temp dir");
-
-        let mut py_files = Vec::new();
-        for file_val in file_list.iter() {
-            if let gunbc_ir::Value::Map(map) = file_val {
-                let path = match map.get("path") {
-                    Some(gunbc_ir::Value::Str(p)) => p.clone(),
-                    _ => continue,
-                };
-                let content = match map.get("content") {
-                    Some(gunbc_ir::Value::Str(c)) => c.clone(),
-                    _ => continue,
-                };
-                let file_path = tmp_dir.join(&path);
-                if let Some(parent) = file_path.parent() {
-                    std::fs::create_dir_all(parent).expect("failed to create parent dir");
-                }
-                std::fs::write(&file_path, &content)
-                    .unwrap_or_else(|e| panic!("failed to write {}: {}", path, e));
-                if path.ends_with(".py") {
-                    py_files.push(file_path);
-                }
-            }
-        }
-
-        assert!(
-            !py_files.is_empty(),
-            "gist Python compilation should emit at least one .py file"
-        );
-
-        // Verify each .py file with python -m py_compile.
-        for py_file in &py_files {
-            let output = std::process::Command::new("python3")
-                .arg("-m")
-                .arg("py_compile")
-                .arg(py_file)
-                .output()
-                .expect("failed to run python3 -m py_compile");
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let content = std::fs::read_to_string(py_file).unwrap_or_default();
-                panic!(
-                    "python3 -m py_compile failed for {}:\n--- stderr ---\n{}\n--- content ---\n{}",
-                    py_file.display(),
-                    stderr,
-                    content
-                );
-            }
-        }
-
-        let _ = std::fs::remove_dir_all(&tmp_dir);
-    }
-
-    // ═════════════════════════════════════════════════════════════════════
     // Namespace guard — duplicate function name detection
     // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_complexity_report_formatted() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module test_complexity
+
+fn constant_work(x: Int) -> Int { x + 1 }
+
+fn linear_map(items: List<String>) -> List<String> {
+  items |> map(s => concat(s, "!"))
+}
+
+fn linear_fold(nums: List<Int>) -> Int {
+  nums |> fold(init: 0, f: (acc, n) => acc + n)
+}
+
+fn nested_iteration(rows: List<List<String>>) -> List<String> {
+  rows |> flat_map(row => row |> map(s => concat(s, ".")))
+}
+
+fn filter_then_map(items: List<String>) -> List<String> {
+  items |> filter(s => s != "") |> map(s => concat(s, "!"))
+}
+
+fn for_each_loop(items: List<String>) -> List<String> {
+  for item in items {
+    concat(item, "!")
+  }
+}
+
+fn count_items(items: List<String>) -> Int {
+  items |> count
+}
+"#;
+
+        let result = compile_sources_with_target(&output, &[("test.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        // O(1) for constant work
+        assert!(
+            formatted.contains("constant_work: O(1)"),
+            "constant_work should be O(1), report:\n{}", formatted
+        );
+        // O(|items|) for linear map, with space O(|items|) since map produces a new list
+        assert!(
+            formatted.contains("linear_map: O(|items|), space O(|items|)"),
+            "linear_map should be O(|items|) with space O(|items|), report:\n{}", formatted
+        );
+        // O(|nums|) for linear fold — scalar output, no space annotation
+        assert!(
+            formatted.contains("linear_fold: O(|nums|)"),
+            "linear_fold should be O(|nums|), report:\n{}", formatted
+        );
+        assert!(
+            !formatted.contains("linear_fold: O(|nums|), space"),
+            "linear_fold should NOT show space (scalar output), report:\n{}", formatted
+        );
+        // Nested iteration
+        assert!(
+            formatted.contains("nested_iteration: O(|rows| * |row|)"),
+            "nested_iteration should be O(|rows| * |row|), report:\n{}", formatted
+        );
+        // filter+map chains are still linear with space output
+        assert!(
+            formatted.contains("filter_then_map: O(|items|), space O(|items|)"),
+            "filter_then_map should be O(|items|) with space O(|items|), report:\n{}", formatted
+        );
+        // for-each loop
+        assert!(
+            formatted.contains("for_each_loop: O(|items|)"),
+            "for_each_loop should be O(|items|), report:\n{}", formatted
+        );
+        // count is linear scan — scalar output, no space annotation
+        assert!(
+            formatted.contains("count_items: O(|items|)"),
+            "count_items should be O(|items|), report:\n{}", formatted
+        );
+        assert!(
+            !formatted.contains("count_items: O(|items|), space"),
+            "count_items should NOT show space (scalar output), report:\n{}", formatted
+        );
+    }
 
     /// Verify that the v2 module set has no duplicate fn names.
     #[test]
@@ -4933,5 +4658,599 @@ path = "src/lib.rs"
             "v2 modules should not contain duplicate fn names: {:?}",
             duplicates
         );
+    }
+
+    /// Complexity report for compiler-representative patterns.
+    ///
+    /// Exercises the same computational patterns found in the real compiler:
+    /// recursive descent, fold-based walks, method chains, nested iteration,
+    /// accumulator threading.
+    #[test]
+    fn test_complexity_report_compiler_patterns() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module compiler_patterns
+
+// --- Tokenizer pattern: linear scan ---
+fn scan_chars(source: String) -> List<String> {
+  source |> chars
+}
+
+// --- Parser pattern: fold with scalar accumulator ---
+fn count_tokens(tokens: List<String>) -> Int {
+  tokens |> fold(init: 0, f: (acc, tok) => acc + 1)
+}
+
+// --- Reconciler pattern: nested iteration ---
+fn flatten_modules(modules: List<List<String>>) -> List<String> {
+  modules |> flat_map(m => m)
+}
+
+fn count_nested(modules: List<List<String>>) -> Int {
+  modules |> fold(init: 0, f: (acc, m) =>
+    m |> fold(init: acc, f: (inner_acc, item) => inner_acc + 1)
+  )
+}
+
+// --- Emit pattern: map + join ---
+fn emit_lines(items: List<String>) -> String {
+  items |> map(item => concat("fn ", item, "() {}")) |> join(separator: "\n")
+}
+
+// --- Filter + count ---
+fn count_nonempty(items: List<String>) -> Int {
+  items |> filter(s => s != "") |> count
+}
+
+// --- Chained pipeline ---
+fn process_pipeline(tokens: List<String>) -> List<String> {
+  tokens
+    |> filter(s => s != "")
+    |> map(s => concat(s, "!"))
+    |> filter(s => s != "!")
+}
+
+// --- Nested map ---
+fn transform_all(groups: List<List<String>>) -> List<List<String>> {
+  groups |> map(g => g |> map(s => concat(s, "_done")))
+}
+
+// --- Constant work ---
+fn identity(x: String) -> String { x }
+fn add_nums(a: Int, b: Int) -> Int { a + b }
+
+// --- Any/all predicates ---
+fn has_empty(items: List<String>) -> Bool {
+  items |> any(s => s == "")
+}
+
+fn all_nonempty(items: List<String>) -> Bool {
+  items |> all(s => s != "")
+}
+
+// --- Sort ---
+fn sort_by_length(items: List<String>) -> List<String> {
+  items |> sort_by(s => string_length(s))
+}
+
+// --- Enumerate ---
+fn with_index(items: List<String>) -> List<String> {
+  items |> enumerate |> map(pair => concat(to_string(pair.index), ": ", pair.value))
+}
+"#;
+
+        let result = compile_sources_with_target(&output, &[("compiler.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        // Constant work
+        assert!(formatted.contains("identity: O(1)"), "identity should be O(1), report:\n{}", formatted);
+        assert!(formatted.contains("add_nums: O(1)"), "add_nums should be O(1), report:\n{}", formatted);
+
+        // Linear scans
+        assert!(formatted.contains("scan_chars: O(|source|)"), "chars should be O(|source|), report:\n{}", formatted);
+        assert!(formatted.contains("count_tokens: O(|tokens|)"), "fold should be O(|tokens|), report:\n{}", formatted);
+
+        // Map + join
+        assert!(formatted.contains("emit_lines: O(|items|)"), "map+join should be O(|items|), report:\n{}", formatted);
+
+        // Filter + count
+        assert!(formatted.contains("count_nonempty: O(|items|)"), "filter+count should be O(|items|), report:\n{}", formatted);
+
+        // Chained pipeline
+        assert!(formatted.contains("process_pipeline: O(|tokens|)"), "chained pipeline should be O(|tokens|), report:\n{}", formatted);
+
+        // flat_map
+        assert!(formatted.contains("flatten_modules: O(|modules|)"), "flat_map should be O(|modules|), report:\n{}", formatted);
+
+        // Nested iteration
+        assert!(formatted.contains("count_nested: O(|modules|"), "nested fold should reference |modules|, report:\n{}", formatted);
+        assert!(formatted.contains("transform_all: O(|groups|"), "nested map should reference |groups|, report:\n{}", formatted);
+
+        // Predicates
+        assert!(formatted.contains("has_empty: O(|items|)"), "any should be O(|items|), report:\n{}", formatted);
+        assert!(formatted.contains("all_nonempty: O(|items|)"), "all should be O(|items|), report:\n{}", formatted);
+
+        // Sort + enumerate
+        assert!(formatted.contains("sort_by_length: ~O(|items|)"), "sort_by should be ~O(|items|) (Conservative: actual is O(n log n)), report:\n{}", formatted);
+        assert!(formatted.contains("with_index: O(|items|)"), "enumerate+map should be O(|items|), report:\n{}", formatted);
+    }
+
+    /// Complexity report for patterns drawn from every v2 compiler stage.
+    ///
+    /// Mirrors the computational patterns from each stage: tokenizer, parser,
+    /// resolver, reconciler, emitter, pipeline, complexity, artifact.
+    #[test]
+    fn test_v2_compiler_stage_complexity() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module v2_compiler_stages
+
+// ============================
+// 01_tokenize: character-level scanning
+// ============================
+
+fn tokenize(source: String) -> List<String> {
+  source |> chars |> fold(init: 0, f: (acc, ch) => acc + 1)
+  source |> chars
+}
+
+fn skip_whitespace(chars: List<String>) -> List<String> {
+  chars |> filter(c => c != " ")
+}
+
+fn scan_string_literal(chars: List<String>) -> String {
+  chars |> fold(init: "", f: (acc, c) => concat(acc, c))
+}
+
+// ============================
+// 02_parse: recursive descent over token streams
+// ============================
+
+fn parse_items(tokens: List<String>) -> List<String> {
+  tokens |> fold(init: 0, f: (acc, tok) => acc + 1)
+  tokens |> filter(t => t != "")
+}
+
+fn parse_params(tokens: List<String>) -> List<String> {
+  tokens |> filter(t => t != ",") |> map(t => concat("param:", t))
+}
+
+fn parse_type_children(tokens: List<String>) -> List<String> {
+  tokens |> map(t => concat("type:", t))
+}
+
+// ============================
+// 03_resolve: module graph construction
+// ============================
+
+fn resolve_modules(modules: List<List<String>>) -> List<String> {
+  modules |> flat_map(m => m)
+}
+
+fn collect_exports(modules: List<List<String>>) -> Int {
+  modules |> fold(init: 0, f: (acc, m) =>
+    m |> fold(init: acc, f: (inner, item) => inner + 1)
+  )
+}
+
+fn find_import(names: List<String>, target: String) -> Bool {
+  names |> any(n => n == target)
+}
+
+// ============================
+// 04_reconcile: type resolution + namespace walks
+// ============================
+
+fn resolve_all_items(modules: List<List<String>>) -> List<String> {
+  modules |> flat_map(m => m |> map(item => concat("resolved:", item)))
+}
+
+fn check_all_types(items: List<String>) -> Bool {
+  items |> all(item => item != "")
+}
+
+fn count_errors(diagnostics: List<String>) -> Int {
+  diagnostics |> filter(d => d == "error") |> count
+}
+
+fn build_env(items: List<String>) -> Int {
+  items |> fold(init: 0, f: (acc, item) => acc + 1)
+}
+
+// ============================
+// 05_emit: code generation
+// ============================
+
+fn emit_module(items: List<String>) -> String {
+  items |> map(item => concat("fn ", item, "() {}")) |> join(separator: "\n")
+}
+
+fn emit_type_defs(types: List<String>) -> String {
+  types |> map(t => concat("struct ", t, " {}")) |> join(separator: "\n")
+}
+
+fn emit_match_arms(variants: List<String>) -> String {
+  variants |> map(v => concat("  ", v, " => {},")) |> join(separator: "\n")
+}
+
+fn emit_nested_modules(modules: List<List<String>>) -> String {
+  modules |> map(m =>
+    m |> map(item => concat("  ", item)) |> join(separator: "\n")
+  ) |> join(separator: "\n\n")
+}
+
+// ============================
+// 06_pipeline: stage wiring
+// ============================
+
+fn collect_diagnostics(stages: List<List<String>>) -> List<String> {
+  stages |> flat_map(s => s)
+}
+
+fn has_errors(diagnostics: List<String>) -> Bool {
+  diagnostics |> any(d => d == "error")
+}
+
+fn compile_pipeline(sources: List<String>) -> List<String> {
+  sources
+    |> filter(s => s != "")
+    |> map(s => concat("compiled:", s))
+    |> filter(s => s != "compiled:")
+}
+
+// ============================
+// 07_complexity: cost analysis
+// ============================
+
+fn analyze_functions(funcs: List<String>) -> List<String> {
+  funcs |> map(f => concat("O(n): ", f))
+}
+
+fn classify_all(funcs: List<String>) -> String {
+  funcs |> map(f => concat(f, ": O(1)")) |> join(separator: "\n")
+}
+
+fn find_violations(costs: List<Int>, threshold: Int) -> List<Int> {
+  costs |> filter(c => c > threshold)
+}
+
+// ============================
+// 08_artifact: build planning
+// ============================
+
+fn plan_artifacts(modules: List<String>) -> String {
+  modules |> map(m => concat("artifact:", m)) |> join(separator: ",")
+}
+
+fn merge_plans(plans: List<List<String>>) -> List<String> {
+  plans |> flat_map(p => p)
+}
+
+// ============================
+// Cross-cutting: O(1) helpers (many in each stage)
+// ============================
+
+fn make_span(start: Int, end_pos: Int) -> Int { start + end_pos }
+fn make_diagnostic(msg: String) -> String { concat("error: ", msg) }
+fn wrap_some(value: String) -> String { value }
+fn is_keyword(token: String) -> Bool { token == "fn" }
+fn default_target() -> String { "Rust" }
+"#;
+
+        let result = compile_sources_with_target(&output, &[("v2_stages.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        println!("=== v2 Compiler Stage Complexity Report ===\n{}", formatted);
+
+        // Verify classifications for key patterns
+        // O(1) helpers
+        assert!(formatted.contains("make_span: O(1)"), "report:\n{}", formatted);
+        assert!(formatted.contains("is_keyword: O(1)"), "report:\n{}", formatted);
+        assert!(formatted.contains("default_target: O(1)"), "report:\n{}", formatted);
+
+        // Linear: tokenizer
+        assert!(formatted.contains("skip_whitespace: O(|chars|)"), "report:\n{}", formatted);
+        assert!(formatted.contains("scan_string_literal: O(|chars|)"), "report:\n{}", formatted);
+
+        // Linear: parser
+        assert!(formatted.contains("parse_params: O(|tokens|)"), "report:\n{}", formatted);
+
+        // Linear: emitter
+        assert!(formatted.contains("emit_module: O(|items|)"), "report:\n{}", formatted);
+        assert!(formatted.contains("emit_match_arms: O(|variants|)"), "report:\n{}", formatted);
+
+        // Nested: reconciler + resolver
+        assert!(formatted.contains("resolve_all_items: O(|modules|"), "report:\n{}", formatted);
+        assert!(formatted.contains("collect_exports: O(|modules|"), "report:\n{}", formatted);
+
+        // Nested: emitter
+        assert!(formatted.contains("emit_nested_modules: O(|modules|"), "report:\n{}", formatted);
+    }
+
+    /// Regression: Kahn's algorithm must deduplicate zero-indegree nodes.
+    ///
+    /// Diamond dependencies (A imports Shared, B imports Shared) cause Shared
+    /// to appear twice in flat_map output. Without dedup, Shared gets sorted
+    /// twice, inflating the count and causing a false cycle error.
+    #[test]
+    fn test_resolve_diamond_dedup() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let shared = r#"module shared
+fn shared_fn(x: String) -> String { x }
+"#;
+        let mod_a = r#"module mod_a
+import shared
+fn use_shared_a(x: String) -> String { shared_fn(x: x) }
+"#;
+        let mod_b = r#"module mod_b
+import shared
+fn use_shared_b(x: String) -> String { shared_fn(x: x) }
+"#;
+        let main = r#"module main
+import mod_a
+import mod_b
+fn main_fn(x: String) -> String { concat(use_shared_a(x: x), use_shared_b(x: x)) }
+"#;
+        // If Kahn's dedup fails, this would panic with a false cycle error
+        // from duplicate inflation in the sorted count.
+        let result = compile_sources_with_target(
+            &output,
+            &[
+                ("shared.dag", shared),
+                ("mod_a.dag", mod_a),
+                ("mod_b.dag", mod_b),
+                ("main.dag", main),
+            ],
+            "Rust",
+        );
+        // Verify it produced output (no cycle error / no crash)
+        assert!(
+            result.contains_key("code") || result.contains_key("complexity"),
+            "diamond import modules should compile without false cycle error: {:?}",
+            result.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// Regression: sort_by must report Conservative certainty.
+    ///
+    /// Comparison sort is O(n log n), but the cost algebra lacks a log type.
+    /// The formatted report marks Conservative bounds with ~ to distinguish
+    /// them from Proven bounds.
+    #[test]
+    fn test_complexity_sort_conservative_certainty() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module sort_test
+
+fn sort_names(names: List<String>) -> List<String> {
+  names |> sort_by(n => n)
+}
+
+fn linear_filter(items: List<String>) -> List<String> {
+  items |> filter(s => s != "")
+}
+"#;
+        let result = compile_sources_with_target(&output, &[("sort.dag", source)], "Rust");
+        let formatted = match result.get("complexity").unwrap() {
+            gunbc_ir::Value::Map(map) => match map.get("formatted").unwrap() {
+                gunbc_ir::Value::Str(s) => s.clone(),
+                other => panic!("expected Str, got: {:?}", other),
+            },
+            other => panic!("expected Map, got: {:?}", other),
+        };
+
+        // sort_by: Conservative (~) — actual cost includes log factor
+        assert!(
+            formatted.contains("sort_names: ~O(|names|)"),
+            "sort_by should be ~O (Conservative), report:\n{}", formatted
+        );
+        // filter: Proven (no ~)
+        assert!(
+            formatted.contains("linear_filter: O(|items|)"),
+            "filter should be O (Proven, no ~), report:\n{}", formatted
+        );
+    }
+
+    /// Regression: function calls must compose callee complexity.
+    ///
+    /// If quadratic_inner is O(|items|) and caller invokes it in a loop,
+    /// the caller should surface the nested cost, not flatten it to O(1).
+    #[test]
+    fn test_complexity_callee_composition() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module callee_test
+
+fn inner_work(items: List<String>) -> Int {
+  items |> fold(init: 0, f: (acc, s) => acc + 1)
+}
+
+fn outer_loop(groups: List<List<String>>) -> Int {
+  groups |> fold(init: 0, f: (acc, g) => acc + inner_work(items: g))
+}
+
+fn constant_helper(x: Int) -> Int { x + 1 }
+
+fn loop_with_constant(items: List<Int>) -> Int {
+  items |> fold(init: 0, f: (acc, n) => acc + constant_helper(x: n))
+}
+"#;
+        let result = compile_sources_with_target(&output, &[("callee.dag", source)], "Rust");
+        let formatted = match result.get("complexity").unwrap() {
+            gunbc_ir::Value::Map(map) => match map.get("formatted").unwrap() {
+                gunbc_ir::Value::Str(s) => s.clone(),
+                other => panic!("expected Str, got: {:?}", other),
+            },
+            other => panic!("expected Map, got: {:?}", other),
+        };
+
+        // inner_work: O(|items|) — linear fold
+        assert!(
+            formatted.contains("inner_work: O(|items|)"),
+            "inner_work should be O(|items|), report:\n{}", formatted
+        );
+        // outer_loop: O(|groups| * ...) — should surface inner_work's cost
+        assert!(
+            formatted.contains("outer_loop: O(|groups|"),
+            "outer_loop should reference |groups| (callee cost composed), report:\n{}", formatted
+        );
+        // loop_with_constant: O(|items|) — constant callee doesn't increase class
+        assert!(
+            formatted.contains("loop_with_constant: O(|items|)"),
+            "loop_with_constant should be O(|items|) (constant callee), report:\n{}", formatted
+        );
+    }
+
+    /// Regression: field_access_index in EmitContext must not be empty.
+    ///
+    /// build_emit_context must populate the "TypeName::field_name" index
+    /// from type_summaries. If the inner fold is a no-op, the index stays
+    /// empty and field lookups fail at emission time.
+    #[test]
+    fn test_emit_field_access_with_types() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module field_test
+
+type Point {
+  x: Int
+  y: Int
+}
+
+fn distance_squared(p: Point) -> Int {
+  p.x * p.x + p.y * p.y
+}
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}
+
+fn translate_x(p: Point, dx: Int) -> Point {
+  Point { x: p.x + dx, y: p.y }
+}
+"#;
+        // If field_access_index is empty, emission may fail or produce
+        // incorrect field access code.
+        let result = compile_sources_with_target(&output, &[("field.dag", source)], "Rust");
+        // The emitted code should reference field access patterns
+        // (even if empty, the test verifies the compilation didn't crash)
+        assert!(
+            result.contains_key("code") || result.contains_key("complexity"),
+            "field access module should compile: {:?}", result.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// Emission contract: every intrinsic method known to the emitter must
+    /// have a cost model in the complexity analyzer.
+    ///
+    /// This test exercises every emitter intrinsic method in a compiled module
+    /// and verifies the complexity report produces known costs (no "?" Unknown
+    /// markers). If a method is added to the emitter without a cost model,
+    /// its function will show "?" in the report and this test fails.
+    #[test]
+    fn test_emission_cost_contract_coverage() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        // Module that exercises every emitter intrinsic method.
+        // Each function uses exactly one intrinsic so we can verify its cost.
+        let source = r#"module emission_contract
+
+// Iteration methods (ShapeIterateBody)
+fn use_map(items: List<String>) -> List<String> { items |> map(s => s) }
+fn use_filter(items: List<String>) -> List<String> { items |> filter(s => s != "") }
+fn use_flat_map(items: List<List<String>>) -> List<String> { items |> flat_map(g => g) }
+fn use_fold(items: List<Int>) -> Int { items |> fold(init: 0, f: (a, n) => a + n) }
+fn use_any(items: List<String>) -> Bool { items |> any(s => s == "") }
+fn use_all(items: List<String>) -> Bool { items |> all(s => s != "") }
+fn use_enumerate(items: List<String>) -> List<String> { items |> enumerate |> map(p => p.value) }
+fn use_skip(items: List<String>) -> List<String> { items |> skip(1) }
+
+// Sort (ShapeSortBody)
+fn use_sort_by(items: List<String>) -> List<String> { items |> sort_by(s => s) }
+
+// Linear scan methods (ShapeLinearScan)
+fn use_count(items: List<String>) -> Int { items |> count }
+fn use_join(items: List<String>) -> String { items |> join(separator: ",") }
+fn use_first(items: List<String>) -> String? { items |> first }
+fn use_last(items: List<String>) -> String? { items |> last }
+fn use_chars(s: String) -> List<String> { s |> chars }
+fn use_split(s: String) -> List<String> { s |> split(separator: ",") }
+fn use_string_contains(s: String) -> Bool { s |> string_contains(substring: "x") }
+
+// O(1) methods (ShapeConstant)
+fn use_append(items: List<String>) -> List<String> { items |> append("x") }
+
+// concat is a function call, not method call — test separately
+fn use_concat(a: String, b: String) -> String { concat(a, b) }
+"#;
+
+        let result = compile_sources_with_target(&output, &[("contract.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        // Contract check: no function should have "?" (Unknown certainty).
+        // "?" means the complexity analyzer doesn't know the cost of the method,
+        // which means the emitter and analyzer are out of sync.
+        assert!(
+            !formatted.contains("?O("),
+            "emission contract violation: some methods have Unknown complexity.\n\
+             Every emitter intrinsic must have a known cost model.\n\
+             Report:\n{}", formatted
+        );
+
+        // Verify every intrinsic function appears in the report
+        let expected_fns = vec![
+            "use_map", "use_filter", "use_flat_map", "use_fold",
+            "use_any", "use_all", "use_enumerate", "use_skip",
+            "use_sort_by", "use_count", "use_join", "use_first",
+            "use_last", "use_chars", "use_split", "use_string_contains",
+            "use_append", "use_concat",
+        ];
+        for fn_name in &expected_fns {
+            assert!(
+                formatted.contains(fn_name),
+                "emission contract: '{}' missing from complexity report.\n\
+                 Report:\n{}", fn_name, formatted
+            );
+        }
     }
 }

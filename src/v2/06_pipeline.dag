@@ -4,7 +4,7 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> reconcile -> emit
+// Pipeline: tokenize -> parse -> resolve -> reconcile -> complexity -> emit -> artifact
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
@@ -14,7 +14,7 @@
 module v2.compiler.pipeline
 
 import v2.std.core {
-  Diagnostic, CompileResult, RenderTarget, SourceSpan, Error
+  Diagnostic, CompileResult, RenderTarget, SourceSpan, Error, TextFile, Param
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -23,6 +23,8 @@ import v2.compiler.reconcile { reconcile, ResolvedGraph }
 import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
+import v2.compiler.artifact { ArtifactPlan, ArtifactOutput, Artifact, ServiceBinary, default_artifact_plan }
+import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
 
 // =========================================================================
 // Types
@@ -31,6 +33,29 @@ import v2.compiler.emit_python { emit_python }
 type SourceFile {
   path: String
   content: String
+}
+
+// PipelineResult extends CompileResult with analyses that run on every compilation.
+// Complexity analysis is always produced — not optional — because the cost of a DAG
+// is a first-class fact about the program, like diagnostics.
+type PipelineResult {
+  files: List<TextFile>
+  diagnostics: List<Diagnostic>
+  complexity: ComplexityReport
+}
+
+// =========================================================================
+// Function extraction for complexity analysis
+// =========================================================================
+
+// Extract FuncEntry list from a ResolvedGraph for complexity analysis.
+// A function is any item Node with a non-None body.
+fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
+  typed.modules |> flat_map(m =>
+    m.items |> filter(item => item.body != None) |> map(item =>
+      FuncEntry { name: item.name, body: item.body.value, params: item.params }
+    )
+  )
 }
 
 // =========================================================================
@@ -72,7 +97,7 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 // Pure compiler pipeline: sources in, compiled files out.
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
 // The target parameter selects the output language (Rust, Python).
-fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileResult {
+fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
   // Stage 1: Tokenize each source file
   let tokenized = map(sources, s => tokenize(source: s.content))
 
@@ -87,9 +112,10 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
   let has_errors = any(parse_results, p => p.error != None)
 
   if has_errors {
-    CompileResult {
+    PipelineResult {
       files: [],
-      diagnostics: parse_diagnostics
+      diagnostics: parse_diagnostics,
+      complexity: empty_complexity_report()
     }
   } else {
     // Safe to extract: all parses succeeded, so every p.module is Some.
@@ -101,9 +127,10 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     // Gate: if resolve produced errors, do not proceed to typecheck.
     let resolve_errors = graph_diags |> filter(d => d.severity == Error)
     if resolve_errors |> count > 0 {
-      return CompileResult {
+      return PipelineResult {
         files: [],
-        diagnostics: concat(parse_diagnostics, graph_diags)
+        diagnostics: concat(parse_diagnostics, graph_diags),
+        complexity: empty_complexity_report()
       }
     }
 
@@ -116,13 +143,19 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     // Gate: if typecheck produced errors, do not proceed to emit.
     let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
     if typecheck_errors |> count > 0 {
-      return CompileResult {
+      return PipelineResult {
         files: [],
-        diagnostics: concat(parse_diagnostics, graph_diags, typed_diags)
+        diagnostics: concat(parse_diagnostics, graph_diags, typed_diags),
+        complexity: empty_complexity_report()
       }
     }
 
-    // Stage 5: Emit target-language files.
+    // Stage 5: Complexity analysis.
+    // Runs on every compilation — cost is a first-class fact about the program.
+    let func_entries = extract_func_entries(typed: typed)
+    let complexity = build_complexity_report(func_entries: func_entries)
+
+    // Stage 6: Emit target-language files.
     // Dispatches to the appropriate renderer based on RenderTarget.
     // Precondition: no errors from any prior stage.
     let emit_result = match target {
@@ -134,9 +167,22 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> CompileRe
     let emit_diags = emit_result.diagnostics
     let emit_errors = emit_diags |> filter(d => d.severity == Error)
 
-    CompileResult {
-      files: if emit_errors |> count > 0 { [] } else { emit_files },
-      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags)
+    // Stage 7: Artifact planning.
+    // Wrap emitted files in a default monolith ArtifactOutput.
+    // The module names come from the resolved graph's module list.
+    let module_names = modules |> map(m => m.name)
+    let plan = default_artifact_plan(root_modules: module_names, target: "default")
+    let artifact = match plan.artifacts |> first {
+      Some { value: a } => a
+      None => Artifact { name: "default", kind: ServiceBinary, target: "default", entry_modules: module_names, dependencies: [] }
+    }
+    let _artifact_output = ArtifactOutput { artifact: artifact, files: emit_files }
+
+    let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
+    PipelineResult {
+      files: final_files,
+      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags),
+      complexity: complexity
     }
   }
 }

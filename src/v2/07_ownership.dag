@@ -1,0 +1,307 @@
+// v2 ownership analysis -- static proof that try_unwrap fallbacks are unnecessary.
+//
+// D-ownership: Classify every use of every binding by how it consumes the value.
+// Compute semantic_consumer_count after removing administrative edges (TCO
+// threading, pass-through reads). At try_unwrap sites:
+//
+//   semantic_consumers == 1  -> Rc::into_inner().expect("sole owner")
+//   semantic_consumers > 1   -> compile error: cannot guarantee O(1) mutation
+//   unclassified             -> completeness bug in this analysis
+//
+// One pass over each function body. No heuristics, no fallbacks.
+
+module v2.compiler.ownership
+
+import v2.std.core {
+  Node, Param,
+  ExprData, NoExprData,
+  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
+  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
+  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
+  MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
+  Text, Interpolation
+}
+
+// =========================================================================
+// Edge classification
+//
+// Each use of a binding is classified by how it affects the value:
+//   Consumed  -- value is moved/destructured (ownership transferred)
+//   Read      -- value is read but not consumed (borrow)
+//   Threaded  -- administrative: TCO accumulator threading
+//   Projected -- field projection (partial read)
+// =========================================================================
+
+type EdgeKind = Consumed | Read | Threaded | Projected
+
+type EdgeClassification {
+  kind: EdgeKind
+  site: String
+}
+
+// =========================================================================
+// Binding usage -- per-binding analysis result
+// =========================================================================
+
+type BindingUsage {
+  name: String
+  consumers: List<EdgeClassification>
+}
+
+// Semantic consumer count: consumers that actually move/consume the value.
+// Administrative edges (Threaded, Projected, Read) are excluded.
+fn semantic_consumer_count(usage: BindingUsage) -> Int {
+  usage.consumers |> filter(c => match c.kind { Consumed => true, _ => false }) |> count
+}
+
+// =========================================================================
+// Ownership proof -- per-function analysis output
+// =========================================================================
+
+type OwnershipDecision
+  = SoleOwner { binding: String, site: String }
+  | SharedError { binding: String, consumer_count: Int, sites: List<String> }
+  | Unclassified { binding: String, reason: String }
+
+type OwnershipProof {
+  func_name: String
+  bindings: Map<String, BindingUsage>
+  decisions: List<OwnershipDecision>
+}
+
+// =========================================================================
+// Internal accumulator for collecting edge classifications
+// =========================================================================
+
+type UsageAccum {
+  bindings: Map<String, BindingUsage>
+}
+
+fn empty_usage_accum() -> UsageAccum {
+  UsageAccum { bindings: empty_map() }
+}
+
+// Record a use of a binding with the given edge kind and site description.
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String) -> UsageAccum {
+  let edge = EdgeClassification { kind: kind, site: site }
+  let existing = match map_get(accum.bindings, name) {
+    Some { value: usage } => usage
+    None => BindingUsage { name: name, consumers: [] }
+  }
+  let updated = BindingUsage {
+    name: name,
+    consumers: list_push(existing.consumers, edge)
+  }
+  UsageAccum { bindings: map_insert(accum.bindings, name, updated) }
+}
+
+// =========================================================================
+// AST walker -- classifies each variable reference by position
+//
+// in_tail: true when this expression is in return/last-use position
+// in_fold_acc: name of the fold accumulator parameter if we are inside
+//              a fold lambda body (for Threaded classification)
+// =========================================================================
+
+fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
+  match texpr.expr_data {
+    ExprVar { name: n } =>
+      if in_tail {
+        record_use(accum: accum, name: n, kind: Consumed, site: "return")
+      } else {
+        record_use(accum: accum, name: n, kind: Read, site: "read")
+      }
+
+    ExprLiteral { value: _ } => accum
+
+    ExprFieldAccess { base: b, field: f } =>
+      // The base is projected, not consumed -- partial read
+      match b.expr_data {
+        ExprVar { name: vn } =>
+          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f))
+        _ => walk_expr(accum: accum, texpr: b, in_tail: false)
+      }
+
+    ExprCall { func: fname, args: call_args } =>
+      // fold first arg (init) is the accumulator -- classify as Threaded
+      if fname == "fold" {
+        let init_arg = call_args |> filter(a => a.name == Some { value: "init" }) |> first
+        let threaded_accum = match init_arg {
+          Some { value: ia } => match ia.value.expr_data {
+            ExprVar { name: vn } =>
+              record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init")
+            _ => walk_expr(accum: accum, texpr: ia.value, in_tail: false)
+          }
+          None => accum
+        }
+        let non_init = call_args |> filter(a => a.name != Some { value: "init" })
+        non_init |> fold(init: threaded_accum, f: (acc, a) =>
+          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+        )
+      } else {
+        call_args |> fold(init: accum, f: (acc, a) =>
+          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+        )
+      }
+
+    ExprMethodCall { receiver: recv, method: mname, args: mc_args } =>
+      // fold method: first positional/init arg is accumulator
+      if mname == "fold" {
+        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
+        let init_arg = mc_args |> filter(a => a.name == Some { value: "init" }) |> first
+        let threaded_accum = match init_arg {
+          Some { value: ia } => match ia.value.expr_data {
+            ExprVar { name: vn } =>
+              record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init")
+            _ => walk_expr(accum: recv_accum, texpr: ia.value, in_tail: false)
+          }
+          None => recv_accum
+        }
+        let non_init = mc_args |> filter(a => a.name != Some { value: "init" })
+        non_init |> fold(init: threaded_accum, f: (acc, a) =>
+          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+        )
+      } else {
+        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
+        mc_args |> fold(init: recv_accum, f: (acc, a) =>
+          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+        )
+      }
+
+    ExprMatch { scrutinee: s, arms: arm_list } =>
+      let s_accum = walk_expr(accum: accum, texpr: s, in_tail: false)
+      arm_list |> fold(init: s_accum, f: (acc, arm) =>
+        walk_expr(accum: acc, texpr: arm.body, in_tail: in_tail)
+      )
+
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
+      let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail)
+      match e {
+        Some { value: eb } => walk_expr(accum: t_accum, texpr: eb, in_tail: in_tail)
+        None => t_accum
+      }
+
+    ExprLet { name: _, value: v, body: bd } =>
+      let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false)
+      match bd {
+        Some { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail)
+        None => v_accum
+      }
+
+    ExprBlock { stmts: ss } =>
+      let ss_count = ss |> count
+      if ss_count == 0 { accum }
+      else {
+        let init_accum = ss |> enumerate
+          |> filter(p => p.first < ss_count - 1)
+          |> fold(init: accum, f: (acc, p) =>
+            walk_expr(accum: acc, texpr: p.second, in_tail: false)
+          )
+        match ss |> last {
+          Some { value: last_expr } =>
+            walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail)
+          None => init_accum
+        }
+      }
+
+    ExprBinOp { op: _, left: l, right: r } =>
+      let l_accum = walk_expr(accum: accum, texpr: l, in_tail: false)
+      walk_expr(accum: l_accum, texpr: r, in_tail: false)
+
+    ExprUnaryOp { op: _, operand: e } =>
+      walk_expr(accum: accum, texpr: e, in_tail: false)
+
+    ExprLambda { params: _, body: bd } =>
+      walk_expr(accum: accum, texpr: bd, in_tail: false)
+
+    ExprRecordLit { type_name: _, fields: fs } =>
+      fs |> fold(init: accum, f: (acc, fi) =>
+        walk_expr(accum: acc, texpr: fi.value, in_tail: false)
+      )
+
+    ExprListLit { elements: els } =>
+      els |> fold(init: accum, f: (acc, el) =>
+        walk_expr(accum: acc, texpr: el, in_tail: false)
+      )
+
+    ExprStringInterp { parts: ps } =>
+      ps |> fold(init: accum, f: (acc, p) => match p {
+        Interpolation { expr: e } => walk_expr(accum: acc, texpr: e, in_tail: false)
+        Text { value: _ } => acc
+      })
+
+    ExprCast { expr: e, target: _ } =>
+      walk_expr(accum: accum, texpr: e, in_tail: false)
+
+    ExprForEach { variable: _, collection: c, body: bd } =>
+      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
+      walk_expr(accum: c_accum, texpr: bd, in_tail: false)
+
+    ExprIndex { base: b, index: i } =>
+      let b_accum = walk_expr(accum: accum, texpr: b, in_tail: false)
+      walk_expr(accum: b_accum, texpr: i, in_tail: false)
+
+    ExprSlice { base: b, start: s, end: e } =>
+      let b_accum = walk_expr(accum: accum, texpr: b, in_tail: false)
+      let s_accum = walk_expr(accum: b_accum, texpr: s, in_tail: false)
+      walk_expr(accum: s_accum, texpr: e, in_tail: false)
+
+    ExprReturn { value: v } =>
+      walk_expr(accum: accum, texpr: v, in_tail: true)
+
+    NoExprData => accum
+  }
+}
+
+// =========================================================================
+// Decision builder -- convert BindingUsage map to OwnershipDecision list
+// =========================================================================
+
+fn make_decision(usage: BindingUsage) -> OwnershipDecision {
+  let sc = semantic_consumer_count(usage: usage)
+  if sc == 1 {
+    let consumed_sites = usage.consumers
+      |> filter(c => match c.kind { Consumed => true, _ => false })
+    let site = match consumed_sites |> first {
+      Some { value: c } => c.site
+      None => "unknown"
+    }
+    SoleOwner { binding: usage.name, site: site }
+  } else {
+    if sc > 1 {
+      let sites = usage.consumers
+        |> filter(c => match c.kind { Consumed => true, _ => false })
+        |> map(c => c.site)
+      SharedError { binding: usage.name, consumer_count: sc, sites: sites }
+    } else {
+      Unclassified { binding: usage.name, reason: "no consumers found" }
+    }
+  }
+}
+
+// =========================================================================
+// Analysis entry point
+// =========================================================================
+
+// Analyze a function body and produce ownership proof for all bindings.
+// One pass over the function body AST.
+fn analyze_ownership(func_name: String, params: List<Param>, body: Node) -> OwnershipProof {
+  // Seed the accumulator with parameter names so they appear in bindings.
+  let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
+    UsageAccum {
+      bindings: map_insert(acc.bindings, p.name, BindingUsage { name: p.name, consumers: [] })
+    }
+  )
+  // Walk the body in tail position (the function body is the return value).
+  let result = walk_expr(accum: initial, texpr: body, in_tail: true)
+  // Build decisions from the collected usage data.
+  let binding_list = result.bindings |> map_values
+  let decisions = binding_list |> map(usage => make_decision(usage: usage))
+  OwnershipProof {
+    func_name: func_name,
+    bindings: result.bindings,
+    decisions: decisions
+  }
+}

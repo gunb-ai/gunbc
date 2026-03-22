@@ -458,11 +458,12 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
 fn auth_properties(scheme: String, header_name: String, token_expr: Node, span: SourceSpan) -> List<FieldInit> {
   let scheme_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: scheme } }, return_type: none, span: span)
   let header_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: header_name } }, return_type: none, span: span)
-  [
+  let result = [
     FieldInit { name: config_property_name(key: ConfigAuthScheme), value: scheme_expr },
     FieldInit { name: config_property_name(key: ConfigAuthHeader), value: header_expr },
     FieldInit { name: config_property_name(key: ConfigAuthToken), value: token_expr }
   ]
+  result
 }
 
 // =========================================================================

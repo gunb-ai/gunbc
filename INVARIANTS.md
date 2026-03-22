@@ -238,6 +238,12 @@ changes:
   document that fact in its signature or doc comment. Callers should
   never be surprised by hidden I/O.
 
+- **No flags in codegen.** Boolean flags that change compilation behavior
+  globally (like `force_clone`) are forbidden. Every compilation decision
+  must be derived from the actual type and context of the expression
+  being compiled, not from a global check. Flags silently degrade and
+  are impossible to remove incrementally.
+
 ## Testing Invariants
 
 - **Behavioral only.** Tests assert observable behavior — outputs given
@@ -372,27 +378,29 @@ that motivated the refactor, not as a live backlog.
 
 ---
 
-### Root Cause A: Reconcile→Emit Boundary is Information-Lossy
+### Root Cause A: Reconcile→Emit Boundary is Information-Lossy (ADDRESSED)
 
-**Invariants violated:** Explicit boundary contracts, Heuristics indicate lost
-structure, No fallbacks that fabricate.
+**Status:** Design decision made, infrastructure landed. Gradual migration underway.
 
-**The problem:** Reconcile computes semantic facts (field access style, method
-classification, function-vs-value, fold accumulator type, optional unwrap,
-call→method bridging, Rc ownership) but does not attach them to output nodes.
-Emit receives typed Nodes with `return_type` populated and must re-derive
-everything else — producing 16+ compensation patterns including heuristic
-scans, string-dispatch ladders, and global map lookups.
+**Design decision (2026-03-21):** Split into two categories:
 
-**Design decision required:** Define the reconcile→emit boundary contract.
-Reconcile must attach per-expression classification so emit only translates.
-Candidate approach: enrich ExprData variants with the facts reconcile already
-computes (access style on ExprFieldAccess, intrinsic ID on ExprMethodCall,
-callable-vs-value on ExprVar, accumulator type on fold calls).
+1. **Reconcile resolution bugs (A-4, A-5, A-8, A-9):** Reconcile fails to resolve
+   facts it should. Fix: improve resolution, add `RefKind` and `ParamSource` types.
 
-This replaces the Multi-Walk Refactor Program P0–P3 items in ROADMAP.md —
-the real motivation is boundary completeness, not performance. The perf win
-is a side effect of not re-scanning.
+2. **Emit rendering decisions (A-1, A-2, A-3, A-6, A-7, A-10):** Emit owns these
+   decisions but must compute them efficiently. Fix: `EmitContext` struct with 6
+   cached indexes built once per emit call, O(1) lookups per expression. No
+   precomputation in reconcile — rendering decisions stay with the renderer.
+
+**Infrastructure landed:**
+- `EmitContext` type + `build_emit_context` + `ctx_*` helpers in `05_emit.dag`
+- `RefKind`, `ParamSource` types in `04_reconcile.dag`
+- `build_intrinsic_index`, `build_primitive_set` pre-built at emit entry
+- EmitContext wired into `emit_rust` entry point
+
+**Remaining:** Migrate emit functions from individual map params to `EmitContext`
+lookups. Mechanical — each function gets `ctx: EmitContext` parameter, replaces
+ad-hoc scans with `ctx_*` helpers.
 
 | # | What reconcile computes | Where it's lost | How emit compensates |
 |---|------------------------|-----------------|---------------------|

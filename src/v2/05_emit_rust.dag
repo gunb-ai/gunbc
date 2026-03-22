@@ -91,6 +91,8 @@ import v2.compiler.emit {
   TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypedItemTypeAlias,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
+  EmitContext, build_emit_context,
+  ctx_is_intrinsic, ctx_is_primitive, ctx_is_rc_wrapped, ctx_parent_enum, ctx_is_bridge,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
   emit_string_literal,
@@ -216,6 +218,10 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
   }
+  // Build EmitContext once for O(1) lookups during code generation.
+  // Individual maps (vtoe, rc_types) are retained for backward compat
+  // during gradual migration to ctx_* helpers.
+  let ctx = build_emit_context(graph: typed)
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types))
   let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
@@ -837,7 +843,7 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => f.name == fname) |> first {
       Some { value: f } => emit_rust_node_type(n: f.return_type.value, rc_types: rc_types)
-      None => "compile_error!(\"enum shared accessor missing field metadata\")"
+      None => "compile_error!(\"enum shared accessor missing field metadata\")" 
     }
     // Generate match arms for each variant.
     let arms = children |> map(child =>
@@ -1706,6 +1712,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprReturn { value: v } =>
       concat("return ", emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+    NoExprData => ""
   }
 }
 

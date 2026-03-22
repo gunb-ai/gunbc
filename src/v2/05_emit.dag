@@ -42,7 +42,8 @@ import v2.compiler.reconcile {
   ResolvedFuncSig, ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
-  ItemInfo, UniqueAccum, emit_map_has
+  ItemInfo, UniqueAccum, emit_map_has,
+  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo
 }
 
 import extdeps.languages.rust.emit {
@@ -87,6 +88,31 @@ type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
 type InterpPart {
   format_segment: String
   arg_expr: String
+}
+
+// =========================================================================
+// EmitContext -- cached indexes built once per emit call
+//
+// Root Cause A category 2: emit owns these rendering decisions but must
+// not re-derive them per expression. Each index is built once from the
+// ResolvedGraph at emit entry, then passed through all emit functions
+// for O(1) lookups.
+//
+// A-1:  field_access_index — (type_name, field_name) → FieldAccessStyle
+// A-2:  intrinsic_index   — method_name → IntrinsicMethod
+// A-3:  bridge_index      — func_name → Bool (was Call bridged to MethodCall)
+// A-6:  rc_index          — type_name → Bool (Rust-only, Rc-wrapped)
+// A-7:  vtoe_index        — variant_name → parent_enum_name
+// A-10: primitive_set     — type_name → Bool (is primitive)
+// =========================================================================
+
+type EmitContext {
+  field_access_index: Map<String, FieldSummary>
+  intrinsic_index: Map<String, IntrinsicMethod>
+  bridge_index: Map<String, Bool>
+  rc_index: Map<String, Bool>
+  vtoe_index: Map<String, String>
+  primitive_set: Map<String, Bool>
 }
 
 // =========================================================================
@@ -183,6 +209,108 @@ fn unique_strings(items: List<String>) -> List<String> {
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
   result.result
+}
+
+// =========================================================================
+// EmitContext builders -- construct cached indexes from ResolvedGraph
+// =========================================================================
+
+// Build the full EmitContext from a ResolvedGraph. Called once at emit entry.
+// Each index is a pre-built Map for O(1) lookups during code generation.
+fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
+  let info = graph.emit_info
+  // A-1: field access index -- flatten type_summaries into keyed field lookups.
+  // Key format: "TypeName::field_name" for unique O(1) lookup.
+  let field_idx = map_values(info.type_summaries) |> fold(init: empty_map(), f: fn(acc, ts) {
+    map_keys(ts.field_summaries) |> fold(init: acc, f: fn(acc2, field_name) {
+      match map_get(ts.field_summaries, field_name) {
+        Some { value: fs } => map_insert(acc2, concat(ts.name, "::", field_name), fs)
+        None => acc2
+      }
+    })
+  })
+  // A-2: intrinsic index -- static, built from the known method list
+  let intrinsic_idx = build_intrinsic_index()
+  // A-3: bridge index -- empty by default, populated by target-specific emitters
+  let bridge_idx = empty_map()
+  // A-6: Rc index -- from rc_wrapped_types
+  let rc_idx = info.rc_wrapped_types
+  // A-7: vtoe index -- from variant_to_enum
+  let vtoe_idx = info.variant_to_enum
+  // A-10: primitive set
+  let prim_set = build_primitive_set()
+  EmitContext {
+    field_access_index: field_idx,
+    intrinsic_index: intrinsic_idx,
+    bridge_index: bridge_idx,
+    rc_index: rc_idx,
+    vtoe_index: vtoe_idx,
+    primitive_set: prim_set
+  }
+}
+
+fn build_intrinsic_index() -> Map<String, IntrinsicMethod> {
+  let m = empty_map()
+  let m = map_insert(m, "count", MethodCount)
+  let m = map_insert(m, "join", MethodJoin)
+  let m = map_insert(m, "split", MethodSplit)
+  let m = map_insert(m, "last", MethodLast)
+  let m = map_insert(m, "first", MethodFirst)
+  let m = map_insert(m, "enumerate", MethodEnumerate)
+  let m = map_insert(m, "chars", MethodChars)
+  let m = map_insert(m, "string_contains", MethodStringContains)
+  let m = map_insert(m, "concat", MethodConcat)
+  let m = map_insert(m, "map", MethodMap)
+  let m = map_insert(m, "filter", MethodFilter)
+  let m = map_insert(m, "any", MethodAny)
+  let m = map_insert(m, "all", MethodAll)
+  let m = map_insert(m, "flat_map", MethodFlatMap)
+  let m = map_insert(m, "skip", MethodSkip)
+  let m = map_insert(m, "fold", MethodFold)
+  let m = map_insert(m, "sort_by", MethodSortBy)
+  let m = map_insert(m, "append", MethodAppend)
+  m
+}
+
+fn build_primitive_set() -> Map<String, Bool> {
+  let m = empty_map()
+  let m = map_insert(m, "Int", true)
+  let m = map_insert(m, "Bool", true)
+  let m = map_insert(m, "Float", true)
+  let m = map_insert(m, "String", true)
+  let m = map_insert(m, "Char", true)
+  let m = map_insert(m, "Unit", true)
+  m
+}
+
+// Lookup helpers for EmitContext
+fn ctx_is_intrinsic(ctx: EmitContext, method: String) -> IntrinsicMethod? {
+  map_get(ctx.intrinsic_index, method)
+}
+
+fn ctx_is_primitive(ctx: EmitContext, name: String) -> Bool {
+  match map_get(ctx.primitive_set, name) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
+fn ctx_is_rc_wrapped(ctx: EmitContext, name: String) -> Bool {
+  match map_get(ctx.rc_index, name) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
+fn ctx_parent_enum(ctx: EmitContext, variant: String) -> String? {
+  map_get(ctx.vtoe_index, variant)
+}
+
+fn ctx_is_bridge(ctx: EmitContext, func: String) -> Bool {
+  match map_get(ctx.bridge_index, func) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // =========================================================================
