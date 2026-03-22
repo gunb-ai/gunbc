@@ -3888,6 +3888,64 @@ func run(repos: List<Repo>, owner: String) -> { out: List<String> } {
 }
 
 #[test]
+fn control_flow_lowering_requires_typed_for_loop_scope_metadata() {
+    let ast = parser::parse(
+        r#"module sample.for_scope_boundary
+func run(repos: List<String>) -> { out: List<String> } {
+  result = for repo in repos { repo }
+  return { out: result }
+}"#,
+    )
+    .expect("source should parse");
+    let item = ast.items.first().expect("callable item should exist");
+    let (item_name, stmts) =
+        item_callable_body(&item.node).expect("item should expose a callable body");
+    let target = LoweredEndpoint {
+        node_id: "sample.for_scope_boundary::run".to_string(),
+        primary_output: "out".to_string(),
+    };
+    let endpoints_by_name = HashMap::new();
+    let data_values = HashMap::new();
+    let service_registry = ServiceEndpointRegistry::default();
+    let uses_binding_types = HashMap::new();
+    let all_fn_bodies = std::collections::BTreeMap::new();
+    let variant_names = HashSet::new();
+    let callable_param_defaults = HashMap::new();
+    let metadata = TypedCallableBodyMetadata::default();
+    let ctx = ControlFlowPatternContext {
+        source_file: "sample/for_scope_boundary.dag",
+        module_name: "sample.for_scope_boundary",
+        item_name,
+        item_span: item.span,
+        stmts,
+        target: &target,
+        endpoints_by_name: &endpoints_by_name,
+        data_values: &data_values,
+        service_registry: &service_registry,
+        uses_binding_types: &uses_binding_types,
+        callable_body_metadata: Some(&metadata),
+        all_fn_bodies: &all_fn_bodies,
+        variant_names: &variant_names,
+        callable_param_defaults: &callable_param_defaults,
+    };
+
+    let mut builder = DagBuilder::new();
+    let error = add_control_flow_pattern_nodes(&mut builder, &ctx)
+        .expect_err("detected for-loops should require TypedForLoopScope metadata");
+
+    assert!(matches!(
+        error,
+        LowerError::InvalidForLoopScope {
+            caller,
+            binding,
+            detail,
+        } if caller == "sample.for_scope_boundary::run"
+            && binding == "repo"
+            && detail == "missing TypedForLoopScope metadata for detected `for` expression"
+    ));
+}
+
+#[test]
 fn pipe_filter_join_chain_lowers_to_collection_nodes() {
     let typed = typed_project_from_sources(&[(
         "sample/chain.dag",

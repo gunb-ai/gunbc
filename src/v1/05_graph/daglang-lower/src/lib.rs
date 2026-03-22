@@ -43,7 +43,7 @@ use daglang_syntax::ast_utils::{
 };
 use daglang_syntax::span::Span as SyntaxSpan;
 use daglang_typecheck::{
-    TypedCallableBodyMetadata, TypedCallableSignature, TypedItemSignature, TypedForLoopScope,
+    TypedCallableBodyMetadata, TypedCallableSignature, TypedForLoopScope, TypedItemSignature,
     TypedProject,
 };
 use gunbc_ir::patterns::branch::IfBuilder;
@@ -1917,6 +1917,12 @@ pub enum LowerError {
         name: String,
         missing_port: String,
     },
+    /// A detected `for` expression reached lowering without loop-scope metadata.
+    InvalidForLoopScope {
+        caller: String,
+        binding: String,
+        detail: String,
+    },
     /// Expression could not be lowered to a DAG source.
     ExprLower(String),
     /// Data-flow wiring failed during lowering.
@@ -2076,6 +2082,14 @@ impl std::fmt::Display for LowerError {
                 "callable node `{node}` (name: `{name}`) has fn_body: None and no `{missing_port}` \
                  input port — it will fail at resolve time"
             ),
+            Self::InvalidForLoopScope {
+                caller,
+                binding,
+                detail,
+            } => write!(
+                f,
+                "callable `{caller}` has invalid for-loop scope metadata for `{binding}`: {detail}"
+            ),
             Self::ExprLower(msg) => write!(f, "{msg}"),
             Self::WiringFailure {
                 source_file,
@@ -2130,6 +2144,7 @@ impl LowerError {
             Self::ExprLower(..) => "LOW025",
             Self::WiringFailure { .. } => "LOW026",
             Self::PortTypeValidation(..) => "LOW027",
+            Self::InvalidForLoopScope { .. } => "LOW031",
         }
     }
 
@@ -2166,6 +2181,10 @@ impl LowerError {
                 "check that `{field_name}` exists in the operation's inputs and is \
                  of type `Secret`"
             )),
+            Self::InvalidForLoopScope { .. } => Some(
+                "ensure typecheck provides `TypedForLoopScope` metadata for every detected `for` expression before lowering"
+                    .into(),
+            ),
             Self::PortTypeValidation(_) => Some(
                 "register missing types in the TypeRegistry or fix the port type_ids \
                  in the DSL source"
@@ -2712,7 +2731,7 @@ fn lower_typed_project_impl(
         &wctx,
         emit_collection_nodes,
         entry_module,
-    );
+    )?;
     let profile_registry = collect_profile_binding_registry(project, active_profile)?;
     let active_profile_bindings =
         resolve_active_profile_bindings(&profile_registry, active_profile, env_resolver)?;
@@ -3689,7 +3708,7 @@ fn add_dependency_edges(
     wctx: &DagWiringContext<'_>,
     emit_collection_nodes: bool,
     entry_module: Option<&str>,
-) {
+) -> Result<(), LowerError> {
     for module in project.modules() {
         let module_name = module.module_path.as_dotted();
         let source_file = module.path.display().to_string();
@@ -3801,10 +3820,11 @@ fn add_dependency_edges(
                     variant_names: wctx.variant_names,
                     callable_param_defaults: wctx.callable_param_defaults,
                 };
-                add_control_flow_pattern_nodes(builder, &control_flow_ctx);
+                add_control_flow_pattern_nodes(builder, &control_flow_ctx)?;
             }
         }
     }
+    Ok(())
 }
 
 fn add_collection_pipeline_nodes(
@@ -4161,7 +4181,10 @@ fn port_type_for_ir_type(ir_type: &gunbc_ir::code_ir::IrType) -> String {
         IrType::Named(name) => name.clone(),
         IrType::Generic(name, args) => format!(
             "{name}<{}>",
-            args.iter().map(port_type_for_ir_type).collect::<Vec<_>>().join(", ")
+            args.iter()
+                .map(port_type_for_ir_type)
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         IrType::Optional(inner) => format!("Optional<{}>", port_type_for_ir_type(inner)),
         IrType::Bool => "Bool".to_string(),
@@ -4169,7 +4192,11 @@ fn port_type_for_ir_type(ir_type: &gunbc_ir::code_ir::IrType) -> String {
         IrType::Str => "String".to_string(),
         IrType::Tuple(items) => format!(
             "({})",
-            items.iter().map(port_type_for_ir_type).collect::<Vec<_>>().join(", ")
+            items
+                .iter()
+                .map(port_type_for_ir_type)
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         IrType::Unit => "Unit".to_string(),
         IrType::Record(_) => "Record".to_string(),
@@ -4177,12 +4204,36 @@ fn port_type_for_ir_type(ir_type: &gunbc_ir::code_ir::IrType) -> String {
     }
 }
 
-fn for_loop_scope_for_site<'a>(
+fn control_flow_caller_name(ctx: &ControlFlowPatternContext<'_>) -> String {
+    format!("{}::{}", ctx.module_name, ctx.item_name)
+}
+
+fn required_for_loop_scope_for_site<'a>(
     ctx: &'a ControlFlowPatternContext<'_>,
     site: &ForLoopSite,
-) -> Option<&'a TypedForLoopScope> {
+) -> Result<&'a TypedForLoopScope, LowerError> {
     ctx.callable_body_metadata
         .and_then(|metadata| metadata.for_loop_scope(site.expr_identity))
+        .ok_or_else(|| LowerError::InvalidForLoopScope {
+            caller: control_flow_caller_name(ctx),
+            binding: site.element_var.clone(),
+            detail: "missing TypedForLoopScope metadata for detected `for` expression".into(),
+        })
+}
+
+fn required_for_loop_binding_port_type(
+    ctx: &ControlFlowPatternContext<'_>,
+    scope: &TypedForLoopScope,
+    binding: &str,
+) -> Result<String, LowerError> {
+    scope
+        .binding_ir_type(binding)
+        .map(port_type_for_ir_type)
+        .ok_or_else(|| LowerError::InvalidForLoopScope {
+            caller: control_flow_caller_name(ctx),
+            binding: binding.to_string(),
+            detail: "TypedForLoopScope metadata omitted this loop binding".into(),
+        })
 }
 
 fn wire_loop_body_named_args(
@@ -4215,20 +4266,16 @@ fn make_loop_body_dag_from_stmts(
     callable_node_id: &str,
     index: usize,
     site: &ForLoopSite,
-) -> Option<Dag<LoweredOp>> {
+) -> Result<Option<Dag<LoweredOp>>, LowerError> {
     let mut builder = DagBuilder::new();
-    let loop_scope = for_loop_scope_for_site(ctx, site);
-    let element_port_type = loop_scope
-        .and_then(|scope| scope.binding_ir_type(site.element_var.as_str()))
-        .map(port_type_for_ir_type)
-        .unwrap_or_else(|| "Any".to_string());
+    let loop_scope = required_for_loop_scope_for_site(ctx, site)?;
+    let element_port_type =
+        required_for_loop_binding_port_type(ctx, loop_scope, site.element_var.as_str())?;
     let mut param_types = HashMap::<String, String>::new();
     param_types.insert(site.element_var.clone(), element_port_type.clone());
     for passthrough in &site.passthrough {
-        let passthrough_type = loop_scope
-            .and_then(|scope| scope.binding_ir_type(passthrough.as_str()))
-            .map(port_type_for_ir_type)
-            .unwrap_or_else(|| "Any".to_string());
+        let passthrough_type =
+            required_for_loop_binding_port_type(ctx, loop_scope, passthrough.as_str())?;
         param_types.insert(passthrough.clone(), passthrough_type);
     }
 
@@ -4418,21 +4465,10 @@ fn make_loop_body_dag_from_stmts(
     .is_err()
     {
         // Loop body return wiring failed — cannot construct body DAG.
-        return None;
+        return Ok(None);
     }
 
-    let resolved_element_type = loop_scope
-        .and_then(|scope| scope.binding_ir_type(site.element_var.as_str()))
-        .map(port_type_for_ir_type)
-        .or_else(|| {
-            builder
-                .dag
-                .nodes
-                .iter()
-                .flat_map(|node| node.inputs.iter())
-                .find(|port| port.name.0 == site.element_var && port.type_id.0 != "Any")
-                .map(|port| port.type_id.0.clone())
-        });
+    let resolved_element_type = Some(element_port_type.clone());
     if let Some(element_type) = resolved_element_type {
         if let Some(body_node) = builder
             .dag
@@ -4447,31 +4483,25 @@ fn make_loop_body_dag_from_stmts(
     }
 
     if !builder.has_edge_to_port(body_target.node_id.as_str(), "__out:result") {
-        return None;
+        return Ok(None);
     }
 
-    Some(builder.dag)
+    Ok(Some(builder.dag))
 }
 
 fn make_loop_body_dag(
-    module_name: &str,
+    ctx: &ControlFlowPatternContext<'_>,
     callable_node_id: &str,
     index: usize,
     element_var: &str,
     passthrough: &[String],
-    loop_scope: Option<&TypedForLoopScope>,
+    loop_scope: &TypedForLoopScope,
     body_transports: &[LoopBodyTransport],
-) -> Dag<LoweredOp> {
-    let element_port_type = loop_scope
-        .and_then(|scope| scope.binding_ir_type(element_var))
-        .map(port_type_for_ir_type)
-        .unwrap_or_else(|| "Any".to_string());
+) -> Result<Dag<LoweredOp>, LowerError> {
+    let element_port_type = required_for_loop_binding_port_type(ctx, loop_scope, element_var)?;
     let mut inputs = vec![Port::scalar(element_var, element_port_type.as_str())];
     for pt in passthrough {
-        let passthrough_type = loop_scope
-            .and_then(|scope| scope.binding_ir_type(pt.as_str()))
-            .map(port_type_for_ir_type)
-            .unwrap_or_else(|| "Any".to_string());
+        let passthrough_type = required_for_loop_binding_port_type(ctx, loop_scope, pt.as_str())?;
         inputs.push(Port::scalar(pt.as_str(), passthrough_type.as_str()));
     }
     let mut dag: Dag<LoweredOp> = Dag::new();
@@ -4485,7 +4515,7 @@ fn make_loop_body_dag(
             inputs,
             vec![Port::scalar("result", "Any")],
             LoweredOp::Callable {
-                module: module_name.to_string(),
+                module: ctx.module_name.to_string(),
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
                 obligation: CallableObligation::None,
@@ -4517,7 +4547,7 @@ fn make_loop_body_dag(
             body_op_inputs,
             vec![Port::scalar("result", "Any")],
             LoweredOp::Callable {
-                module: module_name.to_string(),
+                module: ctx.module_name.to_string(),
                 kind: CallableKind::Fn,
                 name: format!("{callable_node_id}::for_{index}_body"),
                 obligation: CallableObligation::None,
@@ -4543,7 +4573,7 @@ fn make_loop_body_dag(
                 .collect();
 
             let triplet_spec = transport::TransportTripletSpec {
-                module: module_name.to_string(),
+                module: ctx.module_name.to_string(),
                 service: transport.metadata.service.clone(),
                 operation: transport.metadata.operation.clone(),
                 metadata: transport.metadata.clone(),
@@ -4571,7 +4601,7 @@ fn make_loop_body_dag(
             ));
         }
     }
-    dag
+    Ok(dag)
 }
 
 fn make_branch_body_dag(
@@ -4703,12 +4733,15 @@ struct ControlFlowPatternContext<'a> {
     callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
 }
 
-fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPatternContext<'_>) {
+fn add_control_flow_pattern_nodes(
+    builder: &mut DagBuilder,
+    ctx: &ControlFlowPatternContext<'_>,
+) -> Result<(), LowerError> {
     let source_dag = builder.dag.clone();
     let for_sites = detect_for_loops_in_stmts(ctx.stmts);
     for (index, site) in for_sites.iter().enumerate() {
         let node_id = format!("{}::cf_for_{index}", ctx.target.node_id);
-        let loop_scope = for_loop_scope_for_site(ctx, site);
+        let loop_scope = required_for_loop_scope_for_site(ctx, site)?;
         // Resolve body service calls to LoopBodyTransport entries.
         let mut body_transports = Vec::new();
         for call_path in &site.body_service_call_paths {
@@ -4720,38 +4753,26 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
                 body_transports.push(transport);
             }
         }
-        let body_dag =
-            make_loop_body_dag_from_stmts(&source_dag, ctx, &ctx.target.node_id, index, site)
-                .unwrap_or_else(|| {
-                    make_loop_body_dag(
-                        ctx.module_name,
-                        &ctx.target.node_id,
-                        index,
-                        &site.element_var,
-                        &site.passthrough,
-                        loop_scope,
-                        &body_transports,
-                    )
-                });
-        let element_type = loop_scope
-            .and_then(|scope| scope.binding_ir_type(site.element_var.as_str()))
-            .map(port_type_for_ir_type)
-            .or_else(|| {
-                body_dag
-                    .nodes
-                    .iter()
-                    .flat_map(|node| node.inputs.iter())
-                    .find(|port| port.name.0 == site.element_var && port.type_id.0 != "Any")
-                    .or_else(|| {
-                        body_dag
-                            .nodes
-                            .iter()
-                            .flat_map(|node| node.inputs.iter())
-                            .find(|port| port.name.0 == site.element_var)
-                    })
-                    .map(|port| port.type_id.0.clone())
-            })
-            .unwrap_or_else(|| "Any".to_string());
+        let body_dag = match make_loop_body_dag_from_stmts(
+            &source_dag,
+            ctx,
+            &ctx.target.node_id,
+            index,
+            site,
+        )? {
+            Some(dag) => dag,
+            None => make_loop_body_dag(
+                ctx,
+                &ctx.target.node_id,
+                index,
+                &site.element_var,
+                &site.passthrough,
+                loop_scope,
+                &body_transports,
+            )?,
+        };
+        let element_type =
+            required_for_loop_binding_port_type(ctx, loop_scope, site.element_var.as_str())?;
         let loop_node = LoopBuilder::new(node_id.clone())
             .with_input("items", "Any", Cardinality::ONE)
             .with_element(&site.element_var, element_type.as_str())
@@ -4910,6 +4931,7 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
         }
         builder.add_edge(&node_id, "result", &ctx.target.node_id, PortName::DEPS);
     }
+    Ok(())
 }
 
 fn expand_content_upsert_patterns(
