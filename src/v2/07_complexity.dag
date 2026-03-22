@@ -391,6 +391,16 @@ fn format_size(size: SizeExpr) -> String {
   }
 }
 
+// Strip "O(" prefix and ")" suffix from a classification string.
+// "O(|items|)" -> "|items|", "O(1)" -> "1"
+fn strip_big_o(s: String) -> String {
+  if string_length(s) > 3 && substring(s, 0, 2) == "O(" {
+    substring(s, 2, string_length(s) - 1)
+  } else {
+    s
+  }
+}
+
 fn has_cost_sum(expr: CostExpr) -> Bool {
   match expr {
     CostSum { binder: _, upper: _, body: _ } => true
@@ -409,9 +419,10 @@ fn classify_complexity(expr: CostExpr) -> String {
     PrimCost { op: _, args: _, ctx: _ } => "O(1)"
     CostSum { binder: _, upper: u, body: bd } =>
       if has_cost_sum(expr: bd) {
-        // Nested iteration
-        let inner = classify_complexity(expr: bd)
-        concat("O(", format_size(size: u), " * ", inner, ")")
+        // Nested iteration — inner classification needs O() stripped
+        let inner_class = classify_complexity(expr: bd)
+        let inner_bare = strip_big_o(s: inner_class)
+        concat("O(", format_size(size: u), " * ", inner_bare, ")")
       } else {
         concat("O(", format_size(size: u), ")")
       }
@@ -487,14 +498,7 @@ fn deduplicate(items: List<String>) -> List<String> {
 
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
   let class = classify_complexity(expr: summary.work)
-  let vars = deduplicate(items: collect_size_vars(expr: summary.work))
-  let where_clause = if vars |> count == 0 {
-    ""
-  } else {
-    let parts = vars |> map(v => concat("|", v, "|"))
-    concat("  where ", parts |> join(separator: ", "))
-  }
-  concat(name, ": ", class, where_clause)
+  concat(name, ": ", class)
 }
 
 fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
@@ -1023,9 +1027,16 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
           let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
           // Walk the function body
           let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
-          // Cache the real summary
-          let final_table = cache_summary(table: result.table, func_name: func_name, summary: result.summary)
-          SummaryResult { summary: result.summary, table: final_table }
+          // Simplify and cache the real summary
+          let simplified = ComplexitySummary {
+            work: simplify_cost(expr: result.summary.work),
+            span: simplify_cost(expr: result.summary.span),
+            output_size: result.summary.output_size,
+            assumptions: result.summary.assumptions,
+            certainty: result.summary.certainty
+          }
+          let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
+          SummaryResult { summary: simplified, table: final_table }
         None =>
           // Unknown function -- return unknown cost
           let unknown_summary = ComplexitySummary {
@@ -1203,9 +1214,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }]
     }
   )
+  let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,
-    intern_table: result.table
+    intern_table: result.table,
+    formatted: formatted
   }
 }

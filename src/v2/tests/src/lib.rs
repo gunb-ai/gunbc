@@ -10,8 +10,8 @@ mod tests {
     use std::collections::HashMap;
 
     /// Local replacement for CompileOutput.
-    /// Contains lowered function bodies and data values — everything the
-    /// v1 evaluator needs to execute v2 .dag functions.
+    /// Contains lowered function bodies and data values for executing
+    /// v2 .dag functions during bootstrap.
     struct CompileOutput {
         fns: HashMap<String, daglang_eval::LoweredFnBody>,
         data_values: HashMap<String, gunbc_ir::Value>,
@@ -852,7 +852,7 @@ fn foo(item: String) -> String {
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Phase 1: Compilation gate — v1 compiler can compile each v2 module
+    // Phase 1: Compilation gate — each v2 module compiles successfully
     // ═════════════════════════════════════════════════════════════════════
 
     /// Extract fn bodies and data values from the tokenizer module.
@@ -3949,6 +3949,94 @@ fn example(items: List<String>) -> Int {
     // Namespace guard — duplicate function name detection
     // ═════════════════════════════════════════════════════════════════════
 
+    #[test]
+    fn test_complexity_report_formatted() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module test_complexity
+
+fn constant_work(x: Int) -> Int { x + 1 }
+
+fn linear_map(items: List<String>) -> List<String> {
+  items |> map(s => concat(s, "!"))
+}
+
+fn linear_fold(nums: List<Int>) -> Int {
+  nums |> fold(init: 0, f: (acc, n) => acc + n)
+}
+
+fn nested_iteration(rows: List<List<String>>) -> List<String> {
+  rows |> flat_map(row => row |> map(s => concat(s, ".")))
+}
+
+fn filter_then_map(items: List<String>) -> List<String> {
+  items |> filter(s => s != "") |> map(s => concat(s, "!"))
+}
+
+fn for_each_loop(items: List<String>) -> List<String> {
+  for item in items {
+    concat(item, "!")
+  }
+}
+
+fn count_items(items: List<String>) -> Int {
+  items |> count
+}
+"#;
+
+        let result = compile_sources_with_target(&output, &[("test.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        // O(1) for constant work
+        assert!(
+            formatted.contains("constant_work: O(1)"),
+            "constant_work should be O(1), report:\n{}", formatted
+        );
+        // O(|items|) for linear map
+        assert!(
+            formatted.contains("linear_map: O(|items|)"),
+            "linear_map should be O(|items|), report:\n{}", formatted
+        );
+        // O(|nums|) for linear fold
+        assert!(
+            formatted.contains("linear_fold: O(|nums|)"),
+            "linear_fold should be O(|nums|), report:\n{}", formatted
+        );
+        // Nested iteration
+        assert!(
+            formatted.contains("nested_iteration: O(|rows| * |row|)"),
+            "nested_iteration should be O(|rows| * |row|), report:\n{}", formatted
+        );
+        // filter+map chains are still linear
+        assert!(
+            formatted.contains("filter_then_map: O(|items|)"),
+            "filter_then_map should be O(|items|), report:\n{}", formatted
+        );
+        // for-each loop
+        assert!(
+            formatted.contains("for_each_loop: O(|items|)"),
+            "for_each_loop should be O(|items|), report:\n{}", formatted
+        );
+        // count is linear scan
+        assert!(
+            formatted.contains("count_items: O(|items|)"),
+            "count_items should be O(|items|), report:\n{}", formatted
+        );
+    }
+
     /// Verify that the v2 module set has no duplicate fn names.
     #[test]
     fn compile_all_modules_rejects_duplicate_fn_names() {
@@ -3958,5 +4046,338 @@ fn example(items: List<String>) -> Int {
             "v2 modules should not contain duplicate fn names: {:?}",
             duplicates
         );
+    }
+
+    /// Complexity report for compiler-representative patterns.
+    ///
+    /// Exercises the same computational patterns found in the real compiler:
+    /// recursive descent, fold-based walks, method chains, nested iteration,
+    /// accumulator threading.
+    #[test]
+    fn test_complexity_report_compiler_patterns() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module compiler_patterns
+
+// --- Tokenizer pattern: linear scan ---
+fn scan_chars(source: String) -> List<String> {
+  source |> chars
+}
+
+// --- Parser pattern: fold with scalar accumulator ---
+fn count_tokens(tokens: List<String>) -> Int {
+  tokens |> fold(init: 0, f: (acc, tok) => acc + 1)
+}
+
+// --- Reconciler pattern: nested iteration ---
+fn flatten_modules(modules: List<List<String>>) -> List<String> {
+  modules |> flat_map(m => m)
+}
+
+fn count_nested(modules: List<List<String>>) -> Int {
+  modules |> fold(init: 0, f: (acc, m) =>
+    m |> fold(init: acc, f: (inner_acc, item) => inner_acc + 1)
+  )
+}
+
+// --- Emit pattern: map + join ---
+fn emit_lines(items: List<String>) -> String {
+  items |> map(item => concat("fn ", item, "() {}")) |> join(separator: "\n")
+}
+
+// --- Filter + count ---
+fn count_nonempty(items: List<String>) -> Int {
+  items |> filter(s => s != "") |> count
+}
+
+// --- Chained pipeline ---
+fn process_pipeline(tokens: List<String>) -> List<String> {
+  tokens
+    |> filter(s => s != "")
+    |> map(s => concat(s, "!"))
+    |> filter(s => s != "!")
+}
+
+// --- Nested map ---
+fn transform_all(groups: List<List<String>>) -> List<List<String>> {
+  groups |> map(g => g |> map(s => concat(s, "_done")))
+}
+
+// --- Constant work ---
+fn identity(x: String) -> String { x }
+fn add_nums(a: Int, b: Int) -> Int { a + b }
+
+// --- Any/all predicates ---
+fn has_empty(items: List<String>) -> Bool {
+  items |> any(s => s == "")
+}
+
+fn all_nonempty(items: List<String>) -> Bool {
+  items |> all(s => s != "")
+}
+
+// --- Sort ---
+fn sort_by_length(items: List<String>) -> List<String> {
+  items |> sort_by(s => string_length(s))
+}
+
+// --- Enumerate ---
+fn with_index(items: List<String>) -> List<String> {
+  items |> enumerate |> map(pair => concat(to_string(pair.index), ": ", pair.value))
+}
+"#;
+
+        let result = compile_sources_with_target(&output, &[("compiler.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        // Constant work
+        assert!(formatted.contains("identity: O(1)"), "identity should be O(1), report:\n{}", formatted);
+        assert!(formatted.contains("add_nums: O(1)"), "add_nums should be O(1), report:\n{}", formatted);
+
+        // Linear scans
+        assert!(formatted.contains("scan_chars: O(|source|)"), "chars should be O(|source|), report:\n{}", formatted);
+        assert!(formatted.contains("count_tokens: O(|tokens|)"), "fold should be O(|tokens|), report:\n{}", formatted);
+
+        // Map + join
+        assert!(formatted.contains("emit_lines: O(|items|)"), "map+join should be O(|items|), report:\n{}", formatted);
+
+        // Filter + count
+        assert!(formatted.contains("count_nonempty: O(|items|)"), "filter+count should be O(|items|), report:\n{}", formatted);
+
+        // Chained pipeline
+        assert!(formatted.contains("process_pipeline: O(|tokens|)"), "chained pipeline should be O(|tokens|), report:\n{}", formatted);
+
+        // flat_map
+        assert!(formatted.contains("flatten_modules: O(|modules|)"), "flat_map should be O(|modules|), report:\n{}", formatted);
+
+        // Nested iteration
+        assert!(formatted.contains("count_nested: O(|modules|"), "nested fold should reference |modules|, report:\n{}", formatted);
+        assert!(formatted.contains("transform_all: O(|groups|"), "nested map should reference |groups|, report:\n{}", formatted);
+
+        // Predicates
+        assert!(formatted.contains("has_empty: O(|items|)"), "any should be O(|items|), report:\n{}", formatted);
+        assert!(formatted.contains("all_nonempty: O(|items|)"), "all should be O(|items|), report:\n{}", formatted);
+
+        // Sort + enumerate
+        assert!(formatted.contains("sort_by_length: O(|items|)"), "sort_by should be O(|items|), report:\n{}", formatted);
+        assert!(formatted.contains("with_index: O(|items|)"), "enumerate+map should be O(|items|), report:\n{}", formatted);
+    }
+
+    /// Complexity report for patterns drawn from every v2 compiler stage.
+    ///
+    /// Mirrors the computational patterns from each stage: tokenizer, parser,
+    /// resolver, reconciler, emitter, pipeline, complexity, artifact.
+    #[test]
+    fn test_v2_compiler_stage_complexity() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module v2_compiler_stages
+
+// ============================
+// 01_tokenize: character-level scanning
+// ============================
+
+fn tokenize(source: String) -> List<String> {
+  source |> chars |> fold(init: 0, f: (acc, ch) => acc + 1)
+  source |> chars
+}
+
+fn skip_whitespace(chars: List<String>) -> List<String> {
+  chars |> filter(c => c != " ")
+}
+
+fn scan_string_literal(chars: List<String>) -> String {
+  chars |> fold(init: "", f: (acc, c) => concat(acc, c))
+}
+
+// ============================
+// 02_parse: recursive descent over token streams
+// ============================
+
+fn parse_items(tokens: List<String>) -> List<String> {
+  tokens |> fold(init: 0, f: (acc, tok) => acc + 1)
+  tokens |> filter(t => t != "")
+}
+
+fn parse_params(tokens: List<String>) -> List<String> {
+  tokens |> filter(t => t != ",") |> map(t => concat("param:", t))
+}
+
+fn parse_type_children(tokens: List<String>) -> List<String> {
+  tokens |> map(t => concat("type:", t))
+}
+
+// ============================
+// 03_resolve: module graph construction
+// ============================
+
+fn resolve_modules(modules: List<List<String>>) -> List<String> {
+  modules |> flat_map(m => m)
+}
+
+fn collect_exports(modules: List<List<String>>) -> Int {
+  modules |> fold(init: 0, f: (acc, m) =>
+    m |> fold(init: acc, f: (inner, item) => inner + 1)
+  )
+}
+
+fn find_import(names: List<String>, target: String) -> Bool {
+  names |> any(n => n == target)
+}
+
+// ============================
+// 04_reconcile: type resolution + namespace walks
+// ============================
+
+fn resolve_all_items(modules: List<List<String>>) -> List<String> {
+  modules |> flat_map(m => m |> map(item => concat("resolved:", item)))
+}
+
+fn check_all_types(items: List<String>) -> Bool {
+  items |> all(item => item != "")
+}
+
+fn count_errors(diagnostics: List<String>) -> Int {
+  diagnostics |> filter(d => d == "error") |> count
+}
+
+fn build_env(items: List<String>) -> Int {
+  items |> fold(init: 0, f: (acc, item) => acc + 1)
+}
+
+// ============================
+// 05_emit: code generation
+// ============================
+
+fn emit_module(items: List<String>) -> String {
+  items |> map(item => concat("fn ", item, "() {}")) |> join(separator: "\n")
+}
+
+fn emit_type_defs(types: List<String>) -> String {
+  types |> map(t => concat("struct ", t, " {}")) |> join(separator: "\n")
+}
+
+fn emit_match_arms(variants: List<String>) -> String {
+  variants |> map(v => concat("  ", v, " => {},")) |> join(separator: "\n")
+}
+
+fn emit_nested_modules(modules: List<List<String>>) -> String {
+  modules |> map(m =>
+    m |> map(item => concat("  ", item)) |> join(separator: "\n")
+  ) |> join(separator: "\n\n")
+}
+
+// ============================
+// 06_pipeline: stage wiring
+// ============================
+
+fn collect_diagnostics(stages: List<List<String>>) -> List<String> {
+  stages |> flat_map(s => s)
+}
+
+fn has_errors(diagnostics: List<String>) -> Bool {
+  diagnostics |> any(d => d == "error")
+}
+
+fn compile_pipeline(sources: List<String>) -> List<String> {
+  sources
+    |> filter(s => s != "")
+    |> map(s => concat("compiled:", s))
+    |> filter(s => s != "compiled:")
+}
+
+// ============================
+// 07_complexity: cost analysis
+// ============================
+
+fn analyze_functions(funcs: List<String>) -> List<String> {
+  funcs |> map(f => concat("O(n): ", f))
+}
+
+fn classify_all(funcs: List<String>) -> String {
+  funcs |> map(f => concat(f, ": O(1)")) |> join(separator: "\n")
+}
+
+fn find_violations(costs: List<Int>, threshold: Int) -> List<Int> {
+  costs |> filter(c => c > threshold)
+}
+
+// ============================
+// 08_artifact: build planning
+// ============================
+
+fn plan_artifacts(modules: List<String>) -> String {
+  modules |> map(m => concat("artifact:", m)) |> join(separator: ",")
+}
+
+fn merge_plans(plans: List<List<String>>) -> List<String> {
+  plans |> flat_map(p => p)
+}
+
+// ============================
+// Cross-cutting: O(1) helpers (many in each stage)
+// ============================
+
+fn make_span(start: Int, end_pos: Int) -> Int { start + end_pos }
+fn make_diagnostic(msg: String) -> String { concat("error: ", msg) }
+fn wrap_some(value: String) -> String { value }
+fn is_keyword(token: String) -> Bool { token == "fn" }
+fn default_target() -> String { "Rust" }
+"#;
+
+        let result = compile_sources_with_target(&output, &[("v2_stages.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        println!("=== v2 Compiler Stage Complexity Report ===\n{}", formatted);
+
+        // Verify classifications for key patterns
+        // O(1) helpers
+        assert!(formatted.contains("make_span: O(1)"), "report:\n{}", formatted);
+        assert!(formatted.contains("is_keyword: O(1)"), "report:\n{}", formatted);
+        assert!(formatted.contains("default_target: O(1)"), "report:\n{}", formatted);
+
+        // Linear: tokenizer
+        assert!(formatted.contains("skip_whitespace: O(|chars|)"), "report:\n{}", formatted);
+        assert!(formatted.contains("scan_string_literal: O(|chars|)"), "report:\n{}", formatted);
+
+        // Linear: parser
+        assert!(formatted.contains("parse_params: O(|tokens|)"), "report:\n{}", formatted);
+
+        // Linear: emitter
+        assert!(formatted.contains("emit_module: O(|items|)"), "report:\n{}", formatted);
+        assert!(formatted.contains("emit_match_arms: O(|variants|)"), "report:\n{}", formatted);
+
+        // Nested: reconciler + resolver
+        assert!(formatted.contains("resolve_all_items: O(|modules|"), "report:\n{}", formatted);
+        assert!(formatted.contains("collect_exports: O(|modules|"), "report:\n{}", formatted);
+
+        // Nested: emitter
+        assert!(formatted.contains("emit_nested_modules: O(|modules|"), "report:\n{}", formatted);
     }
 }

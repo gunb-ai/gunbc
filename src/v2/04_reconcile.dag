@@ -3337,7 +3337,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_elements = map(element_results, er => er.expr)
       let element_diags = flat_map(element_results, er => er.diagnostics)
       ExprResolveResult {
-        expr: ListLit { elements: resolved_elements, span: span },
+        expr: make_expr_node(expr_data: ExprListLit { elements: resolved_elements }, return_type: texpr.return_type, span: span),
         diagnostics: element_diags
       }
 
