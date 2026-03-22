@@ -10,7 +10,7 @@
 
 module v2.compiler.artifact
 
-import v2.std.core { TextFile, Node }
+import v2.std.core { TextFile, Node, RenderTarget }
 
 // =========================================================================
 // Artifact kinds
@@ -30,7 +30,7 @@ type ArtifactKind
 type Artifact {
   name: String
   kind: ArtifactKind
-  target: String
+  target: RenderTarget
   entry_modules: List<String>
   dependencies: List<String>
 }
@@ -221,15 +221,12 @@ fn build_artifact_report(plan: ArtifactPlan, contracts: List<BoundaryContract>, 
 
 // Create a default single-artifact plan from the current pipeline state.
 // This is the compatibility wrapper -- current behavior becomes an explicit plan.
-fn default_artifact_plan(root_modules: List<String>, target: String) -> ArtifactPlan {
-  ArtifactPlan {
-    artifacts: [Artifact {
-      name: "default",
-      kind: ServiceBinary,
-      target: target,
-      entry_modules: root_modules,
-      dependencies: []
-    }],
-    boundaries: []
-  }
+fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> ArtifactPlan {
+  plan_artifacts(rule: Explicit { artifacts: [Artifact {
+    name: "default",
+    kind: ServiceBinary,
+    target: target,
+    entry_modules: root_modules,
+    dependencies: []
+  }] })
 }
