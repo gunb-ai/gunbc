@@ -249,14 +249,25 @@ Cleanup / deletion:
 
 #### Execution order
 
-R1–R4 have no dependencies and can start immediately after M1.
-R5 and R6 are the high-leverage refactors. R7 depends on R6 (shared fold).
-R8 and R9 are wiring, not structural change.
+R5 is the bootstrap-critical refactor. The heuristics previously introduced
+to reduce self-compile cargo check errors (Dynamic permissiveness,
+fold-returns-Dynamic, var→func_env fallback, recursive field-access
+resolution) were all symptoms of string-based method dispatch in reconcile.
+R5 fixes the entire class at once via data tables — the same pattern that
+makes tokenize gold-standard.
+
+Priority order (bootstrap-integrated):
 
 ```
-R1 (core scoping)  ─────────────────────────┐
-R5 (infer tables + emit_info extraction) ────┼──→ R6 (shared emit fold) ──→ R7 (complexity fold)
-R8 (ownership wiring) ──→ R9 (pipeline completeness)
+1. M1 (renames)        — mechanical prerequisite
+2. R5 (data tables)    — holistic bootstrap fix: replaces 80+ string
+   │                     comparisons with typed method contracts
+   ├── R1 (core scoping) — can happen during or right after R5
+   └── re-measure bootstrap errors (most should disappear)
+3. R6 (shared emit fold) — fixes remaining emission divergence
+   └── R7 (complexity fold consumer)
+4. R8 + R9 (ownership wiring + pipeline completeness)
+5. Resume bootstrap error reduction on correct infrastructure
 ```
 
 R2–R4 are no-ops. R3 (parse) inherits R1's cleanup automatically.
