@@ -3812,7 +3812,7 @@ fn compile_intrinsic_call(
                     )),
                     ir_type: None,
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(keys)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(keys))),
             ]))
         }
         // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.

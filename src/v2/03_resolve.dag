@@ -436,8 +436,11 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
     KahnDrainState { sorted: new_sorted, in_degree_map: new_degrees }
   })
 
-  // Collect newly zero-in-degree nodes (neighbors that just reached 0)
-  let new_zero = queue |> flat_map(node =>
+  // Collect newly zero-in-degree nodes (neighbors that just reached 0).
+  // Deduplicate via map-as-set: diamond deps (A→C, B→C) produce C twice
+  // in the flat_map; without dedup, C would be sorted twice and inflate
+  // the count, causing a false cycle error.
+  let new_zero_set = queue |> flat_map(node =>
     match map_get(adjacency, node) {
       Some { value: ns } => ns
       None => []
@@ -447,7 +450,8 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
       Some { value: 0 } => true
       _ => false
     }
-  ) |> sort_by(name => name)
+  ) |> fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let new_zero = map_keys(new_zero_set) |> sort_by(name => name)
 
   kahn_drain(
     queue: new_zero,

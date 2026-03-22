@@ -250,8 +250,11 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
   // A-1: field access index -- flatten type_summaries into keyed field lookups.
   // Key format: "TypeName::field_name" for unique O(1) lookup.
   let field_idx = map_values(info.type_summaries) |> fold(init: empty_map(), f: fn(acc, ts) {
-    map_values(ts.field_summaries) |> fold(init: acc, f: fn(acc2, fs) {
-      acc2
+    map_keys(ts.field_summaries) |> fold(init: acc, f: fn(acc2, field_name) {
+      match map_get(ts.field_summaries, field_name) {
+        Some { value: fs } => map_insert(acc2, concat(ts.name, "::", field_name), fs)
+        None => acc2
+      }
     })
   })
   // A-2: intrinsic index -- static, built from the known method list

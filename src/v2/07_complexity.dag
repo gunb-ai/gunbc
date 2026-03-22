@@ -251,6 +251,30 @@ fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
   CostAdd { left: condition, right: max_branch }
 }
 
+// Output size for collection-producing operations: a single "result" entry
+// with cost proportional to the collection size.
+fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
+  map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+}
+
+fn scalar_output() -> Map<String, CostExpr> {
+  empty_map()
+}
+
+// Merge two output_size maps by taking the max of each key.
+fn merge_output_size(a: Map<String, CostExpr>, b: Map<String, CostExpr>) -> Map<String, CostExpr> {
+  map_keys(b) |> fold(init: a, f: fn(acc, key) {
+    match map_get(b, key) {
+      Some { value: bv } =>
+        match map_get(acc, key) {
+          Some { value: av } => map_insert(acc, key, CostMax { left: av, right: bv })
+          None => map_insert(acc, key, bv)
+        }
+      None => acc
+    }
+  })
+}
+
 // =========================================================================
 // Size variable extraction
 //
@@ -503,7 +527,14 @@ fn deduplicate(items: List<String>) -> List<String> {
 
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
   let class = classify_complexity(expr: summary.work)
-  concat(name, ": ", class)
+  // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
+  // the cost algebra lacks log), ? means the system could not derive a bound.
+  let marker = match summary.certainty {
+    Proven => ""
+    Conservative => "~"
+    Unknown => "?"
+  }
+  concat(name, ": ", marker, class)
 }
 
 fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
@@ -587,13 +618,15 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         Some { value: entry } =>
           get_or_compute_summary(func_name: fname, func_index: func_index, table: table)
         None =>
+          // Not in func_index: built-in intrinsic (concat, map_get, etc.)
+          // All intrinsics are O(1) with Proven certainty.
           SummaryResult {
             summary: ComplexitySummary {
               work: CostConst { value: 1 },
               span: CostConst { value: 1 },
               output_size: empty_map(),
               assumptions: [],
-              certainty: Conservative
+              certainty: Proven
             },
             table: table
           }
@@ -639,14 +672,68 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       // Iteration methods: loop over collection, apply lambda body per element
       if mname == "map" || mname == "filter" || mname == "flat_map" ||
          mname == "any" || mname == "all" || mname == "enumerate" ||
-         mname == "sort_by" || mname == "skip" || mname == "fold" {
+         mname == "skip" || mname == "fold" {
         // Extract the function/lambda argument
         let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
         let lambda_arg = match f_arg {
           Some { value: fa } => Some { value: fa.value }
           None => mc_args |> map(a => a.value) |> first
         }
+        // Resolve callback cost: if it's a function reference (ExprVar naming
+        // a known function), look up that function's summary instead of
+        // treating the variable itself as O(1).
         let body_result = match lambda_arg {
+          Some { value: la } =>
+            match la.expr_data {
+              ExprVar { name: fn_ref } =>
+                match map_get(func_index, fn_ref) {
+                  Some { value: _ } =>
+                    get_or_compute_summary(func_name: fn_ref, func_index: func_index, table: recv_r.table)
+                  None =>
+                    cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+                }
+              _ =>
+                cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+            }
+          None =>
+            SummaryResult {
+              summary: ComplexitySummary {
+                work: CostConst { value: 1 },
+                span: CostConst { value: 1 },
+                output_size: empty_map(),
+                assumptions: [],
+                certainty: Conservative
+              },
+              table: recv_r.table
+            }
+        }
+        let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
+        // Output size: map/filter/flat_map/enumerate produce collections;
+        // any/all/fold/skip produce scalars or pass-through.
+        let iter_output = if mname == "map" || mname == "filter" || mname == "flat_map" || mname == "enumerate" {
+          collection_output(binder: binder, size: size)
+        } else {
+          scalar_output()
+        }
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: loop_work),
+            span: cost_seq(a: recv_r.summary.span, b: loop_work),
+            output_size: iter_output,
+            assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
+            certainty: body_result.summary.certainty
+          },
+          table: body_result.table
+        }
+      // sort_by: comparison sort is O(n log n), not O(n). Model as O(n) with
+      // Conservative certainty since the cost algebra lacks a log type.
+      } else if mname == "sort_by" {
+        let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
+        let lambda_arg = match f_arg {
+          Some { value: fa } => Some { value: fa.value }
+          None => mc_args |> map(a => a.value) |> first
+        }
+        let key_result = match lambda_arg {
           Some { value: la } =>
             cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
           None =>
@@ -661,27 +748,33 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               table: recv_r.table
             }
         }
-        let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
+        let sort_work = cost_loop(binder: binder, iterations: size, body: key_result.summary.work)
         SummaryResult {
           summary: ComplexitySummary {
-            work: cost_seq(a: recv_r.summary.work, b: loop_work),
-            span: cost_seq(a: recv_r.summary.span, b: loop_work),
-            output_size: empty_map(),
-            assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
-            certainty: body_result.summary.certainty
+            work: cost_seq(a: recv_r.summary.work, b: sort_work),
+            span: cost_seq(a: recv_r.summary.span, b: sort_work),
+            output_size: collection_output(binder: binder, size: size),
+            assumptions: concat(recv_r.summary.assumptions, key_result.summary.assumptions),
+            certainty: Conservative
           },
-          table: body_result.table
+          table: key_result.table
         }
       // Linear scan methods: iterate with O(1) per element
       } else if mname == "count" || mname == "join" || mname == "first" ||
                 mname == "last" || mname == "string_contains" ||
                 mname == "chars" || mname == "split" {
         let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
+        // chars/split produce collections; count/join/first/last produce scalars
+        let scan_output = if mname == "chars" || mname == "split" {
+          collection_output(binder: binder, size: size)
+        } else {
+          scalar_output()
+        }
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: recv_r.summary.work, b: loop_work),
             span: cost_seq(a: recv_r.summary.span, b: loop_work),
-            output_size: empty_map(),
+            output_size: scan_output,
             assumptions: recv_r.summary.assumptions,
             certainty: recv_r.summary.certainty
           },
@@ -762,7 +855,12 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           table: ar.table
         }
       })
-      let branch_costs = arm_list |> map(arm => arms_result.summary.work)
+      // Per-arm costs: re-evaluate each arm against the fully-cached table
+      // so individual branch costs are preserved (not the accumulated max).
+      let branch_costs = arm_list |> map(arm =>
+        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: arms_result.table)
+        ar.summary.work
+      )
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_conditional(condition: s_r.summary.work, branches: branch_costs),

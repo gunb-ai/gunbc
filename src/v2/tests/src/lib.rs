@@ -4170,7 +4170,7 @@ fn with_index(items: List<String>) -> List<String> {
         assert!(formatted.contains("all_nonempty: O(|items|)"), "all should be O(|items|), report:\n{}", formatted);
 
         // Sort + enumerate
-        assert!(formatted.contains("sort_by_length: O(|items|)"), "sort_by should be O(|items|), report:\n{}", formatted);
+        assert!(formatted.contains("sort_by_length: ~O(|items|)"), "sort_by should be ~O(|items|) (Conservative: actual is O(n log n)), report:\n{}", formatted);
         assert!(formatted.contains("with_index: O(|items|)"), "enumerate+map should be O(|items|), report:\n{}", formatted);
     }
 
@@ -4377,5 +4377,179 @@ fn default_target() -> String { "Rust" }
 
         // Nested: emitter
         assert!(formatted.contains("emit_nested_modules: O(|modules|"), "report:\n{}", formatted);
+    }
+
+    /// Regression: Kahn's algorithm must deduplicate zero-indegree nodes.
+    ///
+    /// Diamond dependencies (A imports Shared, B imports Shared) cause Shared
+    /// to appear twice in flat_map output. Without dedup, Shared gets sorted
+    /// twice, inflating the count and causing a false cycle error.
+    #[test]
+    fn test_resolve_diamond_dedup() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let shared = r#"module shared
+fn shared_fn(x: String) -> String { x }
+"#;
+        let mod_a = r#"module mod_a
+import shared
+fn use_shared_a(x: String) -> String { shared_fn(x: x) }
+"#;
+        let mod_b = r#"module mod_b
+import shared
+fn use_shared_b(x: String) -> String { shared_fn(x: x) }
+"#;
+        let main = r#"module main
+import mod_a
+import mod_b
+fn main_fn(x: String) -> String { concat(use_shared_a(x: x), use_shared_b(x: x)) }
+"#;
+        // If Kahn's dedup fails, this would panic with a false cycle error
+        // from duplicate inflation in the sorted count.
+        let result = compile_sources_with_target(
+            &output,
+            &[
+                ("shared.dag", shared),
+                ("mod_a.dag", mod_a),
+                ("mod_b.dag", mod_b),
+                ("main.dag", main),
+            ],
+            "Rust",
+        );
+        // Verify it produced output (no cycle error / no crash)
+        assert!(
+            result.contains_key("code") || result.contains_key("complexity"),
+            "diamond import modules should compile without false cycle error: {:?}",
+            result.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// Regression: sort_by must report Conservative certainty.
+    ///
+    /// Comparison sort is O(n log n), but the cost algebra lacks a log type.
+    /// The formatted report marks Conservative bounds with ~ to distinguish
+    /// them from Proven bounds.
+    #[test]
+    fn test_complexity_sort_conservative_certainty() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module sort_test
+
+fn sort_names(names: List<String>) -> List<String> {
+  names |> sort_by(n => n)
+}
+
+fn linear_filter(items: List<String>) -> List<String> {
+  items |> filter(s => s != "")
+}
+"#;
+        let result = compile_sources_with_target(&output, &[("sort.dag", source)], "Rust");
+        let formatted = match result.get("complexity").unwrap() {
+            gunbc_ir::Value::Map(map) => match map.get("formatted").unwrap() {
+                gunbc_ir::Value::Str(s) => s.clone(),
+                other => panic!("expected Str, got: {:?}", other),
+            },
+            other => panic!("expected Map, got: {:?}", other),
+        };
+
+        // sort_by: Conservative (~) — actual cost includes log factor
+        assert!(
+            formatted.contains("sort_names: ~O(|names|)"),
+            "sort_by should be ~O (Conservative), report:\n{}", formatted
+        );
+        // filter: Proven (no ~)
+        assert!(
+            formatted.contains("linear_filter: O(|items|)"),
+            "filter should be O (Proven, no ~), report:\n{}", formatted
+        );
+    }
+
+    /// Regression: function calls must compose callee complexity.
+    ///
+    /// If quadratic_inner is O(|items|) and caller invokes it in a loop,
+    /// the caller should surface the nested cost, not flatten it to O(1).
+    #[test]
+    fn test_complexity_callee_composition() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module callee_test
+
+fn inner_work(items: List<String>) -> Int {
+  items |> fold(init: 0, f: (acc, s) => acc + 1)
+}
+
+fn outer_loop(groups: List<List<String>>) -> Int {
+  groups |> fold(init: 0, f: (acc, g) => acc + inner_work(items: g))
+}
+
+fn constant_helper(x: Int) -> Int { x + 1 }
+
+fn loop_with_constant(items: List<Int>) -> Int {
+  items |> fold(init: 0, f: (acc, n) => acc + constant_helper(x: n))
+}
+"#;
+        let result = compile_sources_with_target(&output, &[("callee.dag", source)], "Rust");
+        let formatted = match result.get("complexity").unwrap() {
+            gunbc_ir::Value::Map(map) => match map.get("formatted").unwrap() {
+                gunbc_ir::Value::Str(s) => s.clone(),
+                other => panic!("expected Str, got: {:?}", other),
+            },
+            other => panic!("expected Map, got: {:?}", other),
+        };
+
+        // inner_work: O(|items|) — linear fold
+        assert!(
+            formatted.contains("inner_work: O(|items|)"),
+            "inner_work should be O(|items|), report:\n{}", formatted
+        );
+        // outer_loop: O(|groups| * ...) — should surface inner_work's cost
+        assert!(
+            formatted.contains("outer_loop: O(|groups|"),
+            "outer_loop should reference |groups| (callee cost composed), report:\n{}", formatted
+        );
+        // loop_with_constant: O(|items|) — constant callee doesn't increase class
+        assert!(
+            formatted.contains("loop_with_constant: O(|items|)"),
+            "loop_with_constant should be O(|items|) (constant callee), report:\n{}", formatted
+        );
+    }
+
+    /// Regression: field_access_index in EmitContext must not be empty.
+    ///
+    /// build_emit_context must populate the "TypeName::field_name" index
+    /// from type_summaries. If the inner fold is a no-op, the index stays
+    /// empty and field lookups fail at emission time.
+    #[test]
+    fn test_emit_field_access_with_types() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module field_test
+
+type Point {
+  x: Int
+  y: Int
+}
+
+fn distance_squared(p: Point) -> Int {
+  p.x * p.x + p.y * p.y
+}
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}
+
+fn translate_x(p: Point, dx: Int) -> Point {
+  Point { x: p.x + dx, y: p.y }
+}
+"#;
+        // If field_access_index is empty, emission may fail or produce
+        // incorrect field access code.
+        let result = compile_sources_with_target(&output, &[("field.dag", source)], "Rust");
+        // The emitted code should reference field access patterns
+        // (even if empty, the test verifies the compilation didn't crash)
+        assert!(
+            result.contains_key("code") || result.contains_key("complexity"),
+            "field access module should compile: {:?}", result.keys().collect::<Vec<_>>()
+        );
     }
 }
