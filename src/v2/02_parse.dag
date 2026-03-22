@@ -1518,8 +1518,8 @@ fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> Transport
       result
     }
     _ => {
-      // Default: local binding
-      let result = TransportResult { transport: local_transport_node(span: span), state: state, err: none }
+      // Default: local binding (reuse dummy which already holds local_transport_node(span))
+      let result = TransportResult { transport: dummy, state: state, err: none }
       result
     }
   }
