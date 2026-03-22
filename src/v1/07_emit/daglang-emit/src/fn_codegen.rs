@@ -903,23 +903,42 @@ fn qualified_variant_expr(
     }
 }
 
-fn lookup_call_arg_type<'a>(
-    fn_name: &str,
-    arg_index: usize,
-    arg_name: Option<&str>,
-    ctx: &'a CompileContext,
-) -> Option<&'a str> {
-    let params = ctx
-        .fn_param_types
-        .get(fn_name)
-        .or_else(|| ctx.fn_param_types.get(&to_snake_case(fn_name)))?;
-    if let Some(name) = arg_name {
-        return params
-            .iter()
-            .find(|(param_name, _)| param_name == name)
-            .map(|(_, ty)| ty.as_str());
+struct CallParamTypes<'a> {
+    ordered: &'a [(String, String)],
+    named: Option<HashMap<&'a str, &'a str>>,
+}
+
+impl<'a> CallParamTypes<'a> {
+    fn resolve(
+        fn_name: &str,
+        has_named_args: bool,
+        ctx: &'a CompileContext,
+    ) -> Option<CallParamTypes<'a>> {
+        let ordered = ctx
+            .fn_param_types
+            .get(fn_name)
+            .or_else(|| ctx.fn_param_types.get(&to_snake_case(fn_name)))?
+            .as_slice();
+        let named = has_named_args.then(|| {
+            ordered
+                .iter()
+                .map(|(param_name, ty)| (param_name.as_str(), ty.as_str()))
+                .collect()
+        });
+        Some(Self { ordered, named })
     }
-    params.get(arg_index).map(|(_, ty)| ty.as_str())
+
+    fn lookup(&self, arg_index: usize, arg_name: Option<&str>) -> Option<&'a str> {
+        if let Some(name) = arg_name {
+            return self
+                .named
+                .as_ref()
+                .expect("named calls build the param-name index")
+                .get(name)
+                .copied();
+        }
+        self.ordered.get(arg_index).map(|(_, ty)| ty.as_str())
+    }
 }
 
 /// Count how many times each identifier is referenced in a statement list.
@@ -4454,11 +4473,15 @@ fn compile_call(
     counter: &mut usize,
 ) -> code_ir::Expr {
     let rust_name = to_snake_case(name);
+    let call_param_types =
+        CallParamTypes::resolve(name, args.iter().any(|(arg_name, _)| arg_name.is_some()), ctx);
     let ir_args: Vec<code_ir::Expr> = args
         .iter()
         .enumerate()
         .map(|(index, (arg_name, _))| {
-            let expected_type = lookup_call_arg_type(name, index, arg_name.as_deref(), ctx);
+            let expected_type = call_param_types
+                .as_ref()
+                .and_then(|params| params.lookup(index, arg_name.as_deref()));
             let compiled = compile_call_arg_typed(args, index, expected_type, ctx, counter);
             // R3: When passing to a callee whose param is String (now &str),
             // optimize away ownership conversions:
@@ -9221,6 +9244,51 @@ mod tests {
                     matches!(&args[1], code_ir::Expr::Path(parts) if parts == &["TokenKind", "NullCoalesce"]),
                     "expected TokenKind::NullCoalesce, got: {:?}",
                     args[1]
+                );
+            }
+            other => panic!("expected Call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn named_call_arguments_use_parameter_name_for_ambiguous_variants() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_variants.insert(
+            "TokenKind".to_string(),
+            ["NullCoalesce".to_string()].into_iter().collect(),
+        );
+        ctx.enum_variants.insert(
+            "BinOpKind".to_string(),
+            ["NullCoalesce".to_string()].into_iter().collect(),
+        );
+        ctx.variant_to_enum
+            .insert("NullCoalesce".to_string(), "BinOpKind".to_string());
+        ctx.fn_param_types.insert(
+            "emit".to_string(),
+            vec![
+                ("state".to_string(), "TokenizerState".to_string()),
+                ("kind".to_string(), "TokenKind".to_string()),
+                ("len".to_string(), "Int".to_string()),
+            ],
+        );
+
+        let expr = Expr::Call(
+            "emit".into(),
+            vec![
+                (Some("kind".into()), Expr::Ident("NullCoalesce".into())),
+                (Some("state".into()), Expr::Ident("state".into())),
+                (Some("len".into()), Expr::Literal(Literal::Int(2))),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Call { args, .. } => {
+                assert!(
+                    matches!(&args[0], code_ir::Expr::Path(parts) if parts == &["TokenKind", "NullCoalesce"]),
+                    "expected TokenKind::NullCoalesce, got: {:?}",
+                    args[0]
                 );
             }
             other => panic!("expected Call, got: {other:?}"),
