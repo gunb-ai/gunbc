@@ -1335,6 +1335,10 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Di
 }
 
 fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
+  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_map())
+}
+
+fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
   if normed.connective != none {
     match normed.connective.value {
@@ -1342,14 +1346,23 @@ fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
       Disj => normed.children |> any(child => child.children |> count > 0)
     }
   } else {
-    match lookup_type(env: env, name: normed.name) {
-      Some { value: resolved } =>
-        if resolved.connective == none && resolved.name == normed.name {
-          false
-        } else {
-          type_needs_rc(env: env, type_node: resolved)
-        }
-      None => false
+    let canonical = normalize_type_name(name: normed.name)
+    if normed.return_type != none {
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      type_needs_rc_seen(env: env, type_node: normed.return_type.value, seen: next_seen)
+    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
+      false
+    } else {
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      match lookup_type(env: env, name: normed.name) {
+        Some { value: resolved } =>
+          if resolved.connective == none && resolved.return_type == none && resolved.name == normed.name && resolved.children |> count == 0 {
+            false
+          } else {
+            type_needs_rc_seen(env: env, type_node: resolved, seen: next_seen)
+          }
+        None => false
+      }
     }
   }
 }
@@ -1391,22 +1404,31 @@ fn data_lookup_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool {
 }
 
 fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
+  resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
+}
+
+fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
   let normed = normalize_access_type_node(n: n)
   if normed.connective == none && normed.children |> count == 0 {
+    let canonical = normalize_type_name(name: normed.name)
     if normed.return_type != none {
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       let target = normed.return_type.value
-      if target.name == normed.name && target.connective == none && target.children |> count == 0 {
+      if target.name == normed.name && target.return_type == none && target.connective == none && target.children |> count == 0 {
         normed
       } else {
-        resolve_scrutinee_type_node(env: env, n: target)
+        resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
       }
+    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
+      leaf_node(name: normed.name)
     } else {
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type(env: env, name: normed.name) {
         Some { value: resolved } =>
           if resolved.name == normed.name && resolved.return_type == none && resolved.connective == none && resolved.children |> count == 0 {
             normed
           } else {
-            resolve_scrutinee_type_node(env: env, n: resolved)
+            resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
           }
         None => normed
       }
@@ -2707,23 +2729,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     // Variant constructors like Some/None live in scope.locals with resolved
     // pointing to the parent type name (e.g. leaf_node(name: "Optional")).
     let type_lookup = lookup_type(env: scope.type_env, name: type_name.value)
-    let local_variant_parent = match lookup_in_scope(scope: scope, name: type_name.value) {
-      Some { value: local_node } =>
-        match lookup_type(env: scope.type_env, name: local_node.name) {
-          Some { value: parent } =>
-            if parent.connective != none {
-              match parent.connective.value {
-                Disj =>
-                  if parent.children |> any(child => child.name == type_name.value) {
-                    Some { value: local_node.name }
-                  } else { none }
-                _ => none
-              }
-            } else { none }
-          None => none
-        }
-      None => none
-    }
+    let local_variant_parent = lookup_variant_parent_enum(scope: scope, name: type_name.value)
     let effective_lookup = match type_lookup {
       Some { value: _ } => type_lookup
       None =>
@@ -4538,7 +4544,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   // Add data declarations to scope as local variables.
   // Data items: body != none, params == [], no return_type (have type_annotation instead).
-  let data_locals = fold(resolved.module.items, init: ctx.locals, f: (acc, item) =>
+  let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.return_type == none && item.type_annotation != none {
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value })
     } else {

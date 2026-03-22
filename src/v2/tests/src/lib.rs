@@ -387,7 +387,10 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn type_env_value(bindings: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+    fn type_env_with_recursive_types(
+        bindings: Vec<gunbc_ir::Value>,
+        recursive_names: Vec<&str>,
+    ) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         let binding_map: std::collections::BTreeMap<String, gunbc_ir::Value> = bindings
             .into_iter()
@@ -400,7 +403,29 @@ mod tests {
             })
             .collect();
         map.insert("bindings".to_string(), gunbc_ir::Value::Map(binding_map));
+        map.insert(
+            "recursive_types".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(
+                recursive_names
+                    .iter()
+                    .map(|name| gunbc_ir::Value::Str((*name).to_string()))
+                    .collect(),
+            )),
+        );
+        map.insert(
+            "recursive_type_set".to_string(),
+            gunbc_ir::Value::Map(
+                recursive_names
+                    .iter()
+                    .map(|name| ((*name).to_string(), gunbc_ir::Value::Bool(true)))
+                    .collect(),
+            ),
+        );
         gunbc_ir::Value::Map(map)
+    }
+
+    fn type_env_value(bindings: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+        type_env_with_recursive_types(bindings, vec![])
     }
 
     fn bool_type_value() -> gunbc_ir::Value {
@@ -494,6 +519,58 @@ mod tests {
         )
     }
 
+    fn var_expr_value(
+        name: &str,
+        return_type: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut expr_data = std::collections::BTreeMap::new();
+        expr_data.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("ExprVar".to_string()),
+        );
+        expr_data.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        expr_data.insert("binding_kind".to_string(), gunbc_ir::Value::Unit);
+        let mut some_return = std::collections::BTreeMap::new();
+        some_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        some_return.insert("value".to_string(), return_type);
+        make_expr_node_value(
+            gunbc_ir::Value::Map(expr_data),
+            gunbc_ir::Value::Map(some_return),
+            span,
+        )
+    }
+
+    fn field_access_expr_value(
+        base: gunbc_ir::Value,
+        field: &str,
+        return_type: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut expr_data = std::collections::BTreeMap::new();
+        expr_data.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("ExprFieldAccess".to_string()),
+        );
+        expr_data.insert("base".to_string(), base);
+        expr_data.insert("field".to_string(), gunbc_ir::Value::Str(field.to_string()));
+        expr_data.insert("summary".to_string(), gunbc_ir::Value::Unit);
+        let mut some_return = std::collections::BTreeMap::new();
+        some_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        some_return.insert("value".to_string(), return_type);
+        make_expr_node_value(
+            gunbc_ir::Value::Map(expr_data),
+            gunbc_ir::Value::Map(some_return),
+            span,
+        )
+    }
+
     fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
@@ -523,6 +600,39 @@ mod tests {
         map.insert(
             "module_name".to_string(),
             gunbc_ir::Value::Str("main".to_string()),
+        );
+        map.insert(
+            "service_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "item_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn empty_emit_info_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "type_summaries".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "variant_to_enum".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "rc_wrapped_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "enum_variant_membership".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "data_rc_map_names".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         gunbc_ir::Value::Map(map)
     }
@@ -3209,6 +3319,182 @@ fn get_name() -> String {\n\
             }
             other => panic!("map_value_type_in_env should return an option map, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn phase6_data_map_alias_lookup_and_map_get_keep_rc_wraps() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type User { name: String }\n\
+type Users = Map<String, User>\n\
+data users: Users = empty_map()\n\
+fn from_lookup() -> User? {\n\
+  lookup(users, key: \"x\")\n\
+}\n\
+fn from_method() -> User? {\n\
+  users.map_get(\"x\")\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "data map aliases should preserve lookup/map_get semantics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        let rc_wrap_count = main_rs.match_indices(".map(Rc::new)").count();
+        assert!(
+            main_rs.contains("v2_rt::map_get"),
+            "map_get on aliased data maps should still lower through runtime bridge:\n{}",
+            main_rs
+        );
+        assert!(
+            rc_wrap_count >= 2,
+            "lookup(users, ...) and users.map_get(...) should both preserve Rc wrapping:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_service_receiver_binding_emits_injected_service_var() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let span = zero_span_value();
+        let service_receiver = field_access_expr_value(
+            var_expr_value("git", named_type_value("git"), span.clone()),
+            "Core",
+            named_type_value("git.Core"),
+            span,
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert("texpr".to_string(), service_receiver);
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert(
+            "scope".to_string(),
+            infer_scope_value(type_env_value(vec![])),
+        );
+        inputs.insert("depth".to_string(), gunbc_ir::Value::Int(0));
+        inputs.insert(
+            "vtoe".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert(
+            "rc_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert("emit_info".to_string(), empty_emit_info_value());
+
+        let rendered = returned_value(
+            call_fn(&output, "emit_typed_expr", inputs)
+                .expect("emit_typed_expr should succeed"),
+        );
+        let rendered = match rendered {
+            gunbc_ir::Value::Str(rendered) => rendered,
+            other => panic!("emit_typed_expr should return a string, got: {:?}", other),
+        };
+        assert_eq!(
+            rendered,
+            "git_core",
+            "standalone service receivers should lower to the injected service variable"
+        );
+    }
+
+    #[test]
+    fn phase6_indirect_type_alias_cycles_do_not_recurse_forever() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let mut alias_a = match named_type_value("A") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected alias node map, got: {:?}", other),
+        };
+        let mut a_return = std::collections::BTreeMap::new();
+        a_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        a_return.insert("value".to_string(), named_type_value("B"));
+        alias_a.insert("return_type".to_string(), gunbc_ir::Value::Map(a_return));
+        let alias_a = gunbc_ir::Value::Map(alias_a);
+
+        let mut alias_b = match named_type_value("B") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected alias node map, got: {:?}", other),
+        };
+        let mut b_return = std::collections::BTreeMap::new();
+        b_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        b_return.insert("value".to_string(), named_type_value("A"));
+        alias_b.insert("return_type".to_string(), gunbc_ir::Value::Map(b_return));
+        let alias_b = gunbc_ir::Value::Map(alias_b);
+
+        let env = type_env_with_recursive_types(
+            vec![
+                type_binding_value("A", alias_a),
+                type_binding_value("B", alias_b),
+            ],
+            vec!["A", "B"],
+        );
+
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("env".to_string(), env.clone());
+        resolve_inputs.insert("n".to_string(), named_type_value("A"));
+        let resolved = returned_value(
+            call_fn(&output, "resolve_scrutinee_type_node", resolve_inputs)
+                .expect("resolve_scrutinee_type_node should succeed"),
+        );
+        let resolved_name = map_field(&resolved, "name");
+        assert_eq!(
+            resolved_name,
+            &gunbc_ir::Value::Str("A".to_string()),
+            "indirect alias cycles should stop at a stable leaf instead of recursing forever: {:?}",
+            resolved
+        );
+
+        let mut rc_inputs = HashMap::new();
+        rc_inputs.insert("env".to_string(), env);
+        rc_inputs.insert("type_node".to_string(), named_type_value("A"));
+        let rc_result =
+            call_fn(&output, "type_needs_rc", rc_inputs).expect("type_needs_rc should succeed");
+        assert!(
+            matches!(rc_result.get("return"), Some(gunbc_ir::Value::Bool(false))),
+            "indirect alias cycles should fail closed for Rc wrapping instead of recursing forever: {:?}",
+            rc_result
+        );
+    }
+
+    #[test]
+    fn phase6_go_runtime_bridge_methods_keep_method_style_receivers() {
+        let main_go = read_v2_file("src/v2/05_emit_go.dag");
+        assert!(
+            main_go.contains("fn emit_go_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool")
+                && main_go.contains("concat(recv_str, \".\", go_export_ident(name: function_name), \"(\", args_str, \")\")"),
+            "Go runtime bridges should lower as receiver-style method calls and keep the receiver-semantics fields wired through:\n{}",
+            main_go
+        );
+        assert!(
+            !main_go.contains("let all_args = concat([recv_str], arg_strs)")
+                && !main_go.contains("concat(go_export_ident(name: function_name), \"(\", all_args |> join(separator: \", \"), \")\")"),
+            "Go runtime bridges should not rewrite receivers into leading positional args:\n{}",
+            main_go
+        );
     }
 
     #[test]

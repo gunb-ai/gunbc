@@ -533,7 +533,14 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprError { kind: _, message: message } => concat("raise RuntimeError(", emit_string_literal(value: message), ")")
     ExprVar { name: n, binding_kind: _ } => py_ident(name: n)
     ExprFieldAccess { base: b, field: f, summary: _ } =>
-      concat(emit_py_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth), ".", py_ident(name: f))
+      if is_typed_service_call_receiver(receiver: texpr) {
+        match extract_typed_service_name(receiver: texpr) {
+          Some { value: svc_name } => service_var_name(service_name: svc_name)
+          None => concat(emit_py_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth), ".", py_ident(name: f))
+        }
+      } else {
+        concat(emit_py_typed_expr(texpr: b, registry: registry, scope: scope, depth: depth), ".", py_ident(name: f))
+      }
     ExprCall { func: f, args: a, call_semantics: _ } =>
       emit_py_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth)
     ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
