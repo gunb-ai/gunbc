@@ -35,8 +35,8 @@ collapses layer authority.
 | `03_resolve.dag` | Cleanest authority boundary | Pure import graph construction with almost no target leakage. Keep using this as the reference for stage boundaries. |
 | `04_reconcile.dag` | Main structural hotspot | Owns too many concerns at once: typing, call analysis, method classification, Rust ownership hints, and emitter metadata. |
 | `05_emit*.dag` | Partial extdeps-style composition | Shared emit imports language facts from `extdeps.languages.*`, but target policy is still split between reconcile and the per-target renderers. |
-| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | These are the best examples of compositional modeling of the compiler itself: proof objects, not runtime execution. Remaining issue is duplicated expression walking and some residual string dispatch. |
-| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Not authoritative yet | Complexity is wired. Artifact and trace are still mostly speculative or disconnected and should be treated as delete-or-connect work, not additive feature work. |
+| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | These are the best examples of compositional modeling of the compiler itself: proof objects, not runtime execution. Remaining issue is duplicated expression walking and the remaining classifier/renderer string dispatch. |
+| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` now owns only the real compile path and Go dispatch. `08_artifact.dag` is explicit-plan-only. `09_trace.dag` is now a normalized runtime trace contract, still not pipeline-wired. |
 
 ### Audit Reconciliation
 
@@ -47,17 +47,20 @@ This section reconciles the audit above with the existing phase plan.
 - Theme 4 and Theme 6 are not optional cleanup. They are cross-cutting prerequisites
   for efficient Phase 1 work because they remove duplicate authority and dead branches
   before deeper semantic changes.
-- `P1.8` is partially landed already: `07_complexity.dag` now has
-  `intrinsic_method_cost_shape(...)` and `cost_of_expr(...)` reads reconcile-provided
-  `method_semantics`. The remaining work is to delete residual string-based method logic
-  such as `is_size_preserving_method(...)` and finish the single-authority chain.
+- `P1.8` is now deeper than it was in the first audit: `07_complexity.dag` has
+  `intrinsic_method_cost_shape(...)`, `cost_of_expr(...)` reads reconcile-provided
+  `method_semantics`, `receiver_size_var(...)` now follows those semantics instead of
+  string names, and `04_reconcile.dag` resolves known method semantics/result types in
+  one helper. Remaining work is mostly renderer-leaf dispatch and the source-level
+  classifiers that still map strings into those enums.
 - `P4.1` is no longer the full blocker it used to be. Shared emit already imports
   language type/keyword/container data from `extdeps.languages.*`. The remaining
   duplication is mostly per-target reserved-word/runtime tables, especially in the
   Python and Go renderers.
-- Trace should be reconciled with `src/v2/DESIGN.md` before any implementation work:
-  the design says the compiler is a pure transform with no interpreter, while
-  `09_trace.dag` still describes interpreter-centric tracing.
+- Trace has now been reconciled with `src/v2/DESIGN.md` at the model level:
+  `09_trace.dag` no longer describes an in-compiler interpreter. Remaining work is
+  deciding whether runtime adapters/source maps get wired into the pipeline or remain
+  explicitly external contracts.
 
 ### Structural Pass Order
 
@@ -67,8 +70,8 @@ reduces the cost or risk of the next.
 | Pass | Theme | What it changes first |
 |------|------|------|
 | S1 | Theme 4 | Single authority for kernel/primitive facts (`kernel_types`, `is_kernel_type`) |
-| S2 | Theme 6 | Delete-or-connect late infrastructure (`pipeline`, `artifact`, `trace`) |
-| S3 | Theme 3 | Finish enum-based method authority and remove residual string dispatch |
+| S2 | Theme 6 | Landed: pipeline owns compilation only, artifact is explicit-only, trace is an honest future-work contract |
+| S3 | Theme 3 | In progress: known-method resolution is centralized and complexity now follows semantics; renderer/runtime cleanup remains |
 | S4 | Theme 5 | Move Rust-only ownership/render policy out of core + reconcile |
 | S5 | Theme 1 | Fuse duplicated `ExprData` walks in reconcile and complexity |
 | S6 | Theme 2 | Shared emit dispatch with per-target leaves |

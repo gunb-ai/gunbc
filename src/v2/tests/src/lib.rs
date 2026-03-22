@@ -5409,7 +5409,19 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
 
         // Build stage0 and run compile on all gist files
         let stage0_dir = assemble_v2_crate_to_dir("v2-gist-pipeline");
-        let stage0_bin = build_v2_stage0(&stage0_dir);
+        let build_output = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to build stage0");
+        assert!(
+            build_output.status.success(),
+            "stage0 build failed:\n{}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+        let stage0_bin = stage0_dir.join("target/release/v2-compiler");
 
         let root = workspace_root();
         let out_dir = std::env::temp_dir().join("v2-gist-pipeline-out");

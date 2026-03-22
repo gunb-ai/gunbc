@@ -629,33 +629,33 @@ GONE mean the surrounding function/field no longer exists in that file.
 - [ ] No silent fallback for unhandled methods
 
 **`06_pipeline.dag`**
-- [ ] Artifact computation block (lines 170-179) DELETE — `_artifact_output`, `plan`, `artifact` locals all gone
-- [ ] Go arm wired: `Go => emit_go(typed: typed)` (not error diagnostic)
-- [ ] `import v2.compiler.emit_go { emit_go }` exists
-- [ ] `resolve_sources` refactored — shared tokenize→parse→resolve helper with `compile_sources`
-- [ ] Header comment (line 10) matches reality (mentions Go alongside Rust/Python)
+- [x] Artifact computation block (lines 170-179) DELETE — `_artifact_output`, `plan`, `artifact` locals all gone
+- [x] Go arm wired: `Go => emit_go(typed: typed)` (not error diagnostic)
+- [x] `import v2.compiler.emit_go { emit_go }` exists
+- [x] `resolve_sources` refactored — shared tokenize→parse→resolve helper with `compile_sources`
+- [x] Header comment (line 10) matches reality (mentions Go alongside Rust/Python)
 
 **`07_complexity.dag`**
-- [ ] `intrinsic_method_cost_shape` is the only method→`CostShape` authority — no parallel `classify_method_cost` or inline string classifier remains
+- [x] `intrinsic_method_cost_shape` is the only method→`CostShape` authority — no parallel `classify_method_cost` or inline string classifier remains
 - [ ] `intrinsic_cost_shape` is exhaustive match on IntrinsicMethod — no Option, no None, no wildcard
-- [ ] `is_size_preserving_method(mname: String)` DELETE — replaced by `is_size_preserving(intrinsic: IntrinsicMethod) -> Bool`
-- [ ] `is_size_preserving` is exhaustive match — no string comparison
+- [x] `is_size_preserving_method(mname: String)` DELETE — replaced by `is_size_preserving(intrinsic: IntrinsicMethod) -> Bool`
+- [x] `is_size_preserving` is exhaustive match — no string comparison
 - [ ] `count_self_calls` (lines 1253-1323) DELETE — fused into `cost_of_expr` or uses `CallAnalysis` from reconcile
-- [ ] `cost_of_expr` reads `method_semantics` from Node, never matches on method name strings
+- [x] `cost_of_expr` reads `method_semantics` from Node, never matches on method name strings
 
 **`07_ownership.dag`**
 - [ ] Match arm patterns walk `VariantPattern` bindings (currently skipped)
 - [ ] Destructuring patterns updated for any MethodSemantics field changes from Theme 5
 
 **`08_artifact.dag`**
-- [ ] `plan_artifacts` ModuleBased stub arm (lines 86-88) DELETE
-- [ ] `plan_artifacts` ServiceBased stub arm (lines 89-91) DELETE
-- [ ] Only `Explicit` arm remains, or function deleted entirely
+- [x] `plan_artifacts` ModuleBased stub arm (lines 86-88) DELETE
+- [x] `plan_artifacts` ServiceBased stub arm (lines 89-91) DELETE
+- [x] Only `Explicit` arm remains, or function deleted entirely
 
 **`09_trace.dag`**
-- [ ] `import std.types { SourceSpan }` fixed to `import v2.std.core { SourceSpan }`
-- [ ] Interpreter-oriented header/comments reconciled with `src/v2/DESIGN.md` (compiler is a pure transform; no interpreter in the compiler)
-- [ ] Module connected to pipeline (called from `compile_sources`) or explicitly marked as future work
+- [x] `import std.types { SourceSpan }` fixed to `import v2.std.core { SourceSpan }`
+- [x] Interpreter-oriented header/comments reconciled with `src/v2/DESIGN.md` (compiler is a pure transform; no interpreter in the compiler)
+- [x] Module connected to pipeline (called from `compile_sources`) or explicitly marked as future work
 
 **Cross-cutting invariant: `00_core.dag` is target-agnostic.**
 
@@ -753,11 +753,12 @@ from core.
 
 **Invariant:** No case enumeration for open sets. Single-authority metadata.
 
-**Problem:** The enum pipeline is only partially finished. `cost_of_expr` already
-dispatches on reconcile-provided `MethodSemantics`, and `intrinsic_method_cost_shape`
-already exists, but residual string-based method logic still lives in helpers like
-`is_size_preserving_method`, `infer_method_call_type_node`, and runtime-bridge
-classification in reconcile.
+**Problem:** The enum pipeline is now mostly in place. `cost_of_expr` and
+`receiver_size_var` dispatch on reconcile-provided `MethodSemantics`, and
+reconcile now resolves known method semantics/result types once via
+`resolve_known_method_node`. Residual string-based method logic still lives
+in the source-to-semantics classifiers (`classify_reconciled_intrinsic_method`,
+`classify_runtime_bridge_method`) and in per-target renderer leaf dispatch.
 
 **Design:** After reconcile, every method call carries `MethodSemantics` with
 `IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, ... }`. Downstream phases
@@ -765,9 +766,9 @@ dispatch on the enum, never on strings.
 
 Changes:
 1. Keep `intrinsic_method_cost_shape(intrinsic) -> CostShape` as the single cost-shape authority
-2. `cost_of_expr` ExprMethodCall reads `method_semantics` from Node, dispatches to `intrinsic_method_cost_shape`
-3. `is_size_preserving_method(mname)` → `is_size_preserving(intrinsic)` — exhaustive match
-4. Delete all remaining string-based method dispatch downstream of reconcile
+2. `resolve_known_method_node(...)` is the single reconcile authority for known method semantics and result types
+3. `receiver_size_var(...)` reads `MethodSemantics`, not method-name strings
+4. Delete the remaining string-based method dispatch downstream of the reconcile classifiers
 
 Single authority chain:
 ```

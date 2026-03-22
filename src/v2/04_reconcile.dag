@@ -1708,66 +1708,6 @@ fn extract_optional_inner_node(n: Node) -> Node {
   } else { n }
 }
 
-// -------------------------------------------------------------------------
-// infer_method_call_type: compute result type for pipe methods
-// -------------------------------------------------------------------------
-
-fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
-  let normed = normalize_access_type_node(n: receiver_type)
-  let elem_node = if normed.connective == none && normed.children |> count == 1 {
-    match normed.children |> first {
-      Some { value: el } => el
-      None => receiver_type
-    }
-  } else { receiver_type }
-  if method == "map" || method == "filter" {
-    Some { value: receiver_type }
-  } else if method == "enumerate" {
-    Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
-  } else if method == "first" || method == "last" {
-    Some { value: optional_node(inner: elem_node) }
-  } else if method == "count" {
-    Some { value: leaf_node(name: "Int") }
-  } else if method == "join" {
-    Some { value: leaf_node(name: "String") }
-  } else if method == "any" || method == "contains" || method == "all" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if method == "split" || method == "chars" {
-    Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-  } else if method == "flat_map" || method == "reverse" || method == "skip" || method == "concat" {
-    Some { value: receiver_type }
-  } else if method == "get" {
-    // get(list, index) → Optional<element>
-    Some { value: optional_node(inner: elem_node) }
-  } else if method == "list_push" || method == "with" || method == "map_insert" || method == "map_merge" {
-    // list_push(list, elem) → same list; with/map_insert/map_merge(map, ...) → same map
-    Some { value: receiver_type }
-  } else if method == "map_get" {
-    // map_get(map, key) → Optional<value>
-    Some { value: optional_node(inner: elem_node) }
-  } else if method == "map_has" || method == "emit_map_has" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if method == "map_values" {
-    Some { value: container_node(kind_name: "List", element: elem_node) }
-  } else if method == "map_keys" {
-    Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-  } else if method == "char_at" || method == "string_at" {
-    Some { value: leaf_node(name: "String") }
-  } else if method == "string_length" || method == "length" {
-    Some { value: leaf_node(name: "Int") }
-  } else if method == "starts_with" || method == "ends_with" || method == "string_contains" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if method == "to_string" || method == "trim" || method == "to_lower" || method == "to_upper" || method == "replace" || method == "substring" || method == "concat" {
-    Some { value: leaf_node(name: "String") }
-  } else if method == "to_int" {
-    Some { value: leaf_node(name: "Int") }
-  } else if method == "empty_map" {
-    Some { value: leaf_node(name: "Map") }
-  } else {
-    none
-  }
-}
-
 // Recognize runtime built-in functions called directly (not as methods).
 // Returns the result type or none if not a known builtin.
 fn infer_builtin_call_type(name: String) -> Node? {
@@ -2354,46 +2294,29 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           Some { value: ta } => ta.value.return_type.value
           None => leaf_node(name: "Unit")
         }
-        let method_type = infer_method_call_type_node(receiver_type: first_arg_type, method: func_name)
-        // fold is handled by call_fold_info (init-arg type) rather than infer_method_call_type_node
-        let is_known_method = method_type != none || (func_name == "fold" && call_fold_info != none)
+        let method_receiver = match typed_args |> first {
+          Some { value: ta } => ta.value
+          None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
+        }
+        let method_resolution = resolve_known_method_node(
+          receiver: method_receiver,
+          receiver_type: first_arg_type,
+          method_name: func_name,
+          fold_accumulator_type: if call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
+          scope: scope
+        )
+        let is_known_method = method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           // Known collection method -- bridge Call to MethodCall
-          let receiver = match typed_args |> first {
-            Some { value: ta } => ta.value
-            None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
-          }
+          let receiver = method_receiver
           let remaining = typed_args |> skip(1)
-          // For fold: return type is the init arg's type (not from infer_method_call_type_node)
-          let bridge_result_type = if func_name == "fold" && call_fold_info != none {
-            call_fold_acc_type
-          } else {
-            match method_type {
-              Some { value: mt } => mt
-              None => leaf_node(name: "Dynamic")
-            }
-          }
-          let wrap_result_in_rc = if func_name == "map_get" {
-            data_lookup_needs_rc_wrap(receiver: receiver, scope: scope)
-          } else {
-            false
-          }
-          let method_semantics = match classify_reconciled_intrinsic_method(method: func_name) {
-            Some { value: intrinsic } =>
-              Some { value: IntrinsicMethodSemantics {
-                intrinsic: intrinsic,
-                fold_accumulator_type: if func_name == "fold" && call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
-                wrap_result_in_rc: wrap_result_in_rc
-              } }
-            None =>
-              match classify_runtime_bridge_method(method: func_name, wrap_result_in_rc: wrap_result_in_rc) {
-                Some { value: runtime_semantics } => Some { value: runtime_semantics }
-                None => Some { value: PlainMethodSemantics }
-              }
+          let bridge_result_type = match method_resolution.result_type {
+            Some { value: mt } => mt
+            None => leaf_node(name: "Dynamic")
           }
           InferResult {
             typed: make_expr_node(
-              expr_data: ExprMethodCall { receiver: receiver, method: func_name, args: remaining, method_semantics: method_semantics },
+              expr_data: ExprMethodCall { receiver: receiver, method: func_name, args: remaining, method_semantics: method_resolution.semantics },
               return_type: Some { value: bridge_result_type },
               span: span
             ),
@@ -2496,40 +2419,20 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       )
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
-      let service_result = check_service_method_call_node(receiver_type: recv_typed.return_type.value, method: method_name, scope: scope)
-      // For fold: override return type with init arg's type
-      let result_type = if method_name == "fold" && fold_info != none {
-        fold_acc_type
-      } else {
-        match service_result {
-          Some { value: svc_type } => svc_type
-          None => match infer_method_call_type_node(receiver_type: recv_typed.return_type.value, method: method_name) {
-            Some { value: rt } => rt
-            None => recv_typed.return_type.value
-          }
-        }
+      let method_resolution = resolve_known_method_node(
+        receiver: recv_typed,
+        receiver_type: recv_typed.return_type.value,
+        method_name: method_name,
+        fold_accumulator_type: if fold_info != none { Some { value: fold_acc_type } } else { none },
+        scope: scope
+      )
+      let result_type = match method_resolution.result_type {
+        Some { value: rt } => rt
+        None => recv_typed.return_type.value
       }
-      let wrap_result_in_rc = if method_name == "map_get" {
-        data_lookup_needs_rc_wrap(receiver: recv_typed, scope: scope)
-      } else {
-        false
-      }
-      let method_semantics = if service_result != none {
-        Some { value: ServiceMethodSemantics { service_name: recv_typed.return_type.value.name } }
-      } else {
-        match classify_reconciled_intrinsic_method(method: method_name) {
-          Some { value: intrinsic } =>
-            Some { value: IntrinsicMethodSemantics {
-              intrinsic: intrinsic,
-              fold_accumulator_type: if method_name == "fold" && fold_info != none { Some { value: fold_acc_type } } else { none },
-              wrap_result_in_rc: wrap_result_in_rc
-            } }
-          None =>
-            match classify_runtime_bridge_method(method: method_name, wrap_result_in_rc: wrap_result_in_rc) {
-              Some { value: runtime_semantics } => Some { value: runtime_semantics }
-              None => Some { value: PlainMethodSemantics }
-            }
-        }
+      let method_semantics = match method_resolution.semantics {
+        Some { value: resolved_method_semantics } => Some { value: resolved_method_semantics }
+        None => Some { value: PlainMethodSemantics }
       }
       let mc_texpr = make_expr_node(
         expr_data: ExprMethodCall { receiver: recv_typed, method: method_name, args: typed_mc_args, method_semantics: method_semantics },

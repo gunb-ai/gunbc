@@ -328,10 +328,20 @@ fn scalar_output() -> Map<String, CostExpr> {
 // Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
 // =========================================================================
 
-fn is_size_preserving_method(mname: String) -> Bool {
-  mname == "map" || mname == "filter" || mname == "flat_map" ||
-  mname == "skip" || mname == "enumerate" || mname == "sort_by" ||
-  mname == "reverse" || mname == "concat"
+fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
+  method == MethodMap || method == MethodFilter || method == MethodFlatMap ||
+  method == MethodSkip || method == MethodEnumerate || method == MethodSortBy ||
+  method == MethodConcat
+}
+
+fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
+  match method_semantics {
+    Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _, wrap_result_in_rc: _ } } =>
+      is_size_preserving_intrinsic_method(method: method)
+    Some { value: RuntimeBridgeSemantics { function_name: fname, pass_receiver_by_ref: _, wrap_result_in_rc: _ } } =>
+      fname == "reverse"
+    _ => false
+  }
 }
 
 fn receiver_size_var(recv: Node) -> SizeExpr {
@@ -340,8 +350,8 @@ fn receiver_size_var(recv: Node) -> SizeExpr {
       SizeLen { collection: vname }
     ExprFieldAccess { base: _, field: fname } =>
       SizeLen { collection: fname }
-    ExprMethodCall { receiver: inner_recv, method: mname, args: _ } =>
-      if is_size_preserving_method(mname: mname) {
+    ExprMethodCall { receiver: inner_recv, method: _, args: _, method_semantics: method_semantics } =>
+      if method_preserves_collection_size(method_semantics: method_semantics) {
         receiver_size_var(recv: inner_recv)
       } else {
         SizeLen { collection: "__expr" }
