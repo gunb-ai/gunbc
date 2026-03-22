@@ -1911,7 +1911,7 @@ mod tests {
         let module_lookup = modules
             .iter()
             .enumerate()
-            .map(|(index, module)| (module.module_path.as_dotted(), index))
+            .map(|(index, module)| (module.module_path.clone(), index))
             .collect::<HashMap<_, _>>();
         let mut modules = modules;
         for module in &mut modules {
@@ -1919,7 +1919,7 @@ mod tests {
                 .ast
                 .imports
                 .iter()
-                .filter_map(|import| module_lookup.get(&import.node.path.as_dotted()).copied())
+                .filter_map(|import| module_lookup.get(&import.node.path).copied())
                 .collect::<Vec<_>>();
         }
         ModuleGraph { modules }
