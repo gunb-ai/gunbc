@@ -1,10 +1,97 @@
-# gunbc Roadmap — v2 Bootstrap Completion
+# gunbc Roadmap
 
-This roadmap tracks the remaining work to close out bootstrapping, retire
-v1, reach the target architecture, and begin landing small real business
-features in parallel.
+## Architectural Thesis
 
-## Milestones
+**Node and DAG are the only compiler primitives.**
+
+The compiler is a generic graph processor. It reads .dag source, builds
+a graph of Nodes, applies structural rules, and emits target code. All
+domain knowledge — types, cardinality, containers, optionality — lives
+in .dag definitions, not in the compiler.
+
+This thesis is implemented in three layers, each dissolving a category
+of compiler knowledge:
+
+| Layer | What dissolves | Compiler stops knowing | Status |
+|-------|---------------|----------------------|--------|
+| **L1: Types** | BuiltinTypeKind, Conj/Disj, node_is_*, type constructors | What Optional/List/Map/Int mean | **Active — 493 violations** |
+| **L2: Expressions** | ExprData semantic knowledge | What if/for/match/let mean | Future — after bootstrap |
+| **L3: Syntax** | Hardcoded parser branches | How to parse `if cond { body }` | Future — data-driven parser |
+
+**Why L1 is urgent:** Every new feature that touches types adds more
+`if n.name == "Map"` checks. Without a boundary, the violation count
+climbs until the project loses all shape. L1 sets the direction.
+
+**L2 and L3 are noted but not blocking.** L2 becomes practical once the
+compiler is self-hosted and the expression walker is a shared fold. L3
+is a parser generator — well beyond bootstrap scope but the right
+long-term target.
+
+---
+
+## L1: Type Knowledge Dissolution
+
+### Current violations (493 sites across 9 files)
+
+| Category | Count | What the compiler "knows" |
+|----------|-------|--------------------------|
+| Connective (Conj/Disj) | 267 | Product vs coproduct semantics |
+| Type constructors | 114 | How to build Optional/List/Map/Pair nodes |
+| Type name strings | 51 | `n.name == "Optional"`, `"Map"`, `"Int"`, etc. |
+| node_is_* predicates | 37 | Type-specific dispatch |
+| builtin_type_kind() | 24 | 14-branch if-else classifying types by name |
+
+### Strategy: properties-first migration
+
+The compiler currently identifies types by name (`n.name == "Optional"`)
+and by connective (`n.connective == Disj`). The migration replaces this
+with property lookups on the Node graph. Types carry their own metadata
+as .dag-defined properties; the compiler reads properties, not names.
+
+**Step 1 — Define type properties in .dag:**
+Types in `dsl/std/types.dag` carry properties that encode what the
+emitter needs. The compiler discovers these by reading the graph.
+
+**Step 2 — Replace compiler knowledge with property reads:**
+Each `builtin_type_kind()` call, each `node_is_optional()` call, each
+`n.name == "Map"` check becomes a property lookup. Incremental — one
+type family at a time.
+
+**Step 3 — Delete the primitives:**
+Once all consumers read properties: delete `BuiltinTypeKind` enum,
+`builtin_type_kind()`, all `node_is_*` predicates, type constructor
+functions. Eventually remove `connective` field from Node (largest
+change — 267 sites).
+
+### Ratchet
+
+Count of sites where the compiler uses type-specific knowledge.
+
+```
+Start:  493
+Target: 0
+```
+
+Measured by: grep for `builtin_type_kind`, `node_is_optional`,
+`node_is_map`, `node_is_dynamic`, `n.name == "Optional"`,
+`n.name == "Map"`, `n.name == "List"`, `n.name == "Int"`,
+`n.name == "String"`, `Conj`, `Disj`, `optional_node`,
+`container_node`, `leaf_node` in `src/v2/*.dag`.
+
+### Acceptance
+
+- `BuiltinTypeKind` enum deleted from `00_core.dag`
+- `builtin_type_kind()` function deleted
+- All `node_is_*` predicates deleted or replaced with property reads
+- `optional_node()`, `container_node()`, `pair_node()` deleted
+- `connective` field removed from Node (Conj/Disj dissolved)
+- Zero type-name string matching in the compiler
+- All type knowledge lives in `dsl/std/types.dag` or `dsl/extdeps/`
+- Fixed point still holds
+
+---
+
+## Completed Milestones
 
 | Milestone | Gate | Date |
 |-----------|------|------|
@@ -19,12 +106,22 @@ features in parallel.
 | Performance audit | 50,000x improvement (tokenize+parse: 24ms) | 2026-03 |
 | OOM fix | node_type_deps container-wrapped cycle detection | 2026-03 |
 
-## Status Summary
+---
 
-- Phase 1 strict soundness is complete
-- Bootstrap fixed-point re-verification is in progress (emission casing
-  mismatch fixed; residual mismatches may surface during stage1 builds)
-- Phases 2–5 remain ahead as roadmap work
+## End Goal
+
+The compiler is a generic graph processor. It reads .dag source, builds
+a graph of Nodes, applies structural rules defined in .dag, and emits
+target code. Adding a type, expression, language, or transport means
+editing .dag files — never compiler code.
+
+Concrete acceptance:
+- Zero type-world knowledge in the compiler (L1 complete)
+- One shared emit walker drives all target languages via LanguageSpec
+- Ownership and complexity proofs wired into compile pipeline
+- At least one real program (gist) compiles and runs end-to-end
+- v1 is archived
+- All compiler-internal types are Node compositions
 
 ---
 
@@ -46,8 +143,6 @@ collapses layer authority.
 | `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` (177 LOC) owns compile flow but does not call ownership or artifact planning. `08_artifact.dag` (235 LOC) has real boundary verification logic but `Artifact.target` is still a `String`. `09_trace.dag` (221 LOC) is an external contract, not pipeline-wired. |
 
 ### Audit Reconciliation
-
-This section reconciles the audit above with the existing phase plan.
 
 - The v2 audit in `INVARIANTS.md` (repo root) is directionally correct, but several
   items in the roadmap need reinterpretation based on what has already landed.
@@ -82,10 +177,12 @@ reduces the cost or risk of the next.
 | S6 | Theme 2 | Shared emit dispatch with per-target leaves |
 | S7 | Theme 7 | Final fabrication fallback cleanup and Dynamic-site audit; `04_reconcile.dag` has 80+ string literal comparisons across 7 dispatch patterns for method classification |
 
-Phase 1 strict soundness is complete. S1–S3 are done. The structural
-passes (S3.5–S7) continue as cross-cutting work alongside Phases 2–5.
+S1–S3 are done. The structural passes (S3.5–S7) continue as
+cross-cutting work alongside Phases 2–5.
 
-### Compositional Refactor Targets (post-M1)
+---
+
+## Compositional Refactor Targets (post-M1)
 
 These targets assume M1 renames are complete. Each entry references the
 target DAG models in `src/v2/DESIGN.md` (Compositional stage targets) and
@@ -790,24 +887,129 @@ Acceptance criteria:
 - the result informs the compiler roadmap instead of living as tribal
   knowledge
 
+### Timing
+
+AG1 can start after Phase 2 (gist e2e) — the compiler can emit real
+programs at that point. Starting earlier risks building on an
+unproven emit pipeline. AG1 modeling work (defining .dag types for the
+cloud agent API) can start in parallel with Phase 2 if the modeling
+doesn't require compilation.
+
 ### Relationship to compiler convergence
 
-- AG1 should inform M2, M3, and M4 rather than fork around them
+- AG1 should inform Phase 1 and Phase 4 rather than fork around them —
+  if the cloud agent API exposes a type the compiler can't handle,
+  that's a Phase 1 diagnostic fix, not a workaround
 - AG2 should stay narrow and avoid forcing premature generality into the
   compiler
-- AG3 should create concrete follow-up work for the migration board when
+- AG3 should create concrete follow-up work for the relevant phase when
   the integration exposes real gaps
 
 ---
 
-## Phase 1: Strict Soundness — COMPLETE
+## Phase 1: Strict Soundness + Type Dissolution
 
-All P1 items implemented (2026-03-22): type inference gaps (Tuple,
-fold, map_insert, chaining), tightened type equality, callable type,
-field-access kind, exhaustive complexity matching, non-ignored smoke
-test, ErrorCategory enum with fail-closed diagnostics.
+Two interleaved goals:
 
-**Ratchet:** `DIAG_RATCHET` in `src/v2/tests/src/lib.rs`.
+**A. Diagnostics → 0** (`DIAG_RATCHET = 25` in `src/v2/tests/src/lib.rs`).
+These are inference gaps — enumerate doesn't return `Tuple<Int, T>`,
+fold doesn't infer accumulator type, map_insert loses key/value structure.
+Fixing these is correctness work needed for gist (Phase 2).
+
+**B. L1 dissolution** (493 type-knowledge violations → 0). This is the
+architectural direction — compiler stops knowing what types mean. Each
+type family migrates to .dag-defined properties.
+
+**Why interleave:** Many diagnostic fixes require touching the same code
+that dissolution targets (`infer_method_call_type_node`, `node_type_equals`,
+`builtin_type_kind`). Doing inference fixes property-first (read .dag
+properties instead of hardcoding) means each fix contributes to both goals.
+
+**Bootstrap strategy:** Every step must preserve the fixed point
+(stage1 == stage2 byte-identical). Type dissolution changes how the
+compiler represents types internally, but the emitted output must be
+identical. The approach is: add .dag properties → switch consumers to
+read properties → delete old knowledge. The "switch consumers" step is
+where the fixed point can break — verify after each consumer migration.
+
+### Diagnostic fixes (Goal A)
+
+These specific inference gaps produce the 25 remaining diagnostics.
+Each fix should be done property-first when possible (contributing to
+Goal B simultaneously).
+
+| Fix | What | Diagnostic impact |
+|-----|------|-------------------|
+| Enumerate return type | `infer_method_call_type_node` returns receiver instead of `List<Tuple<Int, T>>` | ~3 diagnostics |
+| Fold accumulator | No init-arg context → Dynamic return type → cascading field access failures | ~5 diagnostics |
+| map_insert/map_merge | Returns bare `Map` leaf, losing key/value structure | ~3 diagnostics |
+| Chained field access | Depends on fold/map fixes above — once return types are real, field access resolves | ~5 diagnostics |
+| Callable/function-value type | Function used as value has no callable type representation | ~3 diagnostics |
+| Tighten node_type_equals | Remove Dynamic==* and structural fallback — MUST BE LAST (after inference fixes eliminate Dynamic introduction points) | ~6 diagnostics |
+
+**Files:** `04_reconcile.dag` (all fixes), `05_emit_rust.dag` (Tuple rendering),
+`00_core.dag` (callable type, error categories)
+
+### L1 dissolution by type family (Goal B)
+
+### L1.1 — Optional/cardinality
+
+**Current violations:** ~60 sites (node_is_optional, optional_node,
+OptionalUnwrap, OptionalValue, Unit==Optional in node_type_equals,
+Some/None synthesis, is_already_optional heuristic tree)
+
+**Migration:** Optional becomes a .dag-defined type with properties.
+The compiler reads properties to know "this type has optional
+cardinality" — it never checks `n.name == "Optional"`. Emit reads
+the same properties to decide how to render (Option<T> in Rust,
+Optional[T] in Python, *T in Go).
+
+The `is_already_optional` heuristic tree (v2: 30 lines, v1: 70 lines)
+dissolves completely — return_type carries the property, emit reads it.
+
+### L1.2 — Containers (List, Map, Set)
+
+**Current violations:** ~40 sites (container_node, node_is_map,
+node_is_container, BuiltinList/BuiltinMap/BuiltinSet, Map name
+matching, map_node, pair_node)
+
+**Migration:** Container types become .dag-defined with properties
+encoding element type, key type, iteration semantics. The compiler
+walks children structurally. The Map consistency issue (bare leaf vs
+parameterized) dissolves — all Maps are just Nodes with properties.
+
+### L1.3 — Primitives (Int, String, Bool, Float, Unit, Bytes, Json, Secret)
+
+**Current violations:** ~30 sites (BuiltinInt/String/Bool/Float/Unit,
+name matching for copy semantics, iteration, method availability)
+
+**Migration:** Primitive types become .dag-defined with properties
+encoding copy semantics, method availability, literal forms. Emit
+reads properties to decide rendering.
+
+### L1.4 — Connective dissolution (Conj/Disj)
+
+**Current violations:** 267 sites. This is the largest change —
+`connective` is a field on Node itself.
+
+**Migration:** Product/coproduct semantics move to .dag-defined
+properties or structural conventions. The `connective` field is
+removed from Node. Pattern matching, type equality, emission all
+switch to property reads.
+
+**This is last** because it touches every Node construction site.
+L1.1–L1.3 can proceed while connective is still a field.
+
+### L1.5 — Delete remaining type primitives
+
+**Acceptance (all must hold):**
+- `BuiltinTypeKind` enum deleted
+- `builtin_type_kind()` function deleted
+- All `node_is_*` predicates deleted or replaced with property reads
+- `optional_node()`, `container_node()`, `pair_node()` deleted
+- `connective` field removed from Node
+- Zero type-name string matching in compiler
+- Fixed point holds
 
 ---
 
@@ -815,6 +1017,10 @@ test, ErrorCategory enum with fail-closed diagnostics.
 
 **Gate:** `gist.dag` + 11 transitive deps → Rust → `cargo build` → `cargo run --
 dry-run` → correct output.
+
+**Prerequisite:** Phase 1 diagnostic fixes (Goal A) complete — the
+remaining 25 diagnostics include inference gaps that will cause gist
+compilation to emit wrong types.
 
 **Status (2026-03-22):**
 - P2.2: Done — emit_rust.dag has real transport call emission (reqwest,
@@ -829,6 +1035,12 @@ This means gist E2E verification requires building and running the
 stage0 binary (~2 min build). The interpreter limitation does not need
 a fix — it will become irrelevant when v1 is retired (Phase 3).
 
+**Unblocking path:** Build stage0 via `cargo test -p gunbc-dag-tests
+v2_bootstrap_fixed_point -- --ignored` (produces the binary as a side
+effect), then use that binary to compile gist. The ~2 min build time
+is acceptable for CI; the interpreter path is only for fast local
+iteration on individual files.
+
 | ID | Item | Status |
 |----|------|--------|
 | P2.1 | Gist pipeline test | Partial — interpreter blocked, tests scaffolded |
@@ -837,12 +1049,30 @@ a fix — it will become irrelevant when v1 is retired (Phase 3).
 | P2.4 | Multi-module extdep imports | Needs stage0 verification |
 | P2.5 | End-to-end build+run test | Needs stage0 binary |
 
+**Compile bundle (what the compiler produces):**
+```
+output_dir/
+├── Cargo.toml          (generated, with reqwest/tokio/clap deps)
+├── src/
+│   ├── main.rs         (CLI scaffold with workflow subcommands)
+│   ├── lib.rs          (mod declarations for all modules)
+│   ├── v2_rt.rs        (runtime functions: concat, char_at, etc.)
+│   ├── gist.rs         (workflow functions)
+│   ├── github_api.rs   (service structs + operation methods)
+│   ├── git.rs          (git operations)
+│   └── ...             (one .rs per input .dag module)
+```
+This is already what `06_pipeline.dag` produces via `CompileResult.files`.
+The bundle is a self-contained Cargo crate that `cargo build` can compile
+without external scaffolding (unlike today, where `v2_crate_emit.rs` in
+v1 does post-processing).
+
 **Files:** `05_emit_rust.dag`, `06_pipeline.dag`, `03_resolve.dag`,
 `dsl/extdeps/languages/rust/runtime.dag`, `src/v2/tests/src/lib.rs`
 
 ---
 
-## Phase 3: v1 Retirement
+## Phase 3: v1 Retirement + Pipeline Completion
 
 **Gate:** v2 compiles everything v1 can. v1 is no longer needed for any
 compilation path. S76–S81 bootstrap scaffolding is dead code.
@@ -854,7 +1084,8 @@ compilation path. S76–S81 bootstrap scaffolding is dead code.
 | P3.1 | Verify parity | Enumerate all .dag files v1 compiles. Verify v2 produces equivalent output. Port any remaining v1-only paths. |
 | P3.2 | Runtime shim dissolution | 21 functions in `v2_runtime_shim.rs` → template strings in `dsl/extdeps/languages/rust/runtime.dag`. Update `emit_v2_rt_module()` to read from runtime.dag. Functions: concat, char_at, string_length, substring, string_contains, lookup, index_by, to_string, empty_map, map_insert, map_merge, list_concat, str_eq, scan_while, skip_horizontal_ws, scan_to_eol, scan_string_end, code_point, from_code_point, filesystem_read, Concat trait. |
 | P3.3 | Scaffolding verification | S76–S81 are only called by `assemble_v2_crate()`. Once v2 self-compile and gist work without v1, mark `#[deprecated]`. |
-| P3.4 | Archive v1 | Move `src/v1/` → `archive/v1/`. Update Cargo workspace. Update CLAUDE.md. |
+| P3.4 | Wire ownership + complexity | `07_ownership.dag` (A-) and `07_complexity.dag` (B+) exist but `06_pipeline.dag` doesn't call them. Wire both into the compile pipeline so every compilation proves ownership safety and complexity bounds. The proof layers already exist — this is plumbing, not new analysis. Cross-ref: R8, R9, M2. |
+| P3.5 | Archive v1 | Move `src/v1/` → `archive/v1/`. Update Cargo workspace. Update CLAUDE.md. |
 
 ---
 
@@ -868,8 +1099,8 @@ Zero compiler changes required.
 | ID | Item | What |
 |----|------|------|
 | P4.1 | Import aliasing | Blocker: `05_emit.dag:578-594` duplicates language data inline because all three extdeps define same-named declarations and imports lack `as` aliasing. Add `import { name as alias }` to tokenizer, parser, resolver. |
-| P4.2 | LanguageSpec wiring | `LanguageSpec` exists in `dsl/std/languages.dag` (1367 lines, comprehensive) but no emitter reads it. `reserved_words` and `type_map` are triple-duplicated: in `std.languages`, in `extdeps/languages/{lang}/emit.dag`, and inline in `05_emit_python.dag`/`05_emit_go.dag`. Add `load_language_spec(target) -> LanguageSpec`. Pass through emit functions. Delete duplicate declarations. |
-| P4.3 | Extract generic emit core | ~70% duplication across 3 emitter files (rust: 3606, python: 1168, go: 1195 lines). Extract shared skeleton: item dispatch, type structure classification, expression dispatch. Parameterize by LanguageSpec. Per-language files shrink to irreducible transforms (Rust: ownership/clone/borrow; Python: exceptions/comprehensions; Go: multi-return/interfaces). |
+| P4.2 | LanguageSpec wiring | `LanguageSpec` exists in `dsl/std/languages.dag` (1367 lines, comprehensive) but no emitter reads it. `reserved_words` and `type_map` are triple-duplicated: in `std.languages`, in `extdeps/languages/{lang}/emit.dag`, and inline in `05_emit_python.dag`/`05_emit_go.dag`. Add `load_language_spec(target) -> LanguageSpec`. Pass through emit functions. Delete duplicate declarations. Cross-ref: R6, M6. |
+| P4.3 | Extract generic emit core | ~70% duplication across 3 emitter files (rust: 3606, python: 1168, go: 1195 lines). Extract shared skeleton: item dispatch, type structure classification, expression dispatch. Parameterize by LanguageSpec. Per-language files shrink to irreducible transforms (Rust: ownership/clone/borrow; Python: exceptions/comprehensions; Go: multi-return/interfaces). Cross-ref: R6, S5, S6, M6. |
 | P4.4 | `--target` CLI flag | `compile_sources` already takes `target: RenderTarget`. Wire through bootstrap main.rs Compile subcommand. |
 | P4.5 | Validate equivalence | Self-compile + gist → same output with generic emitter. Fixed point holds. |
 
@@ -888,17 +1119,22 @@ target source files
 
 ---
 
-## Phase 5: Convergence
+## Phase 5: Convergence (L2 preparation)
 
 **Gate:** One type (Node) flows through the entire pipeline. `04_infer.dag`
 (renamed from `04_reconcile.dag`). Each dissolution step validated by
 re-bootstrapping and proving stage1 == stage2.
 
-**Prerequisite:** Phase 4 complete (generic emitter).
+**Prerequisite:** Phase 4 complete (generic emitter). L1 complete (no
+type primitives).
+
+Note: L1 (type dissolution) already delivers the largest part of
+convergence. Phase 5 dissolves the remaining compiler-internal types
+that are NOT type-world knowledge but pipeline-internal structure.
 
 | ID | Item | What |
 |----|------|------|
-| P5.1 | Rename | `04_reconcile.dag` → `04_infer.dag`. Update all imports and test references. Re-bootstrap → fixed point. |
+| P5.1 | Rename | `04_reconcile.dag` → `04_infer.dag`. Update all imports and test references. Re-bootstrap → fixed point. Cross-ref: M1. |
 | P5.2 | Token dissolution | Token (`:30`) + TokenKind (77 variants, `:35-78`) → Node compositions. Largest dissolution. 4-step: add Node constructors → dual-write → migrate parser → delete types. |
 | P5.3 | Module dissolution | Module (`:92`), Import (`:103`), ImportNames (`:99`) → Node Conj compositions. Update parser (produces) and resolver (consumes). |
 | P5.4 | Diagnostic dissolution | Diagnostic (`:346`), Severity (`:353`), CompileResult (`:336`), TextFile (`:341`) → Node compositions. Update all producers/consumers. |
@@ -918,38 +1154,92 @@ source → parse → resolve → infer → emit
 
 ---
 
-## Deferred (in BACKLOG.md)
-
-These items are tracked but not blocking bootstrap closure:
-
-- Root Cause B: closed sets as strings (mechanical enum conversions)
-- General generic syntax (`type Foo<T> = ...`)
-- Full linear type checking (D-ownership sufficient for now)
-- B3 Ph2a: SCC-aware return type resolution
-- Widen V5: non-takeable fields in functional record update
-- Anonymous record target resolution
-- TCO backend contract
-
----
-
 ## Ordering
 
 ```
-P1 done (complete)
+Phase 1A: Diagnostic fixes ─────────────────────────────→ (0 diagnostics)
+  enumerate, fold, map_insert, callable, tighten equality
+                                                            │
+Phase 1B: L1 dissolution (interleaved with 1A) ──────────│─→ (493→0 violations)
+  L1.1 Optional ─┐                                        │
+  L1.2 Containers ├→ L1.4 Connective → L1.5 Delete all   │
+  L1.3 Primitives ┘                                       │
+                                                            │
+Phase 2: Gist e2e ←───────────────────────────────────────┘
+  (requires 0 diagnostics; L1 can continue in parallel)
+                    │
+Phase 3: v1 retirement + pipeline completion ←────────────┘
+  (requires gist working; L1 should be complete by now)
+                    │
+Phase 4: Generic emitter ←────────────────────────────────┘
+  (requires v1 retired; reads LanguageSpec from .dag)
+                    │
+Phase 5: Convergence ←────────────────────────────────────┘
+  (requires generic emitter; dissolves remaining types)
 
-P2.1 → P2.4 → P2.5 (blocked on stage0 binary)
-P2.2, P2.3 done
-
-P2 done ───→ P3.1 → P3.2 → P3.3 → P3.4
-
-P3 done ───→ P4.1 → P4.2 → P4.3 → P4.4 → P4.5
-
-P4 done ───→ P5.1 → P5.2 ─┐
-                    P5.3 ─┤
-                    P5.4 ─┼─→ all independent, each re-bootstraps
-                    P5.5 ─┤
-                    P5.6 ─┘
+Business track (AG1-AG3): starts after Phase 2
+  AG1 modeling can overlap with Phase 2 if no compilation needed
 ```
+
+**Key insight:** Phase 1A (diagnostics) blocks Phase 2 (gist). Phase 1B
+(L1 dissolution) does NOT block Phase 2 — L1 is the long-term direction
+and can continue in parallel once diagnostics hit 0. Each L1 step must
+preserve the fixed point.
+
+**Interleaving strategy:** When fixing a diagnostic, do it property-first
+when possible (e.g., make enumerate's return type discoverable via .dag
+properties instead of hardcoding `Tuple<Int, T>`). This way each
+diagnostic fix also reduces the L1 violation count.
+
+**Cross-cutting work:** S3.5–S7, R1–R9, and M1–M8 are detailed
+reference material above. They run alongside the phases:
+- R5 (data tables) aligns with Phase 1A — same code, same fixes
+- R6/M6 (shared emit) aligns with Phase 4
+- R8/M2 (ownership wiring) aligns with Phase 3
+- M1 (renames) aligns with Phase 5
+
+---
+
+## Backlog
+
+Items not blocking active phases. Revisit when relevant.
+
+### Language Features
+
+| Item | What | Status |
+|------|------|--------|
+| General generic syntax | `type Foo<T> = ...` parameterized types | Deferred — special-cased Result/Option sufficient |
+| Full linear type checking | Prove ownership flow statically | D-ownership landed, full proof deferred |
+| Widen V5 | Non-takeable modified fields in functional record update | Deferred — conservative V5 covers hot paths |
+
+### Compiler Improvements
+
+| Item | What | Status |
+|------|------|--------|
+| Anonymous record target resolution | Ambiguous cases must fail closed | Deferred |
+| Collection intrinsic semantics in shared IR | | Deferred |
+| Generated self-hosting tests and stage contracts | | Deferred |
+| TCO backend contract | No silent partial fallback | Deferred |
+| SCC-aware return type resolution | Not yet blocking | Deferred |
+
+### Invariant Violations
+
+| Item | Violation | What needs to happen |
+|------|-----------|----------------------|
+| Emission/complexity dual classification | **No duplicate representations.** `classify_method_cost` (complexity) and `classify_reconciled_intrinsic_method` (reconcile) classify methods independently. | Single authority in reconcile; complexity reads cost shape from emit graph. |
+
+### Root Cause B: Closed Sets as Strings
+
+Mechanical enum conversions — no design ambiguity for B-1/2/3/5/6.
+B-4 (method intrinsics) intersects with IntrinsicMethod enum in `05_emit.dag`.
+See INVARIANTS.md for the full table.
+
+### Root Cause C: Errors as Fabrications
+
+37+ sites where errors propagate as valid-looking values. Design decision
+(structural error variant) documented in INVARIANTS.md. ExprError handling
+landed in complexity/ownership. Remaining: promote Warning→Error for semantic
+errors, normalize error representation across all producer sites.
 
 ---
 
