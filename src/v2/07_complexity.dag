@@ -105,6 +105,56 @@ type Constraint
 type Certainty = Proven | Conservative | Unknown
 
 // =========================================================================
+// Emission cost shape -- single authority on method cost structure
+//
+// Every method recognized by both the emitter and the complexity analyzer
+// has exactly one CostShape. If a new method is added to the emitter
+// without a corresponding CostShape, the exhaustive match in
+// classify_method_cost fails.
+//
+// Shapes:
+//   ShapeConstant      -- O(1) regardless of input size
+//   ShapeLinearScan    -- O(|receiver|) with O(1) per element (count, join)
+//   ShapeIterateBody   -- O(|receiver| * body_cost) (map, filter, fold)
+//   ShapeSortBody      -- O(|receiver| * body_cost), Conservative (sort_by)
+//   ShapeProducesCollection -- whether the method outputs a collection
+// =========================================================================
+
+type CostShape
+  = ShapeConstant
+  | ShapeLinearScan { produces_collection: Bool }
+  | ShapeIterateBody { produces_collection: Bool }
+  | ShapeSortBody
+
+// Classify a method name to its cost shape. This is the single authority
+// on what cost structure each method has. The complexity analyzer dispatches
+// on this instead of hardcoded string names.
+fn classify_method_cost(name: String) -> CostShape? {
+  if name == "map" || name == "flat_map" || name == "filter" ||
+     name == "enumerate" || name == "skip" {
+    Some { value: ShapeIterateBody { produces_collection: true } }
+  } else if name == "fold" || name == "any" || name == "all" {
+    Some { value: ShapeIterateBody { produces_collection: false } }
+  } else if name == "sort_by" {
+    Some { value: ShapeSortBody }
+  } else if name == "count" || name == "first" || name == "last" ||
+            name == "join" || name == "string_contains" {
+    Some { value: ShapeLinearScan { produces_collection: false } }
+  } else if name == "chars" || name == "split" {
+    Some { value: ShapeLinearScan { produces_collection: true } }
+  } else if name == "concat" {
+    Some { value: ShapeLinearScan { produces_collection: false } }
+  } else if name == "append" || name == "get" || name == "map_get" ||
+            name == "map_insert" || name == "with" || name == "list_push" ||
+            name == "map_has" || name == "map_contains_key" ||
+            name == "length" || name == "string_length" {
+    Some { value: ShapeConstant }
+  } else {
+    None
+  }
+}
+
+// =========================================================================
 // Runtime semantics context
 //
 // Parameterizes cost analysis by backend and data structure
@@ -254,26 +304,15 @@ fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
 // Output size for collection-producing operations: a single "result" entry
 // with cost proportional to the collection size.
 fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
-  map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+  let result = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+  result
 }
 
 fn scalar_output() -> Map<String, CostExpr> {
-  empty_map()
+  let result = empty_map()
+  result
 }
 
-// Merge two output_size maps by taking the max of each key.
-fn merge_output_size(a: Map<String, CostExpr>, b: Map<String, CostExpr>) -> Map<String, CostExpr> {
-  map_keys(b) |> fold(init: a, f: fn(acc, key) {
-    match map_get(b, key) {
-      Some { value: bv } =>
-        match map_get(acc, key) {
-          Some { value: av } => map_insert(acc, key, CostMax { left: av, right: bv })
-          None => map_insert(acc, key, bv)
-        }
-      None => acc
-    }
-  })
-}
 
 // =========================================================================
 // Size variable extraction
@@ -525,6 +564,13 @@ fn deduplicate(items: List<String>) -> List<String> {
   result.out
 }
 
+fn format_space_class(expr: CostExpr) -> String {
+  let space_class = classify_complexity(expr: expr)
+  let result = if space_class == "O(1)" { "" }
+  else { concat(", space ", space_class) }
+  result
+}
+
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
   let class = classify_complexity(expr: summary.work)
   // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
@@ -534,7 +580,12 @@ fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
     Conservative => "~"
     Unknown => "?"
   }
-  concat(name, ": ", marker, class)
+  // Space: classify the "result" output size if present
+  let space_str = match map_get(summary.output_size, "result") {
+    Some { value: size_expr } => format_space_class(expr: size_expr)
+    None => ""
+  }
+  concat(name, ": ", marker, class, space_str)
 }
 
 fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
@@ -708,18 +759,22 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             }
         }
         let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
-        // Output size: map/filter/flat_map/enumerate produce collections;
-        // any/all/fold/skip produce scalars or pass-through.
-        let iter_output = if mname == "map" || mname == "filter" || mname == "flat_map" || mname == "enumerate" {
-          collection_output(binder: binder, size: size)
+        // Space: fold produces whatever its body produces; collection methods produce proportional output
+        let os = if mname == "any" || mname == "all" {
+          let r = empty_map()
+          r
+        } else if mname == "fold" {
+          let r = body_result.summary.output_size
+          r
         } else {
-          scalar_output()
+          let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+          r
         }
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: recv_r.summary.work, b: loop_work),
             span: cost_seq(a: recv_r.summary.span, b: loop_work),
-            output_size: iter_output,
+            output_size: os,
             assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
             certainty: body_result.summary.certainty
           },
@@ -749,11 +804,13 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             }
         }
         let sort_work = cost_loop(binder: binder, iterations: size, body: key_result.summary.work)
+        // Space: sort produces collection of same size
+        let sort_os = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: recv_r.summary.work, b: sort_work),
             span: cost_seq(a: recv_r.summary.span, b: sort_work),
-            output_size: collection_output(binder: binder, size: size),
+            output_size: sort_os,
             assumptions: concat(recv_r.summary.assumptions, key_result.summary.assumptions),
             certainty: Conservative
           },
@@ -764,17 +821,19 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
                 mname == "last" || mname == "string_contains" ||
                 mname == "chars" || mname == "split" {
         let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
-        // chars/split produce collections; count/join/first/last produce scalars
-        let scan_output = if mname == "chars" || mname == "split" {
-          collection_output(binder: binder, size: size)
+        // Space: chars/split produce collections, others produce scalars
+        let scan_os = if mname == "chars" || mname == "split" {
+          let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+          r
         } else {
-          scalar_output()
+          let r = empty_map()
+          r
         }
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: recv_r.summary.work, b: loop_work),
             span: cost_seq(a: recv_r.summary.span, b: loop_work),
-            output_size: scan_output,
+            output_size: scan_os,
             assumptions: recv_r.summary.assumptions,
             certainty: recv_r.summary.certainty
           },
@@ -844,11 +903,12 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: s_r.table
       }, f: fn(acc, arm) {
         let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.table)
+        // Space: all match arms produce same type; use last arm's output
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_par(a: acc.summary.work, b: ar.summary.work),
             span: cost_par(a: acc.summary.span, b: ar.summary.span),
-            output_size: empty_map(),
+            output_size: ar.summary.output_size,
             assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
             certainty: ar.summary.certainty
           },
@@ -865,7 +925,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         summary: ComplexitySummary {
           work: cost_conditional(condition: s_r.summary.work, branches: branch_costs),
           span: cost_conditional(condition: s_r.summary.span, branches: [arms_result.summary.span]),
-          output_size: empty_map(),
+          output_size: arms_result.summary.output_size,
           assumptions: concat(s_r.summary.assumptions, arms_result.summary.assumptions),
           certainty: arms_result.summary.certainty
         },
@@ -894,11 +954,12 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             table: t_r.table
           }
       }
+      // Space: in well-typed code all branches produce same type; use then-branch output
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_conditional(condition: c_r.summary.work, branches: [t_r.summary.work, e_result.summary.work]),
           span: cost_conditional(condition: c_r.summary.span, branches: [t_r.summary.span, e_result.summary.span]),
-          output_size: empty_map(),
+          output_size: t_r.summary.output_size,
           assumptions: concat(c_r.summary.assumptions, t_r.summary.assumptions, e_result.summary.assumptions),
           certainty: Proven
         },

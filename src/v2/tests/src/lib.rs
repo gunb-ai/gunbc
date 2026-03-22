@@ -4003,35 +4003,43 @@ fn count_items(items: List<String>) -> Int {
             formatted.contains("constant_work: O(1)"),
             "constant_work should be O(1), report:\n{}", formatted
         );
-        // O(|items|) for linear map
+        // O(|items|) for linear map, with space O(|items|) since map produces a new list
         assert!(
-            formatted.contains("linear_map: O(|items|)"),
-            "linear_map should be O(|items|), report:\n{}", formatted
+            formatted.contains("linear_map: O(|items|), space O(|items|)"),
+            "linear_map should be O(|items|) with space O(|items|), report:\n{}", formatted
         );
-        // O(|nums|) for linear fold
+        // O(|nums|) for linear fold — scalar output, no space annotation
         assert!(
             formatted.contains("linear_fold: O(|nums|)"),
             "linear_fold should be O(|nums|), report:\n{}", formatted
+        );
+        assert!(
+            !formatted.contains("linear_fold: O(|nums|), space"),
+            "linear_fold should NOT show space (scalar output), report:\n{}", formatted
         );
         // Nested iteration
         assert!(
             formatted.contains("nested_iteration: O(|rows| * |row|)"),
             "nested_iteration should be O(|rows| * |row|), report:\n{}", formatted
         );
-        // filter+map chains are still linear
+        // filter+map chains are still linear with space output
         assert!(
-            formatted.contains("filter_then_map: O(|items|)"),
-            "filter_then_map should be O(|items|), report:\n{}", formatted
+            formatted.contains("filter_then_map: O(|items|), space O(|items|)"),
+            "filter_then_map should be O(|items|) with space O(|items|), report:\n{}", formatted
         );
         // for-each loop
         assert!(
             formatted.contains("for_each_loop: O(|items|)"),
             "for_each_loop should be O(|items|), report:\n{}", formatted
         );
-        // count is linear scan
+        // count is linear scan — scalar output, no space annotation
         assert!(
             formatted.contains("count_items: O(|items|)"),
             "count_items should be O(|items|), report:\n{}", formatted
+        );
+        assert!(
+            !formatted.contains("count_items: O(|items|), space"),
+            "count_items should NOT show space (scalar output), report:\n{}", formatted
         );
     }
 
@@ -4551,5 +4559,92 @@ fn translate_x(p: Point, dx: Int) -> Point {
             result.contains_key("code") || result.contains_key("complexity"),
             "field access module should compile: {:?}", result.keys().collect::<Vec<_>>()
         );
+    }
+
+    /// Emission contract: every intrinsic method known to the emitter must
+    /// have a cost model in the complexity analyzer.
+    ///
+    /// This test exercises every emitter intrinsic method in a compiled module
+    /// and verifies the complexity report produces known costs (no "?" Unknown
+    /// markers). If a method is added to the emitter without a cost model,
+    /// its function will show "?" in the report and this test fails.
+    #[test]
+    fn test_emission_cost_contract_coverage() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        // Module that exercises every emitter intrinsic method.
+        // Each function uses exactly one intrinsic so we can verify its cost.
+        let source = r#"module emission_contract
+
+// Iteration methods (ShapeIterateBody)
+fn use_map(items: List<String>) -> List<String> { items |> map(s => s) }
+fn use_filter(items: List<String>) -> List<String> { items |> filter(s => s != "") }
+fn use_flat_map(items: List<List<String>>) -> List<String> { items |> flat_map(g => g) }
+fn use_fold(items: List<Int>) -> Int { items |> fold(init: 0, f: (a, n) => a + n) }
+fn use_any(items: List<String>) -> Bool { items |> any(s => s == "") }
+fn use_all(items: List<String>) -> Bool { items |> all(s => s != "") }
+fn use_enumerate(items: List<String>) -> List<String> { items |> enumerate |> map(p => p.value) }
+fn use_skip(items: List<String>) -> List<String> { items |> skip(1) }
+
+// Sort (ShapeSortBody)
+fn use_sort_by(items: List<String>) -> List<String> { items |> sort_by(s => s) }
+
+// Linear scan methods (ShapeLinearScan)
+fn use_count(items: List<String>) -> Int { items |> count }
+fn use_join(items: List<String>) -> String { items |> join(separator: ",") }
+fn use_first(items: List<String>) -> String? { items |> first }
+fn use_last(items: List<String>) -> String? { items |> last }
+fn use_chars(s: String) -> List<String> { s |> chars }
+fn use_split(s: String) -> List<String> { s |> split(separator: ",") }
+fn use_string_contains(s: String) -> Bool { s |> string_contains(substring: "x") }
+
+// O(1) methods (ShapeConstant)
+fn use_append(items: List<String>) -> List<String> { items |> append("x") }
+
+// concat is a function call, not method call — test separately
+fn use_concat(a: String, b: String) -> String { concat(a, b) }
+"#;
+
+        let result = compile_sources_with_target(&output, &[("contract.dag", source)], "Rust");
+
+        let complexity = result
+            .get("complexity")
+            .expect("compile_sources should return complexity");
+
+        let formatted = match complexity {
+            gunbc_ir::Value::Map(map) => {
+                match map.get("formatted").expect("complexity should have formatted field") {
+                    gunbc_ir::Value::Str(s) => s.clone(),
+                    other => panic!("expected formatted to be a Str, got: {:?}", other),
+                }
+            }
+            other => panic!("expected complexity to be a Map, got: {:?}", other),
+        };
+
+        // Contract check: no function should have "?" (Unknown certainty).
+        // "?" means the complexity analyzer doesn't know the cost of the method,
+        // which means the emitter and analyzer are out of sync.
+        assert!(
+            !formatted.contains("?O("),
+            "emission contract violation: some methods have Unknown complexity.\n\
+             Every emitter intrinsic must have a known cost model.\n\
+             Report:\n{}", formatted
+        );
+
+        // Verify every intrinsic function appears in the report
+        let expected_fns = vec![
+            "use_map", "use_filter", "use_flat_map", "use_fold",
+            "use_any", "use_all", "use_enumerate", "use_skip",
+            "use_sort_by", "use_count", "use_join", "use_first",
+            "use_last", "use_chars", "use_split", "use_string_contains",
+            "use_append", "use_concat",
+        ];
+        for fn_name in &expected_fns {
+            assert!(
+                formatted.contains(fn_name),
+                "emission contract: '{}' missing from complexity report.\n\
+                 Report:\n{}", fn_name, formatted
+            );
+        }
     }
 }
