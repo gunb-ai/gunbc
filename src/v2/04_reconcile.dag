@@ -1011,10 +1011,10 @@ fn node_type_shape(n: Node) -> String {
 // Two type-Nodes are equal if they represent the same type structure.
 fn node_type_equals(left: Node, right: Node) -> Bool {
   if node_is_error_type(n: left) || node_is_error_type(n: right) { false }
-  // Dynamic is no longer universally compatible. It only matches itself.
-  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) {
-    node_is_dynamic(n: left) && node_is_dynamic(n: right)
-  }
+  // Dynamic is universally compatible: it matches any type.
+  // Lambda parameters start as Dynamic until inference resolves them,
+  // so Dynamic must pass equality checks to avoid spurious mismatches.
+  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { true }
   // Optional vs Unit: `none` (Unit) is compatible with Optional.
   // Must be checked before generic leaf-vs-connective comparisons.
   else if node_is_optional(n: left) && right.name == "Unit" { true }
@@ -1460,13 +1460,13 @@ fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
 }
 
 fn classify_runtime_bridge_method(method: String, wrap_result_in_rc: Bool) -> MethodSemantics? {
-  if method == "map_get" || method == "map_has" || method == "emit_map_has" || method == "map_values" || method == "map_keys" {
+  if method == "map_get" || method == "map_has" || method == "emit_map_has" || method == "map_values" || method == "map_keys" || method == "map_contains_key" {
     Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: true, wrap_result_in_rc: wrap_result_in_rc } }
   } else if method == "get" || method == "with" || method == "list_push" || method == "map_insert"
     || method == "char_at" || method == "string_at" || method == "string_length" || method == "length"
     || method == "starts_with" || method == "ends_with" || method == "to_string" || method == "trim"
     || method == "to_lower" || method == "to_upper" || method == "replace" || method == "substring"
-    || method == "to_int" || method == "empty_map" || method == "contains" || method == "reverse" {
+    || method == "to_int" || method == "empty_map" || method == "contains" || method == "reverse" || method == "lookup" {
     Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: false, wrap_result_in_rc: wrap_result_in_rc } }
   } else {
     none
@@ -1996,10 +1996,12 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, return_type: Some { value: infer_literal_node(lit: lit) }, span: span))
 
     ExprError { kind: kind, message: message } =>
+      // No diagnostics here — resolve_expr_types already emitted the error.
+      // Re-emitting would produce duplicate error messages for every ExprError.
       let span = texpr.span
       InferResult {
         typed: make_expr_error_node(kind: kind, message: message, span: span),
-        diagnostics: [inference_error(message: message, span: span, module_name: scope.module_name)]
+        diagnostics: []
       }
 
     ExprVar { name: name, binding_kind: _ } =>

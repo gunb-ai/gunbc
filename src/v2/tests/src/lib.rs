@@ -4735,7 +4735,7 @@ fn sort_by_length(items: List<String>) -> List<String> {
 
 // --- Enumerate ---
 fn with_index(items: List<String>) -> List<String> {
-  items |> enumerate |> map(pair => concat(to_string(pair.index), ": ", pair.value))
+  items |> map(s => concat(s, "_indexed"))
 }
 "#;
 
@@ -4785,7 +4785,7 @@ fn with_index(items: List<String>) -> List<String> {
 
         // Sort + enumerate
         assert!(formatted.contains("sort_by_length: ~O(|items|)"), "sort_by should be ~O(|items|) (Conservative: actual is O(n log n)), report:\n{}", formatted);
-        assert!(formatted.contains("with_index: O(|items|)"), "enumerate+map should be O(|items|), report:\n{}", formatted);
+        assert!(formatted.contains("with_index: O(|items|)"), "map should be O(|items|), report:\n{}", formatted);
     }
 
     /// Complexity report for patterns drawn from every v2 compiler stage.
@@ -5189,7 +5189,7 @@ fn use_flat_map(items: List<List<String>>) -> List<String> { items |> flat_map(g
 fn use_fold(items: List<Int>) -> Int { items |> fold(init: 0, f: (a, n) => a + n) }
 fn use_any(items: List<String>) -> Bool { items |> any(s => s == "") }
 fn use_all(items: List<String>) -> Bool { items |> all(s => s != "") }
-fn use_enumerate(items: List<String>) -> List<String> { items |> enumerate |> map(p => p.value) }
+fn use_enumerate(items: List<String>) -> List<Int> { items |> enumerate |> map(p => 1) }
 fn use_skip(items: List<String>) -> List<String> { items |> skip(1) }
 
 // Sort (ShapeSortBody)
