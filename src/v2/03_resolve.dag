@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Node, Connective, Conj, Disj, Diagnostic, Severity }
+import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Node, Connective, Conj, Disj, Diagnostic, Severity, ErrorCategory, UnresolvedName, InvalidOperation, kernel_types }
 
 // =========================================================================
 // Output types
@@ -197,7 +197,8 @@ fn resolve_import(
         severity: Error,
         message: concat("unresolved import: module '", import.module_path, "' not found (imported by '", importing_module, "')"),
         span: Some { value: import.span },
-        module_name: Some { value: importing_module }
+        module_name: Some { value: importing_module },
+        category: Some { value: UnresolvedName }
       }
       ImportResolveResult {
         resolved: ResolvedImport {
@@ -225,7 +226,8 @@ fn resolve_import(
                 severity: Error,
                 message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
                 span: Some { value: import.span },
-                module_name: Some { value: importing_module }
+                module_name: Some { value: importing_module },
+                category: Some { value: UnresolvedName }
               }
             )
       }
@@ -259,12 +261,7 @@ fn get_exported_names(module: Module) -> List<String> {
     |> flat_map(item => get_variant_names(item: item))
   let imported_names = module.imports
     |> flat_map(imp => get_import_specific_names(names: imp.names))
-  concat(item_names, variant_names, imported_names, kernel_type_names())
-}
-
-// The 8 kernel primitives that are implicitly available in every module.
-fn kernel_type_names() -> List<String> {
-  ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"]
+  concat(item_names, variant_names, imported_names, kernel_types)
 }
 
 // Extract explicitly named imports from an ImportNames value.
@@ -319,7 +316,8 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
           severity: Error,
           message: concat("duplicate module declaration: '", m.name, "'"),
           span: Some { value: m.span },
-          module_name: Some { value: m.name }
+          module_name: Some { value: m.name },
+          category: Some { value: InvalidOperation }
         }])
       }
     } else {
@@ -398,7 +396,8 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
         severity: Error,
         message: concat("circular dependency detected: ", cycle_desc),
         span: None,
-        module_name: None
+        module_name: None,
+        category: Some { value: InvalidOperation }
       } }
     }
   }

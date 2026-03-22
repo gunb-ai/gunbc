@@ -35,10 +35,11 @@ import v2.std.core {
   ResourceUse,
   ServiceConfig,
   Error,
+  kernel_types, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
-  FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap,
+  FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
@@ -51,6 +52,7 @@ import v2.std.core {
   RuntimeBridgeSemantics, ServiceMethodSemantics,
   LambdaSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
+  ErrorCategory, UnresolvedName, TypeMismatch, FieldNotFound, VariantNotFound, AmbiguousCall, InvalidOperation, CascadeError,
   BuiltinTypeKind,
   BuiltinInt, BuiltinFloat, BuiltinBool, BuiltinString, BuiltinList,
   BuiltinMap, BuiltinSet, BuiltinOptional, BuiltinUnit, BuiltinBytes,
@@ -736,6 +738,23 @@ fn container_node(kind_name: String, element: Node) -> Node {
   Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
+fn tuple_node(first: Node, second: Node) -> Node {
+  Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [first, second], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn callable_node(func_params: List<Param>, ret: Node) -> Node {
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: ret }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn callable_return_type(n: Node) -> Node {
+  if n.name == "Callable" {
+    match n.return_type {
+      Some { value: ret } => ret
+      None => leaf_node(name: "Dynamic")
+    }
+  } else { n }
+}
+
 // -------------------------------------------------------------------------
 // Helpers for typed expression inference
 // -------------------------------------------------------------------------
@@ -934,8 +953,10 @@ fn normalize_type_name(name: String) -> String {
 // =========================================================================
 
 // Check if a type-Node represents a container type.
+// Structural: List/Set with exactly 1 child, OR has container_kind property.
 fn node_is_container(n: Node) -> Bool {
   n.properties |> any(p => p.name == "container_kind")
+  || (n.children |> count == 1 && n.connective == none && (n.name == "List" || n.name == "Set"))
 }
 
 // Check if a type-Node represents an optional type.
@@ -944,8 +965,10 @@ fn node_is_optional(n: Node) -> Bool {
 }
 
 // Check if a type-Node represents a map type.
+// Structural: Map with 2 children, OR has map_type property.
 fn node_is_map(n: Node) -> Bool {
   n.properties |> any(p => p.name == "map_type")
+  || (n.name == "Map" && n.children |> count == 2 && n.connective == none)
 }
 
 // Check if a type-Node is the Dynamic placeholder (untyped lambda params)
@@ -1011,10 +1034,9 @@ fn node_type_shape(n: Node) -> String {
 // Two type-Nodes are equal if they represent the same type structure.
 fn node_type_equals(left: Node, right: Node) -> Bool {
   if node_is_error_type(n: left) || node_is_error_type(n: right) { false }
-  // Dynamic is universally compatible: it matches any type.
-  // Lambda parameters start as Dynamic until inference resolves them,
-  // so Dynamic must pass equality checks to avoid spurious mismatches.
-  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { true }
+  // Dynamic equals only Dynamic. Other comparisons involving Dynamic return false.
+  else if node_is_dynamic(n: left) && node_is_dynamic(n: right) { true }
+  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { false }
   // Optional vs Unit: `none` (Unit) is compatible with Optional.
   // Must be checked before generic leaf-vs-connective comparisons.
   else if node_is_optional(n: left) && right.name == "Unit" { true }
@@ -1081,11 +1103,16 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       false
     }
   }
-  // Structural fallback: same name, same connective, same child count.
-  // Handles container_node-style types (List, Map) that lack the
-  // container_kind property and don't match the specific checks above.
-  else if left.name == right.name && left.connective == right.connective && left.children |> count == right.children |> count {
-    true
+  // Both callables: compare return types structurally
+  else if left.name == "Callable" && right.name == "Callable" {
+    match left.return_type {
+      Some { value: left_ret } =>
+        match right.return_type {
+          Some { value: right_ret } => node_type_equals(left: left_ret, right: right_ret)
+          None => false
+        }
+      None => right.return_type == none
+    }
   }
   else {
     false
@@ -1131,13 +1158,34 @@ fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   else { PlainValue }
 }
 
+fn is_pair_children(children: List<Node>) -> Bool {
+  if children |> count != 2 { false }
+  else {
+    match children |> first {
+      Some { value: c0 } =>
+        match children |> skip(1) |> first {
+          Some { value: c1 } => c0.name == "first" && c1.name == "second"
+          None => false
+        }
+      None => false
+    }
+  }
+}
+
+fn pair_access_style(field_name: String) -> FieldAccessStyle {
+  if field_name == "first" { TupleFirst }
+  else { TupleSecond }
+}
+
 fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
+  let is_pair = is_pair_children(children: children)
   fold(children, init: empty_map(), f: (acc, child) =>
     if child.return_type == none {
       acc
     } else {
+      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
       map_insert(acc, child.name, FieldSummary {
-        access_style: StoredField,
+        access_style: style,
         value_shape: field_value_shape_from_type_node(type_node: child.return_type.value)
       })
     }
@@ -1276,12 +1324,6 @@ fn lookup_emit_field_summary_in_scope(emit_info: EmitGraphInfo, scope: InferScop
 // Must recurse through container wrappers (List<T>, T?, Map<K,V>) to find
 // all referenced type names -- otherwise cycle detection misses cycles
 // that pass through containers (e.g. Node -> return_type: Node? -> Node).
-fn is_primitive_name(name: String) -> Bool {
-  name == "String" || name == "Int" || name == "Bool" || name == "Float"
-    || name == "Secret" || name == "Json" || name == "Unit" || name == "Bytes"
-    || name == "None" || name == ""
-}
-
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
     // Simple field reference: return_type is a bare type name leaf.
@@ -1301,7 +1343,7 @@ fn node_type_deps(n: Node) -> List<String> {
   } else if n.children |> count > 0 {
     // Container or compound node: recurse into children.
     flat_map(n.children, child => node_type_deps(n: child))
-  } else if is_primitive_name(name: n.name) {
+  } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
     []
   } else {
     // Bare type name leaf (e.g. "Node" inside List<Node>).
@@ -1322,7 +1364,8 @@ fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagn
     severity: Error,
     message: message,
     span: Some { value: span },
-    module_name: Some { value: module_name }
+    module_name: Some { value: module_name },
+    category: none
   }
 }
 
@@ -1331,7 +1374,18 @@ fn inference_error(message: String, span: SourceSpan, module_name: String) -> Di
     severity: Error,
     message: message,
     span: Some { value: span },
-    module_name: Some { value: module_name }
+    module_name: Some { value: module_name },
+    category: none
+  }
+}
+
+fn categorized_error(message: String, span: SourceSpan, module_name: String, category: ErrorCategory) -> Diagnostic {
+  Diagnostic {
+    severity: Error,
+    message: message,
+    span: Some { value: span },
+    module_name: Some { value: module_name },
+    category: Some { value: category }
   }
 }
 
@@ -1462,7 +1516,7 @@ fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
 fn classify_runtime_bridge_method(method: String, wrap_result_in_rc: Bool) -> MethodSemantics? {
   if method == "map_get" || method == "map_has" || method == "emit_map_has" || method == "map_values" || method == "map_keys" || method == "map_contains_key" {
     Some { value: RuntimeBridgeSemantics { function_name: method, pass_receiver_by_ref: true, wrap_result_in_rc: wrap_result_in_rc } }
-  } else if method == "get" || method == "with" || method == "list_push" || method == "map_insert"
+  } else if method == "get" || method == "with" || method == "list_push" || method == "map_insert" || method == "map_merge"
     || method == "char_at" || method == "string_at" || method == "string_length" || method == "length"
     || method == "starts_with" || method == "ends_with" || method == "to_string" || method == "trim"
     || method == "to_lower" || method == "to_upper" || method == "replace" || method == "substring"
@@ -1551,12 +1605,10 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
       None => receiver_type
     }
   } else { receiver_type }
-  if method == "map" || method == "filter" || method == "enumerate" {
+  if method == "map" || method == "filter" {
     Some { value: receiver_type }
-  } else if method == "fold" {
-    // fold returns the accumulator type, which depends on the init arg.
-    // Since we don't have arg context here, use Dynamic (permissive).
-    Some { value: leaf_node(name: "Dynamic") }
+  } else if method == "enumerate" {
+    Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
   } else if method == "first" || method == "last" {
     Some { value: optional_node(inner: elem_node) }
   } else if method == "count" {
@@ -1572,8 +1624,8 @@ fn infer_method_call_type_node(receiver_type: Node, method: String) -> Node? {
   } else if method == "get" {
     // get(list, index) → Optional<element>
     Some { value: optional_node(inner: elem_node) }
-  } else if method == "list_push" || method == "with" || method == "map_insert" {
-    // list_push(list, elem) → same list; with(record, overrides) → record
+  } else if method == "list_push" || method == "with" || method == "map_insert" || method == "map_merge" {
+    // list_push(list, elem) → same list; with/map_insert/map_merge(map, ...) → same map
     Some { value: receiver_type }
   } else if method == "map_get" {
     // map_get(map, key) → Optional<value>
@@ -1748,10 +1800,11 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   NodeLookupResult {
     resolved: scrut,
     diagnostics: [Diagnostic {
-      severity: Warning,
+      severity: Error,
       message: concat("variant '", concat(variant_name, concat("' not found in type '", concat(scrut.name, "'")))),
       span: Some { value: scrut.span },
-      module_name: Some { value: module_name }
+      module_name: Some { value: module_name },
+      category: Some { value: VariantNotFound }
     }]
   }
 }
@@ -1764,7 +1817,8 @@ fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String
         severity: Error,
         message: concat("cannot resolve variant '", concat(variant_name, "' on Dynamic scrutinee")),
         span: Some { value: scrut.span },
-        module_name: Some { value: module_name }
+        module_name: Some { value: module_name },
+        category: Some { value: VariantNotFound }
       }]
     }
   } else {
@@ -1789,7 +1843,8 @@ fn lookup_field_in_variant(variant: Node, field_name: String, module_name: Strin
         severity: Error,
         message: concat("cannot resolve field '", concat(field_name, "' on Dynamic variant")),
         span: Some { value: variant.span },
-        module_name: Some { value: module_name }
+        module_name: Some { value: module_name },
+        category: Some { value: FieldNotFound }
       }]
     }
   } else {
@@ -1803,7 +1858,8 @@ fn lookup_field_in_variant(variant: Node, field_name: String, module_name: Strin
           severity: Error,
           message: concat("field '", concat(field_name, concat("' not found in variant '", concat(variant.name, "'")))),
           span: Some { value: variant.span },
-          module_name: Some { value: module_name }
+          module_name: Some { value: module_name },
+          category: Some { value: FieldNotFound }
         }]
       }
     }
@@ -2019,7 +2075,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             Some { value: fsig } =>
               ok_infer(texpr: make_expr_node(
                 expr_data: ExprVar { name: name, binding_kind: Some { value: FunctionValueBinding } },
-                return_type: Some { value: fsig.return_type },
+                return_type: Some { value: callable_node(func_params: fsig.params, ret: fsig.return_type) },
                 span: span
               ))
             None =>
@@ -2184,18 +2240,23 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           None => leaf_node(name: "Unit")
         }
         let method_type = infer_method_call_type_node(receiver_type: first_arg_type, method: func_name)
-        if method_type != none && typed_args |> count > 0 {
+        // fold is handled by call_fold_info (init-arg type) rather than infer_method_call_type_node
+        let is_known_method = method_type != none || (func_name == "fold" && call_fold_info != none)
+        if is_known_method && typed_args |> count > 0 {
           // Known collection method -- bridge Call to MethodCall
           let receiver = match typed_args |> first {
             Some { value: ta } => ta.value
             None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
           }
           let remaining = typed_args |> skip(1)
-          // For fold: override return type with init arg's type
+          // For fold: return type is the init arg's type (not from infer_method_call_type_node)
           let bridge_result_type = if func_name == "fold" && call_fold_info != none {
             call_fold_acc_type
           } else {
-            method_type.value
+            match method_type {
+              Some { value: mt } => mt
+              None => leaf_node(name: "Dynamic")
+            }
           }
           let wrap_result_in_rc = if func_name == "map_get" {
             data_lookup_needs_rc_wrap(receiver: receiver, scope: scope)
@@ -2982,10 +3043,11 @@ fn check_match_exhaustiveness(
         let uncovered = variant_names |> filter(v => map_has(m: covered_set, key: v) == false)
         if count(uncovered) > 0 {
           [Diagnostic {
-            severity: Warning,
+            severity: Error,
             message: concat("non-exhaustive match: missing variant(s) ", join(uncovered, separator: ", ")),
             span: Some { value: span },
-            module_name: Some { value: module_name }
+            module_name: Some { value: module_name },
+            category: Some { value: InvalidOperation }
           }]
         } else {
           []
@@ -3127,7 +3189,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // std.types is not in the compilation set (e.g., in isolated tests).
   let zero_span = SourceSpan { start: 0, end: 0 }
   let kernel_bindings = fold(
-    ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"],
+    kernel_types,
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
       name: name,
@@ -3158,7 +3220,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
-  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [Diagnostic { severity: Error, message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: Some { value: imp.target_module.value.span }, module_name: Some { value: module.module.name } }] })
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [Diagnostic { severity: Error, message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: Some { value: imp.target_module.value.span }, module_name: Some { value: module.module.name }, category: Some { value: UnresolvedName } }] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
@@ -3230,7 +3292,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>) -> BuildTypeEnvResult {
   let zero_span = SourceSpan { start: 0, end: 0 }
   let kernel_bindings = fold(
-    ["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"],
+    kernel_types,
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: leaf_node(name: name) })
   )
@@ -3293,7 +3355,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         severity: Error,
         message: concat("internal: type resolution exceeded depth 100 for '", n.name, "'"),
         span: Some { value: n.span },
-        module_name: Some { value: module_name }
+        module_name: Some { value: module_name },
+        category: Some { value: InvalidOperation }
       }]
     }
   }
@@ -3449,7 +3512,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
                 severity: Error,
                 message: concat("unresolved type '", n.name, "'"),
                 span: Some { value: n.span },
-                module_name: Some { value: module_name }
+                module_name: Some { value: module_name },
+                category: Some { value: UnresolvedName }
               }]
             }
           }
@@ -3698,7 +3762,8 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
           severity: Error,
           message: message,
           span: Some { value: texpr.span },
-          module_name: Some { value: module_name }
+          module_name: Some { value: module_name },
+          category: Some { value: CascadeError }
         }]
       }
     ExprVar { name: _, binding_kind: _ } =>
@@ -4444,7 +4509,8 @@ fn topo_resolve_loop(
               severity: Error,
               message: concat("recursive function '", fn_name, "' requires return type annotation"),
               span: none,
-              module_name: Some { value: module_name }
+              module_name: Some { value: module_name },
+              category: Some { value: TypeMismatch }
             }) }
           }
         None => acc
@@ -4473,7 +4539,8 @@ fn topo_resolve_loop(
             severity: Error,
             message: concat("function '", fn_name, "' requires return type annotation"),
             span: none,
-            module_name: Some { value: module_name }
+            module_name: Some { value: module_name },
+            category: Some { value: TypeMismatch }
           }) }
         }
       None => acc
@@ -4664,7 +4731,7 @@ fn topo_resolve_types(
   let ready = filter(remaining, name =>
     match map_get(deps_map, name) {
       Some { value: deps } =>
-        all(deps, dep => is_primitive_name(name: dep) || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
+        all(deps, dep => is_kernel_type(name: dep) || dep == "None" || dep == "" || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
       None => true
     }
   )
@@ -4739,7 +4806,8 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
         severity: Error,
         message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"),
         span: Some { value: imp.target_module.value.span },
-        module_name: Some { value: resolved.module.name }
+        module_name: Some { value: resolved.module.name },
+        category: Some { value: UnresolvedName }
       }]
     }
   )

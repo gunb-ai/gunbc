@@ -51,6 +51,8 @@ import v2.std.core {
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
   Text, Interpolation,
+  FieldSummary, FieldAccessStyle,
+  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
@@ -401,6 +403,16 @@ fn emit_go_node_type_conj(n: Node) -> String {
       Some { value: base } => emit_go_node_type(n: base)
       None => n.name
     }
+  } else if n.name == "Tuple" {
+    let first_str = match n.children |> first {
+      Some { value: c } => emit_go_node_type(n: c)
+      None => "interface{}"
+    }
+    let second_str = match skip(n.children, 1) |> first {
+      Some { value: c } => emit_go_node_type(n: c)
+      None => "interface{}"
+    }
+    concat("struct{ First ", first_str, "; Second ", second_str, " }")
   } else if n.name != "" {
     n.name
   } else {
@@ -529,20 +541,33 @@ fn emit_go_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> 
   // Go type switch: case TypeName:
   name
 }
+fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0)
+  match summary {
+    Some { value: fs } =>
+      match fs.access_style {
+        TupleFirst => concat(base_str, ".First")
+        TupleSecond => concat(base_str, ".Second")
+        _ => concat(base_str, ".", go_export_ident(name: field))
+      }
+    None => concat(base_str, ".", go_export_ident(name: field))
+  }
+}
+
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match texpr.expr_data {
     ExprLiteral { value: v } => concat(prefix, go_literal(value: v))
     ExprError { kind: _, message: message } => concat(prefix, "panic(", emit_string_literal(value: message), ")")
     ExprVar { name: n, binding_kind: _ } => concat(prefix, go_local_ident(name: n))
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
+    ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
         match extract_typed_service_name(receiver: texpr) {
           Some { value: svc_name } => concat(prefix, service_var_name(service_name: svc_name))
-          None => concat(prefix, emit_go_typed_expr(texpr: b, registry: registry, scope: scope, depth: 0), ".", go_export_ident(name: f))
+          None => concat(prefix, emit_go_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope))
         }
       } else {
-        concat(prefix, emit_go_typed_expr(texpr: b, registry: registry, scope: scope, depth: 0), ".", go_export_ident(name: f))
+        concat(prefix, emit_go_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope))
       }
     ExprCall { func: f, args: a, call_semantics: _ } =>
       concat(prefix, emit_go_typed_call(func: f, args: a, registry: registry, scope: scope))

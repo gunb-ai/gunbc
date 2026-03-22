@@ -139,7 +139,7 @@ type ResourceUse {
   span: SourceSpan
 }
 
-type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap
+type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 
 type FieldValueShape = PlainValue | OptionalValue
 
@@ -164,6 +164,18 @@ type BuiltinTypeKind
   | BuiltinDynamic
   | BuiltinError
   | BuiltinCustom { name: String }
+
+// Canonical list of kernel-provided primitive types.
+// Any stage that needs to recognize kernel names imports this list
+// instead of redefining its own copy.
+data kernel_types: List<String> = [
+  "String", "Int", "Bool", "Float",
+  "Secret", "Json", "Unit", "Bytes"
+]
+
+fn is_kernel_type(name: String) -> Bool {
+  kernel_types |> any(t => t == name)
+}
 
 type IntrinsicMethod
   = MethodCount
@@ -343,11 +355,21 @@ type TextFile {
   content: String
 }
 
+type ErrorCategory
+  = UnresolvedName
+  | TypeMismatch
+  | FieldNotFound
+  | VariantNotFound
+  | AmbiguousCall
+  | InvalidOperation
+  | CascadeError
+
 type Diagnostic {
   severity: Severity
   message: String
   span: SourceSpan?
   module_name: String?
+  category: ErrorCategory?
 }
 
 type Severity = Error | Warning

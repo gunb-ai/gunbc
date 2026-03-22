@@ -32,7 +32,7 @@ import v2.std.core {
   BuiltinOptional, BuiltinUnit, BuiltinDynamic, BuiltinError, BuiltinList,
   builtin_type_kind,
   FieldSummary,
-  StoredField, EnumAccessor, OptionalUnwrap, OptionalValue,
+  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
@@ -941,6 +941,16 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
       Some { value: base } => emit_rust_node_type(n: base, rc_types: rc_types)
       None => n.name
     }
+  } else if n.name == "Tuple" {
+    let first_str = match n.children |> first {
+      Some { value: c } => emit_rust_node_type(n: c, rc_types: rc_types)
+      None => "()"
+    }
+    let second_str = match skip(n.children, 1) |> first {
+      Some { value: c } => emit_rust_node_type(n: c, rc_types: rc_types)
+      None => "()"
+    }
+    concat("(", first_str, ", ", second_str, ")")
   } else if n.name != "" {
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
@@ -1631,21 +1641,17 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  if field == "first" {
-    concat(base_str, ".0")
-  } else if field == "second" {
-    concat(base_str, ".1")
-  } else {
-    match summary {
-      Some { value: field_summary } =>
-        match field_summary.access_style {
-          OptionalUnwrap => concat(base_str, ".clone().unwrap()")
-          EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
-        }
-      // Every field access must have a summary set by reconcile.
-      None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
-    }
+  match summary {
+    Some { value: field_summary } =>
+      match field_summary.access_style {
+        TupleFirst => concat(base_str, ".0")
+        TupleSecond => concat(base_str, ".1")
+        OptionalUnwrap => concat(base_str, ".clone().unwrap()")
+        EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
+        StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
+      }
+    // Every field access must have a summary set by reconcile.
+    None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
   }
 }
 
@@ -3252,7 +3258,8 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
               "` must be a string, int, float, or bool literal"
             ),
             span: Some { value: param.span },
-            module_name: Some { value: wf.module_name }
+            module_name: Some { value: wf.module_name },
+            category: none
           }]
         }
         None => []

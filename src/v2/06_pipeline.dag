@@ -161,7 +161,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
     let emit_result = match target {
       Rust => emit_rust(typed: typed)
       Python => emit_python(typed: typed)
-      Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: Some { value: SourceSpan { start: 0, end: 0 } }, module_name: Some { value: "" } }] }
+      Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: Some { value: SourceSpan { start: 0, end: 0 } }, module_name: Some { value: "" }, category: none }] }
     }
     let emit_files = emit_result.files
     let emit_diags = emit_result.diagnostics

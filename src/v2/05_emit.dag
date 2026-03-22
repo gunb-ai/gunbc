@@ -34,7 +34,8 @@ import v2.std.core {
   ResourceUse,
   BinOpKind, NullCoalesce,
   ServiceConfig,
-  DeclaredFuncSig
+  DeclaredFuncSig,
+  kernel_types
 }
 
 import v2.compiler.reconcile {
@@ -238,7 +239,9 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
   // A-7: vtoe index -- from variant_to_enum
   let vtoe_idx = info.variant_to_enum
   // A-10: primitive set
-  let prim_set = build_primitive_set()
+  let prim_set = fold(kernel_types, init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
   EmitContext {
     field_access_index: field_idx,
     intrinsic_index: intrinsic_idx,
@@ -269,17 +272,6 @@ fn build_intrinsic_index() -> Map<String, IntrinsicMethod> {
   let m = map_insert(m, "fold", MethodFold)
   let m = map_insert(m, "sort_by", MethodSortBy)
   let m = map_insert(m, "append", MethodAppend)
-  m
-}
-
-fn build_primitive_set() -> Map<String, Bool> {
-  let m = empty_map()
-  let m = map_insert(m, "Int", true)
-  let m = map_insert(m, "Bool", true)
-  let m = map_insert(m, "Float", true)
-  let m = map_insert(m, "String", true)
-  let m = map_insert(m, "Char", true)
-  let m = map_insert(m, "Unit", true)
   m
 }
 
