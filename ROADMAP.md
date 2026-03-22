@@ -1,10 +1,10 @@
 # gunbc Roadmap — v2 Bootstrap Completion
 
-The v2 compiler has proven self-consistency: stage1 == stage2 (byte-identical).
-This roadmap tracks the remaining work to close out bootstrapping, retire v1,
-and reach the target architecture.
+This roadmap tracks the remaining work to close out bootstrapping, retire
+v1, reach the target architecture, and begin landing small real business
+features in parallel.
 
-## What's Done
+## Milestones
 
 | Milestone | Gate | Date |
 |-----------|------|------|
@@ -18,6 +18,13 @@ and reach the target architecture.
 | Node/TypedNode unified IR | W1–W13 complete, 129 tests passing | 2026-03 |
 | Performance audit | 50,000x improvement (tokenize+parse: 24ms) | 2026-03 |
 | OOM fix | node_type_deps container-wrapped cycle detection | 2026-03 |
+
+## Status Summary
+
+- Phase 1 strict soundness is complete
+- Bootstrap fixed-point re-verification is in progress (emission casing
+  mismatch fixed; residual mismatches may surface during stage1 builds)
+- Phases 2–5 remain ahead as roadmap work
 
 ---
 
@@ -42,25 +49,22 @@ collapses layer authority.
 
 This section reconciles the audit above with the existing phase plan.
 
-- The v2 audit in `INVARIANTS.md` is directionally correct, but several items in the
-  roadmap now need reinterpretation based on what has already landed.
-- Theme 4 and Theme 6 are not optional cleanup. They are cross-cutting prerequisites
-  for efficient Phase 1 work because they remove duplicate authority and dead branches
-  before deeper semantic changes.
-- `P1.8` is now deeper than it was in the first audit: `07_complexity.dag` has
-  `intrinsic_method_cost_shape(...)`, `cost_of_expr(...)` reads reconcile-provided
-  `method_semantics`, `receiver_size_var(...)` now follows those semantics instead of
-  string names, and `04_reconcile.dag` resolves known method semantics/result types in
-  one helper. Remaining work is mostly renderer-leaf dispatch and the source-level
-  classifiers that still map strings into those enums.
-- `P4.1` is no longer the full blocker it used to be. Shared emit already imports
-  language type/keyword/container data from `extdeps.languages.*`. The remaining
-  duplication is mostly per-target reserved-word/runtime tables, especially in the
-  Python and Go renderers.
-- Trace has now been reconciled with `src/v2/DESIGN.md` at the model level:
-  `09_trace.dag` no longer describes an in-compiler interpreter. Remaining work is
-  deciding whether runtime adapters/source maps get wired into the pipeline or remain
-  explicitly external contracts.
+- The v2 audit in `INVARIANTS.md` (repo root) is directionally correct, but several
+  items in the roadmap need reinterpretation based on what has already landed.
+- Theme 4 and Theme 6 are cross-cutting prerequisites that remove duplicate
+  authority and dead branches before deeper semantic changes.
+- P1.8 is complete: `07_complexity.dag` has `intrinsic_method_cost_shape(...)`,
+  `cost_of_expr(...)` reads reconcile-provided `method_semantics`,
+  `receiver_size_var(...)` follows semantics instead of string names, and
+  `04_reconcile.dag` resolves known method semantics/result types in one helper.
+  Remaining work is renderer-leaf dispatch and source-level classifiers that
+  still map strings into those enums.
+- P4.1: shared emit already imports language type/keyword/container data from
+  `extdeps.languages.*`. Remaining duplication is per-target reserved-word/runtime
+  tables, especially in the Python and Go renderers.
+- Trace: `09_trace.dag` is an external runtime contract, not an in-compiler
+  interpreter. Remaining decision is whether runtime adapters/source maps get
+  wired into the pipeline or remain explicitly external.
 
 ### Structural Pass Order
 
@@ -69,67 +73,543 @@ reduces the cost or risk of the next.
 
 | Pass | Theme | What it changes first |
 |------|------|------|
-| S1 | Theme 4 | Single authority for kernel/primitive facts (`kernel_types`, `is_kernel_type`) |
-| S2 | Theme 6 | Landed: pipeline owns compilation only, artifact is explicit-only, trace is an honest future-work contract |
-| S3 | Theme 3 | In progress: known-method resolution is centralized and complexity now follows semantics; renderer/runtime cleanup remains |
+| S1 | Theme 4 | Done: `kernel_types` and `is_kernel_type` are single-authority in `00_core.dag` |
+| S2 | Theme 6 | Done: pipeline owns compilation only, artifact is explicit-only, trace is an external contract |
+| S3 | Theme 3 | Done: known-method resolution is centralized and complexity follows semantics; renderer/runtime cleanup remains |
+| S3.5 | Theme 3/5 | Extract emitter metadata (EmitGraphInfo, TypeSummary, FieldSummary, MethodSemantics) from reconcile into a post-inference pass; reconcile should infer types, not prepare rendering data |
 | S4 | Theme 5 | Move Rust-only ownership/render policy out of core + reconcile |
-| S5 | Theme 1 | Fuse duplicated `ExprData` walks in reconcile and complexity |
+| S5 | Theme 1 | Fuse 3 duplicated `ExprData` walks (reconcile, complexity, ownership) into shared `fold_expr` with callbacks |
 | S6 | Theme 2 | Shared emit dispatch with per-target leaves |
 | S7 | Theme 7 | Final fabrication fallback cleanup and Dynamic-site audit |
 
-The practical implication: Phase 1 should not be treated as only "fix inference gaps."
-The first work inside Phase 1 is structural reduction of duplicate authority.
+Phase 1 strict soundness is complete. S1–S3 are done. The structural
+passes (S3.5–S7) continue as cross-cutting work alongside Phases 2–5.
+
+---
+
+## Architecture Migration Workboard
+
+This board turns the current v2 gap analysis into executable migration
+work. It is cross-cutting rather than phase-local: the point is to make
+the target architecture in `src/v2/DESIGN.md` land incrementally without
+creating another temporary system that has to be maintained forever.
+
+The gap analysis is complete enough to schedule this work now. Future
+audits may refine scope, but the main migration seams are already clear.
+
+### Parallel tracks
+
+| ID | Track | Status | Depends on | Can run in parallel with |
+|----|------|--------|------------|---------------------------|
+| M1 | Stage/module naming cleanup | Planned | none | M2, M4 |
+| M2 | Compile bundle + projection contracts | Planned | none | M1, M3, M4 |
+| M3 | Artifact planning above emit | Planned | none | M1, M2, M4 |
+| M4 | Proof/obligation derivation contract | Planned | none | M1, M2, M3 |
+| M5 | Generated tests as first-class projection | Planned | M3, M4 | M6 |
+| M6 | Shared emit spine + target adapters | Planned | M3 | M5, M7 |
+| M7 | DAG backend/runtime boundary | Planned | M2, M3, M4 | M6 |
+| M8 | Mixed-backend artifact boundaries | Planned | M3, M5, M7 | none |
+
+### M1. Stage/module naming cleanup
+
+Current state:
+
+- `04_reconcile.dag` still has the old name even though the intended
+  role is infer/typecheck
+- `06_pipeline.dag` is the compiler driver, not a sixth stage
+- numbered/unnumbered responsibilities are still mixed in names and docs
+
+Work:
+
+- rename `04_reconcile.dag` -> `04_infer.dag`
+- rename `06_pipeline.dag` -> `compile.dag`
+- move `RenderTarget` enum out of `00_core.dag` into `compile.dag` or
+  a targets metadata module (adding a new target should not require
+  editing core)
+- update imports, tests, docs, and bootstrap references
+- ratchet the naming rule: numbered files are only core transformation
+  stages
+
+Acceptance criteria:
+
+- all imports/tests/docs use `04_infer` (not `04_reconcile`) and `compile` (not `06_pipeline`)
+- no numbered module remains that is not a core lowering stage
+- the design/roadmap language no longer refers to the driver as "stage 6"
+
+Deletion / cleanup:
+
+- delete compatibility aliases or doc references for `06_pipeline`
+- delete `04_reconcile` references once callers migrate
+
+### M2. Compile bundle + projection contracts
+
+Current state:
+
+- compile interfaces are still mostly flat stage outputs or target-first
+  entrypoints
+- proofs/tests/reports are not yet surfaced as first-class outputs
+- downstream components do not yet consume typed projections from one
+  authoritative bundle
+- `07_ownership.dag` is real and working (clean obligation model, no
+  fallbacks) but `06_pipeline.dag` does not import or call it;
+  complexity is wired, ownership is not
+
+Work:
+
+- define the authoritative compile result/bundle shape
+- include typed graph, artifact plan, emitted runtime artifacts,
+  validation artifacts, proof/report artifacts, obligations, and
+  diagnostics in that bundle
+- define typed projection/view contracts so downstream systems can peel
+  off only the slices they need
+- wire ownership analysis into the pipeline alongside complexity
+
+Acceptance criteria:
+
+- there is one authoritative compile bundle/result contract
+- runtime/test/proof/report consumers can read typed views without
+  depending on ad hoc side channels
+- unsupported obligations are visible in the bundle/diagnostics, not
+  silently dropped
+- ownership analysis runs in the pipeline and its output is included in
+  the compile bundle
+
+Deletion / cleanup:
+
+- delete hidden side-effect outputs that are not represented in the
+  compile contract
+- delete whole-system assumptions that compile only returns "files +
+  diagnostics"
+
+### M3. Artifact planning above emit
+
+Current state:
+
+- the top-level compile path still assumes one target for the whole
+  compile
+- `Artifact.target` is still stringly or under-modeled
+- `artifact.dag` is not yet the selector of backends/boundaries for real
+  compile flows
+
+Work:
+
+- move the canonical ordering to:
+  `infer whole graph -> plan artifacts -> emit per artifact`
+- make artifact target a typed backend, not a `String`
+- keep the current single-target compile path only as a compatibility
+  wrapper around a default one-artifact plan
+
+Acceptance criteria:
+
+- artifact planning runs after infer and before emit in the primary
+  compile path
+- `emit_artifact(...)` becomes the primary emit interface
+- the single-target CLI/API path is implemented as a wrapper over a
+  default artifact plan
+
+Deletion / cleanup:
+
+- delete the assumption that a whole project has exactly one target
+- delete stringly artifact target fields after callers migrate
+
+### M4. Proof/obligation derivation contract
+
+Current state:
+
+- `complexity.dag` and `ownership.dag` are real, but they still read
+  partly like ad hoc analysis sidecars
+- proofs, reports, and residual runtime obligations are not yet expressed
+  through one shared contract
+
+Work:
+
+- define the shared vocabulary for projection roles and obligation
+  outcomes
+- make proof/analysis modules derive first-class outputs from the same
+  typed graph as code emission
+- require every proof family to end in one of three states:
+  discharged statically, lowered to executable validation, or explicit
+  `Unsupported`
+
+Acceptance criteria:
+
+- the proof/test/report model is documented as a shared projection model
+- at least `complexity` and `ownership` fit that model explicitly
+- unsupported proof obligations cannot disappear silently
+
+Deletion / cleanup:
+
+- delete doc language that treats proofs/tests as second-class cleanup
+- delete future tendencies to smuggle rewrites into proof derivation
+  modules
+
+### M5. Generated tests as a first-class projection
+
+Current state:
+
+- generated tests still exist, but only through a narrow Rust-specific
+  path
+- test generation is not yet an artifact-level/shared contract
+
+Work:
+
+- preserve the current Rust `mock_response` path during migration
+- derive runtime validation obligations from the typed graph plus
+  boundary/fixture metadata
+- surface generated tests as first-class artifact outputs rather than as
+  a hidden emitter detail
+- require each backend either to discharge its test obligations or to
+  return explicit `Unsupported`
+
+Acceptance criteria:
+
+- Rust generated tests survive the emit refactor
+- generated tests are represented in the artifact/compile contract
+- at least one backend discharges hermetic generated tests through the
+  shared contract
+- missing backend validation support is explicit, not silent
+
+Deletion / cleanup:
+
+- delete Rust-only ownership of test generation once the shared contract
+  exists
+- delete stale claims that multi-backend generated tests already exist
+
+### M6. Shared emit spine + target adapters
+
+Current state:
+
+- `05_emit.dag` has shared helpers/context, but Rust/Python/Go still own
+  full expression and TCO walkers
+- target policy is still split across shared emit and target files
+
+Work:
+
+- move traversal/dispatch into shared emit
+- reduce target files to compiler-owned adapters under `src/v2/targets/*`
+- keep `dsl/extdeps/languages/*` declarative only
+- make adding a backend mean adding language facts plus an adapter, not a
+  fourth whole emitter
+
+Acceptance criteria:
+
+- no target adapter owns a full whole-tree `ExprData` dispatcher
+- no target adapter owns a separate whole-tree TCO walker
+- shared emit can drive Rust/Python/Go through one traversal spine
+
+Deletion / cleanup:
+
+- delete per-target whole-expression dispatchers after shared dispatch
+  lands
+- delete duplicate TCO walkers after shared TCO dispatch lands
+
+### M7. DAG backend/runtime boundary
+
+Current state:
+
+- DAG execution is now modeled correctly as downstream of compile, but no
+  canonical DAG backend exists yet
+- there is no runtime/interpreter consuming a v2 DAG artifact
+
+Work:
+
+- add `Dag` as a first-class backend
+- define the canonical DAG artifact/bundle schema
+- add a compiler-owned DAG target adapter
+- keep execution in `runtimes/dag/*` or equivalent downstream runtime
+  modules
+
+Acceptance criteria:
+
+- compiler can emit a canonical DAG artifact without embedding an
+  interpreter in the core stages
+- the DAG runtime boundary is explicit in code/docs
+- interpretation/JIT remain runtime strategies over the same artifact
+
+Deletion / cleanup:
+
+- delete wording or interfaces that assume compile outputs are only
+  native source files
+- delete any design drift back toward an interpreter embedded in the
+  compile stages
+
+### M8. Mixed-backend artifact boundaries
+
+Current state:
+
+- the design now allows per-artifact backends, but the compiler does not
+  yet really plan or validate mixed-backend boundaries
+- backend mixing is still more conceptual than executable
+
+Work:
+
+- make artifact planning choose backend per artifact
+- express cross-artifact boundaries explicitly and lower them through
+  known boundary kinds
+- generate boundary adapters/contracts/tests from those boundary plans
+
+Acceptance criteria:
+
+- at least one explicit boundary kind can generate both a runtime adapter
+  and a hermetic validation artifact
+- mixed-backend compilation works at artifact boundaries, not through ad
+  hoc per-node backend mixing
+- boundary compatibility remains a proofable property, not just a runtime
+  hope
+
+Deletion / cleanup:
+
+- delete ad hoc direct backend-to-backend assumptions that bypass
+  artifact boundaries
+- delete stringly boundary target handling once typed backends land
+
+### Suggested execution order
+
+The tracks are parallelizable, but the least-wasteful order is:
+
+1. M1 + M4
+2. M2 + M3
+3. M5 + M6
+4. M7
+5. M8
+
+This order keeps interface and ownership decisions ahead of the bigger
+refactors, preserves generated tests during the emit migration, and
+avoids building a DAG backend on top of the wrong compile contract.
+
+---
+
+## Business Feature Track: Agent Workflow Vertical Slice
+
+This track is intentionally parallel to compiler convergence. The goal
+is to get one real agent integration working as soon as possible
+without waiting for the full target
+architecture to be complete.
+
+The principle is:
+
+- do not block on perfect compiler convergence before proving business
+  value
+- keep the first integration narrow, typed, and auditable
+- use the integration work to pressure-test the compiler/runtime
+  contracts, not to build a parallel ad hoc system
+- do not solve the full agent platform first; land one minimal cloud
+  agent happy path that is operationally real
+
+### First task: cloud agent API integration
+
+The first business task is deliberately small:
+
+- model the cloud agent API in `.dag`
+- model auth upsert for that provider as a workflow
+- run one end-to-end happy path through that model:
+  authenticate -> launch agent with simple prompt -> add follow-up ->
+  delete agent
+- observe what structural/compiler/runtime challenges the integration
+  reveals
+
+Today the preferred target is the Cursor cloud agent API / Composer 2
+surface. The exact external API shape should be verified against the
+current upstream docs when implementation starts; this roadmap item is
+about the integration shape and the questions it should answer.
+
+### AG1. Model the cloud agent API in `.dag`
+
+Current state:
+
+- there is no first-class `.dag` model yet for a cloud agent API
+- agent integrations are still conceptual rather than encoded as typed
+  compiler/runtime inputs and outputs
+
+Work:
+
+- define the narrowest useful `.dag` model for one cloud agent request
+  lifecycle:
+  credential/secret reference, request payload, agent/run handle,
+  optional follow-up/session handle, result payload, and delete/cleanup
+  operations
+- define auth upsert for the provider as part of that lifecycle:
+  detect missing credential, instruct an admin where to create it,
+  reconcile it into secret storage, validate it, and return a ready
+  handle
+- keep the model transport-oriented and concrete rather than inventing a
+  generic agent ontology up front
+- make secret references and cleanup/deletion explicit in the model
+
+Acceptance criteria:
+
+- one cloud agent request/response lifecycle can be represented as a
+  typed `.dag` program
+- auth upsert for the provider can also be represented as a typed `.dag`
+  workflow, not as undocumented setup glue
+- credentials/secrets are modeled as explicit references/handles, not
+  plain payload data
+- cleanup/deletion is part of the model, not an out-of-band note
+
+Deletion / cleanup:
+
+- delete any prototype modeling that encodes secrets as ordinary payloads
+- delete generic agent abstractions that are not required for the first
+  integration
+
+### AG2. Run one end-to-end happy path
+
+Current state:
+
+- no real cloud-agent-backed workflow is running through the v2 model yet
+
+Work:
+
+- wire one happy path from auth upsert -> request -> launch agent ->
+  add follow-up -> delete agent
+- support only the minimal state needed for follow-up/resume if the API
+  actually requires it
+- capture run metadata/audit output so the lifecycle is inspectable
+- explicitly defer PR management/review flows until the base lifecycle is
+  working cleanly
+
+Acceptance criteria:
+
+- one `.dag`-modeled auth-upsert workflow can guide/administer manual key
+  provisioning into GCP Secret Manager, validate it, and return a ready
+  handle
+- one `.dag`-modeled workflow can authenticate and perform:
+  launch -> follow-up -> delete
+- the happy path is auditable end to end
+- state persistence is either unnecessary or explicitly modeled as a
+  minimal handle-based contract
+- a cleanup/deletion path exists for any secret/state/run artifacts we
+  create
+- PR management/review automation is not required for this first slice
+
+Deletion / cleanup:
+
+- delete demo-only glue once the real happy path works
+
+### Generated validation for the first workflow
+
+The first workflow should carry generated validation from day 0. Keep it
+narrow and tied to the exact lifecycle above.
+
+Generated unit-style validation:
+
+- auth upsert returns `NeedsManualProvision` when the Cursor key is
+  missing
+- auth upsert returns invalid/failed validation when `/v0/me` rejects the
+  supplied key
+- auth upsert returns a ready handle when the key exists and validates
+- launch request shaping is correct for a simple prompt
+- follow-up request shaping is correct for an existing agent handle
+- delete request shaping is correct for an existing agent handle
+
+Generated integration-style validation:
+
+- auth upsert -> launch -> follow-up -> delete succeeds against mocked
+  Cursor responses
+- cleanup removes or invalidates any local state/handles created for the
+  workflow
+- follow-up after delete fails in a controlled/typed way
+- repeated delete is either idempotent or produces an explicit expected
+  error contract
+
+Optional live/manual smoke:
+
+- one ignored/manual test exercises the real Cursor API against a safe
+  test repo and key
+
+Review/acceptance bar for these generated tests:
+
+- the unit tests must prove meaningful contract behavior, not merely that
+  generated fields equal the same literals used to generate them
+- the integration tests must validate an actual lifecycle boundary:
+  auth validation, launch, follow-up, delete, or cleanup semantics
+- at least one negative-path case must exist for auth validation and for
+  post-delete behavior
+- failures must be human-legible: a reviewer should be able to tell what
+  contract regressed without reading generator internals
+- if a generated test only reasserts something already proven
+  structurally by the compiler, move that check into proof/compile-time
+  validation instead of keeping a tautological runtime test
+
+Reasoning/guarantee output required for this workflow:
+
+- the workflow should emit a readable summary of:
+  what is proven structurally, what is validated by generated tests, and
+  what remains unsupported
+- reviewers should not need to read generator internals to understand the
+  coverage/guarantee split
+- adding new generated tests later should read as an additive safety
+  upgrade, not a patch required to keep unseen structures functioning
+
+We should be happy with the first generated test set when:
+
+- it covers the happy path and the most important failure edges
+- each test is traceable to a concrete residual runtime obligation
+- reviewers agree the tests would catch a realistic integration
+  regression
+- removing or breaking a key contract in the workflow would actually make
+  at least one generated test fail
+- a human can easily explain the guarantee ledger for the workflow:
+  what is compile-time guaranteed, what is runtime-validated, and what is
+  still unsupported
+
+Out of scope for the first workflow:
+
+- PR creation/review/follow-up management
+- repository discovery/listing beyond what is required to launch one
+  agent
+- artifact download flows unless the happy path proves they are needed
+
+### AG3. Record the integration challenges
+
+Current state:
+
+- we do not yet know which parts of the cloud agent API map cleanly into
+  the current `.dag` model and which parts force design changes
+
+Work:
+
+- document the concrete friction points revealed by AG1/AG2
+- classify each challenge as:
+  model gap, compiler gap, runtime gap, secret/state-management gap, or
+  upstream API mismatch
+- feed the reusable parts back into the architecture/migration board
+
+Examples of likely challenge areas:
+
+- auth/secret acquisition and refresh
+- auth upsert boundaries: what is manual provider provisioning vs what is
+  automated in our system
+- whether follow-up state is a hard API requirement or optional sugar
+- async/polling/webhook vs synchronous completion
+- file/tool attachments and result typing
+- deletion semantics for agent runs, state, and stored artifacts
+
+Acceptance criteria:
+
+- there is a written challenge list from a real integration attempt
+- each challenge is classified and attached to a concrete follow-up task
+- the result informs the compiler roadmap instead of living as tribal
+  knowledge
+
+### Relationship to compiler convergence
+
+- AG1 should inform M2, M3, and M4 rather than fork around them
+- AG2 should stay narrow and avoid forcing premature generality into the
+  compiler
+- AG3 should create concrete follow-up work for the migration board when
+  the integration exposes real gaps
 
 ---
 
 ## Phase 1: Strict Soundness — COMPLETE
 
-All P1 items implemented (2026-03-22).
+All P1 items implemented (2026-03-22): type inference gaps (Tuple,
+fold, map_insert, chaining), tightened type equality, callable type,
+field-access kind, exhaustive complexity matching, non-ignored smoke
+test, ErrorCategory enum with fail-closed diagnostics.
 
-- P1.1-P1.4: Type inference gaps fixed (Tuple, fold, map_insert, chaining)
-- P1.5: node_type_equals tightened — Dynamic only equals Dynamic, structural fallback removed
-- P1.6: Callable/function-value type — callable_node wraps params+return_type
-- P1.7: TupleFirst/TupleSecond in all 3 emitters, pure match on access_style
-- P1.8: Exhaustive IntrinsicMethod match in complexity analyzer
-- P1.9: Non-ignored v2_strict_pipeline_smoke test (runs every cargo test)
-- P1.10: ErrorCategory enum, Warning→Error for fail-closed diagnostics
-
-**Ratchet:** `DIAG_RATCHET` in `src/v2/tests/src/lib.rs` — was 25.
-
-### P1.1–P1.4: Type inference gaps (25 → 0)
-
-These can be done in parallel. P1.4 is mostly resolved by P1.2+P1.3.
-
-| ID | Item | What | File |
-|----|------|------|------|
-| P1.1 | Tuple type | `enumerate` returns `List<Tuple<Int, T>>`, not `List<T>`. Define Tuple in `dsl/std/types.dag`. Change known-method return-type inference in `04_reconcile.dag` to construct `List<Tuple<Int, element>>`. Update emit to render `(T0, T1)`. | `04_reconcile.dag`, `05_emit_rust.dag` |
-| P1.2 | Fold accumulator | `fold` returns Dynamic. Extract init-arg type in ExprCall handler BEFORE resolving known-method return and thread it into method resolution. | `04_reconcile.dag` |
-| P1.3 | map_insert structure | `infer_builtin_call_type:1617` returns bare `Map`. Return first arg's type instead (preserves key/value structure). Same for `map_merge`, `with`. | `04_reconcile.dag` |
-| P1.4 | Field access chaining | Resolved by P1.2+P1.3 — chained `.bar` fails because upstream returns Dynamic. Verify; fix residual cases in `lookup_field_type_node`. | `04_reconcile.dag` |
-
-### P1.5: Tighten node_type_equals (AFTER P1.1–P1.4)
-
-Remove two permissive fallbacks. Must wait until Dynamic introduction points are fixed.
-
-| Location | What | Fix |
-|----------|------|-----|
-| `:1017` | `Dynamic == *` returns true | Dynamic only equals Dynamic |
-| `:1084-1087` | Structural fallback (same name + connective + child count) | Delete; types must match through container/optional/map branches |
-
-### P1.6–P1.9: Independent items (parallel with P1.1–P1.4)
-
-| ID | Item | What |
-|----|------|------|
-| P1.6 | Callable type | Add callable Node shape `(params) -> return_type`. FunctionValueBinding stores callable Node. Calls resolve through callable's return_type. |
-| P1.7 | Field-access kind upstream | Add `TupleFirst`, `TupleSecond` to `FieldAccessStyle`. Set in reconcile. Emit becomes pure match on `access_style` — delete hardcoded `.0`/`.1`. |
-| P1.8 | Dual classification | `classify_method_cost` in `07_complexity.dag` is single authority. Complexity analyzer reads from EmitGraphInfo, not its own parallel classifier. Delete `classify_method_cost`. |
-| P1.9 | Non-ignored smoke test | Lightweight test running strict pipeline on synthetic 2-type, 2-function module via interpreter. Assert 0 diagnostics. Exercises full path without building binary. |
-
-### P1.10: Structural error variant (Root Cause C)
-
-Add `ErrorCategory` enum (UnresolvedName | TypeMismatch | FieldNotFound | ...).
-Error nodes carry `error_category: ErrorCategory?`. Each introduction site sets it.
-The 2 Warning-severity diagnostics become Error — fail closed.
+**Ratchet:** `DIAG_RATCHET` in `src/v2/tests/src/lib.rs`.
 
 ---
 
@@ -139,19 +619,17 @@ The 2 Warning-severity diagnostics become Error — fail closed.
 dry-run` → correct output.
 
 **Status (2026-03-22):**
-- P2.1: Interpreter path blocked — v1 interpreter can't handle multi-module real
-  .dag files through compile_sources (lambda scoping issue: "unbound variable: t").
-  Tests created: ignored full-pipeline test (stage0 binary), working synthetic
-  service pipeline smoke test.
-- P2.2: Already implemented — emit_rust.dag has real transport call emission
-  (reqwest, Command, auth injection, dry-run mocking).
-- P2.3: Already implemented — main.rs generation with workflow subcommands,
-  clap args with defaults, function dispatch match arms.
-- P2.4: Needs verification via stage0 binary.
-- P2.5: Needs stage0 binary.
+- P2.2: Done — emit_rust.dag has real transport call emission (reqwest,
+  Command, auth injection, dry-run mocking).
+- P2.3: Done — main.rs generation with workflow subcommands, clap args
+  with defaults, function dispatch match arms.
+- P2.1, P2.4, P2.5: Blocked on stage0 binary.
 
-**Blocker:** Full gist E2E requires stage0 binary build (~2 min).
-The v1 interpreter limitation will be resolved when v2 is self-hosting (P3+).
+**Blocker:** The v1 interpreter cannot handle multi-module .dag files
+through `compile_sources` (lambda scoping issue: "unbound variable: t").
+This means gist E2E verification requires building and running the
+stage0 binary (~2 min build). The interpreter limitation does not need
+a fix — it will become irrelevant when v1 is retired (Phase 3).
 
 | ID | Item | Status |
 |----|------|--------|
@@ -214,9 +692,9 @@ target source files
 
 ## Phase 5: Convergence
 
-**Gate:** One type (Node) flows through the entire pipeline. `04_infer.dag`,
-not `04_typecheck.dag`. Each dissolution step validated by re-bootstrapping
-and proving stage1 == stage2.
+**Gate:** One type (Node) flows through the entire pipeline. `04_infer.dag`
+(renamed from `04_reconcile.dag`). Each dissolution step validated by
+re-bootstrapping and proving stage1 == stage2.
 
 **Prerequisite:** Phase 4 complete (generic emitter).
 
@@ -259,17 +737,10 @@ These items are tracked but not blocking bootstrap closure:
 ## Ordering
 
 ```
-P1.1 (tuple)  ─┐
-P1.2 (fold)   ─┤
-P1.3 (map)    ─┼─→ P1.5 (tighten equality) ─→ P1.10 (error variant)
-P1.4 (chain)  ─┘
-P1.6 (callable) ────→ independent
-P1.7 (field kind) ──→ independent
-P1.8 (dual class) ──→ independent
-P1.9 (smoke test) ──→ independent
+P1 done (complete)
 
-P1.* done ──→ P2.1 → P2.2 → P2.3 ─→ P2.5
-              P2.4 ─────────────────→ P2.5
+P2.1 → P2.4 → P2.5 (blocked on stage0 binary)
+P2.2, P2.3 done
 
 P2 done ───→ P3.1 → P3.2 → P3.3 → P3.4
 

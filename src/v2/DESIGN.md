@@ -59,39 +59,25 @@ separate programs with a boundary between them.
 ## Core principle: types are values, not references
 
 In v2, types are structural values that flow through the pipeline
-like any other data. A `TypeExpr` is a sum type describing shape:
-
-```dag
-type TypeExpr
-  = Named { name: String }
-  | Product { name: String?, fields: List<Field> }
-  | Coproduct { name: String?, variants: List<Variant> }
-  | Container { kind: ContainerKind, element: TypeExpr }
-  | Refined { base: TypeExpr, predicates: List<Predicate> }
-  | Optional { inner: TypeExpr }
-  | MapType { key: TypeExpr, value: TypeExpr }
-```
+like any other data. A type is a `Node` — the same unified recursive
+structure used for expressions, functions, and all other program
+elements.
 
 When a function parameter has type `List<Span>`, the compiler doesn't
-store the string `"List<Span>"` and look it up later. It stores:
-
-```
-Container { kind: List, element: Product { name: "Span", fields: [...] } }
-```
-
-The structure IS the type. No registry. No deferred lookup. No stale
-copies.
+store the string `"List<Span>"` and look it up later. It stores a
+`Node` with the structural composition inline. The structure IS the
+type. No registry. No deferred lookup. No stale copies.
 
 | v1 problem | v2 design |
 |---|---|
-| TypeId is a string → needs registry | Types are TypeExpr values → no registry |
-| Cardinality cached on port | Derived from TypeExpr structure |
+| TypeId is a string → needs registry | Types are Node values → no registry |
+| Cardinality cached on port | Derived from Node structure |
 | Parallel fn body evaluator + DAG executor | Compiler emits files, no interpreter |
-| `mock_element_expr` enumeration | Emitter walks TypeExpr structure |
+| `mock_element_expr` enumeration | Emitter walks Node structure |
 | `register_core_types()` duplication | Types defined in .dag only |
 | String-based classification | Pattern match on typed AST |
 | No boundary contracts | Each stage is a typed function |
-| Transport config as `Map<String, String>` | Typed coproduct per transport kind |
+| Transport config as `Map<String, String>` | Transport dissolved into Node |
 | Emitted code never tested downstream | Compiler emits tests alongside code |
 
 ## Architecture
@@ -113,7 +99,7 @@ copies.
 └────┬──────┘
      ▼
 ┌──────────┐
-│Typecheck  │  ModuleGraph → TypedGraph (types resolved to TypeExpr)
+│Typecheck  │  ModuleGraph → TypedGraph (types resolved to Node)
 └────┬──────┘
      ▼
 ┌─────────┐
@@ -130,7 +116,7 @@ For project compilation, artifact planning happens in orchestration
 after infer and before repeated per-artifact emit. That planning step is
 intentionally not a numbered core stage.
 
-### End-state file layout
+### File layout
 
 Numbers are reserved for the true linear transformation stages of the
 compiler. If a file is numbered, it must be one step in the
@@ -186,13 +172,15 @@ The key naming rule:
 - `targets/<lang>/adapter.dag` = compiler-owned target lowering
 - `dsl/extdeps/languages/<lang>/*` = declarative language facts, not compiler graph walks
 
-This means `06_pipeline.dag` is not the right end-state name. It is not
-"stage 6". It is the driver for the whole compiler, so the end-state
-name should be `compile.dag` or `driver.dag`.
+`06_pipeline.dag` is the compiler driver, not a sixth numbered stage.
+Pending renames (tracked in ROADMAP.md M1):
+
+- `04_reconcile.dag` → `04_infer.dag`
+- `06_pipeline.dag` → `compile.dag`
 
 ### Module classes
 
-Not every compiler-adjacent module is a pipeline stage. The end-state
+Not every compiler-adjacent module is a pipeline stage. The
 classification is:
 
 - Core stages:
@@ -228,8 +216,8 @@ Current standing of the main non-stage modules:
   derivation in the current driver, but still conceptually not a lowering
   stage
 - `artifact.dag`: honest future orchestration model; explicit-plan-only
-  today, not yet driving compilation; end-state is to sit above emit as
-  the selector of artifact targets and boundaries
+  today, not yet driving compilation; target role is to sit above emit
+  as the selector of artifact targets and boundaries
 - `trace.dag`: honest runtime/debug contract; normalized schema, not part
   of compile-time execution
 
@@ -260,10 +248,10 @@ Program-dependent decisions stay on the compiler side. Examples include:
 Those are not universal Rust facts. They are compiler analyses that use
 Rust facts.
 
-### Emitter end state
+### Emitter architecture
 
-The scalable end state is not "no target files". The scalable end state
-is "no target-owned traversal".
+The scalable design is not "no target files". It is "no target-owned
+traversal".
 
 `05_emit.dag` should own:
 
@@ -309,7 +297,7 @@ The DAG target is special:
 Long-term DAG interpretation is supported, but it does not become a new
 compiler stage.
 
-The stable end-state model is:
+The model is:
 
 1. the core compiler pipeline remains:
    `tokenize -> parse -> resolve -> infer -> emit`
@@ -336,7 +324,7 @@ The emitter is pluggable — it takes a typed artifact/subgraph plus a
 languages or artifact formats, but the traversal belongs in shared emit,
 not in per-target whole-compiler files.
 
-At project scope, artifact planning sits above emit. The end-state
+At project scope, artifact planning sits above emit. The target
 interfaces are:
 
 ```dag
@@ -372,217 +360,19 @@ func compile(root: FilePath, backend: Backend) -> CompileResult {
 }
 ```
 
-### Gap analysis: current tree vs end state
-
-This section is the working delta between the intended architecture above
-and the current repository. It is intentionally operational: what is
-still structurally wrong, how much re-architecture remains, what counts
-as done, and what old entrypoints/helpers should be deleted when the new
-shape lands.
-
-#### G1. Stage naming and file ownership
-
-Current state:
-
-- `04_reconcile.dag` still carries the old name even though the intended
-  role is `infer` / `typecheck`
-- `06_pipeline.dag` is the compiler driver, not a sixth numbered stage
-- numbered and unnumbered responsibilities are still mixed in the tree
-
-Target state:
-
-- numbered files are only the six core stages
-- driver/orchestrator is `compile.dag` (or `driver.dag`)
-- analyses and runtime-side modules are unnumbered
-
-Work / re-architecture:
-
-- low-to-medium; mostly renames plus import/test/doc cleanup
-
-Acceptance criteria:
-
-- `04_reconcile.dag` renamed to `04_infer.dag` (or `04_typecheck.dag`)
-- `06_pipeline.dag` renamed to `compile.dag`
-- no numbered file exists that is not a core lowering stage
-- docs/tests/imports use the new names consistently
-
-Deletion / compatibility cleanup:
-
-- delete the old `06_pipeline` name after callers migrate
-- delete stale doc language that calls the driver "stage 6"
-
-#### G2. Artifact planning sits above emit
-
-Current state:
-
-- the current top-level compile path still assumes one target for the
-  whole compile
-- `Artifact.target` is still a `String`
-- `artifact.dag` is explicit-plan-only and not yet driving compilation
-
-Target state:
-
-- infer whole typed graph first
-- artifact planning chooses backend per artifact
-- emit runs once per artifact
-- single-target compile becomes a wrapper over a default one-artifact plan
-
-Work / re-architecture:
-
-- medium; top-level interfaces change, but core stages remain intact
-
-Acceptance criteria:
-
-- `Artifact.target` uses typed `Backend`
-- `plan_artifacts(...)` runs after infer and before emit in the driver
-- `emit_artifact(...)` is the primary emit entrypoint
-- `compile(...)` is implemented as a compatibility wrapper around a
-  default artifact plan
-
-Deletion / compatibility cleanup:
-
-- delete the assumption that whole-project compile has exactly one target
-- delete `String`-typed artifact target fields once callers migrate
-
-#### G3. Shared emit spine vs per-target walkers
-
-Current state:
-
-- `05_emit.dag` has shared helpers and context-building
-- Rust, Python, and Go still each own a full expression dispatcher
-- Rust still owns a separate TCO dispatcher, and Python/Go each have
-  their own TCO walks as well
-
-Target state:
-
-- `05_emit.dag` owns traversal and dispatch
-- target adapters own only irreducible per-target lowering
-- adding a new backend does not mean adding another whole emitter walk
-
-Work / re-architecture:
-
-- high; this is the main remaining architecture extraction
-
-Acceptance criteria:
-
-- no target adapter owns a full 20-arm `ExprData` dispatcher
-- no target adapter owns a separate whole-tree TCO dispatcher
-- per-target modules are leaf renderers/adapters only
-- shared emit can drive Rust/Python/Go/Dag through one traversal spine
-
-Deletion / compatibility cleanup:
-
-- delete per-target whole-expression dispatchers after shared dispatch lands
-- delete duplicate TCO walkers after shared TCO dispatch lands
-
-#### G4. DAG backend and downstream execution
-
-Current state:
-
-- current code still models backends as native emit targets only
-- no canonical DAG backend artifact exists yet
-- no v2 DAG runtime/interpreter exists yet
-
-Target state:
-
-- `Dag` is a first-class backend
-- `targets/dag/adapter.dag` lowers typed graphs to canonical DAG artifacts
-- runtime execution happens in `runtimes/dag/*`
-- interpretation and JIT are runtime strategies over the same artifact
-
-Work / re-architecture:
-
-- medium-to-high; mostly new implementation, not a rewrite of core stages
-
-Acceptance criteria:
-
-- `Backend` / target enums include `Dag`
-- a canonical DAG artifact schema exists
-- compiler can emit that artifact
-- runtime/interpreter can execute it outside the core compile stages
-
-Deletion / compatibility cleanup:
-
-- delete wording that says compiler output is only native source files
-- delete assumptions that execution must happen through Rust/Python/Go
-
-#### G5. Test generation and downstream validation
-
-Current state:
-
-- test generation has not disappeared, but it has narrowed
-- Rust still emits generated tests from `mock_response` fixtures
-- Python and Go do not currently have equivalent generated-test paths
-- test generation is not yet modeled as a backend-/artifact-level shared system
-
-Target state:
-
-- generated tests are a first-class output of artifact emission
-- fixtures (`mock_response`) and boundary contracts can produce hermetic tests
-- tests are backend-aware but not hardcoded inside one language emitter
-
-Work / re-architecture:
-
-- medium; current Rust-only path should be preserved, then generalized
-
-Acceptance criteria:
-
-- generated tests still exist after emit refactors
-- at least one backend path remains capable of hermetic generated tests
-- test generation is surfaced at the artifact/emit contract level, not as
-  an implementation detail of one emitter file
-- long term: Python/Go/Dag can opt into generated test emission through
-  the same artifact-level interface
-
-Deletion / compatibility cleanup:
-
-- delete Rust-only ownership of test generation once shared/adapter-level
-  test emission exists
-- delete stale doc claims that imply multi-backend generated tests already exist
-
-#### G6. Proof and analysis modules are derivations, not side systems
-
-Current state:
-
-- `complexity.dag` is real and currently always-on in the driver
-- `ownership.dag` exists as a proof layer
-- these modules are still easy to misread as stray pipeline stages or as
-  ad hoc side analyses disconnected from emitted outputs
-
-Target state:
-
-- proof/analysis modules remain separate from lowering
-- they derive first-class outputs from the same typed graph: proofs,
-  reports, or executable validation obligations
-- they may run by default, but do not change program meaning unless they
-  are explicitly promoted to a transformation stage
-
-Work / re-architecture:
-
-- low-to-medium; mostly interface clarity, output contracts, and
-  preserving cost discipline
-
-Acceptance criteria:
-
-- derivation modules are invoked explicitly by `compile.dag`
-- derivation modules have bounded/default cost suitable for always-on use
-  when enabled
-- outputs from derivation modules are first-class in interfaces/docs, not
-  hidden diagnostics-only side effects
-- docs clearly separate derivation modules from lowering stages
-
-Deletion / compatibility cleanup:
-
-- delete any future tendency to smuggle rewrites into derivation modules
-- delete doc language that treats proofs/tests as second-class cleanup
+### Gap analysis
+
+Work items, acceptance criteria, and execution order for closing the gap
+between the current tree and the target architecture are tracked in
+`ROADMAP.md` (Architecture Migration Workboard, M1–M8). This document
+describes the target; the roadmap tracks the path.
 
 ### Bootstrap subset
 
-The v2 prototype targets the **gist.dag bootstrap subset**: the 8
-Item variants actually used by gist.dag and its transitive
-dependencies (`module`, `import`, `type`, `fn`, `func`, `service`,
-`resource`, `data`). The remaining variants are added incrementally
-after bootstrap proves the architecture works.
+The v2 compiler covers the **gist.dag bootstrap subset**: the 8
+Item variants used by gist.dag and its transitive dependencies
+(`module`, `import`, `type`, `fn`, `func`, `service`, `resource`,
+`data`). The remaining variants are added incrementally.
 
 ### Testing: the compiler owns its downstream
 
@@ -599,12 +389,9 @@ run. v2 fixes this by emitting tests alongside code:
 Emitted tests are hermetic by default — they use `mock_response` data
 from the DSL source as fixtures. No network, no credentials.
 
-Current status in the tree:
-
-- Rust still emits generated tests from `mock_response` fixture data
-- this is currently Rust-specific, not a shared artifact-level facility
-- preserving and generalizing generated tests is an explicit migration requirement,
-  not something to assume is already solved by the new emitter architecture
+Generated test emission is currently Rust-specific (`mock_response`
+fixture data). Generalizing to a shared artifact-level facility is
+tracked in `ROADMAP.md` M5.
 
 ### Generated test strategy
 
@@ -624,6 +411,82 @@ This keeps the architecture honest:
 - generated tests validate the residual runtime obligations the compiler
   cannot discharge structurally
 
+### Generated test quality bar
+
+Generated tests are only valuable if they assert something the compiler
+has not already assumed into existence. "The generated request object
+equals the same fields the generator just copied" is not a sufficient
+test.
+
+The review bar for generated tests is:
+
+- each generated test must correspond to a real residual obligation, not
+  a tautology
+- the test must exercise a meaningful boundary:
+  emitted request shape, response decoding, lifecycle transition,
+  cleanup/delete semantics, provider error handling, or runtime
+  behavior
+- at least one assertion in the test must be capable of failing because
+  the emitted program or integration behavior is wrong
+- negative-path tests are required whenever the contract has meaningful
+  failure modes
+- generated tests should prefer observable outcomes over internal
+  implementation details
+- if a test only reasserts facts already proven structurally, it should
+  be deleted or downgraded to a compile-time proof
+
+For review purposes, generated tests should answer:
+
+- what runtime obligation is this test discharging?
+- what concrete regression would cause it to fail?
+- is the failure signal legible to a human reviewing CI?
+- does this test validate a boundary we actually care about in
+  production?
+
+### Guarantee ledger
+
+The system should make it easy to answer "what is tested?" and "what is
+guaranteed?" without reading generator internals. That means every
+relevant workflow/artifact should be able to emit a readable guarantee
+ledger.
+
+One useful vocabulary is:
+
+```dag
+type GuaranteeMode
+  = CompileTimeProof
+  | GeneratedValidation
+  | Unsupported
+
+type GuaranteeRecord {
+  subject: String
+  obligation: String
+  mode: GuaranteeMode
+  evidence: String?
+}
+```
+
+The important property is not the exact type shape. The important
+property is that a reviewer can see:
+
+- which obligations are proven structurally by the compiler
+- which obligations are validated by generated tests
+- which obligations are still unsupported or unchecked
+
+This is also how the additive rule becomes visible in practice:
+
+- new proof/test families add new guarantee records or upgrade existing
+  obligations from `Unsupported` to `GeneratedValidation` or
+  `CompileTimeProof`
+- they do not require hand-maintained patch lists for every new unseen
+  structure
+- the tradeoff is explicit:
+  more computation/authoring effort in exchange for stronger safety
+  guarantees
+
+If the system cannot produce a readable guarantee ledger, the generated
+tests/proofs are not yet first-class enough.
+
 ### One graph, many projections
 
 Runtime code, generated tests, proofs, complexity certificates, and
@@ -631,7 +494,7 @@ reports should all fall out of the same typed DAG. They are not separate
 representation families; they are different projections or roles over
 the same program structure.
 
-The intended rule is:
+The rule is:
 
 - the source program carries enough structure to derive runtime artifacts,
   proofs, and executable validation artifacts
@@ -663,11 +526,110 @@ invariant is that the same typed graph can be projected into:
 - proof/report artifacts
 - diagnostics about obligations that remain unsupported
 
+The same rule also applies to operational setup workflows. If a provider
+requires manual provisioning at a system boundary (for example, an admin
+must create an API key in an external dashboard), that boundary should
+still be modeled as a typed workflow in `.dag`:
+
+- detect missing or invalid credential state
+- produce explicit human/admin instructions
+- reconcile the resulting secret into managed secret storage
+- validate the credential against the provider
+- return a ready handle for downstream workflows
+
+In other words, auth upsert is a workflow, not undocumented setup glue.
+The workflow may cross a manual boundary, but everything around that
+boundary should still be represented, auditable, and testable in the
+same projection model as the rest of the system.
+
 That same formula should cover test generation, ownership proofs,
 complexity proofs, policy/data-flow proofs, and future mathematical
 proofs. The compiler team maintains the derivation rules and capability
 tables; individual programs should not require hand-maintained "testing
 gap" lists.
+
+### Open-world derivation rule
+
+Proof/test/complexity generation must be open-world and additive. The
+compiler should not depend on a fragile closed list of ad hoc proof
+variants that has to be manually extended forever just to keep the
+system alive.
+
+The maintenance rule is:
+
+- define proof families in terms of graph structure, typed facts, and
+  explicit semantic tags
+- derive obligations by walking the same typed graph, not by maintaining
+  per-program exception lists
+- when new structure is added, extend the local derivation rule for that
+  structure or return `Unsupported`
+- every proof family must have a total outcome for any typed `.dag`
+  graph: discharge it statically, lower it to executable validation, or
+  mark it unsupported
+- new proof families are additive: they add new projections/witnesses
+  without invalidating the projection model itself
+
+One useful vocabulary is:
+
+```dag
+type DerivationOutcome
+  = ProofWitness
+  | ExecutableValidation
+  | Unsupported
+```
+
+This keeps the system from turning into a dying checklist. The compiler
+team maintains reusable derivation rules over the graph algebra; it does
+not maintain hand-curated inventories of every shape seen so far.
+
+### Example proof families
+
+These are examples of proof families that should scale over any typed
+`.dag` graph once their structural rules exist:
+
+1. Structural typing and boundary compatibility
+   For any typed graph, derive witnesses that local node shapes, call
+   edges, and artifact boundaries are type-compatible. New node forms add
+   local typing/boundary rules; existing graphs do not need bespoke
+   maintenance.
+
+2. Complexity / cost certificates
+   For any typed graph, derive a cost witness from call structure,
+   recursion shape, collection transforms, and method semantics. If a new
+   construct participates in cost, it adds one local rule to the cost
+   algebra. If it cannot yet be modeled, return `Unsupported` for that
+   obligation rather than silently guessing.
+
+3. Ownership / aliasing proofs
+   For any typed graph, derive ownership and borrowing obligations from
+   container structure, call boundaries, mutation points, and target
+   value/reference semantics. The proof is not a hand-maintained list of
+   "interesting cases"; it is a projection of the graph plus the target
+   semantics tables.
+
+4. Policy / information-flow proofs
+   For any typed graph with policy tags or labeled data classes, derive
+   whether data can legally flow to each sink. New sources, sinks, or
+   transforms add local flow rules; they do not require a global rewrite
+   of the proof system.
+
+5. Runtime validation projections
+   For any typed graph, residual obligations that cannot be discharged
+   statically become executable validation artifacts. The test plan is
+   therefore not a separate manual matrix; it is the remainder after
+   structural proof derivation.
+
+The common pattern is the same in every case:
+
+- graph structure provides the raw facts
+- derivation rules compute proofs or residual obligations
+- residual obligations become executable artifacts
+- unsupported obligations stay explicit in the bundle/diagnostics
+
+That pattern should work for any `.dag` program shape. What changes over
+time is which proof families exist and how strong they are, not the
+fundamental interface between source graph, proof derivation, and emitted
+artifacts.
 
 Examples of compile-time proofs:
 
@@ -686,7 +648,7 @@ Examples of test-time validation:
 
 ### Test taxonomy
 
-The intended end-state taxonomy is:
+The test taxonomy is:
 
 1. Compiler self-tests
    These are host-side tests for tokenize/parse/resolve/infer/emit and
@@ -710,136 +672,14 @@ The intended end-state taxonomy is:
    Tests synthesized from normalized traces or captured repro cases to
    lock in real failures as hermetic regressions.
 
-### What exists today
+### Generated test migration
 
-Compiler self-tests exist today and are healthy. Examples include:
+Work items for upgrading generated tests (preserving as first-class
+emit output, upgrading Rust scaffolds to validation, lifting to
+artifact-level interface, boundary integration tests, DAG conformance,
+trace/repro tests) are tracked in `ROADMAP.md` M5.
 
-- parse/type/emit regression tests in `src/v2/tests/src/lib.rs`
-- strict pipeline smoke tests
-- Go pipeline smoke tests
-- compile-all-modules smoke coverage
-
-Generated backend tests exist today only in a narrow Rust-specific form:
-
-- `05_emit_rust.dag` emits `tests/<module>_test.rs` files for service
-  operations that contain `mock_response` fixture data
-- these tests are generated from `mock_response` / `mock_*` properties
-
-Important current limitation:
-
-- the current Rust-generated tests are closer to fixture scaffolds than
-  full execution/assertion tests; they preserve the slot in the
-  interface, but they are not yet the end-state validation story
-
-No equivalent generated-test path currently exists for:
-
-- Python backend
-- Go backend
-- Dag backend
-- artifact boundary integration tests
-- trace/repro-driven generated tests
-
-### Generated test gap analysis
-
-#### T1. Preserve generated tests as a first-class emit output
-
-Current state:
-
-- generated tests exist only as an implementation detail of Rust emit
-
-Target state:
-
-- generated tests are a first-class output of artifact emission
-- at least one artifact can emit both runtime files and test files
-
-Acceptance criteria:
-
-- `ArtifactOutput` or the equivalent emit contract makes room for test files
-- emit refactors do not accidentally drop generated tests
-
-#### T2. Upgrade Rust generated tests from scaffold to validation
-
-Current state:
-
-- Rust-generated tests are created from `mock_response` data, but the
-  current emitted bodies are minimal scaffold code
-
-Target state:
-
-- generated Rust tests invoke emitted operations/services
-- tests assert observable behavior, not just fixture setup
-- dry-run/mock paths remain hermetic and credential-free
-
-Acceptance criteria:
-
-- generated Rust tests execute code paths and contain assertions
-- generated tests fail meaningfully when emitted behavior regresses
-
-#### T3. Lift test generation to the artifact/back-end interface
-
-Current state:
-
-- test generation is Rust-local
-
-Target state:
-
-- test generation is modeled at the artifact level
-- each backend can opt into generated tests through a common interface
-
-Acceptance criteria:
-
-- test generation is described by shared emit/artifact contracts
-- per-backend adapters implement only backend-specific rendering details
-
-#### T4. Add artifact boundary integration tests
-
-Current state:
-
-- `artifact.dag` has boundary modeling and proofs, but no generated
-  boundary test emission
-
-Target state:
-
-- boundary plans can emit integration tests that validate adapters and
-  protocol assumptions at runtime
-
-Acceptance criteria:
-
-- at least one boundary kind can generate a hermetic integration test
-- generated boundary tests are tied to explicit boundary declarations
-
-#### T5. Add Dag-runtime conformance tests
-
-Current state:
-
-- no DAG backend/runtime exists yet, so there is no runtime conformance suite
-
-Target state:
-
-- the same typed program can be exercised against Dag runtime and at
-  least one native backend with comparable expected behavior
-
-Acceptance criteria:
-
-- conformance tests exist for at least one shared program shape
-- differences are explicit and documented, not accidental
-
-#### T6. Trace/repro tests become generated regressions
-
-Current state:
-
-- `trace.dag` defines the contract, but no test-generation path consumes it
-
-Target state:
-
-- captured repro cases can be re-emitted as hermetic tests
-- trace/source-map regressions can be preserved automatically
-
-Acceptance criteria:
-
-- at least one repro case can round-trip into a generated regression test
-
-### Deletion / migration guardrails
+Guardrails:
 
 - do not delete the existing Rust `mock_response` test path until a
   stronger shared/generated replacement exists
@@ -850,17 +690,17 @@ Acceptance criteria:
 
 ### Bootstrap path
 
-1. **v1 Rust compiler** compiles v2's .dag source files (v1 is the host)
-2. **v2 compiler** (running on v1) reads .dag files and emits target code
-3. **v2 compiles gist.dag** → emitted files match v1's output
-4. **v2 compiles itself** → fixed point = self-hosting
+v1 compiles v2's .dag files → v2 compiles itself → fixed point
+(byte-identical stage1 == stage2). Self-compile and fixed point are
+done. Remaining bootstrap work (gist E2E, v1 retirement) is tracked
+in `ROADMAP.md` Phases 2–3.
 
 ### Dependency chain
 
 ```
 kernel primitives (String, Int, Bool, List, Map)
   ← dsl/std/types.dag (FilePath, NonEmptyStr, SourceSpan, ...)
-    ← src/v2/std/core.dag (Token, AST, Expr, TypeExpr)
+    ← src/v2/std/core.dag (Token, AST, Node, ExprData)
       ← src/v2/compiler/*.dag (tokenize, parse, resolve, typecheck, emit)
 ```
 
@@ -889,26 +729,24 @@ before the first works recreates the parallel implementation problem.
 
 ### Nominal identity in the typed graph
 
-After typecheck, `List<Span>` becomes:
-```
-Container { kind: List, element: Product { name: Some("Span"), fields: [...] } }
-```
-The `name` is metadata for diagnostics and emission — NOT a lookup key.
-The structural fields are authoritative.
+After typecheck, `List<Span>` is a `Node` with structural composition
+inline: the list application wraps a product node with name `"Span"`
+and its fields. The `name` is metadata for diagnostics and emission —
+NOT a lookup key. The structural fields are authoritative.
 
-### MapType key constraint
+### Map key constraint
 
-`MapType { key, value }` allows arbitrary keys in the AST.
-The typechecker enforces String-key constraint. The AST represents
-what the programmer wrote; the typechecker rejects what's invalid.
+Map types allow arbitrary keys in the AST. The typechecker enforces
+the String-key constraint. The AST represents what the programmer
+wrote; the typechecker rejects what's invalid.
 
 ---
 
 # Target domain models
 
-**This is a target-model specification, not a description of the
-current implementation.** The v2 compiler code does not yet match
-these models. Each section notes specific gaps where known.
+**This is a target-model specification.** The type algebra and
+cardinality model are implemented. The domain-generic extensions
+(future domains, physical dimensions) remain design targets.
 
 The pipeline stays linear. The model becomes layered.
 
@@ -952,32 +790,21 @@ AtLeastOne : 1..n values        (1..n)
 ```
 
 This means:
-- `Optional` exits TypeExpr entirely
+- `Optional` is not a type constructor — it is cardinality on the binding site
 - `Field.optional: Bool` becomes `Field.cardinality: Cardinality`
-- TypeExpr is purely "what" (the set of values), never "how many"
-- `List<T>`, `Set<T>`, `Map<K,V>` remain as type constructors via `App`
+- Type nodes are purely "what" (the set of values), never "how many"
+- `List<T>`, `Set<T>`, `Map<K,V>` remain as type constructors via application
 
-## Target TypeExpr (6 variants, down from 9)
+## Type representation
 
-```dag
-type TypeExpr
-  = Ref { name: String, span: SourceSpan }
-  | Atom { name: String, span: SourceSpan }
-  | Product { name: String?, fields: List<Field>, span: SourceSpan }
-  | Coproduct { name: String?, variants: List<Variant>, span: SourceSpan }
-  | App { name: String, args: List<TypeExpr>, span: SourceSpan }
-  | Refine { base: TypeExpr, predicates: List<Predicate>, span: SourceSpan }
-```
+Types are `Node` values — the same unified recursive structure used
+for expressions, functions, operations, and all other program
+elements. There is no separate type IR.
 
-| Removed | Replaced by | Justification |
-|---------|-------------|---------------|
-| `Named` | `Ref` | Renamed: it is a reference, not a type |
-| `Primitive` | `Atom` | Renamed: these are atoms of the type algebra |
-| `Container` | `App` | `List<T>` IS `App("List", [T])` — same set, one representation |
-| `MapType` | `App` | `Map<K,V>` IS `App("Map", [K, V])` |
-| `Optional` | Cardinality | `T?` is not a type — it's cardinality 0..1 on the binding site |
-| `Refined` | `Refine` | Renamed for verb form consistency |
-| `TypeApp` | `App` | Renamed: shorter, now the only application form |
+The six type algebra operations (Atom, Product, Coproduct, Application,
+Refinement, Reference) are all expressed as `Node` compositions.
+`Optional` is not a type constructor — it is cardinality on the
+binding site.
 
 ## Layer 0: Compiler Primitives
 
@@ -993,15 +820,15 @@ Every pass is a function `Input → (Output × List<Diagnostic>)`.
 
 ## Layer 1: Type Algebra
 
-TypeExpr (above), Predicate (unchanged — already clean), TypeBody,
-Field, Variant, Param.
+Types are `Node` values. Predicate, Field, Variant, and Param are
+structural compositions within `Node`.
 
 ```dag
 type Field {
   name: String
-  type_expr: TypeExpr
+  type_node: Node
   cardinality: Cardinality       // replaces optional: Bool
-  default_value: Expr?
+  default_value: Node?
   span: SourceSpan
 }
 ```
@@ -1022,29 +849,26 @@ Transport is a Node where `name` = kind ("rest"/"shell"/"file"/"local"),
 
 ## Layer 3: Semantic Model
 
-**Current problem**: `TypedGraph`, `TypedModule`, `TypeEnv`,
-`TypeBinding` are defined independently in both typecheck.dag and
-emit.dag. `ModuleGraph` types are forward-declared in typecheck.dag.
-
-**Target**: All semantic types live in core.dag, imported by consumers:
+Semantic types are defined once in `04_reconcile.dag` and imported by
+consumers.
 
 ```dag
-type ModuleGraph { modules: List<ResolvedModule>, diagnostics: List<Diagnostic> }
-type TypedGraph { modules: List<TypedModule>, diagnostics: List<Diagnostic> }
+type ResolvedGraph { modules: List<TypedModule>, ..., diagnostics: List<Diagnostic> }
 type TypedModule { module: Module, type_env: TypeEnv }
 type TypeEnv { bindings: List<TypeBinding> }
-type TypeBinding { name: String, resolved: TypeExpr }
+type TypeBinding { name: String, resolved: Node }
 ```
 
 ## Layer 4: Emission Model
 
-The emitter consumes TypedGraph, produces List<TextFile>. It is the
-only layer that knows about target languages.
+The emitter consumes `ResolvedGraph`, produces `List<TextFile>`. It is
+the only layer that knows about target languages.
 
-Built-in type constructor mapping (replaces separate Container/MapType/Optional arms):
+Type rendering walks `Node` structure directly. Built-in type
+constructor mapping example (target: Rust):
 
 ```dag
-fn emit_type_app(name: String, args: List<TypeExpr>) -> String {
+fn emit_type_app(name: String, args: List<Node>) -> String {
   match name {
     "List"         => "Vec<" + emit_type(args[0]) + ">"
     "Set"          => "BTreeSet<" + emit_type(args[0]) + ">"
@@ -1061,9 +885,9 @@ binding site.
 
 ## Layer 5: Compiler Composition
 
-Each stage has a well-typed return. The compile pipeline is linear composition.
-Wrapper types (`StageResult`, `TokenizeResult`, `ParseStageResult`) are
-eliminated — each stage function already has a well-typed return.
+Each stage has a well-typed return. The compile pipeline is linear
+composition. Each stage function returns its own well-typed result
+directly — no wrapper types.
 
 ## Concept layering
 
@@ -1104,18 +928,12 @@ layer, not appended to core.dag.
 
 ## Migration plan
 
-**Phase 0a: Canonical type homes.** Move semantic types to core.dag.
-Delete local redeclarations. ~1 session, zero semantic change.
+Foundational type and IR migrations are complete (canonical type homes,
+Node unification, wrapper type elimination). OperationSemantics is
+deferred to post-self-hosting.
 
-**Phase 0b: TypeExpr consolidation.** Rename `Named` → `Ref`,
-`Primitive` → `Atom`, etc. Remove `Container`, `MapType`, `Optional`.
-Update parser/typechecker/emitter. ~1-2 sessions.
-
-**Phase 0c: Eliminate wrapper types.** Delete the 11+ named wrapper
-types in typecheck.dag and pipeline.dag. Return anonymous records.
-~1 session.
-
-**Phase 0d: OperationSemantics (deferred).** Post-self-hosting.
+Remaining migration work is tracked in `ROADMAP.md` (Architecture
+Migration Workboard, M1–M8).
 
 ## Open design work
 
