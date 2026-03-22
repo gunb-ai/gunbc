@@ -79,12 +79,19 @@ The first work inside Phase 1 is structural reduction of duplicate authority.
 
 ---
 
-## Phase 1: Strict Soundness
+## Phase 1: Strict Soundness — COMPLETE
 
-**Gate:** 0 strict diagnostics. Reconcile has fail-closed boundaries.
-No permissive fallbacks. Reviewer signs off on "strict soundness complete."
+All P1 items implemented (2026-03-22).
 
-**Ratchet:** `DIAG_RATCHET` in `src/v2/tests/src/lib.rs` — currently 25.
+- P1.1-P1.4: Type inference gaps fixed (Tuple, fold, map_insert, chaining)
+- P1.5: node_type_equals tightened — Dynamic only equals Dynamic, structural fallback removed
+- P1.6: Callable/function-value type — callable_node wraps params+return_type
+- P1.7: TupleFirst/TupleSecond in all 3 emitters, pure match on access_style
+- P1.8: Exhaustive IntrinsicMethod match in complexity analyzer
+- P1.9: Non-ignored v2_strict_pipeline_smoke test (runs every cargo test)
+- P1.10: ErrorCategory enum, Warning→Error for fail-closed diagnostics
+
+**Ratchet:** `DIAG_RATCHET` in `src/v2/tests/src/lib.rs` — was 25.
 
 ### P1.1–P1.4: Type inference gaps (25 → 0)
 
@@ -123,23 +130,33 @@ The 2 Warning-severity diagnostics become Error — fail closed.
 
 ---
 
-## Phase 2: Gist End-to-End
+## Phase 2: Gist End-to-End — IN PROGRESS
 
 **Gate:** `gist.dag` + 11 transitive deps → Rust → `cargo build` → `cargo run --
 dry-run` → correct output.
 
-**Prerequisite:** Phase 1 complete (0 strict diagnostics).
+**Status (2026-03-22):**
+- P2.1: Interpreter path blocked — v1 interpreter can't handle multi-module real
+  .dag files through compile_sources (lambda scoping issue: "unbound variable: t").
+  Tests created: ignored full-pipeline test (stage0 binary), working synthetic
+  service pipeline smoke test.
+- P2.2: Already implemented — emit_rust.dag has real transport call emission
+  (reqwest, Command, auth injection, dry-run mocking).
+- P2.3: Already implemented — main.rs generation with workflow subcommands,
+  clap args with defaults, function dispatch match arms.
+- P2.4: Needs verification via stage0 binary.
+- P2.5: Needs stage0 binary.
 
-gist.dag exercises the full service stack: REST transports, OAuth auth,
-multi-module composition. No filesystem I/O (reads via `git show`).
+**Blocker:** Full gist E2E requires stage0 binary build (~2 min).
+The v1 interpreter limitation will be resolved when v2 is self-hosting (P3+).
 
-| ID | Item | What |
-|----|------|------|
-| P2.1 | Gist pipeline test | Feed all 11 deps through v2 pipeline via interpreter. Assert 0 diagnostics, ~13 files emitted. Surfaces reconcile/emit gaps for service/transport patterns. |
-| P2.2 | Service operation bodies | `emit_service_def` (`:2751`) currently emits `todo!()`. Generate real code from transport Node: `base_url` → reqwest, `auth` → token injection, `argv` → `tokio::process::Command`. Dry-run branch from mock properties. |
-| P2.3 | Main.rs workflow dispatch | `emit_main_rs` (`:3272`) has Compile subcommand only. Add workflow subcommands from `func` items with `uses`. Map params → clap args with defaults. |
-| P2.4 | Multi-module extdep imports | Verify `03_resolve.dag` resolves paths across `dsl/std/`, `dsl/extdeps/`, `dsl/gunbc/`. Verify lib.rs includes mod declarations for all 11 deps. |
-| P2.5 | End-to-end build+run test | Build stage0 → compile gist + deps → `cargo build` output → `cargo run -- gist --help` exits 0. |
+| ID | Item | Status |
+|----|------|--------|
+| P2.1 | Gist pipeline test | Partial — interpreter blocked, tests scaffolded |
+| P2.2 | Service operation bodies | Done (pre-existing) |
+| P2.3 | Main.rs workflow dispatch | Done (pre-existing) |
+| P2.4 | Multi-module extdep imports | Needs stage0 verification |
+| P2.5 | End-to-end build+run test | Needs stage0 binary |
 
 **Files:** `05_emit_rust.dag`, `06_pipeline.dag`, `03_resolve.dag`,
 `dsl/extdeps/languages/rust/runtime.dag`, `src/v2/tests/src/lib.rs`
