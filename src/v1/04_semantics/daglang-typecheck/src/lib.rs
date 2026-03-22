@@ -6106,18 +6106,21 @@ fn resolve_for_loop_scope_contract(
 ) -> (Option<ForLoopScopeContract>, Vec<TypeError>) {
     let mut errors = Vec::new();
     let element_binding = if let Some(element_ty) = for_loop_element_value_type(iterable_ty) {
-        Some(ForLoopScopeValueBinding {
+        ForLoopScopeValueBinding {
             name: binding.to_string(),
             value_type: element_ty,
-        })
-    } else {
-        if !iterable_ty.is_inferred() {
-            errors.push(TypeError::TypeMismatch {
-                expected: "List<T>".to_string(),
-                got: iterable_ty.display_name(),
-            });
         }
-        None
+    } else if iterable_ty.is_inferred() {
+        ForLoopScopeValueBinding {
+            name: binding.to_string(),
+            value_type: ValueType::Inferred,
+        }
+    } else {
+        errors.push(TypeError::TypeMismatch {
+            expected: "List<T>".to_string(),
+            got: iterable_ty.display_name(),
+        });
+        return (None, errors);
     };
     let mut passthrough_bindings = Vec::with_capacity(passthrough.len());
 
@@ -6133,16 +6136,14 @@ fn resolve_for_loop_scope_contract(
         }
     }
 
-    let contract = element_binding.and_then(|element_binding| {
-        if errors.is_empty() {
-            Some(ForLoopScopeContract {
-                element_binding,
-                passthrough_bindings,
-            })
-        } else {
-            None
-        }
-    });
+    let contract = if errors.is_empty() {
+        Some(ForLoopScopeContract {
+            element_binding,
+            passthrough_bindings,
+        })
+    } else {
+        None
+    };
 
     (contract, errors)
 }

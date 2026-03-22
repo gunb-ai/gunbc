@@ -4226,14 +4226,23 @@ fn required_for_loop_binding_port_type(
     scope: &TypedForLoopScope,
     binding: &str,
 ) -> Result<String, LowerError> {
-    scope
-        .binding_ir_type(binding)
-        .map(port_type_for_ir_type)
-        .ok_or_else(|| LowerError::InvalidForLoopScope {
+    let Some(ir_type) = scope.binding_ir_type(binding) else {
+        return Err(LowerError::InvalidForLoopScope {
             caller: control_flow_caller_name(ctx),
             binding: binding.to_string(),
             detail: "TypedForLoopScope metadata omitted this loop binding".into(),
-        })
+        });
+    };
+
+    if matches!(ir_type, gunbc_ir::code_ir::IrType::Unknown) {
+        return Err(LowerError::InvalidForLoopScope {
+            caller: control_flow_caller_name(ctx),
+            binding: binding.to_string(),
+            detail: "TypedForLoopScope metadata left this loop binding type unresolved".into(),
+        });
+    }
+
+    Ok(port_type_for_ir_type(ir_type))
 }
 
 fn wire_loop_body_named_args(
@@ -4284,11 +4293,14 @@ fn make_loop_body_dag_from_stmts(
         element_port_type.as_str(),
     )];
     for passthrough in &site.passthrough {
-        let passthrough_type = param_types
-            .get(passthrough)
-            .map(String::as_str)
-            .unwrap_or("Any");
-        body_inputs.push(Port::scalar(passthrough.as_str(), passthrough_type));
+        let passthrough_type = param_types.get(passthrough).ok_or_else(|| {
+            LowerError::InvalidForLoopScope {
+                caller: control_flow_caller_name(ctx),
+                binding: passthrough.clone(),
+                detail: "TypedForLoopScope metadata omitted this loop binding".into(),
+            }
+        })?;
+        body_inputs.push(Port::scalar(passthrough.as_str(), passthrough_type.as_str()));
     }
     body_inputs.push(Port::scalar(output_passthrough_input_name("result"), "Any"));
     body_inputs.push(Port::list(PortName::DEPS, "Any"));

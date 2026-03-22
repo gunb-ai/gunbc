@@ -3946,6 +3946,37 @@ func run(repos: List<String>) -> { out: List<String> } {
 }
 
 #[test]
+fn control_flow_lowering_rejects_unresolved_for_loop_binding_types() {
+    let typed = typed_project_from_sources_with_options(
+        &[(
+            "sample/for_scope_unresolved_binding.dag",
+            r#"module sample.for_scope_unresolved_binding
+func run() -> { out: List<String> } {
+  result = for repo in missing_repos { repo }
+  return { out: result }
+}"#,
+        )],
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    );
+
+    let error = lower_typed_project(&typed)
+        .expect_err("lowering should reject unresolved for-loop binding types");
+
+    assert!(matches!(
+        error,
+        LowerError::InvalidForLoopScope {
+            caller,
+            binding,
+            detail,
+        } if caller == "sample.for_scope_unresolved_binding::run"
+            && binding == "repo"
+            && detail == "TypedForLoopScope metadata left this loop binding type unresolved"
+    ));
+}
+
+#[test]
 fn pipe_filter_join_chain_lowers_to_collection_nodes() {
     let typed = typed_project_from_sources(&[(
         "sample/chain.dag",

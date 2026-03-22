@@ -1018,6 +1018,53 @@ fn run(entries: Map<String, String>) -> List<String> {
 }
 
 #[test]
+fn typecheck_records_for_loop_scope_metadata_for_inferred_iterables() {
+    let graph = module_graph_from_sources(&[(
+        "sample/loop_scope_inferred_iterable.dag",
+        r#"module sample.loop_scope_inferred_iterable
+func run() -> { out: List<String> } {
+  result = for repo in missing_repos { repo }
+  return { out: result }
+}"#,
+    )]);
+    let typed = typecheck_module_graph_with_options(
+        &graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .expect("inferred iterables should still produce for-loop scope metadata");
+
+    let module = typed.module(0).expect("typed module should exist");
+    let run = module
+        .ast
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            daglang_syntax::ast::Item::FuncDef(def) if def.name == "run" => Some(def),
+            _ => None,
+        })
+        .expect("run func should be present");
+    let for_expr = match &run.body.stmts[0] {
+        daglang_syntax::ast::Stmt::Let(_, expr)
+        | daglang_syntax::ast::Stmt::Assign(_, expr) => expr,
+        daglang_syntax::ast::Stmt::Node(node_stmt) => &node_stmt.expr,
+        other => panic!("expected first stmt to bind the for-loop result, got {other:?}"),
+    };
+    let metadata = module
+        .callable_body_metadata("run")
+        .expect("run should carry callable body metadata");
+    let scope = metadata
+        .for_loop_scope(expr_identity(&run.body.stmts, for_expr))
+        .expect("detected for-loop should have TypedForLoopScope metadata");
+
+    assert!(matches!(
+        scope.binding_ir_type("repo"),
+        Some(&gunbc_ir::code_ir::IrType::Unknown)
+    ));
+}
+
+#[test]
 fn strict_mode_accepts_associated_output_function_type_parameters() {
     let graph = module_graph_from_sources(&[(
         "sample/ensure.dag",
