@@ -366,7 +366,7 @@ fn emit_data_value_json(value: Node) -> String {
       let el_strs = els |> map(e => emit_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    ExprRecordLit { type_name: _, fields: fs } => {
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_data_value_json(value: f.value))
       )
@@ -391,7 +391,7 @@ fn emit_typed_data_value_json(value: Node) -> String {
       let el_strs = els |> map(e => emit_typed_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    ExprRecordLit { type_name: _, fields: fs } => {
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => {
       let field_strs = fs |> map(f =>
         concat("\"", escape_json_string(s: f.name), "\": ", emit_typed_data_value_json(value: f.value))
       )

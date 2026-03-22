@@ -639,9 +639,10 @@ fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, arg
 
 fn emit_go_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let recv_expr = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-  let recv_str = if pass_receiver_by_ref {
-    concat("(&", recv_expr, ")")
-  } else { recv_expr }
+  // pass_receiver_by_ref is a Rust-specific concern (borrow vs move).
+  // Go maps/slices are already reference types; &expr is incorrect and
+  // fails for non-addressable expressions.
+  let recv_str = recv_expr
   let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
   let args_str = arg_strs |> join(separator: ", ")
   let lowered = concat(recv_str, ".", go_export_ident(name: function_name), "(", args_str, ")")
