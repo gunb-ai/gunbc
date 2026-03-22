@@ -2396,7 +2396,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
         is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
-        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true)
+        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
+        expr_data: NoExprData
       },
       diagnostics: body_diags
     }
@@ -3580,7 +3581,7 @@ fn build_item_info(item: Node) -> ItemInfo {
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
         is_self_recursive: false,
-        has_non_tail_self_call: false, expr_data: NoExprData
+        has_non_tail_self_call: false
       }
     FnItem =>
       ItemInfo {
@@ -3596,7 +3597,7 @@ fn build_item_info(item: Node) -> ItemInfo {
         kind: kind,
         service_names: [],
         is_self_recursive: false,
-        has_non_tail_self_call: false, expr_data: NoExprData
+        has_non_tail_self_call: false
       }
   }
 }

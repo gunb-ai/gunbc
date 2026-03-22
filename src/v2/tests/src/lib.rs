@@ -3409,9 +3409,6 @@ fn example(items: List<String>) -> Int {
                 panic!("could not parse diagnostic count from stderr:\n{stderr}")
             });
 
-        #[allow(clippy::disallowed_macros)]
-        eprintln!("Reconcile diagnostic count: {diag_count}");
-
         assert!(
             compile_output.status.success(),
             "stage0 compile failed:\n{stderr}"
@@ -3474,6 +3471,8 @@ fn example(items: List<String>) -> Int {
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
+            ("07_complexity", "src/v2/07_complexity.dag"),
+            ("08_artifact", "src/v2/08_artifact.dag"),
         ];
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
@@ -3500,7 +3499,6 @@ fn example(items: List<String>) -> Int {
 
     /// Smoke test: assemble stage0 crate and cargo check it.
     #[test]
-    #[ignore] // Requires cargo toolchain
     #[cfg(feature = "v1-bootstrap")]
     #[allow(clippy::disallowed_macros)]
     fn v2_stage0_cargo_check() {

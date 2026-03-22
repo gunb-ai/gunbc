@@ -822,7 +822,7 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
         Some { value: f } => f
         None => v
       }
-      None => Node { name: "", connective: none, children: [], span: SourceSpan { start: 0, end: 0 }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false }
+      None => Node { name: "", connective: none, children: [], span: SourceSpan { start: 0, end: 0 }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     }
     let ty = emit_rust_node_type(n: field_node.return_type.value, rc_types: rc_types)
     // Generate match arms for each variant.
@@ -1728,6 +1728,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprReturn { value: v } =>
       concat("return ", emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+    NoExprData => ""
   }
 }
 
@@ -2461,6 +2462,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, resolved_t
         let all_field_strs = field_strs
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
+        let parent_enum = match map_get(vtoe, tn) { Some { value: en } => en  None => "" }
         let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: parent_enum)
         if needs_rc {
           concat("Rc::new(", raw, ")")

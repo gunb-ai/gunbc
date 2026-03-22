@@ -483,11 +483,16 @@ fn collect_size_vars(expr: CostExpr) -> List<String> {
 }
 
 // Deduplicate a list of strings using a map accumulator.
+type DeduplicateAcc {
+  seen: Map<String, Bool>
+  out: List<String>
+}
+
 fn deduplicate(items: List<String>) -> List<String> {
-  let result = items |> fold(init: { seen: empty_map(), out: [] }, f: fn(acc, item) {
+  let result = items |> fold(init: DeduplicateAcc { seen: empty_map(), out: [] }, f: fn(acc, item) {
     match map_get(acc.seen, item) {
       Some { value: _ } => acc
-      None => {
+      None => DeduplicateAcc {
         seen: map_insert(acc.seen, item, true),
         out: list_push(acc.out, item)
       }
@@ -1192,26 +1197,29 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
   })
   // Collect function summaries and violations
   let summaries_map = result.table.summaries
-  let violations = func_entries |> flat_map(entry =>
+  let violations = func_entries |> filter(entry =>
+    match map_get(summaries_map, entry.name) {
+      Some { value: summary } => is_unknown_cost(expr: summary.work)
+      None => true
+    }
+  ) |> map(entry =>
     match map_get(summaries_map, entry.name) {
       Some { value: summary } =>
-        if is_unknown_cost(expr: summary.work) {
-          let reason = match summary.work {
-            CostUnknown { reason: r } => r
-            _ => "unknown"
-          }
-          [ComplexityViolation {
-            func_name: entry.name,
-            reason: reason,
-            summary: Some { value: summary }
-          }]
-        } else { [] }
+        let reason = match summary.work {
+          CostUnknown { reason: r } => r
+          _ => "unknown"
+        }
+        ComplexityViolation {
+          func_name: entry.name,
+          reason: reason,
+          summary: Some { value: summary }
+        }
       None =>
-        [ComplexityViolation {
+        ComplexityViolation {
           func_name: entry.name,
           reason: "no summary computed",
           summary: none
-        }]
+        }
     }
   )
   let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
