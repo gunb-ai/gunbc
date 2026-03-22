@@ -1277,6 +1277,7 @@ pub fn typedefs_to_source_file(
         boxed_fields: std::collections::HashSet::new(),
         fn_return_types: std::collections::HashMap::new(),
         fn_param_types: std::collections::HashMap::new(),
+        fn_param_name_indices: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(),
         param_types: std::collections::HashMap::new(),
         current_return_type: None,
@@ -1425,7 +1426,7 @@ pub fn generate_types_for_modules(
             collect_struct_field_ir_types(td, &mut sfit);
             collect_enum_variants(td, &mut ev);
         }
-        let fn_ctx = fn_codegen::CompileContext {
+        let mut fn_ctx = fn_codegen::CompileContext {
             data_names: fn_data_names,
             data_ir_types,
             data_map_names: std::collections::HashSet::new(),
@@ -1436,7 +1437,8 @@ pub fn generate_types_for_modules(
             boxed_fields: std::collections::HashSet::new(),
             fn_return_types: global_fn_return_types.clone(),
             fn_return_ir_types: std::collections::HashMap::new(),
-            fn_param_types: global_fn_param_types.clone(),
+            fn_param_types: std::collections::HashMap::new(),
+            fn_param_name_indices: std::collections::HashMap::new(),
             optional_params: std::collections::HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
@@ -1463,6 +1465,7 @@ pub fn generate_types_for_modules(
             rc_wrapped_types: std::collections::HashSet::new(),
             match_bound_vars: std::collections::HashSet::new(),
         };
+        fn_ctx.set_fn_param_types(global_fn_param_types.clone());
         all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
     }
 
@@ -2000,47 +2003,47 @@ mod tests {
             collect_enum_variants(td, &mut enum_variants);
         }
 
-        (
-            fd,
-            fn_codegen::CompileContext {
-                data_names: data_defs.iter().map(|dd| dd.name.clone()).collect(),
-                data_ir_types: collect_data_ir_types(data_defs.iter().copied()),
-                data_map_names: HashSet::new(),
-                optional_fields,
-                variant_to_enum,
-                struct_field_types,
-                enum_variants,
-                boxed_fields: HashSet::new(),
-                fn_return_types,
-                fn_return_ir_types: HashMap::new(),
-                fn_param_types,
-                optional_params: HashSet::new(),
-                param_types: HashMap::new(),
-                current_return_type: None,
-                current_return_ir_type: None,
-                ir_scope: HashMap::new(),
-                struct_field_ir_types,
-                use_counts: HashMap::new(),
-                fold_accum_name: None,
-                fold_accum_fresh_name: None,
-                fold_accum_is_rc: false,
-                anonymous_record_targets: collect_anonymous_record_targets(
-                    module.callable_body_metadata(fn_name),
-                ),
-                synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
-                    module.callable_body_metadata(fn_name),
-                ),
-                expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fn_name)),
-                expr_identities: HashMap::new(),
-                expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
-                enum_accessor_fields: HashMap::new(),
-                optional_return_fns: HashSet::new(),
-                fn_str_params: HashSet::new(),
-                str_param_names: HashSet::new(),
-                rc_wrapped_types: HashSet::new(),
-                match_bound_vars: HashSet::new(),
-            },
-        )
+        let mut ctx = fn_codegen::CompileContext {
+            data_names: data_defs.iter().map(|dd| dd.name.clone()).collect(),
+            data_ir_types: collect_data_ir_types(data_defs.iter().copied()),
+            data_map_names: HashSet::new(),
+            optional_fields,
+            variant_to_enum,
+            struct_field_types,
+            enum_variants,
+            boxed_fields: HashSet::new(),
+            fn_return_types,
+            fn_return_ir_types: HashMap::new(),
+            fn_param_types: HashMap::new(),
+            fn_param_name_indices: HashMap::new(),
+            optional_params: HashSet::new(),
+            param_types: HashMap::new(),
+            current_return_type: None,
+            current_return_ir_type: None,
+            ir_scope: HashMap::new(),
+            struct_field_ir_types,
+            use_counts: HashMap::new(),
+            fold_accum_name: None,
+            fold_accum_fresh_name: None,
+            fold_accum_is_rc: false,
+            anonymous_record_targets: collect_anonymous_record_targets(
+                module.callable_body_metadata(fn_name),
+            ),
+            synthesized_anonymous_record_types: collect_synthesized_anonymous_record_types(
+                module.callable_body_metadata(fn_name),
+            ),
+            expr_ir_types: collect_expr_ir_types(module.callable_body_metadata(fn_name)),
+            expr_identities: HashMap::new(),
+            expr_path: std::cell::RefCell::new(fn_codegen::ExprPath::default()),
+            enum_accessor_fields: HashMap::new(),
+            optional_return_fns: HashSet::new(),
+            fn_str_params: HashSet::new(),
+            str_param_names: HashSet::new(),
+            rc_wrapped_types: HashSet::new(),
+            match_bound_vars: HashSet::new(),
+        };
+        ctx.set_fn_param_types(fn_param_types);
+        (fd, ctx)
     }
 
     #[test]
@@ -2396,7 +2399,7 @@ mod tests {
                 .collect(),
         );
         ctx.fn_return_types = fn_return_types;
-        ctx.fn_param_types = fn_param_types;
+        ctx.set_fn_param_types(fn_param_types);
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2484,7 +2487,7 @@ mod tests {
             vec![("pos".to_string(), gunbc_ir::code_ir::IrType::Int)],
         );
         ctx.fn_return_types = fn_return_types;
-        ctx.fn_param_types = fn_param_types;
+        ctx.set_fn_param_types(fn_param_types);
         if let Stmt::Expr(Expr::Call(_, args)) = &fd.body.stmts[0] {
             annotate_expr_ir_type(
                 &mut ctx,
@@ -2601,7 +2604,7 @@ mod tests {
             );
         }
         ctx.fn_return_types = fn_return_types;
-        ctx.fn_param_types = fn_param_types;
+        ctx.set_fn_param_types(fn_param_types);
 
         let items = fndef_to_code_ir(&fd, &ctx);
         match &items[0] {

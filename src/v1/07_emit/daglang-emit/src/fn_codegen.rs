@@ -53,6 +53,9 @@ use std::collections::HashSet;
 
 use crate::type_codegen::to_snake_case;
 
+type NamedParamIndex = HashMap<String, usize>;
+type CallParamLookup<'a> = (&'a [(String, String)], Option<&'a NamedParamIndex>);
+
 // ---------------------------------------------------------------------------
 // Call graph SCC + function classification
 // ---------------------------------------------------------------------------
@@ -372,6 +375,9 @@ pub struct CompileContext {
     pub fn_return_ir_types: HashMap<String, IrType>,
     /// Map from function name → ordered parameter names and their type names.
     pub fn_param_types: std::collections::HashMap<String, Vec<(String, String)>>,
+    /// Exact param-name → ordered position index for named-call lookup.
+    /// Built once when callable signature metadata enters the context.
+    pub(crate) fn_param_name_indices: HashMap<String, NamedParamIndex>,
     /// Set of parameter names that are Optional (for v2 crate emit).
     pub optional_params: HashSet<String>,
     /// Map from parameter name → type name (for v2 crate emit).
@@ -795,6 +801,7 @@ impl CompileContext {
             fn_return_types: std::collections::HashMap::new(),
             fn_return_ir_types: HashMap::new(),
             fn_param_types: std::collections::HashMap::new(),
+            fn_param_name_indices: HashMap::new(),
             optional_params: HashSet::new(),
             param_types: std::collections::HashMap::new(),
             current_return_type: None,
@@ -823,6 +830,17 @@ impl CompileContext {
         self.expr_path.borrow().clone()
     }
 
+    pub fn set_fn_param_types(&mut self, fn_param_types: HashMap<String, Vec<(String, String)>>) {
+        self.fn_param_name_indices = build_fn_param_name_indices(&fn_param_types);
+        self.fn_param_types = fn_param_types;
+    }
+
+    pub fn insert_fn_param_types(&mut self, fn_name: String, params: Vec<(String, String)>) {
+        self.fn_param_name_indices
+            .insert(fn_name.clone(), build_param_name_index(&params));
+        self.fn_param_types.insert(fn_name, params);
+    }
+
     fn with_expr_path<T>(&self, path: ExprPath, f: impl FnOnce() -> T) -> T {
         let previous = self.expr_path.replace(path);
         let result = f();
@@ -849,6 +867,26 @@ impl CompileContext {
     fn populate_expr_identities(&mut self, body: &ast::FnBody) {
         self.expr_identities = build_expr_identities(body);
         self.expr_path.replace(ExprPath::default());
+    }
+
+    fn call_param_types<'a>(
+        &'a self,
+        fn_name: &str,
+        has_named_args: bool,
+    ) -> Option<CallParamLookup<'a>> {
+        if let Some(ordered) = self.fn_param_types.get(fn_name) {
+            let named = has_named_args
+                .then(|| self.fn_param_name_indices.get(fn_name))
+                .flatten();
+            return Some((ordered.as_slice(), named));
+        }
+
+        let rust_name = to_snake_case(fn_name);
+        let ordered = self.fn_param_types.get(&rust_name)?;
+        let named = has_named_args
+            .then(|| self.fn_param_name_indices.get(&rust_name))
+            .flatten();
+        Some((ordered.as_slice(), named))
     }
 }
 
@@ -905,7 +943,7 @@ fn qualified_variant_expr(
 
 struct CallParamTypes<'a> {
     ordered: &'a [(String, String)],
-    named: Option<HashMap<&'a str, &'a str>>,
+    named: Option<&'a NamedParamIndex>,
 }
 
 impl<'a> CallParamTypes<'a> {
@@ -914,31 +952,38 @@ impl<'a> CallParamTypes<'a> {
         has_named_args: bool,
         ctx: &'a CompileContext,
     ) -> Option<CallParamTypes<'a>> {
-        let ordered = ctx
-            .fn_param_types
-            .get(fn_name)
-            .or_else(|| ctx.fn_param_types.get(&to_snake_case(fn_name)))?
-            .as_slice();
-        let named = has_named_args.then(|| {
-            ordered
-                .iter()
-                .map(|(param_name, ty)| (param_name.as_str(), ty.as_str()))
-                .collect()
-        });
+        let (ordered, named) = ctx.call_param_types(fn_name, has_named_args)?;
         Some(Self { ordered, named })
     }
 
     fn lookup(&self, arg_index: usize, arg_name: Option<&str>) -> Option<&'a str> {
         if let Some(name) = arg_name {
-            return self
+            let index = self
                 .named
-                .as_ref()
                 .expect("named calls build the param-name index")
                 .get(name)
-                .copied();
+                .copied()?;
+            return self.ordered.get(index).map(|(_, ty)| ty.as_str());
         }
         self.ordered.get(arg_index).map(|(_, ty)| ty.as_str())
     }
+}
+
+fn build_param_name_index(params: &[(String, String)]) -> NamedParamIndex {
+    params
+        .iter()
+        .enumerate()
+        .map(|(index, (param_name, _))| (param_name.clone(), index))
+        .collect()
+}
+
+fn build_fn_param_name_indices(
+    fn_param_types: &HashMap<String, Vec<(String, String)>>,
+) -> HashMap<String, NamedParamIndex> {
+    fn_param_types
+        .iter()
+        .map(|(fn_name, params)| (fn_name.clone(), build_param_name_index(params)))
+        .collect()
 }
 
 /// Count how many times each identifier is referenced in a statement list.
@@ -9219,7 +9264,7 @@ mod tests {
         );
         ctx.variant_to_enum
             .insert("NullCoalesce".to_string(), "BinOpKind".to_string());
-        ctx.fn_param_types.insert(
+        ctx.insert_fn_param_types(
             "emit".to_string(),
             vec![
                 ("state".to_string(), "TokenizerState".to_string()),
@@ -9264,7 +9309,7 @@ mod tests {
         );
         ctx.variant_to_enum
             .insert("NullCoalesce".to_string(), "BinOpKind".to_string());
-        ctx.fn_param_types.insert(
+        ctx.insert_fn_param_types(
             "emit".to_string(),
             vec![
                 ("state".to_string(), "TokenizerState".to_string()),
@@ -9275,6 +9320,51 @@ mod tests {
 
         let expr = Expr::Call(
             "emit".into(),
+            vec![
+                (Some("kind".into()), Expr::Ident("NullCoalesce".into())),
+                (Some("state".into()), Expr::Ident("state".into())),
+                (Some("len".into()), Expr::Literal(Literal::Int(2))),
+            ],
+        );
+
+        let ir = compile_expr(&expr, &ctx, &mut counter);
+        match ir {
+            code_ir::Expr::Call { args, .. } => {
+                assert!(
+                    matches!(&args[0], code_ir::Expr::Path(parts) if parts == &["TokenKind", "NullCoalesce"]),
+                    "expected TokenKind::NullCoalesce, got: {:?}",
+                    args[0]
+                );
+            }
+            other => panic!("expected Call, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn named_call_arguments_use_parameter_name_with_snake_case_fallback() {
+        let mut counter = 0usize;
+        let mut ctx = CompileContext::new();
+        ctx.enum_variants.insert(
+            "TokenKind".to_string(),
+            ["NullCoalesce".to_string()].into_iter().collect(),
+        );
+        ctx.enum_variants.insert(
+            "BinOpKind".to_string(),
+            ["NullCoalesce".to_string()].into_iter().collect(),
+        );
+        ctx.variant_to_enum
+            .insert("NullCoalesce".to_string(), "BinOpKind".to_string());
+        ctx.insert_fn_param_types(
+            "emit_token".to_string(),
+            vec![
+                ("state".to_string(), "TokenizerState".to_string()),
+                ("kind".to_string(), "TokenKind".to_string()),
+                ("len".to_string(), "Int".to_string()),
+            ],
+        );
+
+        let expr = Expr::Call(
+            "EmitToken".into(),
             vec![
                 (Some("kind".into()), Expr::Ident("NullCoalesce".into())),
                 (Some("state".into()), Expr::Ident("state".into())),

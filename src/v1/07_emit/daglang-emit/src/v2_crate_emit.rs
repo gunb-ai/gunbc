@@ -967,7 +967,7 @@ fn emit_module(
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
-    let ctx = fn_codegen::CompileContext {
+    let mut ctx = fn_codegen::CompileContext {
         data_names,
         data_ir_types: items
             .iter()
@@ -986,7 +986,8 @@ fn emit_module(
         boxed_fields: recursive_fields.clone(),
         fn_return_types: global_fn_return_types.clone(),
         fn_return_ir_types: global_fn_return_ir_types.clone(),
-        fn_param_types: global_fn_param_types.clone(),
+        fn_param_types: std::collections::HashMap::new(),
+        fn_param_name_indices: std::collections::HashMap::new(),
         optional_params: std::collections::HashSet::new(), // populated per-function in fndef_to_code_ir
         param_types: std::collections::HashMap::new(), // populated per-function in fndef_to_code_ir
         current_return_type: None,                     // populated per-function in fndef_to_code_ir
@@ -1009,6 +1010,7 @@ fn emit_module(
         rc_wrapped_types: type_codegen::current_rc_wrapped_types(),
         match_bound_vars: std::collections::HashSet::new(),
     };
+    ctx.set_fn_param_types(global_fn_param_types.clone());
 
     for item in items {
         match &item.node {
