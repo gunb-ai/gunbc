@@ -192,6 +192,30 @@ pub struct SynthesizedAnonymousRecordType {
     pub fields: Vec<(String, gunbc_ir::code_ir::IrType)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedForLoopBinding {
+    pub name: String,
+    pub ir_type: gunbc_ir::code_ir::IrType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedForLoopScope {
+    element_binding: TypedForLoopBinding,
+    passthrough_bindings: Vec<TypedForLoopBinding>,
+}
+
+impl TypedForLoopScope {
+    pub fn binding_ir_type(&self, name: &str) -> Option<&gunbc_ir::code_ir::IrType> {
+        if self.element_binding.name == name {
+            return Some(&self.element_binding.ir_type);
+        }
+        self.passthrough_bindings
+            .iter()
+            .find(|binding| binding.name == name)
+            .map(|binding| &binding.ir_type)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TypedCallableBodyMetadata {
     anonymous_record_targets: HashMap<ExprIdentity, gunbc_ir::types::TypeId>,
@@ -199,6 +223,7 @@ pub struct TypedCallableBodyMetadata {
     conflicted_anonymous_records: HashSet<ExprIdentity>,
     synthesized_anonymous_record_types: Vec<SynthesizedAnonymousRecordType>,
     expr_ir_types: HashMap<ExprIdentity, gunbc_ir::code_ir::IrType>,
+    for_loop_scopes: HashMap<ExprIdentity, TypedForLoopScope>,
 }
 
 impl TypedCallableBodyMetadata {
@@ -233,11 +258,16 @@ impl TypedCallableBodyMetadata {
             .map(|(expr_identity, ir_type)| (*expr_identity, ir_type))
     }
 
+    pub fn for_loop_scope(&self, expr_identity: ExprIdentity) -> Option<&TypedForLoopScope> {
+        self.for_loop_scopes.get(&expr_identity)
+    }
+
     fn is_empty(&self) -> bool {
         self.anonymous_record_targets.is_empty()
             && self.conflicted_anonymous_records.is_empty()
             && self.synthesized_anonymous_record_types.is_empty()
             && self.expr_ir_types.is_empty()
+            && self.for_loop_scopes.is_empty()
     }
 
     fn annotate_anonymous_record_target(&mut self, expr_identity: ExprIdentity, target: &str) {
@@ -334,6 +364,14 @@ impl TypedCallableBodyMetadata {
         ir_type: gunbc_ir::code_ir::IrType,
     ) {
         self.expr_ir_types.insert(expr_identity, ir_type);
+    }
+
+    fn annotate_for_loop_scope(
+        &mut self,
+        expr_identity: ExprIdentity,
+        scope: TypedForLoopScope,
+    ) {
+        self.for_loop_scopes.insert(expr_identity, scope);
     }
 }
 
@@ -521,6 +559,8 @@ pub enum TypeError {
         scrutinee_type: String,
         missing_variants: Vec<String>,
     },
+    /// `with(iterable, { binding: binding })` references a missing outer binding.
+    UnknownForLoopPassthroughBinding { binding: String },
 }
 
 /// Non-fatal diagnostic emitted when the typechecker encounters an
@@ -631,6 +671,7 @@ impl TypeError {
             Self::MatchArmTypeMismatch { .. } => "TC039",
             Self::NonExhaustiveMatch { .. } => "TC040",
             Self::UnresolvableType { .. } => "TC041",
+            Self::UnknownForLoopPassthroughBinding { .. } => "TC042",
         }
     }
 
@@ -692,6 +733,9 @@ impl TypeError {
                 "add arms for: {} — or add a `_ => ...` wildcard arm",
                 missing_variants.join(", ")
             )),
+            Self::UnknownForLoopPassthroughBinding { binding } => Some(format!(
+                "define `{binding}` before the loop or remove it from `with(iterable, {{ ... }})`"
+            )),
             _ => None,
         }
     }
@@ -735,7 +779,8 @@ impl TypeError {
             | Self::UnknownCallArgument { argument: name, .. }
             | Self::UnknownServiceCallArgument { argument: name, .. }
             | Self::UnknownUsedResourceType { binding: name, .. }
-            | Self::UnknownProvidedResourceType { binding: name, .. } => {
+            | Self::UnknownProvidedResourceType { binding: name, .. }
+            | Self::UnknownForLoopPassthroughBinding { binding: name } => {
                 DiagnosticContext::Missing {
                     kind: "declaration",
                     name: name.clone(),
@@ -1012,6 +1057,9 @@ impl std::fmt::Display for TypeError {
                 "non-exhaustive match on `{scrutinee_type}`: missing {}",
                 missing_variants.join(", ")
             ),
+            Self::UnknownForLoopPassthroughBinding { binding } => {
+                write!(f, "unknown for-loop passthrough binding `{binding}`")
+            }
         }
     }
 }
@@ -3946,17 +3994,11 @@ fn collect_constructor_targets_from_expr<'a>(
                 expr_identities,
                 metadata,
             );
-            let mut loop_scope_types = local_bindings.clone();
+            let (iter_ty, _) = infer_expr_type(iterable, local_bindings, infer_context);
+            let (loop_scope_types, _) =
+                build_for_loop_scope_types(binding, &iter_ty, passthrough, local_bindings);
             let mut loop_scope_exprs = binding_exprs.clone();
-            loop_scope_types.insert(binding.clone(), ValueType::Inferred);
             loop_scope_exprs.remove(binding);
-            for name in passthrough {
-                let passthrough_ty = local_bindings
-                    .get(name)
-                    .cloned()
-                    .unwrap_or(ValueType::Inferred);
-                loop_scope_types.insert(name.clone(), passthrough_ty);
-            }
             match body {
                 ForBody::Expr(body_expr) => collect_constructor_targets_from_expr(
                     body_expr,
@@ -4755,7 +4797,7 @@ fn collect_resolved_expr_ir_types_from_expr(
             }
         }
         Expr::For(binding, iterable, passthrough, body) => {
-            let _ = collect_resolved_expr_ir_types_from_expr(
+            let (iter_ty, iter_ir_ty) = collect_resolved_expr_ir_types_from_expr(
                 iterable,
                 structural_bindings,
                 resolved_bindings,
@@ -4763,25 +4805,32 @@ fn collect_resolved_expr_ir_types_from_expr(
                 expr_identities,
                 metadata,
             );
-            let (iter_ty, _) = infer_expr_type(iterable, structural_bindings, infer_context);
-            let elem_ty = collection_element_value_type(&iter_ty).unwrap_or(ValueType::Inferred);
-            let mut loop_structural = structural_bindings.clone();
+            let (loop_structural, _) =
+                build_for_loop_scope_types(binding, &iter_ty, passthrough, structural_bindings);
             let mut loop_resolved = resolved_bindings.clone();
-            loop_structural.insert(binding.clone(), elem_ty.clone());
-            loop_resolved.insert(binding.clone(), value_type_to_ir_type(&elem_ty));
+            loop_resolved.remove(binding);
+            if let Some(element_ir_type) = for_loop_element_ir_type(&iter_ir_ty)
+                .or_else(|| loop_structural.get(binding).map(value_type_to_ir_type))
+            {
+                loop_resolved.insert(binding.clone(), element_ir_type);
+            }
             for name in passthrough {
-                let structural_ty = structural_bindings
+                if let Some(resolved_ir_type) = resolved_bindings
                     .get(name)
                     .cloned()
-                    .unwrap_or(ValueType::Inferred);
-                loop_structural.insert(name.clone(), structural_ty.clone());
-                loop_resolved.insert(
-                    name.clone(),
-                    resolved_bindings
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| value_type_to_ir_type(&structural_ty)),
-                );
+                    .or_else(|| loop_structural.get(name).map(value_type_to_ir_type))
+                {
+                    loop_resolved.insert(name.clone(), resolved_ir_type);
+                }
+            }
+            if let Some(scope) = build_typed_for_loop_scope(
+                binding,
+                &iter_ir_ty,
+                passthrough,
+                &loop_structural,
+                resolved_bindings,
+            ) {
+                metadata.annotate_for_loop_scope(stable_expr_identity(expr, expr_identities), scope);
             }
             match body {
                 ForBody::Expr(inner) => {
@@ -5522,18 +5571,9 @@ fn infer_expr_type(
         Expr::For(binding, iterable, passthrough, body) => {
             let (iter_ty, iter_errors) = infer_expr_type(iterable, local_bindings, infer_context);
             errors.extend(iter_errors);
-            let mut loop_scope = local_bindings.clone();
-            loop_scope.insert(
-                binding.clone(),
-                collection_element_value_type(&iter_ty).unwrap_or(ValueType::Inferred),
-            );
-            for name in passthrough {
-                let passthrough_ty = local_bindings
-                    .get(name)
-                    .cloned()
-                    .unwrap_or(ValueType::Inferred);
-                loop_scope.insert(name.clone(), passthrough_ty);
-            }
+            let (loop_scope, loop_errors) =
+                build_for_loop_scope_types(binding, &iter_ty, passthrough, local_bindings);
+            errors.extend(loop_errors);
             let (_, body_errors) = match body {
                 ForBody::Expr(expr) => infer_expr_type(expr, &loop_scope, infer_context),
                 ForBody::Block(stmts) => infer_block_expr_type(stmts, &loop_scope, infer_context),
@@ -5966,6 +6006,91 @@ fn collection_element_value_type(ty: &ValueType) -> Option<ValueType> {
         ValueType::Generic(_, args) if !args.is_empty() => Some(args[0].clone()),
         _ => None,
     }
+}
+
+fn for_loop_element_value_type(ty: &ValueType) -> Option<ValueType> {
+    match ty {
+        ValueType::Generic(name, args) if name == "List" && args.len() == 1 => {
+            Some(args[0].clone())
+        }
+        _ => None,
+    }
+}
+
+fn for_loop_element_ir_type(
+    ty: &gunbc_ir::code_ir::IrType,
+) -> Option<gunbc_ir::code_ir::IrType> {
+    match ty {
+        gunbc_ir::code_ir::IrType::Generic(name, args) if name == "List" && args.len() == 1 => {
+            Some(args[0].clone())
+        }
+        _ => None,
+    }
+}
+
+fn build_for_loop_scope_types(
+    binding: &str,
+    iterable_ty: &ValueType,
+    passthrough: &[String],
+    local_bindings: &HashMap<String, ValueType>,
+) -> (HashMap<String, ValueType>, Vec<TypeError>) {
+    let mut loop_scope = local_bindings.clone();
+    let mut errors = Vec::new();
+    loop_scope.remove(binding);
+
+    if let Some(element_ty) = for_loop_element_value_type(iterable_ty) {
+        loop_scope.insert(binding.to_string(), element_ty);
+    } else if !iterable_ty.is_inferred() {
+        errors.push(TypeError::TypeMismatch {
+            expected: "List<T>".to_string(),
+            got: iterable_ty.display_name(),
+        });
+    }
+
+    for name in passthrough {
+        match local_bindings.get(name) {
+            Some(passthrough_ty) => {
+                loop_scope.insert(name.clone(), passthrough_ty.clone());
+            }
+            None => errors.push(TypeError::UnknownForLoopPassthroughBinding {
+                binding: name.clone(),
+            }),
+        }
+    }
+
+    (loop_scope, errors)
+}
+
+fn build_typed_for_loop_scope(
+    binding: &str,
+    iterable_ir_type: &gunbc_ir::code_ir::IrType,
+    passthrough: &[String],
+    loop_scope: &HashMap<String, ValueType>,
+    resolved_bindings: &HashMap<String, gunbc_ir::code_ir::IrType>,
+) -> Option<TypedForLoopScope> {
+    let element_ir_type = for_loop_element_ir_type(iterable_ir_type)
+        .or_else(|| loop_scope.get(binding).map(value_type_to_ir_type))?;
+    let passthrough_bindings = passthrough
+        .iter()
+        .map(|name| {
+            resolved_bindings
+                .get(name)
+                .cloned()
+                .or_else(|| loop_scope.get(name).map(value_type_to_ir_type))
+                .map(|ir_type| TypedForLoopBinding {
+                    name: name.clone(),
+                    ir_type,
+                })
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(TypedForLoopScope {
+        element_binding: TypedForLoopBinding {
+            name: binding.to_string(),
+            ir_type: element_ir_type,
+        },
+        passthrough_bindings,
+    })
 }
 
 fn merge_value_types(left: ValueType, right: ValueType) -> ValueType {

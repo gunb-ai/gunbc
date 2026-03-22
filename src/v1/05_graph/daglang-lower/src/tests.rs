@@ -3845,6 +3845,49 @@ func run(values: List<Int>) -> { out: List<Int> } {
 }
 
 #[test]
+fn for_expression_lowers_typed_loop_scope_ports() {
+    let typed = typed_project_from_sources(&[(
+        "sample/for_scope.dag",
+        r#"module sample.for_scope
+type Repo {
+  name: String
+}
+fn render(repo: Repo, owner: String) -> String {
+  owner
+}
+func run(repos: List<Repo>, owner: String) -> { out: List<String> } {
+  result = for repo in with(repos, { owner: owner }) { render(repo: repo, owner: owner) }
+  return { out: result }
+}"#,
+    )]);
+    let dag = lower_target_module(&typed, "sample.for_scope");
+    let loop_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "sample.for_scope::run::cf_for_0")
+        .expect("for loop node should exist");
+    let loop_dag = match &loop_node.body {
+        NodeBody::SubDag(dag, _) => dag,
+        NodeBody::Opaque(_) => panic!("for loop should lower to a subdag"),
+    };
+    let body_node = loop_dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "body")
+        .expect("loop body boundary should exist");
+    let input_type = |name: &str| {
+        body_node
+            .inputs
+            .iter()
+            .find(|port| port.name.0 == name)
+            .map(|port| port.type_id.0.as_str())
+            .unwrap_or_else(|| panic!("loop body should expose `{name}`"))
+    };
+    assert_eq!(input_type("repo"), "Repo");
+    assert_eq!(input_type("owner"), "String");
+}
+
+#[test]
 fn pipe_filter_join_chain_lowers_to_collection_nodes() {
     let typed = typed_project_from_sources(&[(
         "sample/chain.dag",

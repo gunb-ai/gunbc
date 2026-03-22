@@ -915,6 +915,47 @@ fn run(callback: fn(Config) -> String) -> String {
 }
 
 #[test]
+fn typecheck_reports_for_loop_scope_contract_errors() {
+    let options = TypecheckOptions {
+        allow_unresolved_imports: false,
+    };
+    let missing_passthrough = module_graph_from_sources(&[(
+        "sample/loop_scope_missing.dag",
+        r#"module sample.loop_scope_missing
+type Repo {
+  name: String
+}
+fn run(repos: List<Repo>) -> List<String> {
+  result = for repo in with(repos, { owner: owner }) { repo.name }
+  result
+}"#,
+    )]);
+    let errors = typecheck_module_graph_with_options(&missing_passthrough, options.clone())
+        .expect_err("missing passthrough binding should fail typecheck");
+
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnknownForLoopPassthroughBinding { binding } if binding == "owner"
+    )));
+    let non_list_iterable = module_graph_from_sources(&[(
+        "sample/loop_scope_map.dag",
+        r#"module sample.loop_scope_map
+fn run(entries: Map<String, String>) -> List<String> {
+  result = for entry in entries { entry }
+  result
+}"#,
+    )]);
+    let errors = typecheck_module_graph_with_options(&non_list_iterable, options)
+        .expect_err("non-list for-loop iterable should fail typecheck");
+
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::TypeMismatch { expected, got }
+            if expected == "List<T>" && got == "Map<String, String>"
+    )));
+}
+
+#[test]
 fn strict_mode_accepts_associated_output_function_type_parameters() {
     let graph = module_graph_from_sources(&[(
         "sample/ensure.dag",

@@ -39,10 +39,13 @@ use daglang_syntax::ast::{
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_bool_type, is_list_type, is_map_string_string, is_secret_type,
     is_type_expr_optional, resource_type_name, service_call_lookup_keys, type_expr_to_string,
-    walk_stmts,
+    walk_stmts, walk_stmts_with_expr_identities, ExprIdentity,
 };
 use daglang_syntax::span::Span as SyntaxSpan;
-use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
+use daglang_typecheck::{
+    TypedCallableBodyMetadata, TypedCallableSignature, TypedItemSignature, TypedForLoopScope,
+    TypedProject,
+};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
@@ -3793,6 +3796,7 @@ fn add_dependency_edges(
                     data_values: wctx.data_values,
                     service_registry: wctx.service_registry,
                     uses_binding_types: &uses_binding_types,
+                    callable_body_metadata: module.callable_body_metadata(item_name),
                     all_fn_bodies: &empty_fn_bodies,
                     variant_names: wctx.variant_names,
                     callable_param_defaults: wctx.callable_param_defaults,
@@ -3834,6 +3838,7 @@ enum IterableRef {
 
 #[derive(Debug)]
 struct ForLoopSite {
+    expr_identity: ExprIdentity,
     element_var: String,
     iterable: Option<IterableRef>,
     passthrough: Vec<String>,
@@ -3886,6 +3891,7 @@ fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<Fo
                     scope::ExprRef::Opaque => None,
                 };
                 out.push(ForLoopSite {
+                    expr_identity: ExprIdentity(0),
                     element_var: element_var.clone(),
                     iterable: iterable_ref,
                     passthrough: passthrough.clone(),
@@ -3990,6 +3996,20 @@ fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
     let scoped = scope::ScopedBody::from_stmts(stmts);
     let mut sites = Vec::new();
     collect_for_loop_sites_from_scoped(&scoped, &mut sites);
+    let mut expr_identities = Vec::new();
+    walk_stmts_with_expr_identities(stmts, &mut |expr_identity, expr| {
+        if matches!(expr, Expr::For(..)) {
+            expr_identities.push(expr_identity);
+        }
+    });
+    assert_eq!(
+        sites.len(),
+        expr_identities.len(),
+        "for-loop site collection must stay in sync with expression identities"
+    );
+    for (site, expr_identity) in sites.iter_mut().zip(expr_identities) {
+        site.expr_identity = expr_identity;
+    }
     sites
 }
 
@@ -4134,6 +4154,37 @@ fn clone_loop_body_transport_triplet(
     })
 }
 
+fn port_type_for_ir_type(ir_type: &gunbc_ir::code_ir::IrType) -> String {
+    use gunbc_ir::code_ir::IrType;
+
+    match ir_type {
+        IrType::Named(name) => name.clone(),
+        IrType::Generic(name, args) => format!(
+            "{name}<{}>",
+            args.iter().map(port_type_for_ir_type).collect::<Vec<_>>().join(", ")
+        ),
+        IrType::Optional(inner) => format!("Optional<{}>", port_type_for_ir_type(inner)),
+        IrType::Bool => "Bool".to_string(),
+        IrType::Int => "Int".to_string(),
+        IrType::Str => "String".to_string(),
+        IrType::Tuple(items) => format!(
+            "({})",
+            items.iter().map(port_type_for_ir_type).collect::<Vec<_>>().join(", ")
+        ),
+        IrType::Unit => "Unit".to_string(),
+        IrType::Record(_) => "Record".to_string(),
+        IrType::Unknown => "Any".to_string(),
+    }
+}
+
+fn for_loop_scope_for_site<'a>(
+    ctx: &'a ControlFlowPatternContext<'_>,
+    site: &ForLoopSite,
+) -> Option<&'a TypedForLoopScope> {
+    ctx.callable_body_metadata
+        .and_then(|metadata| metadata.for_loop_scope(site.expr_identity))
+}
+
 fn wire_loop_body_named_args(
     builder: &mut DagBuilder,
     ctx: &LoweringContext<'_>,
@@ -4166,15 +4217,31 @@ fn make_loop_body_dag_from_stmts(
     site: &ForLoopSite,
 ) -> Option<Dag<LoweredOp>> {
     let mut builder = DagBuilder::new();
+    let loop_scope = for_loop_scope_for_site(ctx, site);
+    let element_port_type = loop_scope
+        .and_then(|scope| scope.binding_ir_type(site.element_var.as_str()))
+        .map(port_type_for_ir_type)
+        .unwrap_or_else(|| "Any".to_string());
     let mut param_types = HashMap::<String, String>::new();
-    param_types.insert(site.element_var.clone(), "Any".to_string());
+    param_types.insert(site.element_var.clone(), element_port_type.clone());
     for passthrough in &site.passthrough {
-        param_types.insert(passthrough.clone(), "Any".to_string());
+        let passthrough_type = loop_scope
+            .and_then(|scope| scope.binding_ir_type(passthrough.as_str()))
+            .map(port_type_for_ir_type)
+            .unwrap_or_else(|| "Any".to_string());
+        param_types.insert(passthrough.clone(), passthrough_type);
     }
 
-    let mut body_inputs = vec![Port::scalar(site.element_var.as_str(), "Any")];
+    let mut body_inputs = vec![Port::scalar(
+        site.element_var.as_str(),
+        element_port_type.as_str(),
+    )];
     for passthrough in &site.passthrough {
-        body_inputs.push(Port::scalar(passthrough.as_str(), "Any"));
+        let passthrough_type = param_types
+            .get(passthrough)
+            .map(String::as_str)
+            .unwrap_or("Any");
+        body_inputs.push(Port::scalar(passthrough.as_str(), passthrough_type));
     }
     body_inputs.push(Port::scalar(output_passthrough_input_name("result"), "Any"));
     body_inputs.push(Port::list(PortName::DEPS, "Any"));
@@ -4354,14 +4421,19 @@ fn make_loop_body_dag_from_stmts(
         return None;
     }
 
-    if let Some(element_type) = builder
-        .dag
-        .nodes
-        .iter()
-        .flat_map(|node| node.inputs.iter())
-        .find(|port| port.name.0 == site.element_var && port.type_id.0 != "Any")
-        .map(|port| port.type_id.0.clone())
-    {
+    let resolved_element_type = loop_scope
+        .and_then(|scope| scope.binding_ir_type(site.element_var.as_str()))
+        .map(port_type_for_ir_type)
+        .or_else(|| {
+            builder
+                .dag
+                .nodes
+                .iter()
+                .flat_map(|node| node.inputs.iter())
+                .find(|port| port.name.0 == site.element_var && port.type_id.0 != "Any")
+                .map(|port| port.type_id.0.clone())
+        });
+    if let Some(element_type) = resolved_element_type {
         if let Some(body_node) = builder
             .dag
             .get_node_mut(&NodeId::new(body_target.node_id.clone()))
@@ -4387,11 +4459,20 @@ fn make_loop_body_dag(
     index: usize,
     element_var: &str,
     passthrough: &[String],
+    loop_scope: Option<&TypedForLoopScope>,
     body_transports: &[LoopBodyTransport],
 ) -> Dag<LoweredOp> {
-    let mut inputs = vec![Port::scalar(element_var, "Any")];
+    let element_port_type = loop_scope
+        .and_then(|scope| scope.binding_ir_type(element_var))
+        .map(port_type_for_ir_type)
+        .unwrap_or_else(|| "Any".to_string());
+    let mut inputs = vec![Port::scalar(element_var, element_port_type.as_str())];
     for pt in passthrough {
-        inputs.push(Port::scalar(pt.as_str(), "Any"));
+        let passthrough_type = loop_scope
+            .and_then(|scope| scope.binding_ir_type(pt.as_str()))
+            .map(port_type_for_ir_type)
+            .unwrap_or_else(|| "Any".to_string());
+        inputs.push(Port::scalar(pt.as_str(), passthrough_type.as_str()));
     }
     let mut dag: Dag<LoweredOp> = Dag::new();
 
@@ -4616,6 +4697,7 @@ struct ControlFlowPatternContext<'a> {
     data_values: &'a HashMap<String, serde_json::Value>,
     service_registry: &'a ServiceEndpointRegistry,
     uses_binding_types: &'a HashMap<String, String>,
+    callable_body_metadata: Option<&'a TypedCallableBodyMetadata>,
     all_fn_bodies: &'a std::collections::BTreeMap<String, LoweredFnBody>,
     variant_names: &'a HashSet<String>,
     callable_param_defaults: &'a HashMap<String, Vec<(String, daglang_syntax::ast::Expr)>>,
@@ -4626,6 +4708,7 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
     let for_sites = detect_for_loops_in_stmts(ctx.stmts);
     for (index, site) in for_sites.iter().enumerate() {
         let node_id = format!("{}::cf_for_{index}", ctx.target.node_id);
+        let loop_scope = for_loop_scope_for_site(ctx, site);
         // Resolve body service calls to LoopBodyTransport entries.
         let mut body_transports = Vec::new();
         for call_path in &site.body_service_call_paths {
@@ -4646,22 +4729,28 @@ fn add_control_flow_pattern_nodes(builder: &mut DagBuilder, ctx: &ControlFlowPat
                         index,
                         &site.element_var,
                         &site.passthrough,
+                        loop_scope,
                         &body_transports,
                     )
                 });
-        let element_type = body_dag
-            .nodes
-            .iter()
-            .flat_map(|node| node.inputs.iter())
-            .find(|port| port.name.0 == site.element_var && port.type_id.0 != "Any")
+        let element_type = loop_scope
+            .and_then(|scope| scope.binding_ir_type(site.element_var.as_str()))
+            .map(port_type_for_ir_type)
             .or_else(|| {
                 body_dag
                     .nodes
                     .iter()
                     .flat_map(|node| node.inputs.iter())
-                    .find(|port| port.name.0 == site.element_var)
+                    .find(|port| port.name.0 == site.element_var && port.type_id.0 != "Any")
+                    .or_else(|| {
+                        body_dag
+                            .nodes
+                            .iter()
+                            .flat_map(|node| node.inputs.iter())
+                            .find(|port| port.name.0 == site.element_var)
+                    })
+                    .map(|port| port.type_id.0.clone())
             })
-            .map(|port| port.type_id.0.clone())
             .unwrap_or_else(|| "Any".to_string());
         let loop_node = LoopBuilder::new(node_id.clone())
             .with_input("items", "Any", Cardinality::ONE)
