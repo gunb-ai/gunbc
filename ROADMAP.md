@@ -14,7 +14,7 @@ of compiler knowledge:
 
 | Layer | What dissolves | Compiler stops knowing | Status |
 |-------|---------------|----------------------|--------|
-| **L1: Types** | BuiltinTypeKind, Conj/Disj, node_is_*, type constructors | What Optional/List/Map/Int mean | **Active — 493 violations** |
+| **L1: Types** | BuiltinTypeKind, Conj/Disj, node_is_*, type constructors | What Optional/List/Map/Int mean | **Active — 489 violations** |
 | **L2: Expressions** | ExprData semantic knowledge | What if/for/match/let mean | Future — after bootstrap |
 | **L3: Syntax** | Hardcoded parser branches | How to parse `if cond { body }` | Future — data-driven parser |
 
@@ -31,15 +31,15 @@ long-term target.
 
 ## L1: Type Knowledge Dissolution
 
-### Current violations (493 sites across 9 files)
+### Current violations (489 sites across 8 files, measured 2026-03-22)
 
 | Category | Count | What the compiler "knows" |
 |----------|-------|--------------------------|
-| Connective (Conj/Disj) | 267 | Product vs coproduct semantics |
-| Type constructors | 114 | How to build Optional/List/Map/Pair nodes |
-| Type name strings | 51 | `n.name == "Optional"`, `"Map"`, `"Int"`, etc. |
-| node_is_* predicates | 37 | Type-specific dispatch |
-| builtin_type_kind() | 24 | 14-branch if-else classifying types by name |
+| Connective field + Conj/Disj | 265 | Product vs coproduct semantics (every `connective` field ref) |
+| Type constructors | 121 | `leaf_node()` 97, `optional_node()` 11, `container_node()` 7, `tuple_node()` 1, etc. |
+| Type name comparisons | 59 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| node_is_* predicates | 24 | `node_is_optional` 7, `node_is_map` 5, `node_is_dynamic` 5, etc. (calls only) |
+| builtin_type_kind() | 20 | 14-branch if-else classifying types by name (calls only) |
 
 ### Strategy: properties-first migration
 
@@ -68,15 +68,19 @@ change — 267 sites).
 Count of sites where the compiler uses type-specific knowledge.
 
 ```
-Start:  493
+Start:  489
 Target: 0
 ```
 
-Measured by: grep for `builtin_type_kind`, `node_is_optional`,
-`node_is_map`, `node_is_dynamic`, `n.name == "Optional"`,
-`n.name == "Map"`, `n.name == "List"`, `n.name == "Int"`,
-`n.name == "String"`, `Conj`, `Disj`, `optional_node`,
-`container_node`, `leaf_node` in `src/v2/*.dag`.
+Measured by: `rg -c 'connective|Conj|Disj' src/v2/*.dag` (265) +
+`rg -c 'leaf_node\(|optional_node\(|container_node\(|tuple_node\(' src/v2/*.dag` (121) +
+`rg -c '\.name == "(Optional|Map|List|Int|String|Bool|Dynamic|...)"' src/v2/*.dag` (59) +
+`node_is_*` calls excluding definitions (24) +
+`builtin_type_kind` calls excluding definition (20).
+
+Note: categories overlap slightly (e.g., `connective: Some { value: Conj }`
+counts in both connective and Conj). The total is approximate but directionally
+correct — the goal is 0, not precise accounting.
 
 ### Acceptance
 
@@ -138,7 +142,7 @@ collapses layer authority.
 | `02_parse.dag` | Strong compositional lowering | Service/resource syntax already dissolves into uniform `Node` structure and records facts like `namespace_root` structurally. |
 | `03_resolve.dag` | Cleanest authority boundary | Pure import graph construction with almost no target leakage. Keep using this as the reference for stage boundaries. |
 | `04_reconcile.dag` | Main structural hotspot (4871 LOC) | 5+ mixed concerns: type inference (~1500), type resolution (~800), method classification/call analysis (~650, 80+ string comparisons), emitter metadata prep (~300, IR/rendering conflation), type env management (~400). Target-agnostic but concept-overloaded. |
-| `05_emit*.dag` | Partial extdeps-style composition | Shared emit (799 LOC) owns helpers/context but 0 expression dispatch. Rust (3634 LOC, 23-arm dispatcher), Python (1202 LOC, 18 arms), Go (1226 LOC, 17 arms) each own full walkers. 3 separate TCO walkers duplicate Let/If/Match/Block. Python TCO has silent fallthrough; Go TCO crashes on unhandled expressions. |
+| `05_emit*.dag` | Partial extdeps-style composition | Shared emit (799 LOC) owns helpers/context but 0 expression dispatch. Rust (3634 LOC), Python (1202 LOC), Go (1226 LOC) each own full 22-arm ExprData dispatchers. 3 separate TCO walkers duplicate Let/If/Match/Block. Go TCO has `_` wildcard emitting `/* unhandled expr */`. |
 | `07_complexity.dag` / `07_ownership.dag` | Good proof layers | Best examples of compositional modeling: proof objects, not runtime execution. complexity (1441 LOC) and ownership (307 LOC) both independently walk all ExprData variants — 3 total parallel walks including reconcile. Ownership is not wired into pipeline (complexity is). |
 | `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` (177 LOC) owns compile flow but does not call ownership or artifact planning. `08_artifact.dag` (235 LOC) has real boundary verification logic but `Artifact.target` is still a `String`. `09_trace.dag` (221 LOC) is an external contract, not pipeline-wired. |
 
@@ -148,12 +152,12 @@ collapses layer authority.
   items in the roadmap need reinterpretation based on what has already landed.
 - Theme 4 and Theme 6 are cross-cutting prerequisites that remove duplicate
   authority and dead branches before deeper semantic changes.
-- P1.8 is complete: `07_complexity.dag` has `intrinsic_method_cost_shape(...)`,
+- P1.8 is complete: `classify_method_cost` deleted from complexity.
+  `07_complexity.dag` has `intrinsic_method_cost_shape(...)`,
   `cost_of_expr(...)` reads reconcile-provided `method_semantics`,
   `receiver_size_var(...)` follows semantics instead of string names, and
-  `04_reconcile.dag` resolves known method semantics/result types in one helper.
-  Remaining work is renderer-leaf dispatch and source-level classifiers that
-  still map strings into those enums.
+  `04_reconcile.dag` is the single authority via
+  `classify_reconciled_intrinsic_method`. No dual classification remains.
 - P4.1: shared emit already imports language type/keyword/container data from
   `extdeps.languages.*`. Remaining duplication is per-target reserved-word/runtime
   tables, especially in the Python and Go renderers.
@@ -257,7 +261,7 @@ Cleanup / deletion:
 What changes:
 
 - One ExprData fold in `05_emit.dag` replaces 3 per-target dispatchers
-  (Rust 23-arm, Python 18-arm, Go 17-arm)
+  (all three currently have 22-arm dispatchers)
 - One TCO walker replaces 3 per-target TCO walkers
   (currently 3x duplication of Let/If/Match/Block)
 - `LanguageSpec` from `dsl/std/languages.dag` parameterizes shared emit
@@ -269,7 +273,7 @@ Acceptance criteria:
 - No per-target file owns a separate TCO walker
 - Python TCO silent fallthrough is eliminated
 - Go TCO crash on unhandled expression is eliminated
-- `classify_typed_item` is either wired or deleted (not dead code)
+- `classify_typed_item` remains the shared entry point (already wired)
 - Adding a new ExprData variant = one match arm in shared emit, not N
   arms across N targets
 - `LanguageSpec` is the source of truth for type maps, keywords,
@@ -564,13 +568,12 @@ Deletion / cleanup:
 Current state:
 
 - `05_emit.dag` has shared helpers/context, but Rust/Python/Go still own
-  full expression and TCO walkers (Rust: 23-arm ExprData dispatcher +
-  9-arm TCO walker, 3634 LOC; Python: 18+7 arms, 1202 LOC; Go: 17+7
-  arms, 1226 LOC)
+  full expression and TCO walkers (all three: 22-arm ExprData dispatchers;
+  Rust: 3634 LOC; Python: 1202 LOC; Go: 1226 LOC)
 - 4 expression kinds (Let/If/Match/Block) are duplicated 3x in TCO
   walkers
-- `classify_typed_item` exists in shared emit but is not called by any
-  emitter
+- `classify_typed_item` exists in shared emit and is called by all
+  three emitters
 - Python TCO walker has no else arm (silent fallthrough); Go TCO walker
   has no wildcard (crash on unhandled expression)
 - target policy is still split across shared emit and target files
@@ -916,7 +919,7 @@ These are inference gaps — enumerate doesn't return `Tuple<Int, T>`,
 fold doesn't infer accumulator type, map_insert loses key/value structure.
 Fixing these is correctness work needed for gist (Phase 2).
 
-**B. L1 dissolution** (493 type-knowledge violations → 0). This is the
+**B. L1 dissolution** (489 type-knowledge violations → 0). This is the
 architectural direction — compiler stops knowing what types mean. Each
 type family migrates to .dag-defined properties.
 
@@ -938,17 +941,17 @@ These specific inference gaps produce the 25 remaining diagnostics.
 Each fix should be done property-first when possible (contributing to
 Goal B simultaneously).
 
-| Fix | What | Diagnostic impact |
-|-----|------|-------------------|
-| Enumerate return type | `infer_method_call_type_node` returns receiver instead of `List<Tuple<Int, T>>` | ~3 diagnostics |
-| Fold accumulator | No init-arg context → Dynamic return type → cascading field access failures | ~5 diagnostics |
-| map_insert/map_merge | Returns bare `Map` leaf, losing key/value structure | ~3 diagnostics |
-| Chained field access | Depends on fold/map fixes above — once return types are real, field access resolves | ~5 diagnostics |
-| Callable/function-value type | Function used as value has no callable type representation | ~3 diagnostics |
-| Tighten node_type_equals | Remove Dynamic==* and structural fallback — MUST BE LAST (after inference fixes eliminate Dynamic introduction points) | ~6 diagnostics |
+| Fix | What | Status |
+|-----|------|--------|
+| Enumerate return type | Returns `List<Tuple<Int, T>>` via `tuple_node` | **Done** (quick-emu-93) |
+| Fold accumulator | `fold_accumulator_type` parameter threads init-arg type | **Done** (quick-emu-93) |
+| Callable/function-value type | `callable_node` + `callable_return_type` for function values | **Done** (quick-emu-93) |
+| ErrorCategory enum | 7-variant structured error classification | **Done** (quick-emu-93) |
+| map_insert/map_merge | `infer_builtin_call_type` still returns bare `leaf_node(name: "Map")` | Remaining |
+| Chained field access | Depends on map fixes — once return types are real, field access resolves | Remaining |
+| Tighten node_type_equals | Remove Dynamic==* and structural fallback — MUST BE LAST | Remaining |
 
-**Files:** `04_reconcile.dag` (all fixes), `05_emit_rust.dag` (Tuple rendering),
-`00_core.dag` (callable type, error categories)
+**Files:** `04_reconcile.dag` (remaining fixes), `05_emit_rust.dag` (rendering)
 
 ### L1 dissolution by type family (Goal B)
 
@@ -989,7 +992,7 @@ reads properties to decide rendering.
 
 ### L1.4 — Connective dissolution (Conj/Disj)
 
-**Current violations:** 267 sites. This is the largest change —
+**Current violations:** 265 sites. This is the largest change —
 `connective` is a field on Node itself.
 
 **Migration:** Product/coproduct semantics move to .dag-defined
@@ -1100,7 +1103,7 @@ Zero compiler changes required.
 |----|------|------|
 | P4.1 | Import aliasing | Blocker: `05_emit.dag:578-594` duplicates language data inline because all three extdeps define same-named declarations and imports lack `as` aliasing. Add `import { name as alias }` to tokenizer, parser, resolver. |
 | P4.2 | LanguageSpec wiring | `LanguageSpec` exists in `dsl/std/languages.dag` (1367 lines, comprehensive) but no emitter reads it. `reserved_words` and `type_map` are triple-duplicated: in `std.languages`, in `extdeps/languages/{lang}/emit.dag`, and inline in `05_emit_python.dag`/`05_emit_go.dag`. Add `load_language_spec(target) -> LanguageSpec`. Pass through emit functions. Delete duplicate declarations. Cross-ref: R6, M6. |
-| P4.3 | Extract generic emit core | ~70% duplication across 3 emitter files (rust: 3606, python: 1168, go: 1195 lines). Extract shared skeleton: item dispatch, type structure classification, expression dispatch. Parameterize by LanguageSpec. Per-language files shrink to irreducible transforms (Rust: ownership/clone/borrow; Python: exceptions/comprehensions; Go: multi-return/interfaces). Cross-ref: R6, S5, S6, M6. |
+| P4.3 | Extract generic emit core | ~70% duplication across 3 emitter files (rust: 3634, python: 1202, go: 1226 lines). All three have identical 22-arm ExprData dispatchers. Extract shared skeleton parameterized by LanguageSpec. Per-language files shrink to irreducible transforms (Rust: ownership/clone/borrow; Python: exceptions/comprehensions; Go: multi-return/interfaces). Cross-ref: R6, S5, S6, M6. |
 | P4.4 | `--target` CLI flag | `compile_sources` already takes `target: RenderTarget`. Wire through bootstrap main.rs Compile subcommand. |
 | P4.5 | Validate equivalence | Self-compile + gist → same output with generic emitter. Fixed point holds. |
 
@@ -1160,7 +1163,7 @@ source → parse → resolve → infer → emit
 Phase 1A: Diagnostic fixes ─────────────────────────────→ (0 diagnostics)
   enumerate, fold, map_insert, callable, tighten equality
                                                             │
-Phase 1B: L1 dissolution (interleaved with 1A) ──────────│─→ (493→0 violations)
+Phase 1B: L1 dissolution (interleaved with 1A) ──────────│─→ (489→0 violations)
   L1.1 Optional ─┐                                        │
   L1.2 Containers ├→ L1.4 Connective → L1.5 Delete all   │
   L1.3 Primitives ┘                                       │
@@ -1224,9 +1227,9 @@ Items not blocking active phases. Revisit when relevant.
 
 ### Invariant Violations
 
-| Item | Violation | What needs to happen |
-|------|-----------|----------------------|
-| Emission/complexity dual classification | **No duplicate representations.** `classify_method_cost` (complexity) and `classify_reconciled_intrinsic_method` (reconcile) classify methods independently. | Single authority in reconcile; complexity reads cost shape from emit graph. |
+| Item | Violation | Status |
+|------|-----------|--------|
+| ~~Emission/complexity dual classification~~ | ~~`classify_method_cost` and `classify_reconciled_intrinsic_method` classify independently~~ | **Done** — `classify_method_cost` deleted. Single authority in reconcile; complexity reads `method_semantics` from reconcile output. |
 
 ### Root Cause B: Closed Sets as Strings
 
