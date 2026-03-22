@@ -1836,9 +1836,11 @@ fn compile_functional_record_update(
 
     let mut stmts = Vec::new();
 
-    // Step 1: Destructure source via try_unwrap
-    // Debug builds: expect (panics if refcount > 1, surfacing degradation)
-    // Release builds: fallback to clone (correct but O(N))
+    // Step 1: Destructure source via try_unwrap.
+    // Debug builds: expect (panics if refcount > 1, surfacing degradation).
+    // Release builds: fallback to clone (correct but O(N)).
+    // This is intentional legacy v1 behavior; v2 is self-hosted now, so we
+    // avoid widening the old ownership rewrite surface for this path.
     let rc_var = fresh(counter, "rc");
     stmts.push(code_ir::Stmt::let_bind(
         &rc_var,
@@ -3776,9 +3778,7 @@ fn compile_intrinsic_call(
                 code_ir::Stmt::let_bind(&rc_var, collection.clone()),
                 code_ir::Stmt::let_bind(
                     &map_var,
-                    code_ir::Expr::RawCode(format!(
-                        "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
-                    )),
+                    code_ir::Expr::RawCode(render_rc_unwrap_or_clone(&rc_var)),
                 ),
                 code_ir::Stmt::Let {
                     name: values.clone(),
@@ -3800,9 +3800,7 @@ fn compile_intrinsic_call(
                 code_ir::Stmt::let_bind(&rc_var, collection.clone()),
                 code_ir::Stmt::let_bind(
                     &map_var,
-                    code_ir::Expr::RawCode(format!(
-                        "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
-                    )),
+                    code_ir::Expr::RawCode(render_rc_unwrap_or_clone(&rc_var)),
                 ),
                 code_ir::Stmt::Let {
                     name: keys.clone(),
@@ -3846,9 +3844,10 @@ fn compile_intrinsic_call(
             let overlay = compile_expr(&args[1].1, ctx, counter);
             let v = fresh(counter, "map_merged");
             let mut stmts = rc_unwrap_stmts(&v, base, counter);
+            let overlay_expr = render_expr_inline(&overlay);
             stmts.push(code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
-                "{v}.extend(Rc::try_unwrap({}).unwrap_or_else(|rc| (*rc).clone()))",
-                render_expr_inline(&overlay)
+                "{v}.extend({})",
+                render_rc_unwrap_or_clone(&overlay_expr)
             ))));
             stmts.push(code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(v))));
             Some(code_ir::Expr::Block(stmts))
@@ -3860,6 +3859,13 @@ fn compile_intrinsic_call(
 /// Quick inline rendering of a code_ir::Expr for use in RawCode interpolation.
 fn render_expr_inline(expr: &code_ir::Expr) -> String {
     crate::render_rust::render_expr_pub(expr)
+}
+
+/// Legacy v1 codegen still accepts clone-on-shared fallback at a few Rc
+/// mutation boundaries. v2 is self-hosted now, so we keep these paths correct
+/// and centralized instead of widening the old ownership rewrite surface.
+fn render_rc_unwrap_or_clone(rc_expr: &str) -> String {
+    format!("Rc::try_unwrap({rc_expr}).unwrap_or_else(|rc| (*rc).clone())")
 }
 
 /// Resolve a named argument by name first, falling back to positional index.
@@ -5834,9 +5840,7 @@ fn rc_unwrap_stmts(var_name: &str, expr: code_ir::Expr, counter: &mut usize) -> 
         code_ir::Stmt::let_bind(&rc_var, expr),
         code_ir::Stmt::let_mut(
             var_name,
-            code_ir::Expr::RawCode(format!(
-                "Rc::try_unwrap({rc_var}).unwrap_or_else(|rc| (*rc).clone())"
-            )),
+            code_ir::Expr::RawCode(render_rc_unwrap_or_clone(&rc_var)),
         ),
     ]
 }

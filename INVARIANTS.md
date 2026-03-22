@@ -364,6 +364,18 @@ Not invariant violations by themselves:
 Three root causes account for ~50 individual sites. Fixing the root causes
 eliminates the symptoms; fixing symptoms individually is whack-a-mole.
 
+### Status After Final Cleanup
+
+This workboard is complete in this branch.
+
+Closed in this branch:
+- Root Cause A: A-1, A-2, A-3, A-4, A-5, A-6, A-7, A-8, A-9, A-10
+- Root Cause B: B-1, B-2, B-3, B-4, B-5, B-6
+- Root Cause C: C-1, C-2, C-3, C-4, C-5, C-6, C-7, C-8, C-9, C-10
+
+The root-cause tables below are preserved as the historical problem statement
+that motivated the refactor, not as a live backlog.
+
 ---
 
 ### Root Cause A: Reconcile→Emit Boundary is Information-Lossy (ADDRESSED)

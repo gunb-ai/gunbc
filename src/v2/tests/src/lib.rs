@@ -387,7 +387,10 @@ mod tests {
         gunbc_ir::Value::Map(map)
     }
 
-    fn type_env_value(bindings: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+    fn type_env_with_recursive_types(
+        bindings: Vec<gunbc_ir::Value>,
+        recursive_names: Vec<&str>,
+    ) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         let binding_map: std::collections::BTreeMap<String, gunbc_ir::Value> = bindings
             .into_iter()
@@ -400,7 +403,29 @@ mod tests {
             })
             .collect();
         map.insert("bindings".to_string(), gunbc_ir::Value::Map(binding_map));
+        map.insert(
+            "recursive_types".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(
+                recursive_names
+                    .iter()
+                    .map(|name| gunbc_ir::Value::Str((*name).to_string()))
+                    .collect(),
+            )),
+        );
+        map.insert(
+            "recursive_type_set".to_string(),
+            gunbc_ir::Value::Map(
+                recursive_names
+                    .iter()
+                    .map(|name| ((*name).to_string(), gunbc_ir::Value::Bool(true)))
+                    .collect(),
+            ),
+        );
         gunbc_ir::Value::Map(map)
+    }
+
+    fn type_env_value(bindings: Vec<gunbc_ir::Value>) -> gunbc_ir::Value {
+        type_env_with_recursive_types(bindings, vec![])
     }
 
     fn bool_type_value() -> gunbc_ir::Value {
@@ -494,6 +519,58 @@ mod tests {
         )
     }
 
+    fn var_expr_value(
+        name: &str,
+        return_type: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut expr_data = std::collections::BTreeMap::new();
+        expr_data.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("ExprVar".to_string()),
+        );
+        expr_data.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
+        expr_data.insert("binding_kind".to_string(), gunbc_ir::Value::Unit);
+        let mut some_return = std::collections::BTreeMap::new();
+        some_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        some_return.insert("value".to_string(), return_type);
+        make_expr_node_value(
+            gunbc_ir::Value::Map(expr_data),
+            gunbc_ir::Value::Map(some_return),
+            span,
+        )
+    }
+
+    fn field_access_expr_value(
+        base: gunbc_ir::Value,
+        field: &str,
+        return_type: gunbc_ir::Value,
+        span: gunbc_ir::Value,
+    ) -> gunbc_ir::Value {
+        let mut expr_data = std::collections::BTreeMap::new();
+        expr_data.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("ExprFieldAccess".to_string()),
+        );
+        expr_data.insert("base".to_string(), base);
+        expr_data.insert("field".to_string(), gunbc_ir::Value::Str(field.to_string()));
+        expr_data.insert("summary".to_string(), gunbc_ir::Value::Unit);
+        let mut some_return = std::collections::BTreeMap::new();
+        some_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        some_return.insert("value".to_string(), return_type);
+        make_expr_node_value(
+            gunbc_ir::Value::Map(expr_data),
+            gunbc_ir::Value::Map(some_return),
+            span,
+        )
+    }
+
     fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
         let mut map = std::collections::BTreeMap::new();
         map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
@@ -523,6 +600,39 @@ mod tests {
         map.insert(
             "module_name".to_string(),
             gunbc_ir::Value::Str("main".to_string()),
+        );
+        map.insert(
+            "service_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "item_registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn empty_emit_info_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert(
+            "type_summaries".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "variant_to_enum".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "rc_wrapped_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "enum_variant_membership".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        map.insert(
+            "data_rc_map_names".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         gunbc_ir::Value::Map(map)
     }
@@ -566,6 +676,13 @@ mod tests {
                     _ => None,
                 })
                 .unwrap_or_else(|| panic!("missing emitted file {path}")),
+            other => panic!("expected files list, got: {other:?}"),
+        }
+    }
+
+    fn emitted_file_count(files: &gunbc_ir::Value) -> usize {
+        match files {
+            gunbc_ir::Value::List(items) => items.len(),
             other => panic!("expected files list, got: {other:?}"),
         }
     }
@@ -2120,6 +2237,50 @@ fn foo(item: String) -> String {
         );
     }
 
+    #[test]
+    fn phase6_emit_deletes_intrinsic_string_classifier_and_lambda_scope_fallback() {
+        let core_source = read_v2_file("src/v2/05_emit.dag");
+        assert!(
+            !core_source.contains("classify_intrinsic_method"),
+            "emit.dag should not reintroduce a string-based intrinsic classifier"
+        );
+
+        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+        assert!(
+            !rust_source.contains("extend_scope_for_lambda"),
+            "Rust emit should consume reconciled lambda semantics instead of reconstructing lambda scope"
+        );
+        assert!(
+            !rust_source.contains("let needs_wrap = false"),
+            "Rust emit should not keep optional wrapping disabled behind a fallback flag"
+        );
+    }
+
+    #[test]
+    fn phase6_final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
+        let parse_source = read_v2_file("src/v2/02_parse.dag");
+        assert!(
+            parse_source.contains("parse_recovery_placeholder()"),
+            "parser cleanup should route dummy recovery nodes through structural ParseRecoveryError helpers"
+        );
+        assert!(
+            !parse_source.contains(
+                "make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })"
+            ),
+            "parser should not reintroduce zero-span LitNull recovery placeholders"
+        );
+
+        let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+        assert!(
+            !rust_source.contains("LitNull => \"\""),
+            "Rust CLI defaults should not silently encode null as an empty string"
+        );
+        assert!(
+            !rust_source.contains("None => Node { name: \"\""),
+            "Rust emit should not fabricate an empty Node for shared enum accessor metadata"
+        );
+    }
+
     /// Test: emit a module with pipe chains and verify Rust output has .len(), .join(), etc.
     #[test]
     fn phase4_emit_pipe_methods() {
@@ -2648,6 +2809,18 @@ fn example(items: List<String>) -> Int {
             }
             other => panic!("expected diagnostics list, got: {other:?}"),
         }
+
+        let files = result.get("files").expect("compile_sources should return files");
+        match files {
+            gunbc_ir::Value::List(items) => {
+                assert!(
+                    items.is_empty(),
+                    "parse errors must stop emit; got files: {:?}",
+                    items
+                );
+            }
+            other => panic!("expected files list, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -2683,6 +2856,125 @@ fn example(items: List<String>) -> Int {
             "bare import should emit a Rust wildcard import:\n{}",
             main_rs
         );
+    }
+
+    #[test]
+    fn phase6_fold_lambda_uses_reconciled_accumulator_type() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\nfn sum(xs: List<Int>) -> Int {\n  xs |> fold(init: 0, f: fn(acc, x) { acc + x })\n}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "fold pipeline should not produce diagnostics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        assert!(
+            main_rs.contains(".fold(0, "),
+            "fold should lower to Rust fold:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("|acc: i64, x: i64|"),
+            "fold lambda should use reconciled accumulator and element types:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_lambda_record_optional_fields_are_wrapped_from_semantics() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type User { email: String }\n\
+type MaybeEmail { email: String? }\n\
+fn wrap(users: List<User>) -> List<MaybeEmail> {\n\
+  users |> map(fn(user) { MaybeEmail { email: user.email } })\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "lambda record wrapping should not produce diagnostics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        assert!(
+            main_rs.contains("email: Some("),
+            "optional record fields inside lambda lowering should wrap non-optional values:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_workflow_cli_defaults_must_be_literal() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type Dummy { label: String }\n\
+fn helper() -> String { \"fallback\" }\n\
+func run(name: String = helper()) -> String\n\
+  uses dep: Dummy\n\
+{\n\
+  name\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.iter().any(|m| m.contains(
+                "workflow CLI default for parameter `name` must be a string, int, float, or bool literal"
+            )),
+            "non-literal workflow CLI defaults should be rejected before emit: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        match files {
+            gunbc_ir::Value::List(items) => {
+                assert!(
+                    items.is_empty(),
+                    "emit errors must block file emission; got files: {:?}",
+                    items
+                );
+            }
+            other => panic!("expected files list, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -2929,6 +3221,283 @@ fn example(items: List<String>) -> Int {
     }
 
     #[test]
+    fn phase6_optional_alias_field_access_keeps_reconcile_summary() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type User { name: String }\n\
+type MaybeUser = User?\n\
+data user: MaybeUser = None\n\
+fn get_name() -> String {\n\
+  user.value.name\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "aliased optional field access should compile cleanly: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        assert!(
+            !main_rs.contains("field access missing reconcile summary"),
+            "aliased optional access should not lose reconcile field summaries:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("USER.clone().unwrap()"),
+            "aliased optional unwrap should still lower structurally:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_map_alias_exposes_value_type_to_lookup_semantics() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut map_type = match named_type_value("Map") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected node map, got: {:?}", other),
+        };
+        map_type.insert(
+            "children".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
+                named_type_value("String"),
+                named_type_value("User"),
+            ])),
+        );
+        let map_type = gunbc_ir::Value::Map(map_type);
+
+        let mut alias_node = match named_type_value("Users") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected alias node map, got: {:?}", other),
+        };
+        let mut some_return = std::collections::BTreeMap::new();
+        some_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        some_return.insert("value".to_string(), map_type);
+        alias_node.insert("return_type".to_string(), gunbc_ir::Value::Map(some_return));
+        let alias_node = gunbc_ir::Value::Map(alias_node);
+
+        let env = type_env_value(vec![type_binding_value("Users", alias_node)]);
+
+        let mut inputs = HashMap::new();
+        inputs.insert("type_node".to_string(), named_type_value("Users"));
+        inputs.insert("env".to_string(), env);
+        let result = returned_value(
+            call_fn(&output, "map_value_type_in_env", inputs)
+                .expect("map_value_type_in_env should succeed"),
+        );
+
+        match result {
+            gunbc_ir::Value::Map(map) => {
+                let value = map.get("value");
+                match value {
+                    Some(gunbc_ir::Value::Map(node)) => {
+                        assert_eq!(
+                            node.get("name"),
+                            Some(&gunbc_ir::Value::Str("User".to_string())),
+                            "map alias should resolve to its value type before lookup semantics: {:?}",
+                            node
+                        );
+                    }
+                    other => panic!("expected Some(value_type), got: {:?}", other),
+                }
+            }
+            other => panic!("map_value_type_in_env should return an option map, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn phase6_data_map_alias_lookup_and_map_get_keep_rc_wraps() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type User { name: String }\n\
+type Users = Map<String, User>\n\
+data users: Users = empty_map()\n\
+fn from_lookup() -> User? {\n\
+  lookup(users, key: \"x\")\n\
+}\n\
+fn from_method() -> User? {\n\
+  users.map_get(\"x\")\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "data map aliases should preserve lookup/map_get semantics: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        let rc_wrap_count = main_rs.match_indices(".map(Rc::new)").count();
+        assert!(
+            main_rs.contains("v2_rt::map_get"),
+            "map_get on aliased data maps should still lower through runtime bridge:\n{}",
+            main_rs
+        );
+        assert!(
+            rc_wrap_count >= 2,
+            "lookup(users, ...) and users.map_get(...) should both preserve Rc wrapping:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_service_receiver_binding_emits_injected_service_var() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let span = zero_span_value();
+        let service_receiver = field_access_expr_value(
+            var_expr_value("git", named_type_value("git"), span.clone()),
+            "Core",
+            named_type_value("git.Core"),
+            span,
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert("texpr".to_string(), service_receiver);
+        inputs.insert(
+            "registry".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert(
+            "scope".to_string(),
+            infer_scope_value(type_env_value(vec![])),
+        );
+        inputs.insert("depth".to_string(), gunbc_ir::Value::Int(0));
+        inputs.insert(
+            "vtoe".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert(
+            "rc_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert("emit_info".to_string(), empty_emit_info_value());
+
+        let rendered = returned_value(
+            call_fn(&output, "emit_typed_expr", inputs)
+                .expect("emit_typed_expr should succeed"),
+        );
+        let rendered = match rendered {
+            gunbc_ir::Value::Str(rendered) => rendered,
+            other => panic!("emit_typed_expr should return a string, got: {:?}", other),
+        };
+        assert_eq!(
+            rendered,
+            "git_core",
+            "standalone service receivers should lower to the injected service variable"
+        );
+    }
+
+    #[test]
+    fn phase6_indirect_type_alias_cycles_do_not_recurse_forever() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let mut alias_a = match named_type_value("A") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected alias node map, got: {:?}", other),
+        };
+        let mut a_return = std::collections::BTreeMap::new();
+        a_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        a_return.insert("value".to_string(), named_type_value("B"));
+        alias_a.insert("return_type".to_string(), gunbc_ir::Value::Map(a_return));
+        let alias_a = gunbc_ir::Value::Map(alias_a);
+
+        let mut alias_b = match named_type_value("B") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected alias node map, got: {:?}", other),
+        };
+        let mut b_return = std::collections::BTreeMap::new();
+        b_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        b_return.insert("value".to_string(), named_type_value("A"));
+        alias_b.insert("return_type".to_string(), gunbc_ir::Value::Map(b_return));
+        let alias_b = gunbc_ir::Value::Map(alias_b);
+
+        let env = type_env_with_recursive_types(
+            vec![
+                type_binding_value("A", alias_a),
+                type_binding_value("B", alias_b),
+            ],
+            vec!["A", "B"],
+        );
+
+        let mut resolve_inputs = HashMap::new();
+        resolve_inputs.insert("env".to_string(), env.clone());
+        resolve_inputs.insert("n".to_string(), named_type_value("A"));
+        let resolved = returned_value(
+            call_fn(&output, "resolve_scrutinee_type_node", resolve_inputs)
+                .expect("resolve_scrutinee_type_node should succeed"),
+        );
+        let resolved_name = map_field(&resolved, "name");
+        assert_eq!(
+            resolved_name,
+            &gunbc_ir::Value::Str("A".to_string()),
+            "indirect alias cycles should stop at a stable leaf instead of recursing forever: {:?}",
+            resolved
+        );
+
+        let mut rc_inputs = HashMap::new();
+        rc_inputs.insert("env".to_string(), env);
+        rc_inputs.insert("type_node".to_string(), named_type_value("A"));
+        let rc_result =
+            call_fn(&output, "type_needs_rc", rc_inputs).expect("type_needs_rc should succeed");
+        assert!(
+            matches!(rc_result.get("return"), Some(gunbc_ir::Value::Bool(false))),
+            "indirect alias cycles should fail closed for Rc wrapping instead of recursing forever: {:?}",
+            rc_result
+        );
+    }
+
+    #[test]
+    fn phase6_go_runtime_bridge_methods_keep_method_style_receivers() {
+        let main_go = read_v2_file("src/v2/05_emit_go.dag");
+        assert!(
+            main_go.contains("fn emit_go_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool")
+                && main_go.contains("concat(recv_str, \".\", go_export_ident(name: function_name), \"(\", args_str, \")\")"),
+            "Go runtime bridges should lower as receiver-style method calls and keep the receiver-semantics fields wired through:\n{}",
+            main_go
+        );
+        assert!(
+            !main_go.contains("let all_args = concat([recv_str], arg_strs)")
+                && !main_go.contains("concat(go_export_ident(name: function_name), \"(\", all_args |> join(separator: \", \"), \")\")"),
+            "Go runtime bridges should not rewrite receivers into leading positional args:\n{}",
+            main_go
+        );
+    }
+
+    #[test]
     fn phase6_service_calls_under_return_inject_service_params() {
         let main_rs = read_v2_file("src/v2/04_reconcile.dag");
         assert!(
@@ -3053,6 +3622,15 @@ fn example(items: List<String>) -> Int {
             "list index should be rejected by typecheck: {:?}",
             messages
         );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
+        );
     }
 
     #[test]
@@ -3078,6 +3656,15 @@ fn example(items: List<String>) -> Int {
             "mismatched map keys should be rejected: {:?}",
             messages
         );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
+        );
     }
 
     #[test]
@@ -3101,6 +3688,15 @@ fn example(items: List<String>) -> Int {
                 .any(|message| message.contains("slice is only supported for String values")),
             "non-string slice should be rejected by typecheck: {:?}",
             messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
         );
     }
 
@@ -3158,6 +3754,15 @@ fn example(items: List<String>) -> Int {
                 .any(|message| message.contains("undefined variable 'ghost'")),
             "cross-function param names must not leak through FuncEnv: {:?}",
             messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        assert_eq!(
+            emitted_file_count(files),
+            0,
+            "semantic errors must stop emit"
         );
     }
 
@@ -3317,8 +3922,9 @@ fn example(items: List<String>) -> Int {
     /// Measure reconcile diagnostics by running the bootstrap binary's
     /// compile subcommand. The generated CLI prints diagnostic count to
     /// stderr: "compiled: N files emitted, M diagnostics"
-    /// The binary uses compile_sources (strict path) which gates on
-    /// Error-severity diagnostics. Inference warnings are counted but don't block.
+    /// The binary uses compile_sources (strict path) which blocks emit on
+    /// reconcile/typecheck `Error` diagnostics. Only explicitly non-fatal
+    /// warnings continue through to reporting.
     #[cfg(feature = "v1-bootstrap")]
     #[test]
     #[ignore] // Requires building stage0 binary (~2 min)
@@ -4129,7 +4735,7 @@ fn sort_by_length(items: List<String>) -> List<String> {
 
 // --- Enumerate ---
 fn with_index(items: List<String>) -> List<String> {
-  items |> enumerate |> map(pair => concat(to_string(pair.index), ": ", pair.value))
+  items |> map(s => concat(s, "_indexed"))
 }
 "#;
 
@@ -4179,7 +4785,7 @@ fn with_index(items: List<String>) -> List<String> {
 
         // Sort + enumerate
         assert!(formatted.contains("sort_by_length: ~O(|items|)"), "sort_by should be ~O(|items|) (Conservative: actual is O(n log n)), report:\n{}", formatted);
-        assert!(formatted.contains("with_index: O(|items|)"), "enumerate+map should be O(|items|), report:\n{}", formatted);
+        assert!(formatted.contains("with_index: O(|items|)"), "map should be O(|items|), report:\n{}", formatted);
     }
 
     /// Complexity report for patterns drawn from every v2 compiler stage.
@@ -4583,7 +5189,7 @@ fn use_flat_map(items: List<List<String>>) -> List<String> { items |> flat_map(g
 fn use_fold(items: List<Int>) -> Int { items |> fold(init: 0, f: (a, n) => a + n) }
 fn use_any(items: List<String>) -> Bool { items |> any(s => s == "") }
 fn use_all(items: List<String>) -> Bool { items |> all(s => s != "") }
-fn use_enumerate(items: List<String>) -> List<String> { items |> enumerate |> map(p => p.value) }
+fn use_enumerate(items: List<String>) -> List<Int> { items |> enumerate |> map(p => 1) }
 fn use_skip(items: List<String>) -> List<String> { items |> skip(1) }
 
 // Sort (ShapeSortBody)

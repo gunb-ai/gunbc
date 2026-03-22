@@ -165,6 +165,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
     }
     let emit_files = emit_result.files
     let emit_diags = emit_result.diagnostics
+    let emit_errors = emit_diags |> filter(d => d.severity == Error)
 
     // Stage 7: Artifact planning.
     // Wrap emitted files in a default monolith ArtifactOutput.
@@ -177,8 +178,9 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
     }
     let _artifact_output = ArtifactOutput { artifact: artifact, files: emit_files }
 
+    let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
     PipelineResult {
-      files: emit_files,
+      files: final_files,
       diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags),
       complexity: complexity
     }
