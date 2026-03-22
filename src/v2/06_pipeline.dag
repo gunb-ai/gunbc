@@ -25,7 +25,7 @@ import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership }
-import v2.compiler.artifact { ArtifactPlan, default_artifact_plan }
+import v2.compiler.artifact { ArtifactPlan, Artifact, default_artifact_plan }
 
 // =========================================================================
 // Types
@@ -85,11 +85,38 @@ fn empty_artifact_plan() -> ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
 }
 
-fn render_target_name(target: RenderTarget) -> String {
-  match target {
-    Rust => "Rust"
-    Python => "Python"
-    Go => "Go"
+fn compile_bundle_error(message: String) -> Diagnostic {
+  Diagnostic {
+    severity: Error,
+    message: message,
+    span: none,
+    module_name: none,
+    category: none
+  }
+}
+
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> CompileResult {
+  match artifact.target {
+    Rust => emit_rust(typed: typed)
+    Python => emit_python(typed: typed)
+    Go => emit_go(typed: typed)
+  }
+}
+
+fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> CompileResult {
+  if artifact_plan.artifacts |> count != 1 {
+    CompileResult {
+      files: [],
+      diagnostics: [compile_bundle_error(message: "compile_sources currently requires exactly one planned artifact")]
+    }
+  } else {
+    match artifact_plan.artifacts |> first {
+      Some { value: artifact } => emit_artifact(typed: typed, artifact: artifact)
+      None => CompileResult {
+        files: [],
+        diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")]
+      }
+    }
   }
 }
 
@@ -192,17 +219,13 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => m.module.name),
-        target: render_target_name(target: target)
+        target: target
       )
 
       // Stage 8: Emit target-language files.
-      // Dispatches to the appropriate renderer based on RenderTarget.
-      // Precondition: no errors from any prior stage.
-      let emit_result = match target {
-        Rust => emit_rust(typed: typed)
-        Python => emit_python(typed: typed)
-        Go => emit_go(typed: typed)
-      }
+      // The artifact plan is the source of truth for backend selection in the
+      // current single-artifact compiler path.
+      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
       let emit_errors = emit_diags |> filter(d => d.severity == Error)

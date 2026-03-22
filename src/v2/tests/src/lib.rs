@@ -4052,6 +4052,21 @@ fn origin() -> Point {
             "emitted Go should contain 'type Point struct':\n{}",
             &smoke_go[..smoke_go.len().min(500)],
         );
+
+        let artifact_plan = result
+            .get("artifact_plan")
+            .expect("compile_sources should return artifact_plan");
+        let artifacts = match map_field(artifact_plan, "artifacts") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected artifact list, got: {:?}", other),
+        };
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "go pipeline smoke should still plan a single artifact: {:?}",
+            artifacts
+        );
+        expect_variant(map_field(&artifacts[0], "target"), "Go");
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -4890,11 +4905,7 @@ fn main() -> Int { 1 }
             "default plan should name the artifact 'default': {:?}",
             artifact
         );
-        assert!(
-            matches!(map_field(artifact, "target"), gunbc_ir::Value::Str(target) if target == "Rust"),
-            "default plan should preserve the requested target: {:?}",
-            artifact
-        );
+        expect_variant(map_field(artifact, "target"), "Rust");
 
         let entry_modules = match map_field(artifact, "entry_modules") {
             gunbc_ir::Value::List(items) => items,
