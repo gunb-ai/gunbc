@@ -956,6 +956,68 @@ fn run(entries: Map<String, String>) -> List<String> {
 }
 
 #[test]
+fn typecheck_for_loop_scope_errors_do_not_fall_through_to_callable_fallbacks() {
+    let options = TypecheckOptions {
+        allow_unresolved_imports: false,
+    };
+    let missing_passthrough = module_graph_from_sources(&[(
+        "sample/loop_scope_missing_shadowed.dag",
+        r#"module sample.loop_scope_missing_shadowed
+type Repo {
+  name: String
+}
+fn owner() -> Int {
+  1
+}
+fn render(repo: Repo, owner: String) -> String {
+  owner
+}
+fn run(repos: List<Repo>) -> List<String> {
+  result = for repo in with(repos, { owner: owner }) { render(repo: repo, owner: owner) }
+  result
+}"#,
+    )]);
+    let errors = typecheck_module_graph_with_options(&missing_passthrough, options.clone())
+        .expect_err("missing passthrough binding should fail typecheck");
+
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::UnknownForLoopPassthroughBinding { binding } if binding == "owner"
+    )));
+    assert!(!errors.iter().any(|error| matches!(
+        error,
+        TypeError::TypeMismatch { expected, got } if expected == "String" && got == "Int"
+    )));
+
+    let non_list_iterable = module_graph_from_sources(&[(
+        "sample/loop_scope_shadowed_iterable.dag",
+        r#"module sample.loop_scope_shadowed_iterable
+fn entry() -> Int {
+  1
+}
+fn render(entry: String) -> String {
+  entry
+}
+fn run(entries: Map<String, String>) -> List<String> {
+  result = for entry in entries { render(entry: entry) }
+  result
+}"#,
+    )]);
+    let errors = typecheck_module_graph_with_options(&non_list_iterable, options)
+        .expect_err("non-list for-loop iterable should fail typecheck");
+
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        TypeError::TypeMismatch { expected, got }
+            if expected == "List<T>" && got == "Map<String, String>"
+    )));
+    assert!(!errors.iter().any(|error| matches!(
+        error,
+        TypeError::TypeMismatch { expected, got } if expected == "String" && got == "Int"
+    )));
+}
+
+#[test]
 fn strict_mode_accepts_associated_output_function_type_parameters() {
     let graph = module_graph_from_sources(&[(
         "sample/ensure.dag",

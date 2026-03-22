@@ -214,6 +214,80 @@ impl TypedForLoopScope {
             .find(|binding| binding.name == name)
             .map(|binding| &binding.ir_type)
     }
+
+    fn resolved_bindings(
+        &self,
+        outer_bindings: &HashMap<String, gunbc_ir::code_ir::IrType>,
+    ) -> HashMap<String, gunbc_ir::code_ir::IrType> {
+        let mut bindings = outer_bindings.clone();
+        bindings.remove(&self.element_binding.name);
+        bindings.insert(
+            self.element_binding.name.clone(),
+            self.element_binding.ir_type.clone(),
+        );
+        for binding in &self.passthrough_bindings {
+            bindings.insert(binding.name.clone(), binding.ir_type.clone());
+        }
+        bindings
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ForLoopScopeValueBinding {
+    name: String,
+    value_type: ValueType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ForLoopScopeContract {
+    element_binding: ForLoopScopeValueBinding,
+    passthrough_bindings: Vec<ForLoopScopeValueBinding>,
+}
+
+impl ForLoopScopeContract {
+    fn local_bindings(
+        &self,
+        outer_bindings: &HashMap<String, ValueType>,
+    ) -> HashMap<String, ValueType> {
+        let mut bindings = outer_bindings.clone();
+        bindings.remove(&self.element_binding.name);
+        bindings.insert(
+            self.element_binding.name.clone(),
+            self.element_binding.value_type.clone(),
+        );
+        for binding in &self.passthrough_bindings {
+            bindings.insert(binding.name.clone(), binding.value_type.clone());
+        }
+        bindings
+    }
+
+    fn typed_scope(
+        &self,
+        iterable_ir_type: &gunbc_ir::code_ir::IrType,
+        resolved_bindings: &HashMap<String, gunbc_ir::code_ir::IrType>,
+    ) -> TypedForLoopScope {
+        let element_ir_type = for_loop_element_ir_type(iterable_ir_type)
+            .unwrap_or_else(|| value_type_to_ir_type(&self.element_binding.value_type));
+        let passthrough_bindings = self
+            .passthrough_bindings
+            .iter()
+            .map(|binding| TypedForLoopBinding {
+                name: binding.name.clone(),
+                ir_type: resolved_bindings
+                    .get(&binding.name)
+                    .cloned()
+                    .unwrap_or_else(|| value_type_to_ir_type(&binding.value_type)),
+            })
+            .collect();
+
+        TypedForLoopScope {
+            element_binding: TypedForLoopBinding {
+                name: self.element_binding.name.clone(),
+                ir_type: element_ir_type,
+            },
+            passthrough_bindings,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -3995,27 +4069,30 @@ fn collect_constructor_targets_from_expr<'a>(
                 metadata,
             );
             let (iter_ty, _) = infer_expr_type(iterable, local_bindings, infer_context);
-            let (loop_scope_types, _) =
-                build_for_loop_scope_types(binding, &iter_ty, passthrough, local_bindings);
-            let mut loop_scope_exprs = binding_exprs.clone();
-            loop_scope_exprs.remove(binding);
-            match body {
-                ForBody::Expr(body_expr) => collect_constructor_targets_from_expr(
-                    body_expr,
-                    &loop_scope_types,
-                    &loop_scope_exprs,
-                    infer_context,
-                    expr_identities,
-                    metadata,
-                ),
-                ForBody::Block(stmts) => collect_constructor_targets_from_stmts(
-                    stmts,
-                    &loop_scope_types,
-                    &loop_scope_exprs,
-                    infer_context,
-                    expr_identities,
-                    metadata,
-                ),
+            let (loop_scope, _) =
+                resolve_for_loop_scope_contract(binding, &iter_ty, passthrough, local_bindings);
+            if let Some(loop_scope) = loop_scope {
+                let loop_scope_types = loop_scope.local_bindings(local_bindings);
+                let mut loop_scope_exprs = binding_exprs.clone();
+                loop_scope_exprs.remove(binding);
+                match body {
+                    ForBody::Expr(body_expr) => collect_constructor_targets_from_expr(
+                        body_expr,
+                        &loop_scope_types,
+                        &loop_scope_exprs,
+                        infer_context,
+                        expr_identities,
+                        metadata,
+                    ),
+                    ForBody::Block(stmts) => collect_constructor_targets_from_stmts(
+                        stmts,
+                        &loop_scope_types,
+                        &loop_scope_exprs,
+                        infer_context,
+                        expr_identities,
+                        metadata,
+                    ),
+                }
             }
         }
         Expr::Lambda(params, body) => {
@@ -4805,52 +4882,40 @@ fn collect_resolved_expr_ir_types_from_expr(
                 expr_identities,
                 metadata,
             );
-            let (loop_structural, _) =
-                build_for_loop_scope_types(binding, &iter_ty, passthrough, structural_bindings);
-            let mut loop_resolved = resolved_bindings.clone();
-            loop_resolved.remove(binding);
-            if let Some(element_ir_type) = for_loop_element_ir_type(&iter_ir_ty)
-                .or_else(|| loop_structural.get(binding).map(value_type_to_ir_type))
-            {
-                loop_resolved.insert(binding.clone(), element_ir_type);
-            }
-            for name in passthrough {
-                if let Some(resolved_ir_type) = resolved_bindings
-                    .get(name)
-                    .cloned()
-                    .or_else(|| loop_structural.get(name).map(value_type_to_ir_type))
-                {
-                    loop_resolved.insert(name.clone(), resolved_ir_type);
-                }
-            }
-            if let Some(scope) = build_typed_for_loop_scope(
+            let (loop_scope, _) = resolve_for_loop_scope_contract(
                 binding,
-                &iter_ir_ty,
+                &iter_ty,
                 passthrough,
-                &loop_structural,
-                resolved_bindings,
-            ) {
-                metadata.annotate_for_loop_scope(stable_expr_identity(expr, expr_identities), scope);
-            }
-            match body {
-                ForBody::Expr(inner) => {
-                    let _ = collect_resolved_expr_ir_types_from_expr(
-                        inner,
+                structural_bindings,
+            );
+            if let Some(loop_scope) = loop_scope {
+                let loop_structural = loop_scope.local_bindings(structural_bindings);
+                let typed_scope = loop_scope.typed_scope(&iter_ir_ty, resolved_bindings);
+                metadata.annotate_for_loop_scope(
+                    stable_expr_identity(expr, expr_identities),
+                    typed_scope.clone(),
+                );
+                let loop_resolved = typed_scope.resolved_bindings(resolved_bindings);
+                match body {
+                    ForBody::Expr(inner) => {
+                        let _ = collect_resolved_expr_ir_types_from_expr(
+                            inner,
+                            &loop_structural,
+                            &loop_resolved,
+                            infer_context,
+                            expr_identities,
+                            metadata,
+                        );
+                    }
+                    ForBody::Block(stmts) => collect_resolved_expr_ir_types_from_stmts(
+                        stmts,
                         &loop_structural,
                         &loop_resolved,
                         infer_context,
                         expr_identities,
                         metadata,
-                    );
+                    ),
                 }
-                ForBody::Block(stmts) => collect_resolved_expr_ir_types_from_stmts(
-                    stmts,
-                    &loop_structural,
-                    &loop_resolved,
-                    infer_context,
-                    expr_identities,
-                    metadata,
-                ),
             }
         }
         Expr::Lambda(_, body) => {
@@ -5572,13 +5637,18 @@ fn infer_expr_type(
             let (iter_ty, iter_errors) = infer_expr_type(iterable, local_bindings, infer_context);
             errors.extend(iter_errors);
             let (loop_scope, loop_errors) =
-                build_for_loop_scope_types(binding, &iter_ty, passthrough, local_bindings);
+                resolve_for_loop_scope_contract(binding, &iter_ty, passthrough, local_bindings);
             errors.extend(loop_errors);
-            let (_, body_errors) = match body {
-                ForBody::Expr(expr) => infer_expr_type(expr, &loop_scope, infer_context),
-                ForBody::Block(stmts) => infer_block_expr_type(stmts, &loop_scope, infer_context),
-            };
-            errors.extend(body_errors);
+            if let Some(loop_scope) = loop_scope {
+                let loop_scope = loop_scope.local_bindings(local_bindings);
+                let (_, body_errors) = match body {
+                    ForBody::Expr(expr) => infer_expr_type(expr, &loop_scope, infer_context),
+                    ForBody::Block(stmts) => {
+                        infer_block_expr_type(stmts, &loop_scope, infer_context)
+                    }
+                };
+                errors.extend(body_errors);
+            }
             ValueType::Inferred
         }
         Expr::Lambda(_, body) => {
@@ -6028,69 +6098,53 @@ fn for_loop_element_ir_type(
     }
 }
 
-fn build_for_loop_scope_types(
+fn resolve_for_loop_scope_contract(
     binding: &str,
     iterable_ty: &ValueType,
     passthrough: &[String],
     local_bindings: &HashMap<String, ValueType>,
-) -> (HashMap<String, ValueType>, Vec<TypeError>) {
-    let mut loop_scope = local_bindings.clone();
+) -> (Option<ForLoopScopeContract>, Vec<TypeError>) {
     let mut errors = Vec::new();
-    loop_scope.remove(binding);
-
-    if let Some(element_ty) = for_loop_element_value_type(iterable_ty) {
-        loop_scope.insert(binding.to_string(), element_ty);
-    } else if !iterable_ty.is_inferred() {
-        errors.push(TypeError::TypeMismatch {
-            expected: "List<T>".to_string(),
-            got: iterable_ty.display_name(),
-        });
-    }
+    let element_binding = if let Some(element_ty) = for_loop_element_value_type(iterable_ty) {
+        Some(ForLoopScopeValueBinding {
+            name: binding.to_string(),
+            value_type: element_ty,
+        })
+    } else {
+        if !iterable_ty.is_inferred() {
+            errors.push(TypeError::TypeMismatch {
+                expected: "List<T>".to_string(),
+                got: iterable_ty.display_name(),
+            });
+        }
+        None
+    };
+    let mut passthrough_bindings = Vec::with_capacity(passthrough.len());
 
     for name in passthrough {
         match local_bindings.get(name) {
-            Some(passthrough_ty) => {
-                loop_scope.insert(name.clone(), passthrough_ty.clone());
-            }
+            Some(passthrough_ty) => passthrough_bindings.push(ForLoopScopeValueBinding {
+                name: name.clone(),
+                value_type: passthrough_ty.clone(),
+            }),
             None => errors.push(TypeError::UnknownForLoopPassthroughBinding {
                 binding: name.clone(),
             }),
         }
     }
 
-    (loop_scope, errors)
-}
+    let contract = element_binding.and_then(|element_binding| {
+        if errors.is_empty() {
+            Some(ForLoopScopeContract {
+                element_binding,
+                passthrough_bindings,
+            })
+        } else {
+            None
+        }
+    });
 
-fn build_typed_for_loop_scope(
-    binding: &str,
-    iterable_ir_type: &gunbc_ir::code_ir::IrType,
-    passthrough: &[String],
-    loop_scope: &HashMap<String, ValueType>,
-    resolved_bindings: &HashMap<String, gunbc_ir::code_ir::IrType>,
-) -> Option<TypedForLoopScope> {
-    let element_ir_type = for_loop_element_ir_type(iterable_ir_type)
-        .or_else(|| loop_scope.get(binding).map(value_type_to_ir_type))?;
-    let passthrough_bindings = passthrough
-        .iter()
-        .map(|name| {
-            resolved_bindings
-                .get(name)
-                .cloned()
-                .or_else(|| loop_scope.get(name).map(value_type_to_ir_type))
-                .map(|ir_type| TypedForLoopBinding {
-                    name: name.clone(),
-                    ir_type,
-                })
-        })
-        .collect::<Option<Vec<_>>>()?;
-
-    Some(TypedForLoopScope {
-        element_binding: TypedForLoopBinding {
-            name: binding.to_string(),
-            ir_type: element_ir_type,
-        },
-        passthrough_bindings,
-    })
+    (contract, errors)
 }
 
 fn merge_value_types(left: ValueType, right: ValueType) -> ValueType {
