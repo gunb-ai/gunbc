@@ -146,8 +146,8 @@ src/v2/
   05_emit.dag         -- typed artifact/subgraph + target -> backend artifact(s)
 
   compile.dag         -- compiler driver/orchestrator; wires stages together
-  complexity.dag      -- analysis over typed graph; not a core compile stage
-  ownership.dag       -- analysis/proof layer over typed graph; not a core compile stage
+  complexity.dag      -- proof/obligation derivation over typed graph; not a core compile stage
+  ownership.dag       -- proof/obligation derivation over typed graph; not a core compile stage
   artifact.dag        -- artifact planning/partitioning; sits above per-artifact emit
   trace.dag           -- runtime/source-map trace contracts; side-system
   tools/
@@ -201,12 +201,13 @@ classification is:
   These are the only numbered files. They define the linear
   source-to-backend transform.
 
-- Analyses / proof layers:
+- Proof / obligation derivation layers:
   `complexity.dag`, `ownership.dag`.
-  These consume the typed graph and produce reports, proofs, or
-  diagnostics. They may run by default inside `compile.dag`, but they do
-  not define new program meaning and they are not additional lowering
-  stages.
+  These consume the typed graph and derive proofs, executable validation
+  obligations, reports, or diagnostics from the same source program.
+  They may run by default inside `compile.dag`, but they do not define
+  new program meaning and they are not additional lowering stages unless
+  they are explicitly promoted into a transformation stage.
 
 - Orchestration / build planning:
   `compile.dag`, `artifact.dag`.
@@ -223,8 +224,9 @@ classification is:
 
 Current standing of the main non-stage modules:
 
-- `complexity.dag`: real and useful today; an always-on analysis in the
-  current driver, but still conceptually an analysis layer
+- `complexity.dag`: real and useful today; an always-on proof/report
+  derivation in the current driver, but still conceptually not a lowering
+  stage
 - `artifact.dag`: honest future orchestration model; explicit-plan-only
   today, not yet driving compilation; end-state is to sit above emit as
   the selector of artifact targets and boundaries
@@ -370,6 +372,210 @@ func compile(root: FilePath, backend: Backend) -> CompileResult {
 }
 ```
 
+### Gap analysis: current tree vs end state
+
+This section is the working delta between the intended architecture above
+and the current repository. It is intentionally operational: what is
+still structurally wrong, how much re-architecture remains, what counts
+as done, and what old entrypoints/helpers should be deleted when the new
+shape lands.
+
+#### G1. Stage naming and file ownership
+
+Current state:
+
+- `04_reconcile.dag` still carries the old name even though the intended
+  role is `infer` / `typecheck`
+- `06_pipeline.dag` is the compiler driver, not a sixth numbered stage
+- numbered and unnumbered responsibilities are still mixed in the tree
+
+Target state:
+
+- numbered files are only the six core stages
+- driver/orchestrator is `compile.dag` (or `driver.dag`)
+- analyses and runtime-side modules are unnumbered
+
+Work / re-architecture:
+
+- low-to-medium; mostly renames plus import/test/doc cleanup
+
+Acceptance criteria:
+
+- `04_reconcile.dag` renamed to `04_infer.dag` (or `04_typecheck.dag`)
+- `06_pipeline.dag` renamed to `compile.dag`
+- no numbered file exists that is not a core lowering stage
+- docs/tests/imports use the new names consistently
+
+Deletion / compatibility cleanup:
+
+- delete the old `06_pipeline` name after callers migrate
+- delete stale doc language that calls the driver "stage 6"
+
+#### G2. Artifact planning sits above emit
+
+Current state:
+
+- the current top-level compile path still assumes one target for the
+  whole compile
+- `Artifact.target` is still a `String`
+- `artifact.dag` is explicit-plan-only and not yet driving compilation
+
+Target state:
+
+- infer whole typed graph first
+- artifact planning chooses backend per artifact
+- emit runs once per artifact
+- single-target compile becomes a wrapper over a default one-artifact plan
+
+Work / re-architecture:
+
+- medium; top-level interfaces change, but core stages remain intact
+
+Acceptance criteria:
+
+- `Artifact.target` uses typed `Backend`
+- `plan_artifacts(...)` runs after infer and before emit in the driver
+- `emit_artifact(...)` is the primary emit entrypoint
+- `compile(...)` is implemented as a compatibility wrapper around a
+  default artifact plan
+
+Deletion / compatibility cleanup:
+
+- delete the assumption that whole-project compile has exactly one target
+- delete `String`-typed artifact target fields once callers migrate
+
+#### G3. Shared emit spine vs per-target walkers
+
+Current state:
+
+- `05_emit.dag` has shared helpers and context-building
+- Rust, Python, and Go still each own a full expression dispatcher
+- Rust still owns a separate TCO dispatcher, and Python/Go each have
+  their own TCO walks as well
+
+Target state:
+
+- `05_emit.dag` owns traversal and dispatch
+- target adapters own only irreducible per-target lowering
+- adding a new backend does not mean adding another whole emitter walk
+
+Work / re-architecture:
+
+- high; this is the main remaining architecture extraction
+
+Acceptance criteria:
+
+- no target adapter owns a full 20-arm `ExprData` dispatcher
+- no target adapter owns a separate whole-tree TCO dispatcher
+- per-target modules are leaf renderers/adapters only
+- shared emit can drive Rust/Python/Go/Dag through one traversal spine
+
+Deletion / compatibility cleanup:
+
+- delete per-target whole-expression dispatchers after shared dispatch lands
+- delete duplicate TCO walkers after shared TCO dispatch lands
+
+#### G4. DAG backend and downstream execution
+
+Current state:
+
+- current code still models backends as native emit targets only
+- no canonical DAG backend artifact exists yet
+- no v2 DAG runtime/interpreter exists yet
+
+Target state:
+
+- `Dag` is a first-class backend
+- `targets/dag/adapter.dag` lowers typed graphs to canonical DAG artifacts
+- runtime execution happens in `runtimes/dag/*`
+- interpretation and JIT are runtime strategies over the same artifact
+
+Work / re-architecture:
+
+- medium-to-high; mostly new implementation, not a rewrite of core stages
+
+Acceptance criteria:
+
+- `Backend` / target enums include `Dag`
+- a canonical DAG artifact schema exists
+- compiler can emit that artifact
+- runtime/interpreter can execute it outside the core compile stages
+
+Deletion / compatibility cleanup:
+
+- delete wording that says compiler output is only native source files
+- delete assumptions that execution must happen through Rust/Python/Go
+
+#### G5. Test generation and downstream validation
+
+Current state:
+
+- test generation has not disappeared, but it has narrowed
+- Rust still emits generated tests from `mock_response` fixtures
+- Python and Go do not currently have equivalent generated-test paths
+- test generation is not yet modeled as a backend-/artifact-level shared system
+
+Target state:
+
+- generated tests are a first-class output of artifact emission
+- fixtures (`mock_response`) and boundary contracts can produce hermetic tests
+- tests are backend-aware but not hardcoded inside one language emitter
+
+Work / re-architecture:
+
+- medium; current Rust-only path should be preserved, then generalized
+
+Acceptance criteria:
+
+- generated tests still exist after emit refactors
+- at least one backend path remains capable of hermetic generated tests
+- test generation is surfaced at the artifact/emit contract level, not as
+  an implementation detail of one emitter file
+- long term: Python/Go/Dag can opt into generated test emission through
+  the same artifact-level interface
+
+Deletion / compatibility cleanup:
+
+- delete Rust-only ownership of test generation once shared/adapter-level
+  test emission exists
+- delete stale doc claims that imply multi-backend generated tests already exist
+
+#### G6. Proof and analysis modules are derivations, not side systems
+
+Current state:
+
+- `complexity.dag` is real and currently always-on in the driver
+- `ownership.dag` exists as a proof layer
+- these modules are still easy to misread as stray pipeline stages or as
+  ad hoc side analyses disconnected from emitted outputs
+
+Target state:
+
+- proof/analysis modules remain separate from lowering
+- they derive first-class outputs from the same typed graph: proofs,
+  reports, or executable validation obligations
+- they may run by default, but do not change program meaning unless they
+  are explicitly promoted to a transformation stage
+
+Work / re-architecture:
+
+- low-to-medium; mostly interface clarity, output contracts, and
+  preserving cost discipline
+
+Acceptance criteria:
+
+- derivation modules are invoked explicitly by `compile.dag`
+- derivation modules have bounded/default cost suitable for always-on use
+  when enabled
+- outputs from derivation modules are first-class in interfaces/docs, not
+  hidden diagnostics-only side effects
+- docs clearly separate derivation modules from lowering stages
+
+Deletion / compatibility cleanup:
+
+- delete any future tendency to smuggle rewrites into derivation modules
+- delete doc language that treats proofs/tests as second-class cleanup
+
 ### Bootstrap subset
 
 The v2 prototype targets the **gist.dag bootstrap subset**: the 8
@@ -392,6 +598,255 @@ run. v2 fixes this by emitting tests alongside code:
 
 Emitted tests are hermetic by default — they use `mock_response` data
 from the DSL source as fixtures. No network, no credentials.
+
+Current status in the tree:
+
+- Rust still emits generated tests from `mock_response` fixture data
+- this is currently Rust-specific, not a shared artifact-level facility
+- preserving and generalizing generated tests is an explicit migration requirement,
+  not something to assume is already solved by the new emitter architecture
+
+### Generated test strategy
+
+Generated tests are a day-0 interface concern, not a cleanup task to
+append after the emitter stabilizes.
+
+The rule is:
+
+- if something can be proven structurally at compile time, prove it in
+  the compiler
+- if something depends on runtime behavior, backend semantics, transport
+  behavior, or emitted code execution, validate it with generated tests
+
+This keeps the architecture honest:
+
+- compile-time proofs prevent impossible programs from being emitted
+- generated tests validate the residual runtime obligations the compiler
+  cannot discharge structurally
+
+### One graph, many projections
+
+Runtime code, generated tests, proofs, complexity certificates, and
+reports should all fall out of the same typed DAG. They are not separate
+representation families; they are different projections or roles over
+the same program structure.
+
+The intended rule is:
+
+- the source program carries enough structure to derive runtime artifacts,
+  proofs, and executable validation artifacts
+- proof/validation modules discharge obligations already implicit in the
+  graph; they do not rely on hand-maintained per-program checklists
+- anything structurally decidable should produce a proof, witness, or
+  report directly from the graph
+- anything not structurally decidable should produce executable
+  validation artifacts from that same graph
+- compile should fail or surface an explicit unsupported obligation when
+  a required proof/test cannot be discharged
+
+One useful vocabulary for this is:
+
+```dag
+type ProjectionRole = Runtime | Test | Proof | Fixture | Harness | Report
+
+type ObligationStatus
+  = StaticallyDischarged
+  | RequiresExecutableValidation
+  | Unsupported
+```
+
+The important invariant is not "tests use a different IR". The important
+invariant is that the same typed graph can be projected into:
+
+- runtime artifacts
+- generated test artifacts
+- proof/report artifacts
+- diagnostics about obligations that remain unsupported
+
+That same formula should cover test generation, ownership proofs,
+complexity proofs, policy/data-flow proofs, and future mathematical
+proofs. The compiler team maintains the derivation rules and capability
+tables; individual programs should not require hand-maintained "testing
+gap" lists.
+
+Examples of compile-time proofs:
+
+- type resolution and shape compatibility
+- artifact boundary schema compatibility
+- information-flow / policy proofs
+- ownership / complexity proofs
+
+Examples of test-time validation:
+
+- emitted code actually executes
+- transport stubs and mock responses behave as expected
+- serialization / deserialization round-trips work in the target backend
+- backend-specific lowering preserves runtime semantics
+- runtime/source-map traces remap correctly
+
+### Test taxonomy
+
+The intended end-state taxonomy is:
+
+1. Compiler self-tests
+   These are host-side tests for tokenize/parse/resolve/infer/emit and
+   the compile driver. They are not generated. They protect compiler
+   correctness directly.
+
+2. Generated backend unit tests
+   Per-artifact tests emitted alongside backend outputs. These validate
+   backend/runtime behavior for one artifact in isolation using hermetic
+   fixtures.
+
+3. Generated artifact boundary integration tests
+   Tests generated from `artifact.dag` boundary plans. These validate
+   adapters, serialization, contracts, and cross-artifact compatibility.
+
+4. Generated runtime conformance tests
+   Tests that the same typed program behaves consistently across
+   backends/runtimes (for example Rust vs Dag interpreter vs JIT).
+
+5. Generated repro / trace tests
+   Tests synthesized from normalized traces or captured repro cases to
+   lock in real failures as hermetic regressions.
+
+### What exists today
+
+Compiler self-tests exist today and are healthy. Examples include:
+
+- parse/type/emit regression tests in `src/v2/tests/src/lib.rs`
+- strict pipeline smoke tests
+- Go pipeline smoke tests
+- compile-all-modules smoke coverage
+
+Generated backend tests exist today only in a narrow Rust-specific form:
+
+- `05_emit_rust.dag` emits `tests/<module>_test.rs` files for service
+  operations that contain `mock_response` fixture data
+- these tests are generated from `mock_response` / `mock_*` properties
+
+Important current limitation:
+
+- the current Rust-generated tests are closer to fixture scaffolds than
+  full execution/assertion tests; they preserve the slot in the
+  interface, but they are not yet the end-state validation story
+
+No equivalent generated-test path currently exists for:
+
+- Python backend
+- Go backend
+- Dag backend
+- artifact boundary integration tests
+- trace/repro-driven generated tests
+
+### Generated test gap analysis
+
+#### T1. Preserve generated tests as a first-class emit output
+
+Current state:
+
+- generated tests exist only as an implementation detail of Rust emit
+
+Target state:
+
+- generated tests are a first-class output of artifact emission
+- at least one artifact can emit both runtime files and test files
+
+Acceptance criteria:
+
+- `ArtifactOutput` or the equivalent emit contract makes room for test files
+- emit refactors do not accidentally drop generated tests
+
+#### T2. Upgrade Rust generated tests from scaffold to validation
+
+Current state:
+
+- Rust-generated tests are created from `mock_response` data, but the
+  current emitted bodies are minimal scaffold code
+
+Target state:
+
+- generated Rust tests invoke emitted operations/services
+- tests assert observable behavior, not just fixture setup
+- dry-run/mock paths remain hermetic and credential-free
+
+Acceptance criteria:
+
+- generated Rust tests execute code paths and contain assertions
+- generated tests fail meaningfully when emitted behavior regresses
+
+#### T3. Lift test generation to the artifact/back-end interface
+
+Current state:
+
+- test generation is Rust-local
+
+Target state:
+
+- test generation is modeled at the artifact level
+- each backend can opt into generated tests through a common interface
+
+Acceptance criteria:
+
+- test generation is described by shared emit/artifact contracts
+- per-backend adapters implement only backend-specific rendering details
+
+#### T4. Add artifact boundary integration tests
+
+Current state:
+
+- `artifact.dag` has boundary modeling and proofs, but no generated
+  boundary test emission
+
+Target state:
+
+- boundary plans can emit integration tests that validate adapters and
+  protocol assumptions at runtime
+
+Acceptance criteria:
+
+- at least one boundary kind can generate a hermetic integration test
+- generated boundary tests are tied to explicit boundary declarations
+
+#### T5. Add Dag-runtime conformance tests
+
+Current state:
+
+- no DAG backend/runtime exists yet, so there is no runtime conformance suite
+
+Target state:
+
+- the same typed program can be exercised against Dag runtime and at
+  least one native backend with comparable expected behavior
+
+Acceptance criteria:
+
+- conformance tests exist for at least one shared program shape
+- differences are explicit and documented, not accidental
+
+#### T6. Trace/repro tests become generated regressions
+
+Current state:
+
+- `trace.dag` defines the contract, but no test-generation path consumes it
+
+Target state:
+
+- captured repro cases can be re-emitted as hermetic tests
+- trace/source-map regressions can be preserved automatically
+
+Acceptance criteria:
+
+- at least one repro case can round-trip into a generated regression test
+
+### Deletion / migration guardrails
+
+- do not delete the existing Rust `mock_response` test path until a
+  stronger shared/generated replacement exists
+- do not claim "compiler emits tests" in a backend-generic sense until
+  at least one non-Rust or artifact-level path exists
+- do not bury generated-test interfaces inside one target adapter; keep
+  the contract visible at the emit/artifact layer
 
 ### Bootstrap path
 
