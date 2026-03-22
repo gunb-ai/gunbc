@@ -3070,6 +3070,17 @@ fn compile_intrinsic_call(
                 obligation: None,
             })
         }
+        "to_string" if args.len() == 1 => {
+            let value = resolve_named_or_positional(args, "value", 0, ctx, counter);
+            Some(code_ir::Expr::Call {
+                func: Box::new(code_ir::Expr::Path(vec![
+                    "v2_rt".to_string(),
+                    "to_string".to_string(),
+                ])),
+                args: vec![value],
+                obligation: None,
+            })
+        }
         // Scanner intrinsics: pass string arg by reference (O(1)) instead of
         // clone (O(N)). These are called per-character in the tokenizer hot loop.
         "scan_while" if args.len() == 3 => {
@@ -3797,7 +3808,7 @@ fn compile_intrinsic_call(
                     )),
                     ir_type: None,
                 },
-                code_ir::Stmt::TailExpr(code_ir::Expr::Var(keys)),
+                code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(keys))),
             ]))
         }
         // map_insert(map, key, value) → Rc::try_unwrap + .insert(key, value) + Rc::new.
@@ -6131,10 +6142,29 @@ fn named_type_from_ir(ty: &IrType) -> Option<String> {
 }
 
 fn infer_list_element_ir_type(expr: &ast::Expr, ctx: &CompileContext) -> Option<IrType> {
-    match infer_known_expr_ir_type(expr, ctx)? {
-        IrType::Generic(name, args) if name == "List" && args.len() == 1 => Some(args[0].clone()),
-        _ => None,
+    // Direct: if expression type is List<T>, element is T
+    if let Some(IrType::Generic(name, args)) = infer_known_expr_ir_type(expr, ctx) {
+        if name == "List" && args.len() == 1 {
+            return Some(args[0].clone());
+        }
     }
+    // Collection operations: infer element type from the lambda body
+    if let ast::Expr::Call(name, args) = expr {
+        if args.len() >= 2 {
+            if let ast::Expr::Lambda(_, body) = &args.last()?.1 {
+                match name.as_str() {
+                    // flat_map body returns List<T>, element is T
+                    "flat_map" => return infer_list_element_ir_type(body, ctx),
+                    // map body returns T, element is T
+                    "map" => return infer_known_expr_ir_type(body, ctx),
+                    // filter/sort_by preserve element type from input collection
+                    "filter" | "sort_by" => return infer_list_element_ir_type(&args[0].1, ctx),
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
 }
 
 fn compile_collection_lambda_body(
@@ -6198,6 +6228,18 @@ fn infer_fold_result_ir_type(
             ast::Stmt::Expr(expr) => infer_fold_result_ir_type(expr, acc_param, ctx),
             _ => None,
         }),
+        // Match expression: check all arms for a consistent type
+        ast::Expr::Match(_, arms) => {
+            let mut found = None;
+            for arm in arms {
+                if let Some(ty) = infer_fold_result_ir_type(&arm.body, acc_param, ctx) {
+                    if found.is_none() {
+                        found = Some(ty);
+                    }
+                }
+            }
+            found
+        }
         _ => infer_known_expr_ir_type(expr, ctx),
     }
 }

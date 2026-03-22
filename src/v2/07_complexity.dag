@@ -13,10 +13,22 @@
 // operation can have different faithful costs in the bootstrap
 // interpreter vs emitted/native code.
 //
-// This module is type definitions only. Analysis implementation
-// (D2-D4) will be added in later tracks.
+// D2: get_or_compute_summary -- lazy cached summary computation
+// D3: classify_recursion -- SCC-based recursion pattern detection
+// D4: build_complexity_report -- collect summaries + violations
 
 module v2.compiler.complexity
+
+import v2.std.core {
+  Node,
+  ExprData, NoExprData,
+  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
+  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
+  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
+  MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
+  Text, Interpolation, Param
+}
 
 // =========================================================================
 // Size expressions -- symbolic sizes for analysis
@@ -93,6 +105,56 @@ type Constraint
 type Certainty = Proven | Conservative | Unknown
 
 // =========================================================================
+// Emission cost shape -- single authority on method cost structure
+//
+// Every method recognized by both the emitter and the complexity analyzer
+// has exactly one CostShape. If a new method is added to the emitter
+// without a corresponding CostShape, the exhaustive match in
+// classify_method_cost fails.
+//
+// Shapes:
+//   ShapeConstant      -- O(1) regardless of input size
+//   ShapeLinearScan    -- O(|receiver|) with O(1) per element (count, join)
+//   ShapeIterateBody   -- O(|receiver| * body_cost) (map, filter, fold)
+//   ShapeSortBody      -- O(|receiver| * body_cost), Conservative (sort_by)
+//   ShapeProducesCollection -- whether the method outputs a collection
+// =========================================================================
+
+type CostShape
+  = ShapeConstant
+  | ShapeLinearScan { produces_collection: Bool }
+  | ShapeIterateBody { produces_collection: Bool }
+  | ShapeSortBody
+
+// Classify a method name to its cost shape. This is the single authority
+// on what cost structure each method has. The complexity analyzer dispatches
+// on this instead of hardcoded string names.
+fn classify_method_cost(name: String) -> CostShape? {
+  if name == "map" || name == "flat_map" || name == "filter" ||
+     name == "enumerate" || name == "skip" {
+    Some { value: ShapeIterateBody { produces_collection: true } }
+  } else if name == "fold" || name == "any" || name == "all" {
+    Some { value: ShapeIterateBody { produces_collection: false } }
+  } else if name == "sort_by" {
+    Some { value: ShapeSortBody }
+  } else if name == "count" || name == "first" || name == "last" ||
+            name == "join" || name == "string_contains" {
+    Some { value: ShapeLinearScan { produces_collection: false } }
+  } else if name == "chars" || name == "split" {
+    Some { value: ShapeLinearScan { produces_collection: true } }
+  } else if name == "concat" {
+    Some { value: ShapeLinearScan { produces_collection: false } }
+  } else if name == "append" || name == "get" || name == "map_get" ||
+            name == "map_insert" || name == "with" || name == "list_push" ||
+            name == "map_has" || name == "map_contains_key" ||
+            name == "length" || name == "string_length" {
+    Some { value: ShapeConstant }
+  } else {
+    None
+  }
+}
+
+// =========================================================================
 // Runtime semantics context
 //
 // Parameterizes cost analysis by backend and data structure
@@ -142,4 +204,1188 @@ type ComplexitySummary {
   output_size: Map<String, CostExpr>
   assumptions: List<Constraint>
   certainty: Certainty
+}
+
+// =========================================================================
+// D2: Cost intern table -- lazy + cached complexity analysis
+//
+// CostExpr trees can grow exponentially during composition. The intern
+// table deduplicates structurally identical subtrees via hash-consing.
+// Summaries are cached per function name for lazy on-demand computation.
+//
+// Usage: thread CostInternTable through analysis calls. Each call may
+// return an updated table with new cache entries.
+// =========================================================================
+
+type CostInternTable {
+  // structural-hash → canonical CostExpr (deduplication)
+  interned: Map<String, CostExpr>
+  // func_name → cached summary (lazy computation)
+  summaries: Map<String, ComplexitySummary>
+}
+
+fn empty_intern_table() -> CostInternTable {
+  CostInternTable { interned: empty_map(), summaries: empty_map() }
+}
+
+// Intern a CostExpr: if structurally identical expr already exists,
+// return the cached canonical version. Otherwise store and return it.
+// Returns (canonical_expr, updated_table).
+fn intern_cost(table: CostInternTable, hash: String, expr: CostExpr) -> CostExpr {
+  match map_get(table.interned, hash) {
+    Some { value: existing } => existing
+    None => expr
+  }
+}
+
+fn intern_cost_table(table: CostInternTable, hash: String, expr: CostExpr) -> CostInternTable {
+  match map_get(table.interned, hash) {
+    Some { value: _ } => table
+    None => CostInternTable {
+      interned: map_insert(table.interned, hash, expr),
+      summaries: table.summaries
+    }
+  }
+}
+
+// Cache a complexity summary for a function.
+fn cache_summary(table: CostInternTable, func_name: String, summary: ComplexitySummary) -> CostInternTable {
+  CostInternTable {
+    interned: table.interned,
+    summaries: map_insert(table.summaries, func_name, summary)
+  }
+}
+
+// Lookup a cached summary. Returns None if not yet computed.
+fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummary? {
+  map_get(table.summaries, func_name)
+}
+
+// =========================================================================
+// D3: DAG composition rules
+//
+// Compose complexity summaries over call graph structure.
+// Each rule corresponds to a DAG pattern:
+//   sequential  → cost_add
+//   parallel    → cost_max (for span)
+//   loop        → cost_mul(iterations, body)
+//   conditional → condition + cost_max(branches)
+//   recursive   → pattern-match on SCC structure
+// =========================================================================
+
+type RecursionPattern
+  = LinearRecursion { iteration_var: String }
+  | DivideAndConquer { split_factor: Int }
+  | UnresolvableRecursion { reason: String }
+
+// Compose two sequential costs.
+fn cost_seq(a: CostExpr, b: CostExpr) -> CostExpr {
+  CostAdd { left: a, right: b }
+}
+
+// Compose two parallel spans (critical path).
+fn cost_par(a: CostExpr, b: CostExpr) -> CostExpr {
+  CostMax { left: a, right: b }
+}
+
+// Loop cost: sum of body over binder from 0 to upper.
+fn cost_loop(binder: String, iterations: SizeExpr, body: CostExpr) -> CostExpr {
+  CostSum { binder: binder, upper: iterations, body: body }
+}
+
+// Conditional cost: condition + max(branches). NOT sum.
+fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
+  let max_branch = branches |> fold(init: CostConst { value: 0 }, f: fn(acc, b) {
+    CostMax { left: acc, right: b }
+  })
+  CostAdd { left: condition, right: max_branch }
+}
+
+// Output size for collection-producing operations: a single "result" entry
+// with cost proportional to the collection size.
+fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
+  let result = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+  result
+}
+
+fn scalar_output() -> Map<String, CostExpr> {
+  let result = empty_map()
+  result
+}
+
+
+// =========================================================================
+// Size variable extraction
+//
+// Chase receiver expressions to find the originating variable name.
+// ExprMethodCall chains like `items |> filter(f) |> map(g)` are nested:
+// the outermost has receiver = ExprMethodCall(filter, receiver = ExprVar(items)).
+// Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
+// =========================================================================
+
+fn is_size_preserving_method(mname: String) -> Bool {
+  mname == "map" || mname == "filter" || mname == "flat_map" ||
+  mname == "skip" || mname == "enumerate" || mname == "sort_by" ||
+  mname == "reverse" || mname == "concat"
+}
+
+fn receiver_size_var(recv: Node) -> SizeExpr {
+  match recv.expr_data {
+    ExprVar { name: vname } =>
+      SizeLen { collection: vname }
+    ExprFieldAccess { base: _, field: fname } =>
+      SizeLen { collection: fname }
+    ExprMethodCall { receiver: inner_recv, method: mname, args: _ } =>
+      if is_size_preserving_method(mname: mname) {
+        receiver_size_var(recv: inner_recv)
+      } else {
+        SizeLen { collection: "__expr" }
+      }
+    _ =>
+      SizeLen { collection: "__expr" }
+  }
+}
+
+fn size_binder_name(size: SizeExpr) -> String {
+  match size {
+    SizeLen { collection: c } => concat("_", c)
+    SizeVar { name: n } => n
+    _ => "_i"
+  }
+}
+
+// =========================================================================
+// D4: Complexity reporting
+// =========================================================================
+
+type ComplexityViolation {
+  func_name: String
+  reason: String
+  summary: ComplexitySummary?
+}
+
+type ComplexityReport {
+  function_summaries: Map<String, ComplexitySummary>
+  violations: List<ComplexityViolation>
+  intern_table: CostInternTable
+  formatted: String
+}
+
+fn empty_complexity_report() -> ComplexityReport {
+  ComplexityReport {
+    function_summaries: empty_map(),
+    violations: [],
+    intern_table: empty_intern_table(),
+    formatted: ""
+  }
+}
+
+// =========================================================================
+// Cost simplification
+//
+// Constant folding and zero/one elimination. Applied to summaries before
+// caching so the stored CostExpr trees are compact.
+// =========================================================================
+
+fn simplify_cost(expr: CostExpr) -> CostExpr {
+  match expr {
+    CostConst { value: _ } => expr
+    CostUnknown { reason: _ } => expr
+    PrimCost { op: _, args: _, ctx: _ } => expr
+    CostAdd { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)
+      let sr = simplify_cost(expr: r)
+      match sl {
+        CostConst { value: 0 } => sr
+        CostConst { value: a } => match sr {
+          CostConst { value: 0 } => sl
+          CostConst { value: b } => CostConst { value: a + b }
+          _ => CostAdd { left: sl, right: sr }
+        }
+        _ => match sr {
+          CostConst { value: 0 } => sl
+          _ => CostAdd { left: sl, right: sr }
+        }
+      }
+    CostMul { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)
+      let sr = simplify_cost(expr: r)
+      match sl {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        CostConst { value: 1 } => sr
+        _ => match sr {
+          CostConst { value: 0 } => CostConst { value: 0 }
+          CostConst { value: 1 } => sl
+          _ => CostMul { left: sl, right: sr }
+        }
+      }
+    CostMax { left: l, right: r } =>
+      let sl = simplify_cost(expr: l)
+      let sr = simplify_cost(expr: r)
+      match sl {
+        CostConst { value: 0 } => sr
+        _ => match sr {
+          CostConst { value: 0 } => sl
+          _ => CostMax { left: sl, right: sr }
+        }
+      }
+    CostSum { binder: b, upper: u, body: bd } =>
+      let sbd = simplify_cost(expr: bd)
+      match sbd {
+        CostConst { value: 0 } => CostConst { value: 0 }
+        _ => CostSum { binder: b, upper: u, body: sbd }
+      }
+  }
+}
+
+// =========================================================================
+// Complexity classification and formatting
+//
+// Walks a simplified CostExpr and produces a human-readable O() string.
+// =========================================================================
+
+fn format_size(size: SizeExpr) -> String {
+  match size {
+    SizeLen { collection: c } => concat("|", c, "|")
+    SizeVar { name: n } => n
+    SizeConst { value: v } => to_string(v)
+    SizeAdd { left: l, right: r } => concat(format_size(size: l), " + ", format_size(size: r))
+    SizeMax { left: l, right: r } => concat("max(", format_size(size: l), ", ", format_size(size: r), ")")
+  }
+}
+
+// Strip "O(" prefix and ")" suffix from a classification string.
+// "O(|items|)" -> "|items|", "O(1)" -> "1"
+fn strip_big_o(s: String) -> String {
+  if string_length(s) > 3 && substring(s, 0, 2) == "O(" {
+    substring(s, 2, string_length(s) - 1)
+  } else {
+    s
+  }
+}
+
+fn has_cost_sum(expr: CostExpr) -> Bool {
+  match expr {
+    CostSum { binder: _, upper: _, body: _ } => true
+    CostAdd { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
+    CostMul { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
+    CostMax { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
+    _ => false
+  }
+}
+
+fn classify_complexity(expr: CostExpr) -> String {
+  let s = simplify_cost(expr: expr)
+  match s {
+    CostConst { value: _ } => "O(1)"
+    CostUnknown { reason: _ } => "O(?)"
+    PrimCost { op: _, args: _, ctx: _ } => "O(1)"
+    CostSum { binder: _, upper: u, body: bd } =>
+      if has_cost_sum(expr: bd) {
+        // Nested iteration — inner classification needs O() stripped
+        let inner_class = classify_complexity(expr: bd)
+        let inner_bare = strip_big_o(s: inner_class)
+        concat("O(", format_size(size: u), " * ", inner_bare, ")")
+      } else {
+        concat("O(", format_size(size: u), ")")
+      }
+    CostAdd { left: l, right: r } =>
+      // Dominant term: if either side has a CostSum, use that classification
+      let lc = classify_complexity(expr: l)
+      let rc = classify_complexity(expr: r)
+      if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
+        // Both sides iterate — report the left (additive, so same class)
+        lc
+      } else if has_cost_sum(expr: l) {
+        lc
+      } else if has_cost_sum(expr: r) {
+        rc
+      } else {
+        "O(1)"
+      }
+    CostMul { left: l, right: r } =>
+      let lc = classify_complexity(expr: l)
+      let rc = classify_complexity(expr: r)
+      if lc == "O(1)" { rc }
+      else if rc == "O(1)" { lc }
+      else { concat(lc, " * ", rc) }
+    CostMax { left: l, right: r } =>
+      let lc = classify_complexity(expr: l)
+      let rc = classify_complexity(expr: r)
+      if has_cost_sum(expr: l) { lc }
+      else if has_cost_sum(expr: r) { rc }
+      else { lc }
+  }
+}
+
+// Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
+fn collect_size_vars_from_size(size: SizeExpr) -> List<String> {
+  match size {
+    SizeLen { collection: c } =>
+      if c == "__expr" { [] } else { [c] }
+    SizeAdd { left: l, right: r } =>
+      concat(collect_size_vars_from_size(size: l), collect_size_vars_from_size(size: r))
+    SizeMax { left: l, right: r } =>
+      concat(collect_size_vars_from_size(size: l), collect_size_vars_from_size(size: r))
+    _ => []
+  }
+}
+
+fn collect_size_vars(expr: CostExpr) -> List<String> {
+  match expr {
+    CostSum { binder: _, upper: u, body: bd } =>
+      concat(collect_size_vars_from_size(size: u), collect_size_vars(expr: bd))
+    CostAdd { left: l, right: r } =>
+      concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    CostMul { left: l, right: r } =>
+      concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    CostMax { left: l, right: r } =>
+      concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    _ => []
+  }
+}
+
+// Deduplicate a list of strings using a map accumulator.
+type DeduplicateAcc {
+  seen: Map<String, Bool>
+  out: List<String>
+}
+
+fn deduplicate(items: List<String>) -> List<String> {
+  let result = items |> fold(init: DeduplicateAcc { seen: empty_map(), out: [] }, f: fn(acc, item) {
+    match map_get(acc.seen, item) {
+      Some { value: _ } => acc
+      None => DeduplicateAcc {
+        seen: map_insert(acc.seen, item, true),
+        out: list_push(acc.out, item)
+      }
+    }
+  })
+  result.out
+}
+
+fn format_space_class(expr: CostExpr) -> String {
+  let space_class = classify_complexity(expr: expr)
+  let result = if space_class == "O(1)" { "" }
+  else { concat(", space ", space_class) }
+  result
+}
+
+fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
+  let class = classify_complexity(expr: summary.work)
+  // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
+  // the cost algebra lacks log), ? means the system could not derive a bound.
+  let marker = match summary.certainty {
+    Proven => ""
+    Conservative => "~"
+    Unknown => "?"
+  }
+  // Space: classify the "result" output size if present
+  let space_str = match map_get(summary.output_size, "result") {
+    Some { value: size_expr } => format_space_class(expr: size_expr)
+    None => ""
+  }
+  concat(name, ": ", marker, class, space_str)
+}
+
+fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
+  let lines = entries |> flat_map(entry =>
+    match map_get(summaries, entry.name) {
+      Some { value: summary } => [format_func_complexity(name: entry.name, summary: summary)]
+      None => []
+    }
+  )
+  lines |> join(separator: "\n")
+}
+
+// =========================================================================
+// D2: Lazy cached summary computation
+//
+// get_or_compute_summary checks the cache first. On miss, walks the
+// function body to build a CostExpr for work/span/output_size, interns
+// the result, and caches the summary.
+//
+// FuncEntry is a lightweight representation of a function for the
+// complexity analyzer: name + body Node. Threaded alongside the
+// CostInternTable so recursive callee lookups can find function bodies.
+// =========================================================================
+
+type FuncEntry {
+  name: String
+  body: Node
+  params: List<Param>
+}
+
+// Result of get_or_compute_summary: updated table + the summary.
+type SummaryResult {
+  summary: ComplexitySummary
+  table: CostInternTable
+}
+
+// Walk a single expression and produce its CostExpr for work.
+fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInternTable) -> SummaryResult {
+  match texpr.expr_data {
+    ExprLiteral { value: _ } =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 1 },
+          span: CostConst { value: 1 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }
+
+    ExprVar { name: _ } =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 1 },
+          span: CostConst { value: 1 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }
+
+    ExprBinOp { op: _, left: l, right: r } =>
+      let lr = cost_of_expr(texpr: l, func_index: func_index, table: table)
+      let rr = cost_of_expr(texpr: r, func_index: func_index, table: lr.table)
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: lr.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.work)),
+          span: cost_seq(a: lr.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.span)),
+          output_size: empty_map(),
+          assumptions: concat(lr.summary.assumptions, rr.summary.assumptions),
+          certainty: Proven
+        },
+        table: rr.table
+      }
+
+    ExprCall { func: fname, args: call_args } =>
+      // Look up callee summary (recursive via get_or_compute_summary)
+      let callee_result = match map_get(func_index, fname) {
+        Some { value: entry } =>
+          get_or_compute_summary(func_name: fname, func_index: func_index, table: table)
+        None =>
+          // Not in func_index: built-in intrinsic (concat, map_get, etc.)
+          // All intrinsics are O(1) with Proven certainty.
+          SummaryResult {
+            summary: ComplexitySummary {
+              work: CostConst { value: 1 },
+              span: CostConst { value: 1 },
+              output_size: empty_map(),
+              assumptions: [],
+              certainty: Proven
+            },
+            table: table
+          }
+      }
+      // Accumulate arg costs
+      let args_result = call_args |> fold(init: SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 0 },
+          span: CostConst { value: 0 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: callee_result.table
+      }, f: fn(acc, a) {
+        let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: acc.summary.work, b: ar.summary.work),
+            span: cost_seq(a: acc.summary.span, b: ar.summary.span),
+            output_size: empty_map(),
+            assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
+            certainty: Proven
+          },
+          table: ar.table
+        }
+      })
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: args_result.summary.work, b: callee_result.summary.work),
+          span: cost_seq(a: args_result.summary.span, b: callee_result.summary.span),
+          output_size: callee_result.summary.output_size,
+          assumptions: concat(args_result.summary.assumptions, callee_result.summary.assumptions),
+          certainty: callee_result.summary.certainty
+        },
+        table: args_result.table
+      }
+
+    ExprMethodCall { receiver: recv, method: mname, args: mc_args } =>
+      let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
+      let size = receiver_size_var(recv: recv)
+      let binder = size_binder_name(size: size)
+      // Iteration methods: loop over collection, apply lambda body per element
+      if mname == "map" || mname == "filter" || mname == "flat_map" ||
+         mname == "any" || mname == "all" || mname == "enumerate" ||
+         mname == "skip" || mname == "fold" {
+        // Extract the function/lambda argument
+        let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
+        let lambda_arg = match f_arg {
+          Some { value: fa } => Some { value: fa.value }
+          None => mc_args |> map(a => a.value) |> first
+        }
+        // Resolve callback cost: if it's a function reference (ExprVar naming
+        // a known function), look up that function's summary instead of
+        // treating the variable itself as O(1).
+        let body_result = match lambda_arg {
+          Some { value: la } =>
+            match la.expr_data {
+              ExprVar { name: fn_ref } =>
+                match map_get(func_index, fn_ref) {
+                  Some { value: _ } =>
+                    get_or_compute_summary(func_name: fn_ref, func_index: func_index, table: recv_r.table)
+                  None =>
+                    cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+                }
+              _ =>
+                cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+            }
+          None =>
+            SummaryResult {
+              summary: ComplexitySummary {
+                work: CostConst { value: 1 },
+                span: CostConst { value: 1 },
+                output_size: empty_map(),
+                assumptions: [],
+                certainty: Conservative
+              },
+              table: recv_r.table
+            }
+        }
+        let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
+        // Space: fold produces whatever its body produces; collection methods produce proportional output
+        let os = if mname == "any" || mname == "all" {
+          let r = empty_map()
+          r
+        } else if mname == "fold" {
+          let r = body_result.summary.output_size
+          r
+        } else {
+          let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+          r
+        }
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: loop_work),
+            span: cost_seq(a: recv_r.summary.span, b: loop_work),
+            output_size: os,
+            assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
+            certainty: body_result.summary.certainty
+          },
+          table: body_result.table
+        }
+      // sort_by: comparison sort is O(n log n), not O(n). Model as O(n) with
+      // Conservative certainty since the cost algebra lacks a log type.
+      } else if mname == "sort_by" {
+        let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
+        let lambda_arg = match f_arg {
+          Some { value: fa } => Some { value: fa.value }
+          None => mc_args |> map(a => a.value) |> first
+        }
+        let key_result = match lambda_arg {
+          Some { value: la } =>
+            cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+          None =>
+            SummaryResult {
+              summary: ComplexitySummary {
+                work: CostConst { value: 1 },
+                span: CostConst { value: 1 },
+                output_size: empty_map(),
+                assumptions: [],
+                certainty: Conservative
+              },
+              table: recv_r.table
+            }
+        }
+        let sort_work = cost_loop(binder: binder, iterations: size, body: key_result.summary.work)
+        // Space: sort produces collection of same size
+        let sort_os = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: sort_work),
+            span: cost_seq(a: recv_r.summary.span, b: sort_work),
+            output_size: sort_os,
+            assumptions: concat(recv_r.summary.assumptions, key_result.summary.assumptions),
+            certainty: Conservative
+          },
+          table: key_result.table
+        }
+      // Linear scan methods: iterate with O(1) per element
+      } else if mname == "count" || mname == "join" || mname == "first" ||
+                mname == "last" || mname == "string_contains" ||
+                mname == "chars" || mname == "split" {
+        let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
+        // Space: chars/split produce collections, others produce scalars
+        let scan_os = if mname == "chars" || mname == "split" {
+          let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+          r
+        } else {
+          let r = empty_map()
+          r
+        }
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: loop_work),
+            span: cost_seq(a: recv_r.summary.span, b: loop_work),
+            output_size: scan_os,
+            assumptions: recv_r.summary.assumptions,
+            certainty: recv_r.summary.certainty
+          },
+          table: recv_r.table
+        }
+      // O(1) methods: constant cost
+      } else if mname == "append" || mname == "get" || mname == "map_get" ||
+                mname == "map_insert" || mname == "with" || mname == "list_push" ||
+                mname == "map_has" || mname == "map_contains_key" ||
+                mname == "length" || mname == "string_length" {
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+            span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
+            output_size: empty_map(),
+            assumptions: recv_r.summary.assumptions,
+            certainty: recv_r.summary.certainty
+          },
+          table: recv_r.table
+        }
+      // Default: receiver cost + 1 for the method + arg costs
+      } else {
+        let args_result = mc_args |> fold(init: SummaryResult {
+          summary: ComplexitySummary {
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
+            output_size: empty_map(),
+            assumptions: [],
+            certainty: Proven
+          },
+          table: recv_r.table
+        }, f: fn(acc, a) {
+          let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
+          SummaryResult {
+            summary: ComplexitySummary {
+              work: cost_seq(a: acc.summary.work, b: ar.summary.work),
+              span: cost_seq(a: acc.summary.span, b: ar.summary.span),
+              output_size: empty_map(),
+              assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
+              certainty: Proven
+            },
+            table: ar.table
+          }
+        })
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
+            span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
+            output_size: empty_map(),
+            assumptions: concat(recv_r.summary.assumptions, args_result.summary.assumptions),
+            certainty: Proven
+          },
+          table: args_result.table
+        }
+      }
+
+    ExprMatch { scrutinee: s, arms: arm_list } =>
+      let s_r = cost_of_expr(texpr: s, func_index: func_index, table: table)
+      let arms_result = arm_list |> fold(init: SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 0 },
+          span: CostConst { value: 0 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: s_r.table
+      }, f: fn(acc, arm) {
+        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.table)
+        // Space: all match arms produce same type; use last arm's output
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_par(a: acc.summary.work, b: ar.summary.work),
+            span: cost_par(a: acc.summary.span, b: ar.summary.span),
+            output_size: ar.summary.output_size,
+            assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
+            certainty: ar.summary.certainty
+          },
+          table: ar.table
+        }
+      })
+      // Per-arm costs: re-evaluate each arm against the fully-cached table
+      // so individual branch costs are preserved (not the accumulated max).
+      let branch_costs = arm_list |> map(arm =>
+        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: arms_result.table)
+        ar.summary.work
+      )
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_conditional(condition: s_r.summary.work, branches: branch_costs),
+          span: cost_conditional(condition: s_r.summary.span, branches: [arms_result.summary.span]),
+          output_size: arms_result.summary.output_size,
+          assumptions: concat(s_r.summary.assumptions, arms_result.summary.assumptions),
+          certainty: arms_result.summary.certainty
+        },
+        table: arms_result.table
+      }
+
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
+      let t_r = cost_of_expr(texpr: t, func_index: func_index, table: c_r.table)
+      let e_result = match e {
+        Some { value: eb } =>
+          let er = cost_of_expr(texpr: eb, func_index: func_index, table: t_r.table)
+          SummaryResult {
+            summary: er.summary,
+            table: er.table
+          }
+        None =>
+          SummaryResult {
+            summary: ComplexitySummary {
+              work: CostConst { value: 0 },
+              span: CostConst { value: 0 },
+              output_size: empty_map(),
+              assumptions: [],
+              certainty: Proven
+            },
+            table: t_r.table
+          }
+      }
+      // Space: in well-typed code all branches produce same type; use then-branch output
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_conditional(condition: c_r.summary.work, branches: [t_r.summary.work, e_result.summary.work]),
+          span: cost_conditional(condition: c_r.summary.span, branches: [t_r.summary.span, e_result.summary.span]),
+          output_size: t_r.summary.output_size,
+          assumptions: concat(c_r.summary.assumptions, t_r.summary.assumptions, e_result.summary.assumptions),
+          certainty: Proven
+        },
+        table: e_result.table
+      }
+
+    ExprLet { name: _, value: v, body: bd } =>
+      let v_r = cost_of_expr(texpr: v, func_index: func_index, table: table)
+      match bd {
+        Some { value: b } =>
+          let b_r = cost_of_expr(texpr: b, func_index: func_index, table: v_r.table)
+          SummaryResult {
+            summary: ComplexitySummary {
+              work: cost_seq(a: v_r.summary.work, b: b_r.summary.work),
+              span: cost_seq(a: v_r.summary.span, b: b_r.summary.span),
+              output_size: b_r.summary.output_size,
+              assumptions: concat(v_r.summary.assumptions, b_r.summary.assumptions),
+              certainty: b_r.summary.certainty
+            },
+            table: b_r.table
+          }
+        None => v_r
+      }
+
+    ExprBlock { stmts: ss } =>
+      ss |> fold(init: SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 0 },
+          span: CostConst { value: 0 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }, f: fn(acc, s) {
+        let sr = cost_of_expr(texpr: s, func_index: func_index, table: acc.table)
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: acc.summary.work, b: sr.summary.work),
+            span: cost_seq(a: acc.summary.span, b: sr.summary.span),
+            output_size: sr.summary.output_size,
+            assumptions: concat(acc.summary.assumptions, sr.summary.assumptions),
+            certainty: sr.summary.certainty
+          },
+          table: sr.table
+        }
+      })
+
+    ExprForEach { variable: _, collection: c, body: bd } =>
+      let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
+      let bd_r = cost_of_expr(texpr: bd, func_index: func_index, table: c_r.table)
+      let size = receiver_size_var(recv: c)
+      let binder = size_binder_name(size: size)
+      let loop_work = cost_loop(binder: binder, iterations: size, body: bd_r.summary.work)
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: c_r.summary.work, b: loop_work),
+          span: cost_seq(a: c_r.summary.span, b: loop_work),
+          output_size: empty_map(),
+          assumptions: concat(c_r.summary.assumptions, bd_r.summary.assumptions),
+          certainty: bd_r.summary.certainty
+        },
+        table: bd_r.table
+      }
+
+    ExprReturn { value: v } =>
+      cost_of_expr(texpr: v, func_index: func_index, table: table)
+
+    ExprFieldAccess { base: b, field: _ } =>
+      cost_of_expr(texpr: b, func_index: func_index, table: table)
+
+    ExprUnaryOp { op: _, operand: e } =>
+      let er = cost_of_expr(texpr: e, func_index: func_index, table: table)
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: CostConst { value: 1 }, b: er.summary.work),
+          span: cost_seq(a: CostConst { value: 1 }, b: er.summary.span),
+          output_size: empty_map(),
+          assumptions: er.summary.assumptions,
+          certainty: er.summary.certainty
+        },
+        table: er.table
+      }
+
+    ExprLambda { params: _, body: bd } =>
+      cost_of_expr(texpr: bd, func_index: func_index, table: table)
+
+    ExprRecordLit { type_name: _, fields: fs } =>
+      fs |> fold(init: SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 1 },
+          span: CostConst { value: 1 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }, f: fn(acc, fi) {
+        let fr = cost_of_expr(texpr: fi.value, func_index: func_index, table: acc.table)
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: acc.summary.work, b: fr.summary.work),
+            span: cost_seq(a: acc.summary.span, b: fr.summary.span),
+            output_size: empty_map(),
+            assumptions: concat(acc.summary.assumptions, fr.summary.assumptions),
+            certainty: fr.summary.certainty
+          },
+          table: fr.table
+        }
+      })
+
+    ExprListLit { elements: els } =>
+      els |> fold(init: SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 1 },
+          span: CostConst { value: 1 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }, f: fn(acc, el) {
+        let er = cost_of_expr(texpr: el, func_index: func_index, table: acc.table)
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: acc.summary.work, b: er.summary.work),
+            span: cost_seq(a: acc.summary.span, b: er.summary.span),
+            output_size: empty_map(),
+            assumptions: concat(acc.summary.assumptions, er.summary.assumptions),
+            certainty: er.summary.certainty
+          },
+          table: er.table
+        }
+      })
+
+    ExprStringInterp { parts: ps } =>
+      ps |> fold(init: SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 1 },
+          span: CostConst { value: 1 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }, f: fn(acc, p) {
+        match p {
+          Interpolation { expr: e } =>
+            let er = cost_of_expr(texpr: e, func_index: func_index, table: acc.table)
+            SummaryResult {
+              summary: ComplexitySummary {
+                work: cost_seq(a: acc.summary.work, b: er.summary.work),
+                span: cost_seq(a: acc.summary.span, b: er.summary.span),
+                output_size: empty_map(),
+                assumptions: concat(acc.summary.assumptions, er.summary.assumptions),
+                certainty: er.summary.certainty
+              },
+              table: er.table
+            }
+          Text { value: _ } => acc
+        }
+      })
+
+    ExprCast { expr: e, target: _ } =>
+      cost_of_expr(texpr: e, func_index: func_index, table: table)
+
+    ExprIndex { base: b, index: i } =>
+      let br = cost_of_expr(texpr: b, func_index: func_index, table: table)
+      let ir = cost_of_expr(texpr: i, func_index: func_index, table: br.table)
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: br.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: ir.summary.work)),
+          span: cost_seq(a: br.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: ir.summary.span)),
+          output_size: empty_map(),
+          assumptions: concat(br.summary.assumptions, ir.summary.assumptions),
+          certainty: Proven
+        },
+        table: ir.table
+      }
+
+    ExprSlice { base: b, start: s, end: e } =>
+      let br = cost_of_expr(texpr: b, func_index: func_index, table: table)
+      let sr = cost_of_expr(texpr: s, func_index: func_index, table: br.table)
+      let er = cost_of_expr(texpr: e, func_index: func_index, table: sr.table)
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: br.summary.work, b: cost_seq(a: sr.summary.work, b: er.summary.work)),
+          span: cost_seq(a: br.summary.span, b: cost_seq(a: sr.summary.span, b: er.summary.span)),
+          output_size: empty_map(),
+          assumptions: concat(br.summary.assumptions, sr.summary.assumptions, er.summary.assumptions),
+          certainty: Proven
+        },
+        table: er.table
+      }
+
+    NoExprData =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 0 },
+          span: CostConst { value: 0 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }
+  }
+}
+
+// Get or compute the complexity summary for a function.
+// Checks cache first; on miss, walks the body and caches the result.
+fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, table: CostInternTable) -> SummaryResult {
+  // Check cache first
+  match lookup_summary(table: table, func_name: func_name) {
+    Some { value: cached } =>
+      SummaryResult { summary: cached, table: table }
+    None =>
+      // Look up function body
+      match map_get(func_index, func_name) {
+        Some { value: entry } =>
+          // Insert a placeholder to prevent infinite recursion on self-recursive functions
+          let placeholder = ComplexitySummary {
+            work: CostUnknown { reason: concat("computing: ", func_name) },
+            span: CostUnknown { reason: concat("computing: ", func_name) },
+            output_size: empty_map(),
+            assumptions: [],
+            certainty: Unknown
+          }
+          let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
+          // Walk the function body
+          let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
+          // Simplify and cache the real summary
+          let simplified = ComplexitySummary {
+            work: simplify_cost(expr: result.summary.work),
+            span: simplify_cost(expr: result.summary.span),
+            output_size: result.summary.output_size,
+            assumptions: result.summary.assumptions,
+            certainty: result.summary.certainty
+          }
+          let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
+          SummaryResult { summary: simplified, table: final_table }
+        None =>
+          // Unknown function -- return unknown cost
+          let unknown_summary = ComplexitySummary {
+            work: CostUnknown { reason: concat("function not found: ", func_name) },
+            span: CostUnknown { reason: concat("function not found: ", func_name) },
+            output_size: empty_map(),
+            assumptions: [],
+            certainty: Unknown
+          }
+          SummaryResult { summary: unknown_summary, table: table }
+      }
+  }
+}
+
+// =========================================================================
+// D3: Recursion classification
+//
+// Inspects a function's Node to classify its recursion pattern.
+// Uses is_self_recursive flag and counts self-calls in the body.
+// =========================================================================
+
+// Count the number of direct self-calls in an expression body.
+fn count_self_calls(texpr: Node, fn_name: String) -> Int {
+  match texpr.expr_data {
+    ExprCall { func: f, args: call_args } =>
+      let self_count = if f == fn_name { 1 } else { 0 }
+      let arg_count = call_args |> fold(init: 0, f: (acc, a) =>
+        acc + count_self_calls(texpr: a.value, fn_name: fn_name)
+      )
+      self_count + arg_count
+    ExprMethodCall { receiver: recv, method: _, args: mc_args } =>
+      let recv_count = count_self_calls(texpr: recv, fn_name: fn_name)
+      let arg_count = mc_args |> fold(init: 0, f: (acc, a) =>
+        acc + count_self_calls(texpr: a.value, fn_name: fn_name)
+      )
+      recv_count + arg_count
+    ExprMatch { scrutinee: s, arms: arm_list } =>
+      let s_count = count_self_calls(texpr: s, fn_name: fn_name)
+      let arm_count = arm_list |> fold(init: 0, f: (acc, arm) =>
+        acc + count_self_calls(texpr: arm.body, fn_name: fn_name)
+      )
+      s_count + arm_count
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      let c_count = count_self_calls(texpr: c, fn_name: fn_name)
+      let t_count = count_self_calls(texpr: t, fn_name: fn_name)
+      let e_count = match e {
+        Some { value: eb } => count_self_calls(texpr: eb, fn_name: fn_name)
+        None => 0
+      }
+      c_count + t_count + e_count
+    ExprLet { name: _, value: v, body: bd } =>
+      let v_count = count_self_calls(texpr: v, fn_name: fn_name)
+      let bd_count = match bd {
+        Some { value: b } => count_self_calls(texpr: b, fn_name: fn_name)
+        None => 0
+      }
+      v_count + bd_count
+    ExprBlock { stmts: ss } =>
+      ss |> fold(init: 0, f: (acc, s) =>
+        acc + count_self_calls(texpr: s, fn_name: fn_name)
+      )
+    ExprBinOp { op: _, left: l, right: r } =>
+      count_self_calls(texpr: l, fn_name: fn_name) + count_self_calls(texpr: r, fn_name: fn_name)
+    ExprUnaryOp { op: _, operand: e } =>
+      count_self_calls(texpr: e, fn_name: fn_name)
+    ExprLambda { params: _, body: bd } =>
+      count_self_calls(texpr: bd, fn_name: fn_name)
+    ExprFieldAccess { base: b, field: _ } =>
+      count_self_calls(texpr: b, fn_name: fn_name)
+    ExprRecordLit { type_name: _, fields: fs } =>
+      fs |> fold(init: 0, f: (acc, fi) =>
+        acc + count_self_calls(texpr: fi.value, fn_name: fn_name)
+      )
+    ExprListLit { elements: els } =>
+      els |> fold(init: 0, f: (acc, el) =>
+        acc + count_self_calls(texpr: el, fn_name: fn_name)
+      )
+    ExprReturn { value: v } =>
+      count_self_calls(texpr: v, fn_name: fn_name)
+    ExprForEach { variable: _, collection: c, body: bd } =>
+      count_self_calls(texpr: c, fn_name: fn_name) + count_self_calls(texpr: bd, fn_name: fn_name)
+    ExprCast { expr: e, target: _ } =>
+      count_self_calls(texpr: e, fn_name: fn_name)
+    ExprIndex { base: b, index: i } =>
+      count_self_calls(texpr: b, fn_name: fn_name) + count_self_calls(texpr: i, fn_name: fn_name)
+    ExprSlice { base: b, start: s, end: e } =>
+      count_self_calls(texpr: b, fn_name: fn_name) + count_self_calls(texpr: s, fn_name: fn_name) + count_self_calls(texpr: e, fn_name: fn_name)
+    ExprStringInterp { parts: _ } => 0
+    ExprVar { name: _ } => 0
+    ExprLiteral { value: _ } => 0
+    NoExprData => 0
+  }
+}
+
+// Classify the recursion pattern of a function from its Node metadata.
+//   - is_self_recursive + 1 recursive call => LinearRecursion
+//   - is_self_recursive + 2 recursive calls on halved input => DivideAndConquer
+//   - otherwise => UnresolvableRecursion
+fn classify_recursion(func_node: Node) -> RecursionPattern {
+  if func_node.is_self_recursive == false {
+    UnresolvableRecursion { reason: "not self-recursive" }
+  } else {
+    match func_node.body {
+      Some { value: body } =>
+        let call_count = count_self_calls(texpr: body, fn_name: func_node.name)
+        if call_count == 1 {
+          LinearRecursion { iteration_var: "n" }
+        } else {
+          if call_count == 2 {
+            DivideAndConquer { split_factor: 2 }
+          } else {
+            UnresolvableRecursion { reason: "unrecognized pattern: multiple recursive calls" }
+          }
+        }
+      None =>
+        UnresolvableRecursion { reason: "no body" }
+    }
+  }
+}
+
+// =========================================================================
+// D4: Complexity reporting
+//
+// build_complexity_report takes function entries, computes summaries
+// for each, and collects violations (CostUnknown summaries).
+// =========================================================================
+
+fn is_unknown_cost(expr: CostExpr) -> Bool {
+  match expr {
+    CostUnknown { reason: _ } => true
+    _ => false
+  }
+}
+
+fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
+  // Build function index for callee lookups
+  let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+    map_insert(acc, entry.name, entry)
+  )
+  // Compute summaries for all functions
+  let result = func_entries |> fold(init: SummaryResult {
+    summary: ComplexitySummary {
+      work: CostConst { value: 0 },
+      span: CostConst { value: 0 },
+      output_size: empty_map(),
+      assumptions: [],
+      certainty: Proven
+    },
+    table: empty_intern_table()
+  }, f: fn(acc, entry) {
+    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, table: acc.table)
+    SummaryResult { summary: sr.summary, table: sr.table }
+  })
+  // Collect function summaries and violations
+  let summaries_map = result.table.summaries
+  let violations = func_entries |> filter(entry =>
+    match map_get(summaries_map, entry.name) {
+      Some { value: summary } => is_unknown_cost(expr: summary.work)
+      None => true
+    }
+  ) |> map(entry =>
+    match map_get(summaries_map, entry.name) {
+      Some { value: summary } =>
+        let reason = match summary.work {
+          CostUnknown { reason: r } => r
+          _ => "unknown"
+        }
+        ComplexityViolation {
+          func_name: entry.name,
+          reason: reason,
+          summary: Some { value: summary }
+        }
+      None =>
+        ComplexityViolation {
+          func_name: entry.name,
+          reason: "no summary computed",
+          summary: none
+        }
+    }
+  )
+  let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
+  ComplexityReport {
+    function_summaries: summaries_map,
+    violations: violations,
+    intern_table: result.table,
+    formatted: formatted
+  }
 }

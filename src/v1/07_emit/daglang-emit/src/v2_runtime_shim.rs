@@ -128,6 +128,10 @@ where
 }
 
 /// Create an empty Rc-wrapped HashMap.
+pub fn to_string(value: i64) -> String {
+    value.to_string()
+}
+
 pub fn empty_map<V>() -> Rc<HashMap<String, V>> {
     Rc::new(HashMap::new())
 }
