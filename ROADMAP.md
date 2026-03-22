@@ -40,10 +40,10 @@ collapses layer authority.
 | `01_tokenize.dag` | Mostly clean syntax leaf | Tokenization is structurally isolated; bootstrap-specific Rc commentary and `SourceRef` are still host-artifact leakage. |
 | `02_parse.dag` | Strong compositional lowering | Service/resource syntax already dissolves into uniform `Node` structure and records facts like `namespace_root` structurally. |
 | `03_resolve.dag` | Cleanest authority boundary | Pure import graph construction with almost no target leakage. Keep using this as the reference for stage boundaries. |
-| `04_reconcile.dag` | Main structural hotspot | Owns too many concerns at once: typing, call analysis, method classification, and emitter metadata. The Rust ownership hints have now mostly been pushed out. |
-| `05_emit*.dag` | Partial extdeps-style composition | Shared emit imports language facts from `extdeps.languages.*`, and Rust now derives Rc decisions locally, but target policy is still split between shared emit and the per-target renderers. |
-| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | These are the best examples of compositional modeling of the compiler itself: proof objects, not runtime execution. Remaining issue is duplicated expression walking and the remaining classifier/renderer string dispatch. |
-| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` now owns only the real compile path and Go dispatch. `08_artifact.dag` is explicit-plan-only. `09_trace.dag` is now a normalized runtime trace contract, still not pipeline-wired. |
+| `04_reconcile.dag` | Main structural hotspot (4871 LOC) | 5+ mixed concerns: type inference (~1500), type resolution (~800), method classification/call analysis (~650, 80+ string comparisons), emitter metadata prep (~300, IR/rendering conflation), type env management (~400). Target-agnostic but concept-overloaded. |
+| `05_emit*.dag` | Partial extdeps-style composition | Shared emit (799 LOC) owns helpers/context but 0 expression dispatch. Rust (3634 LOC, 23-arm dispatcher), Python (1202 LOC, 18 arms), Go (1226 LOC, 17 arms) each own full walkers. 3 separate TCO walkers duplicate Let/If/Match/Block. Python TCO has silent fallthrough; Go TCO crashes on unhandled expressions. |
+| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | Best examples of compositional modeling: proof objects, not runtime execution. complexity (1441 LOC) and ownership (307 LOC) both independently walk all ExprData variants — 3 total parallel walks including reconcile. Ownership is not wired into pipeline (complexity is). |
+| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Narrowed to honest boundaries | `06_pipeline.dag` (177 LOC) owns compile flow but does not call ownership or artifact planning. `08_artifact.dag` (235 LOC) has real boundary verification logic but `Artifact.target` is still a `String`. `09_trace.dag` (221 LOC) is an external contract, not pipeline-wired. |
 
 ### Audit Reconciliation
 
@@ -80,10 +80,186 @@ reduces the cost or risk of the next.
 | S4 | Theme 5 | Move Rust-only ownership/render policy out of core + reconcile |
 | S5 | Theme 1 | Fuse 3 duplicated `ExprData` walks (reconcile, complexity, ownership) into shared `fold_expr` with callbacks |
 | S6 | Theme 2 | Shared emit dispatch with per-target leaves |
-| S7 | Theme 7 | Final fabrication fallback cleanup and Dynamic-site audit |
+| S7 | Theme 7 | Final fabrication fallback cleanup and Dynamic-site audit; `04_reconcile.dag` has 80+ string literal comparisons across 7 dispatch patterns for method classification |
 
 Phase 1 strict soundness is complete. S1–S3 are done. The structural
 passes (S3.5–S7) continue as cross-cutting work alongside Phases 2–5.
+
+### Compositional Refactor Targets (post-M1)
+
+These targets assume M1 renames are complete. Each entry references the
+target DAG models in `src/v2/DESIGN.md` (Compositional stage targets) and
+cross-references the S-passes/M-tracks that deliver them.
+
+| ID | Stage | Current | Target | Cross-refs |
+|----|-------|---------|--------|------------|
+| R1 | `00_core.dag` | C — conflated kernel + emit types | A — kernel vocabulary only | S3.5, S4 |
+| R2 | `01_tokenize.dag` | A — gold standard | A — no change | — |
+| R3 | `02_parse.dag` | B+ — inherits core width | A — inherits R1 cleanup | R1 |
+| R4 | `03_resolve.dag` | A — gold standard | A — no change | — |
+| R5 | `04_infer.dag` | D — 5 concerns, 80+ string comparisons | B+ — data tables, no emit metadata | S3.5, S7 |
+| R6 | `05_emit*.dag` | D — 3 parallel walkers | B+ — one fold, LanguageSpec-driven | S5, S6, M6, P4.2, P4.3 |
+| R7 | `07_complexity.dag` | B+ — independent walker | A — fold consumer | S5 |
+| R8 | `07_ownership.dag` | A- — unwired | A — wired into pipeline | M2 |
+| R9 | `compile.dag` | B- — incomplete | A — complete orchestration | M1, M2, M3 |
+
+#### R1. Core vocabulary scoping (00_core.dag)
+
+What changes:
+
+- Move `FieldSummary`, `TypeSummary`, `EmitGraphInfo`, `EmitInfoBuildState`
+  out of core into the emit layer (they are produced and consumed only by emit)
+- Move `RenderTarget` to `compile.dag` (orchestration concern)
+
+Acceptance criteria:
+
+- `00_core.dag` has zero types that only emit or pipeline orchestration consume
+- No downstream module imports a rendering type from core
+- All tests pass with types at their new locations
+
+Cleanup / deletion:
+
+- Delete re-exports or compatibility aliases for moved types
+- Delete any comments in core referencing "emit info" or "render target"
+
+#### R2–R4. Tokenize, parse, resolve — no refactor needed
+
+These stages follow the gold-standard compositional pattern. `02_parse.dag`
+import list shrinks automatically when R1 narrows core.
+
+#### R5. Infer data tables (04_infer.dag)
+
+What changes:
+
+- Replace 80+ string literal method comparisons with a single data table:
+  `data intrinsic_methods: Map<String, IntrinsicMethod>` (same pattern as
+  tokenizer's `data keywords: Map<String, TokenKind>`)
+- Extract EmitGraphInfo computation out of infer — either into emit itself
+  or into a thin post-infer pass (S3.5)
+- Output type becomes `InferredGraph` with no `emit_info` field
+
+Acceptance criteria:
+
+- Zero string literal method dispatch in infer — all via table lookup
+- Infer output type contains no rendering metadata (no EmitGraphInfo,
+  TypeSummary, or FieldSummary)
+- Adding a new intrinsic method = one table entry, not new match arms
+- All tests pass
+
+Cleanup / deletion:
+
+- Delete every `if method_name == "..."` string comparison for method
+  classification (currently 80+ across 7 dispatch patterns)
+- Delete `emit_info` field from infer output type
+- Delete `EmitInfoBuildState` accumulator from infer
+- Delete any helper in infer that builds TypeSummary or FieldSummary
+  (moves to emit layer)
+
+#### R6. Shared emit fold + target adapters (05_emit*.dag)
+
+What changes:
+
+- One ExprData fold in `05_emit.dag` replaces 3 per-target dispatchers
+  (Rust 23-arm, Python 18-arm, Go 17-arm)
+- One TCO walker replaces 3 per-target TCO walkers
+  (currently 3x duplication of Let/If/Match/Block)
+- `LanguageSpec` from `dsl/std/languages.dag` parameterizes shared emit
+- Per-target files shrink to irreducible rendering hooks
+
+Acceptance criteria:
+
+- No per-target file owns a full ExprData dispatcher
+- No per-target file owns a separate TCO walker
+- Python TCO silent fallthrough is eliminated
+- Go TCO crash on unhandled expression is eliminated
+- `classify_typed_item` is either wired or deleted (not dead code)
+- Adding a new ExprData variant = one match arm in shared emit, not N
+  arms across N targets
+- `LanguageSpec` is the source of truth for type maps, keywords,
+  container templates — no inline duplicates in per-target files
+
+Cleanup / deletion:
+
+- Delete per-target ExprData dispatchers after shared fold lands
+- Delete per-target TCO walkers after shared TCO implementation lands
+- Delete `classify_typed_item` if still uncalled after refactor
+- Delete inline keyword/type-map/reserved-word declarations that
+  duplicate data in `LanguageSpec` or `extdeps/languages/*/emit.dag`
+- Delete any triple-duplicated data (std.languages + extdeps + inline
+  emit) — one source of truth only
+
+#### R7. Complexity fold consumer (07_complexity.dag)
+
+What changes:
+
+- After shared `fold_expr` lands (S5), complexity becomes a fold consumer
+  instead of maintaining its own ExprData walker
+- Cost computation logic is unchanged — only the traversal method changes
+
+Acceptance criteria:
+
+- Complexity does not own an independent ExprData walk
+- Cost algebra types and computation logic unchanged
+- All complexity tests pass
+
+Cleanup / deletion:
+
+- Delete the standalone ExprData match in complexity (replaced by fold
+  callback)
+
+#### R8. Ownership pipeline wiring (07_ownership.dag)
+
+What changes:
+
+- `compile.dag` calls `analyze_ownership` alongside `build_complexity_report`
+- Ownership proofs included in PipelineResult
+- Emit can read proofs for Rust clone/borrow decisions
+
+Acceptance criteria:
+
+- `compile.dag` imports and calls ownership analysis
+- PipelineResult includes ownership proofs
+- Proofs are accessible to emit (at minimum for Rust target)
+- All tests pass
+
+Cleanup / deletion:
+
+- Delete comments noting ownership is "not wired"
+- Delete manual clone/borrow heuristics in emit that ownership proofs
+  replace (if any exist)
+
+#### R9. Pipeline completeness (compile.dag)
+
+What changes:
+
+- `Backend` enum defined here (moved from core's `RenderTarget`)
+- Ownership analysis wired (R8)
+- Artifact planning wired when M3 lands
+
+Acceptance criteria:
+
+- `Backend`/`RenderTarget` is defined in compile.dag, not in 00_core.dag
+- All proof/analysis stages are called (complexity + ownership)
+- Pipeline failure at any stage produces clear diagnostics, not silent skip
+
+Cleanup / deletion:
+
+- Delete `RenderTarget` from `00_core.dag` after move
+- Delete comments noting ownership/artifact are "not wired"
+
+#### Execution order
+
+R1–R4 have no dependencies and can start immediately after M1.
+R5 and R6 are the high-leverage refactors. R7 depends on R6 (shared fold).
+R8 and R9 are wiring, not structural change.
+
+```
+R1 (core scoping)  ─────────────────────────┐
+R5 (infer tables + emit_info extraction) ────┼──→ R6 (shared emit fold) ──→ R7 (complexity fold)
+R8 (ownership wiring) ──→ R9 (pipeline completeness)
+```
+
+R2–R4 are no-ops. R3 (parse) inherits R1's cleanup automatically.
 
 ---
 
@@ -280,12 +456,22 @@ Deletion / cleanup:
 Current state:
 
 - `05_emit.dag` has shared helpers/context, but Rust/Python/Go still own
-  full expression and TCO walkers
+  full expression and TCO walkers (Rust: 23-arm ExprData dispatcher +
+  9-arm TCO walker, 3634 LOC; Python: 18+7 arms, 1202 LOC; Go: 17+7
+  arms, 1226 LOC)
+- 4 expression kinds (Let/If/Match/Block) are duplicated 3x in TCO
+  walkers
+- `classify_typed_item` exists in shared emit but is not called by any
+  emitter
+- Python TCO walker has no else arm (silent fallthrough); Go TCO walker
+  has no wildcard (crash on unhandled expression)
 - target policy is still split across shared emit and target files
 
 Work:
 
 - move traversal/dispatch into shared emit
+- wire or replace the unused `classify_typed_item` in shared emit
+- fix Python/Go TCO silent failure modes before or during extraction
 - reduce target files to compiler-owned adapters under `src/v2/targets/*`
 - keep `dsl/extdeps/languages/*` declarative only
 - make adding a backend mean adding language facts plus an adapter, not a
@@ -296,6 +482,7 @@ Acceptance criteria:
 - no target adapter owns a full whole-tree `ExprData` dispatcher
 - no target adapter owns a separate whole-tree TCO walker
 - shared emit can drive Rust/Python/Go through one traversal spine
+- no silent fallthrough or crash path in TCO dispatch
 
 Deletion / cleanup:
 
@@ -670,7 +857,7 @@ Zero compiler changes required.
 | ID | Item | What |
 |----|------|------|
 | P4.1 | Import aliasing | Blocker: `05_emit.dag:578-594` duplicates language data inline because all three extdeps define same-named declarations and imports lack `as` aliasing. Add `import { name as alias }` to tokenizer, parser, resolver. |
-| P4.2 | LanguageSpec wiring | `LanguageSpec` exists in `dsl/std/languages.dag:393-429` but no emitter reads it. Add `load_language_spec(target) -> LanguageSpec`. Pass through emit functions. |
+| P4.2 | LanguageSpec wiring | `LanguageSpec` exists in `dsl/std/languages.dag` (1367 lines, comprehensive) but no emitter reads it. `reserved_words` and `type_map` are triple-duplicated: in `std.languages`, in `extdeps/languages/{lang}/emit.dag`, and inline in `05_emit_python.dag`/`05_emit_go.dag`. Add `load_language_spec(target) -> LanguageSpec`. Pass through emit functions. Delete duplicate declarations. |
 | P4.3 | Extract generic emit core | ~70% duplication across 3 emitter files (rust: 3606, python: 1168, go: 1195 lines). Extract shared skeleton: item dispatch, type structure classification, expression dispatch. Parameterize by LanguageSpec. Per-language files shrink to irreducible transforms (Rust: ownership/clone/borrow; Python: exceptions/comprehensions; Go: multi-return/interfaces). |
 | P4.4 | `--target` CLI flag | `compile_sources` already takes `target: RenderTarget`. Wire through bootstrap main.rs Compile subcommand. |
 | P4.5 | Validate equivalence | Self-compile + gist → same output with generic emitter. Fixed point holds. |

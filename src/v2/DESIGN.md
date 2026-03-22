@@ -360,12 +360,143 @@ func compile(root: FilePath, backend: Backend) -> CompileResult {
 }
 ```
 
+### Compositional stage targets
+
+Each pipeline stage is measured against the gold-standard compositional
+pattern (`dsl/std/logic.dag` → `dsl/std/bit.dag` → integer chain): import
+concrete types from below, add predicates or structural combinations,
+export refined types. No registries, no string dispatch, no abstraction
+layers.
+
+Per-stage refactor tasks, acceptance criteria, and cleanup instructions
+are in `ROADMAP.md` (Compositional Refactor Targets R1–R9).
+
+#### 00_core.dag — Kernel vocabulary only
+
+Core defines structural vocabulary used by every stage. Types that only
+downstream stages produce or consume move to those stages.
+
+What stays: Token, TokenKind, Module, Import, Node, ExprData, Connective,
+LiteralValue, BinOpKind, UnaryOpKind, Diagnostic, Severity, CompileResult,
+TextFile, MethodSemantics, IntrinsicMethod, kernel_types, is_kernel_type.
+
+What moves out:
+
+- `FieldSummary`, `TypeSummary`, `EmitGraphInfo`, `EmitInfoBuildState` →
+  emit layer (produced by emit, consumed by emit)
+- `RenderTarget` → `compile.dag` (orchestration concern, not kernel)
+
+Principle: `logic.dag` does not define types that only `gcp.dag` needs.
+Core does not define types that only emit needs.
+
+#### 01_tokenize.dag — Gold standard (no change)
+
+Data-driven tables. Adding a keyword = one table entry. This IS the
+compositional pattern applied to lexing.
+
+#### 02_parse.dag — Inherits core cleanup (no direct change)
+
+Pure `List<Token> → Module`. Import list shrinks when core narrows.
+
+#### 03_resolve.dag — Gold standard (no change)
+
+Clean `List<Module> → ModuleGraph` boundary. Pure import-graph
+construction with no target leakage.
+
+#### 04_infer.dag — Data-driven classification, no emitter metadata
+
+Method classification via data tables (same shape as tokenizer keywords).
+No emitter metadata in the output type.
+
+```dag
+// TARGET: method classification as data, not string dispatch
+data intrinsic_methods: Map<String, IntrinsicMethod> = {
+  "count": MethodCount, "join": MethodJoin, "split": MethodSplit,
+  "map": MethodMap, "filter": MethodFilter, "any": MethodAny,
+  "all": MethodAll, "flat_map": MethodFlatMap, "fold": MethodFold,
+  "sort_by": MethodSortBy, "append": MethodAppend, ...
+}
+
+// Output: no EmitGraphInfo. Emitter derives rendering metadata from Node structure.
+type InferredGraph {
+  modules: List<TypedModule>
+  item_registry: Map<String, ItemInfo>
+  diagnostics: List<Diagnostic>
+}
+```
+
+Adding a method = one table entry, not scattered match arms. Same pattern
+as `data keywords: Map<String, TokenKind>` in tokenize.
+
+#### 05_emit.dag — One shared fold, LanguageSpec-parameterized
+
+One ExprData fold in shared emit. Per-target adapters supply rendering
+hooks, not full walkers. See also the "Emitter architecture" section above
+for the ownership model and target adapter structure.
+
+```dag
+// TARGET: shared emit owns the single structural walk
+fn emit_expr(node: Node, lang: LanguageSpec, ctx: EmitCtx) -> String {
+  match node.expr_data {
+    ExprLiteral { value } => render_literal(value, lang, ctx)
+    ExprBinOp { op, left, right } => render_binop(op, left, right, lang, ctx)
+    ExprCall { func, args } => render_call(func, args, lang, ctx)
+    ExprMatch { scrutinee, arms } => render_match(scrutinee, arms, lang, ctx)
+    ExprMethodCall { .. } => render_method_call(.., lang, ctx)
+    ExprIf { .. } => render_if(.., lang, ctx)
+    ExprLet { .. } => render_let(.., lang, ctx)
+    ...  // exhaustive, one location, all targets
+  }
+}
+
+// TARGET: one TCO walker, not three
+fn emit_tco_body(node: Node, lang: LanguageSpec, ctx: EmitCtx) -> String {
+  // Let/If/Match/Block tail-call detection — single implementation.
+  // Eliminates: Python silent fallthrough, Go crash on unhandled.
+}
+```
+
+Per-target adapters shrink to irreducible differences only:
+
+- Rust: ownership annotations, clone/borrow (informed by ownership proofs)
+- Python: exception blocks, indentation-based scoping
+- Go: multi-return, error wrapping, interface satisfaction
+
+#### 07_complexity.dag — Fold consumer (after S5)
+
+After shared `fold_expr`, complexity supplies a fold function
+`ExprData → CostExpr` instead of maintaining its own walker. Logic
+unchanged; only the traversal mechanism changes.
+
+#### 07_ownership.dag — Wire into pipeline (M2, no structural change)
+
+Clean obligation model. Needs wiring into `compile.dag` and feeding proofs
+to the emitter. No structural refactor required.
+
+#### compile.dag — Complete orchestration
+
+```dag
+// TARGET: compile.dag owns Backend, wires all analyses
+type Backend = Rust | Python | Go | Dag
+
+fn compile_sources(sources: List<SourceFile>, target: Backend) -> PipelineResult {
+  let frontend = front_end_sources(sources)
+  ...
+  let typed = infer(graph: graph)
+  let ownership = analyze_ownership(typed: typed)       // wired (currently missing)
+  let complexity = build_complexity_report(typed: typed) // already wired
+  let emit_result = emit(typed: typed, target: target, ownership: ownership)
+  PipelineResult { files: emit_result.files, ..., ownership: ownership, complexity: complexity }
+}
+```
+
 ### Gap analysis
 
 Work items, acceptance criteria, and execution order for closing the gap
 between the current tree and the target architecture are tracked in
-`ROADMAP.md` (Architecture Migration Workboard, M1–M8). This document
-describes the target; the roadmap tracks the path.
+`ROADMAP.md` (Architecture Migration Workboard, M1–M8; Compositional
+Refactor Targets, R1–R9). This document describes the target; the roadmap
+tracks the path.
 
 ### Bootstrap subset
 
