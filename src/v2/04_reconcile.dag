@@ -1220,7 +1220,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
 }
 
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
-  let normed = normalize_access_type_node(n: base_type)
+  let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
+  let normed = normalize_access_type_node(n: resolved)
   if field == "value" && node_is_optional(n: normed) {
     Some { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else if node_is_optional(n: normed) {
@@ -1237,7 +1238,6 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
       None => none
     }
   } else {
-    let resolved = resolve_scrutinee_type_node(env: env, n: normed)
     if resolved.connective == none {
       none
     } else {
@@ -1354,10 +1354,12 @@ fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
   }
 }
 
-fn map_value_type_node(type_node: Node) -> Node? {
+fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
-  if normed.name == "Map" && normed.children |> count == 2 {
-    match normed.children |> skip(1) |> first {
+  let resolved = resolve_scrutinee_type_node(env: env, n: normed)
+  let map_type = normalize_access_type_node(n: resolved)
+  if map_type.name == "Map" && map_type.children |> count == 2 {
+    match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
     }
@@ -1380,12 +1382,36 @@ fn data_lookup_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool {
   }
   match receiver.return_type {
     Some { value: receiver_type } =>
-      match map_value_type_node(type_node: receiver_type) {
+      match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
         Some { value: value_type } => type_needs_rc(env: scope.type_env, type_node: value_type)
         None => false
       }
     None => false
   }
+}
+
+fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
+  let normed = normalize_access_type_node(n: n)
+  if normed.connective == none && normed.children |> count == 0 {
+    if normed.return_type != none {
+      let target = normed.return_type.value
+      if target.name == normed.name && target.connective == none && target.children |> count == 0 {
+        normed
+      } else {
+        resolve_scrutinee_type_node(env: env, n: target)
+      }
+    } else {
+      match lookup_type(env: env, name: normed.name) {
+        Some { value: resolved } =>
+          if resolved.name == normed.name && resolved.return_type == none && resolved.connective == none && resolved.children |> count == 0 {
+            normed
+          } else {
+            resolve_scrutinee_type_node(env: env, n: resolved)
+          }
+        None => normed
+      }
+    }
+  } else { normed }
 }
 
 fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
@@ -1672,15 +1698,6 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     service_registry: scope.service_registry,
     item_registry: scope.item_registry
   }
-}
-
-fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
-  if n.connective == none && n.children |> count == 0 {
-    match lookup_type(env: env, name: n.name) {
-      Some { value: resolved } => resolved
-      None => n
-    }
-  } else { n }
 }
 
 fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> InferScope {

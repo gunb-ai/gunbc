@@ -3111,6 +3111,107 @@ func run(name: String = helper()) -> String\n\
     }
 
     #[test]
+    fn phase6_optional_alias_field_access_keeps_reconcile_summary() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let result = compile_sources_with(
+            &output,
+            &[(
+                "main.dag",
+                "module main\n\
+type User { name: String }\n\
+type MaybeUser = User?\n\
+data user: MaybeUser = None\n\
+fn get_name() -> String {\n\
+  user.value.name\n\
+}\n",
+            )],
+        );
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "aliased optional field access should compile cleanly: {:?}",
+            messages
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let main_rs = emitted_file_content(files, "src/main_mod.rs");
+        assert!(
+            !main_rs.contains("field access missing reconcile summary"),
+            "aliased optional access should not lose reconcile field summaries:\n{}",
+            main_rs
+        );
+        assert!(
+            main_rs.contains("USER.clone().unwrap()"),
+            "aliased optional unwrap should still lower structurally:\n{}",
+            main_rs
+        );
+    }
+
+    #[test]
+    fn phase6_map_alias_exposes_value_type_to_lookup_semantics() {
+        let output = compile_all_modules().expect("compilation should succeed");
+        let mut map_type = match named_type_value("Map") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected node map, got: {:?}", other),
+        };
+        map_type.insert(
+            "children".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![
+                named_type_value("String"),
+                named_type_value("User"),
+            ])),
+        );
+        let map_type = gunbc_ir::Value::Map(map_type);
+
+        let mut alias_node = match named_type_value("Users") {
+            gunbc_ir::Value::Map(map) => map,
+            other => panic!("expected alias node map, got: {:?}", other),
+        };
+        let mut some_return = std::collections::BTreeMap::new();
+        some_return.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Some".to_string()),
+        );
+        some_return.insert("value".to_string(), map_type);
+        alias_node.insert("return_type".to_string(), gunbc_ir::Value::Map(some_return));
+        let alias_node = gunbc_ir::Value::Map(alias_node);
+
+        let env = type_env_value(vec![type_binding_value("Users", alias_node)]);
+
+        let mut inputs = HashMap::new();
+        inputs.insert("type_node".to_string(), named_type_value("Users"));
+        inputs.insert("env".to_string(), env);
+        let result = returned_value(
+            call_fn(&output, "map_value_type_in_env", inputs)
+                .expect("map_value_type_in_env should succeed"),
+        );
+
+        match result {
+            gunbc_ir::Value::Map(map) => {
+                let value = map.get("value");
+                match value {
+                    Some(gunbc_ir::Value::Map(node)) => {
+                        assert_eq!(
+                            node.get("name"),
+                            Some(&gunbc_ir::Value::Str("User".to_string())),
+                            "map alias should resolve to its value type before lookup semantics: {:?}",
+                            node
+                        );
+                    }
+                    other => panic!("expected Some(value_type), got: {:?}", other),
+                }
+            }
+            other => panic!("map_value_type_in_env should return an option map, got: {:?}", other),
+        }
+    }
+
+    #[test]
     fn phase6_service_calls_under_return_inject_service_params() {
         let main_rs = read_v2_file("src/v2/04_reconcile.dag");
         assert!(
