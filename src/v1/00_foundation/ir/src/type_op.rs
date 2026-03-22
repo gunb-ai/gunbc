@@ -107,6 +107,48 @@ pub enum SystemModelMeta {
 ///
 /// `ASCII ⊆ UTF8 ⊆ Text` — a function expecting Text content accepts UTF8.
 /// `Binary` and `Text` are incomparable — a function expecting Text rejects Binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SurfaceContentEncoding {
+    Text,
+    UTF8,
+    ASCII,
+    Latin1,
+    Binary,
+}
+
+impl SurfaceContentEncoding {
+    /// User-authored `content(...)` refinements must choose a concrete encoding.
+    /// `Unknown` remains an internal lattice top and is never surface-authored.
+    pub const ALL: [Self; 5] = [
+        Self::Text,
+        Self::UTF8,
+        Self::ASCII,
+        Self::Latin1,
+        Self::Binary,
+    ];
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "Text" => Some(Self::Text),
+            "UTF8" => Some(Self::UTF8),
+            "ASCII" => Some(Self::ASCII),
+            "Latin1" => Some(Self::Latin1),
+            "Binary" => Some(Self::Binary),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "Text",
+            Self::UTF8 => "UTF8",
+            Self::ASCII => "ASCII",
+            Self::Latin1 => "Latin1",
+            Self::Binary => "Binary",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ContentEncoding {
     /// Unknown encoding (top of lattice — accepts anything).
@@ -121,6 +163,18 @@ pub enum ContentEncoding {
     Latin1,
     /// Binary content (not text — incomparable with Text subtypes).
     Binary,
+}
+
+impl From<SurfaceContentEncoding> for ContentEncoding {
+    fn from(value: SurfaceContentEncoding) -> Self {
+        match value {
+            SurfaceContentEncoding::Text => Self::Text,
+            SurfaceContentEncoding::UTF8 => Self::UTF8,
+            SurfaceContentEncoding::ASCII => Self::ASCII,
+            SurfaceContentEncoding::Latin1 => Self::Latin1,
+            SurfaceContentEncoding::Binary => Self::Binary,
+        }
+    }
 }
 
 impl ContentEncoding {
@@ -598,6 +652,23 @@ mod tests {
         // a.meet(a.join(b)) == Some(a)
         let j = a.join(b);
         assert_eq!(a.meet(j), Some(a));
+    }
+
+    #[test]
+    fn test_surface_content_encoding_excludes_unknown() {
+        let surface_names = SurfaceContentEncoding::ALL
+            .iter()
+            .map(|encoding| encoding.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            surface_names,
+            vec!["Text", "UTF8", "ASCII", "Latin1", "Binary"]
+        );
+        assert_eq!(SurfaceContentEncoding::parse("Unknown"), None);
+        assert_eq!(
+            ContentEncoding::from(SurfaceContentEncoding::parse("Text").unwrap()),
+            ContentEncoding::Text
+        );
     }
 
     /// Verify that the Rust `ContentEncoding` variants match the DSL

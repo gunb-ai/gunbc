@@ -654,7 +654,10 @@ fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(
 /// R8: Strip `Rc<...>` wrapper from a Rust type string.
 /// Used for static data tables where Rc is not Sync-compatible.
 fn strip_rc_wrapper(rust_type: &str) -> String {
-    if let Some(inner) = rust_type.strip_prefix("Rc<").and_then(|s| s.strip_suffix('>')) {
+    if let Some(inner) = rust_type
+        .strip_prefix("Rc<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
         inner.to_string()
     } else {
         rust_type.to_string()
@@ -977,7 +980,11 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .iter()
         .map(|p| {
             let ty = type_expr_to_rust(&p.ty);
-            let ty = if ty == "String" { "&str".to_string() } else { ty };
+            let ty = if ty == "String" {
+                "&str".to_string()
+            } else {
+                ty
+            };
             (p.name.clone(), ty)
         })
         .collect();
@@ -1292,7 +1299,7 @@ pub fn typedefs_to_source_file(
         fn_return_ir_types: std::collections::HashMap::new(),
         optional_return_fns: std::collections::HashSet::new(),
         fn_str_params: std::collections::HashSet::new(),
-            str_param_names: std::collections::HashSet::new(),
+        str_param_names: std::collections::HashSet::new(),
         anonymous_record_targets: std::collections::HashMap::new(),
         synthesized_anonymous_record_types: Vec::new(),
         expr_ir_types: std::collections::HashMap::new(),

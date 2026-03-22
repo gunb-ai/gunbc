@@ -381,8 +381,7 @@ fn run() -> String { render_name(name: "ok") }"#,
         .first()
         .expect("main module should resolve its import dependency");
     assert_eq!(
-        graph.modules[dependency].module_path,
-        imported_path,
+        graph.modules[dependency].module_path, imported_path,
         "resolved dependency should preserve the imported ModulePath"
     );
 

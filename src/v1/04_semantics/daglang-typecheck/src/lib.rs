@@ -5213,11 +5213,9 @@ fn infer_expr_type(
             }),
         // list_push(list, item) → same type as the list argument
         Expr::Call(name, args) if name == "list_push" && args.len() == 2 => {
-            let (list_ty, list_errors) =
-                infer_expr_type(&args[0].1, local_bindings, infer_context);
+            let (list_ty, list_errors) = infer_expr_type(&args[0].1, local_bindings, infer_context);
             errors.extend(list_errors);
-            let (_, item_errors) =
-                infer_expr_type(&args[1].1, local_bindings, infer_context);
+            let (_, item_errors) = infer_expr_type(&args[1].1, local_bindings, infer_context);
             errors.extend(item_errors);
             list_ty
         }
@@ -6551,25 +6549,15 @@ fn resolve_generic_arity(
     None
 }
 
-const SURFACE_CONTENT_ENCODINGS: &[(&str, gunbc_ir::type_op::ContentEncoding)] = &[
-    ("Text", gunbc_ir::type_op::ContentEncoding::Text),
-    ("UTF8", gunbc_ir::type_op::ContentEncoding::UTF8),
-    ("ASCII", gunbc_ir::type_op::ContentEncoding::ASCII),
-    ("Latin1", gunbc_ir::type_op::ContentEncoding::Latin1),
-    ("Binary", gunbc_ir::type_op::ContentEncoding::Binary),
-];
-
 fn parse_surface_content_encoding(raw: &str) -> Result<gunbc_ir::type_op::ContentEncoding, String> {
-    SURFACE_CONTENT_ENCODINGS
-        .iter()
-        .find_map(|(name, encoding)| (*name == raw).then_some(*encoding))
+    gunbc_ir::type_op::SurfaceContentEncoding::parse(raw)
+        .map(Into::into)
         .ok_or_else(|| {
-            let expected = SURFACE_CONTENT_ENCODINGS
+            let expected = gunbc_ir::type_op::SurfaceContentEncoding::ALL
                 .iter()
-                .map(|(name, _)| *name)
+                .map(|encoding| encoding.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            // `Unknown` is an internal lattice top, not a user-authored refinement.
             format!("unknown content encoding `{raw}` — expected one of: {expected}")
         })
 }
