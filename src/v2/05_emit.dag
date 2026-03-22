@@ -38,7 +38,7 @@ import v2.std.core {
   kernel_types
 }
 
-import v2.compiler.reconcile {
+import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,

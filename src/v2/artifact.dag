@@ -10,7 +10,13 @@
 
 module v2.compiler.artifact
 
-import v2.std.core { TextFile, Node, RenderTarget }
+import v2.std.core { TextFile, Node }
+
+// =========================================================================
+// Render target — which language the emitter produces (orchestration concern).
+// =========================================================================
+
+type RenderTarget = Rust | Python | Go
 
 // =========================================================================
 // Artifact kinds

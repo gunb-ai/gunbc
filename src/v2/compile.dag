@@ -4,28 +4,28 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> reconcile -> complexity -> ownership -> artifact-plan -> emit
+// Pipeline: tokenize -> parse -> resolve -> infer -> complexity -> ownership -> artifact-plan -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
 // RenderTarget (Rust, Python, Go). Artifact planning and trace contracts
 // live in separate modules; compile_sources only owns compilation.
 
-module v2.compiler.pipeline
+module v2.compiler.compile
 
 import v2.std.core {
-  Diagnostic, CompileResult, RenderTarget, Error, TextFile
+  Diagnostic, CompileResult, Error, TextFile
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
-import v2.compiler.reconcile { reconcile, ResolvedGraph }
+import v2.compiler.infer { infer, ResolvedGraph }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership }
-import v2.compiler.artifact { ArtifactPlan, Artifact, default_artifact_plan }
+import v2.compiler.artifact { ArtifactPlan, Artifact, default_artifact_plan, RenderTarget }
 
 // =========================================================================
 // Types
@@ -191,10 +191,10 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         }
       }
 
-      // Stage 4: Reconcile namespaces and infer the module graph.
-      // The env-error gate inside reconcile() prevents unresolved type
+      // Stage 4: Infer types and resolve namespaces on the module graph.
+      // The env-error gate inside infer() prevents unresolved type
       // references from reaching emit.
-      let typed = reconcile(graph: graph)
+      let typed = infer(graph: graph)
       let typed_diags = typed.diagnostics
 
       // Gate: if typecheck produced errors, do not proceed to emit.

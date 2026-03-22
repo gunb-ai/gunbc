@@ -15,10 +15,10 @@
 //
 // Dependency chain:
 //   v2.compiler.resolve (ModuleGraph, dependency order)
-//     -> v2.compiler.reconcile (reconciled graph, namespace-consistent)
+//     -> v2.compiler.infer (typed graph, namespace-consistent)
 //       -> v2.compiler.emit (target-language files)
 
-module v2.compiler.reconcile
+module v2.compiler.infer
 
 import std.types { SourceSpan }
 import v2.std.core {
@@ -4865,7 +4865,7 @@ fn typecheck_modules(
 // made unresolved expression-tree validation redundant downstream.
 // =========================================================================
 
-fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
+fn infer(graph: ModuleGraph) -> ResolvedGraph {
   let typed = typecheck(graph: graph)
   ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, emit_info: typed.emit_info, diagnostics: typed.diagnostics }
 }

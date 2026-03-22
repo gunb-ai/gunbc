@@ -775,7 +775,7 @@ fn emit_v2_main_rs() -> String {
 
 use std::rc::Rc;
 use clap::{Parser, Subcommand};
-use v2_compiler::{pipeline, v2_core};
+use v2_compiler::{artifact, compile, v2_core};
 
 #[derive(Parser)]
 #[command(name = "v2-compiler", about = "v2 DAG compiler")]
@@ -800,7 +800,7 @@ fn main() {
     match cli.command {
         Commands::Compile { source_dir, output_dir } => {
             // Read all .dag files from source directory
-            let mut sources: Vec<Rc<pipeline::SourceFile>> = Vec::new();
+            let mut sources: Vec<Rc<compile::SourceFile>> = Vec::new();
             let mut entries: Vec<_> = std::fs::read_dir(&source_dir)
                 .unwrap_or_else(|e| panic!("failed to read source dir {}: {}", source_dir, e))
                 .filter_map(|e| e.ok())
@@ -812,7 +812,7 @@ fn main() {
                     let content = std::fs::read_to_string(&path)
                         .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
                     let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                    sources.push(Rc::new(pipeline::SourceFile {
+                    sources.push(Rc::new(compile::SourceFile {
                         path: filename,
                         content,
                     }));
@@ -826,9 +826,9 @@ fn main() {
             // Stage1 (v2-emitted) passes bare Vec<Rc<T>> because v2 renders
             // List<T> without the outer Rc. Each stage is internally consistent
             // with its own emitter's type representation.
-            let result = pipeline::compile_sources(
+            let result = compile::compile_sources(
                 Rc::new(sources),
-                v2_core::RenderTarget::Rust,
+                artifact::RenderTarget::Rust,
             );
 
             // Write output files
@@ -1319,7 +1319,7 @@ fn emit_test_module(dag_sources: &[EmbeddedDagSource]) -> String {
         .filter(|source| source.include_in_self_resolve)
         .map(|source| {
             format!(
-                "                    std::rc::Rc::new(crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }}),\n",
+                "                    std::rc::Rc::new(crate::compile::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }}),\n",
                 source.rel_path, source.const_name
             )
         })
@@ -1334,7 +1334,7 @@ fn emit_test_module(dag_sources: &[EmbeddedDagSource]) -> String {
                 .as_ref()
                 .unwrap_or_else(|| panic!("gist source {} is not under dsl/", source.rel_path));
             format!(
-                "                    std::rc::Rc::new(crate::pipeline::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }}),\n",
+                "                    std::rc::Rc::new(crate::compile::SourceFile {{ path: \"{}\".to_string(), content: {}.to_string() }}),\n",
                 logical_path, source.const_name
             )
         })
@@ -1447,11 +1447,11 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {{
-                let source = std::rc::Rc::new(crate::pipeline::SourceFile {{
+                let source = std::rc::Rc::new(crate::compile::SourceFile {{
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo {{ x: Int, name: String }}\nfn add(a: Int, b: Int) -> Int {{ a + b }}\n".to_string(),
                 }});
-                let result = crate::pipeline::compile_sources(std::rc::Rc::new(vec![source]), crate::v2_core::RenderTarget::Rust);
+                let result = crate::compile::compile_sources(std::rc::Rc::new(vec![source]), crate::artifact::RenderTarget::Rust);
 
                 // Should produce at least one output file
                 assert!(
@@ -1529,13 +1529,13 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {self_compile_source_files}                ];
 
                 let source_count = sources.len();
-                let result = crate::pipeline::compile_sources(
+                let result = crate::compile::compile_sources(
                     std::rc::Rc::new(sources),
-                    crate::v2_core::RenderTarget::Rust,
+                    crate::artifact::RenderTarget::Rust,
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
@@ -1588,12 +1588,12 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {self_compile_source_files}                ];
 
-                let result = crate::pipeline::compile_sources(
+                let result = crate::compile::compile_sources(
                     std::rc::Rc::new(sources),
-                    crate::v2_core::RenderTarget::Rust,
+                    crate::artifact::RenderTarget::Rust,
                 );
 
                 assert!(!result.files.is_empty(), "self-compile produced no files");
@@ -1659,9 +1659,9 @@ mod generated_tests {{
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
                 // Gist's transitive source closure, derived from imports.
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {gist_resolve_sources}                ];
-                let result = crate::pipeline::resolve_sources(
+                let result = crate::compile::resolve_sources(
                     std::rc::Rc::new(sources),
                 );
 
@@ -1698,11 +1698,11 @@ mod generated_tests {{
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {{
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {gist_resolve_sources}                ];
-                let result = crate::pipeline::compile_sources(
+                let result = crate::compile::compile_sources(
                     std::rc::Rc::new(sources),
-                    crate::v2_core::RenderTarget::Rust,
+                    crate::artifact::RenderTarget::Rust,
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
@@ -1763,7 +1763,7 @@ mod generated_tests {{
             .spawn(|| {{
                 use std::time::Instant;
 
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {gist_resolve_sources}                ];
 
                 eprintln!("\n=== GIST PIPELINE PROFILE ({{}} sources) ===\n", sources.len());
@@ -1880,7 +1880,7 @@ mod generated_tests {{
             .spawn(|| {{
                 use std::time::Instant;
 
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {self_compile_source_files}                ];
 
                 let source_count = sources.len();
@@ -1941,7 +1941,7 @@ mod generated_tests {{
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::reconcile::reconcile(graph);
+                let typed = crate::infer::infer(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
@@ -2005,7 +2005,7 @@ mod generated_tests {{
                 use std::time::Instant;
                 use std::collections::HashMap;
 
-                let sources: Vec<std::rc::Rc<crate::pipeline::SourceFile>> = vec![
+                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
 {self_compile_source_files}                ];
 
                 eprintln!("\n=== PER-MODULE RECONCILE PROFILE ({{}} sources) ===", sources.len());
@@ -2031,7 +2031,7 @@ mod generated_tests {{
                 eprintln!("  Modules to reconcile: {{}}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {{
                     let name = resolved.module.name.to_string();
@@ -2045,7 +2045,7 @@ mod generated_tests {{
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
-                    let _unres = crate::reconcile::build_type_env_unresolved(
+                    let _unres = crate::infer::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -2062,7 +2062,7 @@ mod generated_tests {{
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
-                    let env_result = crate::reconcile::build_type_env(
+                    let env_result = crate::infer::build_type_env(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -2086,7 +2086,7 @@ mod generated_tests {{
 
                     // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
-                    let tc_result = crate::reconcile::typecheck_module(
+                    let tc_result = crate::infer::typecheck_module(
                         resolved.clone(),
                         module_index
                     );
@@ -2200,7 +2200,7 @@ type Shared {
         );
         let pipeline_sf = parse_source(
             r#"
-module v2.compiler.pipeline
+module v2.compiler.compile
 
 fn main() -> Int { 0 }
 "#,
@@ -2217,8 +2217,8 @@ fn main() -> Int { 0 }
             "core module should derive v2_core.rs from its declaration"
         );
         assert!(
-            files.iter().any(|file| file.rel_path == "src/pipeline.rs"),
-            "pipeline module should derive pipeline.rs from its declaration"
+            files.iter().any(|file| file.rel_path == "src/compile.rs"),
+            "compile module should derive compile.rs from its declaration"
         );
     }
 

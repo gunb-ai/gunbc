@@ -56,7 +56,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
-import v2.compiler.reconcile {
+import v2.compiler.infer {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,

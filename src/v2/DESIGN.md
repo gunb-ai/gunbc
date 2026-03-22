@@ -172,11 +172,7 @@ The key naming rule:
 - `targets/<lang>/adapter.dag` = compiler-owned target lowering
 - `dsl/extdeps/languages/<lang>/*` = declarative language facts, not compiler graph walks
 
-`06_pipeline.dag` is the compiler driver, not a sixth numbered stage.
-Pending renames (tracked in ROADMAP.md M1):
-
-- `04_reconcile.dag` → `04_infer.dag`
-- `06_pipeline.dag` → `compile.dag`
+`compile.dag` (`v2.compiler.compile`) is the compiler driver, not a numbered lowering stage.
 
 ### Module classes
 
@@ -462,13 +458,13 @@ Per-target adapters shrink to irreducible differences only:
 - Python: exception blocks, indentation-based scoping
 - Go: multi-return, error wrapping, interface satisfaction
 
-#### 07_complexity.dag — Fold consumer (after S5)
+#### complexity.dag — Fold consumer (after S5)
 
 After shared `fold_expr`, complexity supplies a fold function
 `ExprData → CostExpr` instead of maintaining its own walker. Logic
 unchanged; only the traversal mechanism changes.
 
-#### 07_ownership.dag — Wire into pipeline (M2, no structural change)
+#### ownership.dag — Wire into pipeline (M2, no structural change)
 
 Clean obligation model. Needs wiring into `compile.dag` and feeding proofs
 to the emitter. No structural refactor required.
@@ -980,7 +976,7 @@ Transport is a Node where `name` = kind ("rest"/"shell"/"file"/"local"),
 
 ## Layer 3: Semantic Model
 
-Semantic types are defined once in `04_reconcile.dag` and imported by
+Semantic types are defined once in `04_infer.dag` and imported by
 consumers.
 
 ```dag

@@ -102,15 +102,15 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_reconcile.dag"),
+            root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/05_emit_go.dag"),
-            root.join("src/v2/06_pipeline.dag"),
-            root.join("src/v2/07_complexity.dag"),
-            root.join("src/v2/07_ownership.dag"),
-            root.join("src/v2/08_artifact.dag"),
+            root.join("src/v2/compile.dag"),
+            root.join("src/v2/complexity.dag"),
+            root.join("src/v2/ownership.dag"),
+            root.join("src/v2/artifact.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -203,15 +203,15 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
-            root.join("src/v2/04_reconcile.dag"),
+            root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
             root.join("src/v2/05_emit_go.dag"),
-            root.join("src/v2/06_pipeline.dag"),
-            root.join("src/v2/07_complexity.dag"),
-            root.join("src/v2/07_ownership.dag"),
-            root.join("src/v2/08_artifact.dag"),
+            root.join("src/v2/compile.dag"),
+            root.join("src/v2/complexity.dag"),
+            root.join("src/v2/ownership.dag"),
+            root.join("src/v2/artifact.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -931,7 +931,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_typecheck_parses_strict() {
-        assert_parses_strict("src/v2/04_reconcile.dag");
+        assert_parses_strict("src/v2/04_infer.dag");
     }
 
     #[test]
@@ -941,22 +941,22 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase0_pipeline_parses_strict() {
-        assert_parses_strict("src/v2/06_pipeline.dag");
+        assert_parses_strict("src/v2/compile.dag");
     }
 
     #[test]
     fn phase0_artifact_parses_strict() {
-        assert_parses_strict("src/v2/08_artifact.dag");
+        assert_parses_strict("src/v2/artifact.dag");
     }
 
     #[test]
     fn phase0_complexity_parses_strict() {
-        assert_parses_strict("src/v2/07_complexity.dag");
+        assert_parses_strict("src/v2/complexity.dag");
     }
 
     #[test]
     fn phase0_ownership_parses_strict() {
-        assert_parses_strict("src/v2/07_ownership.dag");
+        assert_parses_strict("src/v2/ownership.dag");
     }
 
     #[test]
@@ -2183,7 +2183,7 @@ fn foo(item: String) -> String {
     /// Test that the typecheck.dag has mutual recursion cycle detection.
     #[test]
     fn phase4_typecheck_has_cycle_detection() {
-        let source = read_v2_file("src/v2/04_reconcile.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("detect_type_cycles"),
             "typecheck.dag should contain detect_type_cycles for SCC-based cycle detection"
@@ -2213,7 +2213,7 @@ fn foo(item: String) -> String {
 
     #[test]
     fn phase6_typecheck_resolves_and_validates_expression_tree_types() {
-        let source = read_v2_file("src/v2/04_reconcile.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("fn resolve_expr_types"),
             "typecheck.dag should walk expression trees during type resolution"
@@ -3515,7 +3515,7 @@ fn from_method() -> User? {\n\
 
     #[test]
     fn phase6_service_calls_under_return_inject_service_params() {
-        let main_rs = read_v2_file("src/v2/04_reconcile.dag");
+        let main_rs = read_v2_file("src/v2/04_infer.dag");
         assert!(
             main_rs.contains("Return { value: v"),
             "service dependency walk should recurse through Return expressions:\n{}",
@@ -3605,7 +3605,7 @@ fn from_method() -> User? {\n\
 
     #[test]
     fn phase6_unannotated_function_reports_signature_resolution_error() {
-        let source = read_v2_file("src/v2/04_reconcile.dag");
+        let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)")
                 && source.contains("topo_resolve_loop(")
@@ -4226,15 +4226,15 @@ fn origin() -> Point {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
-            ("04_reconcile", "src/v2/04_reconcile.dag"),
+            ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
             ("05_emit_go", "src/v2/05_emit_go.dag"),
-            ("06_pipeline", "src/v2/06_pipeline.dag"),
-            ("07_complexity", "src/v2/07_complexity.dag"),
-            ("07_ownership", "src/v2/07_ownership.dag"),
-            ("08_artifact", "src/v2/08_artifact.dag"),
+            ("compile", "src/v2/compile.dag"),
+            ("complexity", "src/v2/complexity.dag"),
+            ("ownership", "src/v2/ownership.dag"),
+            ("artifact", "src/v2/artifact.dag"),
         ];
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files
@@ -5164,7 +5164,7 @@ fn find_import(names: List<String>, target: String) -> Bool {
 }
 
 // ============================
-// 04_reconcile: type resolution + namespace walks
+// 04_infer: type resolution + namespace walks
 // ============================
 
 fn resolve_all_items(modules: List<List<String>>) -> List<String> {
@@ -5206,7 +5206,7 @@ fn emit_nested_modules(modules: List<List<String>>) -> String {
 }
 
 // ============================
-// 06_pipeline: stage wiring
+// compile.dag: stage wiring
 // ============================
 
 fn collect_diagnostics(stages: List<List<String>>) -> List<String> {
@@ -5225,7 +5225,7 @@ fn compile_pipeline(sources: List<String>) -> List<String> {
 }
 
 // ============================
-// 07_complexity: cost analysis
+// complexity.dag: cost analysis
 // ============================
 
 fn analyze_functions(funcs: List<String>) -> List<String> {
@@ -5241,7 +5241,7 @@ fn find_violations(costs: List<Int>, threshold: Int) -> List<Int> {
 }
 
 // ============================
-// 08_artifact: build planning
+// artifact.dag: build planning
 // ============================
 
 fn plan_artifacts(modules: List<String>) -> String {
@@ -5579,6 +5579,7 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
     #[cfg(feature = "v1-bootstrap")]
     #[test]
     #[ignore] // Requires building stage0 binary (~2 min)
+    #[allow(clippy::disallowed_macros)]
     fn v2_gist_full_pipeline() {
         let gist_files = [
             "dsl/std/types.dag",
@@ -5654,6 +5655,7 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
     /// Validates the v2 compiler can handle service defs, operations, and
     /// workflow functions without needing the full 11-file closure.
     #[test]
+    #[allow(clippy::disallowed_macros)]
     fn v2_gist_service_pipeline_smoke() {
         let output = compile_all_modules().expect("compilation should succeed");
 

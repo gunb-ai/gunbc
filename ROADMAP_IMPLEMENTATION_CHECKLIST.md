@@ -14,17 +14,17 @@ Companion to [`ROADMAP.md`](ROADMAP.md). **Canonical sequencing** remains in the
 
 | Gate | Command |
 |------|---------|
-| Unit tests (hand-written) | `cargo test --workspace --exclude gunbc-dag-tests` |
+| Unit tests (full workspace) | `cargo test --workspace` |
 | Clippy | `cargo clippy --all-targets -- -D warnings` |
-| Diagnostics ratchet (Phase 1 exit) | `cargo test -p gunbc-dag-tests v2_strict_compile_diagnostic_count -- --ignored` |
-| Fixed point (after bootstrap-affecting `.dag` changes) | `cargo test -p gunbc-dag-tests v2_bootstrap_fixed_point -- --ignored` |
-| Gist pipeline (Phase 2 exit) | `cargo test -p gunbc-dag-tests v2_gist_full_pipeline -- --ignored` |
+| Diagnostics ratchet (Phase 1 exit) | `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` |
+| Fixed point (after bootstrap-affecting `.dag` changes) | `cargo test -p v2-compiler-tests v2_bootstrap_fixed_point -- --ignored` |
+| Gist pipeline (Phase 2 exit) | `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` |
 
 ---
 
 ## Implementation order (suggested)
 
-1. [ ] **M1 (P1.1)** — naming batch in one pass; then fixed point.
+1. [x] **M1 (P1.1)** — naming batch in one pass; then fixed point *(landed 2026-03-22)*.
 2. [ ] **P1.2 + P1.3** — infer cleanup + `DIAG_RATCHET` → 0 (only Phase 2 blocker).
 3. [ ] **Parallel:** [ ] L1 slices (P1.4–P1.8) **and** [ ] Phase 2 gist (after step 2).
 4. [ ] **Phase 3** — compile bundle, artifact planning, ownership, v1 off critical path.
@@ -37,15 +37,15 @@ Companion to [`ROADMAP.md`](ROADMAP.md). **Canonical sequencing** remains in the
 
 ### P1.1 Naming cleanup (M1)
 
-- [ ] Rename `04_reconcile.dag` → `04_infer.dag`
-- [ ] Rename `06_pipeline.dag` → `compile.dag`
-- [ ] Rename `07_complexity.dag` → `complexity.dag`
-- [ ] Rename `07_ownership.dag` → `ownership.dag`
-- [ ] Rename `08_artifact.dag` → `artifact.dag`
-- [ ] Rename `09_trace.dag` → `trace.dag`
-- [ ] Move `RenderTarget` out of `00_core.dag` into `compile.dag` or backend metadata module
-- [ ] Update imports, bootstrap references, tests, docs, roadmap wording
-- [ ] **Acceptance:** no numbered files except core lowering stages; docs/tests no “stage 6” driver language
+- [x] Rename `04_reconcile.dag` → `04_infer.dag`
+- [x] Rename `06_pipeline.dag` → `compile.dag`
+- [x] Rename `07_complexity.dag` → `complexity.dag`
+- [x] Rename `07_ownership.dag` → `ownership.dag`
+- [x] Rename `08_artifact.dag` → `artifact.dag`
+- [x] Rename `09_trace.dag` → `trace.dag`
+- [x] Move `RenderTarget` out of `00_core.dag` into `artifact.dag` (avoids import cycle with `compile.dag`)
+- [x] Update imports, bootstrap references, tests, docs (`README.md`, `v2_tests.rs`, `v2_crate_emit.rs`, `lib.rs`)
+- [x] **Acceptance:** driver module is `v2.compiler.compile` (`compile.dag`); infer stage is `v2.compiler.infer` (`04_infer.dag`)
 
 ### P1.2 Infer cleanup (R5, S3.5, S7)
 
@@ -84,7 +84,7 @@ Companion to [`ROADMAP.md`](ROADMAP.md). **Canonical sequencing** remains in the
 ### Phase 1 exit criteria
 
 - [ ] `v2_strict_compile_diagnostic_count` passes (ratchet **0**)
-- [ ] M1 complete
+- [x] M1 complete
 - [ ] Fixed point after each structural change (as applicable)
 
 ---
@@ -209,3 +209,4 @@ _Use this section for dated decisions, blockers, and links to PRs._
 | Date | Note |
 |------|------|
 | 2026-03-22 | Checklist created; execution order follows `ROADMAP.md` phase table. |
+| 2026-03-22 | **M1 landed:** file renames, `v2.compiler.infer` / `infer()`, `v2.compiler.compile`, `RenderTarget` in `artifact.dag`, emitter + README + tests updated. |
