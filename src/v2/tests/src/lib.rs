@@ -3011,9 +3011,10 @@ fn example(items: List<String>) -> Int {
             runtime_rs
         );
         assert!(
-            runtime_rs.contains("for ch in s.chars().skip(start)")
+            runtime_rs.contains("let mut pos = 0usize;")
+                && runtime_rs.contains("for ch in s.chars() {\n        if pos < start {")
                 && runtime_rs.contains("let mut escaped = false;"),
-            "scanner helpers should fall back to char-based traversal for non-ASCII input:\n{}",
+            "scanner helpers should stream char-based traversal for non-ASCII input:\n{}",
             runtime_rs
         );
     }

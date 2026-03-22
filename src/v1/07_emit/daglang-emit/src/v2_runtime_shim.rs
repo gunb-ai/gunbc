@@ -270,22 +270,26 @@ pub fn scan_string_end(s: impl AsRef<str>, start: i64) -> i64 {
         }
         return bytes.len() as i64;
     }
-    let chars: Vec<char> = s.chars().collect();
-    let mut pos = start.min(chars.len());
-    while pos < chars.len() {
-        if chars[pos] == '\\' {
-            if pos + 1 < chars.len() {
-                pos += 2;
-            } else {
-                return chars.len() as i64;
-            }
-        } else if chars[pos] == '"' {
+    let mut pos = 0usize;
+    let mut escaped = false;
+    for ch in s.chars() {
+        if pos < start {
+            pos += 1;
+            continue;
+        }
+        if escaped {
+            escaped = false;
+            pos += 1;
+        } else if ch == '\\' {
+            escaped = true;
+            pos += 1;
+        } else if ch == '"' {
             return (pos + 1) as i64;
         } else {
             pos += 1;
         }
     }
-    chars.len() as i64
+    pos as i64
 }
 
 /// Return the Unicode code point of a character (given as a single-char string).
@@ -331,6 +335,18 @@ mod tests {
                 && V2_RUNTIME_SOURCE.contains("let end = end.min(len);")
                 && V2_RUNTIME_SOURCE.contains("s[start..end].to_string()"),
             "runtime shim should clamp substring bounds and return empty when the clamped range is invalid"
+        );
+    }
+
+    #[test]
+    fn scan_string_end_streams_non_ascii_scan() {
+        assert!(
+            V2_RUNTIME_SOURCE.contains("let mut pos = 0usize;")
+                && V2_RUNTIME_SOURCE.contains("if pos < start {")
+                && V2_RUNTIME_SOURCE.contains("let mut escaped = false;")
+                && !V2_RUNTIME_SOURCE.contains("let char_len = s.chars().count();")
+                && !V2_RUNTIME_SOURCE.contains("let chars: Vec<char> = s.chars().collect();"),
+            "runtime shim should scan non-ASCII strings without collecting the whole input first"
         );
     }
 }
