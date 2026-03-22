@@ -1047,8 +1047,9 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
             // from the outer scope to avoid spurious .clone() after substitution.
             let mut inner_counts = HashMap::new();
             count_ident_uses_expr(body, &mut inner_counts, 1);
+            let lambda_params: HashSet<&str> = params.iter().map(String::as_str).collect();
             for (name, inner_count) in inner_counts {
-                if !params.contains(&name) {
+                if !lambda_params.contains(name.as_str()) {
                     // Captured variable — weight=2 since lambda may run multiple times
                     *counts.entry(name).or_insert(0) += inner_count.max(1) * 2;
                 }
@@ -8208,6 +8209,27 @@ mod tests {
         assert_eq!(counts.get("scrutinee"), Some(&1));
         assert_eq!(counts.get("guard"), Some(&1));
         assert_eq!(counts.get("shared"), Some(&2));
+    }
+
+    #[test]
+    fn count_ident_uses_excludes_lambda_params_from_outer_counts() {
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Lambda(
+                vec!["item".into(), "acc".into()],
+                Box::new(Expr::List(vec![
+                    Expr::Ident("item".into()),
+                    Expr::Ident("outer".into()),
+                    Expr::Ident("outer".into()),
+                    Expr::Ident("acc".into()),
+                ])),
+            ))],
+        };
+
+        let counts = count_ident_uses(&body.stmts);
+
+        assert_eq!(counts.get("outer"), Some(&4));
+        assert!(!counts.contains_key("item"));
+        assert!(!counts.contains_key("acc"));
     }
 
     #[test]
