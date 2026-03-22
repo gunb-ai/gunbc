@@ -51,6 +51,8 @@ import v2.std.core {
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
   Text, Interpolation,
+  FieldSummary, FieldAccessStyle,
+  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
@@ -354,6 +356,16 @@ fn emit_go_type_alias(name: String, base: Node) -> String {
 // =========================================================================
 
 fn emit_go_node_type(n: Node) -> String {
+  // Callable type: function used as a value -- emit func(ParamTypes) RetType.
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_go_node_type(n: p.type_expr))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: rt } => concat(" ", emit_go_node_type(n: rt))
+      None => ""
+    }
+    return concat("func(", param_str, ")", ret_str)
+  }
   let kind = classify_type_structure(n: n)
   if kind == TypeLeaf {
     emit_go_node_type_leaf(n: n)
@@ -401,6 +413,16 @@ fn emit_go_node_type_conj(n: Node) -> String {
       Some { value: base } => emit_go_node_type(n: base)
       None => n.name
     }
+  } else if n.name == "Tuple" {
+    let first_str = match n.children |> first {
+      Some { value: c } => emit_go_node_type(n: c)
+      None => "interface{}"
+    }
+    let second_str = match skip(n.children, 1) |> first {
+      Some { value: c } => emit_go_node_type(n: c)
+      None => "interface{}"
+    }
+    concat("struct{ First ", first_str, "; Second ", second_str, " }")
   } else if n.name != "" {
     n.name
   } else {
@@ -529,20 +551,33 @@ fn emit_go_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> 
   // Go type switch: case TypeName:
   name
 }
+fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0)
+  match summary {
+    Some { value: fs } =>
+      match fs.access_style {
+        TupleFirst => concat(base_str, ".First")
+        TupleSecond => concat(base_str, ".Second")
+        _ => concat(base_str, ".", go_export_ident(name: field))
+      }
+    None => concat(base_str, ".", go_export_ident(name: field))
+  }
+}
+
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match texpr.expr_data {
     ExprLiteral { value: v } => concat(prefix, go_literal(value: v))
-    ExprError { kind: _, message: message } => concat(prefix, "panic(", emit_string_literal(value: message), ")")
+    ExprError { kind: _, message: message } => concat(prefix, "panic(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: _ } => concat(prefix, go_local_ident(name: n))
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
+    ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
         match extract_typed_service_name(receiver: texpr) {
           Some { value: svc_name } => concat(prefix, service_var_name(service_name: svc_name))
-          None => concat(prefix, emit_go_typed_expr(texpr: b, registry: registry, scope: scope, depth: 0), ".", go_export_ident(name: f))
+          None => concat(prefix, emit_go_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope))
         }
       } else {
-        concat(prefix, emit_go_typed_expr(texpr: b, registry: registry, scope: scope, depth: 0), ".", go_export_ident(name: f))
+        concat(prefix, emit_go_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope))
       }
     ExprCall { func: f, args: a, call_semantics: _ } =>
       concat(prefix, emit_go_typed_call(func: f, args: a, registry: registry, scope: scope))
@@ -637,16 +672,12 @@ fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, arg
   }
 }
 
-fn emit_go_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let recv_expr = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-  // pass_receiver_by_ref is a Rust-specific concern (borrow vs move).
-  // Go maps/slices are already reference types; &expr is incorrect and
-  // fails for non-addressable expressions.
   let recv_str = recv_expr
   let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
   let args_str = arg_strs |> join(separator: ", ")
-  let lowered = concat(recv_str, ".", go_export_ident(name: function_name), "(", args_str, ")")
-  if wrap_result_in_rc { lowered } else { lowered }
+  concat(recv_str, ".", go_export_ident(name: function_name), "(", args_str, ")")
 }
 
 fn emit_go_plain_method_call(receiver: Node, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -664,13 +695,13 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _, wrap_result_in_rc: _ } } =>
+    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
       match emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope) {
         Some { value: lowered } => lowered
         None => emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
       }
-    Some { value: RuntimeBridgeSemantics { function_name: function_name, pass_receiver_by_ref: pass_receiver_by_ref, wrap_result_in_rc: wrap_result_in_rc } } =>
-      emit_go_runtime_bridge_method_call(function_name: function_name, pass_receiver_by_ref: pass_receiver_by_ref, wrap_result_in_rc: wrap_result_in_rc, receiver: receiver, args: args, registry: registry, scope: scope)
+    Some { value: RuntimeBridgeSemantics { function_name: function_name } } =>
+      emit_go_runtime_bridge_method_call(function_name: function_name, receiver: receiver, args: args, registry: registry, scope: scope)
     Some { value: PlainMethodSemantics } =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
     None =>

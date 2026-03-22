@@ -4,26 +4,25 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> reconcile -> complexity -> emit -> artifact
+// Pipeline: tokenize -> parse -> resolve -> reconcile -> complexity -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
-// RenderTarget (Rust, Python). Adding a new target means adding a
-// renderer module -- no pipeline changes needed.
+// RenderTarget (Rust, Python, Go). Artifact planning and trace contracts
+// live in separate modules; compile_sources only owns compilation.
 
 module v2.compiler.pipeline
 
 import v2.std.core {
-  Diagnostic, CompileResult, RenderTarget, SourceSpan, Error, TextFile, Param
+  Diagnostic, CompileResult, RenderTarget, Error, TextFile
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.reconcile { reconcile, ResolvedGraph }
-import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
-import v2.compiler.artifact { ArtifactPlan, ArtifactOutput, Artifact, ServiceBinary, default_artifact_plan }
+import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
 
 // =========================================================================
@@ -42,6 +41,11 @@ type PipelineResult {
   files: List<TextFile>
   diagnostics: List<Diagnostic>
   complexity: ComplexityReport
+}
+
+type FrontendResult {
+  graph: ModuleGraph?
+  diagnostics: List<Diagnostic>
 }
 
 // =========================================================================
@@ -73,6 +77,25 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
   )
 }
 
+// Shared frontend path: tokenize -> parse -> resolve.
+// If parse fails, graph is None and diagnostics contains only parse diagnostics.
+fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
+  let tokenized = map(sources, s => tokenize(source: s.content))
+  let parse_results = map(tokenized, t => parse(tokens: t))
+  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
+  let has_parse_errors = any(parse_results, p => p.error != None)
+  if has_parse_errors {
+    FrontendResult { graph: none, diagnostics: parse_diagnostics }
+  } else {
+    let modules = map(parse_results, p => p.module.value)
+    let graph = resolve_modules(modules: modules)
+    FrontendResult {
+      graph: Some { value: graph },
+      diagnostics: concat(parse_diagnostics, graph.diagnostics)
+    }
+  }
+}
+
 // =========================================================================
 // Full pipeline
 // =========================================================================
@@ -80,109 +103,75 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
 // Resolve-only pipeline: tokenize -> parse -> resolve.
 // Returns diagnostics from all three stages without proceeding to typecheck.
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
-  let tokenized = map(sources, s => tokenize(source: s.content))
-  let parse_results = map(tokenized, t => parse(tokens: t))
-  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
-  let has_errors = any(parse_results, p => p.error != None)
-  if has_errors {
-    CompileResult { files: [], diagnostics: parse_diagnostics }
-  } else {
-    let modules = map(parse_results, p => p.module.value)
-    let graph = resolve_modules(modules: modules)
-    let graph_diags = graph.diagnostics
-    CompileResult { files: [], diagnostics: concat(parse_diagnostics, graph_diags) }
-  }
+  let frontend = front_end_sources(sources: sources)
+  CompileResult { files: [], diagnostics: frontend.diagnostics }
 }
 
 // Pure compiler pipeline: sources in, compiled files out.
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
-// The target parameter selects the output language (Rust, Python).
+// The target parameter selects the output language (Rust, Python, Go).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
-  // Stage 1: Tokenize each source file
-  let tokenized = map(sources, s => tokenize(source: s.content))
-
-  // Stage 2: Parse each token stream into a module
-  let parse_results = map(tokenized, t => parse(tokens: t))
-
-  // Check for parse errors BEFORE extracting modules.
-  // parse() returns { module: none } on failure, so extracting p.module
-  // before this check would produce List<Module?> -- a type violation
-  // that the evaluator cannot catch at runtime (S56).
-  let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
-  let has_errors = any(parse_results, p => p.error != None)
-
-  if has_errors {
-    PipelineResult {
-      files: [],
-      diagnostics: parse_diagnostics,
-      complexity: empty_complexity_report()
-    }
-  } else {
-    // Safe to extract: all parses succeeded, so every p.module is Some.
-    let modules = map(parse_results, p => p.module.value)
-    // Stage 3: Resolve imports and build module graph
-    let graph = resolve_modules(modules: modules)
-    let graph_diags = graph.diagnostics
-
-    // Gate: if resolve produced errors, do not proceed to typecheck.
-    let resolve_errors = graph_diags |> filter(d => d.severity == Error)
-    if resolve_errors |> count > 0 {
-      return PipelineResult {
+  let frontend = front_end_sources(sources: sources)
+  match frontend.graph {
+    None =>
+      PipelineResult {
         files: [],
-        diagnostics: concat(parse_diagnostics, graph_diags),
+        diagnostics: frontend.diagnostics,
         complexity: empty_complexity_report()
       }
-    }
+    Some { value: graph } => {
+      // Stage 1-3: frontend graph build complete.
+      let graph_diags = graph.diagnostics
 
-    // Stage 4: Reconcile namespaces and infer the module graph.
-    // The env-error gate inside reconcile() prevents unresolved type
-    // references from reaching emit.
-    let typed = reconcile(graph: graph)
-    let typed_diags = typed.diagnostics
-
-    // Gate: if typecheck produced errors, do not proceed to emit.
-    let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
-    if typecheck_errors |> count > 0 {
-      return PipelineResult {
-        files: [],
-        diagnostics: concat(parse_diagnostics, graph_diags, typed_diags),
-        complexity: empty_complexity_report()
+      // Gate: if resolve produced errors, do not proceed to typecheck.
+      let resolve_errors = graph_diags |> filter(d => d.severity == Error)
+      if resolve_errors |> count > 0 {
+        return PipelineResult {
+          files: [],
+          diagnostics: frontend.diagnostics,
+          complexity: empty_complexity_report()
+        }
       }
-    }
 
-    // Stage 5: Complexity analysis.
-    // Runs on every compilation — cost is a first-class fact about the program.
-    let func_entries = extract_func_entries(typed: typed)
-    let complexity = build_complexity_report(func_entries: func_entries)
+      // Stage 4: Reconcile namespaces and infer the module graph.
+      // The env-error gate inside reconcile() prevents unresolved type
+      // references from reaching emit.
+      let typed = reconcile(graph: graph)
+      let typed_diags = typed.diagnostics
 
-    // Stage 6: Emit target-language files.
-    // Dispatches to the appropriate renderer based on RenderTarget.
-    // Precondition: no errors from any prior stage.
-    let emit_result = match target {
-      Rust => emit_rust(typed: typed)
-      Python => emit_python(typed: typed)
-      Go => EmitResult { files: [], diagnostics: [Diagnostic { severity: Error, message: "Go emitter not yet implemented", span: Some { value: SourceSpan { start: 0, end: 0 } }, module_name: Some { value: "" } }] }
-    }
-    let emit_files = emit_result.files
-    let emit_diags = emit_result.diagnostics
-    let emit_errors = emit_diags |> filter(d => d.severity == Error)
+      // Gate: if typecheck produced errors, do not proceed to emit.
+      let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
+      if typecheck_errors |> count > 0 {
+        return PipelineResult {
+          files: [],
+          diagnostics: concat(frontend.diagnostics, typed_diags),
+          complexity: empty_complexity_report()
+        }
+      }
 
-    // Stage 7: Artifact planning.
-    // Wrap emitted files in a default monolith ArtifactOutput.
-    // The module names come from the resolved graph's module list.
-    let module_names = modules |> map(m => m.name)
-    let plan = default_artifact_plan(root_modules: module_names, target: "default")
-    let artifact = match plan.artifacts |> first {
-      Some { value: a } => a
-      None => Artifact { name: "default", kind: ServiceBinary, target: "default", entry_modules: module_names, dependencies: [] }
-    }
-    let _artifact_output = ArtifactOutput { artifact: artifact, files: emit_files }
+      // Stage 5: Complexity analysis.
+      // Runs on every compilation — cost is a first-class fact about the program.
+      let func_entries = extract_func_entries(typed: typed)
+      let complexity = build_complexity_report(func_entries: func_entries)
 
-    let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
-    PipelineResult {
-      files: final_files,
-      diagnostics: concat(parse_diagnostics, graph_diags, typed_diags, emit_diags),
-      complexity: complexity
+      // Stage 6: Emit target-language files.
+      // Dispatches to the appropriate renderer based on RenderTarget.
+      // Precondition: no errors from any prior stage.
+      let emit_result = match target {
+        Rust => emit_rust(typed: typed)
+        Python => emit_python(typed: typed)
+        Go => emit_go(typed: typed)
+      }
+      let emit_files = emit_result.files
+      let emit_diags = emit_result.diagnostics
+      let emit_errors = emit_diags |> filter(d => d.severity == Error)
+
+      let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
+      PipelineResult {
+        files: final_files,
+        diagnostics: concat(frontend.diagnostics, typed_diags, emit_diags),
+        complexity: complexity
+      }
     }
   }
 }

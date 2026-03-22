@@ -1270,6 +1270,7 @@ pub fn typedefs_to_source_file(
     let ctx = fn_codegen::CompileContext {
         data_names,
         data_map_names: std::collections::HashSet::new(),
+        data_string_list_names: std::collections::HashSet::new(),
         optional_fields,
         variant_to_enum,
         struct_field_types,
@@ -1429,6 +1430,7 @@ pub fn generate_types_for_modules(
             data_names: fn_data_names,
             data_ir_types,
             data_map_names: std::collections::HashSet::new(),
+        data_string_list_names: std::collections::HashSet::new(),
             optional_fields: opt_fields,
             variant_to_enum: v2e,
             struct_field_types: sft,
@@ -2006,6 +2008,7 @@ mod tests {
                 data_names: data_defs.iter().map(|dd| dd.name.clone()).collect(),
                 data_ir_types: collect_data_ir_types(data_defs.iter().copied()),
                 data_map_names: HashSet::new(),
+                data_string_list_names: HashSet::new(),
                 optional_fields,
                 variant_to_enum,
                 struct_field_types,

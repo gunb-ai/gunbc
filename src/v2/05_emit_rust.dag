@@ -32,7 +32,7 @@ import v2.std.core {
   BuiltinOptional, BuiltinUnit, BuiltinDynamic, BuiltinError, BuiltinList,
   builtin_type_kind,
   FieldSummary,
-  StoredField, EnumAccessor, OptionalUnwrap, OptionalValue,
+  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
@@ -65,23 +65,19 @@ import extdeps.languages.rust.emit {
 
 import v2.compiler.reconcile {
   ResolvedGraph, TypedModule,
-  EmitGraphInfo,
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   infer_record_lit,
   normalize_access_type_node, for_each_element_type_node,
   build_emit_graph_info,
-  empty_emit_graph_info,
   lookup_emit_type_summary,
-  lookup_field_type_node,
   resolve_scrutinee_type_node,
-  data_lookup_needs_rc_wrap,
   expr_span,
   ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
   emit_map_has,
-  node_is_optional,
   node_is_error_type
 }
 
@@ -91,8 +87,6 @@ import v2.compiler.emit {
   TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypedItemTypeAlias,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
-  EmitContext, build_emit_context,
-  ctx_is_intrinsic, ctx_is_primitive, ctx_is_rc_wrapped, ctx_parent_enum, ctx_is_bridge,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
   emit_string_literal,
@@ -192,11 +186,18 @@ fn has_complex_variants(item: Node) -> Bool {
 // emitted Rust code to match the DAG language's value semantics.
 // Simple enums (all-unit variants) and a small exclusion list are exempt.
 //
-// The actual rc_types/vtoe/enum_names maps are built inline in emit_rust()
-// (not as separate sibling functions) because the v1 interpreter's
-// wrap_value_as_output destructures Map returns -- an empty map becomes
-// empty outputs, triggering an assertion.
+// rc_types is still derived inside the Rust emitter entry points instead of
+// via a sibling helper that returns Map<String, Bool>. The bootstrap
+// interpreter mis-handles empty map returns as "no outputs", which breaks
+// modules with no Rc-wrapped user types.
 // =========================================================================
+
+fn type_summary_needs_rc(summary: TypeSummary) -> Bool {
+  match summary.repr {
+    StructRepr => true
+    EnumRepr { unit_only: unit_only } => unit_only == false
+  }
+}
 
 fn is_simple_disj(item: Node) -> Bool {
   // Simple enum: all variants are unit variants (no children)
@@ -211,17 +212,19 @@ fn is_simple_disj(item: Node) -> Bool {
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let emit_info = typed.emit_info
   let vtoe = emit_info.variant_to_enum
-  let rc_types = emit_info.rc_wrapped_types
+  let rc_types = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
+    if type_summary_needs_rc(summary: summary) {
+      map_insert(acc, summary.name, true)
+    } else {
+      acc
+    }
+  )
   let registry = typed.item_registry
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
   }
-  // Build EmitContext once for O(1) lookups during code generation.
-  // Individual maps (vtoe, rc_types) are retained for backward compat
-  // during gradual migration to ctx_* helpers.
-  let ctx = build_emit_context(graph: typed)
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types))
   let test_files = typed.modules
     |> map(tm => emit_test_file(typed_module: tm))
@@ -454,18 +457,17 @@ fn emit_lib_rs(modules: List<TypedModule>, has_services: Bool) -> TextFile {
 // Module emission
 // =========================================================================
 
-// Build module-local vtoe: overrides global vtoe for ambiguous variants
-// by checking which enum types the module actually imports.
-// If a variant's global vtoe parent is NOT imported but another parent IS,
-// remap the variant to the imported parent.
-fn build_module_vtoe(imports: List<Import>, global_vtoe: Map<String, String>) -> Map<String, String> {
-  global_vtoe
-}
-
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let emit_info = build_emit_graph_info(modules: [typed_module])
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: emit_info.rc_wrapped_types)
+  let rc_types = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
+    if type_summary_needs_rc(summary: summary) {
+      map_insert(acc, summary.name, true)
+    } else {
+      acc
+    }
+  )
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: rc_types)
 }
 
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> TextFile {
@@ -821,10 +823,8 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
   let fielded = children |> filter(child => child.children |> count > 0)
-  let first_fielded = match fielded |> first {
-    Some { value: variant } => variant
-    None => return "compile_error!(\"enum shared accessor missing fielded variant\")"
-  }
+  if fielded |> count == 0 { return "compile_error!(\"enum shared accessor missing fielded variant\")" }
+  let first_fielded = (fielded |> first).value
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => f.name == fname) |> first {
@@ -886,6 +886,16 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // =========================================================================
 
 fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
+  // Callable type: function used as a value -- emit impl Fn(ParamTypes) -> RetType.
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_rust_node_type(n: p.type_expr, rc_types: rc_types))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
+      None => "()"
+    }
+    return concat("impl Fn(", param_str, ") -> ", ret_str)
+  }
   let kind = classify_type_structure(n: n)
   if kind == TypeLeaf {
     emit_rust_node_type_leaf(n: n, rc_types: rc_types)
@@ -941,6 +951,16 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
       Some { value: base } => emit_rust_node_type(n: base, rc_types: rc_types)
       None => n.name
     }
+  } else if n.name == "Tuple" {
+    let first_str = match n.children |> first {
+      Some { value: c } => emit_rust_node_type(n: c, rc_types: rc_types)
+      None => "()"
+    }
+    let second_str = match skip(n.children, 1) |> first {
+      Some { value: c } => emit_rust_node_type(n: c, rc_types: rc_types)
+      None => "()"
+    }
+    concat("(", first_str, ", ", second_str, ")")
   } else if n.name != "" {
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
@@ -1191,7 +1211,7 @@ fn emit_simple_expr(expr: Node) -> String {
   match expr.expr_data {
     ExprLiteral { value: v } => rust_literal(value: v)
     ExprError { kind: _, message: message } =>
-      concat("compile_error!(", emit_string_literal(value: message), ")")
+      concat("compile_error!(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: _ } => rust_ident(name: n)
     ExprFieldAccess { base: b, field: f, summary: _ } =>
       if is_typed_service_call_receiver(receiver: expr) {
@@ -1374,47 +1394,100 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
 // a let-else prelude that destructures via .as_ref().
 // =========================================================================
 
-fn needs_rc_deref_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> Bool {
+type RcPatternAnalysis {
+  matches_rc_variant: Bool
+  matches_option_rc_variant: Bool
+  needs_rc_pattern: Bool
+  ref_bound_fields: List<String>
+}
+
+type RcMatchAnalysis {
+  needs_option_deref: Bool
+  needs_deref: Bool
+}
+
+fn empty_rc_pattern_analysis() -> RcPatternAnalysis {
+  RcPatternAnalysis {
+    matches_rc_variant: false,
+    matches_option_rc_variant: false,
+    needs_rc_pattern: false,
+    ref_bound_fields: []
+  }
+}
+
+fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Bool {
+  rc_analysis.ref_bound_fields |> any(name => name == field_name)
+}
+
+fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> RcPatternAnalysis {
   match pattern {
-    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       // Some/None are handled by .as_deref().cloned() on the scrutinee --
       // the inner value is already unwrapped from Rc. Recurse into the
       // inner binding to check for deeper Rc-wrapped fields.
       if n == "Some" || n == "None" {
         if fbs |> count == 1 {
           match fbs |> first {
-            Some { value: fb } => needs_rc_deref_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            None => false
-          }
-        } else { false }
-      } else {
-        let rc_fields = fbs |> filter(fb =>
-          match fb.binding {
-            VariantPattern { name: inner_name, parent_enum: inner_parent_enum, field_bindings: _ } =>
-              match pattern_parent_enum(name: inner_name, parent_enum: inner_parent_enum, scrut_type: "", vtoe: vtoe) {
-                Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
-                None => false
+            Some { value: fb } =>
+              let inner = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
+              RcPatternAnalysis {
+                matches_rc_variant: false,
+                matches_option_rc_variant: n == "Some" && inner.matches_rc_variant,
+                needs_rc_pattern: inner.needs_rc_pattern,
+                ref_bound_fields: []
               }
-            _ => false
+            None => empty_rc_pattern_analysis()
           }
+        } else { empty_rc_pattern_analysis() }
+      } else {
+        let matches_rc_variant = match pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
+          Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
+          None => false
+        }
+        let ref_bound_fields = fbs |> flat_map(fb =>
+          if analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types).matches_rc_variant {
+            [fb.field_name]
+          } else { [] }
         )
-        rc_fields |> count > 0
+        RcPatternAnalysis {
+          matches_rc_variant: matches_rc_variant,
+          matches_option_rc_variant: false,
+          needs_rc_pattern: ref_bound_fields |> count > 0,
+          ref_bound_fields: ref_bound_fields
+        }
       }
-    _ => false
+    _ => empty_rc_pattern_analysis()
   }
 }
 
-fn emit_pattern_rc_aware(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
+fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> RcMatchAnalysis {
+  let arm_analyses = arms |> map(arm =>
+    analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
+  )
+  let scrutinee_is_rc_wrapped = match scrutinee.return_type {
+    Some { value: rt } =>
+      if rt.children |> count == 0 && rt.name != "" {
+        emit_map_has(m: rc_types, key: rt.name)
+      } else { false }
+    None => false
+  }
+  RcMatchAnalysis {
+    needs_option_deref: arm_analyses |> any(a => a.matches_option_rc_variant),
+    needs_deref: scrutinee_is_rc_wrapped || arm_analyses |> any(a => a.matches_rc_variant)
+  }
+}
+
+fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   match pattern {
     Bind { name: n } => rust_ident(name: n)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<FieldBinding>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<FieldBinding>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   let qualified = if name == "Some" || name == "None" { name }
     else {
       match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
@@ -1429,7 +1502,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         if is_string_lit_pattern(p: fb.binding) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+          let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
@@ -1448,18 +1522,11 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         if is_string_lit_pattern(p: fb.binding) {
           concat("ref ", rust_ident(name: fb.field_name))
         } else {
-          let is_rc_nested = match fb.binding {
-            VariantPattern { name: inner_name, parent_enum: inner_parent_enum, field_bindings: _ } =>
-              match pattern_parent_enum(name: inner_name, parent_enum: inner_parent_enum, scrut_type: "", vtoe: vtoe) {
-                Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
-                None => false
-              }
-            _ => false
-          }
-          if is_rc_nested {
+          if field_needs_rc_ref(field_name: fb.field_name, rc_analysis: rc_analysis) {
             concat("ref ", rust_ident(name: fb.field_name))
           } else {
-            let pat_str = emit_pattern_rc_aware(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+            let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
+            let pat_str = emit_pattern_rc_aware(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
             concat(rust_ident(name: fb.field_name), ": ", pat_str)
           }
         }
@@ -1470,29 +1537,24 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   }
 }
 
-fn rc_pattern_preludes(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       if n == "Some" || n == "None" {
         if fbs |> count == 1 {
           match fbs |> first {
-            Some { value: fb } => rc_pattern_preludes(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            Some { value: fb } =>
+              let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
+              rc_pattern_preludes(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types)
             None => ""
           }
         } else { "" }
       } else {
-        let preludes = fbs |> filter(fb =>
-          match fb.binding {
-            VariantPattern { name: inner_name, parent_enum: inner_parent_enum, field_bindings: _ } =>
-              match pattern_parent_enum(name: inner_name, parent_enum: inner_parent_enum, scrut_type: "", vtoe: vtoe) {
-                Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
-                None => false
-              }
-            _ => false
-          }
-        ) |> map(fb =>
-          let inner_pat = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-          concat("let ", inner_pat, " = ", rust_ident(name: fb.field_name), ".as_ref() else { unreachable!() };")
+        let preludes = fbs |> flat_map(fb =>
+          if field_needs_rc_ref(field_name: fb.field_name, rc_analysis: rc_analysis) {
+            let inner_pat = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+            [concat("let ", inner_pat, " = ", rust_ident(name: fb.field_name), ".as_ref() else { unreachable!() };")]
+          } else { [] }
         )
         preludes |> join(separator: " ")
       }
@@ -1631,29 +1693,98 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  if field == "first" {
-    concat(base_str, ".0")
-  } else if field == "second" {
-    concat(base_str, ".1")
+  match summary {
+    Some { value: field_summary } =>
+      match field_summary.access_style {
+        TupleFirst => concat(base_str, ".0")
+        TupleSecond => concat(base_str, ".1")
+        OptionalUnwrap => concat(base_str, ".clone().unwrap()")
+        EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
+        StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
+      }
+    // Every field access must have a summary set by reconcile.
+    None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
+  }
+}
+
+fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
+  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_map())
+}
+
+fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
+  let normed = normalize_access_type_node(n: type_node)
+  if normed.connective != none {
+    match normed.connective.value {
+      Conj => true
+      Disj => normed.children |> any(child => child.children |> count > 0)
+    }
   } else {
-    match summary {
-      Some { value: field_summary } =>
-        match field_summary.access_style {
-          OptionalUnwrap => concat(base_str, ".clone().unwrap()")
-          EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
-        }
-      // Every field access must have a summary set by reconcile.
-      None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
+    let canonical = normed.name
+    if normed.return_type != none {
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      type_needs_rc_seen(env: env, type_node: normed.return_type.value, seen: next_seen)
+    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
+      false
+    } else {
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      let resolved = resolve_scrutinee_type_node(env: env, n: normed)
+      if resolved.connective == none && resolved.return_type == none && resolved.name == normed.name && resolved.children |> count == 0 {
+        false
+      } else {
+        type_needs_rc_seen(env: env, type_node: resolved, seen: next_seen)
+      }
     }
   }
+}
+
+fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
+  let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: normalize_access_type_node(n: receiver_type))
+  let map_type = normalize_access_type_node(n: resolved)
+  if map_type.name == "Map" && map_type.children |> count == 2 {
+    match map_type.children |> skip(1) |> first {
+      Some { value: value_type } => Some { value: value_type }
+      None => none
+    }
+  } else {
+    none
+  }
+}
+
+fn rust_lookup_receiver_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool {
+  let is_data_binding = match receiver.expr_data {
+    ExprVar { name: binding_name, binding_kind: _ } =>
+      match map_get(scope.item_registry, binding_name) {
+        Some { value: info } => info.kind == DataItem
+        None => false
+      }
+    _ => false
+  }
+  if is_data_binding == false {
+    return false
+  }
+  match receiver.return_type {
+    Some { value: receiver_type } =>
+      match rust_map_value_type(receiver_type: receiver_type, scope: scope) {
+        Some { value: value_type } => type_needs_rc(env: scope.type_env, type_node: value_type)
+        None => false
+      }
+    None => false
+  }
+}
+
+fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
+  map_contains_key(rt_ref_map_functions, function_name)
+}
+
+fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Node, scope: InferScope) -> Bool {
+  function_name == "map_get" && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope)
 }
 
 fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match texpr.expr_data {
     ExprLiteral { value: v } => rust_literal(value: v)
     ExprError { kind: _, message: message } =>
-      concat("compile_error!(", emit_string_literal(value: message), ")")
+      concat("compile_error!(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: binding_kind } =>
       emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: texpr.return_type, vtoe: vtoe, rc_types: rc_types, registry: registry)
     ExprFieldAccess { base: b, field: f, summary: summary } =>
@@ -1669,14 +1800,15 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       let call_str = emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let fallback_lookup_wrap = if f == "lookup" {
         match a |> first {
-          Some { value: receiver_arg } => data_lookup_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
+          Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
           None => false
         }
       } else {
         false
       }
       match call_semantics {
-        Some { value: LookupCallSemantics { needs_rc_wrap: true } } => concat(call_str, ".map(Rc::new)")
+        Some { value: LookupCallSemantics } =>
+          if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
         _ =>
           if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") }
           else { call_str }
@@ -1755,14 +1887,10 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   // Built-in: with(struct, { field: value }) -> StructName { field: value, ..struct.clone() }
   if func == "with" {
     let with_args = order_typed_call_args(args: args, func: func, scope: scope)
-    let base_arg = match with_args |> first {
-      Some { value: a } => a.value
-      None => return "compile_error!(\"with call missing base record\")"
-    }
-    let update_arg = match with_args |> skip(1) |> first {
-      Some { value: a } => a.value
-      None => return "compile_error!(\"with call missing update record\")"
-    }
+    if with_args |> count == 0 { return "compile_error!(\"with call missing base record\")" }
+    let base_arg = (with_args |> first).value.value
+    if with_args |> count < 2 { return "compile_error!(\"with call missing update record\")" }
+    let update_arg = (with_args |> skip(1) |> first).value.value
     let base_str = emit_typed_expr(texpr: base_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     // Get the struct type name from the base argument's return_type.
     let type_name = match base_arg.return_type {
@@ -2085,7 +2213,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
   }
 }
 
-fn emit_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let lowered = if function_name == "get" {
     let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let index_str = match args |> first {
@@ -2102,10 +2230,8 @@ fn emit_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: 
         } else { rt.name }
       None => "compile_error!(\"with method missing resolved record type\")"
     }
-    let update_arg = match args |> first {
-      Some { value: a } => a.value
-      None => return "compile_error!(\"with method missing update record\")"
-    }
+    if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
+    let update_arg = (args |> first).value.value
     let field_strs = match update_arg.expr_data {
       ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
         fs |> map(f => concat(rust_ident(name: f.name), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
@@ -2117,7 +2243,7 @@ fn emit_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: 
     let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
     if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
   } else {
-    let recv_str = if pass_receiver_by_ref {
+    let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
       concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
     } else {
       emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2126,7 +2252,11 @@ fn emit_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: 
     let all_strs = concat([recv_str], arg_strs)
     concat("v2_rt::", rust_ident(name: function_name), "(", all_strs |> join(separator: ", "), ")")
   }
-  if wrap_result_in_rc { concat(lowered, ".map(Rc::new)") } else { lowered }
+  if rust_runtime_bridge_wraps_result_in_rc(function_name: function_name, receiver: receiver, scope: scope) {
+    concat(lowered, ".map(Rc::new)")
+  } else {
+    lowered
+  }
 }
 
 fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2137,12 +2267,12 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, wrap_result_in_rc: wrap_result_in_rc } } => {
+    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } } => {
       let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      if wrap_result_in_rc { concat(lowered, ".map(Rc::new)") } else { lowered }
+      lowered
     }
-    Some { value: RuntimeBridgeSemantics { function_name: function_name, pass_receiver_by_ref: pass_receiver_by_ref, wrap_result_in_rc: wrap_result_in_rc } } =>
-      emit_runtime_bridge_method_call(function_name: function_name, pass_receiver_by_ref: pass_receiver_by_ref, wrap_result_in_rc: wrap_result_in_rc, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    Some { value: RuntimeBridgeSemantics { function_name: function_name } } =>
+      emit_runtime_bridge_method_call(function_name: function_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     Some { value: PlainMethodSemantics } =>
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
@@ -2159,75 +2289,6 @@ fn emit_typed_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, s
   }
 }
 
-fn is_rc_wrapped_scrutinee(scrutinee: Node, rc_types: Map<String, Bool>) -> Bool {
-  match scrutinee.return_type {
-    Some { value: rt } =>
-      if rt.children |> count == 0 && rt.name != "" {
-        emit_map_has(m: rc_types, key: rt.name)
-      } else { false }
-    None => false
-  }
-}
-
-// Fallback: check if any match arm has a variant pattern whose parent enum is Rc-wrapped.
-fn arms_need_rc_deref(arms: List<MatchArm>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> Bool {
-  arms |> any(arm =>
-    match arm.pattern {
-      VariantPattern { name: vn, parent_enum: parent_enum, field_bindings: _ } =>
-        match pattern_parent_enum(name: vn, parent_enum: parent_enum, scrut_type: "", vtoe: vtoe) {
-          Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
-          None => false
-        }
-      _ => false
-    }
-  )
-}
-
-// Check if scrutinee is Option<Rc<T>> where T is Rc-wrapped.
-fn is_option_rc_scrutinee(scrutinee: Node, rc_types: Map<String, Bool>) -> Bool {
-  match scrutinee.return_type {
-    Some { value: rt } =>
-      if builtin_type_kind(n: rt) == BuiltinOptional {
-        match rt.children |> first {
-          Some { value: inner } =>
-            if inner.children |> count == 0 && inner.name != "" {
-              emit_map_has(m: rc_types, key: inner.name)
-            } else { false }
-          None => false
-        }
-      } else { false }
-    None => false
-  }
-}
-
-// Check if a FieldBinding's inner pattern is a variant of an Rc-wrapped enum.
-fn field_binding_is_rc_variant(fb: FieldBinding, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> Bool {
-  match fb.binding {
-    VariantPattern { name: vn, parent_enum: parent_enum, field_bindings: _ } =>
-      match pattern_parent_enum(name: vn, parent_enum: parent_enum, scrut_type: "", vtoe: vtoe) {
-        Some { value: enum_name } => emit_map_has(m: rc_types, key: enum_name)
-        None => false
-      }
-    _ => false
-  }
-}
-
-// Check if a pattern is Some(VariantOfRcEnum).
-fn arm_pattern_is_some_rc(pat: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> Bool {
-  match pat {
-    VariantPattern { name: vn, parent_enum: _, field_bindings: fbs } =>
-      if vn == "Some" {
-        fbs |> any(fb => field_binding_is_rc_variant(fb: fb, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-      } else { false }
-    _ => false
-  }
-}
-
-// Fallback for Option<Rc<T>>: check if any arm is Some(VariantOfRcEnum).
-fn arms_need_option_rc_deref(arms: List<MatchArm>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> Bool {
-  arms |> any(arm => arm_pattern_is_some_rc(pat: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-}
-
 fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   // Extract scrutinee type name for qualifying variant patterns.
@@ -2242,21 +2303,17 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
       } else { rt.name }
     None => ""
   }
+  let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type))
   let arms_str = arm_strs |> join(separator: "\n")
   // RC5: If scrutinee is Option<Rc<T>>, use .as_deref().cloned() to get Option<T>.
   // If scrutinee is Rc<T>, use (*s).clone() to get owned T.
-  // Check resolved_type first; fallback to arm patterns via vtoe if missing.
-  // Only use pattern-based check (not type-based) to avoid transforming simple
-  // Some(v) => v patterns where the arm body relies on Rc<T>.
-  let needs_option_deref = arms_need_option_rc_deref(arms: arms, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let needs_deref = is_rc_wrapped_scrutinee(scrutinee: scrutinee, rc_types: rc_types) || arms_need_rc_deref(arms: arms, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   // When all arms are string literal patterns, convert scrutinee to &str
   // so Rust can match &str patterns against String values.
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
-  if needs_option_deref {
+  if rc_match.needs_option_deref {
     concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
-  } else if needs_deref {
+  } else if rc_match.needs_deref {
     concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
   } else if needs_as_str {
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
@@ -2266,9 +2323,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
 }
 
 fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
-  let has_rc = needs_rc_deref_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let pat_str = if has_rc {
-    emit_pattern_rc_aware(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  let rc_analysis = analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
+  let pat_str = if rc_analysis.needs_rc_pattern {
+    emit_pattern_rc_aware(pattern: arm.pattern, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
   } else {
     emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
   }
@@ -2287,8 +2344,8 @@ fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: I
     concat(" if ", arm_guard)
   } else { "" }
   let body_str = emit_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  if has_rc {
-    let prelude = rc_pattern_preludes(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  if rc_analysis.needs_rc_pattern {
+    let prelude = rc_pattern_preludes(pattern: arm.pattern, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
   } else {
     concat("    ", pat_str, guard_str, " => ", body_str, ",")
@@ -2322,11 +2379,6 @@ fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, 
   }
 }
 
-// Backwards-compatible wrapper for tests that call emit_record_lit directly.
-fn emit_record_lit(type_name: String?, fields: List<FieldInit>, span: SourceSpan, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  emit_record_lit_full(type_name: type_name, fields: fields, span: span, registry: registry, scope: scope, rc_types: empty_map(), emit_info: empty_emit_graph_info())
-}
-
 fn emit_record_lit_full(type_name: String?, fields: List<FieldInit>, span: SourceSpan, registry: Map<String, ItemInfo>, scope: InferScope, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let inferred = infer_record_lit(type_name: type_name, field_inits: fields, span: span, scope: scope)
   match inferred.typed.expr_data {
@@ -2352,47 +2404,21 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
   }
 }
 
-// Check if a value expression is already Optional (None, Some {...}, or has Optional resolved_type).
-// Resolve the type Node of an expression from its resolved_type or by looking up the
-// variable in scope. Resolves leaf type references through the type environment.
-fn resolve_expr_type_node(texpr: Node, scope: InferScope) -> Node? {
-  let raw = match texpr.return_type {
-    Some { value: rt } => Some { value: rt }
-    None =>
-      match texpr.expr_data {
-        ExprVar { name: n, binding_kind: _ } =>
-          match map_get(scope.locals, n) {
-            Some { value: binding } => Some { value: binding.resolved }
-            None => none
-          }
-        ExprFieldAccess { base: b, field: f, summary: _ } =>
-          match resolve_expr_type_node(texpr: b, scope: scope) {
-            Some { value: base_type } =>
-              let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_type)
-              lookup_field_type_node(n: resolved_base, field_name: f)
-            None => none
-          }
-        _ => none
-      }
-  }
-  // Resolve leaf type references to full definitions
-  match raw {
-    Some { value: n } => Some { value: resolve_scrutinee_type_node(env: scope.type_env, n: n) }
-    None => none
-  }
-}
-
-// Resolve the type name of an expression from its resolved_type or scope.
-fn resolve_expr_type_name(texpr: Node, scope: InferScope) -> String? {
-  match resolve_expr_type_node(texpr: texpr, scope: scope) {
-    Some { value: n } => Some { value: n.name }
-    None => none
-  }
-}
-
 fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope) -> Bool {
   match texpr.expr_data {
-    ExprVar { name: n, binding_kind: _ } => n == "none" || n == "None"
+    ExprVar { name: n, binding_kind: _ } =>
+      if n == "none" || n == "None" {
+        true
+      } else {
+        match texpr.return_type {
+          Some { value: rt } => resolve_scrutinee_type_node(env: scope.type_env, n: rt).name == "Optional"
+          None =>
+            match map_get(scope.locals, n) {
+              Some { value: binding } => resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved).name == "Optional"
+              None => false
+            }
+        }
+      }
     ExprRecordLit { type_name: tn, fields: _, parent_enum: _ } =>
       match tn {
         Some { value: name } => name == "Some" || name == "None"
@@ -2401,17 +2427,19 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
     ExprFieldAccess { base: b, field: f, summary: _ } =>
       // If the base type is known and this field has OptionalValue shape,
       // the result is already Option<T> — don't double-wrap in Some().
-      match resolve_expr_type_name(texpr: b, scope: scope) {
-        Some { value: btn } => is_optional_struct_field(emit_info: emit_info, struct_name: btn, field_name: f)
+      match b.return_type {
+        Some { value: base_type } =>
+          let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_type)
+          is_optional_struct_field(emit_info: emit_info, struct_name: resolved_base.name, field_name: f)
         None =>
           match texpr.return_type {
-            Some { value: rt } => rt.name == "Optional"
+            Some { value: rt } => resolve_scrutinee_type_node(env: scope.type_env, n: rt).name == "Optional"
             None => false
           }
       }
     _ =>
       match texpr.return_type {
-        Some { value: rt } => rt.name == "Optional"
+        Some { value: rt } => resolve_scrutinee_type_node(env: scope.type_env, n: rt).name == "Optional"
         None => false
       }
   }
@@ -2655,15 +2683,14 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
           } else { rt.name }
         None => ""
       }
+      let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, vtoe: vtoe, rc_types: rc_types)
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: tco_scrut_type))
       let arms_str = arm_strs |> join(separator: "\n")
-      let tco_needs_option_deref = arms_need_option_rc_deref(arms: arm_list, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let tco_needs_deref = is_rc_wrapped_scrutinee(scrutinee: s, rc_types: rc_types) || arms_need_rc_deref(arms: arm_list, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
-      if tco_needs_option_deref {
+      if rc_match.needs_option_deref {
         concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
-      } else if tco_needs_deref {
+      } else if rc_match.needs_deref {
         concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
       } else if tco_needs_as_str {
         concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
@@ -2700,9 +2727,9 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
 }
 
 fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
-  let has_rc = needs_rc_deref_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let pat_str = if has_rc {
-    emit_pattern_rc_aware(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+  let rc_analysis = analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
+  let pat_str = if rc_analysis.needs_rc_pattern {
+    emit_pattern_rc_aware(pattern: arm.pattern, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
   } else {
     emit_pattern(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
   }
@@ -2720,8 +2747,8 @@ fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>,
     concat(" if ", arm_guard)
   } else { "" }
   let body_str = emit_typed_tco_expr(texpr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  if has_rc {
-    let prelude = rc_pattern_preludes(pattern: arm.pattern, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  if rc_analysis.needs_rc_pattern {
+    let prelude = rc_pattern_preludes(pattern: arm.pattern, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
   } else {
     concat("    ", pat_str, guard_str, " => { ", body_str, " },")
@@ -3252,7 +3279,8 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
               "` must be a string, int, float, or bool literal"
             ),
             span: Some { value: param.span },
-            module_name: Some { value: wf.module_name }
+            module_name: Some { value: wf.module_name },
+            category: none
           }]
         }
         None => []

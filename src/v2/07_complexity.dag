@@ -22,12 +22,19 @@ module v2.compiler.complexity
 import v2.std.core {
   Node,
   ExprData, NoExprData,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
-  Text, Interpolation, Param
+  Text, Interpolation, Param,
+  IntrinsicMethod,
+  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
+  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
+  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
+  MethodSkip, MethodFold, MethodSortBy, MethodAppend,
+  MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
+  PlainMethodSemantics, ServiceMethodSemantics
 }
 
 // =========================================================================
@@ -107,17 +114,16 @@ type Certainty = Proven | Conservative | Unknown
 // =========================================================================
 // Emission cost shape -- single authority on method cost structure
 //
-// Every method recognized by both the emitter and the complexity analyzer
-// has exactly one CostShape. If a new method is added to the emitter
-// without a corresponding CostShape, the exhaustive match in
-// classify_method_cost fails.
+// Every IntrinsicMethod has exactly one CostShape, computed by
+// intrinsic_method_cost_shape. Adding a new IntrinsicMethod variant
+// without a CostShape causes an exhaustive match failure.
 //
 // Shapes:
 //   ShapeConstant      -- O(1) regardless of input size
 //   ShapeLinearScan    -- O(|receiver|) with O(1) per element (count, join)
 //   ShapeIterateBody   -- O(|receiver| * body_cost) (map, filter, fold)
 //   ShapeSortBody      -- O(|receiver| * body_cost), Conservative (sort_by)
-//   ShapeProducesCollection -- whether the method outputs a collection
+//   produces_collection -- whether the method outputs a collection
 // =========================================================================
 
 type CostShape
@@ -126,31 +132,30 @@ type CostShape
   | ShapeIterateBody { produces_collection: Bool }
   | ShapeSortBody
 
-// Classify a method name to its cost shape. This is the single authority
-// on what cost structure each method has. The complexity analyzer dispatches
-// on this instead of hardcoded string names.
-fn classify_method_cost(name: String) -> CostShape? {
-  if name == "map" || name == "flat_map" || name == "filter" ||
-     name == "enumerate" || name == "skip" {
-    Some { value: ShapeIterateBody { produces_collection: true } }
-  } else if name == "fold" || name == "any" || name == "all" {
-    Some { value: ShapeIterateBody { produces_collection: false } }
-  } else if name == "sort_by" {
-    Some { value: ShapeSortBody }
-  } else if name == "count" || name == "first" || name == "last" ||
-            name == "join" || name == "string_contains" {
-    Some { value: ShapeLinearScan { produces_collection: false } }
-  } else if name == "chars" || name == "split" {
-    Some { value: ShapeLinearScan { produces_collection: true } }
-  } else if name == "concat" {
-    Some { value: ShapeLinearScan { produces_collection: false } }
-  } else if name == "append" || name == "get" || name == "map_get" ||
-            name == "map_insert" || name == "with" || name == "list_push" ||
-            name == "map_has" || name == "map_contains_key" ||
-            name == "length" || name == "string_length" {
-    Some { value: ShapeConstant }
-  } else {
-    None
+// Map an IntrinsicMethod to its cost shape. This is the single authority
+// on what cost structure each intrinsic method has. The complexity analyzer
+// dispatches on this via the reconcile-provided MethodSemantics, not by
+// string-matching method names.
+fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> CostShape {
+  match method {
+    MethodMap => ShapeIterateBody { produces_collection: true }
+    MethodFlatMap => ShapeIterateBody { produces_collection: true }
+    MethodFilter => ShapeIterateBody { produces_collection: true }
+    MethodEnumerate => ShapeIterateBody { produces_collection: true }
+    MethodSkip => ShapeIterateBody { produces_collection: true }
+    MethodFold => ShapeIterateBody { produces_collection: false }
+    MethodAny => ShapeIterateBody { produces_collection: false }
+    MethodAll => ShapeIterateBody { produces_collection: false }
+    MethodSortBy => ShapeSortBody
+    MethodCount => ShapeLinearScan { produces_collection: false }
+    MethodFirst => ShapeLinearScan { produces_collection: false }
+    MethodLast => ShapeLinearScan { produces_collection: false }
+    MethodJoin => ShapeLinearScan { produces_collection: false }
+    MethodStringContains => ShapeLinearScan { produces_collection: false }
+    MethodConcat => ShapeLinearScan { produces_collection: false }
+    MethodChars => ShapeLinearScan { produces_collection: true }
+    MethodSplit => ShapeLinearScan { produces_collection: true }
+    MethodAppend => ShapeConstant
   }
 }
 
@@ -323,10 +328,20 @@ fn scalar_output() -> Map<String, CostExpr> {
 // Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
 // =========================================================================
 
-fn is_size_preserving_method(mname: String) -> Bool {
-  mname == "map" || mname == "filter" || mname == "flat_map" ||
-  mname == "skip" || mname == "enumerate" || mname == "sort_by" ||
-  mname == "reverse" || mname == "concat"
+fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
+  method == MethodMap || method == MethodFilter || method == MethodFlatMap ||
+  method == MethodSkip || method == MethodEnumerate || method == MethodSortBy ||
+  method == MethodConcat
+}
+
+fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
+  match method_semantics {
+    Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } } =>
+      is_size_preserving_intrinsic_method(method: method)
+    Some { value: RuntimeBridgeSemantics { function_name: fname } } =>
+      fname == "reverse"
+    _ => false
+  }
 }
 
 fn receiver_size_var(recv: Node) -> SizeExpr {
@@ -335,8 +350,8 @@ fn receiver_size_var(recv: Node) -> SizeExpr {
       SizeLen { collection: vname }
     ExprFieldAccess { base: _, field: fname } =>
       SizeLen { collection: fname }
-    ExprMethodCall { receiver: inner_recv, method: mname, args: _ } =>
-      if is_size_preserving_method(mname: mname) {
+    ExprMethodCall { receiver: inner_recv, method: _, args: _, method_semantics: method_semantics } =>
+      if method_preserves_collection_size(method_semantics: method_semantics) {
         receiver_size_var(recv: inner_recv)
       } else {
         SizeLen { collection: "__expr" }
@@ -351,6 +366,141 @@ fn size_binder_name(size: SizeExpr) -> String {
     SizeLen { collection: c } => concat("_", c)
     SizeVar { name: n } => n
     _ => "_i"
+  }
+}
+
+// =========================================================================
+// CostShape dispatch -- compute cost from reconcile-provided shape
+//
+// Each CostShape maps to a specific cost pattern:
+//   ShapeIterateBody  -- O(|receiver| * body_cost), loop over collection
+//   ShapeSortBody     -- O(|receiver| * key_cost), Conservative (lacks log)
+//   ShapeLinearScan   -- O(|receiver|) with O(1) per element
+//   ShapeConstant     -- O(1) regardless of input size
+// =========================================================================
+
+fn resolve_lambda_arg(mc_args: List<NamedArg>) -> Node? {
+  let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
+  match f_arg {
+    Some { value: fa } => Some { value: fa.value }
+    None => mc_args |> map(a => a.value) |> first
+  }
+}
+
+fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: Map<String, FuncEntry>) -> SummaryResult {
+  match lambda_arg {
+    Some { value: la } =>
+      match la.expr_data {
+        ExprVar { name: fn_ref } =>
+          match map_get(func_index, fn_ref) {
+            Some { value: _ } =>
+              get_or_compute_summary(func_name: fn_ref, func_index: func_index, table: recv_r.table)
+            None =>
+              cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+          }
+        _ =>
+          cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+      }
+    None =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 1 },
+          span: CostConst { value: 1 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Conservative
+        },
+        table: recv_r.table
+      }
+  }
+}
+
+fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<NamedArg>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>) -> SummaryResult {
+  match shape {
+    ShapeIterateBody { produces_collection: pc } =>
+      let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
+      let body_result = resolve_callback_cost(lambda_arg: lambda_arg, recv_r: recv_r, func_index: func_index)
+      let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
+      // Space: non-producing iterators (fold/any/all) produce scalar or body output;
+      // producing iterators (map/filter/etc.) produce proportional output
+      let os = if pc == false {
+        // fold: use body's output_size; any/all: scalar
+        body_result.summary.output_size
+      } else {
+        let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+        r
+      }
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: recv_r.summary.work, b: loop_work),
+          span: cost_seq(a: recv_r.summary.span, b: loop_work),
+          output_size: os,
+          assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
+          certainty: body_result.summary.certainty
+        },
+        table: body_result.table
+      }
+    ShapeSortBody =>
+      // Comparison sort is O(n log n), not O(n). Model as O(n) with
+      // Conservative certainty since the cost algebra lacks a log type.
+      let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
+      let key_result = match lambda_arg {
+        Some { value: la } =>
+          cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
+        None =>
+          SummaryResult {
+            summary: ComplexitySummary {
+              work: CostConst { value: 1 },
+              span: CostConst { value: 1 },
+              output_size: empty_map(),
+              assumptions: [],
+              certainty: Conservative
+            },
+            table: recv_r.table
+          }
+      }
+      let sort_work = cost_loop(binder: binder, iterations: size, body: key_result.summary.work)
+      let sort_os = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: recv_r.summary.work, b: sort_work),
+          span: cost_seq(a: recv_r.summary.span, b: sort_work),
+          output_size: sort_os,
+          assumptions: concat(recv_r.summary.assumptions, key_result.summary.assumptions),
+          certainty: Conservative
+        },
+        table: key_result.table
+      }
+    ShapeLinearScan { produces_collection: pc } =>
+      let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
+      let scan_os = if pc {
+        let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
+        r
+      } else {
+        let r = empty_map()
+        r
+      }
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: recv_r.summary.work, b: loop_work),
+          span: cost_seq(a: recv_r.summary.span, b: loop_work),
+          output_size: scan_os,
+          assumptions: recv_r.summary.assumptions,
+          certainty: recv_r.summary.certainty
+        },
+        table: recv_r.table
+      }
+    ShapeConstant =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+          span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
+          output_size: empty_map(),
+          assumptions: recv_r.summary.assumptions,
+          certainty: recv_r.summary.certainty
+        },
+        table: recv_r.table
+      }
   }
 }
 
@@ -637,6 +787,18 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: table
       }
 
+    ExprError { kind: _, message: _ } =>
+      SummaryResult {
+        summary: ComplexitySummary {
+          work: CostConst { value: 0 },
+          span: CostConst { value: 0 },
+          output_size: empty_map(),
+          assumptions: [],
+          certainty: Proven
+        },
+        table: table
+      }
+
     ExprVar { name: _ } =>
       SummaryResult {
         summary: ComplexitySummary {
@@ -716,178 +878,65 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: args_result.table
       }
 
-    ExprMethodCall { receiver: recv, method: mname, args: mc_args } =>
+    ExprMethodCall { receiver: recv, method: mname, args: mc_args, method_semantics: ms } =>
       let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
       let size = receiver_size_var(recv: recv)
       let binder = size_binder_name(size: size)
-      // Iteration methods: loop over collection, apply lambda body per element
-      if mname == "map" || mname == "filter" || mname == "flat_map" ||
-         mname == "any" || mname == "all" || mname == "enumerate" ||
-         mname == "skip" || mname == "fold" {
-        // Extract the function/lambda argument
-        let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
-        let lambda_arg = match f_arg {
-          Some { value: fa } => Some { value: fa.value }
-          None => mc_args |> map(a => a.value) |> first
-        }
-        // Resolve callback cost: if it's a function reference (ExprVar naming
-        // a known function), look up that function's summary instead of
-        // treating the variable itself as O(1).
-        let body_result = match lambda_arg {
-          Some { value: la } =>
-            match la.expr_data {
-              ExprVar { name: fn_ref } =>
-                match map_get(func_index, fn_ref) {
-                  Some { value: _ } =>
-                    get_or_compute_summary(func_name: fn_ref, func_index: func_index, table: recv_r.table)
-                  None =>
-                    cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
-                }
-              _ =>
-                cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
-            }
-          None =>
-            SummaryResult {
-              summary: ComplexitySummary {
-                work: CostConst { value: 1 },
-                span: CostConst { value: 1 },
-                output_size: empty_map(),
-                assumptions: [],
-                certainty: Conservative
-              },
-              table: recv_r.table
-            }
-        }
-        let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
-        // Space: fold produces whatever its body produces; collection methods produce proportional output
-        let os = if mname == "any" || mname == "all" {
-          let r = empty_map()
-          r
-        } else if mname == "fold" {
-          let r = body_result.summary.output_size
-          r
-        } else {
-          let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
-          r
-        }
-        SummaryResult {
-          summary: ComplexitySummary {
-            work: cost_seq(a: recv_r.summary.work, b: loop_work),
-            span: cost_seq(a: recv_r.summary.span, b: loop_work),
-            output_size: os,
-            assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
-            certainty: body_result.summary.certainty
-          },
-          table: body_result.table
-        }
-      // sort_by: comparison sort is O(n log n), not O(n). Model as O(n) with
-      // Conservative certainty since the cost algebra lacks a log type.
-      } else if mname == "sort_by" {
-        let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
-        let lambda_arg = match f_arg {
-          Some { value: fa } => Some { value: fa.value }
-          None => mc_args |> map(a => a.value) |> first
-        }
-        let key_result = match lambda_arg {
-          Some { value: la } =>
-            cost_of_expr(texpr: la, func_index: func_index, table: recv_r.table)
-          None =>
-            SummaryResult {
-              summary: ComplexitySummary {
-                work: CostConst { value: 1 },
-                span: CostConst { value: 1 },
-                output_size: empty_map(),
-                assumptions: [],
-                certainty: Conservative
-              },
-              table: recv_r.table
-            }
-        }
-        let sort_work = cost_loop(binder: binder, iterations: size, body: key_result.summary.work)
-        // Space: sort produces collection of same size
-        let sort_os = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
-        SummaryResult {
-          summary: ComplexitySummary {
-            work: cost_seq(a: recv_r.summary.work, b: sort_work),
-            span: cost_seq(a: recv_r.summary.span, b: sort_work),
-            output_size: sort_os,
-            assumptions: concat(recv_r.summary.assumptions, key_result.summary.assumptions),
-            certainty: Conservative
-          },
-          table: key_result.table
-        }
-      // Linear scan methods: iterate with O(1) per element
-      } else if mname == "count" || mname == "join" || mname == "first" ||
-                mname == "last" || mname == "string_contains" ||
-                mname == "chars" || mname == "split" {
-        let loop_work = cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 })
-        // Space: chars/split produce collections, others produce scalars
-        let scan_os = if mname == "chars" || mname == "split" {
-          let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
-          r
-        } else {
-          let r = empty_map()
-          r
-        }
-        SummaryResult {
-          summary: ComplexitySummary {
-            work: cost_seq(a: recv_r.summary.work, b: loop_work),
-            span: cost_seq(a: recv_r.summary.span, b: loop_work),
-            output_size: scan_os,
-            assumptions: recv_r.summary.assumptions,
-            certainty: recv_r.summary.certainty
-          },
-          table: recv_r.table
-        }
-      // O(1) methods: constant cost
-      } else if mname == "append" || mname == "get" || mname == "map_get" ||
-                mname == "map_insert" || mname == "with" || mname == "list_push" ||
-                mname == "map_has" || mname == "map_contains_key" ||
-                mname == "length" || mname == "string_length" {
-        SummaryResult {
-          summary: ComplexitySummary {
-            work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
-            span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
-            output_size: empty_map(),
-            assumptions: recv_r.summary.assumptions,
-            certainty: recv_r.summary.certainty
-          },
-          table: recv_r.table
-        }
-      // Default: receiver cost + 1 for the method + arg costs
-      } else {
-        let args_result = mc_args |> fold(init: SummaryResult {
-          summary: ComplexitySummary {
-            work: CostConst { value: 0 },
-            span: CostConst { value: 0 },
-            output_size: empty_map(),
-            assumptions: [],
-            certainty: Proven
-          },
-          table: recv_r.table
-        }, f: fn(acc, a) {
-          let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
+      // Dispatch on reconcile-provided method semantics.
+      // IntrinsicMethodSemantics carries the IntrinsicMethod; map it to CostShape.
+      // RuntimeBridgeSemantics covers O(1) bridge methods (map_get, list_push, etc.).
+      // Plain/Service/None fall through to default cost.
+      match ms {
+        Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } } =>
+          let shape = intrinsic_method_cost_shape(method: im)
+          cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index)
+        Some { value: RuntimeBridgeSemantics { function_name: _ } } =>
+          // All runtime bridge methods are O(1)
           SummaryResult {
             summary: ComplexitySummary {
-              work: cost_seq(a: acc.summary.work, b: ar.summary.work),
-              span: cost_seq(a: acc.summary.span, b: ar.summary.span),
+              work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+              span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
               output_size: empty_map(),
-              assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
+              assumptions: recv_r.summary.assumptions,
+              certainty: recv_r.summary.certainty
+            },
+            table: recv_r.table
+          }
+        _ =>
+          // PlainMethodSemantics, ServiceMethodSemantics, or no semantics:
+          // receiver cost + 1 for the method + arg costs
+          let args_result = mc_args |> fold(init: SummaryResult {
+            summary: ComplexitySummary {
+              work: CostConst { value: 0 },
+              span: CostConst { value: 0 },
+              output_size: empty_map(),
+              assumptions: [],
               certainty: Proven
             },
-            table: ar.table
+            table: recv_r.table
+          }, f: fn(acc, a) {
+            let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
+            SummaryResult {
+              summary: ComplexitySummary {
+                work: cost_seq(a: acc.summary.work, b: ar.summary.work),
+                span: cost_seq(a: acc.summary.span, b: ar.summary.span),
+                output_size: empty_map(),
+                assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
+                certainty: Proven
+              },
+              table: ar.table
+            }
+          })
+          SummaryResult {
+            summary: ComplexitySummary {
+              work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
+              span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
+              output_size: empty_map(),
+              assumptions: concat(recv_r.summary.assumptions, args_result.summary.assumptions),
+              certainty: Proven
+            },
+            table: args_result.table
           }
-        })
-        SummaryResult {
-          summary: ComplexitySummary {
-            work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
-            span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
-            output_size: empty_map(),
-            assumptions: concat(recv_r.summary.assumptions, args_result.summary.assumptions),
-            certainty: Proven
-          },
-          table: args_result.table
-        }
       }
 
     ExprMatch { scrutinee: s, arms: arm_list } =>
@@ -1291,6 +1340,7 @@ fn count_self_calls(texpr: Node, fn_name: String) -> Int {
     ExprStringInterp { parts: _ } => 0
     ExprVar { name: _ } => 0
     ExprLiteral { value: _ } => 0
+    ExprError { kind: _, message: _ } => 0
     NoExprData => 0
   }
 }

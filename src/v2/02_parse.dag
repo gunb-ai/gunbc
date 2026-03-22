@@ -209,7 +209,8 @@ fn parse_error(msg: String, span: SourceSpan) -> Diagnostic {
     severity: Error,
     message: msg,
     span: Some { value: span },
-    module_name: none
+    module_name: none,
+    category: none
   }
 }
 

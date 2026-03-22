@@ -1,17 +1,12 @@
 // v2 artifact model -- explicit representation of buildable/deployable units.
 //
 // The compiler currently assumes a single monolithic artifact. This module
-// makes that assumption explicit as a data type so that multi-artifact
-// compilation can be added later without changing the core pipeline.
+// makes that assumption explicit as data, and provides the artifact-plan
+// and boundary-checking contracts for future orchestration layers.
 //
-// E0 compatibility wrapper: default_artifact_plan() wraps the current
-// monolithic behavior as an explicit ArtifactPlan with one ServiceBinary
-// artifact and no boundaries.
-//
-// E1: plan_artifacts dispatches partition rules to build artifact plans.
-// E2: Pipeline integration -- compile_sources wraps emit results in ArtifactOutput.
-// E3: verify_boundaries performs structural type matching across boundaries.
-// E4: build_artifact_report assembles plan + contracts + outputs.
+// Only explicit artifact plans are authoritative today. The compiler
+// pipeline does not yet own multi-artifact partitioning; this module keeps
+// the plan data model honest until a real partitioner exists.
 
 module v2.compiler.artifact
 
@@ -68,32 +63,26 @@ type ArtifactPlan {
 }
 
 // =========================================================================
-// E1: Partition rules -- how to split a graph into artifacts
+// Explicit partition rules -- authoritative today
 // =========================================================================
 
 type PartitionRule
-  = ModuleBased { module_groups: Map<String, List<String>> }
-  | ServiceBased { service_modules: Map<String, List<String>> }
-  | Explicit { artifacts: List<Artifact> }
+  = Explicit { artifacts: List<Artifact> }
 
-// Plan artifacts from a resolved graph and partition rules.
-// For Explicit rules, uses the user-provided artifact list directly.
-// For ModuleBased/ServiceBased, implementation builds artifacts from groups.
-fn plan_artifacts(root_modules: List<String>, target: String, rule: PartitionRule) -> ArtifactPlan {
+// Plan artifacts from an explicit rule. Placeholder partition strategies
+// were removed; adding new strategies should come with real authority.
+fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
   match rule {
     Explicit { artifacts: arts } =>
       ArtifactPlan { artifacts: arts, boundaries: [] }
-    ModuleBased { module_groups: _ } =>
-      // Implementation: iterate module_groups map, create one Library artifact per group
-      default_artifact_plan(root_modules: root_modules, target: target)
-    ServiceBased { service_modules: _ } =>
-      // Implementation: iterate service_modules map, create one ServiceBinary per group
-      default_artifact_plan(root_modules: root_modules, target: target)
   }
 }
 
 // =========================================================================
-// E2: Artifact output -- per-artifact emission result
+// Artifact output -- per-artifact emission result
+//
+// Not wired into compile_sources yet; retained here so artifact reports
+// can model per-artifact files once orchestration is real.
 // =========================================================================
 
 type ArtifactOutput {
@@ -102,7 +91,7 @@ type ArtifactOutput {
 }
 
 // =========================================================================
-// E3: Boundary contract verification -- compile-time only
+// Boundary contract verification -- compile-time only
 //
 // For each boundary in an ArtifactPlan, verify that the types exported
 // by from_artifact structurally match the types expected by to_artifact.
@@ -208,7 +197,7 @@ fn nodes_structurally_match(a: Node, b: Node) -> Bool {
 }
 
 // =========================================================================
-// E4: Artifact report
+// Artifact report
 // =========================================================================
 
 type ArtifactReport {

@@ -1,28 +1,28 @@
-// v2 debuggability -- trace recording, hermetic reproduction, source mapping.
+// v2 trace model -- normalized execution traces, repro cases, source mapping.
 //
-// Design principle: the interpreter is the primary debugging surface.
-// Users debug .dag logic in .dag terms. Cross-language source mapping
-// is an optimization for production tracing.
+// The compiler has no interpreter or executor. This module defines the
+// trace data contract that generated runtimes or host adapters can
+// populate, plus pure helpers for replay/filtering/remapping in .dag terms.
 //
-// Core model: pure trace recording + deterministic offline replay.
-// No interactive debugger -- the immutable/pure execution model means
-// replay is perfectly faithful. Record once, inspect at leisure.
+// Core model: immutable trace data + deterministic offline replay helpers.
+// Recording happens outside the compiler; this module keeps the normalized
+// schema and source-map machinery in one place.
 //
-// F1: Span preservation (SourceSpan threaded through emit + interpreter)
-// F2: Trace recording (TraceEvent/TraceFrame emitted during eval)
+// F1: Span preservation (SourceSpan threaded through emit + runtime adapters)
+// F2: Trace recording (TraceEvent/TraceFrame normalized from runtime events)
 // F3: Hermetic reproduction (capture function inputs → test case)
 // F4: Cross-language source mapping (generated code → .dag spans)
 
 module v2.compiler.trace
 
-import std.types { SourceSpan }
+import v2.std.core { SourceSpan }
 
 // =========================================================================
 // F1: Span mapping -- generated code line → source .dag span
 //
-// Emitters produce SpanMappings alongside generated code. Each mapping
-// associates a line in the generated file with the .dag source span
-// that produced it.
+// Emitters produce SpanMappings alongside generated code. Runtime adapters
+// can use these mappings to remap target-language failures and trace events
+// back to the originating .dag span.
 // =========================================================================
 
 type SpanMapping {
@@ -31,15 +31,14 @@ type SpanMapping {
 }
 
 // =========================================================================
-// F2: Trace events -- emitted by the interpreter during evaluation
+// F2: Trace events -- normalized from emitted runtimes or host adapters
 //
 // TraceEvents form a structured log of execution. Enter/Exit pairs
-// bracket each function/node evaluation. Error events capture failures
-// with full source context.
+// bracket logical function or node activity. Error events capture failures
+// with full source context after remapping.
 //
-// The trace is accumulated in a List and returned alongside the normal
-// evaluation result. No mutation, no side effects -- just an extra
-// output channel.
+// The trace is accumulated as immutable data by the runtime or integration
+// layer. This module only defines the shared shape and pure transforms.
 // =========================================================================
 
 type TraceEvent
@@ -108,8 +107,9 @@ fn event_node_id(event: TraceEvent) -> String {
 // =========================================================================
 // F2: Trace filtering and replay
 //
-// Because execution is pure, a recorded trace can be replayed and
-// filtered without re-execution. Filtering reduces noise for debugging.
+// Because trace data is immutable, a recorded trace can be replayed and
+// filtered without mutating the original capture. Filtering reduces noise
+// for debugging and source-level inspection.
 //
 // FilterBySpan matches events whose span overlaps the given byte range.
 // SourceSpan uses byte offsets (start, end), not file/line.
@@ -175,9 +175,9 @@ fn format_trace(trace: Trace) -> List<String> {
 // =========================================================================
 // F3: Hermetic reproduction
 //
-// At any function boundary, capture the inputs to produce a self-contained
-// test case. Because every phase is pure and values are immutable, the
-// captured inputs are sufficient to reproduce the computation exactly.
+// At any function boundary, capture the inputs and observed trace to
+// produce a self-contained test case. Runtime-specific capture happens
+// outside the compiler; this module defines the normalized payload.
 // =========================================================================
 
 type ReproCase {

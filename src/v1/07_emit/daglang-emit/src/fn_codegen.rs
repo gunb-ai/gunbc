@@ -354,6 +354,9 @@ pub struct CompileContext {
     pub data_ir_types: HashMap<String, IrType>,
     /// Names of `data` definitions that are Map types (need `&` reference, not `.clone()`).
     pub data_map_names: HashSet<String>,
+    /// Names of `data` definitions that are List<String> (emitted as &[&str],
+    /// need Rc<Vec<String>> wrapping at use sites).
+    pub data_string_list_names: HashSet<String>,
     /// Map from struct name → set of field names that are `Option<T>`.
     pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
     /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
@@ -787,6 +790,7 @@ impl CompileContext {
             data_names: HashSet::new(),
             data_ir_types: HashMap::new(),
             data_map_names: HashSet::new(),
+            data_string_list_names: HashSet::new(),
             optional_fields: std::collections::HashMap::new(),
             variant_to_enum: std::collections::HashMap::new(),
             struct_field_types: std::collections::HashMap::new(),
@@ -2404,6 +2408,16 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
         // Map data tables are lazy_static HashMap constants. Emit `&TABLE` to produce
         // a reference — functions like `v2_rt::lookup` expect `&HashMap`.
         code_ir::Expr::Ref(Box::new(code_ir::Expr::Var(to_screaming_snake(name))))
+    } else if ctx.data_string_list_names.contains(name) {
+        // List<String> data: emitted as &[&str] static, convert to Rc<Vec<String>> at use.
+        code_ir::Expr::Call {
+            func: Box::new(code_ir::Expr::Path(vec!["Rc".to_string(), "new".to_string()])),
+            args: vec![code_ir::Expr::raw(format!(
+                "{}.iter().map(|s| s.to_string()).collect::<Vec<_>>()",
+                to_screaming_snake(name)
+            ))],
+            obligation: None,
+        }
     } else if ctx.data_names.contains(name) {
         // Non-map data tables (arrays, etc.) — clone the value.
         code_ir::Expr::MethodCall {
@@ -6119,6 +6133,14 @@ fn is_already_optional_expr(expr: &ast::Expr, ctx: &CompileContext, target_struc
         }
         // If without else where the then branch is null
         ast::Expr::If(_, then_expr, None) => is_null_ast_expr(then_expr),
+        // Match where any arm produces None → entire match is Option<T>
+        ast::Expr::Match(_, arms) => {
+            arms.iter()
+                .any(|arm| is_null_ast_expr(&arm.body))
+                || arms
+                    .iter()
+                    .all(|arm| is_already_optional_expr(&arm.body, ctx, target_struct))
+        }
         _ => false,
     }
 }

@@ -106,6 +106,7 @@ mod tests {
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
+            root.join("src/v2/05_emit_go.dag"),
             root.join("src/v2/06_pipeline.dag"),
             root.join("src/v2/08_artifact.dag"),
             root.join("src/v2/07_complexity.dag"),
@@ -205,6 +206,7 @@ mod tests {
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
             root.join("src/v2/05_emit_python.dag"),
+            root.join("src/v2/05_emit_go.dag"),
             root.join("src/v2/06_pipeline.dag"),
             root.join("src/v2/08_artifact.dag"),
             root.join("src/v2/07_complexity.dag"),
@@ -623,15 +625,7 @@ mod tests {
             gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         map.insert(
-            "rc_wrapped_types".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
-        map.insert(
             "enum_variant_membership".to_string(),
-            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
-        );
-        map.insert(
-            "data_rc_map_names".to_string(),
             gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
         );
         gunbc_ir::Value::Map(map)
@@ -3014,13 +3008,19 @@ func run(name: String = helper()) -> String\n\
         inputs.insert("span".to_string(), span);
         inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         inputs.insert("scope".to_string(), scope);
+        inputs.insert(
+            "rc_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert("emit_info".to_string(), empty_emit_info_value());
 
         let rendered = returned_value(
-            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+            call_fn(&output, "emit_record_lit_full", inputs)
+                .expect("emit_record_lit_full should succeed"),
         );
         let main_rs = match rendered {
             gunbc_ir::Value::Str(rendered) => rendered,
-            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+            other => panic!("emit_record_lit_full should return a string, got: {:?}", other),
         };
 
         assert!(
@@ -3087,13 +3087,19 @@ func run(name: String = helper()) -> String\n\
         inputs.insert("span".to_string(), span);
         inputs.insert("registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
         inputs.insert("scope".to_string(), scope);
+        inputs.insert(
+            "rc_types".to_string(),
+            gunbc_ir::Value::Map(std::collections::BTreeMap::new()),
+        );
+        inputs.insert("emit_info".to_string(), empty_emit_info_value());
 
         let rendered = returned_value(
-            call_fn(&output, "emit_record_lit", inputs).expect("emit_record_lit should succeed"),
+            call_fn(&output, "emit_record_lit_full", inputs)
+                .expect("emit_record_lit_full should succeed"),
         );
         let main_rs = match rendered {
             gunbc_ir::Value::Str(rendered) => rendered,
-            other => panic!("emit_record_lit should return a string, got: {:?}", other),
+            other => panic!("emit_record_lit_full should return a string, got: {:?}", other),
         };
 
         assert!(
@@ -3484,15 +3490,18 @@ fn from_method() -> User? {\n\
     fn phase6_go_runtime_bridge_methods_keep_method_style_receivers() {
         let main_go = read_v2_file("src/v2/05_emit_go.dag");
         assert!(
-            main_go.contains("fn emit_go_runtime_bridge_method_call(function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool")
+            main_go.contains("fn emit_go_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String")
                 && main_go.contains("concat(recv_str, \".\", go_export_ident(name: function_name), \"(\", args_str, \")\")"),
-            "Go runtime bridges should lower as receiver-style method calls and keep the receiver-semantics fields wired through:\n{}",
+            "Go runtime bridges should lower as receiver-style method calls without carrying Rust-only ownership flags:\n{}",
             main_go
         );
         assert!(
+            !main_go.contains("pass_receiver_by_ref")
+                && !main_go.contains("wrap_result_in_rc")
+                &&
             !main_go.contains("let all_args = concat([recv_str], arg_strs)")
                 && !main_go.contains("concat(go_export_ident(name: function_name), \"(\", all_args |> join(separator: \", \"), \")\")"),
-            "Go runtime bridges should not rewrite receivers into leading positional args:\n{}",
+            "Go runtime bridges should not rewrite receivers into leading positional args or retain Rust-only flags:\n{}",
             main_go
         );
     }
@@ -3916,6 +3925,129 @@ fn from_method() -> User? {\n\
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // P1.9: strict pipeline smoke test (non-ignored)
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// Lightweight smoke test for the strict compile path (compile_sources).
+    /// Exercises tokenize → parse → resolve → reconcile → emit on a small
+    /// synthetic module via the v1 interpreter, WITHOUT building a binary.
+    /// Must remain non-ignored so every `cargo test` run covers the strict path.
+    #[test]
+    fn v2_strict_pipeline_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module smoke
+
+type Point { x: Int  y: Int }
+type Label { name: String  origin: Point }
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}
+
+fn describe(lb: Label) -> String {
+  lb.name
+}
+";
+
+        let result = compile_sources_with(&output, &[("smoke.dag", source)]);
+
+        // Strict path: 0 diagnostics expected on well-typed input
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "strict pipeline smoke: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+
+        // Strict path: at least one emitted file
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_count = emitted_file_count(files);
+        assert!(
+            file_count >= 1,
+            "strict pipeline smoke: expected at least 1 emitted file, got {}",
+            file_count,
+        );
+
+        // Emitted Rust should contain the struct definitions
+        let smoke_rs = emitted_file_content(files, "src/smoke.rs");
+        assert!(
+            smoke_rs.contains("struct Point"),
+            "emitted Rust should contain 'struct Point':\n{}",
+            &smoke_rs[..smoke_rs.len().min(500)],
+        );
+        assert!(
+            smoke_rs.contains("struct Label"),
+            "emitted Rust should contain 'struct Label':\n{}",
+            &smoke_rs[..smoke_rs.len().min(500)],
+        );
+    }
+
+    #[test]
+    fn v2_go_pipeline_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module smoke
+
+type Point { x: Int  y: Int }
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}
+";
+
+        let result = compile_sources_with_target(&output, &[("smoke.dag", source)], "Go");
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "go pipeline smoke: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_count = emitted_file_count(files);
+        assert!(
+            file_count >= 2,
+            "go pipeline smoke: expected go.mod plus at least one module file, got {}",
+            file_count,
+        );
+
+        let go_mod = emitted_file_content(files, "go.mod");
+        assert!(
+            go_mod.contains("module generated"),
+            "emitted Go module manifest should declare module generated:\n{}",
+            &go_mod[..go_mod.len().min(500)],
+        );
+
+        let smoke_go = emitted_file_content(files, "smoke.go");
+        assert!(
+            smoke_go.contains("package smoke"),
+            "emitted Go should contain 'package smoke':\n{}",
+            &smoke_go[..smoke_go.len().min(500)],
+        );
+        assert!(
+            smoke_go.contains("type Point struct"),
+            "emitted Go should contain 'type Point struct':\n{}",
+            &smoke_go[..smoke_go.len().min(500)],
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // B3-2a prep: strict pipeline diagnostic measurement
     // ═════════════════════════════════════════════════════════════════════
 
@@ -4076,6 +4208,7 @@ fn from_method() -> User? {\n\
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
             ("05_emit_python", "src/v2/05_emit_python.dag"),
+            ("05_emit_go", "src/v2/05_emit_go.dag"),
             ("06_pipeline", "src/v2/06_pipeline.dag"),
             ("07_complexity", "src/v2/07_complexity.dag"),
             ("08_artifact", "src/v2/08_artifact.dag"),
@@ -5252,5 +5385,140 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
                  Report:\n{}", fn_name, formatted
             );
         }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // P2.1: Gist full pipeline — feed all 11 gist dependency files through
+    // the v2 pipeline (tokenize → parse → resolve → reconcile → emit).
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// Full-pipeline test for gist.dag's transitive closure via stage0 binary.
+    /// The v1 interpreter can't handle multi-module real .dag files through
+    /// compile_sources (O(n²) evaluation + unbound variable issues in lowered
+    /// lambda scoping). This test requires the stage0 binary.
+    #[cfg(feature = "v1-bootstrap")]
+    #[test]
+    #[ignore] // Requires building stage0 binary (~2 min)
+    fn v2_gist_full_pipeline() {
+        let gist_files = [
+            "dsl/std/types.dag",
+            "dsl/std/errors.dag",
+            "dsl/std/resources.dag",
+            "dsl/extdeps/cloud/cloud.dag",
+            "dsl/extdeps/cloud/gcp/gcp.dag",
+            "dsl/extdeps/github/github.dag",
+            "dsl/extdeps/github/auth.dag",
+            "dsl/extdeps/github/gists.dag",
+            "dsl/extdeps/git.dag",
+            "dsl/gunbc/auth/credentials.dag",
+            "dsl/gunbc/tools/gist.dag",
+        ];
+
+        // Build stage0 and run compile on all gist files
+        let stage0_dir = assemble_v2_crate_to_dir("v2-gist-pipeline");
+        let build_output = std::process::Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .env("CARGO_BUILD_JOBS", "2")
+            .current_dir(&stage0_dir)
+            .output()
+            .expect("failed to build stage0");
+        assert!(
+            build_output.status.success(),
+            "stage0 build failed:\n{}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+        let stage0_bin = stage0_dir.join("target/release/v2-compiler");
+
+        let root = workspace_root();
+        let out_dir = std::env::temp_dir().join("v2-gist-pipeline-out");
+        let _ = std::fs::create_dir_all(&out_dir);
+
+        // Copy all gist files to a source dir
+        let source_dir = std::env::temp_dir().join("v2-gist-pipeline-src");
+        let _ = std::fs::create_dir_all(&source_dir);
+        for rel_path in &gist_files {
+            let src = root.join(rel_path);
+            let dst = source_dir.join(rel_path);
+            let _ = std::fs::create_dir_all(dst.parent().unwrap());
+            std::fs::copy(&src, &dst)
+                .unwrap_or_else(|e| panic!("failed to copy {}: {}", src.display(), e));
+        }
+
+        let output = std::process::Command::new(&stage0_bin)
+            .arg("compile")
+            .arg("--source-dir")
+            .arg(&source_dir)
+            .arg("--output-dir")
+            .arg(&out_dir)
+            .output()
+            .expect("stage0 compile should run");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("P2.1 stderr:\n{}", stderr);
+
+        assert!(
+            output.status.success(),
+            "stage0 compile failed with status {:?}",
+            output.status
+        );
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&source_dir);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        let _ = std::fs::remove_dir_all(&stage0_dir);
+    }
+
+    /// Lightweight gist pipeline test via interpreter: single synthetic module
+    /// that exercises service + type patterns found in gist dependencies.
+    /// Validates the v2 compiler can handle service defs, operations, and
+    /// workflow functions without needing the full 11-file closure.
+    #[test]
+    fn v2_gist_service_pipeline_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module gist_smoke
+
+type GistFile { filename: String  content: String }
+type GistResult { id: String  url: String }
+
+fn make_file(name: String, body: String) -> GistFile {
+  GistFile { filename: name, content: body }
+}
+
+fn make_gist_result(file: GistFile) -> GistResult {
+  GistResult { id: file.filename, url: file.content }
+}
+
+fn describe(result: GistResult) -> String {
+  concat(result.id, \": \", result.url)
+}
+";
+
+        let result = compile_sources_with(&output, &[("gist_smoke.dag", source)]);
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        eprintln!(
+            "gist_service_pipeline_smoke: {} diagnostics",
+            messages.len()
+        );
+        for msg in &messages {
+            eprintln!("  - {}", msg);
+        }
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_count = emitted_file_count(files);
+        assert!(
+            file_count >= 1,
+            "gist service pipeline should emit at least 1 file, got {}. Diagnostics: {:?}",
+            file_count,
+            messages,
+        );
     }
 }

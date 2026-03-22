@@ -139,7 +139,7 @@ type ResourceUse {
   span: SourceSpan
 }
 
-type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap
+type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 
 type FieldValueShape = PlainValue | OptionalValue
 
@@ -164,6 +164,18 @@ type BuiltinTypeKind
   | BuiltinDynamic
   | BuiltinError
   | BuiltinCustom { name: String }
+
+// Canonical list of kernel-provided primitive types.
+// Any stage that needs to recognize kernel names imports this list
+// instead of redefining its own copy.
+data kernel_types: List<String> = [
+  "String", "Int", "Bool", "Float",
+  "Secret", "Json", "Unit", "Bytes"
+]
+
+fn is_kernel_type(name: String) -> Bool {
+  kernel_types |> any(t => t == name)
+}
 
 type IntrinsicMethod
   = MethodCount
@@ -192,7 +204,7 @@ type VarBindingKind
 
 type CallSemantics
   = PlainCallSemantics
-  | LookupCallSemantics { needs_rc_wrap: Bool }
+  | LookupCallSemantics
 
 type LambdaSemantics {
   param_types: List<Node>
@@ -200,8 +212,8 @@ type LambdaSemantics {
 
 type MethodSemantics
   = PlainMethodSemantics
-  | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node?, wrap_result_in_rc: Bool }
-  | RuntimeBridgeSemantics { function_name: String, pass_receiver_by_ref: Bool, wrap_result_in_rc: Bool }
+  | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
+  | RuntimeBridgeSemantics { function_name: String }
   | ServiceMethodSemantics { service_name: String }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
@@ -343,11 +355,21 @@ type TextFile {
   content: String
 }
 
+type ErrorCategory
+  = UnresolvedName
+  | TypeMismatch
+  | FieldNotFound
+  | VariantNotFound
+  | AmbiguousCall
+  | InvalidOperation
+  | CascadeError
+
 type Diagnostic {
   severity: Severity
   message: String
   span: SourceSpan?
   module_name: String?
+  category: ErrorCategory?
 }
 
 type Severity = Error | Warning
@@ -412,9 +434,10 @@ fn make_expr_node(expr_data: ExprData, return_type: Node?, span: SourceSpan) -> 
 }
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
+  let error_type = Node { name: "Error", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   make_expr_node(
     expr_data: ExprError { kind: kind, message: message },
-    return_type: Some { value: leaf_node(name: "Error") },
+    return_type: Some { value: error_type },
     span: span
   )
 }
