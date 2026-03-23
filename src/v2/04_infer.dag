@@ -1529,6 +1529,27 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
+fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type_name: String, fallback: Node) -> Node {
+  if method_name == "map" {
+    match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
+      Some { value: lambda_arg } =>
+        let lambda_ret = lambda_arg.value.return_type.value
+        container_node(kind_name: receiver_type_name, element: lambda_ret)
+      None => fallback
+    }
+  } else if method_name == "flat_map" {
+    match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
+      Some { value: lambda_arg } => lambda_arg.value.return_type.value
+      None => fallback
+    }
+  } else if method_name == "fold" {
+    match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
+      Some { value: lambda_arg } => lambda_arg.value.return_type.value
+      None => fallback
+    }
+  } else { fallback }
+}
+
 fn infer_arg_with_element_type(arg: NamedArg, element_type: Node, scope: InferScope) -> ArgInferResult {
   if is_lambda_expr(e: arg.value) {
     let result = infer_lambda_with_element_type(lambda_expr: arg.value, element_type: element_type, scope: scope)
@@ -1760,25 +1781,18 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             Some { value: mt } => mt
             None => leaf_node(name: "Dynamic")
           }
-          // For map: use lambda return type as element type
-          // For flat_map: lambda returns a collection, result is that collection type
-          let bridge_result_type = if func_name == "map" {
-            match remaining |> filter(a => is_lambda_expr(e: a.value)) |> first {
-              Some { value: lambda_arg } =>
-                let lambda_ret = lambda_arg.value.return_type.value
-                container_node(kind_name: first_arg_type.name, element: lambda_ret)
-              None => base_result_type
-            }
-          } else if func_name == "flat_map" {
-            match remaining |> filter(a => is_lambda_expr(e: a.value)) |> first {
-              Some { value: lambda_arg } => lambda_arg.value.return_type.value
-              None => base_result_type
-            }
+          let collection_refined = refine_collection_result_type(method_name: func_name, typed_args: remaining, receiver_type_name: first_arg_type.name, fallback: base_result_type)
+          let bridge_result_type = if collection_refined != base_result_type {
+            collection_refined
           } else if func_name == "map_insert" && first_arg_type.children |> count == 0 && node_is_map(n: first_arg_type) && remaining |> count >= 2 {
             // Bare Map receiver: construct Map<K, V> from key and value arg types
+            let key_type = match remaining |> first {
+              Some { value: key_arg } => key_arg.value.return_type.value
+              None => leaf_node(name: "String")
+            }
             match remaining |> skip(1) |> first {
               Some { value: val_arg } =>
-                map_node(key: leaf_node(name: "String"), value: val_arg.value.return_type.value)
+                map_node(key: key_type, value: val_arg.value.return_type.value)
               None => base_result_type
             }
           } else if func_name == "map_merge" && node_is_map(n: first_arg_type) && remaining |> count >= 1 {
@@ -1793,12 +1807,6 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
               first_arg_type
             } else {
               base_result_type
-            }
-          } else if func_name == "fold" {
-            // For fold: use lambda body return type (more specific than init type)
-            match remaining |> filter(a => is_lambda_expr(e: a.value)) |> first {
-              Some { value: lambda_arg } => lambda_arg.value.return_type.value
-              None => base_result_type
             }
           } else { base_result_type }
           InferResult {
@@ -1913,27 +1921,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Some { value: rt } => rt
         None => recv_typed.return_type.value
       }
-      // For map: use lambda return type as element type
-      // For flat_map: lambda returns a collection, result is that collection type
-      // For fold: use lambda body return type (more specific than init type)
-      let result_type = if method_name == "map" {
-        match typed_mc_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-          Some { value: lambda_arg } =>
-            let lambda_ret = lambda_arg.value.return_type.value
-            container_node(kind_name: recv_typed.return_type.value.name, element: lambda_ret)
-          None => base_result_type
-        }
-      } else if method_name == "flat_map" {
-        match typed_mc_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-          Some { value: lambda_arg } => lambda_arg.value.return_type.value
-          None => base_result_type
-        }
-      } else if method_name == "fold" {
-        match typed_mc_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-          Some { value: lambda_arg } => lambda_arg.value.return_type.value
-          None => base_result_type
-        }
-      } else { base_result_type }
+      let result_type = refine_collection_result_type(method_name: method_name, typed_args: typed_mc_args, receiver_type_name: recv_typed.return_type.value.name, fallback: base_result_type)
       let method_semantics = match method_resolution.semantics {
         Some { value: resolved_method_semantics } => Some { value: resolved_method_semantics }
         None => Some { value: PlainMethodSemantics }

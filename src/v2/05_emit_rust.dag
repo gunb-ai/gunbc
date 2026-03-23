@@ -113,7 +113,8 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure
+  classify_typed_item, classify_type_structure,
+  has_mock_prefix
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -1087,7 +1088,7 @@ fn emit_simple_expr(expr: Node) -> String {
       }
     ExprStringInterp { parts: ps } =>
       emit_simple_string_interp(parts: ps)
-    _ => concat("todo!(\"unsupported simple expr in transport binding\")")
+    _ => concat("compile_error!(\"unsupported simple expr in transport binding\")")
   }
 }
 
@@ -1569,16 +1570,15 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
     } else {
       // Multi-field anonymous record: emitter emits tuple, convert to positional access.
       let matches = bt.children |> enumerate |> filter(pair => pair.second.name == field)
-      let idx_str = match matches |> first {
+      match matches |> first {
         Some { value: m } =>
-          if m.first == 0 { "0" }
-          else if m.first == 1 { "1" }
-          else if m.first == 2 { "2" }
-          else if m.first == 3 { "3" }
-          else { "0" }
-        None => "0"
+          if m.first == 0 { concat(base_str, ".0") }
+          else if m.first == 1 { concat(base_str, ".1") }
+          else if m.first == 2 { concat(base_str, ".2") }
+          else if m.first == 3 { concat(base_str, ".3") }
+          else { concat("compile_error!(\"anonymous record tuple index >= 4 for field: ", field, "\")") }
+        None => concat("compile_error!(\"anonymous record field not found: ", field, "\")")
       }
-      concat(base_str, ".", idx_str)
     }
   } else {
     match summary {
@@ -1588,36 +1588,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
           TupleSecond => concat(base_str, ".1.clone()")
           OptionalUnwrap => concat(base_str, ".clone().unwrap()")
           EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-          StoredField =>
-            // RC3: Safety net — if reconcile classified as StoredField but the base
-            // type is actually Optional and field is "value", emit .unwrap() instead.
-            // This handles chained field accesses where reconcile loses Optional type
-            // propagation through intermediate steps.
-            let is_optional_from_return_type = match base.return_type {
-              Some { value: bt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: bt))
-              None => false
-            }
-            // Also check the base expression's field_summary: if the base is a field
-            // access that produces an Optional value (value_shape: OptionalValue),
-            // then .value on it is an unwrap.
-            let is_optional_from_base_summary = match base.expr_data {
-              ExprFieldAccess { base: _, field: _, summary: base_sum } =>
-                match base_sum {
-                  Some { value: base_fs } =>
-                    match base_fs.value_shape {
-                      OptionalValue => true
-                      _ => false
-                    }
-                  None => false
-                }
-              _ => false
-            }
-            let is_optional_value_access = field == "value" && (is_optional_from_return_type || is_optional_from_base_summary)
-            if is_optional_value_access {
-              concat(base_str, ".clone().unwrap()")
-            } else {
-              concat(base_str, ".", rust_ident(name: field), ".clone()")
-            }
+          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
         }
       // Every field access must have a summary set by reconcile.
       None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
@@ -3024,15 +2995,8 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
   )
 }
 
-// Extract mock properties from properties.
 fn extract_mock_props(properties: List<FieldInit>) -> List<FieldInit> {
-  properties |> filter(p => starts_with_prefix(s: p.name, prefix: "mock_"))
-}
-
-fn starts_with_prefix(s: String, prefix: String) -> Bool {
-  let prefix_len = string_length(s: prefix)
-  if string_length(s: s) < prefix_len { false }
-  else { substring(s: s, start: 0, end: prefix_len) == prefix }
+  properties |> filter(p => has_mock_prefix(name: p.name))
 }
 
 fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
@@ -3089,11 +3053,10 @@ fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props
           "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
           "Ok(serde_json::from_value(mock_value)?)")
       }
-      None => concat(log_line, "\nOk(Default::default())")
+      None => concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")")
     }
   } else {
-    // No mock data available -- return a serde default
-    concat(log_line, "\nOk(serde_json::from_value(serde_json::Value::Object(Default::default()))?)")
+    concat(log_line, "\ncompile_error!(\"no mock data available for dry-run operation: ", op_name, "\")")
   }
 }
 
@@ -3442,7 +3405,7 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
 // =========================================================================
 
 fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool) -> TextFile {
-  let has_pipeline = modules |> any(m => m.module.name == "v2.compiler.pipeline")
+  let has_pipeline = modules |> any(m => m.module.name == "v2.compiler.compile")
   let header = concat(
     "// Generated by v2 compiler -- do not edit.\n\n",
     concat("use clap::", "{", "Parser, Subcommand", "}", ";\n")
@@ -3473,7 +3436,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) ->
   let use_lines = unique_mods |> map(m => concat("use v2_compiled::", m, ";"))
   let base = use_lines |> join(separator: "\n")
   if has_pipeline {
-    let pipeline_mod = module_to_filename(name: "v2.compiler.pipeline")
+    let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
     let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
     concat(base, "\nuse std::rc::Rc;\nuse v2_compiled::", pipeline_mod, ";\nuse v2_compiled::", artifact_mod, ";\n")
   } else {
@@ -3629,7 +3592,7 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
 // A5: Emit the Compile match arm for the bootstrap compile subcommand.
 // Reads .dag files from disk, runs the pipeline, writes output files.
 fn emit_compile_match_arm() -> String {
-  let pipeline_mod = module_to_filename(name: "v2.compiler.pipeline")
+  let pipeline_mod = module_to_filename(name: "v2.compiler.compile")
   let artifact_mod = module_to_filename(name: "v2.compiler.artifact")
   concat(
     "Commands::Compile { source_dir, output_dir, target } => {\n",
