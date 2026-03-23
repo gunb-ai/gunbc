@@ -291,27 +291,27 @@ Journey: 2797 → 395 → 197 → 0. Root causes eliminated:
 
 #### Architectural Ratchet: L1 Type Knowledge Dissolution
 
-Scripted audit via `scripts/l1-ratchet.sh`. Current breakdown by
-category (2026-03-23):
+Scripted audit via `scripts/l1-ratchet.sh`. The script and this table
+measure the same categories. Run `scripts/l1-ratchet.sh --check` to
+verify the ratchet (current cap: 374).
 
-| Category | Count | What the compiler still "knows" |
-|----------|-------|----------------------------------|
-| `.connective` direct access | 74 | Product vs coproduct read from Node field |
-| `Conj` / `Disj` references | 68 | Connective shape matching (includes parse, which must produce them) |
-| Type constructors | 129 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
-| `node_is_*` predicate calls | 82 | Centralized type-specific dispatch helpers |
-| Type-name comparisons | 17 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `classify_type_structure` calls | 22 | Structural classification (replaces raw `.connective` reads in emit) |
-| `builtin_type_kind()` calls | 0 | **Deleted** |
-| `BuiltinTypeKind` references | 0 | **Deleted** |
+| Category | Script variable | Count | What the compiler still "knows" |
+|----------|----------------|------:|----------------------------------|
+| `.connective` direct access | `connective_field_count` | 17 | Product vs coproduct read from Node field |
+| `Conj` / `Disj` references | `conj_disj_count` | 47 | Connective shape matching (includes parse, which must produce them) |
+| Type constructors | `constructor_count` | 140 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
+| Type-name comparisons | `typename_count` | 32 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| `node_is_*` predicate calls | `predicate_count` | 116 | Centralized type-specific dispatch helpers |
+| `classify_type_structure` calls | `classify_count` | 22 | Structural classification (replaces raw `.connective` reads in emit) |
+| `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
+| **Total** | | **374** | |
 
 Progress since last audit: `BuiltinTypeKind` enum and `builtin_type_kind()`
 are fully deleted. `classify_type_structure()` replaces direct `.connective`
 reads in emit. `node_is_optional`, `node_is_map`, `node_is_container` are
-centralized in `04_types.dag` (`infer_types`, imported by infer and emit). Type-name comparisons
-dropped from 62 to 17 through centralization.
+centralized in `04_types.dag` (`infer_types`, imported by infer and emit).
 
-The `node_is_*` count rose from 43 to 82 because scattered inline checks
+The `node_is_*` count rose from 43 to 116 because scattered inline checks
 were replaced with calls to the centralized predicates. This is correct
 L1 migration behavior: concentrate knowledge into fewer predicates first,
 then dissolve those predicates into structural graph traversal.
@@ -378,7 +378,7 @@ cargo test --workspace --exclude v2-compiler-tests          # green
 cargo clippy --all-targets -- -D warnings                   # green
 cargo test -p v2-compiler-tests --features v1-bootstrap     # green
 cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
-scripts/l1-ratchet.sh --check                               # type-name comparisons < 17
+scripts/l1-ratchet.sh --check                               # total <= ratchet (374)
 ```
 State: 0 regressions. `InferredNode` wrapper landed. Normalization stage
 exists. Arity bridge enforced. No emit fabrication sites. Testgen
