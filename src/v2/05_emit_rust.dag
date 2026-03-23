@@ -500,7 +500,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   )
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_prelude()
-  let imports_str = emit_imports(imports: m.imports, vtoe: module_vtoe, registry: registry)
+  // Collect locally-defined type names so imports can skip them.
+  let local_type_names = typed_module.items
+    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef)
+    |> map(item => item.name)
+  let imports_str = emit_imports(imports: m.imports, vtoe: module_vtoe, registry: registry, local_names: local_type_names)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
@@ -526,7 +530,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
 // Import emission
 // =========================================================================
 
-fn emit_imports(imports: List<Import>, vtoe: Map<String, String>, registry: Map<String, ItemInfo>) -> String {
+fn emit_imports(imports: List<Import>, vtoe: Map<String, String>, registry: Map<String, ItemInfo>, local_names: List<String>) -> String {
   if imports |> count == 0 {
     ""
   } else {
@@ -535,12 +539,14 @@ fn emit_imports(imports: List<Import>, vtoe: Map<String, String>, registry: Map<
       match imp.names {
         ImportAll => concat("use crate::", mod_name, "::*;")
         ImportSpecific { names: specific_names } =>
-          if specific_names |> count == 0 {
+          // Filter out names that are locally defined (local definition shadows import).
+          let filtered_names = specific_names |> filter(n => local_names |> all(ln => ln != n))
+          if filtered_names |> count == 0 {
             ""
           } else {
             // RC1: Separate top-level names from variant names.
             // Dedup first to handle NullCoalesce (variant in two enums).
-            let deduped_names = unique_strings(items: specific_names)
+            let deduped_names = unique_strings(items: filtered_names)
             // Top-level = not a variant, or is itself an enum name.
             let top_level = deduped_names |> filter(n =>
               match map_get(vtoe, n) {
