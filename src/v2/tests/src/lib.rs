@@ -5646,6 +5646,7 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
         let emitted_files: Vec<_> = walkdir(&out_dir);
         eprintln!("P2.3 emitted files: {:?}", emitted_files);
         let cargo_toml = out_dir.join("Cargo.toml");
+        let mut gist_error_count = 0usize;
         if cargo_toml.exists() {
             let check_output = std::process::Command::new("cargo")
                 .arg("check")
@@ -5653,10 +5654,9 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
                 .output()
                 .expect("failed to run cargo check on emitted gist crate");
             let check_stderr = String::from_utf8_lossy(&check_output.stderr);
-            let error_count = check_stderr.matches("error[").count();
-            eprintln!("P2.3 gist cargo check: {} errors", error_count);
+            gist_error_count = check_stderr.matches("error[").count();
+            eprintln!("P2.3 gist cargo check: {} errors", gist_error_count);
             if !check_output.status.success() {
-                // Print error lines for diagnosis
                 for line in check_stderr.lines().filter(|l| l.contains("error[") || l.contains("error:")) {
                     eprintln!("  ERR: {}", line);
                 }
@@ -5667,8 +5667,12 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&source_dir);
-        let _ = std::fs::remove_dir_all(&out_dir);
         let _ = std::fs::remove_dir_all(&stage0_dir);
+        if gist_error_count == 0 {
+            let _ = std::fs::remove_dir_all(&out_dir);
+        } else {
+            eprintln!("P2.3: keeping output dir at {:?} ({} errors)", out_dir, gist_error_count);
+        }
     }
 
     fn walkdir(dir: &std::path::Path) -> Vec<String> {
