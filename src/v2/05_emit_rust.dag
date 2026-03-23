@@ -1569,16 +1569,15 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
     } else {
       // Multi-field anonymous record: emitter emits tuple, convert to positional access.
       let matches = bt.children |> enumerate |> filter(pair => pair.second.name == field)
-      let idx_str = match matches |> first {
+      match matches |> first {
         Some { value: m } =>
-          if m.first == 0 { "0" }
-          else if m.first == 1 { "1" }
-          else if m.first == 2 { "2" }
-          else if m.first == 3 { "3" }
-          else { "0" }
-        None => "0"
+          if m.first == 0 { concat(base_str, ".0") }
+          else if m.first == 1 { concat(base_str, ".1") }
+          else if m.first == 2 { concat(base_str, ".2") }
+          else if m.first == 3 { concat(base_str, ".3") }
+          else { concat("compile_error!(\"anonymous record tuple index >= 4 for field: ", field, "\")") }
+        None => concat("compile_error!(\"anonymous record field not found: ", field, "\")")
       }
-      concat(base_str, ".", idx_str)
     }
   } else {
     match summary {
