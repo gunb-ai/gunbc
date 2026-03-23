@@ -77,7 +77,7 @@ import v2.compiler.infer {
   expr_span,
   ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
-  emit_map_has, node_is_optional,
+  emit_map_has, node_is_optional, node_is_map, node_is_container,
   node_is_error_type
 }
 
@@ -1747,7 +1747,7 @@ fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) ->
 fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
   let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: normalize_access_type_node(n: receiver_type))
   let map_type = normalize_access_type_node(n: resolved)
-  if map_type.name == "Map" && map_type.children |> count == 2 {
+  if node_is_map(n: map_type) {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -3085,7 +3085,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
       "}")
-  } else if type_node.name == "Map" && type_node.children |> count == 2 {
+  } else if node_is_map(n: type_node) {
     // Map data: emit as lazy_static with explicit insert() calls.
     // The value is a RecordLit whose field names are map keys and field values are map values.
     match value.expr_data {

@@ -65,7 +65,7 @@ import v2.compiler.infer {
   expr_span,
   ItemInfo, FuncItem,
   is_typed_service_call_receiver, extract_typed_service_name,
-  node_is_optional
+  node_is_optional, node_is_map
 }
 
 import v2.compiler.emit {
@@ -380,7 +380,7 @@ fn emit_go_node_type(n: Node) -> String {
 fn emit_go_node_type_leaf(n: Node) -> String {
   if n.children |> count == 0 {
     go_primitive_type(name: n.name)
-  } else if n.name == "Map" && n.children |> count == 2 {
+  } else if node_is_map(n: n) {
     let k = match n.children |> first {
       Some { value: kn } => emit_go_node_type(n: kn)
       None => "string"

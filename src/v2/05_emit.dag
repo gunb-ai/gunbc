@@ -46,7 +46,7 @@ import v2.compiler.infer {
   ItemInfo, UniqueAccum, emit_map_has,
   FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo,
   build_emit_graph_info,
-  node_is_optional
+  node_is_optional, node_is_map
 }
 
 import extdeps.languages.rust.emit {
@@ -316,7 +316,7 @@ fn has_nested_records_node(n: Node) -> Bool {
           }
         } else { false }
     }
-  } else if n.name == "Map" && n.children |> count == 2 {
+  } else if node_is_map(n: n) {
     match skip(n.children, 1) |> first {
       Some { value: val_child } => has_nested_records_node(n: val_child)
       None => false

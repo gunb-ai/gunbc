@@ -1383,7 +1383,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if map_type.name == "Map" && map_type.children |> count == 2 {
+  if node_is_map(n: map_type) {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -1465,7 +1465,7 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
       Some { value: el } => el
       None => receiver_type
     }
-  } else if normed.name == "Map" && normed.children |> count == 2 {
+  } else if node_is_map(n: normed) {
     // Map<K, V>: element type is the value type (second child)
     match normed.children |> skip(1) |> first {
       Some { value: val_type } => val_type
@@ -1681,7 +1681,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     let diags = if is_int_type_node(n: index_type) { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
     AccessCheckResultNode { resolved_type: leaf_node(name: "String"), diagnostics: diags }
-  } else if normed.name == "Map" && normed.children |> count == 2 {
+  } else if node_is_map(n: normed) {
     let key_node = match normed.children |> first {
       Some { value: k } => k
       None => leaf_node(name: "String")
@@ -3457,7 +3457,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           }
         }
     }
-  } else if n.name == "Map" && n.children |> count == 2 {
+  } else if node_is_map(n: n) {
     // Map: recurse on both key and value children
     let key_child = match n.children |> first {
       Some { value: k } => k
