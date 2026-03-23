@@ -2340,7 +2340,8 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     let expected_optional_parent = Some { value: "Optional" }
     let is_some_ctor = type_name.value == "Some" && local_variant_parent == expected_optional_parent
     let resolved_node = if is_some_ctor {
-      match fi_infer_results |> filter(fir => fir.typed_field.name == "value") |> first {
+      let val_field = fi_infer_results |> filter(fir => fir.typed_field.name == "value") |> first
+      match val_field {
         Some { value: val_fir } => optional_node(inner: val_fir.infer_result.typed.return_type.value)
         None => raw_resolved
       }
