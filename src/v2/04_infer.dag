@@ -1776,9 +1776,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             }
           } else if func_name == "map_insert" && first_arg_type.children |> count == 0 && node_is_map(n: first_arg_type) && remaining |> count >= 2 {
             // Bare Map receiver: construct Map<K, V> from key and value arg types
+            let key_type = match remaining |> first {
+              Some { value: key_arg } => key_arg.value.return_type.value
+              None => leaf_node(name: "String")
+            }
             match remaining |> skip(1) |> first {
               Some { value: val_arg } =>
-                map_node(key: leaf_node(name: "String"), value: val_arg.value.return_type.value)
+                map_node(key: key_type, value: val_arg.value.return_type.value)
               None => base_result_type
             }
           } else if func_name == "map_merge" && node_is_map(n: first_arg_type) && remaining |> count >= 1 {
