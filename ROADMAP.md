@@ -6,22 +6,77 @@
 
 The compiler is a generic graph processor. It reads `.dag` source, builds
 a graph of `Node`s, applies structural rules, and emits target code. All
-domain knowledge, including types, cardinality, containers, optionality,
-and target-language facts, should live in `.dag` definitions, not in the
-compiler implementation.
+domain knowledge — types, cardinality, containers, optionality, and
+target-language facts — lives in `.dag` definitions, not in the compiler
+implementation.
 
-This thesis dissolves compiler knowledge in three layers:
+### Three Structural Principles
+
+These principles refine the thesis based on root-cause analysis of the
+current invariant violations (2026-03-23). Every active violation traces
+back to one of these principles being underdeveloped.
+
+**1. Names are opaque namespaces.**
+
+Type names (`Int`, `Map`, `Optional`, etc.) are human-readable labels for
+structural compositions, not compiler-meaningful identifiers. The compiler
+must not branch on node names for structural decisions. `Int` is a
+namespace for `List<List<bit>>`; `String` is a namespace for `List<Int>`.
+At every level above the fundamental unit, names are opaque.
+
+Enforcement: inference receives nodes with opaque names and no name
+registry. It can thread names through to output nodes and diagnostic
+messages, but cannot branch on them. Emit receives the registry to
+produce target-language identifiers. Scrambled-name tests (rename all
+types to arbitrary strings, verify inference produces identical
+structural decisions) verify the property wall.
+
+**2. Compiler errors are orthogonal to the node graph.**
+
+When inference fails, the result is not a node — it is a structurally
+distinct failure. The compiler produces errors; it should never need to
+rediscover them by string-checking node names.
+
+Representation: `InferredNode = Resolved { node: Node } | CompilerError
+{ message: String, span: SourceSpan }`. Inference returns `InferredNode`,
+not `Node`. A child that fails propagates failure to the parent
+expression. Emit never sees error nodes. `Dynamic` and `Error` unify
+into `CompilerError` — both mean "inference couldn't determine this,"
+and both are failures, not types. The `.dag` language has no legitimate
+"genuinely polymorphic" position today (no generics); when it does,
+type variables will be a distinct structural concept.
+
+**3. Syntactically distinct forms for the same operation normalize before
+inference.**
+
+The pipeline has a normalization boundary between resolve and infer.
+After normalization: `Call`→`MethodCall` bridging is complete, nodes
+carry their declared structural properties from `.dag` type definitions,
+and parameterized types always carry their declared arity of children.
+Infer receives a fully-normalized graph and processes one form per
+semantic operation — no divergent code paths for the same concept.
+
+### Dissolution Layers
+
+The thesis dissolves compiler knowledge in three layers:
 
 | Layer | What dissolves | Compiler stops knowing | Measured sites | Status |
 |-------|----------------|------------------------|---------------:|--------|
-| **L1: Types** | `Conj`/`Disj`, `node_is_*`, type constructors, `.connective` reads | What `Optional`, `List`, `Map`, `Int`, etc. mean | ~392 | **Active — `BuiltinTypeKind` deleted, predicates centralized** |
+| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `Optional`, `List`, `Map`, `Int`, etc. mean — the compiler processes graph structure; names are opaque namespaces | ~392 | **Active — `BuiltinTypeKind` deleted, predicates centralized; name opacity and `InferredNode` wrapper are next** |
 | **L2: Expressions** | `ExprData` semantic knowledge, 12+ full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | 12 walks | Future — after bootstrap and shared emit |
 | **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax like `if cond { body }` | ~200 string checks | Future — data-driven parser |
 
-L1 is the urgent layer. Every new feature that touches types currently
-adds more compiler-side knowledge and more string checks. L2 and L3 are
-real targets, but they are not blocking bootstrap or the current
-migration.
+L1 is the urgent layer. Its endgame is not "replace name checks with
+property checks" (that still puts domain knowledge in the compiler). The
+endgame is: the compiler processes graph structure and reads structurally
+declared properties from `.dag` type definitions. Names are opaque.
+Inference cannot read them. The L1 ratchet evolves from "count name
+comparisons" to "scrambled-name tests pass."
+
+The compiler retains structural vocabulary: `Conj`/`Disj` (product vs
+coproduct — graph primitives, not domain), children/parent traversal,
+and cardinality. Everything above that — what `Int` means, what `Map`
+means, what `Optional` means — is namespace, defined in `.dag`.
 
 L3 is larger than previously acknowledged: `02_parse.dag` (3,938 lines)
 dispatches on `TokenKind` entirely through a `kind_tag(token) -> String`
@@ -71,7 +126,11 @@ runtime contract should mean editing `.dag` files, not compiler code.
 
 Concrete acceptance:
 
-- Zero type-world knowledge in the compiler (L1 complete)
+- Zero type-world knowledge in the compiler (L1 complete): names are
+  opaque namespaces; inference processes graph structure only; scrambled-
+  name tests pass
+- Compiler errors are orthogonal to nodes: `InferredNode` wrapper;
+  no error/Dynamic sentinels in the type graph
 - One shared emit walker drives all target languages through a common
   compiler-owned spine
 - Language-specific facts live in `dsl/extdeps/languages/*`; program-
@@ -120,6 +179,16 @@ Concrete acceptance:
 
 **Bootstrap note:** On this tree, `cargo test -p v2-compiler-tests --features v1-bootstrap v2_strict_compile_diagnostic_count -- --ignored` and `v2_bootstrap_fixed_point` **fail**: stage0 compile of v2 `.dag` sources reports 44 errors (`if` branches resolve to incompatible list element types across infer/parse/resolve/complexity). Workspace tests excluding `v2-compiler-tests` pass. Re-run the ignored gates after stage0 self-compile is green again.
 
+**Root-cause audit (2026-03-23):** All ~66 live invariant violations
+trace to three root causes. Fixing root causes eliminates downstream
+symptoms structurally; fixing symptoms individually is whack-a-mole.
+
+| Root Cause | Violations | Core issue |
+|---|---:|---|
+| **I: Type nodes structurally incomplete** | ~32 | Parameterized types sometimes lose children (bare `leaf_node(name: "Map")` instead of `map_node(key:, value:)`). Downstream: `normalize_type_name` heuristic, leaf-vs-structured comparison, emit `"_"` placeholders, `classify_type_structure` in emit, Go `interface{}` holes. |
+| **II: Error/Dynamic are names, not structure** | ~18 | Inference failures are smuggled through the type namespace as nodes named `"Error"` or `"Dynamic"`. Downstream: `node_type_equals` treats Error==anything, emit string-checks for error types, cascade suppression by name, permissive type compatibility. |
+| **III: Divergent inference paths** | ~16 | `ExprCall` and `ExprMethodCall` compute the same operations through independent code paths with different logic. Downstream: duplicated map/flat_map/fold typing, asymmetric `map_insert`/`map_merge` handling, 4x bridge method name maps, inline string method checks bypassing classifiers. |
+
 ### Compositional Audit
 
 | Area | Lines | Fns | Current state | Key issues |
@@ -128,8 +197,8 @@ Concrete acceptance:
 | `01_tokenize.dag` | 507 | 18 | Clean syntax leaf | No structural issues. Errors represented as `Unknown` tokens. |
 | `02_parse.dag` | 3,932 | 176 | L3 debt hotspot | `kind_tag` dispatches on `TokenKind` via ~200 string comparisons. Service/resource syntax correctly dissolves into `Node`. 6 fabrication sites (empty capability on bad input, `"_"` status key, dummy EOF tokens). This is the primary L3 target. |
 | `03_resolve.dag` | 459 | 12 | Cleanest authority boundary | `kernel_type_names()` deleted; callers import `kernel_types` from core. `resolve_node_bounded` trusts topological order (no redundant re-resolve of bindings; fixes diamond-shaped OOM). One defensive `None => []` fallback. |
-| `04_infer.dag` | 4,442 | 110 | Core inference; P2.6 split in progress | Multiple ExprData walks. Dynamic fabrication sites remain. Imports predicates and method classifiers from split modules. |
-| `04_types.dag` | 456 | 40 | Split from infer (`infer_types`) | `node_is_error_type` vs `node_is_dynamic` split **landed** (P1.9 partial). `node_type_equals` / `node_type_compatible` still treat Error types permissively; emit `"_"` sites remain P1.9. |
+| `04_infer.dag` | 4,442 | 110 | Core inference; P2.6 split in progress | Multiple ExprData walks. Dynamic fabrication → `CompilerError` (P1.9). Duplicated Call/MethodCall paths → deduplicated after normalization stage (P1.14/P1.15). Imports predicates and method classifiers from split modules. |
+| `04_types.dag` | 456 | 40 | Split from infer (`infer_types`) | `node_is_error_type` / `node_is_dynamic` predicates exist but will be **deleted** when P1.9 lands `InferredNode` wrapper. `node_type_equals` / `node_type_compatible` permissive rules dissolve with the wrapper. |
 | `04_env.dag` | 53 | 3 | Split from infer (`infer_env`) | `TypeEnv`, `TypeBinding`, merge/lookup/cycle helpers. |
 | `04_method.dag` | 192 | 6 | Split from infer | `classify_reconciled_intrinsic_method`, `classify_runtime_bridge_method` (single string-to-enum entry points). |
 | `05_emit.dag` | 804 | 35 | Shared helpers/context only | `classify_type_structure()`, `build_emit_context()`, name converters, `EmitContext`. Does not own tree traversal. |
@@ -183,16 +252,20 @@ dropped from 62 to 17 through centralization.
 The `node_is_*` count rose from 43 to 82 because scattered inline checks
 were replaced with calls to the centralized predicates. This is correct
 L1 migration behavior: concentrate knowledge into fewer predicates first,
-then dissolve those predicates into property reads.
+then dissolve those predicates into structural graph traversal.
 
-L1 acceptance (unchanged):
+L1 acceptance (updated per thesis amendments):
 
 - `BuiltinTypeKind` deleted **done**
 - `builtin_type_kind()` deleted **done**
-- `node_is_*` predicates deleted or replaced with property reads
+- `InferredNode` wrapper: compiler errors are orthogonal to node structure
+- `node_is_*` predicates deleted — replaced with structural graph traversal
 - `optional_node()`, `container_node()`, `pair_node()` deleted
-- `connective` field removed from `Node`
-- Zero type-name string matching in the compiler
+- `normalize_type_name` deleted — unnecessary when types are structurally complete
+- `classify_type_structure` deleted from emit — unnecessary when nodes carry structure
+- `connective` field removed from `Node` (last structural primitive, furthest out)
+- Scrambled-name tests pass: inference produces identical results regardless
+  of type names (enforced by not passing name registry to infer)
 - Fixed point still holds
 
 ---
@@ -203,7 +276,7 @@ Use this as the source of truth for sequencing.
 
 | Order | Phase | What it does | Blocking gate |
 |-------|-------|--------------|---------------|
-| 1 | Phase 1 | Naming cleanup, invariant remediation, dead code cleanup, bootstrap-critical inference cleanup, and the start of L1 dissolution | Diagnostics ratchet at 0; M1 naming done; **P1.11 and P1.13 complete**; remaining blockers **P1.9, P1.10, P1.12** |
+| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode wrapper, normalization stage, path deduplication), continue L1 dissolution toward name opacity | Regressions fixed; R.C. II (`InferredNode`) landed; R.C. III (normalization + dedup) landed; P1.10, P1.12 done; scrambled-name tests exist |
 | 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly |
 | 3 | Phase 3 | Compile bundle, ownership/artifact wiring, and v1 retirement | v2 can compile everything v1 still matters for |
 | 4 | Phase 4 | Shared emit spine, generated tests as projections, DAG backend boundary | New backend = language facts + compiler-owned adapter, with no shared-core changes |
@@ -212,78 +285,129 @@ Use this as the source of truth for sequencing.
 Important clarifications:
 
 - Phase 1 is the only intentionally overlapping phase. **Diagnostics are
-  at 0.** **P1.9, P1.10, and P1.12** remain blocking for Phase 2 until
-  closed; **P1.11 and P1.13** are complete. **L1 is not** blocking Phase 2.
-  Phase 2 can start once the remaining Phase 1 invariant items are
-  resolved, even if L1 is still being reduced.
-- M1 belongs at the front of the roadmap, not at the end. The rest of the
-  document uses the target names on purpose.
+  at 0.** Regressions (R1-R4), root cause fixes (P1.9, P1.14, P1.15),
+  and invariant items (P1.10, P1.12) block Phase 2. L1 dissolution
+  continues in parallel after the blockers are closed.
+- The three root causes (I: incomplete types, II: error-as-name, III:
+  divergent paths) are the organizing principle for Phase 1. Each root
+  cause fix eliminates its downstream violation cluster.
 - `M*`, `R*`, and `S*` are support structures for this phase order, not
   competing schedules.
 
 ---
 
-## Phase 1: Naming, Soundness, and L1 Type Dissolution
+## Phase 1: Soundness, Root Causes, and L1 Dissolution
 
-This phase combines the work from the rename/relocation effort and the
-type-dissolution effort because both touch the same files and the same
-stage boundaries.
+This phase fixes all regressions, eliminates the three root causes of
+invariant violations, and continues L1 dissolution toward name opacity.
 
-Only diagnostics block Phase 2. L1 continues in parallel after that.
+### Execution Principles
 
-### Why Phase 1 Goes First
-
-- The roadmap and `src/v2/DESIGN.md` already assume the target module
-  names. Delaying M1 makes every later section harder to read.
-- `04_infer.dag` (formerly `04_reconcile.dag`) is the bootstrap-critical
-  hotspot. The remaining diagnostics and the highest-value L1 work both
-  live there.
-- Property-first fixes let one change improve correctness and reduce L1
-  debt at the same time.
+- **Regressions first.** No regression survives into the next work item.
+- **Fix root causes, not symptoms.** Each root cause fix eliminates its
+  downstream violation cluster. Point-fixing symptoms grows them back.
+- **L1 is the thesis in action.** Every L1 step reduces the distance to
+  "inference doesn't read names."
 
 ### Phase 1 Workboard
+
+#### Tier 0: Regressions (fix immediately, no regressions in this PR)
+
+| ID | Item | Root Cause | Fix |
+|----|------|-----------|-----|
+| R1 | RC3 safety net: 30 lines of emit heuristic compensating for reconcile losing Optional through chained field access (`emit_rust` 1591-1620) | I | Fix `FieldSummary` propagation in inference; delete emit compensation |
+| R2 | Anonymous record tuple index: hardcoded 0-3, falls back to `"0"` for index >= 4 (`emit_rust` 1574-1578) | I | Emit `compile_error!()` for index >= 4 |
+| R3 | Duplicate map/flat_map/fold type refinement: ~40 lines in both `ExprCall` (1765-1803) and `ExprMethodCall` (1919-1935) paths | III | Extract shared helper; both paths call it |
+| R4 | `map_insert` key type hardcoded `"String"` (`infer` 1781) | III | Read key type from receiver's map children |
+
+#### Tier 1: Immediate invariant fixes (< 1 day each)
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P1.12 | Emit catch-all fail-closed | Quick | `emit_typed_item` catch-all emits `compile_error!()` instead of `// unhandled` |
+| P1.10 | Collapse parallel bridge name maps | **Blocking** | Delete `runtime_bridge_method_name` (dead in core); collapse 4 parallel enum→string tables to one per-target rendering without shared string intermediary |
+| P1.13 | Dead code cleanup | **Done** | Dead functions removed from `00_core.dag` and `complexity.dag` |
+| P1.11 | Delete speculative artifact types | **Done** | Only consumed plan types remain in `artifact.dag` |
+
+#### Tier 2: Root cause fixes (structural, each eliminates a violation cluster)
+
+| ID | Item | Root Cause | Status | Notes |
+|----|------|-----------|--------|-------|
+| P1.9 | `InferredNode` wrapper | II | **Blocking** | Introduce `InferredNode = Resolved { node } \| CompilerError { message, span }`. Unify `Error` and `Dynamic` into `CompilerError`. Inference returns `InferredNode`, not `Node`. Eliminates ~18 downstream name-checking violations. Delete `node_is_error_type`, `node_is_dynamic`. |
+| P1.14 | Normalization stage | III | Planned | New pass between resolve and infer. Unifies `Call`→`MethodCall` bridging, populates structural properties from `.dag` declarations, enforces arity completeness. Eliminates the duplicated inference path cluster. |
+| P1.15 | Deduplicate inference paths | III | Planned | After P1.14, a single code path handles each semantic operation. Shared `refine_collection_result_type` helper. `map_insert`/`map_merge` handled uniformly. |
+
+#### Tier 3: L1 dissolution (toward name opacity)
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| P1.16 | Scrambled-name tests | Planned | Rename all types to arbitrary strings (declaration + references), run through infer, verify identical structural decisions. Verifies the property wall. |
+| P1.4 | L1 Optional/cardinality | Planned | Structural graph traversal replaces `node_is_optional`. Optionality is a structural composition (coproduct with None variant), not a name. |
+| P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Element type is first child — no "container" concept needed. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
+| P1.6 | L1 Primitives | Planned | Primitives dissolve with the bit-graph model. `Int`, `String`, etc. are namespaced compositions opaque to the compiler. `.dag` declarations carry any facts emit needs. |
+| P1.7 | L1 Connective dissolution | Planned | Last structural primitive. Remove `connective` from `Node` only after all consumers use structural graph traversal. |
+| P1.8 | Delete residual type primitives | Planned | Delete constructors, predicates, and builtin classifiers after consumers switch. |
+
+#### Completed
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P1.1 | Naming cleanup (M1) | **Done** | All non-stage files renamed; RenderTarget moved to artifact.dag |
-| P1.2 | Infer cleanup via data tables (R5, S3.5, S7) | **Partial** | Emit metadata extracted (emit_info removed from ResolvedGraph). Method handling deferred to P4. |
-| P1.3 | Diagnostics ratchet -> 0 | **Done** | DIAG_RATCHET = 0. Four root-cause fixes: map types, data scope, lookup returns, cascade suppression. |
-| P1.4 | L1 Optional/cardinality | Planned | Property-first optionality and cardinality |
-| P1.5 | L1 Containers | Planned | `List` / `Map` / `Set` properties and structural traversal |
-| P1.6 | L1 Primitives | Planned | `Int` / `String` / `Bool` / `Float` / `Unit` / `Bytes` / `Json` / `Secret` |
-| P1.7 | L1 Connective dissolution | Planned | Last large L1 step; remove `connective` from `Node` |
-| P1.8 | Delete residual type primitives | Planned | Delete remaining constructors, predicates, and builtin classifiers |
-| P1.9 | Error/Dynamic structural split | **Blocking** | Split `node_is_dynamic` into separate `node_is_dynamic` (only Dynamic) and `node_is_error_type` (only Error). Emit: replace `"_"` fabrication with `compile_error!()`. See "Invariant Remediation" below. |
-| P1.10 | Enum authority completion | **Blocking** | Collapse **four** parallel enum→string maps (`runtime_bridge_method_name` in core, `rust_bridge_fn_name`, `go_bridge_method_name`, `py_bridge_method_name`) into **one** authority. Emit already matches `RuntimeBridgeMethod` for dispatch; remove duplicate mappings. See "Invariant Remediation" below. |
-| P1.11 | Delete speculative artifact types | **Done** | Speculative types removed from `artifact.dag`; only consumed plan types remain. |
-| P1.12 | Emit catch-all fail-closed | Quick | `emit_typed_item` catch-all emits `compile_error!()` instead of `// unhandled`. |
-| P1.13 | Dead code cleanup | **Done** | Dead functions removed from `00_core.dag` and `complexity.dag` (aligned with P1.11 artifact trim). |
+| P1.2 | Infer cleanup via data tables | **Partial** | Emit metadata extracted. Method handling deferred to P4. |
+| P1.3 | Diagnostics ratchet -> 0 | **Done** | DIAG_RATCHET = 0. Four root-cause fixes. |
 
-### P1.1 Naming Cleanup Scope
+### P1.9 Design: `InferredNode` Wrapper
 
-This is one mechanical batch. Do it once and let the rest of the roadmap
-read naturally afterward.
+The compiler produces errors — it should never need to rediscover them
+by string-checking node names. `Error` and `Dynamic` are both "inference
+couldn't determine this." They are failures, not types.
 
-- `04_reconcile.dag` -> `04_infer.dag`
-- `06_pipeline.dag` -> `compile.dag`
-- `07_complexity.dag` -> `complexity.dag`
-- `07_ownership.dag` -> `ownership.dag`
-- `08_artifact.dag` -> `artifact.dag`
-- `09_trace.dag` -> `trace.dag`
-- Move `RenderTarget` out of `00_core.dag` into `artifact.dag` (done;
-  `artifact.dag` avoids circular import with `compile.dag`)
-- Update imports, bootstrap references, tests, docs, and roadmap wording
+```
+type InferredNode {
+  Resolved { node: Node }
+  CompilerError { message: String, span: SourceSpan }
+}
+```
 
-Acceptance:
+Inference returns `InferredNode`. If a child fails, the parent propagates
+`CompilerError`. Emit never sees error nodes. `node_type_equals` and
+`node_type_compatible` never encounter errors — the wrapper is resolved
+before comparison.
 
-- No numbered file remains that is not a core lowering stage
-- Docs/tests/imports use `04_infer` and `compile`
-- The design language no longer refers to the driver as "stage 6"
+**What this deletes:**
+- `error_type_node()` — replaced by `CompilerError { ... }`
+- `node_is_error_type(n)` — replaced by pattern match on `InferredNode`
+- `node_is_dynamic(n)` — same (Dynamic = CompilerError)
+- `node_type_equals` Error==anything rule (line 246 in `04_types.dag`)
+- `node_type_compatible` Error/Dynamic==anything rules (lines 215-216)
+- All 18 emit sites that check for error/Dynamic by name
+- All `"_"` type placeholders that compensate for error-typed nodes
 
-### P1.2-P1.3 Diagnostic Fix Detail
+**Verification:** `grep -rn '"Error"\|"Dynamic"' src/v2/04_types.dag
+src/v2/04_infer.dag src/v2/05_emit*.dag` returns zero results related
+to type-level error/dynamic checking (diagnostic messages are fine).
 
-Diagnostics reached 0. These are the remaining correctness items that
-were not blocking the ratchet but are real inference gaps:
+### P1.14 Design: Normalization Stage
+
+New pass: `parse → resolve → **normalize** → infer → emit`
+
+Job:
+- Unify `ExprCall`→`ExprMethodCall` for known method patterns (the
+  bridge rewrite that currently lives inside `infer_expr`)
+- Populate structural properties from `.dag` type declarations
+- Enforce arity completeness: parameterized types always carry their
+  declared number of children (no bare `leaf_node(name: "Map")`)
+- Mark parser error-recovery nodes with `CompilerError`
+
+Distinct from resolve (which validates names and ordering) and from infer
+(which determines types and produces diagnostics). Normalize is a
+structural graph rewrite: same graph in, structurally-normalized graph
+out. It should be small — a single-pass graph rewrite, not a full
+analysis.
+
+### Remaining Diagnostic Correctness Items
+
+Diagnostics reached 0. These inference gaps remain:
 
 | Fix | Status | Notes |
 |-----|--------|-------|
@@ -291,125 +415,22 @@ were not blocking the ratchet but are real inference gaps:
 | Fold accumulator threading | Done | `fold_accumulator_type` follows init-arg type |
 | Callable/function-value type | Done | Callable type representation exists |
 | Structured `ErrorCategory` | Done | Error classification moved off ad hoc strings |
-| `map_insert` / `map_merge` result typing | Remaining | Still returns a bare `Map` leaf in the wrong places |
-| Chained field access | Remaining | Depends on the map fixes to stop collapsing structure |
-| Tighten `node_type_equals` | Remaining, blocked by P1.9 | 6 permissive rules: (1) `Dynamic == anything` returns true, (2) `Error == anything` returns true, (3) Callable comparison ignores parameter types, (4) leaf name == structured type name treated as equal, (5) `node_type_compatible` ignores child structure, (6) `connective` mismatch silently returns false instead of diagnosing. Rules 1-2 require P1.9 split first; rules 3-6 are independent tightening. |
-| `normalize_type_name` string heuristic | Remaining | Uses `string_contains("<")` and dot-splitting; should be structural |
-
-### P1.9-P1.12 Invariant Remediation (2026-03-23 Review)
-
-Branch review (`fast-yak-813`) found 7 invariant violations. They
-compress to 3 root causes. Fixing root causes eliminates multiple
-violations each; point-fixing symptoms would leave the structure
-vulnerable.
-
-#### Root Cause I: Error and Dynamic are conflated
-
-**Update:** `node_is_dynamic` and `node_is_error_type` are split in
-`04_types.dag` (`infer_types`); infer uses them for cascade suppression vs
-dynamic typing. **Remaining P1.9 work:** emit still fabricates `"_"` /
-`Dynamic` in places; `node_type_equals` still treats Error types
-permissively (staging until tightening after full P1.9).
-
-Historically, a single `node_is_dynamic` that returned `true` for both
-`"Dynamic"` and `"Error"` hid inference failures. That pattern caused **three**
-violations:
-- V4: `node_is_dynamic` hides inference failures system-wide
-- V5: Emit produces `"_"` and `"Dynamic"` fabrications for lost types
-- V6: `emit_typed_item` catch-all emits comment instead of `compile_error!()`
-
-**Fix (P1.9):** Split into two predicates: `node_is_dynamic(n)` checks
-only `"Dynamic"`, `node_is_error_type(n)` checks only `"Error"`. Call
-sites that suppress cascade diagnostics check `node_is_error_type`
-explicitly. Emit sites that encounter error-typed nodes emit
-`compile_error!("...")` with the error context instead of fabricating a
-plausible value. The `emit_typed_item` catch-all becomes
-`compile_error!("unhandled item: ...")`.
-
-**Verification:** `grep -rn '"_"' src/v2/05_emit_rust.dag` returns only
-justified Rust type inference sites (e.g., `collect::<Vec<_>>()` where
-Rust genuinely infers the type). No `"_"` appears as a placeholder for
-missing compiler inference.
-
-#### Root Cause II: Enum dispatch vs parallel string mappings
-
-**Update:** Each emitter matches `RuntimeBridgeMethod` for **dispatch** and
-calls a **local** `*_bridge_*_name` function to produce the target
-identifier string. **`runtime_bridge_method_name` remains in `00_core.dag`.**
-Together there are **four** copies of the enum→string table (core +
-Rust/Go/Python), which violates **no parallel implementations**.
-
-Go/Python **intrinsic** emission (`IntrinsicMethod`) is now an exhaustive
-match on all 19 methods (including `MethodTake`); the old `_ => none`
-fabrication for intrinsics is **gone**.
-
-This causes **one** remaining violation from this root cause:
-- V1: **Four** parallel `RuntimeBridgeMethod`→identifier maps (P1.10)
-
-**Fix (P1.10):** Collapse to **one** authority: either delete
-`runtime_bridge_method_name` and the per-emitter duplicates in favor of
-a single shared helper, or emit bridge calls without a shared string
-table (e.g. one lowering function per target) — but **do not** maintain
-four independent match tables.
-
-**Verification:** Exactly **one** mapping from `RuntimeBridgeMethod` to
-per-target identifiers is compiled; no duplicate enum→string tables.
-Go/Python intrinsic matches remain exhaustive.
-
-#### Root Cause III: Speculative infrastructure with no consumer
-
-**Status: P1.11 complete.** The speculative boundary verification types were
-removed from `artifact.dag`; only consumed plan types remain.
-
-Historical note: `BoundaryContract`, `verify_boundaries`, `ArtifactReport`,
-etc. had no pipeline consumer. Per INVARIANTS.md they should not live in the
-pipeline until something consumes them end-to-end.
-
-**Remaining execution order:** P1.12 (catch-all, ~10 min) -> P1.10 (single
-bridge name authority, ~2 hours) -> P1.9 (emit fail-closed + type tighten,
-~3 hours). **P1.13 and P1.11** are done. P1.10 touches core + three emitters.
-P1.9 has the most downstream effects; verify fixed point after each step.
-
-### P1.4-P1.8 L1 Family Order
-
-#### Optional / Cardinality
-
-Move optionality to `.dag`-defined properties. The compiler should read
-properties, not `n.name == "Optional"`, and emitters should render from
-those same properties.
-
-#### Containers
-
-Move `List`, `Map`, and `Set` behavior to structural properties. Fix the
-current "bare leaf vs parameterized map" inconsistency as part of this
-step.
-
-#### Primitives
-
-Move copy semantics, literal forms, method availability, and similar facts
-for `Int`, `String`, `Bool`, `Float`, `Unit`, `Bytes`, `Json`, and
-`Secret` into `.dag`.
-
-#### Connective Dissolution
-
-This is the largest L1 step and must go last. Remove `connective` from
-`Node` only after optionality, containers, and primitives already read
-properties instead of shape shortcuts.
-
-#### Residual Primitive Deletion
-
-After consumers have switched, delete the old constructors, builtin
-classifiers, and predicate helpers.
+| `map_insert` / `map_merge` result typing | R4 | Bare `Map` leaf in wrong places; key hardcoded to `"String"` |
+| Chained field access | R1 | Depends on correct `FieldSummary` propagation |
+| Tighten `node_type_equals` | P1.9 | Dissolved by `InferredNode` wrapper — error/Dynamic rules deleted, not tightened |
+| `normalize_type_name` heuristic | P1.5 | Dissolved when parameterized types are always structurally complete |
 
 ### Phase 1 Exit Criteria
 
+- All regressions (R1-R4) fixed
+- `InferredNode` wrapper landed; no error/Dynamic sentinels in the type graph
+- Normalization stage exists and Call→MethodCall bridging is unified
+- Parallel bridge name maps collapsed (P1.10)
+- Emit catch-all fail-closed (P1.12)
+- Scrambled-name tests exist and pass for at least the inference layer
 - `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
-- M1 naming cleanup is complete
-- **P1.11 and P1.13 complete** (speculative artifact types and listed dead code removed)
-- **Remaining before Phase 2:** P1.9 (emit fail-closed + type tightening after predicate split),
-  P1.10 (single authority for runtime-bridge identifier strings), P1.12 (`emit_typed_item` catch-all)
 - Fixed point still holds after every structural change
-- Phase 2 may start once diagnostics stay at 0 and **P1.9, P1.10, P1.12** are done,
+- Phase 2 may start once regressions, P1.9, P1.10, P1.12, and P1.14 are done,
   even if the L1 ratchet is not yet at 0
 
 ---
@@ -448,7 +469,7 @@ The current acceptable path is:
 | P2.3 | `main.rs` workflow dispatch | Done | Workflow subcommands and dispatch match arms already land |
 | P2.4 | Multi-module extdep imports | **Done** | Verified via gist pipeline test; all 11 modules with transitive imports resolve |
 | P2.5 | Emitted crate build/run | Needs verification | Test cleans up output; needs infrastructure to preserve and build emitted crate |
-| P2.6 | `04_infer.dag` decomposition | **Partial** | **Started:** `04_method.dag`, `04_env.dag`, and `04_types.dag` exist and are wired from `04_infer.dag`. **Remaining:** shrink `04_infer.dag` (~4,442 lines, ~110 fns), deduplicate duplicated inference paths (e.g. map/flat_map/fold lambda return typing in two `infer_expr` branches), and finish boundary cleanup. Should complete after P1.9 because the Error/Dynamic work touches predicate boundaries. |
+| P2.6 | `04_infer.dag` decomposition | **Partial** | **Started:** `04_method.dag`, `04_env.dag`, and `04_types.dag` exist and are wired from `04_infer.dag`. **Remaining:** shrink `04_infer.dag` (~4,442 lines, ~110 fns) and finish boundary cleanup. **Duplicated inference paths (R3/P1.15) and `InferredNode` wrapper (P1.9) are Phase 1 prerequisites** — they shrink infer substantially before Phase 2 decomposition continues. |
 
 ### Current Emitted Bundle Shape
 
@@ -751,46 +772,108 @@ current phase order.
 | TCO backend contract | Should be cleaned up during/after shared emit extraction |
 | SCC-aware return type resolution | Not currently blocking bootstrap |
 
-### Open Invariant Follow-Ups
+### Open Invariant Violations (grouped by root cause)
 
-Items below are real violations tracked with specific remediation paths.
-**P1.11 and P1.13 are complete.** **P1.9, P1.10, and P1.12** remain blocking
-for Phase 2. The rest is phased. Scoped to v2 (`.dag` compiler sources).
+All ~66 violations trace to three root causes. Each root cause has a
+structural fix in the Phase 1 workboard above. Symptoms dissolve when
+root causes are fixed.
 
-| Item | Invariant | Where | Remediation | Phase |
-|------|-----------|-------|-------------|-------|
-| Emit `"_"` / `"Dynamic"` fabrication | No fallbacks that fabricate | `05_emit_rust.dag` (~15 sites) | P1.9: propagate error context, emit `compile_error!()` | P1 |
-| `node_type_equals` Error/Dynamic permissiveness (staging) | No fallbacks that fabricate | `04_types.dag` | P1.9: tighten after emit fail-closed; align with `node_type_compatible` | P1/P2 |
-| Four parallel `RuntimeBridgeMethod`→identifier maps | No parallel implementations | `00_core.dag` (`runtime_bridge_method_name`), `05_emit_rust.dag` (`rust_bridge_fn_name`), `05_emit_go.dag` (`go_bridge_method_name`), `05_emit_python.dag` (`py_bridge_method_name`) | P1.10: **one** authority for enum→per-target strings | P1 |
-| `emit_typed_item` catch-all emits comment | No fallbacks that fabricate | `05_emit_rust.dag` (~line 724) | P1.12: emit `compile_error!()` | P1 |
-| Anonymous record tuple index cap in field access | No fallbacks that fabricate | `05_emit_rust.dag` `emit_typed_field_access` | **F1:** index ≥4 must `compile_error!()`, not fall back to `"0"` | P1 |
-| RC3-style optional `.unwrap()` safety net in emit field access | Heuristics indicate lost structure | `05_emit_rust.dag` (field access path) | **F2:** track for removal; fix Optional propagation in infer/reconcile | P1/P2 |
-| `EmitGraphInfo.field_type_names` composite string key | Sustainability | `05_emit*.dag` / emit graph builder | **F3:** document composite key (`TypeName` + field name) or use structured keys | P1/P2 |
-| `node_type_equals` Callable ignores params | No fallbacks that fabricate | `04_types.dag` | After P1.9: tighten Callable comparison to check parameter types | P1/P2 |
-| `node_type_equals` leaf == structured name | Heuristics indicate lost structure | `04_types.dag` | Structural comparison only; leaf never equals parameterized type | P1/P2 |
-| `node_type_compatible` ignores children | No fallbacks that fabricate | `04_types.dag` | After P1.9, enforce child-structure checking | P1/P2 |
-| `normalize_type_name` string heuristic | Heuristics indicate lost structure | `04_types.dag` (~165+) | Carry short name structurally on Node | P1/P2 |
-| `node_type_compatible` normalized-name fallback | Heuristics indicate lost structure | `04_types.dag` | Structural comparison after `normalize_type_name` is removed | P1/P2 |
-| `04_infer.dag` monolith + duplicated infer paths | Sustainability | `04_infer.dag` (~4,442 LOC); map/flat_map/fold return typing duplicated in two `infer_expr` paths | P2.6: deduplicate branches, finish decomposition | P2 |
-| `02_parse.dag` `kind_tag` string dispatch | No case enumeration for open sets | `02_parse.dag` (~200 sites) | L3 target: match on `TokenKind` enum directly or introduce structural dispatch | P5 (L3) |
-| `ownership.dag` `"fold"` string dispatch | Heuristics indicate lost structure | `ownership.dag` (2 sites) | Match on `IntrinsicMethod::MethodFold` instead of name string | P2 |
-| Go `interface{}` type erasure | No fallbacks that fabricate | `05_emit_go.dag` (13 sites) | Propagate typed information; emit explicit error where type is genuinely unknown | P4 |
-| Triple `emit_typed_expr` 22-arm parallelism | No parallel implementations | `05_emit_rust/go/python.dag` | Shared dispatch + per-target leaves | P4 |
-| Triple TCO walk parallelism | No parallel implementations | `05_emit_rust/go/python.dag` | Shared TCO dispatcher with `TcoSyntax` config | P4 |
-| Triple service/transport emission parallelism | No parallel implementations | `05_emit_rust/go/python.dag` | Shared service emit with per-target rendering | P4 |
-| `classify_reconciled_intrinsic_method` string ladder | No case enumeration for open sets | `04_method.dag` (~37+) | Single string-to-enum entry point; downstream uses enums | Done |
-| `classify_runtime_bridge_method` string ladder | No case enumeration for open sets | `04_method.dag` (~64+) | Same as above | Done |
-| Go/Python intrinsic `_ => none` (historical) | No fallbacks that fabricate | — | **Resolved:** exhaustive 19-arm intrinsic matches | Done |
+#### Root Cause I: Type nodes structurally incomplete (~32 sites)
+
+Dissolved by: P1.5 (arity enforcement), P1.14 (normalization), P1.16
+(scrambled-name tests verify no name-dependent inference).
+
+| ID | Violation | Where | Dissolved by |
+|----|-----------|-------|-------------|
+| I-1 | `"_"` for Map with no children | `emit_rust` 764 | P1.5: Map always has key/value children |
+| I-2 | `"_"` for collection element | `emit_rust` 1959-1962 | P1.5: containers always have element child |
+| I-3 | `"_"` for lambda param | `emit_rust` 2001 | P1.14: normalize populates param types |
+| I-4 | `"_"` for fold accumulator | `emit_rust` 2033, 2170-2173 | P1.15: unified fold inference |
+| I-5 | `"_"` for sort_by element | `emit_rust` 2189-2190 | P1.5: receiver element type always present |
+| I-6 | RC3 safety net | `emit_rust` 1591-1620 | **R1**: fix FieldSummary propagation |
+| I-7 | Anon record index cap → `"0"` | `emit_rust` 1574-1578 | **R2**: `compile_error!()` for index >= 4 |
+| I-8 | `normalize_type_name` heuristic | `04_types` 165-177 | P1.5: structurally complete types make this unnecessary |
+| I-9 | `node_type_equals` leaf==structured | `04_types` 267-272 | P1.5: bare leaves for parameterized types don't exist |
+| I-10 | `node_type_compatible` empty children → true | `04_types` 226-239 | P1.5: children always present |
+| I-11 | `node_type_compatible` name-only fallback | `04_types` 242 | P1.5 + P1.7: structural comparison |
+| I-12 | `classify_type_structure` in emit (13 calls) | `emit_rust` multiple | P1.5/P1.7: nodes carry structure directly |
+| I-13 | `field_type_names` composite string key | `04_infer` / `emit_rust` | P1.5: field types on nodes directly |
+| I-14 | Two composite key formats (`\|` vs `::`) | `04_infer` / `05_emit` | Same |
+| I-15 | Go `interface{}` type holes (13 sites) | `emit_go` | P1.5: concrete type nodes |
+| I-16 | Lambda params default to `Dynamic` | `04_infer` ~6 sites | P1.9 + P1.14: `CompilerError`, not Dynamic |
+| I-17 | Fold acc defaults to `Dynamic` | `04_infer` 1684, 1886 | P1.15: unified fold inference |
+| I-18 | `bare_map_node()` for `empty_map()` | `04_infer` 1817 | P1.5: typed empty map from context |
+| I-19 | `child_return_type_or_name` falls to `.name` | `04_types` 27-29 | P1.5: `return_type` always set |
+| I-20 | `method_receiver_element_node` returns receiver for odd shapes | `04_types` 403-417 | P1.5: structural element extraction |
+
+#### Root Cause II: Error/Dynamic are names, not structure (~18 sites)
+
+**Dissolved by P1.9 (`InferredNode` wrapper).** All sites below are
+eliminated when error/Dynamic become `CompilerError` outside the node
+graph.
+
+| ID | Violation | Where |
+|----|-----------|-------|
+| II-1 | `node_type_equals` Error == anything | `04_types` 246 |
+| II-2 | `node_type_compatible` Error == anything | `04_types` 215 |
+| II-3 | `node_type_compatible` Dynamic == anything | `04_types` 216 |
+| II-4 | Dynamic/Error → `compile_error!()` in type emission | `emit_rust` 762-763 |
+| II-5 | Lambda scope → `Dynamic` fabrication | `emit_rust` 1974 |
+| II-6 | Field type checks against `"Dynamic"`/`"Error"` strings | `emit_rust` 2491, 2510, 2595 |
+| II-7 | `ExprMatch` result = first arm only | `04_infer` 1986-1988 |
+| II-8 | `ExprIf` result = then only | `04_infer` 2042 |
+| II-9 | `ExprListLit` element = first only | `04_infer` 2089-2096 |
+| II-10 | `Optional == Unit` name shortcut | `04_types` 217-218, 249-250 |
+| II-11 | `node_is_error_type` checks in emit | `emit_rust` 1990, 2243 |
+| II-12 | `emit_typed_item` catch-all → comment | `emit_rust` 559 |
+| II-13 | Resolve builtin → `Unit` for unknown | `04_method` 187-191 |
+| II-14 | Unknown method → result = receiver type | `04_infer` 1912-1914 |
+
+#### Root Cause III: Divergent inference paths (~16 sites)
+
+Dissolved by: P1.14 (normalization) and P1.15 (deduplication).
+
+| ID | Violation | Where |
+|----|-----------|-------|
+| III-1 | Duplicate fold init/acc inference | `04_infer` 1670-1684 vs 1872-1887 |
+| III-2 | Duplicate element typing | `04_infer` 1686-1718 vs 1888-1901 |
+| III-3 | Duplicate map/flat_map/fold result refinement | `04_infer` 1765-1803 vs 1919-1935 |
+| III-4 | `map_insert`/`map_merge` only in Call bridge | `04_infer` 1777-1796 |
+| III-5 | `map_insert` key hardcoded `"String"` | `04_infer` 1781 |
+| III-6 | String method names in `ExprCall` bridge | `04_infer` 1670+ |
+| III-7 | 4x `RuntimeBridgeMethod` → string maps | `00_core`, `emit_rust/go/python` |
+| III-8 | `runtime_bridge_method_name` dead in core | `00_core` 235-266 |
+| III-9 | `py_bridge_method_name` diverges (`"with_update"` vs `"with"`) | `emit_python` 693 |
+| III-10 | `ownership.dag` `"fold"` string dispatch | `ownership` 2 sites |
+| III-11 | Inline string checks duplicate classifiers | `04_infer` |
+| III-12 | Builtin vs bridge typing disagrees | `04_method` |
+
+#### Phase 4 violations (deferred, not blocking)
+
+| Violation | Where | Dissolved by |
+|-----------|-------|-------------|
+| Triple `emit_typed_expr` 22-arm parallelism | `emit_rust/go/python` | P4.2: shared dispatch |
+| Triple TCO walk parallelism | `emit_rust/go/python` | P4.2: shared TCO dispatcher |
+| Triple service/transport emission | `emit_rust/go/python` | P4.2: shared service emit |
+| Go `interface{}` type erasure (13 sites) | `emit_go` | P1.5 + P4 |
+| Python `_unimplemented()` (2 sites) | `emit_python` 1132, 1145 | P4 |
+| Go `/* unhandled expr */` wildcard | `emit_go` 613-614 | P4 |
+| `02_parse.dag` `kind_tag` string dispatch | `02_parse` (~200 sites) | P5 (L3) |
+
+#### Resolved
+
+| Violation | Status |
+|-----------|--------|
+| `classify_reconciled_intrinsic_method` string ladder | **Done** |
+| `classify_runtime_bridge_method` string ladder | **Done** |
+| Go/Python intrinsic `_ => none` | **Done**: exhaustive 19-arm matches |
 
 ### Review follow-ups (branch reconciliation)
-
-Tracked cleanup from the large integration review; not all are invariant-class.
 
 | ID | Item | Notes |
 |----|------|-------|
 | **F4** | Parser `item_kind` (body without type annotation → `FnItem`) | Verify gist closure: no un-annotated data defs misclassified |
-| **F5** | Duplicate map/flat_map/fold lambda return typing in `infer_expr` | Consolidate with P2.6 (see Open table: infer monolith row) |
-| **F6** | Unused `runtime_bridge_method_name` import in `04_infer.dag` | **Done:** import removed during roadmap reconciliation |
+| **F6** | Unused `runtime_bridge_method_name` import in `04_infer.dag` | **Done** |
 | **F7** | Data constants `.clone()` from `lazy_static` | Optional: avoid redundant clones on `Copy` types if profiling warrants |
 
 ---
@@ -806,6 +889,14 @@ Tracked cleanup from the large integration review; not all are invariant-class.
 | Fixed point | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
 | Gist pipeline | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | After any `.dag` change (goal: 0) |
+| Scrambled-name tests | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | After P1.16; verifies name opacity |
+
+**Scrambled-name test design:** Rename all type names to arbitrary strings
+(consistently across declarations and references), run through inference,
+verify identical structural decisions. If inference depends on `"Map"`
+being called `"Map"`, this test breaks. Scoped from infer onward — parse
+and resolve legitimately work with real names. Inference receives nodes
+with opaque names and no name registry.
 
 Manual Phase 2 smoke still exists in addition to the automated test:
 build the emitted gist crate and run it in dry-run mode. There is not yet
