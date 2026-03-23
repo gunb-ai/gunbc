@@ -196,7 +196,10 @@ Concrete acceptance:
   dependent lowering lives in compiler-owned adapters
 - Ownership and complexity proofs are wired into the compile pipeline
 - At least one real program (`gist`) compiles and runs end to end
-- v1 is archived
+- v1 is archived (Phase 3: feature-gated in P3.5 **done**; fully removable
+  once Phase 3 confirms v2 parity — "archived" means the `v1-bootstrap`
+  feature flag and all v1 crates can be deleted without breaking any
+  non-bootstrap workflow)
 - Compiler-internal structure converges onto `Node` compositions
 
 ---
@@ -246,7 +249,7 @@ symptoms structurally; fixing symptoms individually is whack-a-mole.
 |---|---:|---|
 | **I: Type nodes structurally incomplete** | ~32 | Parameterized types sometimes lose children (bare `leaf_node(name: "Map")` instead of `map_node(key:, value:)`). Downstream: `normalize_type_name` heuristic, leaf-vs-structured comparison, emit `"_"` placeholders, `classify_type_structure` in emit, Go `interface{}` holes. |
 | **II: Error/Dynamic are names, not structure** | ~18 | Inference failures are smuggled through the type namespace as nodes named `"Error"` or `"Dynamic"`. Downstream: `node_type_equals` treats Error==anything, emit string-checks for error types, cascade suppression by name, permissive type compatibility. |
-| **III: Divergent inference paths** | ~16 | `ExprCall` and `ExprMethodCall` compute the same operations through independent code paths with different logic. Downstream: duplicated map/flat_map/fold typing, asymmetric `map_insert`/`map_merge` handling, 4x bridge method name maps, inline string method checks bypassing classifiers. |
+| **III: Divergent inference paths** | ~17 | `ExprCall` and `ExprMethodCall` compute the same operations through independent code paths with different logic. Downstream: duplicated map/flat_map/fold typing, asymmetric `map_insert`/`map_merge` handling, 4x bridge method name maps, inline string method checks bypassing classifiers, testgen parallel mock extraction. |
 
 ### Compositional Audit
 
@@ -335,7 +338,7 @@ Use this as the source of truth for sequencing.
 
 | Order | Phase | What it does | Blocking gate |
 |-------|-------|--------------|---------------|
-| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode, normalization, path dedup), arity bridge, algebraic type spec | Regressions fixed; R.C. II + III landed; P1.10, P1.12 done; arity bridge enforced; no new emit heuristics |
+| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode, normalization, path dedup), arity bridge, algebraic type spec | Regressions fixed; R.C. I (arity bridge), II (InferredNode), III (normalization + dedup) landed; P1.10, P1.12, P1.19-21 done; no new emit heuristics |
 | 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly; arity bridge holds (no bare type nodes reach emit) |
 | 3 | Phase 3 | Compile bundle, ownership/artifact wiring, v1 retirement, generics for parameterized type declarations | v2 compiles everything v1 still matters for; algebraic `.dag` declarations replace arity bridge |
 | 4 | Phase 4 | Shared emit spine, `LanguageSpec` authority, emit name-opacity | New backend = language facts + compiler-owned adapter; emit reads `LanguageSpec` for type→target mapping, no hardcoded type names |
@@ -386,7 +389,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | ID | Item | Root Cause | Fix |
 |----|------|-----------|-----|
 | R1 | RC3 safety net: 30 lines of emit heuristic compensating for reconcile losing Optional through chained field access (`emit_rust` 1591-1620) | I | Fix `FieldSummary` propagation in inference; delete emit compensation |
-| R2 | Anonymous record tuple index: hardcoded 0-3, falls back to `"0"` for index >= 4 (`emit_rust` 1574-1578) | I | Emit `compile_error!()` for index >= 4 |
+| R2 | Anonymous record tuple index: hardcoded 0-3, falls back to `"0"` for index >= 4 (`emit_rust` 1574-1578) | I | **Stopgap:** emit `compile_error!()` for index >= 4 (fail-loud, not a root cause fix). Real fix is the backlog item "Anonymous record target resolution" which should produce proper field access for any arity. |
 | R3 | Duplicate map/flat_map/fold type refinement: ~40 lines in both `ExprCall` (1765-1803) and `ExprMethodCall` (1919-1935) paths | III | Extract shared helper; both paths call it |
 | R4 | `map_insert` key type hardcoded `"String"` (`infer` 1781) | III | Read key type from receiver's map children |
 
@@ -428,7 +431,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P1.1 | Naming cleanup (M1) | **Done** | All non-stage files renamed; RenderTarget moved to artifact.dag |
-| P1.2 | Infer cleanup via data tables | **Partial** | Emit metadata extracted. Method handling deferred to P4. |
+| P1.2 | Infer cleanup via data tables | **Partial** | Emit metadata extracted. Method handling (remaining emit-side method dispatch centralization) is picked up by P4.2 (shared emit fold + target adapters). |
 | P1.3 | Diagnostics ratchet -> 0 | **Done** | DIAG_RATCHET = 0. Four root-cause fixes. |
 
 ### P1.9 Design: `InferredNode` Wrapper
@@ -511,6 +514,9 @@ Diagnostics reached 0. These inference gaps remain:
 - No new emit heuristics introduced — every emit-side type-knowledge
   regression is traced upstream and fixed in inference or normalization
 - `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
+  (As of 2026-03-23, stage0 self-compile reports 44 errors — `if`-branch
+  list element type mismatches across infer/parse/resolve/complexity. These
+  must be resolved by root cause fixes before this gate can pass.)
 - Fixed point still holds after every structural change
 - Phase 2 may start once all of the above are met; L1 dissolution
   continues in parallel toward Phase 5's L1=0 gate
@@ -598,12 +604,119 @@ R9.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P3.1 | Verify parity with remaining v1 paths | **Done** | Two root causes identified: tuple field naming (fixed), if-branch type unification (fixed). Remaining 197 diagnostics are field access resolution issues. |
-| P3.2 | Ownership wiring + authoritative compile bundle | In progress | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
-| P3.3 | Artifact planning above emit | In progress | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
-| P3.4 | Runtime shim dissolution | Planned | Move the remaining v1 runtime shim pieces into `.dag` runtime templates |
+| P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
+| P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
+| P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
-| P3.6 | Generics (parameterized type declarations) | Planned | At least enough for `type Optional<T> = Some { value: T } \| None`, `type List<T> = Nil \| Cons { head: T, tail: List<T> }`, `type Map<K,V> = List<Tuple<K, V>>`. The algebraic specs from P1.18 become real `.dag` declarations. |
+| P3.6 | Generics (parameterized type declarations) | Planned | See P3.6 Design below. At least enough for `type Optional<T> = Some { value: T } \| None`, `type List<T> = Nil \| Cons { head: T, tail: List<T> }`, `type Map<K,V> = List<Tuple<K, V>>`. The algebraic specs from P1.18 become real `.dag` declarations. |
 | P3.7 | Delete arity bridge | Planned | Once P3.6 lands, the hardcoded arity bridge (P1.17) is replaced by the compiler reading arity from the `.dag` declarations. Delete the bridge. Cardinality starts falling out of structure. |
+
+### P3.6 Design: Generics as Compositional DAG Slots
+
+Generics are not a separate system — they are the DAG composition model
+applied to type declarations. A type parameter is a **slot**: a named
+position in a type's DAG structure where another type can be composed in.
+
+```
+type Optional<T> = Some { value: T } | None
+type List<T> = Nil | Cons { head: T, tail: List<T> }
+type Map<K, V> = List<Tuple<K, V>>
+```
+
+`List<Int>` means: take the `List` DAG, fill slot `T` with the `Int`
+DAG. This is structural composition — the same thing nodes already do
+with children. The only new pieces are:
+
+1. Declaring which positions are slots (in the `.dag` declaration)
+2. Resolving slot references in bodies at composition time
+
+**Slot names are meaningful namespace identifiers**, not abstract
+single-letter variables. Slots are named positions in the type's DAG
+structure — the same concept as named children in a product type:
+
+```
+type Map<key, value> = List<Tuple<key, value>>
+type List<element> = Nil | Cons { head: element, tail: List<element> }
+type Optional<inner> = Some { value: inner } | None
+type Set<element> = List<element>
+```
+
+`key`, `value`, `element`, `inner` are lowercase because they are
+structural positions, not type names. When you write `Map<String, Int>`,
+the composition is positional: first slot (`key`) gets `String`, second
+(`value`) gets `Int`. If the compiler needs the element type of a `List`,
+the answer is structural: whatever was composed into the `element` slot.
+
+**Slot representation.** A slot appears in a type declaration body as a
+`TypeVar` leaf node — a leaf whose name matches a declared slot name.
+The declaration Node records its slots via its `params` field: each
+`Param` has `name` (the slot name, e.g. `"key"`) and `type_expr` (a
+`TypeVar` marker node). This reuses the existing `Param` structure —
+for function params, `type_expr` is a declared type; for type slots,
+`type_expr` is the unfilled slot marker. Same structural shape,
+different role determined by context (type declaration vs function
+declaration). When the compiler encounters `List<Int>`, it looks up
+`List`'s declaration, finds one slot `element`, and produces a concrete
+Node graph with every `TypeVar` named `element` replaced by the `Int`
+Node.
+
+**Where substitution happens.** The normalization stage (P1.14, already
+planned). Normalization already enforces arity completeness; with
+generics, it also performs slot substitution. By the time inference sees
+the graph, all slots are filled with concrete types. Inference never
+encounters TypeVar nodes — they are resolved structurally before
+inference runs.
+
+**What changes per pipeline stage:**
+
+| Stage | Change |
+|-------|--------|
+| **Parse** | `parse_type_def` learns `<Name, ...>` after the type name. Records slot names on the declaration Node. `finish_type_expr_from_name` generalizes: any name can accept `<Arg, ...>` (delete the hardcoded `List/Set/Map` checks at lines 1104-1115). |
+| **Resolve** | Validates that slot names are unique within a declaration. Validates that `TypeVar` references in the body match declared slot names. |
+| **Normalize** | Performs slot substitution: `List<Int>` → look up `List` declaration → walk body, replace `TypeVar("T")` with `Int` Node → produce concrete type. Enforces arity: `List` with 0 or 2 args is a compile error. Handles recursive references (`List<T>` in `Cons.tail`). |
+| **Infer** | No change — receives fully-substituted concrete types. |
+| **Emit** | No change — type nodes already carry their children. |
+
+**Recursive types.** `type List<T> = Nil | Cons { head: T, tail: List<T> }`
+— the `List<T>` in `tail` is a self-reference with the same slot
+binding. Substitution produces `List<Int>` in `tail` when the outer
+`List<Int>` is composed. The existing `is_self_recursive` flag on Node
+already tracks this; normalization extends it to slot-aware recursion.
+
+**Nested composition.** `List<Map<String, Int>>` — the `Map<String, Int>`
+arg is itself a composition. Substitution is recursive: resolve inner
+compositions first, then substitute into the outer slot. This falls out
+of the normalization pass naturally (post-order traversal).
+
+**What this deletes:**
+- The arity bridge (P1.17 / P3.7) — arity is read from the declaration
+- Hardcoded generic parsing in `finish_type_expr_from_name` (lines
+  1104-1115 in `02_parse.dag`)
+- `container_node()`, `map_node()`, `optional_node()` constructors in
+  `04_types.dag` — replaced by slot substitution from `.dag` declarations
+- `container_property()`, `map_type` property injection — properties
+  come from the `.dag` declaration, not from hardcoded constructors
+
+**Existing plumbing that helps:**
+- `children: List<Node>` already holds type arguments at use sites
+- `params: List<Param>` records slots on declarations — `Param.name` is
+  the slot name, `Param.type_expr` is the `TypeVar` marker; same field
+  already holds function params (role is contextual)
+- Parser already handles `Name<Arg>` and `Name<Arg1, Arg2>` reference
+  syntax (just hardcoded to known names)
+
+**Open design questions (resolve in P1.18 algebraic spec):**
+- Named composition syntax (`Map<key: String, value: Int>`) — more
+  explicit, avoids positional arity-order errors, but adds syntax.
+  Positional (`Map<String, Int>`) is the minimum viable. Decide whether
+  named composition is Phase 3 scope or later.
+- Higher-kinded slots (`type Functor<F<_>>`) — out of scope for Phase 3;
+  note as a "Beyond" item if needed.
+- Constraint syntax — likely unnecessary for the DAG model. Since
+  everything is a Node, key hashing/equality is structural (the DAG
+  structure itself determines comparison, not type-specific logic). No
+  type is "unhashable." Constraints may emerge later if the model needs
+  them, but they are not a Phase 3 concern.
 
 ### Key Decisions for Phase 3
 
@@ -648,8 +761,8 @@ contract is real.
 | P4.1 | `LanguageSpec` becomes the single authority | Planned | Shared emit already imports extdep language tables; remaining duplication must collapse into one contract. **This is how emit becomes name-opaque:** `LanguageSpec` + structural declarations provide the type→target-identifier mapping; emit no longer hardcodes `if type_name == "Map" { "HashMap" }`. |
 | P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor; Rust/Python/Go still own full tree dispatch today |
 | P4.3 | Generated tests as first-class projection | Planned | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). |
-| P4.4 | DAG backend/runtime boundary | Planned | Add canonical DAG artifact and keep execution downstream |
-| P4.5 | Typed backend plumbing and CLI surface | Planned | Backend selection should stop being stringly |
+| P4.4 | DAG backend/runtime boundary | Planned | Today the compiler only emits source code (Rust/Go/Python). A DAG backend would emit the **typed graph itself** as a serialized artifact (e.g., JSON representation of the `ResolvedGraph`), executed by an external runtime — not the compiler. This keeps the compiler pure: DAGs in, artifacts out. The "canonical artifact" is a well-defined serialization of the post-infer typed graph. Design: add `Dag` to `RenderTarget`, implement `emit_dag(typed: ResolvedGraph) -> EmitResult` that serializes the graph, define the schema. Runtime execution is a separate system (not in the compiler). |
+| P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** (1) Add `Dag` variant to `RenderTarget` for P4.4. (2) CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
 
 ### Current Phase 4 Risks
@@ -683,8 +796,9 @@ contract is real.
 - Emit is name-opaque: type→target-identifier mapping reads from
   `LanguageSpec` and structural declarations, no hardcoded type names
 - Generated tests are first-class artifact outputs
-- The DAG backend emits a canonical artifact without embedding an
-  interpreter in the compiler stages
+- The DAG backend emits a serialized typed graph (JSON or equivalent)
+  without embedding an interpreter in the compiler stages; a separate
+  runtime can execute the artifact
 
 ---
 
@@ -700,19 +814,36 @@ stable.
 
 ### Phase 5 Workboard
 
-| ID | Item | Status | Notes |
-|----|------|--------|-------|
-| P5.0 | `kind_tag` string dispatch elimination | Planned | `02_parse.dag` dispatches on `TokenKind` through ~200 string comparisons via `kind_tag()`. Replace with structural match on `TokenKind` enum. Prerequisite for P5.1. |
-| P5.1 | Token dissolution | Planned | Replace `Token` / `TokenKind` structures with `Node` compositions |
-| P5.2 | Module/import dissolution | Planned | Dissolve `Module`, `Import`, and `ImportNames` into `Node` compositions |
-| P5.3 | Diagnostic / compile-output dissolution | Planned | Dissolve `Diagnostic`, `Severity`, `CompileResult`, and `TextFile` where it is still valuable |
-| P5.4 | Service/support type dissolution | Planned | Verify which service-layer types still need to move |
-| P5.5 | Residual semantic enum cleanup | Planned | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation where appropriate |
-| P5.6 | Scrambled-name tests (full suite) | Planned | All compiler stages from infer onward produce identical output regardless of type names. This is the L1=0 verification gate. |
-| P5.7 | Delete `node_is_*` predicates | Planned | Replaced by structural graph traversal. No predicate checks type identity. |
-| P5.8 | Delete `normalize_type_name` | Planned | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
-| P5.9 | Delete `classify_type_structure` from emit | Planned | Unnecessary when nodes carry structure directly. |
-| P5.10 | Connective dissolution assessment | Planned | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Depends on whether products/coproducts are derivable from the algebraic type definitions. |
+Phase 5 has two tracks that can run in parallel: **L3 dissolution**
+(parser, P5.0-P5.1) and **L1 final deletions** (P5.6-P5.10). The
+structural dissolutions (P5.2-P5.5) are independent of each other and
+can interleave with either track.
+
+#### Track A: L3 dissolution (parser)
+
+| ID | Item | Depends on | Est. scope | Notes |
+|----|------|-----------|-----------|-------|
+| P5.0 | `kind_tag` string dispatch elimination | — | ~200 sites in `02_parse.dag` | Replace `kind_tag(token) -> String` + string comparisons with structural match on `TokenKind` enum. Largest single item in Phase 5. |
+| P5.1 | Token dissolution | P5.0 | ~507 lines (`01_tokenize.dag`) | Replace `Token` / `TokenKind` structures with `Node` compositions. Only tractable after P5.0 removes string dispatch. |
+
+#### Track B: Structural dissolutions (independent, any order)
+
+| ID | Item | Depends on | Est. scope | Notes |
+|----|------|-----------|-----------|-------|
+| P5.2 | Module/import dissolution | — | ~459 lines (`03_resolve.dag`) | Dissolve `Module`, `Import`, and `ImportNames` into `Node` compositions |
+| P5.3 | Diagnostic / compile-output dissolution | — | Moderate | Dissolve `Diagnostic`, `Severity`, `CompileResult`, and `TextFile` where it is still valuable. `InferredNode` (P1.9) already handles error representation. |
+| P5.4 | Service/support type dissolution | — | Small | Verify which service-layer types still need to move. Service nodes already use `Node` composition for operations/transports. |
+| P5.5 | Residual semantic enum cleanup | P5.2-P5.4 | Small | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation. Depends on prior dissolutions to identify what's left. |
+
+#### Track C: L1 final deletions (the L1=0 gate)
+
+| ID | Item | Depends on | Est. scope | Notes |
+|----|------|-----------|-----------|-------|
+| P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | All compiler stages from infer onward produce identical output regardless of type names. This is the L1=0 verification gate. |
+| P5.7 | Delete `node_is_*` predicates | P5.6 passing | 82 call sites | Replaced by structural graph traversal. No predicate checks type identity. |
+| P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
+| P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | Unnecessary when nodes carry structure directly. |
+| P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Depends on whether products/coproducts are derivable from the algebraic type definitions. |
 
 ### Phase 5 Exit Criteria
 
@@ -881,7 +1012,7 @@ current phase order.
 
 | Item | Why deferred |
 |------|--------------|
-| Anonymous record target resolution | Must fail closed, but is not blocking active phases |
+| Anonymous record target resolution | Must fail closed, but is not blocking active phases. R2 is the fail-loud stopgap; this item is the real fix (proper field access for any arity). |
 | Collection intrinsic semantics in shared IR | Worth doing after shared emit is real |
 | Generated self-hosting tests and stage contracts | Valuable once the compile contract settles |
 | TCO backend contract | Should be cleaned up during/after shared emit extraction |
@@ -944,9 +1075,10 @@ graph.
 | II-13 | Resolve builtin → `Unit` for unknown | `04_method` 187-191 |
 | II-14 | Unknown method → result = receiver type | `04_infer` 1912-1914 |
 
-#### Root Cause III: Divergent inference paths (~16 sites)
+#### Root Cause III: Divergent inference paths (~17 sites)
 
-Dissolved by: P1.14 (normalization) and P1.15 (deduplication).
+Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
+(testgen parallel extraction).
 
 | ID | Violation | Where |
 |----|-----------|-------|
@@ -962,6 +1094,16 @@ Dissolved by: P1.14 (normalization) and P1.15 (deduplication).
 | III-10 | `ownership.dag` `"fold"` string dispatch | `ownership` 2 sites |
 | III-11 | Inline string checks duplicate classifiers | `04_infer` |
 | III-12 | Builtin vs bridge typing disagrees | `04_method` |
+| III-13 | Testgen: `extract_mock_props`/`starts_with_prefix` duplicates shared `has_mock_prefix`/`extract_test_projections` | `emit_rust` 3028-3036 vs `05_emit` 121-140 |
+
+#### Testgen fabrication (Phase 1, P1.20)
+
+| ID | Violation | Where | Dissolved by |
+|----|-----------|-------|-------------|
+| TG-1 | `emit_simple_expr` wildcard → `todo!()` in generated test mock setup | `emit_rust` 1090, used at 3321 | P1.20 |
+| TG-2 | `emit_data_value_json` wildcard → `"null"` in mock JSON data | `05_emit` 413 | P1.20 |
+| TG-3 | `Default::default()` fallback when no mock data or `first` returns `None` | `emit_rust` 3092, 3096 | P1.20 |
+| TG-4 | `TestProjection` type and `extract_test_projections` defined but never called (dead abstraction) | `05_emit` 115-140 | P1.19 |
 
 #### Phase 4 violations (deferred, not blocking)
 
@@ -1004,6 +1146,7 @@ Dissolved by: P1.14 (normalization) and P1.15 (deduplication).
 | Fixed point | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
 | Gist pipeline | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | After any `.dag` change (goal: 0) |
+| Testgen gate | `cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust` | After P1.21; verifies generated test files are non-empty and syntactically valid |
 | Scrambled-name tests | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | After P1.16; verifies name opacity |
 
 **Scrambled-name test design:** Rename all type names to arbitrary strings
