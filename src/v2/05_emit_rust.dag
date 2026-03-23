@@ -1581,9 +1581,9 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
   let n_kind = classify_type_structure(n: n)
   if n.name == "__EmitTypeCacheMiss" { type_name }
   else if n.name == "Error" { type_name }
-  else if n_kind == TypeConj {
+  else if (n_kind == TypeConj) {
     if n.name == "" { type_name } else { Some { value: n.name } }
-  } else if n_kind == TypeDisj {
+  } else if (n_kind == TypeDisj) {
     type_name
   } else if n.children |> count == 0 && n.name != "" {
     Some { value: n.name }
@@ -1714,9 +1714,9 @@ fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
 fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
   let normed_kind = classify_type_structure(n: normed)
-  if normed_kind == TypeConj {
+  if (normed_kind == TypeConj) {
     true
-  } else if normed_kind == TypeDisj {
+  } else if (normed_kind == TypeDisj) {
     normed.children |> any(child => child.children |> count > 0)
   } else {
     let canonical = normed.name
@@ -2215,14 +2215,14 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
 
 fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let function_name = runtime_bridge_method_name(method: method)
-  let lowered = if method == BridgeGet {
+  let lowered = if (method == BridgeGet) {
     let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let index_str = match args |> first {
       Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       None => "compile_error!(\"get method missing index\")"
     }
     concat(list_str, ".get((", index_str, ") as usize).cloned()")
-  } else if method == BridgeWith {
+  } else if (method == BridgeWith) {
     let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let type_name = match receiver.return_type {
       Some { value: rt } =>
@@ -3426,7 +3426,7 @@ fn emit_cli_param_type_node(n: Node) -> String {
       Some { value: inner } => concat("Option<", emit_cli_param_type_node(n: inner), ">")
       None => "String"
     }
-  } else if classify_type_structure(n: n) != TypeLeaf {
+  } else if (classify_type_structure(n: n) != TypeLeaf) {
     "String"
   } else if n.children |> count == 0 {
     if is_bool_type_node(n: n) { "bool" }

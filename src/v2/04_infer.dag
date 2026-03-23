@@ -1832,7 +1832,13 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
 }
 
 fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String) -> NodeLookupResult {
-  if node_is_dynamic(n: scrut) {
+  if node_is_error_type(n: scrut) {
+    // Error type cascade: suppress diagnostics. The real error is upstream.
+    NodeLookupResult {
+      resolved: error_type_node(),
+      diagnostics: []
+    }
+  } else if node_is_dynamic(n: scrut) {
     NodeLookupResult {
       resolved: error_type_node(),
       diagnostics: [Diagnostic {
@@ -1843,10 +1849,8 @@ fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String
         category: Some { value: VariantNotFound }
       }]
     }
-  } else if node_is_error_type(n: scrut)
-    || (scrut.connective == none && scrut.children |> count == 0 && node_is_optional(n: scrut) == false) {
-    // Error or non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
-    // The real error is upstream where this type was inferred wrong.
+  } else if scrut.connective == none && scrut.children |> count == 0 && node_is_optional(n: scrut) == false {
+    // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
     NodeLookupResult {
       resolved: error_type_node(),
       diagnostics: []
@@ -1866,7 +1870,13 @@ fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String
 }
 
 fn lookup_field_in_variant(variant: Node, field_name: String, module_name: String) -> NodeLookupResult {
-  if node_is_dynamic(n: variant) {
+  if node_is_error_type(n: variant) {
+    // Error type cascade: suppress diagnostics. The real error is upstream.
+    NodeLookupResult {
+      resolved: error_type_node(),
+      diagnostics: []
+    }
+  } else if node_is_dynamic(n: variant) {
     NodeLookupResult {
       resolved: error_type_node(),
       diagnostics: [Diagnostic {
@@ -1876,12 +1886,6 @@ fn lookup_field_in_variant(variant: Node, field_name: String, module_name: Strin
         module_name: Some { value: module_name },
         category: Some { value: FieldNotFound }
       }]
-    }
-  } else if node_is_error_type(n: variant) {
-    // Error type cascade: suppress diagnostics
-    NodeLookupResult {
-      resolved: error_type_node(),
-      diagnostics: []
     }
   } else {
     match variant.children |> filter(c => c.name == field_name) |> first {
