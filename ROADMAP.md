@@ -413,12 +413,16 @@ produces a working program, not just a compiling one.
 # All Phase 2 checks, plus:
 cargo test -p v2-compiler-tests --features v1-bootstrap \
   v2_bootstrap_fixed_point -- --ignored                     # green
-# v1-bootstrap feature can be removed without breaking anything
+# v1 deletion proof: build and test without v1-bootstrap feature:
+cargo test --workspace --exclude v2-compiler-tests \
+  --no-default-features                                     # green
+cargo test -p v2-compiler-tests                             # green (no --features)
 ```
 State: Generics landed. Algebraic `.dag` declarations exist for
 `Optional`, `List`, `Map`, `Set`. Arity bridge deleted. v1 fully
-removable. Compile bundle has authoritative shape with ownership and
-artifact planning.
+removable — the feature-off proof above demonstrates that removing
+`v1-bootstrap` does not break any non-bootstrap workflow. Compile
+bundle has authoritative shape with ownership and artifact planning.
 
 **After Phase 4 — "Adding a backend is easy"**
 ```
@@ -436,10 +440,19 @@ emits a serialized artifact. Emit is name-opaque.
 cargo test -p v2-compiler-tests v2_scrambled_name_inference  # green
 scripts/l1-ratchet.sh --check                                # L1 = 0
 ```
-State: L1=0. Scrambled-name tests pass — inference produces identical
-results regardless of type names. No `node_is_*` predicates. No
+State: L1=0. Scrambled-name tests pass. No `node_is_*` predicates. No
 `normalize_type_name`. No `classify_type_structure` in emit. The
 compiler processes graph structure only. Ready for L2 work.
+
+**Scrambled-name test definition:** The test compares **inferred
+structure** (the typed graph after inference), not emitted artifacts.
+Concretely: take a program, run it through inference with real names,
+record the structural decisions (which nodes get which types, which
+children, which connective shapes). Then scramble all type names
+(consistently across declarations and references) and re-run inference.
+The two sets of structural decisions must be identical. Emit is excluded
+from this test because emit legitimately reads names for target-language
+identifiers — that is name-rendering, not name-dependent inference.
 
 ---
 
@@ -1276,10 +1289,13 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 
 **Scrambled-name test design:** Rename all type names to arbitrary strings
 (consistently across declarations and references), run through inference,
-verify identical structural decisions. If inference depends on `"Map"`
-being called `"Map"`, this test breaks. Scoped from infer onward — parse
-and resolve legitimately work with real names. Inference receives nodes
-with opaque names and no name registry.
+compare **inferred structure** (typed graph shapes: which nodes carry which
+types, children, connective shapes). If inference depends on `"Map"` being
+called `"Map"`, the structural decisions diverge and the test breaks.
+Scoped from infer onward — parse and resolve legitimately work with real
+names. Emit is excluded because it legitimately reads names for target-
+language identifiers (name-rendering, not name-dependent inference).
+Inference receives nodes with opaque names and no name registry.
 
 Manual Phase 2 smoke still exists in addition to the automated test:
 build the emitted gist crate and run it in dry-run mode. There is not yet
