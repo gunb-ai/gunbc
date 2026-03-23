@@ -746,7 +746,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   let kind = classify_type_structure(n: item)
-  if kind == TypeConj {
+  if (kind == TypeConj) {
     emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
     emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
@@ -1572,7 +1572,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
 
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types: Map<String, Bool>) -> String? {
   // Normalize: unwrap Refined nodes to their base
-  let n = if inferred_node.name == "Refined" && classify_type_structure(n: inferred_node) != TypeLeaf {
+  let n = if inferred_node.name == "Refined" && (classify_type_structure(n: inferred_node) != TypeLeaf) {
     match inferred_node.children |> first {
       Some { value: base } => base
       None => inferred_node
