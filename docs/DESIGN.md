@@ -1041,3 +1041,310 @@ dsl/                             Domain source files
 | `dsl/std/types.dag` | The type vocabulary |
 | `dsl/extdeps/git.dag` | A clean example of spec-faithful domain modeling |
 | `dsl/extdeps/languages/rust/emit.dag` | Language-as-extdep pattern |
+
+---
+
+## Appendix A: How We Got Here
+
+gunbc is the third generation of this project. Each generation peeled
+back one layer of accidental complexity to find the essential structure.
+
+### Generation 1: gunb.ai (Go) — Pattern Recognition
+
+An OaaS (Orchestration as a Service) platform. Go, Bazel, protobuf,
+SQLite. Tickets form DAGs, LLMs drive execution, side-effects gated by
+risk policy. Real system ops (Cursor, GitHub, shell), real cost
+accounting, real approval flows.
+
+**What it discovered:** The DAG contract system kept appearing in
+unrelated domains — tickets, CI pipelines, devcontainer setup,
+infrastructure ops. They all wanted the same thing: nodes with typed
+contracts, topological execution, resource-aware scheduling, wave-based
+parallelism. The generic `pkg/dag/` library was extracted.
+
+**What domain knowledge looked like (Go handler):**
+
+```go
+// OaaS_v2/internal/system_ops/github_handlers.go
+func handleGitHubFetchPRDiff(ctx context.Context, req HandlerRequest) (*oaasv1.SystemOpResult, error) {
+    if req.Ticket == nil {
+        return nil, fmt.Errorf("system_ops: ticket is required for github_fetch_pr_diff")
+    }
+    if req.Env.GitHub == nil {
+        return nil, fmt.Errorf("system_ops: github client is not configured...")
+    }
+    spec := req.Ticket.GetSpec()
+    sys := spec.GetSystemOp()
+
+    var params GitHubFetchPRDiffParams
+    if err := DecodeAndValidate(sys.GetParams(), &params); err != nil {
+        return nil, err
+    }
+
+    // ... 50 more lines of parameter resolution, fallback logic,
+    // branch name defaults hardcoded as string literals ...
+    if baseRef == "" {
+        baseRef = "main"  // Default embedded in code
+    }
+    return fetchDiffByBranch(ctx, req, repoID, baseRef, branch)
+}
+```
+
+**What contracts looked like (protobuf):**
+
+```proto
+// OaaS_v2/proto/ticket.proto
+message SystemOpResult {
+  string op_name = 1;
+  string provider = 2;
+  oneof payload {
+    CursorOpResult cursor = 10;
+    GitHubOpResult github = 11;
+    ShellOpResult shell = 12;
+    // New providers require modifying this proto
+  }
+}
+```
+
+**What workflows looked like (Go structs):**
+
+```go
+// OaaS_v2/internal/planner/templates/boss_ticket.go
+func BossTickets(cfg BossConfig) []*TemplateTicket {
+    return []*TemplateTicket{
+        bossPlanTicket(cfg),       // hardcoded ordering
+        bossApplyPlanTicket(cfg),
+        bossSynthesizeTicket(cfg),
+    }
+}
+```
+
+**The question it couldn't answer:** Every new integration meant writing
+a new Go handler. The domain knowledge was trapped in imperative code.
+Cost of change was high.
+
+### Generation 2: the-gunbai (Rust) — The Compilation Hypothesis
+
+42 Rust crates. "What if workflows were compiled rather than
+interpreted?" External systems modeled as "understandings" — structured
+specifications with typed behaviors. Code generators produce
+implementations from specs. The "Causal Kernel Spec" (Draft v0.4)
+crystallized the causal reasoning framework.
+
+**What domain knowledge looked like (Rust understanding specs):**
+
+```rust
+// crates/gunbai-integrations-contracts/src/understanding/github_actions.rs
+pub fn understanding() -> Understanding {
+    Understanding {
+        id: "github_actions",
+        name: "GitHub Actions Runner Protocol",
+        kind: SystemKind::Cli,
+        version: "2026-01-24",
+        docs: &["https://docs.github.com/en/actions/..."],
+        behaviors: BEHAVIORS,
+        constraints: CONSTRAINTS,
+    }
+}
+
+const BEHAVIORS: &[Behavior] = &[
+    Behavior {
+        id: "log/debug",
+        description: "Emit a debug message",
+        invocation: Invocation::Protocol {
+            channel: "stdout",
+            format: "::debug::{message}",
+        },
+        inputs: &[Input {
+            name: "message",
+            ty: InputType::String,
+            required: true,
+            description: "Debug message text",
+            default: None,
+        }],
+        observed_properties: &[ObservedProperty {
+            property: Property::WritesWorld,
+            confidence: Some(Confidence::Documented),
+            notes: Some("Writes to the job log"),
+        }],
+        // ...
+    },
+];
+```
+
+**What it improved:** Domain knowledge moved from Go handlers to typed
+Rust specifications. Code generators read specs and produced
+implementations. Effect tracking (WritesWorld, ReadsWorld) appeared at
+the spec level.
+
+**The question it couldn't answer:** 42 crates of Rust was still 42
+crates of Rust. Adding a new external system still meant touching Rust.
+Cost of change was better but not 1.
+
+### Generation 3: gunbc (.dag) — The Domain Escapes the Host Language
+
+The realization: domain knowledge doesn't belong in any host language.
+It belongs in its own language — one whose structure (DAG) matches the
+domain (cause and effect).
+
+**What domain knowledge looks like now (.dag):**
+
+```dag
+// dsl/extdeps/git.dag
+module extdeps.git
+import std.types { CommitSha, FilePath, Timestamp }
+
+type GitCommit {
+  sha: CommitSha
+  message: String
+  author: GitAuthor
+  committer: GitAuthor
+  parent_shas: List<CommitSha>
+}
+
+service git.Core {
+  operation CurrentBranch {
+    output { branch: String }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+    exit { 0 => Unit, 128 => String "Not a git repository" }
+  }
+}
+```
+
+**The progression:**
+
+| Aspect | gunb.ai (Go) | the-gunbai (Rust) | gunbc (.dag) |
+|--------|-------------|-------------------|-------------|
+| Domain authority | Go handlers | Rust structs | `.dag` files |
+| Contracts | Protobuf (string params) | Rust types | Structural Nodes |
+| Adding a provider | Edit Go + proto | Edit Rust crate | Add `.dag` file |
+| Validation | Runtime registry | Rust compile time | Full pipeline (parse→infer→emit) |
+| I/O isolation | Mixed throughout | Still mixed | Pure phases; only transport does I/O |
+| Composition | Procedural (tickets) | Structured (blocks) | Declarative (DAG facts) |
+| Cost of change | Many files | Several files | 1 file |
+
+---
+
+## Appendix B: Landscape — What Else Exists
+
+No existing project combines all of gunbc's pieces. Here is what comes
+closest, organized by proximity to the thesis.
+
+### Tier 1: Closest Structural Relatives
+
+**CUE Language** — The closest existing project to gunbc's type system.
+CUE is a data constraint language where types and values live in a
+single lattice. Combining two CUE values produces their greatest lower
+bound (conjunction). CUE's "all constraints are facts and composition is
+meet in a lattice" is structurally identical to "smart facts, dumb
+compiler." But CUE operates on data/configuration only — it cannot model
+I/O, causality, parallelism, or execution. CUE is a lattice for data;
+gunbc is a lattice for computation.
+
+**Bloom Language / CALM Theorem (UC Berkeley)** — Bloom is a
+Datalog-inspired distributed programming language built around the CALM
+theorem: "monotonic programs are eventually consistent without
+coordination." Programs are sets of declarative rules over facts; the
+runtime computes fixed points. The CALM theorem provides the theoretical
+justification for why gunbc's single-pass approach is sound: if your
+composition is monotonic (adding facts only increases knowledge), you get
+convergence without iteration. But Bloom is a runtime system for
+distributed coordination, not a compiler that emits code.
+
+**Syndicate Language** — An actor language where communication happens
+through shared "dataspaces" of assertions (facts), not message passing.
+Syndicate's "facts in a shared space" vs "messages between entities" is
+the runtime analog of gunbc's "facts in a graph" vs "transformations
+between passes." But Syndicate is runtime, not compile-time.
+
+**Eve Language** (defunct) — The most direct attempt to build a
+general-purpose programming language on "smart facts, dumb engine."
+Programs are reactive rules over a fact database. Eve reached the same
+conclusion about the primitive (facts + rules, not functions + state) but
+chose reactive interpretation over compilation. The Eve postmortem
+discusses how difficult it was to make this model practical without
+static typing — which is exactly what gunbc adds.
+
+### Tier 2: Significant Partial Overlaps
+
+**Dhall** — A total (non-Turing-complete) functional configuration
+language. All programs terminate. Dhall achieves totality by restricting
+expressiveness (no recursion). gunbc achieves it by restricting structure
+(DAGs, no cycles) while permitting arbitrary computation within nodes.
+
+**Dagger.io** — CI/CD engine where pipelines are DAGs of containerized
+operations with automatic parallelism and content-addressed caching.
+Operationally close to gunbc's execution model, but Dagger is a runtime
+engine, not a compiler. No type system, no fact composition, no external
+spec modeling.
+
+**Wing Language** — Cloud-oriented language with compile-time
+("preflight") and runtime ("inflight") phases. The compiler
+automatically generates IAM policies from source code — a concrete
+instance of gunbc's compile-time I/O boundary detection. But Wing uses
+a conventional imperative language with hardcoded cloud service
+knowledge, not a fact-based DSL.
+
+**Ballerina** — Integration-oriented language with structural typing
+and union types. Its premise — "integration IS the program, not glue
+code" — is nearly identical to gunbc's motivation. But it solves the
+problem conventionally (better language features) rather than
+structurally (fact-based compilation).
+
+**Flix** — Extends Datalog with lattice semantics and a full ML-style
+functional language. Demonstrates that lattice-based fact composition can
+coexist with typed functional programming, but does not draw the
+conclusion that the entire compilation process should be fact
+composition.
+
+**Catala** — A DSL for encoding legislative text as executable code.
+Demonstrates that "the DSL should mirror the domain's structure" but
+only for computational law, not arbitrary domains.
+
+### Tier 3: Overlaps on Individual Dimensions
+
+**Koka / Effekt** — Effect tracking in the type system. The closest
+mechanism to gunbc's compile-time I/O boundary detection, but implemented
+as type annotations on functions, not as a structural property of graphs.
+
+**Soufflé** — Compiles Datalog (facts + rules) into parallel C++.
+Validates that compiling declarative fact-based specs into parallel code
+is practical, but only for program analysis, not general programs.
+
+**BuildKit / LLB** — Content-addressed DAG of filesystem operations.
+Almost exactly gunbc's execution model applied to container builds, but
+a protocol, not a language.
+
+**Haxl (Facebook)** — Automatic parallelism from applicative structure
+in Haskell. Same mechanism as gunbc (structure determines parallelism)
+but embedded in a library, not a compilation model.
+
+**Session Types** — Communication protocols in the type system. Makes
+I/O structure visible at compile time, parallel to gunbc's graph-based
+I/O detection, but for point-to-point protocols, not DAG computation.
+
+**Terraform / Nix / Pulumi** — Various forms of "declare desired state,
+compute the diff." Each reaches partial conclusions (DAG ordering,
+content addressing, typed providers) but none generalizes to a
+compilation model.
+
+### What Does Not Exist
+
+No existing project combines:
+
+1. Domain knowledge in a DSL, not the host language
+2. DAG of typed nodes as the core primitive for programs (not just
+   builds/CI)
+3. Structural composition (conjunction/disjunction) over computation
+   graphs
+4. External systems modeled from actual API specs as composable facts
+5. Single-pass fact composition into a minimal valid graph
+6. Compile-time guarantees (termination, parallelism, I/O, cost) all
+   derived from a single graph structure
+
+The closest theoretical foundation is the **CALM theorem**, which proves
+that monotonic fact composition converges without coordination — the
+theoretical basis for why single-pass compilation works. The closest
+practical system is **CUE**, which implements lattice-based fact
+composition for data but not for computation.
