@@ -329,9 +329,9 @@ fn scalar_output() -> Map<String, CostExpr> {
 // =========================================================================
 
 fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
-  method == MethodMap || method == MethodFilter || method == MethodFlatMap ||
-  method == MethodSkip || method == MethodEnumerate || method == MethodSortBy ||
-  method == MethodConcat
+  (method == MethodMap) || (method == MethodFilter) || (method == MethodFlatMap)
+  || (method == MethodSkip) || (method == MethodEnumerate) || (method == MethodSortBy)
+  || (method == MethodConcat)
 }
 
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {

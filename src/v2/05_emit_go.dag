@@ -56,7 +56,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
-import v2.compiler.reconcile {
+import v2.compiler.infer {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,
@@ -247,23 +247,23 @@ fn collect_go_std_imports(has_services: Bool, has_errors: Bool) -> List<String> 
 
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let kind = classify_typed_item(item: item)
-  if kind == TypedItemTypeDef {
+  if (kind == TypedItemTypeDef) {
     emit_go_type_def_from_connective(item: item)
-  } else if kind == TypedItemTypeAlias {
+  } else if (kind == TypedItemTypeAlias) {
     emit_go_type_alias(name: item.name, base: item.return_type.value)
-  } else if kind == TypedItemFunction {
+  } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
       emit_go_func_def(name: item.name, params: item.params, return_type: item.return_type.value, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       emit_go_fn_def(name: item.name, params: item.params, return_type: item.return_type.value, body: item.body.value, registry: registry, scope: scope)
     }
-  } else if kind == TypedItemDataDef {
+  } else if (kind == TypedItemDataDef) {
     emit_go_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  } else if kind == TypedItemServiceDef {
+  } else if (kind == TypedItemServiceDef) {
     emit_go_service_def(item: item, registry: registry)
-  } else if kind == TypedItemResourceDef {
+  } else if (kind == TypedItemResourceDef) {
     emit_go_resource_def(item: item)
-  } else if kind == TypedItemExternFunc {
+  } else if (kind == TypedItemExternFunc) {
     let params_str = emit_go_params(params: item.params)
     let ret_str = emit_go_return_type(return_type: item.return_type.value)
     concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
@@ -367,9 +367,9 @@ fn emit_go_node_type(n: Node) -> String {
     return concat("func(", param_str, ")", ret_str)
   }
   let kind = classify_type_structure(n: n)
-  if kind == TypeLeaf {
+  if (kind == TypeLeaf) {
     emit_go_node_type_leaf(n: n)
-  } else if kind == TypeConj {
+  } else if (kind == TypeConj) {
     emit_go_node_type_conj(n: n)
   } else {
     emit_go_node_type_disj(n: n)

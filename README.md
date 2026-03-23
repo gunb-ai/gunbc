@@ -54,12 +54,16 @@ src/v2/
   01_tokenize.dag    String -> List<Token>
   02_parse.dag       List<Token> -> Module (AST)
   03_resolve.dag     List<Module> -> ModuleGraph
-  04_reconcile.dag   ModuleGraph -> ResolvedGraph
+  04_infer.dag       ModuleGraph -> ResolvedGraph
   05_emit.dag        Shared emit helpers
   05_emit_rust.dag   ResolvedGraph -> Rust files
   05_emit_python.dag ResolvedGraph -> Python files
   05_emit_go.dag     ResolvedGraph -> Go files
-  06_pipeline.dag    Orchestrator: discover -> compile -> write
+  compile.dag        Orchestrator: discover -> compile -> write
+  complexity.dag     Proof/report layer
+  ownership.dag      Proof/obligation layer
+  artifact.dag       Artifact planning layer
+  trace.dag          Runtime/debug contract
 ```
 
 See `ROADMAP.md` for current status and active design decisions. The

@@ -15,10 +15,10 @@
 //
 // Dependency chain:
 //   v2.compiler.resolve (ModuleGraph, dependency order)
-//     -> v2.compiler.reconcile (reconciled graph, namespace-consistent)
+//     -> v2.compiler.infer (reconciled graph, namespace-consistent)
 //       -> v2.compiler.emit (target-language files)
 
-module v2.compiler.reconcile
+module v2.compiler.infer
 
 import std.types { SourceSpan }
 import v2.std.core {
@@ -77,7 +77,6 @@ import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
-  emit_info: EmitGraphInfo
   diagnostics: List<Diagnostic>
 }
 
@@ -100,7 +99,6 @@ type ResolvedFuncEnv {
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
-  emit_info: EmitGraphInfo
   diagnostics: List<Diagnostic>
 }
 
@@ -623,7 +621,17 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
                 svc_registry: map_insert(acc.svc_registry, titem.name, entries),
                 svc_locals: map_insert(acc.svc_locals, root, TypeBinding { name: root, resolved: leaf_node(name: root) })
               }
-            } else {
+            }
+            // Data declarations: body, no params, no transport, no connective.
+            // Add to scope as local variables so importing modules can reference them.
+            else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == none && titem.return_type != none {
+              InferScopeComponents {
+                func_sigs: acc.func_sigs,
+                svc_registry: acc.svc_registry,
+                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: titem.return_type.value })
+              }
+            }
+            else {
               acc
             }
           )
@@ -740,7 +748,10 @@ fn container_node(kind_name: String, element: Node) -> Node {
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
-  Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [first, second], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: first }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: second }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
@@ -1031,10 +1042,24 @@ fn node_type_shape(n: Node) -> String {
   }
 }
 
+// If-branch type compatibility: weaker than equals.
+// Two types are compatible if they have the same top-level name (after normalization).
+// Used for if-branch checking where structural differences are expected
+// (e.g., Optional wrapping different variant types, empty list vs typed list).
+fn node_type_compatible(left: Node, right: Node) -> Bool {
+  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
+  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { true }
+  else if node_is_optional(n: left) && right.name == "Unit" { true }
+  else if left.name == "Unit" && node_is_optional(n: right) { true }
+  else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
+}
+
 // Node-based type equality.
 // Two type-Nodes are equal if they represent the same type structure.
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  if node_is_error_type(n: left) || node_is_error_type(n: right) { false }
+  // Error types are compatible with everything to suppress cascading diagnostics.
+  // The original error is already reported at the site that produced the Error node.
+  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
   // Dynamic equals only Dynamic. Other comparisons involving Dynamic return false.
   else if node_is_dynamic(n: left) && node_is_dynamic(n: right) { true }
   else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { false }
@@ -1134,17 +1159,6 @@ fn normalize_emit_type_name(type_name: String) -> String {
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
   map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
-}
-
-fn emit_info_is_enum_type(emit_info: EmitGraphInfo, type_name: String) -> Bool {
-  match lookup_emit_type_summary(emit_info: emit_info, type_name: type_name) {
-    Some { value: summary } =>
-      match summary.repr {
-        EnumRepr { unit_only: _ } => true
-        _ => false
-      }
-    None => false
-  }
 }
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
@@ -1288,27 +1302,6 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
         Disj => map_get(build_enum_field_summaries(variants: resolved.children), field)
       }
     }
-  }
-}
-
-fn lookup_emit_field_summary(emit_info: EmitGraphInfo, base_type: Node, field: String) -> FieldSummary? {
-  let normed = normalize_access_type_node(n: base_type)
-  if field == "value" && node_is_optional(n: normed) {
-    Some { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
-  } else {
-    match lookup_emit_type_summary(emit_info: emit_info, type_name: normed.name) {
-      Some { value: summary } => map_get(summary.field_summaries, field)
-      None => none
-    }
-  }
-}
-
-fn lookup_emit_field_summary_in_scope(emit_info: EmitGraphInfo, scope: InferScope, base_type: Node?, field: String) -> FieldSummary? {
-  match base_type {
-    Some { value: raw_base } =>
-      let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: raw_base)
-      lookup_emit_field_summary(emit_info: emit_info, base_type: resolved_base, field: field)
-    None => none
   }
 }
 
@@ -1472,6 +1465,12 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
       Some { value: el } => el
       None => receiver_type
     }
+  } else if normed.name == "Map" && normed.children |> count == 2 {
+    // Map<K, V>: element type is the value type (second child)
+    match normed.children |> skip(1) |> first {
+      Some { value: val_type } => val_type
+      None => receiver_type
+    }
   } else {
     receiver_type
   }
@@ -1527,7 +1526,9 @@ fn infer_runtime_bridge_method_type_node(receiver_type: Node, function_name: Str
     Some { value: leaf_node(name: "Int") }
   } else if function_name == "empty_map" {
     Some { value: leaf_node(name: "Map") }
-  } else if function_name == "reverse" || function_name == "lookup" {
+  } else if function_name == "lookup" {
+    Some { value: optional_node(inner: elem_node) }
+  } else if function_name == "reverse" {
     Some { value: receiver_type }
   } else {
     none
@@ -1602,7 +1603,12 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_type: Node, sc
           binding: annotate_pattern_parent_enums(pattern: binding.binding, scrutinee_type: field_lookup.resolved, scope: scope)
         }
       )
-      VariantPattern { name: variant_name, parent_enum: inferred_parent, field_bindings: annotated_bindings }
+      match inferred_parent {
+        Some { value: parent_name } =>
+          VariantPattern { name: variant_name, parent_enum: parent_name, field_bindings: annotated_bindings }
+        None =>
+          VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
+      }
     _ => pattern
   }
 }
@@ -1803,6 +1809,14 @@ fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String
         category: Some { value: VariantNotFound }
       }]
     }
+  } else if node_is_error_type(n: scrut)
+    || (scrut.connective == none && scrut.children |> count == 0 && node_is_optional(n: scrut) == false) {
+    // Error or non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
+    // The real error is upstream where this type was inferred wrong.
+    NodeLookupResult {
+      resolved: error_type_node(),
+      diagnostics: []
+    }
   } else {
     let direct_match = scrut.children |> filter(c => c.name == variant_name) |> first
     let fallback = if node_is_optional(n: scrut) && variant_name == "Some" {
@@ -1828,6 +1842,12 @@ fn lookup_field_in_variant(variant: Node, field_name: String, module_name: Strin
         module_name: Some { value: module_name },
         category: Some { value: FieldNotFound }
       }]
+    }
+  } else if node_is_error_type(n: variant) {
+    // Error type cascade: suppress diagnostics
+    NodeLookupResult {
+      resolved: error_type_node(),
+      diagnostics: []
     }
   } else {
     match variant.children |> filter(c => c.name == field_name) |> first {
@@ -2127,7 +2147,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                   diagnostics: base_diags
                 }
               None =>
-                let error_message = concat("no field '", field_name, "' on type")
+                let error_message = concat("no field '", field_name, "' on type '", resolved_base.name, "'")
                 let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
@@ -2237,10 +2257,38 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Known collection method -- bridge Call to MethodCall
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
-          let bridge_result_type = match method_resolution.result_type {
+          let base_result_type = match method_resolution.result_type {
             Some { value: mt } => mt
             None => leaf_node(name: "Dynamic")
           }
+          // For map: use lambda return type as element type
+          // For flat_map: lambda returns a collection, result is that collection type
+          let bridge_result_type = if func_name == "map" {
+            match remaining |> filter(a => is_lambda_expr(e: a.value)) |> first {
+              Some { value: lambda_arg } =>
+                let lambda_ret = lambda_arg.value.return_type.value
+                container_node(kind_name: first_arg_type.name, element: lambda_ret)
+              None => base_result_type
+            }
+          } else if func_name == "flat_map" {
+            match remaining |> filter(a => is_lambda_expr(e: a.value)) |> first {
+              Some { value: lambda_arg } => lambda_arg.value.return_type.value
+              None => base_result_type
+            }
+          } else if func_name == "map_insert" && first_arg_type.children |> count == 0 && first_arg_type.name == "Map" && remaining |> count >= 2 {
+            // Bare Map receiver: construct Map<K, V> from key and value arg types
+            match remaining |> skip(1) |> first {
+              Some { value: val_arg } =>
+                Node { name: "Map", span: first_arg_type.span, children: [leaf_node(name: "String"), val_arg.value.return_type.value], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+              None => base_result_type
+            }
+          } else if func_name == "fold" {
+            // For fold: use lambda body return type (more specific than init type)
+            match remaining |> filter(a => is_lambda_expr(e: a.value)) |> first {
+              Some { value: lambda_arg } => lambda_arg.value.return_type.value
+              None => base_result_type
+            }
+          } else { base_result_type }
           InferResult {
             typed: make_expr_node(
               expr_data: ExprMethodCall { receiver: receiver, method: func_name, args: remaining, method_semantics: method_resolution.semantics },
@@ -2349,10 +2397,31 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         fold_accumulator_type: if fold_info != none { Some { value: fold_acc_type } } else { none },
         scope: scope
       )
-      let result_type = match method_resolution.result_type {
+      let base_result_type = match method_resolution.result_type {
         Some { value: rt } => rt
         None => recv_typed.return_type.value
       }
+      // For map: use lambda return type as element type
+      // For flat_map: lambda returns a collection, result is that collection type
+      // For fold: use lambda body return type (more specific than init type)
+      let result_type = if method_name == "map" {
+        match typed_mc_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
+          Some { value: lambda_arg } =>
+            let lambda_ret = lambda_arg.value.return_type.value
+            container_node(kind_name: recv_typed.return_type.value.name, element: lambda_ret)
+          None => base_result_type
+        }
+      } else if method_name == "flat_map" {
+        match typed_mc_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
+          Some { value: lambda_arg } => lambda_arg.value.return_type.value
+          None => base_result_type
+        }
+      } else if method_name == "fold" {
+        match typed_mc_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
+          Some { value: lambda_arg } => lambda_arg.value.return_type.value
+          None => base_result_type
+        }
+      } else { base_result_type }
       let method_semantics = match method_resolution.semantics {
         Some { value: resolved_method_semantics } => Some { value: resolved_method_semantics }
         None => Some { value: PlainMethodSemantics }
@@ -2441,7 +2510,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let else_result = infer_expr(texpr: else_branch, scope: scope)
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
-          let branch_diags = if node_type_equals(
+          let branch_diags = if node_type_compatible(
             left: then_typed.return_type.value,
             right: else_typed.return_type.value
           ) {
@@ -3444,7 +3513,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             || builtin_kind == BuiltinUnit
             || builtin_kind == BuiltinBytes
             || builtin_kind == BuiltinDynamic
-            || builtin_kind == BuiltinError {
+            || (builtin_kind == BuiltinError) {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {
@@ -3981,19 +4050,14 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_uses = map(use_results, ur => ur.resource_use)
   let use_diags = flat_map(use_results, ur => ur.diagnostics)
 
-  // Resolve body if present
-  let body_resolved = match item.body {
-    Some { value: body } => Some { value: resolve_expr_types(texpr: body, env: env, module_name: module_name) }
-    None => none
+  // Resolve body if present (non-optional intermediate, same pattern as transport/anno)
+  let body_resolved = if item.body == none {
+    ExprResolveResult { expr: item, diagnostics: [] }
+  } else {
+    resolve_expr_types(texpr: item.body.value, env: env, module_name: module_name)
   }
-  let resolved_body = match body_resolved {
-    Some { value: result } => Some { value: result.expr }
-    None => none
-  }
-  let body_diags = match body_resolved {
-    Some { value: result } => result.diagnostics
-    None => []
-  }
+  let resolved_body = if item.body == none { none } else { Some { value: body_resolved.expr } }
+  let body_diags = if item.body == none { [] } else { body_resolved.diagnostics }
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
@@ -4013,19 +4077,14 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_transport = if item.transport == none { none } else { Some { value: transport_resolved.transport } }
   let transport_diags = transport_resolved.diagnostics
 
-  // Resolve config if present
-  let config_resolved = match item.config {
-    Some { value: config } => Some { value: resolve_service_config(config: config, env: env, module_name: module_name) }
-    None => none
+  // Resolve config if present (non-optional intermediate, same pattern as transport/anno)
+  let config_resolved = if item.config == none {
+    ServiceConfigResolveResult { config: ServiceConfig { endpoint: item, auth: none, rate_limit: none, retry: none }, diagnostics: [] }
+  } else {
+    resolve_service_config(config: item.config.value, env: env, module_name: module_name)
   }
-  let resolved_config = match config_resolved {
-    Some { value: result } => Some { value: result.config }
-    None => none
-  }
-  let config_diags = match config_resolved {
-    Some { value: result } => result.diagnostics
-    None => []
-  }
+  let resolved_config = if item.config == none { none } else { Some { value: config_resolved.config } }
+  let config_diags = if item.config == none { [] } else { config_resolved.diagnostics }
 
   // Resolve properties
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
@@ -4839,8 +4898,7 @@ fn typecheck_modules(
 ) -> TypedGraph {
   match remaining |> first {
     None =>
-      let emit_info = build_emit_graph_info(modules: modules)
-      TypedGraph { modules: modules, item_registry: item_registry, emit_info: emit_info, diagnostics: flat_map(diag_chunks, c => c) }
+      TypedGraph { modules: modules, item_registry: item_registry, diagnostics: flat_map(diag_chunks, c => c) }
     Some { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
@@ -4867,5 +4925,5 @@ fn typecheck_modules(
 
 fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
   let typed = typecheck(graph: graph)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, emit_info: typed.emit_info, diagnostics: typed.diagnostics }
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
 }

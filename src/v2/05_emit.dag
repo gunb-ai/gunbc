@@ -38,13 +38,14 @@ import v2.std.core {
   kernel_types
 }
 
-import v2.compiler.reconcile {
+import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
   TypeEnv, TypeBinding, InferScope,
   build_params_scope, extend_scope,
   ItemInfo, UniqueAccum, emit_map_has,
-  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo
+  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo,
+  build_emit_graph_info
 }
 
 import extdeps.languages.rust.emit {
@@ -217,7 +218,7 @@ fn unique_strings(items: List<String>) -> List<String> {
 // Build the full EmitContext from a ResolvedGraph. Called once at emit entry.
 // Each index is a pre-built Map for O(1) lookups during code generation.
 fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
-  let info = graph.emit_info
+  let info = build_emit_graph_info(modules: graph.modules)
   // A-1: field access index -- flatten type_summaries into keyed field lookups.
   // Key format: "TypeName::field_name" for unique O(1) lookup.
   let field_idx = map_values(info.type_summaries) |> fold(init: empty_map(), f: fn(acc, ts) {

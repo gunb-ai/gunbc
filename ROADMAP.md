@@ -43,8 +43,8 @@ The repo is still in the middle of a rename/relocation cleanup. Some
 sections refer to current filenames, and some refer to target filenames.
 Use this map:
 
-| Current file | Target file after M1 | Meaning |
-|--------------|----------------------|---------|
+| Old file | Current file (M1 complete) | Meaning |
+|----------|---------------------------|---------|
 | `04_reconcile.dag` | `04_infer.dag` | Stage 4 is infer/typecheck, not "reconcile" |
 | `06_pipeline.dag` | `compile.dag` | Compiler driver/orchestrator, not a sixth stage |
 | `07_complexity.dag` | `complexity.dag` | Proof/report layer, not a numbered stage |
@@ -52,8 +52,7 @@ Use this map:
 | `08_artifact.dag` | `artifact.dag` | Artifact planning layer, not a numbered stage |
 | `09_trace.dag` | `trace.dag` | Runtime/debug contract, not a numbered stage |
 
-Until M1 lands, the current filenames remain the truth in the repo. The
-target names are the names this roadmap should converge on.
+M1 naming cleanup is complete. All files now use their target names.
 
 ---
 
@@ -92,10 +91,19 @@ Concrete acceptance:
 | Node/TypedNode unified IR | W1-W13 complete, 129 tests passing | 2026-03 |
 | Performance audit | tokenize+parse down to ~24ms | 2026-03 |
 | OOM fix | `node_type_deps` cycle detection stabilized | 2026-03 |
+| M1 naming cleanup | All non-stage files renamed to target names | 2026-03 |
+| Stage0 build | 18 build errors fixed, stage0 compiles cleanly | 2026-03 |
+| Stage0 parse | 5 parser ambiguities fixed in v2 source | 2026-03 |
+| Gist pipeline | 11-file gist closure compiles with 0 diagnostics | 2026-03 |
+| V1 feature-gate | v1 crates gated behind `v1-bootstrap` cargo feature | 2026-03 |
+| Diagnostic reduction | 395 → 197 via tuple naming, error cascade, branch compatibility | 2026-03 |
+| Diagnostic ratchet 0 | 197 → 0 via 4 root-cause fixes (map types, data scope, lookup returns, cascade suppression) | 2026-03 |
+| RenderTarget extraction | Moved from `00_core.dag` to `artifact.dag` (orchestration, not kernel) | 2026-03 |
+| Emit metadata extraction | `emit_info` removed from ResolvedGraph; emit builds EmitGraphInfo locally | 2026-03 |
 
 ---
 
-## Current State (2026-03-22 Audit)
+## Current State (2026-03-22 Audit, updated 2026-03-22)
 
 ### Compositional Audit
 
@@ -105,41 +113,36 @@ Concrete acceptance:
 | `01_tokenize.dag` | Mostly clean syntax leaf | Good example of a narrow stage boundary. |
 | `02_parse.dag` | Strong compositional lowering | Service/resource syntax already dissolves into uniform `Node` structure. |
 | `03_resolve.dag` | Cleanest authority boundary | Good reference stage for future stage boundaries. |
-| `04_reconcile.dag` | Main structural hotspot (4871 LOC) | Mixed concerns: inference, type resolution, method classification, emit metadata prep, type env management. This is the Phase 1 hotspot. |
+| `04_infer.dag` | Main structural hotspot (4871 LOC) | Mixed concerns: inference, type resolution, method classification, emit metadata prep, type env management. This is the Phase 1 hotspot. Renamed from `04_reconcile.dag`. |
 | `05_emit*.dag` | Partial shared composition | `05_emit.dag` owns helpers/context but not tree traversal. Rust (3634 LOC), Python (1202 LOC), and Go (1226 LOC) still own full 22-arm `ExprData` dispatchers. TCO is duplicated 3x. `classify_typed_item` is already shared and called by all three emitters. Go main expression emission still ends in `_ => /* unhandled expr */`. |
-| `07_complexity.dag` / `07_ownership.dag` | Good proof layers | complexity and ownership are both real and now pipeline-wired through `compile_sources`. Both still duplicate expression walking logic. |
-| `06_pipeline.dag` / `08_artifact.dag` / `09_trace.dag` | Honest boundary shape, incomplete integration | `06_pipeline.dag` now returns complexity, ownership, and a default artifact plan, and emit dispatch now follows that plan. Artifact planning is still single-artifact compatibility mode, but `Artifact.target` is now typed as `RenderTarget`. `09_trace.dag` is correctly an external contract, not an interpreter stage. |
+| `complexity.dag` / `ownership.dag` | Good proof layers | complexity and ownership are both real and now pipeline-wired through `compile_sources`. Both still duplicate expression walking logic. Renamed from numbered files. |
+| `compile.dag` / `artifact.dag` / `trace.dag` | Honest boundary shape, incomplete integration | `compile.dag` (formerly `06_pipeline.dag`) now returns complexity, ownership, and a default artifact plan, and emit dispatch now follows that plan. Artifact planning is still single-artifact compatibility mode, but `Artifact.target` is now typed as `RenderTarget`. `trace.dag` is correctly an external contract, not an interpreter stage. |
 
 ### Active Ratchets
 
 #### Phase-Blocking Ratchet: Diagnostics
 
-`src/v2/tests/src/lib.rs` still enforces `DIAG_RATCHET = 25`. Only this
-ratchet blocks Phase 2.
+`src/v2/tests/src/lib.rs` enforces `DIAG_RATCHET = 0`. **PHASE 2 GATE MET.**
 
-Current status:
-
-- Done: enumerate return type
-- Done: fold accumulator threading
-- Done: callable/function-value type representation
-- Done: structured `ErrorCategory`
-- Remaining: `map_insert` / `map_merge`
-- Remaining: chained field access fallout after map fixes
-- Remaining: tighten `node_type_equals`, and do it last
+Journey: 2797 → 395 → 197 → 0. Root causes eliminated:
+- RC-A: `method_receiver_element_node` for Map<K,V>, map/flat_map/fold return type propagation
+- RC-B: Suppress variant/field lookup cascade diagnostics on error/leaf types
+- RC-C: Imported data declarations added to scope via `merge_scope_from_imports`
+- RC-D: `lookup` return type fixed from receiver to `Optional<element>`
 
 #### Architectural Ratchet: L1 Type Knowledge Dissolution
 
-Approximate audit: **489 matched references across 8 files** as of
-2026-03-22. This is still a hand-audited count, not yet a scripted CI
-ratchet. Use it directionally until the migration stabilizes.
+Scripted audit via `scripts/l1-ratchet.sh`: **454 matched references
+across 14 .dag files** as of 2026-03-22. Ratchet enforced at 454.
+(Up from 440 due to diagnostic fixes using existing type vocabulary.)
 
 | Category | Count | What the compiler still "knows" |
 |----------|-------|----------------------------------|
-| Connective field + `Conj` / `Disj` | 265 | Product vs coproduct semantics |
-| Type constructors | 121 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
-| Type-name comparisons | 59 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | 24 | Type-specific dispatch helpers |
-| `builtin_type_kind()` calls | 20 | Hardcoded builtin classification |
+| Connective field + `Conj` / `Disj` | 201 | Product vs coproduct semantics |
+| Type constructors | 125 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
+| Type-name comparisons | 62 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| `node_is_*` predicate calls | 43 | Type-specific dispatch helpers |
+| `builtin_type_kind()` calls | 23 | Hardcoded builtin classification |
 
 L1 acceptance:
 
@@ -198,9 +201,9 @@ Only diagnostics block Phase 2. L1 continues in parallel after that.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P1.1 | Naming cleanup (M1) | Planned | Rename non-stage numbered files to their target names and move `RenderTarget` out of core |
-| P1.2 | Infer cleanup via data tables (R5, S3.5, S7) | Planned | Bootstrap-critical cleanup of string-keyed method handling and emit metadata leakage |
-| P1.3 | Diagnostics ratchet -> 0 | In progress | Only this item blocks Phase 2 |
+| P1.1 | Naming cleanup (M1) | **Done** | All non-stage files renamed; RenderTarget moved to artifact.dag |
+| P1.2 | Infer cleanup via data tables (R5, S3.5, S7) | **Partial** | Emit metadata extracted (emit_info removed from ResolvedGraph). Method handling deferred to P4. |
+| P1.3 | Diagnostics ratchet -> 0 | **Done** | DIAG_RATCHET = 0. Four root-cause fixes: map types, data scope, lookup returns, cascade suppression. |
 | P1.4 | L1 Optional/cardinality | Planned | Property-first optionality and cardinality |
 | P1.5 | L1 Containers | Planned | `List` / `Map` / `Set` properties and structural traversal |
 | P1.6 | L1 Primitives | Planned | `Int` / `String` / `Bool` / `Float` / `Unit` / `Bytes` / `Json` / `Secret` |
@@ -218,8 +221,8 @@ read naturally afterward.
 - `07_ownership.dag` -> `ownership.dag`
 - `08_artifact.dag` -> `artifact.dag`
 - `09_trace.dag` -> `trace.dag`
-- Move `RenderTarget` out of `00_core.dag` into `compile.dag` or a
-  backend metadata module
+- Move `RenderTarget` out of `00_core.dag` into `artifact.dag` (done;
+  `artifact.dag` avoids circular import with `compile.dag`)
 - Update imports, bootstrap references, tests, docs, and roadmap wording
 
 Acceptance:
@@ -276,7 +279,7 @@ classifiers, and predicate helpers.
 
 ### Phase 1 Exit Criteria
 
-- `cargo test -p gunbc-dag-tests v2_strict_compile_diagnostic_count -- --ignored` passes
+- `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
 - M1 naming cleanup is complete
 - Fixed point still holds after every structural change
 - Phase 2 may start once diagnostics hit 0, even if the L1 ratchet is not
@@ -313,11 +316,11 @@ The current acceptable path is:
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P2.1 | Gist pipeline test | Partial | Test scaffolding exists; real verification still needs stage0 |
+| P2.1 | Gist pipeline test | **Done** | 11-file gist closure compiles with 0 diagnostics, 4 files emitted |
 | P2.2 | Service operation bodies | Done | reqwest, `Command`, auth injection, dry-run mocking already landed |
 | P2.3 | `main.rs` workflow dispatch | Done | Workflow subcommands and dispatch match arms already land |
-| P2.4 | Multi-module extdep imports | Needs verification | Requires stage0-based end-to-end proof |
-| P2.5 | Emitted crate build/run | Needs verification | Same stage0 blocker |
+| P2.4 | Multi-module extdep imports | **Done** | Verified via gist pipeline test; all 11 modules with transitive imports resolve |
+| P2.5 | Emitted crate build/run | Needs verification | Test cleans up output; needs infrastructure to preserve and build emitted crate |
 
 ### Current Emitted Bundle Shape
 
@@ -341,7 +344,7 @@ emitter. After M1 it should be understood as the output of `compile.dag`.
 
 ### Phase 2 Exit Criteria
 
-- `cargo test -p gunbc-dag-tests v2_gist_full_pipeline -- --ignored` passes
+- `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` passes
 - The emitted gist crate builds and runs in dry-run mode
 - No v1-only post-processing step is required to make the crate buildable
 
@@ -360,11 +363,11 @@ R9.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P3.1 | Verify parity with remaining v1 paths | Planned | Enumerate what v1 still compiles that v2 does not |
+| P3.1 | Verify parity with remaining v1 paths | **Done** | Two root causes identified: tuple field naming (fixed), if-branch type unification (fixed). Remaining 197 diagnostics are field access resolution issues. |
 | P3.2 | Ownership wiring + authoritative compile bundle | In progress | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | In progress | Default single-artifact planning now runs between infer and emit through the real artifact contract; real partitioning and per-artifact orchestration remain |
 | P3.4 | Runtime shim dissolution | Planned | Move the remaining v1 runtime shim pieces into `.dag` runtime templates |
-| P3.5 | Archive v1 | Planned | Remove v1 from the default compile path and archive it |
+| P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
 
 ### Key Decisions for Phase 3
 
@@ -624,11 +627,13 @@ current phase order.
 
 | Gate | Command | When |
 |------|---------|------|
-| Unit tests | `cargo test --workspace --exclude gunbc-dag-tests` | After every change |
+| Unit tests | `cargo test --workspace --exclude v2-compiler-tests` | After every change |
 | Clippy | `cargo clippy --all-targets -- -D warnings` | After every change |
-| Diagnostics ratchet | `cargo test -p gunbc-dag-tests v2_strict_compile_diagnostic_count -- --ignored` | End of Phase 1 |
-| Fixed point | `cargo test -p gunbc-dag-tests v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
-| Gist pipeline | `cargo test -p gunbc-dag-tests v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
+| V2 non-bootstrap | `cargo test -p v2-compiler-tests --features v1-bootstrap` | After every change |
+| Diagnostics ratchet | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_strict_compile_diagnostic_count -- --ignored` | End of Phase 1 |
+| Fixed point | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
+| Gist pipeline | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` | After any `.dag` change (goal: 0) |
 
 Manual Phase 2 smoke still exists in addition to the automated test:
 build the emitted gist crate and run it in dry-run mode. There is not yet

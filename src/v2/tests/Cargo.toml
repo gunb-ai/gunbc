@@ -6,14 +6,20 @@ license.workspace = true
 description = "Integration tests for the v2 self-hosted compiler"
 
 [features]
-v1-bootstrap = []
+v1-bootstrap = [
+    "dep:daglang-eval",
+    "dep:daglang-emit",
+    "dep:daglang-syntax",
+    "dep:daglang-lower",
+    "dep:gunbc-ir",
+]
 
 [dependencies]
+daglang-eval = { path = "../../v1/05_graph/daglang-eval", optional = true }
+daglang-emit = { path = "../../v1/07_emit/daglang-emit", optional = true }
+daglang-syntax = { path = "../../v1/03_source/daglang-syntax", optional = true }
+daglang-lower = { path = "../../v1/05_graph/daglang-lower", optional = true }
+gunbc-ir = { path = "../../v1/00_foundation/ir", optional = true }
 
 [dev-dependencies]
-daglang-eval = { path = "../../v1/05_graph/daglang-eval" }
-daglang-emit = { path = "../../v1/07_emit/daglang-emit" }
-daglang-syntax = { path = "../../v1/03_source/daglang-syntax" }
-daglang-lower = { path = "../../v1/05_graph/daglang-lower" }
-gunbc-ir = { path = "../../v1/00_foundation/ir" }
 serde_json = { workspace = true }

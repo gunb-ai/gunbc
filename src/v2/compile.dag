@@ -4,28 +4,29 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> reconcile -> complexity -> ownership -> artifact-plan -> emit
+// Pipeline: tokenize -> parse -> resolve -> infer -> complexity -> ownership -> artifact-plan -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
 // RenderTarget (Rust, Python, Go). Artifact planning and trace contracts
 // live in separate modules; compile_sources only owns compilation.
 
-module v2.compiler.pipeline
+module v2.compiler.compile
 
 import v2.std.core {
-  Diagnostic, CompileResult, RenderTarget, Error, TextFile
+  Diagnostic, CompileResult, Error, TextFile
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
-import v2.compiler.reconcile { reconcile, ResolvedGraph }
+import v2.compiler.infer { reconcile, ResolvedGraph }
+import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership }
-import v2.compiler.artifact { ArtifactPlan, Artifact, default_artifact_plan }
+import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, default_artifact_plan }
 
 // =========================================================================
 // Types
@@ -95,7 +96,7 @@ fn compile_bundle_error(message: String) -> Diagnostic {
   }
 }
 
-fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> CompileResult {
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
   match artifact.target {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
@@ -103,16 +104,16 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> CompileResult {
   }
 }
 
-fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> CompileResult {
+fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
   if artifact_plan.artifacts |> count != 1 {
-    CompileResult {
+    EmitResult {
       files: [],
       diagnostics: [compile_bundle_error(message: "compile_sources currently requires exactly one planned artifact")]
     }
   } else {
     match artifact_plan.artifacts |> first {
       Some { value: artifact } => emit_artifact(typed: typed, artifact: artifact)
-      None => CompileResult {
+      None => EmitResult {
         files: [],
         diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")]
       }
