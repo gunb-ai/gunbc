@@ -115,6 +115,7 @@ mod tests {
             root.join("src/v2/complexity.dag"),
             root.join("src/v2/ownership.dag"),
             root.join("src/v2/artifact.dag"),
+            root.join("src/v2/runtime_rust.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
@@ -219,6 +220,7 @@ mod tests {
             root.join("src/v2/complexity.dag"),
             root.join("src/v2/ownership.dag"),
             root.join("src/v2/artifact.dag"),
+            root.join("src/v2/runtime_rust.dag"),
         ];
         let sources: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
