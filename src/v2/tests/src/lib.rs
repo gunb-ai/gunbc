@@ -5471,6 +5471,49 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
         result
     }
 
+    #[test]
+    fn v2_testgen_emits_valid_rust() {
+        let emit_rust = read_v2_file("src/v2/05_emit_rust.dag");
+        let emit_shared = read_v2_file("src/v2/05_emit.dag");
+
+        assert!(
+            !emit_rust.contains("todo!(\"unsupported simple expr"),
+            "emit_simple_expr should use compile_error!(), not todo!()"
+        );
+        assert!(
+            emit_rust.contains("compile_error!(\\\"unsupported simple expr") || emit_rust.contains("compile_error!(\"unsupported simple expr"),
+            "emit_simple_expr wildcard should emit compile_error!()"
+        );
+        assert!(
+            !emit_rust.contains("Ok(Default::default())"),
+            "dry-run fallback should use compile_error!(), not Default::default()"
+        );
+        assert!(
+            !emit_rust.contains("Value::Object(Default::default())"),
+            "dry-run no-mock fallback should use compile_error!(), not Default::default()"
+        );
+        assert!(
+            emit_rust.contains("has_mock_prefix"),
+            "emit_rust should import has_mock_prefix from shared emit instead of duplicating"
+        );
+        assert!(
+            !emit_rust.contains("fn starts_with_prefix("),
+            "starts_with_prefix should be deleted in favor of shared has_mock_prefix"
+        );
+        assert!(
+            emit_shared.contains("fn extract_test_projections("),
+            "shared emit should define extract_test_projections"
+        );
+        assert!(
+            emit_shared.contains("type TestProjection"),
+            "shared emit should define TestProjection type"
+        );
+        assert!(
+            !emit_shared.contains("_ => \"null\""),
+            "emit_data_value_json should not silently fabricate \"null\" for unknown expressions"
+        );
+    }
+
     /// Lightweight gist pipeline test via interpreter: single synthetic module
     /// that exercises service + type patterns found in gist dependencies.
     /// Validates the v2 compiler can handle service defs, operations, and
