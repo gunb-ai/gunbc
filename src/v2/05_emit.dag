@@ -27,6 +27,7 @@ import v2.std.core {
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
   ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
+  ExprError, ExprReturn,
   NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
   LiteralValue,
@@ -88,6 +89,55 @@ type TypedItemKind
   | TypedItemUnhandled
 
 type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
+
+// =========================================================================
+// Backend capability contract -- what each backend declares it can handle.
+// Used by the artifact planner and equivalence validator.
+// =========================================================================
+
+type BackendCapability
+  = CapServiceEmit
+  | CapAsyncTransport
+  | CapTestGeneration
+  | CapDryRunMode
+  | CapRcOwnership
+
+type BackendInfo {
+  target_name: String
+  capabilities: List<BackendCapability>
+}
+
+// =========================================================================
+// Test projection -- target-agnostic test case extraction from typed graph.
+// Each backend translates these into its own test syntax.
+// =========================================================================
+
+type TestProjection {
+  service_name: String
+  operation_name: String
+  mock_field_inits: List<FieldInit>
+}
+
+fn has_mock_prefix(name: String) -> Bool {
+  if string_length(s: name) < 5 { false }
+  else { substring(s: name, start: 0, end: 5) == "mock_" }
+}
+
+fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
+  typed.modules |> flat_map(tm =>
+    tm.items
+      |> filter(item => is_service_item(item: item))
+      |> flat_map(item =>
+        item.children
+          |> filter(c => c.properties |> any(p => has_mock_prefix(name: p.name)))
+          |> map(c => TestProjection {
+            service_name: item.name,
+            operation_name: c.name,
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name))
+          })
+      )
+  )
+}
 
 // Intermediate type for string interpolation segments
 type InterpPart {
@@ -830,7 +880,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprVar { name: _, binding_kind: _ } => ExprCatLeaf
     ExprFieldAccess { base: _, field: _, summary: _ } => ExprCatCompound
     ExprCall { func: _, args: _, call_semantics: _ } => ExprCatCompound
-    ExprMethodCall { receiver: _, method: _, args: _, semantics: _ } => ExprCatCompound
+    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _ } => ExprCatCompound
     ExprRecordLit { type_name: _, fields: _, parent_enum: _ } => ExprCatCompound
     ExprListLit { elements: _ } => ExprCatCompound
     ExprBinOp { op: _, left: _, right: _ } => ExprCatCompound
@@ -852,7 +902,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
 }
 
 type FuncBodyShape
-  = FuncBodyLet { name: String, value: Node, rest: Node }
+  = FuncBodyLet { name: String, value: Node, rest: Node? }
   | FuncBodyBlock { stmts: List<Node> }
   | FuncBodyExpr { expr: Node }
 
@@ -868,10 +918,10 @@ fn classify_func_body(body: Node) -> FuncBodyShape {
 }
 
 type TcoExprShape
-  = TcoCall { func: String, args: List<Node> }
-  | TcoIf { condition: Node, then_branch: Node, else_branch: Node }
-  | TcoMatch { scrutinee: Node, arms: List<Node> }
-  | TcoLet { name: String, value: Node, body: Node }
+  = TcoCall { func: String, args: List<NamedArg> }
+  | TcoIf { condition: Node, then_branch: Node, else_branch: Node? }
+  | TcoMatch { scrutinee: Node, arms: List<MatchArm> }
+  | TcoLet { name: String, value: Node, body: Node? }
   | TcoBlock { stmts: List<Node> }
   | TcoOther { expr: Node }
 
@@ -897,6 +947,19 @@ fn block_stmts_init(stmts: List<Node>) -> List<Node> {
   else { stmts |> take(n: (stmts |> count) - 1) }
 }
 
-fn block_stmts_last(stmts: List<Node>) -> Node {
-  stmts |> last |> match { Some { value: v } => v  None => stmts |> first |> match { Some { value: v } => v  None => stmts |> first |> match { _ => stmts |> first |> match { _ => Node {} } } } }
+fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
+  match texpr.expr_data {
+    ExprCall { func: f, args: _, call_semantics: _ } => f == func_name
+    ExprIf { condition: _, then_branch: t, else_branch: e } =>
+      is_tco_candidate(texpr: t, func_name: func_name) ||
+        match e { Some { value: eb } => is_tco_candidate(texpr: eb, func_name: func_name)  None => false }
+    ExprMatch { scrutinee: _, arms: arm_list } =>
+      arm_list |> any(arm => is_tco_candidate(texpr: arm.body, func_name: func_name))
+    ExprLet { name: _, value: _, body: bd } =>
+      match bd { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
+    ExprBlock { stmts: ss } =>
+      if ss |> count == 0 { false }
+      else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
+    _ => false
+  }
 }
