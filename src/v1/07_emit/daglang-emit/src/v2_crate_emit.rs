@@ -799,24 +799,33 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Compile { source_dir, output_dir } => {
-            // Read all .dag files from source directory
+            // Read all .dag files from source directory (recursive)
             let mut sources: Vec<Rc<compile::SourceFile>> = Vec::new();
-            let mut entries: Vec<_> = std::fs::read_dir(&source_dir)
-                .unwrap_or_else(|e| panic!("failed to read source dir {}: {}", source_dir, e))
-                .filter_map(|e| e.ok())
-                .collect();
-            entries.sort_by_key(|e| e.file_name());
-            for entry in entries {
-                let path = entry.path();
-                if path.extension().map(|e| e == "dag").unwrap_or(false) {
-                    let content = std::fs::read_to_string(&path)
-                        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-                    let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                    sources.push(Rc::new(compile::SourceFile {
-                        path: filename,
-                        content,
-                    }));
+            fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+                let mut entries: Vec<_> = std::fs::read_dir(dir)
+                    .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
+                    .filter_map(|e| e.ok())
+                    .collect();
+                entries.sort_by_key(|e| e.file_name());
+                for entry in entries {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        collect_dag_files(&path, files);
+                    } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+                        files.push(path);
+                    }
                 }
+            }
+            let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+            collect_dag_files(std::path::Path::new(&source_dir), &mut dag_paths);
+            for path in &dag_paths {
+                let content = std::fs::read_to_string(path)
+                    .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                sources.push(Rc::new(compile::SourceFile {
+                    path: filename,
+                    content,
+                }));
             }
 
             eprintln!("compiling {} .dag files from {}", sources.len(), source_dir);

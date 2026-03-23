@@ -5642,10 +5642,49 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
             output.status
         );
 
+        // T2.3: Try to cargo check the emitted gist crate
+        let emitted_files: Vec<_> = walkdir(&out_dir);
+        eprintln!("P2.3 emitted files: {:?}", emitted_files);
+        let cargo_toml = out_dir.join("Cargo.toml");
+        if cargo_toml.exists() {
+            let check_output = std::process::Command::new("cargo")
+                .arg("check")
+                .current_dir(&out_dir)
+                .output()
+                .expect("failed to run cargo check on emitted gist crate");
+            let check_stderr = String::from_utf8_lossy(&check_output.stderr);
+            let error_count = check_stderr.matches("error[").count();
+            eprintln!("P2.3 gist cargo check: {} errors", error_count);
+            if !check_output.status.success() {
+                // Print error lines for diagnosis
+                for line in check_stderr.lines().filter(|l| l.contains("error[") || l.contains("error:")) {
+                    eprintln!("  ERR: {}", line);
+                }
+            }
+        } else {
+            eprintln!("P2.3: no Cargo.toml in emitted output, skipping cargo check");
+        }
+
         // Cleanup
         let _ = std::fs::remove_dir_all(&source_dir);
         let _ = std::fs::remove_dir_all(&out_dir);
         let _ = std::fs::remove_dir_all(&stage0_dir);
+    }
+
+    fn walkdir(dir: &std::path::Path) -> Vec<String> {
+        let mut result = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    result.extend(walkdir(&path));
+                } else {
+                    result.push(path.strip_prefix(dir).unwrap_or(&path).display().to_string());
+                }
+            }
+        }
+        result.sort();
+        result
     }
 
     /// Lightweight gist pipeline test via interpreter: single synthetic module
