@@ -367,6 +367,67 @@ Important clarifications:
 - `M*`, `R*`, and `S*` are support structures for this phase order, not
   competing schedules.
 
+### Sequential Execution Checklist
+
+After completing each phase, run the verification commands and confirm
+the "you are here" state. If any check fails, the phase is not done.
+
+**After Phase 1 — "The compiler is sound"**
+```
+cargo test --workspace --exclude v2-compiler-tests          # green
+cargo clippy --all-targets -- -D warnings                   # green
+cargo test -p v2-compiler-tests --features v1-bootstrap     # green
+cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
+scripts/l1-ratchet.sh --check                               # type-name comparisons < 17
+```
+State: 0 regressions. `InferredNode` wrapper landed. Normalization stage
+exists. Arity bridge enforced. No emit fabrication sites. Testgen
+verified. Algebraic type spec written. ~66 violations reduced to ~0
+through root cause fixes. Fixed point holds.
+
+**After Phase 2 — "One real program works"**
+```
+# All Phase 1 checks, plus:
+cargo test -p v2-compiler-tests --features v1-bootstrap \
+  v2_gist_full_pipeline -- --ignored                        # green
+```
+State: The gist program compiles to Rust, builds, and runs in dry-run
+mode. Emitted test files present for service modules. The compiler
+produces a working program, not just a compiling one.
+
+**After Phase 3 — "The compiler owns its domain"**
+```
+# All Phase 2 checks, plus:
+cargo test -p v2-compiler-tests --features v1-bootstrap \
+  v2_bootstrap_fixed_point -- --ignored                     # green
+# v1-bootstrap feature can be removed without breaking anything
+```
+State: Generics landed. Algebraic `.dag` declarations exist for
+`Optional`, `List`, `Map`, `Set`. Arity bridge deleted. v1 fully
+removable. Compile bundle has authoritative shape with ownership and
+artifact planning.
+
+**After Phase 4 — "Adding a backend is easy"**
+```
+# All Phase 3 checks, plus:
+# New backend (DAG) emits serialized typed graph
+# Emit has zero hardcoded type-name → target-identifier mappings
+```
+State: Shared emit spine serves all backends. `LanguageSpec` is the
+single authority. Generated tests work across backends. DAG backend
+emits a serialized artifact. Emit is name-opaque.
+
+**After Phase 5 — "The compiler is a generic graph processor"**
+```
+# All Phase 4 checks, plus:
+cargo test -p v2-compiler-tests v2_scrambled_name_inference  # green
+scripts/l1-ratchet.sh --check                                # L1 = 0
+```
+State: L1=0. Scrambled-name tests pass — inference produces identical
+results regardless of type names. No `node_is_*` predicates. No
+`normalize_type_name`. No `classify_type_structure` in emit. The
+compiler processes graph structure only. Ready for L2 work.
+
 ---
 
 ## Phase 1: Soundness, Root Causes, and L1 Dissolution
@@ -415,7 +476,11 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | P1.17 | Arity bridge | I | Planned | Hardcode arity for known parameterized types (`Map→2, List→1, Optional→1, Set→1`) in the same pattern as `kernel_types`. Normalization enforces that type nodes carry the declared number of children. **Explicit short-term bridge** — deleted when real `.dag` algebraic declarations exist (Phase 3). Every bare `leaf_node(name: "Map")` becomes a construction error. Dissolves ~20 Root Cause I violations. |
 | P1.18 | Algebraic type spec (design doc) | — | Planned | Write set-theoretic structural definitions for `Optional`, `List`, `Map`, `Set`, and primitives as a design document. Not compilable yet (requires generics), but pins the algebra and serves as the blueprint for Phase 3 declarations. |
 
-#### Tier 3: L1 dissolution (toward name opacity)
+#### Tier 3: L1 dissolution (toward name opacity — ongoing, NOT Phase 1 exit requirements)
+
+These items start in Phase 1 and continue toward Phase 5's L1=0 gate.
+They do NOT block Phase 2. They are tracked here because Phase 1 is
+where the foundational work (arity bridge, InferredNode) enables them.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
@@ -1004,7 +1069,7 @@ current phase order.
 
 | Item | Why deferred |
 |------|--------------|
-| General generic syntax | Special-cased `Result` / `Option` is enough for bootstrap scope |
+| General generic syntax | Now planned as P3.6 (compositional DAG slots). Phase 3 scope covers parameterized type declarations; higher-kinded types and constraints are post-Phase 3. |
 | Full linear type checking | Ownership proof work has started, but full proof remains beyond the current migration |
 | Widen V5 | The conservative version covers current hot paths |
 
@@ -1141,7 +1206,7 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 |------|---------|------|
 | Unit tests | `cargo test --workspace --exclude v2-compiler-tests` | After every change |
 | Clippy | `cargo clippy --all-targets -- -D warnings` | After every change |
-| V2 non-bootstrap | `cargo test -p v2-compiler-tests --features v1-bootstrap` | After every change |
+| V2 compiler tests (with bootstrap) | `cargo test -p v2-compiler-tests --features v1-bootstrap` | After every change |
 | Diagnostics ratchet | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_strict_compile_diagnostic_count -- --ignored` | End of Phase 1 |
 | Fixed point | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
 | Gist pipeline | `cargo test -p v2-compiler-tests --features v1-bootstrap v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
