@@ -172,7 +172,7 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
 fn has_complex_variants(item: Node) -> Bool {
   if item.children |> count == 0 { false }
   else {
-    item.children |> any(c => c.connective != none)
+    item.children |> any(c => classify_type_structure(n: c) != TypeLeaf)
   }
 }
 
@@ -743,9 +743,11 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
 }
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  match item.connective.value {
-    Conj => emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
-    Disj => emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
+  let kind = classify_type_structure(n: item)
+  if kind == TypeConj {
+    emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
+  } else {
+    emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   }
 }
 
@@ -1190,11 +1192,11 @@ fn emit_return_type(return_type: Node, rc_types: Map<String, Bool>) -> String {
 // A leaf Node with no connective and no children whose name is a
 // primitive maps to a Copy type; everything else is by-reference.
 fn needs_reference_node(n: Node) -> Bool {
-  if n.connective != none || n.children |> count > 0 {
+  if classify_type_structure(n: n) != TypeLeaf || n.children |> count > 0 {
     true
   } else {
     let is_copy = is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
-      || (n.name == "Unit" && n.connective == none && n.children |> count == 0)
+      || (n.name == "Unit" && n.children |> count == 0)
     is_copy == false
   }
 }
@@ -1568,19 +1570,19 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
 
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types: Map<String, Bool>) -> String? {
   // Normalize: unwrap Refined nodes to their base
-  let n = if inferred_node.name == "Refined" && inferred_node.connective != none {
+  let n = if inferred_node.name == "Refined" && classify_type_structure(n: inferred_node) != TypeLeaf {
     match inferred_node.children |> first {
       Some { value: base } => base
       None => inferred_node
     }
   } else { inferred_node }
+  let n_kind = classify_type_structure(n: n)
   if n.name == "__EmitTypeCacheMiss" { type_name }
   else if n.name == "Error" { type_name }
-  else if n.connective != none {
-    match n.connective.value {
-      Conj => if n.name == "" { type_name } else { Some { value: n.name } }
-      _ => type_name
-    }
+  else if n_kind == TypeConj {
+    if n.name == "" { type_name } else { Some { value: n.name } }
+  } else if n_kind == TypeDisj {
+    type_name
   } else if n.children |> count == 0 && n.name != "" {
     Some { value: n.name }
   } else {
@@ -1709,11 +1711,11 @@ fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
 
 fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  if normed.connective != none {
-    match normed.connective.value {
-      Conj => true
-      Disj => normed.children |> any(child => child.children |> count > 0)
-    }
+  let normed_kind = classify_type_structure(n: normed)
+  if normed_kind == TypeConj {
+    true
+  } else if normed_kind == TypeDisj {
+    normed.children |> any(child => child.children |> count > 0)
   } else {
     let canonical = normed.name
     if normed.return_type != none {
@@ -1724,7 +1726,7 @@ fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) ->
     } else {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       let resolved = resolve_scrutinee_type_node(env: env, n: normed)
-      if resolved.connective == none && resolved.return_type == none && resolved.name == normed.name && resolved.children |> count == 0 {
+      if classify_type_structure(n: resolved) == TypeLeaf && resolved.return_type == none && resolved.name == normed.name && resolved.children |> count == 0 {
         false
       } else {
         type_needs_rc_seen(env: env, type_node: resolved, seen: next_seen)
@@ -3421,7 +3423,7 @@ fn emit_cli_param_type_node(n: Node) -> String {
       Some { value: inner } => concat("Option<", emit_cli_param_type_node(n: inner), ">")
       None => "String"
     }
-  } else if n.connective != none {
+  } else if classify_type_structure(n: n) != TypeLeaf {
     "String"
   } else if n.children |> count == 0 {
     if is_bool_type_node(n: n) { "bool" }

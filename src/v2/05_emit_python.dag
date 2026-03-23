@@ -282,9 +282,11 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_py_type_def_from_connective(item: Node) -> String {
-  match item.connective.value {
-    Conj => emit_py_dataclass_from_children(name: item.name, children: item.children)
-    Disj => emit_py_enum_from_children(name: item.name, children: item.children)
+  let kind = classify_type_structure(n: item)
+  if kind == TypeConj {
+    emit_py_dataclass_from_children(name: item.name, children: item.children)
+  } else {
+    emit_py_enum_from_children(name: item.name, children: item.children)
   }
 }
 

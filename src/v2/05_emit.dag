@@ -305,17 +305,16 @@ fn ctx_is_bridge(ctx: EmitContext, func: String) -> Bool {
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
-  if n.connective != none {
-    match n.connective.value {
-      Conj => n.name == ""
-      Disj =>
-        if node_is_optional(n: n) {
-          match n.children |> first {
-            Some { value: inner } => has_nested_records_node(n: inner)
-            None => false
-          }
-        } else { false }
-    }
+  let n_kind = classify_type_structure(n: n)
+  if n_kind == TypeConj {
+    n.name == ""
+  } else if n_kind == TypeDisj {
+    if node_is_optional(n: n) {
+      match n.children |> first {
+        Some { value: inner } => has_nested_records_node(n: inner)
+        None => false
+      }
+    } else { false }
   } else if node_is_map(n: n) {
     match skip(n.children, 1) |> first {
       Some { value: val_child } => has_nested_records_node(n: val_child)
@@ -768,9 +767,10 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
-  if item.connective != none && item.transport == none {
+  let item_kind = classify_type_structure(n: item)
+  if item_kind != TypeLeaf && item.transport == none {
     TypedItemTypeDef
-  } else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
+  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
