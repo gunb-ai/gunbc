@@ -410,7 +410,7 @@ fn emit_data_value_json(value: Node) -> String {
       concat("{", field_strs |> join(separator: ", "), "}")
     }
     ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
-    _ => "null"
+    _ => concat("{\"__error__\": \"unsupported expression in mock data\"}")
   }
 }
 
