@@ -176,6 +176,7 @@ type IntrinsicMethod
   | MethodAll
   | MethodFlatMap
   | MethodSkip
+  | MethodTake
   | MethodFold
   | MethodSortBy
   | MethodAppend

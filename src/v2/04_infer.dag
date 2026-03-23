@@ -45,7 +45,7 @@ import v2.std.core {
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodFold, MethodSortBy, MethodAppend,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
@@ -67,7 +67,7 @@ import v2.std.core {
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
   BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
-  MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
+  MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart,
   make_transport_node, local_transport_node,
   Text, Interpolation
 }
@@ -132,12 +132,14 @@ type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>
   enum_variant_membership: Map<String, Bool>
+  field_type_names: Map<String, String>
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>
   enum_variant_membership: Map<String, Bool>
+  field_type_names: Map<String, String>
 }
 
 // =========================================================================
@@ -1154,7 +1156,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map()
+    enum_variant_membership: empty_map(),
+    field_type_names: empty_map()
   }
 }
 
@@ -1455,6 +1458,7 @@ fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
   else if method == "all" { Some { value: MethodAll } }
   else if method == "flat_map" { Some { value: MethodFlatMap } }
   else if method == "skip" { Some { value: MethodSkip } }
+  else if method == "take" { Some { value: MethodTake } }
   else if method == "fold" { Some { value: MethodFold } }
   else if method == "sort_by" { Some { value: MethodSortBy } }
   else if method == "append" { Some { value: MethodAppend } }
@@ -1527,6 +1531,7 @@ fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMet
     MethodChars => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
     MethodFlatMap => Some { value: receiver_type }
     MethodSkip => Some { value: receiver_type }
+    MethodTake => Some { value: receiver_type }
     MethodFold => fold_accumulator_type
     MethodSortBy => Some { value: receiver_type }
     MethodAppend => Some { value: receiver_type }
@@ -4146,8 +4151,10 @@ fn item_kind(item: Node) -> ItemKind {
     FuncItem
   } else if item.body != none && item.params |> count > 0 {
     FnItem
-  } else if item.body != none {
+  } else if item.body != none && item.type_annotation != none {
     DataItem
+  } else if item.body != none {
+    FnItem
   } else {
     OtherItem
   }
@@ -4845,7 +4852,22 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
   match build_type_summary(item: item) {
     Some { value: summary } =>
-      let next_summaries = map_insert(state.type_summaries, summary.name, summary)
+      // Add per-variant summaries for enums so is_optional_struct_field can look up
+      // individual variant field types (e.g. VariantPattern.parent_enum).
+      let with_variants = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.type_summaries, f: (acc, variant) =>
+            if variant.children |> count > 0 {
+              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
+                name: normalize_emit_type_name(type_name: variant.name),
+                repr: StructRepr,
+                field_summaries: build_struct_field_summaries(children: variant.children)
+              })
+            } else { acc }
+          )
+        _ => state.type_summaries
+      }
+      let next_summaries = map_insert(with_variants, summary.name, summary)
       let next_variants = match summary.repr {
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
@@ -4861,10 +4883,39 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
           )
         _ => state.enum_variant_membership
       }
+      // Build field_type_names: "TypeName|field_name" -> "FieldTypeName"
+      // For structs: direct field type names. For enums: per-variant field type names.
+      let next_ftn = match summary.repr {
+        StructRepr =>
+          fold(item.children, init: state.field_type_names, f: (acc, child) =>
+            match child.return_type {
+              Some { value: ft } =>
+                let resolved_name = normalize_access_type_node(n: ft).name
+                if resolved_name != "" && resolved_name != "Dynamic" {
+                  map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
+                } else { acc }
+              None => acc
+            }
+          )
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.field_type_names, f: (acc, variant) =>
+            fold(variant.children, init: acc, f: (inner_acc, child) =>
+              match child.return_type {
+                Some { value: ft } =>
+                  let resolved_name = normalize_access_type_node(n: ft).name
+                  if resolved_name != "" && resolved_name != "Dynamic" {
+                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
+                  } else { inner_acc }
+                None => inner_acc
+              }
+            )
+          )
+      }
       EmitInfoBuildState {
         type_summaries: next_summaries,
         variant_to_enum: next_variants,
-        enum_variant_membership: next_evm
+        enum_variant_membership: next_evm,
+        field_type_names: next_ftn
       }
     None => state
   }
@@ -4874,7 +4925,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map()
+    enum_variant_membership: empty_map(),
+    field_type_names: empty_map()
   }
   let built = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
@@ -4884,7 +4936,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     variant_to_enum: built.variant_to_enum,
-    enum_variant_membership: built.enum_variant_membership
+    enum_variant_membership: built.enum_variant_membership,
+    field_type_names: built.field_type_names
   }
 }
 

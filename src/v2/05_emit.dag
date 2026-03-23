@@ -35,6 +35,7 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   ServiceConfig,
   DeclaredFuncSig,
+  IntrinsicMethod,
   kernel_types
 }
 
@@ -266,6 +267,7 @@ fn build_intrinsic_index() -> Map<String, IntrinsicMethod> {
   let m = map_insert(m, "all", MethodAll)
   let m = map_insert(m, "flat_map", MethodFlatMap)
   let m = map_insert(m, "skip", MethodSkip)
+  let m = map_insert(m, "take", MethodTake)
   let m = map_insert(m, "fold", MethodFold)
   let m = map_insert(m, "sort_by", MethodSortBy)
   let m = map_insert(m, "append", MethodAppend)

@@ -39,7 +39,7 @@ import v2.std.core {
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodFold, MethodSortBy, MethodAppend,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   NamedArg, MatchArm, FieldInit,
   MatchPattern, FieldBinding,
   TextFile, Diagnostic, Error, SourceSpan,
@@ -77,7 +77,8 @@ import v2.compiler.infer {
   is_typed_service_call_receiver, extract_typed_service_name,
   emit_map_has, node_is_optional, node_is_map, node_is_container,
   node_is_dynamic, is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
-  node_is_error_type
+  node_is_error_type,
+  leaf_node
 }
 
 import v2.compiler.emit {
@@ -295,7 +296,8 @@ fn emit_v2_rt_module() -> TextFile {
     "pub fn string_contains(s: String, sub: String) -> bool {\n",
     "    s.contains(&*sub)\n",
     "}\n\n",
-    "pub fn str_eq(a: String, b: String) -> bool { a == b }\n\n")
+    "pub fn str_eq(a: String, b: String) -> bool { a == b }\n\n",
+    "pub fn to_string(value: i64) -> String { value.to_string() }\n\n")
   let collection_ops = concat(
     "pub fn lookup<V: Clone>(table: &BTreeMap<String, V>, key: String) -> Option<V> {\n",
     "    table.get(&key).cloned()\n",
@@ -924,7 +926,13 @@ fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
 fn emit_rust_node_type_leaf(n: Node, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
     // Leaf: primitive or named type reference.
-    let base = rust_primitive_type(name: n.name)
+    // Bare container nodes (Map/List/Set with no children) need special treatment:
+    // the reconciler sometimes produces these as return types from bridge methods.
+    // Use `_` inference holes so Rust deduces the actual type parameters.
+    let base = if n.name == "Map" { apply_type_template2(template: rust_map_template(), arg0: "_", arg1: "_") }
+      else if n.name == "List" { "Vec<_>" }
+      else if n.name == "Set" { "std::collections::BTreeSet<_>" }
+      else { rust_primitive_type(name: n.name) }
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", base, ">")
     } else {
@@ -967,11 +975,17 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
     }
   } else if n.name == "Tuple" {
     let first_str = match n.children |> first {
-      Some { value: c } => emit_rust_node_type(n: c, rc_types: rc_types)
+      Some { value: c } => match c.return_type {
+        Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
+        None => emit_rust_node_type(n: c, rc_types: rc_types)
+      }
       None => "()"
     }
     let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } => emit_rust_node_type(n: c, rc_types: rc_types)
+      Some { value: c } => match c.return_type {
+        Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
+        None => emit_rust_node_type(n: c, rc_types: rc_types)
+      }
       None => "()"
     }
     concat("(", first_str, ", ", second_str, ")")
@@ -1641,11 +1655,12 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Node
           concat("Rc::new(", qualified, ")")
         } else { qualified }
       None =>
-        // Data constants use SCREAMING_SNAKE_CASE -- static references, no clone.
+        // Data constants use SCREAMING_SNAKE_CASE.
+        // lazy_static refs need .clone() when passed to functions expecting owned values.
         match map_get(registry, name) {
           Some { value: info } =>
             let is_data = info.kind == DataItem
-            if is_data { to_screaming_snake(name: name) }
+            if is_data { concat(to_screaming_snake(name: name), ".clone()") }
             else {
               let is_function_value = match binding_kind {
                 Some { value: FunctionValueBinding } => true
@@ -1737,11 +1752,40 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
     match summary {
       Some { value: field_summary } =>
         match field_summary.access_style {
-          TupleFirst => concat(base_str, ".0")
-          TupleSecond => concat(base_str, ".1")
+          TupleFirst => concat(base_str, ".0.clone()")
+          TupleSecond => concat(base_str, ".1.clone()")
           OptionalUnwrap => concat(base_str, ".clone().unwrap()")
           EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
+          StoredField =>
+            // RC3: Safety net — if reconcile classified as StoredField but the base
+            // type is actually Optional and field is "value", emit .unwrap() instead.
+            // This handles chained field accesses where reconcile loses Optional type
+            // propagation through intermediate steps.
+            let is_optional_from_return_type = match base.return_type {
+              Some { value: bt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: bt))
+              None => false
+            }
+            // Also check the base expression's field_summary: if the base is a field
+            // access that produces an Optional value (value_shape: OptionalValue),
+            // then .value on it is an unwrap.
+            let is_optional_from_base_summary = match base.expr_data {
+              ExprFieldAccess { base: _, field: _, summary: base_sum } =>
+                match base_sum {
+                  Some { value: base_fs } =>
+                    match base_fs.value_shape {
+                      OptionalValue => true
+                      _ => false
+                    }
+                  None => false
+                }
+              _ => false
+            }
+            let is_optional_value_access = field == "value" && (is_optional_from_return_type || is_optional_from_base_summary)
+            if is_optional_value_access {
+              concat(base_str, ".clone().unwrap()")
+            } else {
+              concat(base_str, ".", rust_ident(name: field), ".clone()")
+            }
         }
       // Every field access must have a summary set by reconcile.
       None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
@@ -1841,9 +1885,25 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     ExprCall { func: f, args: a, call_semantics: call_semantics } =>
       let call_str = emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let fallback_lookup_wrap = if f == "lookup" {
-        match a |> first {
+        let base_check = match a |> first {
           Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
           None => false
+        }
+        if base_check { true }
+        else {
+          // Fallback: check if the lookup's return type is Optional<T> where T needs Rc.
+          // Handles cases where the receiver's map type isn't fully resolved.
+          match texpr.return_type {
+            Some { value: ret_type } =>
+              let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+              if node_is_optional(n: resolved_ret) {
+                match resolved_ret.children |> first {
+                  Some { value: inner } => type_needs_rc(env: scope.type_env, type_node: inner)
+                  None => false
+                }
+              } else { false }
+            None => false
+          }
         }
       } else {
         false
@@ -2131,13 +2191,16 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 }
 
 // Emit a fold lambda with typed accumulator and element parameters.
+// The accumulator type is always emitted as `_` because the reconciler's inferred
+// type for fold accumulators is often wrong (e.g. bare Map<String, String> instead
+// of Map<String, Rc<T>>). Rust can infer the correct type from the init value and body.
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda { params: ps, body: bd, semantics: semantics } =>
       let fallback_types = ps |> enumerate |> map(pair =>
-        if pair.first == 0 { acc_type_str } else { elem_type_str }
+        if pair.first == 0 { "_" } else { elem_type_str }
       )
-      let param_strs = lambda_param_type_strs(params: ps, semantics: semantics, fallback_types: fallback_types, rc_types: rc_types)
+      let param_strs = lambda_param_type_strs(params: ps, semantics: none, fallback_types: fallback_types, rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2166,18 +2229,40 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
     }
     MethodMap =>
-      match args |> first {
-        Some { value: a } =>
-          match a.value.expr_data {
-            ExprLambda { params: ps, body: bd, semantics: semantics } =>
-              let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = rust_ident(name: dag_name)
-              let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
-            _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
-          }
-        None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+      // RC4: If the receiver is Optional, emit .map(|p| body) to preserve Option type.
+      // Otherwise use the standard for-loop collect pattern for lists.
+      let recv_is_optional = match receiver.return_type {
+        Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+        None => false
+      }
+      if recv_is_optional {
+        match args |> first {
+          Some { value: a } =>
+            match a.value.expr_data {
+              ExprLambda { params: ps, body: bd, semantics: semantics } =>
+                let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+                let p = rust_ident(name: dag_name)
+                let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+                let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+                concat(recv_str, ".map(|", p, "| ", body_str, ")")
+              _ => concat(recv_str, ".map(", first_arg_str, ")")
+            }
+          None => concat(recv_str, ".map(", first_arg_str, ")")
+        }
+      } else {
+        match args |> first {
+          Some { value: a } =>
+            match a.value.expr_data {
+              ExprLambda { params: ps, body: bd, semantics: semantics } =>
+                let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+                let p = rust_ident(name: dag_name)
+                let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+                let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+                concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
+              _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+            }
+          None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+        }
       }
     MethodFilter =>
       match args |> first {
@@ -2236,13 +2321,25 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         None => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
       }
     MethodSkip => concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
+    MethodTake => concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
     MethodFold => {
       let init_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let fold_fn = match args |> skip(1) |> first {
         Some { value: a } =>
           let acc_type_str = match fold_accumulator_type {
             Some { value: acc_type } => emit_rust_node_type(n: acc_type, rc_types: rc_types)
-            None => "_"
+            None =>
+              // Fallback: infer accumulator type from init expression's return type
+              match args |> first {
+                Some { value: init_arg } =>
+                  match init_arg.value.return_type {
+                    Some { value: init_rt } =>
+                      let init_type = emit_rust_node_type(n: init_rt, rc_types: rc_types)
+                      if init_type != "" && init_type != "Dynamic" { init_type } else { "_" }
+                    None => "_"
+                  }
+                None => "_"
+              }
           }
           emit_typed_fold_lambda(lambda_expr: a.value, acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None => "todo!(\"missing fold function\")"
@@ -2250,7 +2347,17 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
     }
     MethodSortBy =>
-      concat("{ let mut __sorted = ", recv_str, ".clone(); let __key_fn = ", first_arg_str, "; __sorted.sort_by(|a, b| __key_fn(a).partial_cmp(&__key_fn(b)).unwrap_or(std::cmp::Ordering::Equal)); __sorted }")
+      // Annotate sort_by closure params with the element type to avoid E0282.
+      let elem_type_str = match receiver.return_type {
+        Some { value: rt } =>
+          let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
+          let elem = for_each_element_type_node(n: resolved)
+          if elem.name != "" && elem.name != "Dynamic" {
+            emit_rust_node_type(n: elem, rc_types: rc_types)
+          } else { "_" }
+        None => "_"
+      }
+      concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", first_arg_str, ")(a.clone()); let __kb = (", first_arg_str, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
     MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
   }
 }
@@ -2449,6 +2556,7 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
 
 fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope) -> Bool {
   match texpr.expr_data {
+    ExprLiteral { value: v } => match v { LitNull => true, _ => false }
     ExprVar { name: n, binding_kind: _ } =>
       if n == "none" || n == "None" {
         true
@@ -2467,24 +2575,122 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         Some { value: name } => name == "Some" || name == "None"
         None => false
       }
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
+    ExprFieldAccess { base: b, field: f, summary: fa_summary } =>
       // If the base type is known and this field has OptionalValue shape,
       // the result is already Option<T> — don't double-wrap in Some().
-      match b.return_type {
-        Some { value: base_type } =>
-          let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_type)
-          is_optional_struct_field(emit_info: emit_info, struct_name: resolved_base.name, field_name: f)
-        None =>
-          match texpr.return_type {
-            Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
-            None => false
-          }
+      // Check 1: field_summary from reconcile directly says OptionalValue
+      let summary_says_optional = match fa_summary {
+        Some { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
+        None => false
+      }
+      if summary_says_optional { true }
+      else {
+        match b.return_type {
+          Some { value: base_type } =>
+            let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_type)
+            if is_optional_struct_field(emit_info: emit_info, struct_name: resolved_base.name, field_name: f) {
+              true
+            } else {
+              // Fallback: struct may not be in type_summaries; check expression return type
+              match texpr.return_type {
+                Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+                None => false
+              }
+            }
+          None =>
+            match texpr.return_type {
+              Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+              None => false
+            }
+        }
       }
     _ =>
       match texpr.return_type {
         Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
         None => false
       }
+  }
+}
+
+// RC2: Look up the expected type of a field from the struct's type node children.
+// Used to disambiguate variant constructors that exist in multiple enums
+// (e.g. LitStr in both TokenKind and LiteralValue).
+// Handles both Conj nodes (struct fields are direct children) and Disj nodes
+// (need to find the variant first, then look in its children).
+fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
+  // First try: direct children (works for Conj/struct nodes)
+  let direct = match struct_node.children |> filter(c => c.name == field_name) |> first {
+    Some { value: field_child } =>
+      match field_child.return_type {
+        Some { value: field_type } =>
+          if field_type.name != "" && field_type.name != "Dynamic" {
+            Some { value: field_type.name }
+          } else { none }
+        None => none
+      }
+    None => none
+  }
+  match direct {
+    Some { value: _ } => direct
+    None =>
+      // Second try: for Disj (enum) nodes, find the variant first then its fields
+      match variant_name {
+        Some { value: vn } =>
+          match struct_node.children |> filter(c => c.name == vn) |> first {
+            Some { value: variant_child } =>
+              match variant_child.children |> filter(c => c.name == field_name) |> first {
+                Some { value: field_child } =>
+                  match field_child.return_type {
+                    Some { value: field_type } =>
+                      if field_type.name != "" && field_type.name != "Dynamic" {
+                        Some { value: field_type.name }
+                      } else { none }
+                    None => none
+                  }
+                None => none
+              }
+            None => none
+          }
+        None => none
+      }
+  }
+}
+
+// RC2: Emit a field value with context-aware variant disambiguation.
+// When a field value is a variant constructor and the variant exists in multiple enums,
+// use the struct's expected field type to determine the correct parent enum.
+fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_type_name: String?, field_name: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match field_value.expr_data {
+    ExprRecordLit { type_name: tn, fields: inner_fields, parent_enum: pe } =>
+      match tn {
+        Some { value: variant_name } =>
+          // Try node-based lookup first, then fall back to field_type_names map
+          let node_lookup = lookup_struct_field_type_name(struct_node: struct_node, field_name: field_name, variant_name: outer_type_name)
+          let expected_type = match node_lookup {
+            Some { value: _ } => node_lookup
+            None =>
+              // Fallback: use the field_type_names map from emit_info.
+              // This handles cases where resolved_type is a leaf node without children
+              // (e.g., Token struct where resolved_type has name "Token" but no field defs).
+              if struct_node.name != "" {
+                let ftn_key = concat(struct_node.name, "|", field_name)
+                map_get(emit_info.field_type_names, ftn_key)
+              } else { none }
+          }
+          let corrected_parent = match expected_type {
+            Some { value: et } =>
+              let key = concat(et, "|", variant_name)
+              if emit_map_has(m: emit_info.enum_variant_membership, key: key) {
+                Some { value: et }
+              } else { pe }
+            None => pe
+          }
+          emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: field_value.return_type.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        None =>
+          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      }
+    _ =>
+      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
 }
 
@@ -2518,9 +2724,17 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
     Some { value: tn } =>
       // RC1: Qualify variant names with parent enum to avoid name collisions
       // (e.g. LitFloat exists in both TokenKind and LiteralValue).
+      // Prefer resolved_type.name (from return type inference) over parent_enum
+      // (from variant_to_enum map) since the latter can be wrong due to
+      // nondeterministic HashMap iteration order in v1-compiled stage0.
+      let effective_parent = if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
+        Some { value: resolved_type.name }
+      } else {
+        parent_enum
+      }
       let display_tn = if tn == "Some" || tn == "None" { tn }
         else {
-          match parent_enum {
+          match effective_parent {
             Some { value: resolved_parent_enum } => concat(resolved_parent_enum, "::", tn)
             None => tn
           }
@@ -2544,7 +2758,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
         } else { raw }
       } else {
         let field_strs = fields |> map(f =>
-          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          let val_str = emit_field_value_with_context(field_value: f.value, struct_node: resolved_type, outer_type_name: type_name, field_name: f.name, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f.name)
             && is_already_optional(texpr: f.value, emit_info: emit_info, scope: scope) == false
           let wrapped = if needs_wrap {

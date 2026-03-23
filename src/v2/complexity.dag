@@ -32,7 +32,7 @@ import v2.std.core {
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodFold, MethodSortBy, MethodAppend,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
   RuntimeBridgeMethod, BridgeReverse, runtime_bridge_method_name
@@ -144,6 +144,7 @@ fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> CostShape {
     MethodFilter => ShapeIterateBody { produces_collection: true }
     MethodEnumerate => ShapeIterateBody { produces_collection: true }
     MethodSkip => ShapeIterateBody { produces_collection: true }
+    MethodTake => ShapeIterateBody { produces_collection: true }
     MethodFold => ShapeIterateBody { produces_collection: false }
     MethodAny => ShapeIterateBody { produces_collection: false }
     MethodAll => ShapeIterateBody { produces_collection: false }
