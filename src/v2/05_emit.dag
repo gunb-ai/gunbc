@@ -306,12 +306,12 @@ fn ctx_is_bridge(ctx: EmitContext, func: String) -> Bool {
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
   let n_kind = classify_type_structure(n: n)
-  if n_kind == TypeConj {
+  if (n_kind == TypeConj) {
     // Any record type in data value position needs serde: both anonymous
     // records (name == "") and named records (name != "") whose literals
     // may not carry the struct name.
     true
-  } else if n_kind == TypeDisj {
+  } else if (n_kind == TypeDisj) {
     if node_is_optional(n: n) {
       match n.children |> first {
         Some { value: inner } => has_nested_records_node(n: inner)
