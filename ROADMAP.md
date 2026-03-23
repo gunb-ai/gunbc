@@ -391,9 +391,12 @@ cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
 scripts/l1-ratchet.sh --check                               # total <= ratchet (374)
 ```
 State: 0 regressions. `InferredNode` wrapper landed. Normalization stage
-exists. Arity bridge enforced. No emit fabrication sites. Testgen
-verified. Algebraic type spec written. ~66 violations reduced to ~0
-through root cause fixes. Fixed point holds.
+exists. Arity bridge enforced. No silent/fail-open fabrication on the
+bootstrap-critical Rust emit path (Go `interface{}` holes, Python
+`_unimplemented()`, and Go unhandled-expr wildcard remain and are
+tracked as Phase 4 violations). Testgen verified. Algebraic type spec
+written. ~66 violations reduced to ~0 through root cause fixes. Fixed
+point holds.
 
 **After Phase 2 — "One real program works"**
 ```
@@ -628,6 +631,11 @@ Diagnostics reached 0. These inference gaps remain:
   fabrication sites killed (P1.20), verification gate passing (P1.21)
 - Algebraic type spec (design doc) written, pinning the structural
   definitions for `Optional`, `List`, `Map`, `Set`, and primitives
+- No silent/fail-open fabrication on the bootstrap-critical Rust emit
+  path — every `"_"` placeholder, silent `todo!()`, and `Default::default()`
+  fallback in `05_emit_rust.dag` is replaced with `compile_error!()` or
+  traced upstream. Go `interface{}` (13 sites), Python `_unimplemented()`
+  (2 sites), and Go `/* unhandled expr */` (1 site) are Phase 4 scope.
 - No new emit heuristics introduced — every emit-side type-knowledge
   regression is traced upstream and fixed in inference or normalization
 - `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
