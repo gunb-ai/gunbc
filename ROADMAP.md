@@ -540,6 +540,36 @@ before comparison.
 src/v2/04_infer.dag src/v2/05_emit*.dag` returns zero results related
 to type-level error/dynamic checking (diagnostic messages are fine).
 
+**Migration boundary: types and APIs that change when P1.9 lands.**
+
+The representation change touches every layer that currently reads
+`Node.return_type` or passes type nodes through inference results.
+Mechanically:
+
+| Layer | Type/API affected | Change |
+|-------|-------------------|--------|
+| `00_core.dag` | `Node.return_type: Node?` | Becomes `InferredNode?` — `Some(Resolved{node})` on success, `Some(CompilerError{..})` on failure, `None` when unset |
+| `00_core.dag` | `make_expr_node(return_type: Node?)` | Parameter becomes `InferredNode?` |
+| `00_core.dag` | `make_expr_error_node()` | Deleted or returns `CompilerError` directly instead of fabricating a `Node{name:"Error"}` |
+| `00_core.dag` | `FieldSummary.field_type: Node?` | Becomes `InferredNode?` |
+| `04_types.dag` | `error_type_node()` | Deleted |
+| `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | Deleted — callers pattern-match `InferredNode` |
+| `04_types.dag` | `node_type_equals`, `node_type_compatible` | Error/Dynamic special cases deleted; these functions take `Node` only (never `InferredNode` — unwrap first) |
+| `04_types.dag` | `child_return_type_or_name()` | Returns `InferredNode` or is deleted |
+| `04_infer.dag` | `infer_expr()` return type | Returns `InferredNode` instead of `Node` |
+| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | Return `CompilerError` |
+| `05_emit.dag` | `FieldSummary` consumers | Must unwrap `InferredNode` before emit; error field types produce `compile_error!()` |
+| `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Deleted — emit never sees error nodes |
+| `05_emit_go.dag` | `interface{}` type holes from error nodes | Resolved — emit receives concrete types or `compile_error!()` |
+| `complexity.dag` | `cost_of_expr` reads `return_type` | Unwrap `InferredNode`; skip cost computation for `CompilerError` |
+| `ownership.dag` | `walk_expr` reads `return_type` | Unwrap `InferredNode`; skip ownership for `CompilerError` |
+| Serialization | Stage0 IR boundary | `InferredNode` must round-trip through v1 interpreter values (same `_variant` pattern as other sum types) |
+
+Ordering constraint: the InferredNode wrapper changes the type of
+`Node.return_type`, which touches `00_core.dag`. Every `.dag` file that
+reads `return_type` needs mechanical updates. This should be done as a
+single atomic commit that updates all consumers, not incrementally.
+
 ### P1.14 Design: Normalization Stage
 
 New pass: `parse → resolve → **normalize** → infer → emit`
