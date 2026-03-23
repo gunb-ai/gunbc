@@ -98,9 +98,20 @@ type Byte = Tuple<Bit, Bit, Bit, Bit, Bit, Bit, Bit, Bit>  // |[Byte]| = 2^8
 
 // Level 3: Algebraic structures
 // Optional<T> = T | Unit  (coproduct — cardinality = |T| + 1)
-// List<T> = Nil | Cons { head: T, tail: List<T> }  (free monoid)
-// Map<K,V> = List<Tuple<K, V>>  (finite function space)
-// Set<T> = List<T> where unique  (powerset restriction)
+//
+// Container types have two layers: denotational meaning and
+// algebraic (computational) representation.
+//
+// Denotational (what they mean):
+//   Set<A>   = A -> Bool         (finite support — membership)
+//   Bag<A>   = A -> Nat          (finite support — multiplicity)
+//   Map<K,V> = K -> Option<V>    (finite support — keyed lookup)
+//   List<A>  = Σ n. Fin(n) -> A  (length + value per position)
+//
+// Algebraic (how they compute):
+//   List<T> = Nil | Cons { head: T, tail: List<T> }
+//   Set<T>  = membership-restricted collection of T
+//   Map<K,V> = finite partial function K -> V
 ```
 
 At each level, the compiler sees only graph structure. Names are
@@ -131,6 +142,94 @@ intermediate (Phases 1-3) is: primitives and containers get real `.dag`
 declarations with structural definitions; the compiler reads structure
 from those declarations; names are opaque. This is sufficient for the
 thesis without requiring the full algebraic foundation up front.
+
+### Collection Denotational Model
+
+Collections are not one algebra — they are a **family of related
+algebras** unified by a common compositional pattern. Each collection
+type is characterized by three things:
+
+1. A **carrier/index space** (what you iterate over / address by)
+2. An **annotation algebra** (what the codomain tracks)
+3. A **type constructor** (`Type -> Type` or `Type -> Type -> Type`)
+
+The denotational equations:
+
+```text
+Set<A>   = A -> Bool         (finite support)
+Bag<A>   = A -> Nat          (finite support)
+Map<K,V> = K -> Option<V>    (finite support)
+List<A>  = Σ n. Fin(n) -> A
+```
+
+Reading these:
+
+- **Set** is a membership structure. The codomain is `Bool` (in or out).
+  `Set<A>` answers "for each `a : A`, is `a` in the set?"
+- **Bag** is a multiplicity structure. The codomain is `Nat` (how many).
+- **Map** is a keyed partial-function structure. The codomain is
+  `Option<V>` (present with value, or absent).
+- **List** is a positional structure. A list is a length `n` plus a
+  value of type `A` at each position `0..n-1`. This is why lists
+  allow duplicates: the carrier is positions, not elements. `[1,1,2]`
+  has three distinct positions, each labeled by a value. If you tried
+  to model `List<A>` as an ordered set of `A` itself, `[1,1,2]` would
+  collapse.
+
+The `List` equation can also be read as `Nat -> Option<A>` with domain
+`{0..n-1}`, making the parallel to `Map` visible: a list is a map from
+natural-number positions to values.
+
+**Type constructors, not generic sets.** `List<_>` is not a set of
+types `{List<Int>, List<String>, ...}`. It is a type constructor:
+`List : Type -> Type`. The family `{List<Int>, List<String>, ...}`
+exists at the meta-level, but `List<_>` itself is the constructor — an
+open DAG with a slot, not the set of its instantiations. This is the
+`<>` / generic parameter story from P3.6: slots are structural
+positions in the DAG, filled at composition time.
+
+**Method algebras follow from the denotations:**
+
+| Collection | Algebra | Core methods |
+|------------|---------|-------------|
+| Set | Membership (Boolean) | `contains`, `union`, `intersect`, `difference` |
+| Bag | Multiplicity (Nat) | `count`, `add`, `union` (max or sum) |
+| Map | Keyed partial function | `lookup`, `insert`, `delete`, `merge` |
+| List | Positional / sequential | `append`, `index`, `slice`, `map`, `fold` |
+
+Cross-cutting methods like `map`, `filter`, `fold` apply to multiple
+collection types but derive from the specific algebra. `map` on a
+`List` preserves positions; `map` on a `Set` preserves membership
+(modulo the image collapsing distinct elements). `filter` on a `Bag`
+adjusts multiplicities.
+
+**Position order vs element order.** Lists need an order on
+**positions**, not on elements. An order on elements only becomes
+relevant for sorted structures (`TreeSet`, `SortedMap`, `sort`
+method). This is a separate concern from the collection algebra
+itself.
+
+**Bits and containers are separate.** `Int32` bottoms out in
+bitvector semantics — that's correct. But bitvectors are not the right
+primitive for container semantics. The collection denotational model
+lives above the bit level. `Set<T>`, `List<T>`, `Map<K,V>` are
+indexed-collection structures; they do not reduce to bit compositions
+in the same way `Int` does. The bit-graph model (post-Phase 5) is
+about machine primitives; the collection model is about data structure
+semantics.
+
+#### Law Layer (open questions to pin in P1.18)
+
+These properties must be explicitly decided, not left implicit:
+
+| Question | Candidate answer | Notes |
+|----------|-----------------|-------|
+| Are collections finite by default? | Yes — finite support everywhere | Infinite collections are a separate concept (streams, generators) |
+| Is equality extensional? | Yes for Set/Map/Bag; structural for List | Two sets with the same members are equal regardless of construction |
+| Are list duplicates always allowed? | Yes — positions are the carrier | `[1,1,2]` has 3 positions; duplicates are not special |
+| Is map key uniqueness semantic or representational? | Semantic — the denotation `K -> Option<V>` is a function | Two entries with the same key is a representation error, not a valid map |
+| Do sets/maps require decidable equality on keys? | Yes — membership/lookup must be computable | This falls out of finite support + function semantics |
+| Is iteration order part of `Map`? | No — unordered by default | `SortedMap`/`OrderedMap` are distinct types with additional structure |
 
 L3 is larger than previously acknowledged: `02_parse.dag` (3,938 lines)
 dispatches on `TokenKind` entirely through a `kind_tag(token) -> String`
@@ -500,7 +599,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | P1.14 | Normalization stage | III | Planned | New pass between resolve and infer. Unifies `Call`→`MethodCall` bridging, enforces arity completeness (via arity bridge — see P1.17), marks parser error-recovery nodes with `CompilerError`. Property population from `.dag` declarations deferred to Phase 3 (requires generics for parameterized type declarations). |
 | P1.15 | Deduplicate inference paths | III | Planned | After P1.14, a single code path handles each semantic operation. Shared `refine_collection_result_type` helper. `map_insert`/`map_merge` handled uniformly. |
 | P1.17 | Arity bridge | I | Planned | Hardcode arity for known parameterized types (`Map→2, List→1, Optional→1, Set→1`) in the same pattern as `kernel_types`. Normalization enforces that type nodes carry the declared number of children. **Explicit short-term bridge** — deleted when real `.dag` algebraic declarations exist (Phase 3). Every bare `leaf_node(name: "Map")` becomes a construction error. Dissolves ~20 Root Cause I violations. |
-| P1.18 | Algebraic type spec (design doc) | — | Planned | Write set-theoretic structural definitions for `Optional`, `List`, `Map`, `Set`, and primitives as a design document. Not compilable yet (requires generics), but pins the algebra and serves as the blueprint for Phase 3 declarations. |
+| P1.18 | Algebraic type spec (design doc) | — | **Partial** | The Collection Denotational Model (above) pins the four denotational equations (`Set<A> = A -> Bool`, `Bag<A> = A -> Nat`, `Map<K,V> = K -> Option<V>`, `List<A> = Σ n. Fin(n) -> A`), the algebra family, and the method model. **Remaining:** resolve the law layer questions (finiteness, extensional equality, decidable equality, iteration order), write the full spec as a standalone design document, and pin the recursive algebraic representations that will become Phase 3 `.dag` declarations. |
 
 #### Tier 3: L1 dissolution (toward name opacity — ongoing, NOT Phase 1 exit requirements)
 
@@ -642,8 +741,10 @@ Diagnostics reached 0. These inference gaps remain:
 - Emit catch-all fail-closed (P1.12)
 - Testgen: parallel mock extraction collapsed onto `TestProjection` (P1.19),
   fabrication sites killed (P1.20), verification gate passing (P1.21)
-- Algebraic type spec (design doc) written, pinning the structural
-  definitions for `Optional`, `List`, `Map`, `Set`, and primitives
+- Algebraic type spec (design doc) written, pinning the denotational
+  equations (`Set<A> = A -> Bool`, `Bag<A> = A -> Nat`, `Map<K,V> = K ->
+  Option<V>`, `List<A> = Σ n. Fin(n) -> A`), the algebra family, and the
+  law layer decisions for `Optional`, `List`, `Map`, `Set`, and primitives
 - No silent/fail-open fabrication on the bootstrap-critical Rust emit
   path — every `"_"` placeholder, silent `todo!()`, and `Default::default()`
   fallback in `05_emit_rust.dag` is replaced with `compile_error!()` or
@@ -746,7 +847,7 @@ R9.
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
-| P3.6 | Generics (parameterized type declarations) | Planned | See P3.6 Design below. At least enough for `type Optional<T> = Some { value: T } \| None`, `type List<T> = Nil \| Cons { head: T, tail: List<T> }`, `type Map<K,V> = List<Tuple<K, V>>`. The algebraic specs from P1.18 become real `.dag` declarations. |
+| P3.6 | Generics (parameterized type declarations) | Planned | See P3.6 Design below. At least enough for `type Optional<T> = Some { value: T } \| None`, `type List<T> = Nil \| Cons { head: T, tail: List<T> }`, `type Map<K,V>` (finite partial function), `type Set<T>` (membership). The algebraic specs from P1.18 (denotational model) become real `.dag` declarations. |
 | P3.7 | Delete arity bridge | Planned | Once P3.6 lands, the hardcoded arity bridge (P1.17) is replaced by the compiler reading arity from the `.dag` declarations. Delete the bridge. Cardinality starts falling out of structure. |
 
 ### P3.6 Design: Generics as Compositional DAG Slots
@@ -758,8 +859,18 @@ position in a type's DAG structure where another type can be composed in.
 ```
 type Optional<T> = Some { value: T } | None
 type List<T> = Nil | Cons { head: T, tail: List<T> }
-type Map<K, V> = List<Tuple<K, V>>
+type Map<K, V>    // finite partial function K -> Option<V>
+type Set<T>       // membership: finite-support T -> Bool
 ```
+
+The recursive algebraic representation (`Nil | Cons`) is the
+computational form. The denotational meaning (see Collection
+Denotational Model above) pins the semantics: `List<A>` is `Σ n.
+Fin(n) -> A` — a length plus a value per position. `Map<K,V>` is a
+finite partial function, not `List<Tuple<K,V>>` (that's one possible
+backing representation, not the type's identity). The `.dag`
+declarations capture the algebraic form; the denotational equations
+constrain what operations are well-typed.
 
 `List<Int>` means: take the `List` DAG, fill slot `T` with the `Int`
 DAG. This is structural composition — the same thing nodes already do
@@ -773,10 +884,10 @@ single-letter variables. Slots are named positions in the type's DAG
 structure — the same concept as named children in a product type:
 
 ```
-type Map<key, value> = List<Tuple<key, value>>
 type List<element> = Nil | Cons { head: element, tail: List<element> }
 type Optional<inner> = Some { value: inner } | None
-type Set<element> = List<element>
+type Map<key, value>       // finite partial function: key -> Option<value>
+type Set<element>          // membership: element -> Bool (finite support)
 ```
 
 `key`, `value`, `element`, `inner` are lowercase because they are
@@ -784,6 +895,10 @@ structural positions, not type names. When you write `Map<String, Int>`,
 the composition is positional: first slot (`key`) gets `String`, second
 (`value`) gets `Int`. If the compiler needs the element type of a `List`,
 the answer is structural: whatever was composed into the `element` slot.
+`Map` and `Set` are declared with slots but without a body that reduces
+them to `List` — their denotational semantics (finite partial function,
+membership function) define what operations are well-typed, not a
+structural reduction to another type.
 
 **Slot representation.** A slot appears in a type declaration body as a
 `TypeVar` leaf node — a leaf whose name matches a declared slot name.
@@ -882,7 +997,8 @@ of the normalization pass naturally (post-order traversal).
 - Ownership is included alongside complexity in the pipeline output
 - Artifact planning runs between infer and emit in the primary compile path
 - v1 is no longer required for normal compilation
-- Algebraic `.dag` declarations exist for `Optional`, `List`, `Map`, `Set`
+- Algebraic `.dag` declarations exist for `Optional`, `List`, `Map`, `Set`,
+  with denotational semantics grounding from P1.18 (collection model)
 - Arity bridge (P1.17) is deleted — compiler reads arity from declarations
 - No short-term bridges remain from Phase 1
 
