@@ -148,23 +148,6 @@ type FieldSummary {
   value_shape: FieldValueShape
 }
 
-type BuiltinTypeKind
-  = BuiltinInt
-  | BuiltinFloat
-  | BuiltinBool
-  | BuiltinString
-  | BuiltinList
-  | BuiltinMap
-  | BuiltinSet
-  | BuiltinOptional
-  | BuiltinUnit
-  | BuiltinBytes
-  | BuiltinJson
-  | BuiltinSecret
-  | BuiltinDynamic
-  | BuiltinError
-  | BuiltinCustom { name: String }
-
 // Canonical list of kernel-provided primitive types.
 // Any stage that needs to recognize kernel names imports this list
 // instead of redefining its own copy.
@@ -563,24 +546,6 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
 
 fn field_init_has_config_key(field_init: FieldInit, key: ConfigPropertyKey) -> Bool {
   config_property_key(name: field_init.name) == key
-}
-
-fn builtin_type_kind(n: Node) -> BuiltinTypeKind {
-  if n.name == "Int" && n.connective == none && n.children |> count == 0 { BuiltinInt }
-  else if n.name == "Float" && n.connective == none && n.children |> count == 0 { BuiltinFloat }
-  else if n.name == "Bool" && n.connective == none && n.children |> count == 0 { BuiltinBool }
-  else if n.name == "String" && n.connective == none && n.children |> count == 0 { BuiltinString }
-  else if n.name == "List" && n.connective == none && n.children |> count == 1 { BuiltinList }
-  else if n.name == "Map" && n.connective == none && n.children |> count == 2 { BuiltinMap }
-  else if n.name == "Set" && n.connective == none && n.children |> count == 1 { BuiltinSet }
-  else if n.name == "Optional" && n.connective != none { BuiltinOptional }
-  else if n.name == "Unit" && n.connective == none && n.children |> count == 0 { BuiltinUnit }
-  else if n.name == "Bytes" && n.connective == none && n.children |> count == 0 { BuiltinBytes }
-  else if n.name == "Json" && n.connective == none && n.children |> count == 0 { BuiltinJson }
-  else if n.name == "Secret" && n.connective == none && n.children |> count == 0 { BuiltinSecret }
-  else if n.name == "Dynamic" && n.connective == none && n.children |> count == 0 { BuiltinDynamic }
-  else if n.name == "Error" && n.connective == none && n.children |> count == 0 { BuiltinError }
-  else { BuiltinCustom { name: n.name } }
 }
 
 fn transport_base_url(t: Node) -> Node? {
