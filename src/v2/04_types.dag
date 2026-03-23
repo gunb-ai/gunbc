@@ -191,7 +191,14 @@ fn node_type_shape(n: Node) -> String {
   } else if node_is_product(n: n) {
     if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
   } else if node_is_coproduct(n: n) {
-    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
+    if node_is_optional(n: n) {
+      let inner_shape = match n.children |> first {
+        Some { value: inner } => node_type_shape(n: inner)
+        None => "?"
+      }
+      concat("Coproduct(Optional<", inner_shape, ">)")
+    }
+    else if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
   } else if node_is_container(n: n) {
     let elem_shape = match n.children |> first {
       Some { value: el } => node_type_shape(n: el)

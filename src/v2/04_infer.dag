@@ -2333,10 +2333,18 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
           None => None
         }
     }
-    let resolved_node = match effective_lookup {
+    let raw_resolved = match effective_lookup {
       Some { value: tn } => tn
       None => error_type_node()
     }
+    let expected_optional_parent = Some { value: "Optional" }
+    let is_some_ctor = type_name.value == "Some" && local_variant_parent == expected_optional_parent
+    let resolved_node = if is_some_ctor {
+      match fi_infer_results |> filter(fir => fir.typed_field.name == "value") |> first {
+        Some { value: val_fir } => optional_node(inner: val_fir.infer_result.typed.return_type.value)
+        None => raw_resolved
+      }
+    } else { raw_resolved }
     let type_diags = match effective_lookup {
       Some { value: _ } => []
       None => [inference_error(
