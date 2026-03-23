@@ -103,6 +103,9 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
+            root.join("src/v2/04_types.dag"),
+            root.join("src/v2/04_env.dag"),
+            root.join("src/v2/04_method.dag"),
             root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
@@ -204,6 +207,9 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
+            root.join("src/v2/04_types.dag"),
+            root.join("src/v2/04_env.dag"),
+            root.join("src/v2/04_method.dag"),
             root.join("src/v2/04_infer.dag"),
             root.join("src/v2/05_emit.dag"),
             root.join("src/v2/05_emit_rust.dag"),
@@ -3280,6 +3286,10 @@ fn get_name() -> String {\n\
     #[test]
     fn phase6_map_alias_exposes_value_type_to_lookup_semantics() {
         let output = compile_all_modules().expect("compilation should succeed");
+        let map_type_prop = field_init_value(
+            "map_type",
+            literal_expr_value(literal_value_bool(true), zero_span_value()),
+        );
         let mut map_type = match named_type_value("Map") {
             gunbc_ir::Value::Map(map) => map,
             other => panic!("expected node map, got: {:?}", other),
@@ -3290,6 +3300,10 @@ fn get_name() -> String {\n\
                 named_type_value("String"),
                 named_type_value("User"),
             ])),
+        );
+        map_type.insert(
+            "properties".to_string(),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![map_type_prop])),
         );
         let map_type = gunbc_ir::Value::Map(map_type);
 
@@ -4225,6 +4239,9 @@ fn origin() -> Point {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
+            ("04_types", "src/v2/04_types.dag"),
+            ("04_env", "src/v2/04_env.dag"),
+            ("04_method", "src/v2/04_method.dag"),
             ("04_infer", "src/v2/04_infer.dag"),
             ("05_emit", "src/v2/05_emit.dag"),
             ("05_emit_rust", "src/v2/05_emit_rust.dag"),
@@ -5642,37 +5659,64 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
             output.status
         );
 
-        // T2.3: Try to cargo check the emitted gist crate
+        // P2.3: Verify emitted gist crate compiles
         let emitted_files: Vec<_> = walkdir(&out_dir);
         eprintln!("P2.3 emitted files: {:?}", emitted_files);
         let cargo_toml = out_dir.join("Cargo.toml");
-        let mut gist_error_count = 0usize;
-        if cargo_toml.exists() {
-            let check_output = std::process::Command::new("cargo")
-                .arg("check")
-                .current_dir(&out_dir)
-                .output()
-                .expect("failed to run cargo check on emitted gist crate");
-            let check_stderr = String::from_utf8_lossy(&check_output.stderr);
-            gist_error_count = check_stderr.matches("error[").count();
-            eprintln!("P2.3 gist cargo check: {} errors", gist_error_count);
-            if !check_output.status.success() {
-                for line in check_stderr.lines().filter(|l| l.contains("error[") || l.contains("error:")) {
-                    eprintln!("  ERR: {}", line);
-                }
-            }
-        } else {
-            eprintln!("P2.3: no Cargo.toml in emitted output, skipping cargo check");
-        }
+        assert!(cargo_toml.exists(), "no Cargo.toml in emitted gist output at {:?}", out_dir);
 
-        // Cleanup
+        let check_output = std::process::Command::new("cargo")
+            .arg("check")
+            .current_dir(&out_dir)
+            .output()
+            .expect("failed to run cargo check on emitted gist crate");
+        let check_stderr = String::from_utf8_lossy(&check_output.stderr);
+        if !check_output.status.success() {
+            for line in check_stderr.lines().filter(|l| l.contains("error[") || l.contains("error:")) {
+                eprintln!("  ERR: {}", line);
+            }
+        }
+        assert!(
+            check_output.status.success(),
+            "emitted gist crate failed cargo check ({} errors, crate at {:?})",
+            check_stderr.matches("error[").count(),
+            out_dir
+        );
+
+        // P2.5: Build the emitted crate (produces a real binary)
+        let build_output = std::process::Command::new("cargo")
+            .arg("build")
+            .current_dir(&out_dir)
+            .output()
+            .expect("failed to run cargo build on emitted gist crate");
+        assert!(
+            build_output.status.success(),
+            "emitted gist crate failed cargo build:\n{}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+
+        // P2.5: Run the emitted binary in dry-run mode
+        let gist_bin = out_dir.join("target/debug/v2-compiled");
+        assert!(gist_bin.exists(), "emitted gist binary not found at {:?}", gist_bin);
+        let dry_run_output = std::process::Command::new(&gist_bin)
+            .arg("--dry-run")
+            .arg("gist")
+            .output()
+            .expect("failed to run emitted gist binary in dry-run mode");
+        let dry_run_stderr = String::from_utf8_lossy(&dry_run_output.stderr);
+        let dry_run_stdout = String::from_utf8_lossy(&dry_run_output.stdout);
+        eprintln!("P2.5 dry-run stderr:\n{}", dry_run_stderr);
+        eprintln!("P2.5 dry-run stdout:\n{}", dry_run_stdout);
+        assert!(
+            dry_run_output.status.success(),
+            "emitted gist binary --dry-run failed with status {:?}\nstderr: {}",
+            dry_run_output.status,
+            dry_run_stderr
+        );
+
+        // Cleanup: preserve out_dir on failure (assert panics above), clean up on success
         let _ = std::fs::remove_dir_all(&source_dir);
         let _ = std::fs::remove_dir_all(&stage0_dir);
-        if gist_error_count == 0 {
-            let _ = std::fs::remove_dir_all(&out_dir);
-        } else {
-            eprintln!("P2.3: keeping output dir at {:?} ({} errors)", out_dir, gist_error_count);
-        }
     }
 
     fn walkdir(dir: &std::path::Path) -> Vec<String> {

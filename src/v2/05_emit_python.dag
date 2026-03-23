@@ -38,25 +38,33 @@ import v2.std.core {
   make_expr_node,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars,
+  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
+  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod, runtime_bridge_method_name,
+  RuntimeBridgeMethod,
+  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
+  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
+  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
+  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
+  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
+  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   FieldSummary, TupleFirst, TupleSecond,
   Text, Interpolation,
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
-  TypeEnv, TypeBinding, InferScope,
+  InferScope,
   build_params_scope, extend_scope,
-  for_each_element_type_node,
   expr_span,
   ItemInfo, FuncItem,
-  is_typed_service_call_receiver, extract_typed_service_name,
-  node_is_optional, node_is_map
+  is_typed_service_call_receiver, extract_typed_service_name
 }
 
 import v2.compiler.emit {
@@ -662,23 +670,67 @@ fn emit_py_typed_slice(base: Node, start: Node, end: Node, registry: Map<String,
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String? {
+fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
   let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
   match intrinsic {
-    MethodCount => Some { value: concat("len(", recv_str, ")") }
-    MethodJoin => Some { value: concat(first_arg_str, ".join(", recv_str, ")") }
-    MethodSplit => Some { value: concat(recv_str, ".split(", first_arg_str, ")") }
-    MethodLast => Some { value: concat(recv_str, "[-1] if ", recv_str, " else None") }
-    MethodFirst => Some { value: concat(recv_str, "[0] if ", recv_str, " else None") }
-    MethodEnumerate => Some { value: concat("list(enumerate(", recv_str, "))") }
-    MethodChars => Some { value: concat("list(", recv_str, ")") }
-    _ => none
+    MethodCount => concat("len(", recv_str, ")")
+    MethodJoin => concat(first_arg_str, ".join(", recv_str, ")")
+    MethodSplit => concat(recv_str, ".split(", first_arg_str, ")")
+    MethodLast => concat(recv_str, "[-1] if ", recv_str, " else None")
+    MethodFirst => concat(recv_str, "[0] if ", recv_str, " else None")
+    MethodEnumerate => concat("list(enumerate(", recv_str, "))")
+    MethodChars => concat("list(", recv_str, ")")
+    MethodStringContains => concat(first_arg_str, " in ", recv_str)
+    MethodConcat => concat(recv_str, " + ", first_arg_str)
+    MethodMap => concat("[", first_arg_str, "(x) for x in ", recv_str, "]")
+    MethodFilter => concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]")
+    MethodAny => concat("any(", first_arg_str, "(x) for x in ", recv_str, ")")
+    MethodAll => concat("all(", first_arg_str, "(x) for x in ", recv_str, ")")
+    MethodFlatMap => concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]")
+    MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
+    MethodTake => concat(recv_str, "[:", first_arg_str, "]")
+    MethodFold => concat("functools.reduce(", first_arg_str, ", ", recv_str, ")")
+    MethodSortBy => concat("sorted(", recv_str, ", key=", first_arg_str, ")")
+    MethodAppend => concat(recv_str, " + [", first_arg_str, "]")
+  }
+}
+
+fn py_bridge_method_name(method: RuntimeBridgeMethod) -> String {
+  match method {
+    BridgeGet => "get"
+    BridgeWith => "with_update"
+    BridgeListPush => "list_push"
+    BridgeMapInsert => "map_insert"
+    BridgeMapMerge => "map_merge"
+    BridgeMapGet => "map_get"
+    BridgeMapHas => "map_has"
+    BridgeEmitMapHas => "emit_map_has"
+    BridgeMapValues => "map_values"
+    BridgeMapKeys => "map_keys"
+    BridgeMapContainsKey => "map_contains_key"
+    BridgeCharAt => "char_at"
+    BridgeStringAt => "string_at"
+    BridgeStringLength => "string_length"
+    BridgeLength => "length"
+    BridgeStartsWith => "starts_with"
+    BridgeEndsWith => "ends_with"
+    BridgeToString => "to_string"
+    BridgeTrim => "trim"
+    BridgeToLower => "to_lower"
+    BridgeToUpper => "to_upper"
+    BridgeReplace => "replace"
+    BridgeSubstring => "substring"
+    BridgeToInt => "to_int"
+    BridgeEmptyMap => "empty_map"
+    BridgeContains => "contains"
+    BridgeReverse => "reverse"
+    BridgeLookup => "lookup"
   }
 }
 
 fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let function_name = runtime_bridge_method_name(method: method)
+  let function_name = py_bridge_method_name(method: method)
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
   let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
   let all_args = concat([recv_str], arg_strs)
@@ -701,10 +753,7 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg
       concat("await ", var_name, ".", py_ident(name: method), "(", args_str, ")")
     }
     Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
-      match emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth) {
-        Some { value: lowered } => lowered
-        None => emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
-      }
+      emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
       emit_py_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     Some { value: PlainMethodSemantics } =>

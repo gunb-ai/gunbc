@@ -160,6 +160,14 @@ fn is_kernel_type(name: String) -> Bool {
   kernel_types |> any(t => t == name)
 }
 
+fn is_kernel_numeric(name: String) -> Bool {
+  name == "Int" || name == "Float"
+}
+
+fn is_kernel_textual(name: String) -> Bool {
+  name == "String" || name == "Secret"
+}
+
 type IntrinsicMethod
   = MethodCount
   | MethodJoin
@@ -519,17 +527,6 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
   make_transport_node(name: transport_kind_name(kind: FileTransport), properties: [path_field], children: [], span: span)
 }
 
-fn auth_properties(scheme: String, header_name: String, token_expr: Node, span: SourceSpan) -> List<FieldInit> {
-  let scheme_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: scheme } }, return_type: none, span: span)
-  let header_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: header_name } }, return_type: none, span: span)
-  let result = [
-    FieldInit { name: config_property_name(key: ConfigAuthScheme), value: scheme_expr },
-    FieldInit { name: config_property_name(key: ConfigAuthHeader), value: header_expr },
-    FieldInit { name: config_property_name(key: ConfigAuthToken), value: token_expr }
-  ]
-  result
-}
-
 // =========================================================================
 // Transport Node accessors
 // =========================================================================
@@ -608,24 +605,12 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
   }
 }
 
-fn field_init_has_config_key(field_init: FieldInit, key: ConfigPropertyKey) -> Bool {
-  config_property_key(name: field_init.name) == key
-}
-
 fn transport_base_url(t: Node) -> Node? {
   find_property(props: t.properties, prop_name: config_property_name(key: ConfigBaseUrl))
 }
 
-fn transport_base_path(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: config_property_name(key: ConfigBasePath))
-}
-
 fn transport_auth_token(t: Node) -> Node? {
   find_property(props: t.properties, prop_name: config_property_name(key: ConfigAuthToken))
-}
-
-fn transport_auth_scheme(t: Node) -> String? {
-  find_property_string(props: t.properties, prop_name: config_property_name(key: ConfigAuthScheme))
 }
 
 fn transport_auth_header_name(t: Node) -> String? {
@@ -648,10 +633,6 @@ fn transport_headers(t: Node) -> List<FieldInit> {
       && key != ConfigAuthHeader
       && key != ConfigAuthToken
   )
-}
-
-fn transport_argv(t: Node) -> List<Node> {
-  t.children
 }
 
 fn transport_env(t: Node) -> List<FieldInit> {

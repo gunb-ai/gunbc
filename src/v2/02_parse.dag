@@ -695,7 +695,7 @@ fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
 
 fn field_to_child_node(field: Field) -> Node {
   let ret_type = if field.optional {
-    Node { name: "Optional", span: field.span, children: [field.type_expr, leaf_type_node(name: "None", span: field.span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    Node { name: "Optional", span: field.span, children: [field.type_expr, leaf_type_node(name: "None", span: field.span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: field.span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   } else {
     field.type_expr
   }
@@ -1079,13 +1079,13 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
       let second_arg = r2.type_expr
       let r3 = expect(tokens: tokens, state: r2.state, tag: "Gt")
       if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
-      let te = Node { name: "Map", span: start_span, children: [first_arg, second_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let te = Node { name: "Map", span: start_span, children: [first_arg, second_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
     } else {
       let r3 = expect(tokens: tokens, state: s, tag: "Gt")
       if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
       if type_name == "List" || type_name == "Set" || type_name == "NonEmptyList" || type_name == "NonEmptySet" {
-        let te = Node { name: type_name, span: start_span, children: [first_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+        let te = Node { name: type_name, span: start_span, children: [first_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "container_kind", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: type_name } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
         maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
       } else {
         // Unknown single-arg generic -- treat as named type.
@@ -1103,7 +1103,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
 fn maybe_optional(tokens: List<Token>, state: ParserState, te: Node, start_span: SourceSpan) -> TypeResult {
   let e = eat(tokens: tokens, state: state, tag: "Question")
   if e.consumed {
-    let ote = Node { name: "Optional", span: start_span, children: [te, leaf_type_node(name: "None", span: start_span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let ote = Node { name: "Optional", span: start_span, children: [te, leaf_type_node(name: "None", span: start_span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     TypeResult { type_expr: ote, state: e.state, err: none }
   } else {
     TypeResult { type_expr: te, state: state, err: none }

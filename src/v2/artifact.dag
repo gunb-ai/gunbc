@@ -10,7 +10,7 @@
 
 module v2.compiler.artifact
 
-import v2.std.core { TextFile, Node }
+import v2.std.core { TextFile }
 
 // =========================================================================
 // Render target -- which language the emitter produces.
@@ -94,131 +94,6 @@ fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
 type ArtifactOutput {
   artifact: Artifact
   files: List<TextFile>
-}
-
-// =========================================================================
-// Boundary contract verification -- compile-time only
-//
-// For each boundary in an ArtifactPlan, verify that the types exported
-// by from_artifact structurally match the types expected by to_artifact.
-// Compilation fails on Incompatible. No runtime validation generated.
-// =========================================================================
-
-type BoundaryProof
-  = TypesMatch { witness: String }
-  | Incompatible { from_type: String, to_type: String, reason: String }
-
-type BoundaryContract {
-  boundary: Boundary
-  from_types: List<Node>
-  to_types: List<Node>
-  proof: BoundaryProof
-}
-
-// Verify all boundaries in an artifact plan.
-// Returns a list of contracts with proofs (match or incompatible).
-fn verify_boundaries(plan: ArtifactPlan, type_exports: Map<String, List<Node>>) -> List<BoundaryContract> {
-  plan.boundaries |> map(boundary =>
-    verify_single_boundary(boundary: boundary, type_exports: type_exports)
-  )
-}
-
-fn verify_single_boundary(boundary: Boundary, type_exports: Map<String, List<Node>>) -> BoundaryContract {
-  let from_types = match map_get(type_exports, boundary.from_artifact) {
-    Some { value: ts } => ts
-    None => []
-  }
-  let to_types = match map_get(type_exports, boundary.to_artifact) {
-    Some { value: ts } => ts
-    None => []
-  }
-  let proof = match_exported_types(from_types: from_types, to_types: to_types)
-  BoundaryContract {
-    boundary: boundary,
-    from_types: from_types,
-    to_types: to_types,
-    proof: proof
-  }
-}
-
-// Match exported types structurally: for each type expected by the consumer
-// (to_types), find a matching type in the producer (from_types) by name.
-// If names match, verify children structurally match.
-// If no mismatch is found, types match.
-fn match_exported_types(from_types: List<Node>, to_types: List<Node>) -> BoundaryProof {
-  // Build a name-indexed map of from_types for O(1) lookup
-  let from_map = from_types |> fold(init: empty_map(), f: fn(acc, node) {
-    map_insert(acc, node.name, node)
-  })
-  // Check each expected type against what the producer exports
-  let mismatches = to_types |> flat_map(fn(to_node) {
-    match map_get(from_map, to_node.name) {
-      None => [Incompatible {
-        from_type: "",
-        to_type: to_node.name,
-        reason: concat("type ", to_node.name, " expected but not exported")
-      }]
-      Some { value: from_node } =>
-        if nodes_structurally_match(a: from_node, b: to_node) {
-          []
-        } else {
-          [Incompatible {
-            from_type: from_node.name,
-            to_type: to_node.name,
-            reason: concat("structural mismatch for type ", to_node.name)
-          }]
-        }
-    }
-  })
-  match mismatches |> first {
-    Some { value: m } => m
-    None => TypesMatch { witness: "structural match" }
-  }
-}
-
-// Structural match: two nodes match if their names match and their
-// children lists match element-wise (recursively).
-fn nodes_structurally_match(a: Node, b: Node) -> Bool {
-  if a.name != b.name {
-    false
-  } else if a.children |> count != b.children |> count {
-    false
-  } else {
-    // Zip children by index and check each pair
-    let a_indexed = a.children |> enumerate
-    let b_children = b.children
-    a_indexed |> fold(init: true, f: fn(all_match, pair) {
-      if all_match == false { false }
-      else {
-        let idx = pair.first
-        let a_child = pair.second
-        // Get b's child at the same index
-        match b_children |> skip(idx) |> first {
-          None => false
-          Some { value: b_child } => nodes_structurally_match(a: a_child, b: b_child)
-        }
-      }
-    })
-  }
-}
-
-// =========================================================================
-// Artifact report
-// =========================================================================
-
-type ArtifactReport {
-  plan: ArtifactPlan
-  contracts: List<BoundaryContract>
-  outputs: List<ArtifactOutput>
-}
-
-// Assemble an artifact report from a plan, its boundary contracts, and outputs.
-fn build_artifact_report(plan: ArtifactPlan, contracts: List<BoundaryContract>, outputs: List<ArtifactOutput>) -> ArtifactReport {
-  ArtifactReport {
-    plan: plan,
-    contracts: contracts,
-    outputs: outputs
-  }
 }
 
 // =========================================================================

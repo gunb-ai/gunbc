@@ -39,15 +39,16 @@ import v2.std.core {
   kernel_types
 }
 
+import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_types { node_is_optional, node_is_map }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
-  TypeEnv, TypeBinding, InferScope,
+  InferScope,
   build_params_scope, extend_scope,
   ItemInfo, UniqueAccum, emit_map_has,
   FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo,
-  build_emit_graph_info,
-  node_is_optional, node_is_map
+  build_emit_graph_info
 }
 
 import extdeps.languages.rust.emit {

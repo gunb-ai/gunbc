@@ -72,6 +72,32 @@ import v2.std.core {
   Text, Interpolation
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
+import v2.compiler.infer_types {
+  child_return_type_or_name,
+  leaf_node, optional_property, optional_node,
+  container_property, container_node,
+  map_node, bare_map_node,
+  tuple_node, callable_node, callable_return_type,
+  error_type_node,
+  node_is_error_type, node_is_container, node_is_optional, node_is_map,
+  node_is_dynamic, node_is_permissive, node_is_leaf, node_is_named_ref,
+  normalize_access_type_node, normalize_type_name,
+  node_type_shape, node_type_compatible, node_type_equals,
+  node_type_deps,
+  is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
+  method_receiver_element_node,
+  infer_literal_node, infer_binop_type_node,
+  extract_optional_inner_node, for_each_element_type_node
+}
+import v2.compiler.infer_method {
+  classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
+  infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node,
+  infer_builtin_call_type, resolve_builtin_call_type
+}
+import v2.compiler.infer_env {
+  TypeEnv, TypeBinding,
+  is_recursive_type, lookup_type, merge_envs
+}
 
 // =========================================================================
 // Typecheck output types
@@ -111,12 +137,6 @@ type TypedModule {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
-}
-
-type TypeEnv {
-  bindings: Map<String, TypeBinding>
-  recursive_types: List<String>
-  recursive_type_set: Map<String, Bool>
 }
 
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
@@ -314,18 +334,6 @@ fn collect_typed_service_calls_from_args_into(args: List<NamedArg>, acc: UniqueA
 
 
 
-
-fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
-  match map_get(env.recursive_type_set, name) {
-    Some { value: _ } => true
-    _ => false
-  }
-}
-
-type TypeBinding {
-  name: String
-  resolved: Node
-}
 
 type NodeResolveResult {
   resolved: Node
@@ -552,11 +560,6 @@ type CycleDetectState {
   global_visited: Map<String, Bool>
 }
 
-fn child_return_type_or_name(ch: Node) -> Node {
-  if ch.return_type == none { leaf_node(name: ch.name) }
-  else { ch.return_type.value }
-}
-
 fn service_op_entry(child: Node) -> OpEntry {
   OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span) }
 }
@@ -737,42 +740,6 @@ fn no_span() -> SourceSpan {
 }
 
 // -------------------------------------------------------------------------
-// Node-based constructor helpers
-// -------------------------------------------------------------------------
-
-fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
-
-fn optional_node(inner: Node) -> Node {
-  Node { name: "Optional", span: SourceSpan { start: 0, end: 0 }, children: [inner, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
-
-fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
-
-fn tuple_node(first: Node, second: Node) -> Node {
-  Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: first }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: second }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
-
-fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: ret }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
-
-fn callable_return_type(n: Node) -> Node {
-  if n.name == "Callable" {
-    match n.return_type {
-      Some { value: ret } => ret
-      None => leaf_node(name: "Dynamic")
-    }
-  } else { n }
-}
-
-// -------------------------------------------------------------------------
 // Helpers for typed expression inference
 // -------------------------------------------------------------------------
 
@@ -800,21 +767,12 @@ fn lookup_in_scope(scope: InferScope, name: String) -> Node? {
   }
 }
 
-fn error_type_node() -> Node {
-  leaf_node(name: "Error")
-}
-
 fn semantic_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(kind: SemanticExprError, message: message, span: span)
 }
 
 fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
   make_expr_error_node(kind: InternalExprError, message: message, span: span)
-}
-
-fn node_is_error_type(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.connective == none && normed.children |> count == 0 && normed.name == "Error"
 }
 
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
@@ -910,247 +868,8 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 }
 
 // -------------------------------------------------------------------------
-// infer_literal: resolve the type of a LiteralValue
-// -------------------------------------------------------------------------
-
-fn infer_literal_node(lit: LiteralValue) -> Node {
-  match lit {
-    LitStr { value: _ } => leaf_node(name: "String")
-    LitInt { value: _ } => leaf_node(name: "Int")
-    LitFloat { value: _ } => leaf_node(name: "Float")
-    LitBool { value: _ } => leaf_node(name: "Bool")
-    LitNull => leaf_node(name: "Unit")
-  }
-}
-
-// -------------------------------------------------------------------------
-// infer_binop_type: resolve the result type of a binary operation
-// -------------------------------------------------------------------------
-
-// -------------------------------------------------------------------------
 // Index/Slice access helpers
 // -------------------------------------------------------------------------
-
-fn normalize_access_type_node(n: Node) -> Node {
-  if n.name == "Refined" && n.connective != none {
-    match n.children |> first {
-      Some { value: base } => normalize_access_type_node(n: base)
-      None => n
-    }
-  } else { n }
-}
-
-fn normalize_type_name(name: String) -> String {
-  // Fast path: most type names are simple identifiers with no < or .
-  if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
-    name
-  } else {
-    let base = match name |> split(delimiter: "<") |> first {
-      Some { value: part } => part
-      None => name
-    }
-    match base |> split(delimiter: ".") |> last {
-      Some { value: short } => short
-      None => base
-    }
-  }
-}
-
-// =========================================================================
-// Node-based type utility functions
-//
-// These work on Nodes used as type representations.
-//
-// A Node-as-type uses:
-//   - name: the type's name
-//   - connective: Conj (product/record), Disj (coproduct/sum), none (leaf)
-//   - children: fields or variants
-//   - return_type: the field's type (for field children) or container element
-//   - properties: metadata (container_kind, optional, map_type)
-// =========================================================================
-
-// Check if a type-Node represents a container type.
-// Structural: List/Set with exactly 1 child, OR has container_kind property.
-fn node_is_container(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "container_kind")
-  || (n.children |> count == 1 && n.connective == none && (n.name == "List" || n.name == "Set"))
-}
-
-// Check if a type-Node represents an optional type.
-fn node_is_optional(n: Node) -> Bool {
-  n.name == "Optional" || n.properties |> any(p => p.name == "optional")
-}
-
-// Check if a type-Node represents a map type.
-// Structural: Map with 2 children, OR has map_type property.
-fn node_is_map(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "map_type")
-  || (n.name == "Map" && n.children |> count == 2 && n.connective == none)
-}
-
-// Check if a type-Node is the Dynamic placeholder (untyped lambda params)
-// or an error sentinel from a prior failed lookup.
-// Both are permissive: operations on them succeed without diagnostics.
-fn node_is_dynamic(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.connective == none && normed.children |> count == 0
-    && (normed.name == "Dynamic" || normed.name == "Error")
-}
-
-// Check if a type-Node is a leaf (primitive or named reference).
-fn node_is_leaf(n: Node) -> Bool {
-  n.connective == none && n.children |> count == 0 && n.properties |> count == 0
-}
-
-// Check if a type-Node is a named reference (has return_type with Named).
-fn node_is_named_ref(n: Node) -> Bool {
-  if n.return_type == none { false }
-  else {
-    let rt = n.return_type.value
-    rt.connective == none && rt.children |> count == 0
-      && rt.name != "" && rt.name != "None"
-      && rt.name != "String" && rt.name != "Int" && rt.name != "Bool"
-      && rt.name != "Float" && rt.name != "Secret" && rt.name != "Json"
-      && rt.name != "Unit" && rt.name != "Bytes"
-  }
-}
-
-// Node-based shape description.
-fn node_type_shape(n: Node) -> String {
-  if node_is_leaf(n: n) {
-    if node_is_named_ref(n: n) {
-      concat("Named(", normalize_type_name(name: n.name), ")")
-    } else {
-      concat("Primitive(", n.name, ")")
-    }
-  } else if n.connective != none {
-    match n.connective.value {
-      Conj =>
-        if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
-      Disj =>
-        if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
-    }
-  } else if node_is_container(n: n) {
-    let elem_shape = match n.children |> first {
-      Some { value: el } => node_type_shape(n: el)
-      None => "?"
-    }
-    concat("Container(", n.name, ",", elem_shape, ")")
-  } else if node_is_optional(n: n) {
-    let inner_shape = match n.children |> first {
-      Some { value: inner } => node_type_shape(n: inner)
-      None => "?"
-    }
-    concat("Optional(", inner_shape, ")")
-  } else if node_is_map(n: n) {
-    "Map(...)"
-  } else {
-    concat("Node(", n.name, ")")
-  }
-}
-
-// If-branch type compatibility: weaker than equals.
-// Two types are compatible if they have the same top-level name (after normalization).
-// Used for if-branch checking where structural differences are expected
-// (e.g., Optional wrapping different variant types, empty list vs typed list).
-fn node_type_compatible(left: Node, right: Node) -> Bool {
-  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
-  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { true }
-  else if node_is_optional(n: left) && right.name == "Unit" { true }
-  else if left.name == "Unit" && node_is_optional(n: right) { true }
-  else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
-}
-
-// Node-based type equality.
-// Two type-Nodes are equal if they represent the same type structure.
-fn node_type_equals(left: Node, right: Node) -> Bool {
-  // Error types are compatible with everything to suppress cascading diagnostics.
-  // The original error is already reported at the site that produced the Error node.
-  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
-  // Dynamic equals only Dynamic. Other comparisons involving Dynamic return false.
-  else if node_is_dynamic(n: left) && node_is_dynamic(n: right) { true }
-  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { false }
-  // Optional vs Unit: `none` (Unit) is compatible with Optional.
-  // Must be checked before generic leaf-vs-connective comparisons.
-  else if node_is_optional(n: left) && right.name == "Unit" { true }
-  else if left.name == "Unit" && node_is_optional(n: right) { true }
-  // Both leaves: compare names (normalized)
-  else if node_is_leaf(n: left) && node_is_leaf(n: right) {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
-  }
-  // Both products/coproducts: compare names, connectives, and children pairwise
-  else if left.connective != none && right.connective != none {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
-    else if left.connective != right.connective { false }
-    else if left.children |> count != right.children |> count { false }
-    else {
-      left.children |> enumerate |> all(pair =>
-        match right.children |> skip(pair.first) |> first {
-          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child)
-          None => false
-        }
-      )
-    }
-  }
-  // Leaf vs product/coproduct: compare leaf name with product/coproduct name
-  else if node_is_leaf(n: left) && right.connective != none {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
-  }
-  else if left.connective != none && node_is_leaf(n: right) {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
-  }
-  // Both containers: compare kind and element
-  else if node_is_container(n: left) && node_is_container(n: right) {
-    if left.name != right.name { false }
-    else {
-      match left.children |> first {
-        Some { value: left_el } =>
-          match right.children |> first {
-            Some { value: right_el } => node_type_equals(left: left_el, right: right_el)
-            None => false
-          }
-        None => false
-      }
-    }
-  }
-  // Both optionals: compare inner
-  else if node_is_optional(n: left) && node_is_optional(n: right) {
-    match left.children |> first {
-      Some { value: left_inner } =>
-        match right.children |> first {
-          Some { value: right_inner } => node_type_equals(left: left_inner, right: right_inner)
-          None => false
-        }
-      None => false
-    }
-  }
-  // Both maps: compare key and value
-  else if node_is_map(n: left) && node_is_map(n: right) {
-    if left.children |> count == 2 && right.children |> count == 2 {
-      let left_first = match left.children |> first { Some { value: v } => v, None => left }
-      let right_first = match right.children |> first { Some { value: v } => v, None => right }
-      let left_second = match skip(left.children, 1) |> first { Some { value: v } => v, None => left }
-      let right_second = match skip(right.children, 1) |> first { Some { value: v } => v, None => right }
-      node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
-    } else {
-      false
-    }
-  }
-  // Both callables: compare return types structurally
-  else if left.name == "Callable" && right.name == "Callable" {
-    match left.return_type {
-      Some { value: left_ret } =>
-        match right.return_type {
-          Some { value: right_ret } => node_type_equals(left: left_ret, right: right_ret)
-          None => false
-        }
-      None => right.return_type == none
-    }
-  }
-  else {
-    false
-  }
-}
 
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
@@ -1318,53 +1037,6 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // Must recurse through container wrappers (List<T>, T?, Map<K,V>) to find
 // all referenced type names -- otherwise cycle detection misses cycles
 // that pass through containers (e.g. Node -> return_type: Node? -> Node).
-fn node_type_deps(n: Node) -> List<String> {
-  if node_is_named_ref(n: n) {
-    // Simple field reference: return_type is a bare type name leaf.
-    [n.return_type.value.name]
-  } else if n.connective != none {
-    flat_map(n.children, child =>
-      if child.return_type != none {
-        node_type_deps(n: child.return_type.value)
-      } else {
-        node_type_deps(n: child)
-      }
-    )
-  } else if n.return_type != none {
-    // Field with complex return type (List<T>, Optional<T>, Map<K,V>).
-    // Recurse into the type tree to capture transitive deps.
-    node_type_deps(n: n.return_type.value)
-  } else if n.children |> count > 0 {
-    // Container or compound node: recurse into children.
-    flat_map(n.children, child => node_type_deps(n: child))
-  } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
-    []
-  } else {
-    // Bare type name leaf (e.g. "Node" inside List<Node>).
-    [n.name]
-  }
-}
-
-fn is_int_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Int" && normed.connective == none && normed.children |> count == 0
-}
-
-fn is_string_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "String" && normed.connective == none && normed.children |> count == 0
-}
-
-fn is_bool_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Bool" && normed.connective == none && normed.children |> count == 0
-}
-
-fn is_float_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Float" && normed.connective == none && normed.children |> count == 0
-}
-
 fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
   Diagnostic {
     severity: Error,
@@ -1442,138 +1114,6 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   } else { normed }
 }
 
-fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
-  if method == "count" { Some { value: MethodCount } }
-  else if method == "join" { Some { value: MethodJoin } }
-  else if method == "split" { Some { value: MethodSplit } }
-  else if method == "last" { Some { value: MethodLast } }
-  else if method == "first" { Some { value: MethodFirst } }
-  else if method == "enumerate" { Some { value: MethodEnumerate } }
-  else if method == "chars" { Some { value: MethodChars } }
-  else if method == "string_contains" { Some { value: MethodStringContains } }
-  else if method == "concat" { Some { value: MethodConcat } }
-  else if method == "map" { Some { value: MethodMap } }
-  else if method == "filter" { Some { value: MethodFilter } }
-  else if method == "any" { Some { value: MethodAny } }
-  else if method == "all" { Some { value: MethodAll } }
-  else if method == "flat_map" { Some { value: MethodFlatMap } }
-  else if method == "skip" { Some { value: MethodSkip } }
-  else if method == "take" { Some { value: MethodTake } }
-  else if method == "fold" { Some { value: MethodFold } }
-  else if method == "sort_by" { Some { value: MethodSortBy } }
-  else if method == "append" { Some { value: MethodAppend } }
-  else { none }
-}
-
-fn classify_runtime_bridge_method(method: String) -> RuntimeBridgeMethod? {
-  if method == "get" { Some { value: BridgeGet } }
-  else if method == "with" { Some { value: BridgeWith } }
-  else if method == "list_push" { Some { value: BridgeListPush } }
-  else if method == "map_insert" { Some { value: BridgeMapInsert } }
-  else if method == "map_merge" { Some { value: BridgeMapMerge } }
-  else if method == "map_get" { Some { value: BridgeMapGet } }
-  else if method == "map_has" { Some { value: BridgeMapHas } }
-  else if method == "emit_map_has" { Some { value: BridgeEmitMapHas } }
-  else if method == "map_values" { Some { value: BridgeMapValues } }
-  else if method == "map_keys" { Some { value: BridgeMapKeys } }
-  else if method == "map_contains_key" { Some { value: BridgeMapContainsKey } }
-  else if method == "char_at" { Some { value: BridgeCharAt } }
-  else if method == "string_at" { Some { value: BridgeStringAt } }
-  else if method == "string_length" { Some { value: BridgeStringLength } }
-  else if method == "length" { Some { value: BridgeLength } }
-  else if method == "starts_with" { Some { value: BridgeStartsWith } }
-  else if method == "ends_with" { Some { value: BridgeEndsWith } }
-  else if method == "to_string" { Some { value: BridgeToString } }
-  else if method == "trim" { Some { value: BridgeTrim } }
-  else if method == "to_lower" { Some { value: BridgeToLower } }
-  else if method == "to_upper" { Some { value: BridgeToUpper } }
-  else if method == "replace" { Some { value: BridgeReplace } }
-  else if method == "substring" { Some { value: BridgeSubstring } }
-  else if method == "to_int" { Some { value: BridgeToInt } }
-  else if method == "empty_map" { Some { value: BridgeEmptyMap } }
-  else if method == "contains" { Some { value: BridgeContains } }
-  else if method == "reverse" { Some { value: BridgeReverse } }
-  else if method == "lookup" { Some { value: BridgeLookup } }
-  else { none }
-}
-
-fn method_receiver_element_node(receiver_type: Node) -> Node {
-  let normed = normalize_access_type_node(n: receiver_type)
-  if normed.connective == none && normed.children |> count == 1 {
-    match normed.children |> first {
-      Some { value: el } => el
-      None => receiver_type
-    }
-  } else if node_is_map(n: normed) {
-    // Map<K, V>: element type is the value type (second child)
-    match normed.children |> skip(1) |> first {
-      Some { value: val_type } => val_type
-      None => receiver_type
-    }
-  } else {
-    receiver_type
-  }
-}
-
-fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMethod, fold_accumulator_type: Node?) -> Node? {
-  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  match intrinsic {
-    MethodMap => Some { value: receiver_type }
-    MethodFilter => Some { value: receiver_type }
-    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
-    MethodFirst => Some { value: optional_node(inner: elem_node) }
-    MethodLast => Some { value: optional_node(inner: elem_node) }
-    MethodCount => Some { value: leaf_node(name: "Int") }
-    MethodJoin => Some { value: leaf_node(name: "String") }
-    MethodAny => Some { value: leaf_node(name: "Bool") }
-    MethodAll => Some { value: leaf_node(name: "Bool") }
-    MethodSplit => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    MethodChars => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    MethodFlatMap => Some { value: receiver_type }
-    MethodSkip => Some { value: receiver_type }
-    MethodTake => Some { value: receiver_type }
-    MethodFold => fold_accumulator_type
-    MethodSortBy => Some { value: receiver_type }
-    MethodAppend => Some { value: receiver_type }
-    MethodStringContains => Some { value: leaf_node(name: "Bool") }
-    MethodConcat => Some { value: receiver_type }
-  }
-}
-
-fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBridgeMethod) -> Node? {
-  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  match method {
-    BridgeGet => Some { value: optional_node(inner: elem_node) }
-    BridgeWith => Some { value: receiver_type }
-    BridgeListPush => Some { value: receiver_type }
-    BridgeMapInsert => Some { value: receiver_type }
-    BridgeMapMerge => Some { value: receiver_type }
-    BridgeMapGet => Some { value: optional_node(inner: elem_node) }
-    BridgeMapHas => Some { value: leaf_node(name: "Bool") }
-    BridgeEmitMapHas => Some { value: leaf_node(name: "Bool") }
-    BridgeMapContainsKey => Some { value: leaf_node(name: "Bool") }
-    BridgeContains => Some { value: leaf_node(name: "Bool") }
-    BridgeMapValues => Some { value: container_node(kind_name: "List", element: elem_node) }
-    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    BridgeCharAt => Some { value: leaf_node(name: "String") }
-    BridgeStringAt => Some { value: leaf_node(name: "String") }
-    BridgeStringLength => Some { value: leaf_node(name: "Int") }
-    BridgeLength => Some { value: leaf_node(name: "Int") }
-    BridgeStartsWith => Some { value: leaf_node(name: "Bool") }
-    BridgeEndsWith => Some { value: leaf_node(name: "Bool") }
-    BridgeToString => Some { value: leaf_node(name: "String") }
-    BridgeTrim => Some { value: leaf_node(name: "String") }
-    BridgeToLower => Some { value: leaf_node(name: "String") }
-    BridgeToUpper => Some { value: leaf_node(name: "String") }
-    BridgeReplace => Some { value: leaf_node(name: "String") }
-    BridgeSubstring => Some { value: leaf_node(name: "String") }
-    BridgeToInt => Some { value: leaf_node(name: "Int") }
-    BridgeEmptyMap => Some { value: leaf_node(name: "Map") }
-    BridgeLookup => Some { value: optional_node(inner: elem_node) }
-    BridgeReverse => Some { value: receiver_type }
-  }
-}
-
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, scope: InferScope) -> KnownMethodResolution {
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, scope: scope) {
     Some { value: service_type } =>
@@ -1649,68 +1189,6 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_type: Node, sc
           VariantPattern { name: variant_name, parent_enum: none, field_bindings: annotated_bindings }
       }
     _ => pattern
-  }
-}
-
-fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
-  match op {
-    BinEq => leaf_node(name: "Bool")
-    BinNe => leaf_node(name: "Bool")
-    BinLt => leaf_node(name: "Bool")
-    BinGt => leaf_node(name: "Bool")
-    BinLe => leaf_node(name: "Bool")
-    BinGe => leaf_node(name: "Bool")
-    BinAnd => leaf_node(name: "Bool")
-    BinOr => leaf_node(name: "Bool")
-    NullCoalesce => extract_optional_inner_node(n: left_type)
-    _ => left_type
-  }
-}
-
-// -------------------------------------------------------------------------
-// extract_optional_inner: unwrap Optional<T> to T; if not Optional, return as-is
-// -------------------------------------------------------------------------
-
-fn extract_optional_inner_node(n: Node) -> Node {
-  if node_is_optional(n: n) {
-    match n.children |> first {
-      Some { value: inner } => inner
-      None => n
-    }
-  } else { n }
-}
-
-// Recognize runtime built-in functions called directly (not as methods).
-// Returns the result type or none if not a known builtin.
-fn infer_builtin_call_type(name: String) -> Node? {
-  if name == "string_length" || name == "code_point" || name == "to_int" {
-    Some { value: leaf_node(name: "Int") }
-  } else if name == "parse_int" {
-    Some { value: optional_node(inner: leaf_node(name: "Int")) }
-  } else if name == "char_at" || name == "substring" || name == "from_code_point" || name == "to_string" || name == "concat" {
-    Some { value: leaf_node(name: "String") }
-  } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
-    Some { value: leaf_node(name: "Int") }
-  } else if name == "lookup" || name == "map_get" {
-    Some { value: optional_node(inner: leaf_node(name: "Dynamic")) }
-  } else if name == "map_insert" || name == "map_merge" || name == "with" {
-    Some { value: leaf_node(name: "Map") }
-  } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
-    Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
-  } else if name == "Some" {
-    Some { value: optional_node(inner: leaf_node(name: "Dynamic")) }
-  } else {
-    none
-  }
-}
-
-// Non-optional wrapper: returns the builtin type or Unit as fallback.
-fn resolve_builtin_call_type(name: String) -> Node {
-  match infer_builtin_call_type(name: name) {
-    Some { value: v } => v
-    None => leaf_node(name: "Unit")
   }
 }
 
@@ -1939,20 +1417,6 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
             }
         }
       )
-  }
-}
-
-fn for_each_element_type_node(n: Node) -> Node {
-  let normed = normalize_access_type_node(n: n)
-  if normed.connective == none && normed.children |> count == 1 {
-    match normed.children |> first {
-      Some { value: el } => el
-      None => normed
-    }
-  } else if normed.connective == none && normed.children |> count == 0 && normed.name == "String" {
-    leaf_node(name: "String")
-  } else {
-    normed
   }
 }
 
@@ -2318,12 +1782,25 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
               Some { value: lambda_arg } => lambda_arg.value.return_type.value
               None => base_result_type
             }
-          } else if func_name == "map_insert" && first_arg_type.children |> count == 0 && first_arg_type.name == "Map" && remaining |> count >= 2 {
+          } else if func_name == "map_insert" && first_arg_type.children |> count == 0 && node_is_map(n: first_arg_type) && remaining |> count >= 2 {
             // Bare Map receiver: construct Map<K, V> from key and value arg types
             match remaining |> skip(1) |> first {
               Some { value: val_arg } =>
-                Node { name: "Map", span: first_arg_type.span, children: [leaf_node(name: "String"), val_arg.value.return_type.value], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+                map_node(key: leaf_node(name: "String"), value: val_arg.value.return_type.value)
               None => base_result_type
+            }
+          } else if func_name == "map_merge" && node_is_map(n: first_arg_type) && remaining |> count >= 1 {
+            // Merge: if receiver is bare Map, inherit structure from overlay arg
+            let overlay_type = match remaining |> first {
+              Some { value: overlay_arg } => overlay_arg.value.return_type.value
+              None => first_arg_type
+            }
+            if first_arg_type.children |> count == 0 && overlay_type.children |> count > 0 {
+              overlay_type
+            } else if first_arg_type.children |> count > 0 {
+              first_arg_type
+            } else {
+              base_result_type
             }
           } else if func_name == "fold" {
             // For fold: use lambda body return type (more specific than init type)
@@ -2345,7 +1822,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           InferResult {
             typed: make_expr_node(
               expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
-              return_type: Some { value: leaf_node(name: "Map") },
+              return_type: Some { value: bare_map_node() },
               span: span
             ),
             diagnostics: arg_diags
@@ -3110,37 +2587,6 @@ fn check_match_exhaustiveness(
   }
 }
 
-fn lookup_type(env: TypeEnv, name: String) -> Node? {
-  let canonical = normalize_type_name(name: name)
-  match map_get(env.bindings, canonical) {
-    Some { value: binding } => Some { value: binding.resolved }
-    None => None
-  }
-}
-
-// =========================================================================
-// Environment merging
-//
-// Combines multiple type environments. Later bindings shadow earlier ones
-// (last-writer-wins), which matches the import resolution order: kernel
-// first, then transitive deps, then direct imports, then local defs.
-// =========================================================================
-
-fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
-  // Merge maps in order: later entries overwrite earlier ones (last-writer-wins),
-  // matching the import resolution order: kernel < imports < local.
-  // Preserve recursive_types from all environments so resolve_node_bounded
-  // recognizes imported recursive types and doesn't expand them infinitely.
-  //
-  // Three separate folds instead of one struct-accumulator fold. When the
-  // accumulator is a bare map/list (not a struct field), Rc::try_unwrap
-  // succeeds in the generated code -- O(overlay) per merge, not O(base+overlay).
-  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
-  let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
-  let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set }
-}
-
 // =========================================================================
 // Cycle detection: precompute which types participate in dependency cycles.
 //
@@ -3255,7 +2701,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // RecordLit and pattern matching resolve variant constructors correctly.
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: leaf_node(name: "Dynamic") }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [optional_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
@@ -3351,7 +2797,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: leaf_node(name: "Dynamic") }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [optional_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
   let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
