@@ -798,6 +798,18 @@ declaration). When the compiler encounters `List<Int>`, it looks up
 Node graph with every `TypeVar` named `element` replaced by the `Int`
 Node.
 
+**Why slot names are not a name-opacity violation.** Slot names
+(`key`, `value`, `element`) are structural placeholders within a type
+declaration — they are positional addresses, not type identities. The
+compiler uses them during substitution (positional matching: first
+arg fills first slot), but never branches on a slot name to make an
+inference decision. After substitution, no `TypeVar` nodes remain in
+the graph — they are fully resolved. Scrambled-name tests (P5.6)
+verify this: slot names can be scrambled along with type names, and
+inference still produces identical structural decisions. The rule is:
+"inference cannot read names to make structural decisions." Slot names
+are consumed by normalization (pre-inference), not by inference itself.
+
 **Where substitution happens.** The normalization stage (P1.14, already
 planned). Normalization already enforces arity completeness; with
 generics, it also performs slot substitution. By the time inference sees
@@ -902,6 +914,59 @@ contract is real.
 | P4.4 | DAG backend/runtime boundary | Planned | Today the compiler only emits source code (Rust/Go/Python). A DAG backend would emit the **typed graph itself** as a serialized artifact (e.g., JSON representation of the `ResolvedGraph`), executed by an external runtime — not the compiler. This keeps the compiler pure: DAGs in, artifacts out. The "canonical artifact" is a well-defined serialization of the post-infer typed graph. Design: add `Dag` to `RenderTarget`, implement `emit_dag(typed: ResolvedGraph) -> EmitResult` that serializes the graph, define the schema. Runtime execution is a separate system (not in the compiler). |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** (1) Add `Dag` variant to `RenderTarget` for P4.4. (2) CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
+
+### P4.1 Contract: `LanguageSpec` Checklist
+
+`LanguageSpec` is already defined as a concrete type in
+`dsl/std/languages.dag` (line 393). It composes all facts the emitter
+needs for a target language. The Phase 4 gate is: **the emitters read
+this type instead of hardcoding facts inline.**
+
+What belongs in `LanguageSpec` (current fields, grouped):
+
+| Group | Fields | Purpose |
+|-------|--------|---------|
+| Identity | `language: Language` | Name, extensions, comment syntax, naming convention, type mappings |
+| Syntax | `statements`, `expressions`, `control_flow`, `literals`, `modules`, `functions`, `errors`, `type_defs`, `patterns`, `async_model` | Template strings for every syntactic construct the emitter produces |
+| Runtime ops | `collection_ops`, `string_ops`, `map_ops`, `null_coalesce` | DSL builtin → target-language operation templates |
+| Identifier safety | `reserved_words` | Keywords + escape strategy |
+| Value semantics | `value_semantics` | Ownership/reference/value model |
+| Serialization | `serialization` | Derives, JSON parse/emit, tag attributes |
+| Project structure | `scaffold` | Manifest file, source dir, entry point |
+| Service calls | `service_calls` | Async invocation template |
+
+Completeness test: if adding a new target language requires changing
+any emitter `.dag` file rather than just providing a new `LanguageSpec`
+value, a field is missing from this type.
+
+Existing concrete values: `rust_spec`, `go_spec`, `python_spec` (all
+in `dsl/std/languages.dag`, layer 2d).
+
+### P4.4 Contract: DAG Artifact Schema
+
+The DAG backend emits a serialized typed graph as a JSON artifact.
+The schema is the post-infer `ResolvedGraph` structure — the same
+graph that source-code backends receive.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | `String` | Schema version (semver, starting at `"0.1.0"`) |
+| `modules` | `List<TypedModule>` | The typed module graph after inference |
+| `diagnostics` | `List<Diagnostic>` | Compiler diagnostics (errors + warnings) |
+| `files` | `List<TextFile>` | Empty for DAG backend (no source-code files) |
+
+Versioning: the schema version tracks breaking changes to the
+`TypedModule` / `Node` structure. A runtime that consumes DAG
+artifacts pins a schema version range. The compiler bumps the version
+when `Node` fields change (e.g., P1.9 `InferredNode` changes
+`return_type`). This is not a stability promise yet — it is a
+mechanism so that breaking changes are detectable, not silent.
+
+The DAG artifact is a JSON serialization of the v1 interpreter's
+`Value` representation of the compile result — the same format the
+v1 bootstrap path already produces internally. No new serialization
+format is needed; the new part is writing it to a file and defining
+the envelope (`version` + `modules` + `diagnostics`).
 
 ### Current Phase 4 Risks
 
