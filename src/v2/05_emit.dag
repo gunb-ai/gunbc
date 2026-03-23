@@ -783,8 +783,9 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     TypedItemServiceDef
   } else if item.transport == none && item.children |> count > 0 {
     TypedItemResourceDef
-  } else if item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none && item.return_type == none {
-    // Resources without capabilities: have properties (kind, mode, acquire, release) but no body/return_type/transport/children.
+  } else if item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none {
+    // Resources without capabilities: have properties (kind, mode, acquire, release) but no body/transport/children.
+    // Note: return_type may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
     TypedItemResourceDef
   } else if item.params |> count > 0 {
     TypedItemExternFunc

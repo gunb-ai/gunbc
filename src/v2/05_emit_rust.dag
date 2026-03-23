@@ -989,7 +989,13 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
         None => "compile_error!(\"anonymous product reached Node emitter\")"
       }
     } else {
-      "compile_error!(\"anonymous multi-field product reached Node emitter\")"
+      // Anonymous multi-field product → Rust tuple type.
+      let field_types = n.children |> map(child =>
+        if child.return_type != none {
+          emit_rust_node_type(n: child.return_type.value, rc_types: rc_types)
+        } else { "String" }
+      )
+      concat("(", field_types |> join(separator: ", "), ")")
     }
   }
 }
@@ -1699,17 +1705,47 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  match summary {
-    Some { value: field_summary } =>
-      match field_summary.access_style {
-        TupleFirst => concat(base_str, ".0")
-        TupleSecond => concat(base_str, ".1")
-        OptionalUnwrap => concat(base_str, ".clone().unwrap()")
-        EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-        StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
+  // Check if base type is an anonymous record — the emitter flattens these to their
+  // inner type (single-field → bare type, multi-field → tuple), so field access must be
+  // translated to the flattened representation.
+  let base_is_anon_record = match base.return_type {
+    Some { value: bt } =>
+      let kind = classify_type_structure(n: bt)
+      if (kind == TypeConj) && bt.name == "" { true } else { false }
+    None => false
+  }
+  if base_is_anon_record {
+    let bt = base.return_type.value
+    if bt.children |> count == 1 {
+      // Single-field anonymous record: emitter unwraps to bare type, so elide field access.
+      base_str
+    } else {
+      // Multi-field anonymous record: emitter emits tuple, convert to positional access.
+      let matches = bt.children |> enumerate |> filter(pair => pair.second.name == field)
+      let idx_str = match matches |> first {
+        Some { value: m } =>
+          if m.first == 0 { "0" }
+          else if m.first == 1 { "1" }
+          else if m.first == 2 { "2" }
+          else if m.first == 3 { "3" }
+          else { "0" }
+        None => "0"
       }
-    // Every field access must have a summary set by reconcile.
-    None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
+      concat(base_str, ".", idx_str)
+    }
+  } else {
+    match summary {
+      Some { value: field_summary } =>
+        match field_summary.access_style {
+          TupleFirst => concat(base_str, ".0")
+          TupleSecond => concat(base_str, ".1")
+          OptionalUnwrap => concat(base_str, ".clone().unwrap()")
+          EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
+          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
+        }
+      // Every field access must have a summary set by reconcile.
+      None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
+    }
   }
 }
 
@@ -2460,7 +2496,25 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   }
   match qualified_name {
     None =>
-      "compile_error!(\"cannot resolve anonymous record type in emitter\")"
+      // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
+      let kind = classify_type_structure(n: resolved_type)
+      if (kind == TypeConj) && resolved_type.name == "" {
+        if fields |> count == 1 {
+          match fields |> first {
+            Some { value: f } =>
+              emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            None => "compile_error!(\"empty anonymous record literal\")"
+          }
+        } else {
+          // Multi-field anonymous record: emit as tuple.
+          let vals = fields |> map(f =>
+            emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          )
+          concat("(", vals |> join(separator: ", "), ")")
+        }
+      } else {
+        "compile_error!(\"cannot resolve anonymous record type in emitter\")"
+      }
     Some { value: tn } =>
       // RC1: Qualify variant names with parent enum to avoid name collisions
       // (e.g. LitFloat exists in both TokenKind and LiteralValue).
