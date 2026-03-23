@@ -3497,11 +3497,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     } else {
       match lookup_type(env: env, name: n.name) {
         Some { value: resolved } =>
-          if resolved.children |> count == 0 && resolved.connective == none && resolved.name == n.name {
-            NodeResolveResult { resolved: resolved, diagnostics: [] }
-          } else {
-            resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: depth + 1)
-          }
+          // Topological resolution ensures bindings are fully resolved before
+          // any dependent type is processed. Re-resolving the looked-up node
+          // would redundantly walk the entire expanded subtree, causing
+          // exponential blowup on diamond-shaped dependency graphs (OOM).
+          NodeResolveResult { resolved: resolved, diagnostics: [] }
         None =>
           let builtin_kind = builtin_type_kind(n: n)
           if builtin_kind == BuiltinString

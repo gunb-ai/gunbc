@@ -772,6 +772,11 @@ type SummaryResult {
   table: CostInternTable
 }
 
+type MatchCostAccum {
+  result: SummaryResult
+  branch_costs: List<CostExpr>
+}
+
 // Walk a single expression and produce its CostExpr for work.
 fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInternTable) -> SummaryResult {
   match texpr.expr_data {
@@ -941,44 +946,46 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
 
     ExprMatch { scrutinee: s, arms: arm_list } =>
       let s_r = cost_of_expr(texpr: s, func_index: func_index, table: table)
-      let arms_result = arm_list |> fold(init: SummaryResult {
-        summary: ComplexitySummary {
-          work: CostConst { value: 0 },
-          span: CostConst { value: 0 },
-          output_size: empty_map(),
-          assumptions: [],
-          certainty: Proven
-        },
-        table: s_r.table
-      }, f: fn(acc, arm) {
-        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.table)
-        // Space: all match arms produce same type; use last arm's output
-        SummaryResult {
+      // Single pass: collect both accumulated max and individual branch costs.
+      // Previous code re-evaluated each arm body a second time to get individual
+      // costs, causing exponential blowup on nested match expressions (2^depth).
+      let arms_accum = arm_list |> fold(init: MatchCostAccum {
+        result: SummaryResult {
           summary: ComplexitySummary {
-            work: cost_par(a: acc.summary.work, b: ar.summary.work),
-            span: cost_par(a: acc.summary.span, b: ar.summary.span),
-            output_size: ar.summary.output_size,
-            assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
-            certainty: ar.summary.certainty
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
+            output_size: empty_map(),
+            assumptions: [],
+            certainty: Proven
           },
-          table: ar.table
+          table: s_r.table
+        },
+        branch_costs: []
+      }, f: fn(acc, arm) {
+        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.result.table)
+        MatchCostAccum {
+          result: SummaryResult {
+            summary: ComplexitySummary {
+              work: cost_par(a: acc.result.summary.work, b: ar.summary.work),
+              span: cost_par(a: acc.result.summary.span, b: ar.summary.span),
+              output_size: ar.summary.output_size,
+              assumptions: concat(acc.result.summary.assumptions, ar.summary.assumptions),
+              certainty: ar.summary.certainty
+            },
+            table: ar.table
+          },
+          branch_costs: concat(acc.branch_costs, [ar.summary.work])
         }
       })
-      // Per-arm costs: re-evaluate each arm against the fully-cached table
-      // so individual branch costs are preserved (not the accumulated max).
-      let branch_costs = arm_list |> map(arm =>
-        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: arms_result.table)
-        ar.summary.work
-      )
       SummaryResult {
         summary: ComplexitySummary {
-          work: cost_conditional(condition: s_r.summary.work, branches: branch_costs),
-          span: cost_conditional(condition: s_r.summary.span, branches: [arms_result.summary.span]),
-          output_size: arms_result.summary.output_size,
-          assumptions: concat(s_r.summary.assumptions, arms_result.summary.assumptions),
-          certainty: arms_result.summary.certainty
+          work: cost_conditional(condition: s_r.summary.work, branches: arms_accum.branch_costs),
+          span: cost_conditional(condition: s_r.summary.span, branches: [arms_accum.result.summary.span]),
+          output_size: arms_accum.result.summary.output_size,
+          assumptions: concat(s_r.summary.assumptions, arms_accum.result.summary.assumptions),
+          certainty: arms_accum.result.summary.certainty
         },
-        table: arms_result.table
+        table: arms_accum.result.table
       }
 
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
