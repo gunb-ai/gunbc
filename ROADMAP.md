@@ -78,6 +78,60 @@ coproduct — graph primitives, not domain), children/parent traversal,
 and cardinality. Everything above that — what `Int` means, what `Map`
 means, what `Optional` means — is namespace, defined in `.dag`.
 
+### Algebraic Type Vision
+
+The long-term endgame: every type is a structural composition from a
+single fundamental unit, and properties like cardinality, optionality,
+and arity fall out of the definitions — not from compiler-injected
+properties.
+
+```
+// Level 0: Fundamental unit
+type Bit = True | False                           // |[Bit]| = 2
+
+// Level 1: Fixed-width compositions
+type Byte = Tuple<Bit, Bit, Bit, Bit, Bit, Bit, Bit, Bit>  // |[Byte]| = 2^8
+
+// Level 2: Named compositions (opaque namespaces)
+// Int is List<List<Bit>> — a namespace, not a compiler-known concept
+// String is List<Int> — another namespace
+
+// Level 3: Algebraic structures
+// Optional<T> = T | Unit  (coproduct — cardinality = |T| + 1)
+// List<T> = Nil | Cons { head: T, tail: List<T> }  (free monoid)
+// Map<K,V> = List<Tuple<K, V>>  (finite function space)
+// Set<T> = List<T> where unique  (powerset restriction)
+```
+
+At each level, the compiler sees only graph structure. Names are
+opaque. Cardinality is a structural consequence, not a property.
+`Optional<T>` IS a coproduct — the compiler processes coproducts
+generically; it doesn't need an "optional" concept.
+
+This requires generics in the `.dag` language (Phase 3+). Until then,
+the compiler uses an explicit arity bridge (`kernel_types` pattern)
+that gets deleted when real algebraic declarations exist. Every
+bridge is a short-term regression acknowledged as such — its purpose
+is to move structure upstream so it can be choked out when the real
+declarations land.
+
+Phase timeline for this vision:
+
+| Phase | What's reachable | What's still a bridge |
+|-------|-----------------|----------------------|
+| Phase 1 | `InferredNode`, normalization, path dedup. Arity bridge for known types. Algebraic spec design doc. | Arity hardcoded in bridge (`Map→2`, `List→1`, `Optional→1`) |
+| Phase 2 | Gist end-to-end. Arity bridge keeps types structurally complete. | Same bridge; no new emit heuristics needed because inference is sound. |
+| Phase 3 | Generics land (at least enough for parameterized type declarations). Algebraic specs become real `.dag` declarations. Arity bridge deleted. | None — real declarations replace the bridge. |
+| Phase 4 | Shared emit reads `LanguageSpec` + structural declarations. Emit becomes name-opaque. | None |
+| Phase 5 | L1=0. Scrambled-name tests pass. Connective dissolution starts. | None |
+| Beyond | Bit-graph model. Primitives as compositions. Full structural type algebra. | None |
+
+The bit-graph model is aspirational and post-Phase 5. The pragmatic
+intermediate (Phases 1-3) is: primitives and containers get real `.dag`
+declarations with structural definitions; the compiler reads structure
+from those declarations; names are opaque. This is sufficient for the
+thesis without requiring the full algebraic foundation up front.
+
 L3 is larger than previously acknowledged: `02_parse.dag` (3,938 lines)
 dispatches on `TokenKind` entirely through a `kind_tag(token) -> String`
 function, then compares strings everywhere (`check(tag: "KwFn")`,
@@ -126,11 +180,16 @@ runtime contract should mean editing `.dag` files, not compiler code.
 
 Concrete acceptance:
 
-- Zero type-world knowledge in the compiler (L1 complete): names are
-  opaque namespaces; inference processes graph structure only; scrambled-
-  name tests pass
+- Zero type-world knowledge in the compiler (L1 complete, **Phase 5 gate**):
+  names are opaque namespaces; inference processes graph structure only;
+  scrambled-name tests pass; no arity bridges remain
 - Compiler errors are orthogonal to nodes: `InferredNode` wrapper;
   no error/Dynamic sentinels in the type graph
+- Container and wrapper types have real `.dag` algebraic declarations;
+  cardinality and arity fall out of structure, not compiler knowledge
+- Emit is name-opaque: shared emit reads `LanguageSpec` + structural
+  declarations for type→target-identifier mapping (Phase 4); no hardcoded
+  `if type_name == "Map" { "HashMap" }` patterns
 - One shared emit walker drives all target languages through a common
   compiler-owned spine
 - Language-specific facts live in `dsl/extdeps/languages/*`; program-
@@ -276,21 +335,32 @@ Use this as the source of truth for sequencing.
 
 | Order | Phase | What it does | Blocking gate |
 |-------|-------|--------------|---------------|
-| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode wrapper, normalization stage, path deduplication), continue L1 dissolution toward name opacity | Regressions fixed; R.C. II (`InferredNode`) landed; R.C. III (normalization + dedup) landed; P1.10, P1.12 done; scrambled-name tests exist |
-| 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly |
-| 3 | Phase 3 | Compile bundle, ownership/artifact wiring, and v1 retirement | v2 can compile everything v1 still matters for |
-| 4 | Phase 4 | Shared emit spine, generated tests as projections, DAG backend boundary | New backend = language facts + compiler-owned adapter, with no shared-core changes |
-| 5 | Phase 5 | Remaining convergence work after bootstrap shape is stable | One `Node`-centric internal model across compiler structure |
+| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode, normalization, path dedup), arity bridge, algebraic type spec | Regressions fixed; R.C. II + III landed; P1.10, P1.12 done; arity bridge enforced; no new emit heuristics |
+| 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly; arity bridge holds (no bare type nodes reach emit) |
+| 3 | Phase 3 | Compile bundle, ownership/artifact wiring, v1 retirement, generics for parameterized type declarations | v2 compiles everything v1 still matters for; algebraic `.dag` declarations replace arity bridge |
+| 4 | Phase 4 | Shared emit spine, `LanguageSpec` authority, emit name-opacity | New backend = language facts + compiler-owned adapter; emit reads `LanguageSpec` for type→target mapping, no hardcoded type names |
+| 5 | Phase 5 | L1=0, connective dissolution prep, L2/L3 preparation | **L1=0 gate**: scrambled-name tests pass; no arity bridges remain; no `node_is_*` predicates; `normalize_type_name` deleted; `classify_type_structure` deleted from emit |
 
 Important clarifications:
 
+- **No phase regresses the thesis.** Every change either moves toward
+  name opacity and structural completeness, or is an explicit short-term
+  bridge with a named deletion point. If a fix adds compiler type
+  knowledge (emit heuristic, name check, property check), it must be
+  traced upstream and the upstream fix must be on the Phase 1 workboard.
+  "Temporary" without a deletion phase means "permanent later."
 - Phase 1 is the only intentionally overlapping phase. **Diagnostics are
-  at 0.** Regressions (R1-R4), root cause fixes (P1.9, P1.14, P1.15),
-  and invariant items (P1.10, P1.12) block Phase 2. L1 dissolution
-  continues in parallel after the blockers are closed.
+  at 0.** Regressions (R1-R4), root cause fixes (P1.9, P1.14, P1.15,
+  P1.17), and invariant items (P1.10, P1.12) block Phase 2. L1
+  dissolution continues in parallel toward Phase 5's L1=0 gate.
 - The three root causes (I: incomplete types, II: error-as-name, III:
   divergent paths) are the organizing principle for Phase 1. Each root
   cause fix eliminates its downstream violation cluster.
+- **Bridges are acknowledged regressions.** The arity bridge (P1.17) is
+  hardcoded compiler knowledge — a short-term regression that replaces
+  ~20 worse violations (emit `"_"` fabrication). It is deleted in Phase 3
+  (P3.7) when real `.dag` declarations land. Every bridge has a named
+  deletion point.
 - `M*`, `R*`, and `S*` are support structures for this phase order, not
   competing schedules.
 
@@ -326,6 +396,9 @@ invariant violations, and continues L1 dissolution toward name opacity.
 |----|------|--------|-------|
 | P1.12 | Emit catch-all fail-closed | Quick | `emit_typed_item` catch-all emits `compile_error!()` instead of `// unhandled` |
 | P1.10 | Collapse parallel bridge name maps | **Blocking** | Delete `runtime_bridge_method_name` (dead in core); collapse 4 parallel enum→string tables to one per-target rendering without shared string intermediary |
+| P1.19 | Testgen: collapse parallel mock extraction | Quick | Rust emitter's `extract_mock_props`/`starts_with_prefix` duplicates shared emit's `has_mock_prefix`/`extract_test_projections`. Delete the Rust-only copy; `emit_test_file` must consume `TestProjection` from shared emit. |
+| P1.20 | Testgen: kill fabrication sites | Quick | `emit_simple_expr` wildcard (`todo!()`) and `emit_data_value_json` wildcard (`"null"`) silently produce wrong test/mock code. Replace with `compile_error!()` and diagnostic respectively. `Default::default()` fallback when no mock data exists must emit `compile_error!()` or skip the test entirely. |
+| P1.21 | Testgen: verification gate | **Blocking** | Add a test that compiles a service module with mock data, extracts the test files from the emitted bundle, and asserts they are non-empty and syntactically valid Rust. Replaces the archived `v2_crate_cargo_test`. Without this, testgen can regress silently. |
 | P1.13 | Dead code cleanup | **Done** | Dead functions removed from `00_core.dag` and `complexity.dag` |
 | P1.11 | Delete speculative artifact types | **Done** | Only consumed plan types remain in `artifact.dag` |
 
@@ -333,9 +406,11 @@ invariant violations, and continues L1 dissolution toward name opacity.
 
 | ID | Item | Root Cause | Status | Notes |
 |----|------|-----------|--------|-------|
-| P1.9 | `InferredNode` wrapper | II | **Blocking** | Introduce `InferredNode = Resolved { node } \| CompilerError { message, span }`. Unify `Error` and `Dynamic` into `CompilerError`. Inference returns `InferredNode`, not `Node`. Eliminates ~18 downstream name-checking violations. Delete `node_is_error_type`, `node_is_dynamic`. |
-| P1.14 | Normalization stage | III | Planned | New pass between resolve and infer. Unifies `Call`→`MethodCall` bridging, populates structural properties from `.dag` declarations, enforces arity completeness. Eliminates the duplicated inference path cluster. |
+| P1.9 | `InferredNode` wrapper | II | **Blocking** | Introduce `InferredNode = Resolved { node } \| CompilerError { message, span }`. Unify `Error` and `Dynamic` into `CompilerError`. Scope: `infer_expr` returns `InferredNode`; `Node.return_type` becomes `InferredNode?` (where error types propagate through expressions). Type node children remain `List<Node>` (missing children = arity violation, Root Cause I, different problem). Eliminates ~18 downstream name-checking violations. Delete `node_is_error_type`, `node_is_dynamic`. |
+| P1.14 | Normalization stage | III | Planned | New pass between resolve and infer. Unifies `Call`→`MethodCall` bridging, enforces arity completeness (via arity bridge — see P1.17), marks parser error-recovery nodes with `CompilerError`. Property population from `.dag` declarations deferred to Phase 3 (requires generics for parameterized type declarations). |
 | P1.15 | Deduplicate inference paths | III | Planned | After P1.14, a single code path handles each semantic operation. Shared `refine_collection_result_type` helper. `map_insert`/`map_merge` handled uniformly. |
+| P1.17 | Arity bridge | I | Planned | Hardcode arity for known parameterized types (`Map→2, List→1, Optional→1, Set→1`) in the same pattern as `kernel_types`. Normalization enforces that type nodes carry the declared number of children. **Explicit short-term bridge** — deleted when real `.dag` algebraic declarations exist (Phase 3). Every bare `leaf_node(name: "Map")` becomes a construction error. Dissolves ~20 Root Cause I violations. |
+| P1.18 | Algebraic type spec (design doc) | — | Planned | Write set-theoretic structural definitions for `Optional`, `List`, `Map`, `Set`, and primitives as a design document. Not compilable yet (requires generics), but pins the algebra and serves as the blueprint for Phase 3 declarations. |
 
 #### Tier 3: L1 dissolution (toward name opacity)
 
@@ -425,13 +500,20 @@ Diagnostics reached 0. These inference gaps remain:
 - All regressions (R1-R4) fixed
 - `InferredNode` wrapper landed; no error/Dynamic sentinels in the type graph
 - Normalization stage exists and Call→MethodCall bridging is unified
+- Arity bridge enforced: parameterized types always carry declared children;
+  no bare `leaf_node(name: "Map")` reaches inference or emit
 - Parallel bridge name maps collapsed (P1.10)
 - Emit catch-all fail-closed (P1.12)
-- Scrambled-name tests exist and pass for at least the inference layer
+- Testgen: parallel mock extraction collapsed onto `TestProjection` (P1.19),
+  fabrication sites killed (P1.20), verification gate passing (P1.21)
+- Algebraic type spec (design doc) written, pinning the structural
+  definitions for `Optional`, `List`, `Map`, `Set`, and primitives
+- No new emit heuristics introduced — every emit-side type-knowledge
+  regression is traced upstream and fixed in inference or normalization
 - `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
 - Fixed point still holds after every structural change
-- Phase 2 may start once regressions, P1.9, P1.10, P1.12, and P1.14 are done,
-  even if the L1 ratchet is not yet at 0
+- Phase 2 may start once all of the above are met; L1 dissolution
+  continues in parallel toward Phase 5's L1=0 gate
 
 ---
 
@@ -486,6 +568,9 @@ output_dir/
 │   ├── github_api.rs
 │   ├── git.rs
 │   └── ...
+├── tests/
+│   ├── github_api_test.rs   (generated from service mock data)
+│   └── ...
 ```
 
 That bundle comes out of `compile.dag` plus the Rust emitter.
@@ -494,6 +579,7 @@ That bundle comes out of `compile.dag` plus the Rust emitter.
 
 - `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` passes
 - The emitted gist crate builds and runs in dry-run mode
+- Emitted test files are present in the bundle for service modules with mock data
 - No v1-only post-processing step is required to make the crate buildable
 
 ---
@@ -516,6 +602,8 @@ R9.
 | P3.3 | Artifact planning above emit | In progress | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Planned | Move the remaining v1 runtime shim pieces into `.dag` runtime templates |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
+| P3.6 | Generics (parameterized type declarations) | Planned | At least enough for `type Optional<T> = Some { value: T } \| None`, `type List<T> = Nil \| Cons { head: T, tail: List<T> }`, `type Map<K,V> = List<Tuple<K, V>>`. The algebraic specs from P1.18 become real `.dag` declarations. |
+| P3.7 | Delete arity bridge | Planned | Once P3.6 lands, the hardcoded arity bridge (P1.17) is replaced by the compiler reading arity from the `.dag` declarations. Delete the bridge. Cardinality starts falling out of structure. |
 
 ### Key Decisions for Phase 3
 
@@ -528,9 +616,12 @@ R9.
 ### Phase 3 Exit Criteria
 
 - The compile bundle has one authoritative typed shape
-- ownership is included alongside complexity in the pipeline output
-- artifact planning runs between infer and emit in the primary compile path
+- Ownership is included alongside complexity in the pipeline output
+- Artifact planning runs between infer and emit in the primary compile path
 - v1 is no longer required for normal compilation
+- Algebraic `.dag` declarations exist for `Optional`, `List`, `Map`, `Set`
+- Arity bridge (P1.17) is deleted — compiler reads arity from declarations
+- No short-term bridges remain from Phase 1
 
 ---
 
@@ -554,9 +645,9 @@ contract is real.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P4.1 | `LanguageSpec` becomes the single authority | Planned | Shared emit already imports extdep language tables; remaining duplication must collapse into one contract |
+| P4.1 | `LanguageSpec` becomes the single authority | Planned | Shared emit already imports extdep language tables; remaining duplication must collapse into one contract. **This is how emit becomes name-opaque:** `LanguageSpec` + structural declarations provide the type→target-identifier mapping; emit no longer hardcodes `if type_name == "Map" { "HashMap" }`. |
 | P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor; Rust/Python/Go still own full tree dispatch today |
-| P4.3 | Generated tests as first-class projection | Planned | Preserve the current Rust path while generalizing the contract |
+| P4.3 | Generated tests as first-class projection | Planned | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). |
 | P4.4 | DAG backend/runtime boundary | Planned | Add canonical DAG artifact and keep execution downstream |
 | P4.5 | Typed backend plumbing and CLI surface | Planned | Backend selection should stop being stringly |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
@@ -577,27 +668,35 @@ contract is real.
   `compile_error!()` as backend-specific type-loss indicators.
 - `LanguageSpec` exists, but emit does not yet read it as the single
   source of truth.
-- Generated tests are still mostly a Rust-specific path.
+- Generated tests are Rust-only and unverified. The Rust emitter has its
+  own mock extraction parallel to shared emit's `TestProjection` (fixed by
+  P1.19). Three fabrication sites produce wrong test code silently (fixed
+  by P1.20). The verification test is archived — no gate prevents regression
+  (fixed by P1.21). Go/Python have no test generation at all (new work in
+  P4.3 after shared emit fold).
 
 ### Phase 4 Exit Criteria
 
 - No backend owns a whole-tree `ExprData` dispatcher
 - No backend owns a separate whole-tree TCO walker
 - `LanguageSpec` is the single authority for language facts
+- Emit is name-opaque: type→target-identifier mapping reads from
+  `LanguageSpec` and structural declarations, no hardcoded type names
 - Generated tests are first-class artifact outputs
 - The DAG backend emits a canonical artifact without embedding an
   interpreter in the compiler stages
 
 ---
 
-## Phase 5: Convergence (L2 Preparation)
+## Phase 5: L1=0, Convergence, and L2 Preparation
 
-**Gate:** one `Node`-centric internal model flows through the compiler,
-with the naming cleanup already landed and the bootstrap architecture
-stable enough to make the deeper dissolutions worth doing.
+**Gate:** L1 dissolution is complete. The compiler has zero type-world
+knowledge. Names are opaque. Scrambled-name tests pass. The bootstrap
+architecture is stable enough for deeper dissolutions.
 
-This phase is intentionally later. It should happen after the naming,
-pipeline, and shared emit boundaries stop moving.
+This phase gates on L1=0. It is intentionally later — it should happen
+after naming, pipeline, shared emit, and algebraic declarations are all
+stable.
 
 ### Phase 5 Workboard
 
@@ -609,13 +708,29 @@ pipeline, and shared emit boundaries stop moving.
 | P5.3 | Diagnostic / compile-output dissolution | Planned | Dissolve `Diagnostic`, `Severity`, `CompileResult`, and `TextFile` where it is still valuable |
 | P5.4 | Service/support type dissolution | Planned | Verify which service-layer types still need to move |
 | P5.5 | Residual semantic enum cleanup | Planned | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation where appropriate |
+| P5.6 | Scrambled-name tests (full suite) | Planned | All compiler stages from infer onward produce identical output regardless of type names. This is the L1=0 verification gate. |
+| P5.7 | Delete `node_is_*` predicates | Planned | Replaced by structural graph traversal. No predicate checks type identity. |
+| P5.8 | Delete `normalize_type_name` | Planned | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
+| P5.9 | Delete `classify_type_structure` from emit | Planned | Unnecessary when nodes carry structure directly. |
+| P5.10 | Connective dissolution assessment | Planned | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Depends on whether products/coproducts are derivable from the algebraic type definitions. |
 
 ### Phase 5 Exit Criteria
 
+- **L1=0:** scrambled-name tests pass; no `node_is_*` predicates; no
+  `normalize_type_name`; no `classify_type_structure` in emit; no type-name
+  comparisons in inference; no arity bridges
 - Target filenames from M1 are fully normalized
 - Compiler-internal structure is consistently `Node`-centric
 - Each convergence step survives re-bootstrap and fixed-point verification
 - The compiler is in a clean place to start real L2 work
+
+### Beyond Phase 5: Bit-Graph Model
+
+The full algebraic vision — primitives as compositions from `Bit`,
+`Int = List<List<Bit>>`, `String = List<Int>` — is post-Phase 5 work.
+It requires the algebraic type system to be mature enough that the
+compiler genuinely processes only graph structure and the fundamental
+unit. This is the theoretical endgame, not a near-term deliverable.
 
 ---
 
