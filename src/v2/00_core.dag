@@ -193,10 +193,73 @@ type LambdaSemantics {
   param_types: List<Node>
 }
 
+type RuntimeBridgeMethod
+  = BridgeGet
+  | BridgeWith
+  | BridgeListPush
+  | BridgeMapInsert
+  | BridgeMapMerge
+  | BridgeMapGet
+  | BridgeMapHas
+  | BridgeEmitMapHas
+  | BridgeMapValues
+  | BridgeMapKeys
+  | BridgeMapContainsKey
+  | BridgeCharAt
+  | BridgeStringAt
+  | BridgeStringLength
+  | BridgeLength
+  | BridgeStartsWith
+  | BridgeEndsWith
+  | BridgeToString
+  | BridgeTrim
+  | BridgeToLower
+  | BridgeToUpper
+  | BridgeReplace
+  | BridgeSubstring
+  | BridgeToInt
+  | BridgeEmptyMap
+  | BridgeContains
+  | BridgeReverse
+  | BridgeLookup
+
+fn runtime_bridge_method_name(method: RuntimeBridgeMethod) -> String {
+  match method {
+    BridgeGet => "get"
+    BridgeWith => "with"
+    BridgeListPush => "list_push"
+    BridgeMapInsert => "map_insert"
+    BridgeMapMerge => "map_merge"
+    BridgeMapGet => "map_get"
+    BridgeMapHas => "map_has"
+    BridgeEmitMapHas => "emit_map_has"
+    BridgeMapValues => "map_values"
+    BridgeMapKeys => "map_keys"
+    BridgeMapContainsKey => "map_contains_key"
+    BridgeCharAt => "char_at"
+    BridgeStringAt => "string_at"
+    BridgeStringLength => "string_length"
+    BridgeLength => "length"
+    BridgeStartsWith => "starts_with"
+    BridgeEndsWith => "ends_with"
+    BridgeToString => "to_string"
+    BridgeTrim => "trim"
+    BridgeToLower => "to_lower"
+    BridgeToUpper => "to_upper"
+    BridgeReplace => "replace"
+    BridgeSubstring => "substring"
+    BridgeToInt => "to_int"
+    BridgeEmptyMap => "empty_map"
+    BridgeContains => "contains"
+    BridgeReverse => "reverse"
+    BridgeLookup => "lookup"
+  }
+}
+
 type MethodSemantics
   = PlainMethodSemantics
   | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
-  | RuntimeBridgeSemantics { function_name: String }
+  | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
   | ServiceMethodSemantics { service_name: String }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError

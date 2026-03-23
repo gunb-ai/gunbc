@@ -34,7 +34,8 @@ import v2.std.core {
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
-  PlainMethodSemantics, ServiceMethodSemantics
+  PlainMethodSemantics, ServiceMethodSemantics,
+  RuntimeBridgeMethod, BridgeReverse, runtime_bridge_method_name
 }
 
 // =========================================================================
@@ -338,8 +339,8 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   match method_semantics {
     Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } } =>
       is_size_preserving_intrinsic_method(method: method)
-    Some { value: RuntimeBridgeSemantics { function_name: fname } } =>
-      fname == "reverse"
+    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+      bridge_method == BridgeReverse
     _ => false
   }
 }
@@ -895,7 +896,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } } =>
           let shape = intrinsic_method_cost_shape(method: im)
           cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index)
-        Some { value: RuntimeBridgeSemantics { function_name: _ } } =>
+        Some { value: RuntimeBridgeSemantics { method: _ } } =>
           // All runtime bridge methods are O(1)
           SummaryResult {
             summary: ComplexitySummary {

@@ -50,6 +50,14 @@ import v2.std.core {
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
+  RuntimeBridgeMethod,
+  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
+  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
+  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength,
+  BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower,
+  BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap,
+  BridgeContains, BridgeReverse, BridgeLookup,
+  runtime_bridge_method_name,
   LambdaSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
   ErrorCategory, UnresolvedName, TypeMismatch, FieldNotFound, VariantNotFound, AmbiguousCall, InvalidOperation, CascadeError,
@@ -1453,18 +1461,36 @@ fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
   else { none }
 }
 
-fn classify_runtime_bridge_method(method: String) -> MethodSemantics? {
-  if method == "map_get" || method == "map_has" || method == "emit_map_has" || method == "map_values" || method == "map_keys" || method == "map_contains_key" {
-    Some { value: RuntimeBridgeSemantics { function_name: method } }
-  } else if method == "get" || method == "with" || method == "list_push" || method == "map_insert" || method == "map_merge"
-    || method == "char_at" || method == "string_at" || method == "string_length" || method == "length"
-    || method == "starts_with" || method == "ends_with" || method == "to_string" || method == "trim"
-    || method == "to_lower" || method == "to_upper" || method == "replace" || method == "substring"
-    || method == "to_int" || method == "empty_map" || method == "contains" || method == "reverse" || method == "lookup" {
-    Some { value: RuntimeBridgeSemantics { function_name: method } }
-  } else {
-    none
-  }
+fn classify_runtime_bridge_method(method: String) -> RuntimeBridgeMethod? {
+  if method == "get" { Some { value: BridgeGet } }
+  else if method == "with" { Some { value: BridgeWith } }
+  else if method == "list_push" { Some { value: BridgeListPush } }
+  else if method == "map_insert" { Some { value: BridgeMapInsert } }
+  else if method == "map_merge" { Some { value: BridgeMapMerge } }
+  else if method == "map_get" { Some { value: BridgeMapGet } }
+  else if method == "map_has" { Some { value: BridgeMapHas } }
+  else if method == "emit_map_has" { Some { value: BridgeEmitMapHas } }
+  else if method == "map_values" { Some { value: BridgeMapValues } }
+  else if method == "map_keys" { Some { value: BridgeMapKeys } }
+  else if method == "map_contains_key" { Some { value: BridgeMapContainsKey } }
+  else if method == "char_at" { Some { value: BridgeCharAt } }
+  else if method == "string_at" { Some { value: BridgeStringAt } }
+  else if method == "string_length" { Some { value: BridgeStringLength } }
+  else if method == "length" { Some { value: BridgeLength } }
+  else if method == "starts_with" { Some { value: BridgeStartsWith } }
+  else if method == "ends_with" { Some { value: BridgeEndsWith } }
+  else if method == "to_string" { Some { value: BridgeToString } }
+  else if method == "trim" { Some { value: BridgeTrim } }
+  else if method == "to_lower" { Some { value: BridgeToLower } }
+  else if method == "to_upper" { Some { value: BridgeToUpper } }
+  else if method == "replace" { Some { value: BridgeReplace } }
+  else if method == "substring" { Some { value: BridgeSubstring } }
+  else if method == "to_int" { Some { value: BridgeToInt } }
+  else if method == "empty_map" { Some { value: BridgeEmptyMap } }
+  else if method == "contains" { Some { value: BridgeContains } }
+  else if method == "reverse" { Some { value: BridgeReverse } }
+  else if method == "lookup" { Some { value: BridgeLookup } }
+  else { none }
 }
 
 fn method_receiver_element_node(receiver_type: Node) -> Node {
@@ -1509,38 +1535,37 @@ fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMet
   }
 }
 
-fn infer_runtime_bridge_method_type_node(receiver_type: Node, function_name: String) -> Node? {
+fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBridgeMethod) -> Node? {
   let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  if function_name == "get" {
-    Some { value: optional_node(inner: elem_node) }
-  } else if function_name == "list_push" || function_name == "with" || function_name == "map_insert" || function_name == "map_merge" {
-    Some { value: receiver_type }
-  } else if function_name == "map_get" {
-    Some { value: optional_node(inner: elem_node) }
-  } else if function_name == "map_has" || function_name == "emit_map_has" || function_name == "map_contains_key" || function_name == "contains" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if function_name == "map_values" {
-    Some { value: container_node(kind_name: "List", element: elem_node) }
-  } else if function_name == "map_keys" {
-    Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-  } else if function_name == "char_at" || function_name == "string_at" {
-    Some { value: leaf_node(name: "String") }
-  } else if function_name == "string_length" || function_name == "length" {
-    Some { value: leaf_node(name: "Int") }
-  } else if function_name == "starts_with" || function_name == "ends_with" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if function_name == "to_string" || function_name == "trim" || function_name == "to_lower" || function_name == "to_upper" || function_name == "replace" || function_name == "substring" {
-    Some { value: leaf_node(name: "String") }
-  } else if function_name == "to_int" {
-    Some { value: leaf_node(name: "Int") }
-  } else if function_name == "empty_map" {
-    Some { value: leaf_node(name: "Map") }
-  } else if function_name == "lookup" {
-    Some { value: optional_node(inner: elem_node) }
-  } else if function_name == "reverse" {
-    Some { value: receiver_type }
-  } else {
-    none
+  match method {
+    BridgeGet => Some { value: optional_node(inner: elem_node) }
+    BridgeWith => Some { value: receiver_type }
+    BridgeListPush => Some { value: receiver_type }
+    BridgeMapInsert => Some { value: receiver_type }
+    BridgeMapMerge => Some { value: receiver_type }
+    BridgeMapGet => Some { value: optional_node(inner: elem_node) }
+    BridgeMapHas => Some { value: leaf_node(name: "Bool") }
+    BridgeEmitMapHas => Some { value: leaf_node(name: "Bool") }
+    BridgeMapContainsKey => Some { value: leaf_node(name: "Bool") }
+    BridgeContains => Some { value: leaf_node(name: "Bool") }
+    BridgeMapValues => Some { value: container_node(kind_name: "List", element: elem_node) }
+    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    BridgeCharAt => Some { value: leaf_node(name: "String") }
+    BridgeStringAt => Some { value: leaf_node(name: "String") }
+    BridgeStringLength => Some { value: leaf_node(name: "Int") }
+    BridgeLength => Some { value: leaf_node(name: "Int") }
+    BridgeStartsWith => Some { value: leaf_node(name: "Bool") }
+    BridgeEndsWith => Some { value: leaf_node(name: "Bool") }
+    BridgeToString => Some { value: leaf_node(name: "String") }
+    BridgeTrim => Some { value: leaf_node(name: "String") }
+    BridgeToLower => Some { value: leaf_node(name: "String") }
+    BridgeToUpper => Some { value: leaf_node(name: "String") }
+    BridgeReplace => Some { value: leaf_node(name: "String") }
+    BridgeSubstring => Some { value: leaf_node(name: "String") }
+    BridgeToInt => Some { value: leaf_node(name: "Int") }
+    BridgeEmptyMap => Some { value: leaf_node(name: "Map") }
+    BridgeLookup => Some { value: optional_node(inner: elem_node) }
+    BridgeReverse => Some { value: receiver_type }
   }
 }
 
@@ -1567,10 +1592,10 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
           }
         None =>
           match classify_runtime_bridge_method(method: method_name) {
-            Some { value: runtime_semantics } =>
+            Some { value: bridge_method } =>
               KnownMethodResolution {
-                semantics: Some { value: runtime_semantics },
-                result_type: infer_runtime_bridge_method_type_node(receiver_type: receiver_type, function_name: method_name)
+                semantics: Some { value: RuntimeBridgeSemantics { method: bridge_method } },
+                result_type: infer_runtime_bridge_method_type_node(receiver_type: receiver_type, method: bridge_method)
               }
             None =>
               KnownMethodResolution { semantics: none, result_type: none }

@@ -50,6 +50,7 @@ import v2.std.core {
   MethodEnumerate, MethodChars,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
+  RuntimeBridgeMethod, runtime_bridge_method_name,
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
@@ -675,7 +676,8 @@ fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, arg
   }
 }
 
-fn emit_go_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let function_name = runtime_bridge_method_name(method: method)
   let recv_expr = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
   let recv_str = recv_expr
   let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
@@ -703,8 +705,8 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg
         Some { value: lowered } => lowered
         None => emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
       }
-    Some { value: RuntimeBridgeSemantics { function_name: function_name } } =>
-      emit_go_runtime_bridge_method_call(function_name: function_name, receiver: receiver, args: args, registry: registry, scope: scope)
+    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+      emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
     Some { value: PlainMethodSemantics } =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
     None =>

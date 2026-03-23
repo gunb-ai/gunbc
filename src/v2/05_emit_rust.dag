@@ -33,6 +33,8 @@ import v2.std.core {
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
+  RuntimeBridgeMethod, BridgeGet, BridgeWith, BridgeMapGet, BridgeLookup,
+  runtime_bridge_method_name,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
@@ -2211,15 +2213,16 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
   }
 }
 
-fn emit_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let lowered = if function_name == "get" {
+fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let function_name = runtime_bridge_method_name(method: method)
+  let lowered = if method == BridgeGet {
     let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let index_str = match args |> first {
       Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       None => "compile_error!(\"get method missing index\")"
     }
     concat(list_str, ".get((", index_str, ") as usize).cloned()")
-  } else if function_name == "with" {
+  } else if method == BridgeWith {
     let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let type_name = match receiver.return_type {
       Some { value: rt } =>
@@ -2250,7 +2253,7 @@ fn emit_runtime_bridge_method_call(function_name: String, receiver: Node, args: 
     let all_strs = concat([recv_str], arg_strs)
     concat("v2_rt::", rust_ident(name: function_name), "(", all_strs |> join(separator: ", "), ")")
   }
-  if rust_runtime_bridge_wraps_result_in_rc(function_name: function_name, receiver: receiver, scope: scope) {
+  if method == BridgeMapGet && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope) {
     concat(lowered, ".map(Rc::new)")
   } else {
     lowered
@@ -2269,8 +2272,8 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       lowered
     }
-    Some { value: RuntimeBridgeSemantics { function_name: function_name } } =>
-      emit_runtime_bridge_method_call(function_name: function_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+      emit_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     Some { value: PlainMethodSemantics } =>
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
