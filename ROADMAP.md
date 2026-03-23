@@ -167,7 +167,9 @@ Use this map:
 | `08_artifact.dag` | `artifact.dag` | Artifact planning layer, not a numbered stage |
 | `09_trace.dag` | `trace.dag` | Runtime/debug contract, not a numbered stage |
 
-M1 naming cleanup is complete. All files now use their target names.
+M1 naming cleanup is complete. All files use their target names. Last
+stale reference (`v2.compiler.pipeline` in `05_emit_rust.dag`) fixed
+2026-03-23.
 
 ---
 
@@ -206,40 +208,48 @@ Concrete acceptance:
 
 ## Completed Milestones
 
-| Milestone | Gate | Date |
-|-----------|------|------|
-| Self-compile pipeline | v2 processes its own `.dag` through all 5 core stages | 2026-03 |
-| Bootstrap A5 | v1 -> stage0 -> stage1 (`cargo check`) | 2026-03 |
-| Fixed point A6 | stage1 output == stage2 output (byte-identical) | 2026-03 |
-| A7 Phase 1 | Self-compile reached 0 `cargo check` errors | 2026-03 |
-| TypeExpr -> Node | 8 `TypeExpr` variants deleted | 2026-03 |
-| Expr -> Node | 21 `Expr` variants deleted, `ExprData` now lives on `Node` | 2026-03 |
-| Transport dissolution | `TransportBinding` deleted | 2026-03 |
-| Node/TypedNode unified IR | W1-W13 complete, 129 tests passing | 2026-03 |
-| Performance audit | tokenize+parse down to ~24ms | 2026-03 |
-| OOM fix | `node_type_deps` cycle detection stabilized | 2026-03 |
-| M1 naming cleanup | All non-stage files renamed to target names | 2026-03 |
-| Stage0 build | 18 build errors fixed, stage0 compiles cleanly | 2026-03 |
-| Stage0 parse | 5 parser ambiguities fixed in v2 source | 2026-03 |
-| Gist pipeline | 11-file gist closure compiles with 0 diagnostics | 2026-03 |
-| V1 feature-gate | v1 crates gated behind `v1-bootstrap` cargo feature | 2026-03 |
-| Diagnostic reduction | 395 → 197 via tuple naming, error cascade, branch compatibility | 2026-03 |
-| Diagnostic ratchet 0 | 197 → 0 via 4 root-cause fixes (map types, data scope, lookup returns, cascade suppression) | 2026-03 |
-| RenderTarget extraction | Moved from `00_core.dag` to `artifact.dag` (orchestration, not kernel) | 2026-03 |
-| Emit metadata extraction | `emit_info` removed from ResolvedGraph; emit builds EmitGraphInfo locally | 2026-03 |
-| BuiltinTypeKind deletion | Enum and `builtin_type_kind()` fully removed from `00_core.dag` | 2026-03 |
-| RuntimeBridgeMethod enum | String-keyed bridge dispatch replaced with closed enum in core; round-trip through `runtime_bridge_method_name` remains (P1.10) | 2026-03 |
-| L1 centralized predicates | `node_is_optional`, `node_is_map`, `node_is_container` and type predicates live in `04_types.dag` (`infer_types`); emit imports them; `classify_type_structure` replaces direct `.connective` reads in emit | 2026-03 |
-| Rc policy extraction | `type_needs_rc`, `data_lookup_needs_rc_wrap`, `rc_wrapped` removed from core/reconcile/shared emit; live only in `05_emit_rust.dag` | 2026-03 |
-| Kernel types single authority | `kernel_types` in `00_core.dag` is the only source; deleted `kernel_type_names()`, `is_primitive_name()`, `build_primitive_set()` | 2026-03 |
-| Complexity match cost | `MatchCostAccum` in `cost_of_expr`; single pass over match arms (no 2^depth re-evaluation) | 2026-03 |
-| Resolve bounded OOM | `resolve_node_bounded` stops re-resolving already-resolved lookups; trusts topological binding order | 2026-03 |
+Status labels:
+
+- **tree-green**: verified on the current tree (`cargo test` passes)
+- **prior-branch**: achieved on a previous green branch; not yet verified on this tree
+- **structural**: code-level change is landed and visible; downstream gate may not pass yet
+
+| Milestone | Gate | Status | Date |
+|-----------|------|--------|------|
+| Self-compile pipeline | v2 processes its own `.dag` through all 5 core stages | tree-green | 2026-03 |
+| Bootstrap A5 | v1 -> stage0 -> stage1 (`cargo check`) | prior-branch | 2026-03 |
+| Fixed point A6 | stage1 output == stage2 output (byte-identical) | prior-branch | 2026-03 |
+| A7 Phase 1 | Self-compile reached 0 `cargo check` errors | prior-branch | 2026-03 |
+| TypeExpr -> Node | 8 `TypeExpr` variants deleted | tree-green | 2026-03 |
+| Expr -> Node | 21 `Expr` variants deleted, `ExprData` now lives on `Node` | tree-green | 2026-03 |
+| Transport dissolution | `TransportBinding` deleted | tree-green | 2026-03 |
+| Node/TypedNode unified IR | W1-W13 complete, 129 tests passing | tree-green | 2026-03 |
+| Performance audit | tokenize+parse down to ~24ms | tree-green | 2026-03 |
+| OOM fix | `node_type_deps` cycle detection stabilized | tree-green | 2026-03 |
+| M1 naming cleanup | All non-stage files renamed to target names | structural | 2026-03 |
+| Stage0 build | 18 build errors fixed, stage0 compiles cleanly | prior-branch | 2026-03 |
+| Stage0 parse | 5 parser ambiguities fixed in v2 source | tree-green | 2026-03 |
+| Gist pipeline | 11-file gist closure compiles with 0 diagnostics | tree-green | 2026-03 |
+| V1 feature-gate | v1 crates gated behind `v1-bootstrap` cargo feature | tree-green | 2026-03 |
+| Diagnostic reduction | 395 → 197 via tuple naming, error cascade, branch compatibility | prior-branch | 2026-03 |
+| Diagnostic ratchet 0 | 197 → 0 via 4 root-cause fixes (map types, data scope, lookup returns, cascade suppression) | prior-branch | 2026-03 |
+| RenderTarget extraction | Moved from `00_core.dag` to `artifact.dag` (orchestration, not kernel) | tree-green | 2026-03 |
+| Emit metadata extraction | `emit_info` removed from ResolvedGraph; emit builds EmitGraphInfo locally | tree-green | 2026-03 |
+| BuiltinTypeKind deletion | Enum and `builtin_type_kind()` fully removed from `00_core.dag` | tree-green | 2026-03 |
+| RuntimeBridgeMethod enum | String-keyed bridge dispatch replaced with closed enum in core; round-trip through `runtime_bridge_method_name` remains (P1.10) | tree-green | 2026-03 |
+| L1 centralized predicates | `node_is_optional`, `node_is_map`, `node_is_container` and type predicates live in `04_types.dag` (`infer_types`); emit imports them; `classify_type_structure` replaces direct `.connective` reads in emit | tree-green | 2026-03 |
+| Rc policy extraction | `type_needs_rc`, `data_lookup_needs_rc_wrap`, `rc_wrapped` removed from core/reconcile/shared emit; live only in `05_emit_rust.dag` | tree-green | 2026-03 |
+| Kernel types single authority | `kernel_types` in `00_core.dag` is the only source; deleted `kernel_type_names()`, `is_primitive_name()`, `build_primitive_set()` | tree-green | 2026-03 |
+| Complexity match cost | `MatchCostAccum` in `cost_of_expr`; single pass over match arms (no 2^depth re-evaluation) | tree-green | 2026-03 |
+| Resolve bounded OOM | `resolve_node_bounded` stops re-resolving already-resolved lookups; trusts topological binding order | tree-green | 2026-03 |
 
 ---
 
 ## Current State (2026-03-23 Audit, reconciled with branch review)
 
-**Bootstrap note:** On this tree, `cargo test -p v2-compiler-tests --features v1-bootstrap v2_strict_compile_diagnostic_count -- --ignored` and `v2_bootstrap_fixed_point` **fail**: stage0 compile of v2 `.dag` sources reports 44 errors (`if` branches resolve to incompatible list element types across infer/parse/resolve/complexity). Workspace tests excluding `v2-compiler-tests` pass. Re-run the ignored gates after stage0 self-compile is green again.
+**Bootstrap note:** On this tree, `cargo test -p v2-compiler-tests --features v1-bootstrap v2_strict_compile_diagnostic_count -- --ignored` and `v2_bootstrap_fixed_point` **fail**: stage0 compile of v2 `.dag` sources reports 44 errors (`if` branches resolve to incompatible list element types across infer/parse/resolve/complexity). Workspace tests excluding `v2-compiler-tests` pass. Non-ignored v2-compiler-tests pass (115/115). Re-run the ignored gates after stage0 self-compile is green again.
+
+**What "prior-branch" means:** Several milestones (diagnostic ratchet 0, bootstrap A5/A6/A7, stage0 build) were achieved on earlier green branches but the current tree has regressed stage0 self-compile. The `.dag` source changes are present, but the bootstrap ignored test gates do not pass. These milestones re-verify once root cause fixes (P1.9, P1.14, P1.15) land and stage0 self-compile is green again.
 
 **Root-cause audit (2026-03-23):** All ~66 live invariant violations
 trace to three root causes. Fixing root causes eliminates downstream
@@ -668,7 +678,7 @@ R9.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P3.1 | Verify parity with remaining v1 paths | **Done** | Two root causes identified: tuple field naming (fixed), if-branch type unification (fixed). Remaining 197 diagnostics are field access resolution issues. |
+| P3.1 | Verify parity with remaining v1 paths | **Prior-branch** | Root causes identified on a previous green branch (tuple field naming, if-branch type unification). Stage0 self-compile currently has 44 errors; parity re-verifies when stage0 is green. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
