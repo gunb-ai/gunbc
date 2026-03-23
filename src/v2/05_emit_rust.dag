@@ -113,7 +113,8 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure
+  classify_typed_item, classify_type_structure,
+  has_mock_prefix
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -1087,7 +1088,7 @@ fn emit_simple_expr(expr: Node) -> String {
       }
     ExprStringInterp { parts: ps } =>
       emit_simple_string_interp(parts: ps)
-    _ => concat("todo!(\"unsupported simple expr in transport binding\")")
+    _ => concat("compile_error!(\"unsupported simple expr in transport binding\")")
   }
 }
 
@@ -3023,15 +3024,8 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
   )
 }
 
-// Extract mock properties from properties.
 fn extract_mock_props(properties: List<FieldInit>) -> List<FieldInit> {
-  properties |> filter(p => starts_with_prefix(s: p.name, prefix: "mock_"))
-}
-
-fn starts_with_prefix(s: String, prefix: String) -> Bool {
-  let prefix_len = string_length(s: prefix)
-  if string_length(s: s) < prefix_len { false }
-  else { substring(s: s, start: 0, end: prefix_len) == prefix }
+  properties |> filter(p => has_mock_prefix(name: p.name))
 }
 
 fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
@@ -3088,11 +3082,10 @@ fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props
           "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
           "Ok(serde_json::from_value(mock_value)?)")
       }
-      None => concat(log_line, "\nOk(Default::default())")
+      None => concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")")
     }
   } else {
-    // No mock data available -- return a serde default
-    concat(log_line, "\nOk(serde_json::from_value(serde_json::Value::Object(Default::default()))?)")
+    concat(log_line, "\ncompile_error!(\"no mock data available for dry-run operation: ", op_name, "\")")
   }
 }
 
