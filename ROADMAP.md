@@ -130,7 +130,7 @@ Phase timeline for this vision:
 
 | Phase | What's reachable | What's still a bridge |
 |-------|-----------------|----------------------|
-| Phase 1 | `InferredNode`, normalization, path dedup. Arity bridge for known types. Algebraic spec design doc. | Arity hardcoded in bridge (`Map→2`, `List→1`, `Optional→1`) |
+| Phase 1 | `InferredNode`, normalization, path dedup. Arity bridge for known types. Algebraic spec design doc. | Arity hardcoded in bridge (`Map→2`, `List→1`, `Optional→1`, `Set→1`) |
 | Phase 2 | Gist end-to-end. Arity bridge keeps types structurally complete. | Same bridge; no new emit heuristics needed because inference is sound. |
 | Phase 3 | Generics land (at least enough for parameterized type declarations). Algebraic specs become real `.dag` declarations. Arity bridge deleted. | None — real declarations replace the bridge. |
 | Phase 4 | Shared emit reads `LanguageSpec` + structural declarations. Emit becomes name-opaque. | None |
@@ -165,16 +165,21 @@ List<A>  = Σ n. Fin(n) -> A
 Reading these:
 
 - **Set** is a membership structure. The codomain is `Bool` (in or out).
-  `Set<A>` answers "for each `a : A`, is `a` in the set?"
+  `Set<A>` answers "for each `a : A`, is `a` in the set?" **Uniqueness
+  is automatic:** a function returns one answer per input, so an element
+  is either in or out — there is no "in twice."
 - **Bag** is a multiplicity structure. The codomain is `Nat` (how many).
+  Like Set but tracks count, not just presence.
 - **Map** is a keyed partial-function structure. The codomain is
-  `Option<V>` (present with value, or absent).
+  `Option<V>` (present with value, or absent). **Key uniqueness is
+  automatic:** a function returns one value per key — there is no
+  "two entries for the same key."
 - **List** is a positional structure. A list is a length `n` plus a
-  value of type `A` at each position `0..n-1`. This is why lists
-  allow duplicates: the carrier is positions, not elements. `[1,1,2]`
-  has three distinct positions, each labeled by a value. If you tried
-  to model `List<A>` as an ordered set of `A` itself, `[1,1,2]` would
-  collapse.
+  value of type `A` at each position `0..n-1`. **Duplicates are
+  natural:** the carrier is positions, not elements, so different
+  positions can carry the same value. `[1,1,2]` has three distinct
+  positions, each labeled by a value. If you tried to model `List<A>`
+  as an ordered set of `A` itself, `[1,1,2]` would collapse.
 
 The `List` equation can also be read as `Nat -> Option<A>` with domain
 `{0..n-1}`, making the parallel to `Map` visible: a list is a map from
@@ -226,8 +231,9 @@ These properties must be explicitly decided, not left implicit:
 |----------|-----------------|-------|
 | Are collections finite by default? | Yes — finite support everywhere | Infinite collections are a separate concept (streams, generators) |
 | Is equality extensional? | Yes for Set/Map/Bag; structural for List | Two sets with the same members are equal regardless of construction |
+| Is set element uniqueness semantic? | Yes — falls out of `A -> Bool` being a function | An element is in or out; "in twice" is unrepresentable |
 | Are list duplicates always allowed? | Yes — positions are the carrier | `[1,1,2]` has 3 positions; duplicates are not special |
-| Is map key uniqueness semantic or representational? | Semantic — the denotation `K -> Option<V>` is a function | Two entries with the same key is a representation error, not a valid map |
+| Is map key uniqueness semantic? | Yes — falls out of `K -> Option<V>` being a function | Two entries for the same key is a representation error, not a valid map |
 | Do sets/maps require decidable equality on keys? | Yes — membership/lookup must be computable | This falls out of finite support + function semantics |
 | Is iteration order part of `Map`? | No — unordered by default | `SortedMap`/`OrderedMap` are distinct types with additional structure |
 
@@ -286,8 +292,9 @@ Concrete acceptance:
   scrambled-name tests pass; no arity bridges remain
 - Compiler errors are orthogonal to nodes: `InferredNode` wrapper;
   no error/Dynamic sentinels in the type graph
-- Container and wrapper types have real `.dag` algebraic declarations;
-  cardinality and arity fall out of structure, not compiler knowledge
+- Container and wrapper types have real `.dag` algebraic declarations
+  grounded in the Collection Denotational Model; cardinality, arity, and
+  uniqueness properties fall out of the denotations, not compiler knowledge
 - Emit is name-opaque: shared emit reads `LanguageSpec` + structural
   declarations for type→target-identifier mapping (Phase 4); no hardcoded
   `if type_name == "Map" { "HashMap" }` patterns
@@ -611,7 +618,7 @@ where the foundational work (arity bridge, InferredNode) enables them.
 |----|------|--------|-------|
 | P1.16 | Scrambled-name tests | Planned | Rename all types to arbitrary strings (declaration + references), run through infer, verify identical structural decisions. Verifies the property wall. |
 | P1.4 | L1 Optional/cardinality | Planned | Structural graph traversal replaces `node_is_optional`. Optionality is a structural composition (coproduct with None variant), not a name. |
-| P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Element type is first child — no "container" concept needed. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
+| P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Each collection type has its own algebra (see Collection Denotational Model) — no single "container" concept needed. Element/key/value types are structural children. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
 | P1.6 | L1 Primitives | Planned | Primitives dissolve with the bit-graph model. `Int`, `String`, etc. are namespaced compositions opaque to the compiler. `.dag` declarations carry any facts emit needs. |
 | P1.7 | L1 Connective dissolution | Planned | Last structural primitive. Remove `connective` from `Node` only after all consumers use structural graph traversal. |
 | P1.8 | Delete residual type primitives | Planned | Delete constructors, predicates, and builtin classifiers after consumers switch. |
@@ -980,7 +987,9 @@ of the normalization pass naturally (post-order traversal).
 - Constraint syntax — likely unnecessary for the DAG model. Since
   everything is a Node, key hashing/equality is structural (the DAG
   structure itself determines comparison, not type-specific logic). No
-  type is "unhashable." Constraints may emerge later if the model needs
+  type is "unhashable." This aligns with the law layer decision that
+  decidable equality is automatic (all types have structural equality
+  in the DAG model). Constraints may emerge later if the model needs
   them, but they are not a Phase 3 concern.
 
 ### Key Decisions for Phase 3
@@ -1044,7 +1053,7 @@ What belongs in `LanguageSpec` (current fields, grouped):
 |-------|--------|---------|
 | Identity | `language: Language` | Name, extensions, comment syntax, naming convention, type mappings |
 | Syntax | `statements`, `expressions`, `control_flow`, `literals`, `modules`, `functions`, `errors`, `type_defs`, `patterns`, `async_model` | Template strings for every syntactic construct the emitter produces |
-| Runtime ops | `collection_ops`, `string_ops`, `map_ops`, `null_coalesce` | DSL builtin → target-language operation templates |
+| Runtime ops | `collection_ops`, `string_ops`, `map_ops`, `null_coalesce` | DSL builtin → target-language operation templates. The split into `collection_ops` vs `map_ops` predates the denotational model; Phase 4 should reconcile these into per-algebra groupings (set ops, list ops, map ops) matching the Collection Denotational Model. |
 | Identifier safety | `reserved_words` | Keywords + escape strategy |
 | Value semantics | `value_semantics` | Ownership/reference/value model |
 | Serialization | `serialization` | Derives, JSON parse/emit, tag attributes |
@@ -1162,7 +1171,7 @@ can interleave with either track.
 | P5.7 | Delete `node_is_*` predicates | P5.6 passing | 82 call sites | Replaced by structural graph traversal. No predicate checks type identity. |
 | P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
 | P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | Unnecessary when nodes carry structure directly. |
-| P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Depends on whether products/coproducts are derivable from the algebraic type definitions. |
+| P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Note: collections (`Set`, `Map`, `List`) are *not* products or coproducts — they are function/indexed types in the denotational model. `Conj`/`Disj` remain relevant for `Optional<T> = T \| Unit` (coproduct) and record types (product), but the collection algebra family is orthogonal. |
 
 ### Phase 5 Exit Criteria
 
@@ -1181,6 +1190,13 @@ The full algebraic vision — primitives as compositions from `Bit`,
 It requires the algebraic type system to be mature enough that the
 compiler genuinely processes only graph structure and the fundamental
 unit. This is the theoretical endgame, not a near-term deliverable.
+
+Note: the bit-graph model and the Collection Denotational Model are
+**separate layers** that coexist. The bit-graph model is about machine
+primitives (`Int32` as bitvector). The collection model is about data
+structure semantics (`Set<T>` as membership function, `List<T>` as
+positional structure). They do not reduce to each other — `Set<T>` is
+not meaningfully a composition of bits, even if its elements are.
 
 ---
 
@@ -1332,7 +1348,7 @@ current phase order.
 | Item | Why deferred |
 |------|--------------|
 | Anonymous record target resolution | Must fail closed, but is not blocking active phases. R2 is the fail-loud stopgap; this item is the real fix (proper field access for any arity). |
-| Collection intrinsic semantics in shared IR | Worth doing after shared emit is real |
+| Collection intrinsic semantics in shared IR | Worth doing after shared emit is real; the Collection Denotational Model pins what each algebra's methods mean |
 | Generated self-hosting tests and stage contracts | Valuable once the compile contract settles |
 | TCO backend contract | Should be cleaned up during/after shared emit extraction |
 | SCC-aware return type resolution | Not currently blocking bootstrap |
