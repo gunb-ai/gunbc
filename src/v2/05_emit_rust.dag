@@ -2781,41 +2781,59 @@ fn emit_service_def(
   registry: Map<String, ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: item.name)
-  let transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
-  let struct_def = emit_service_struct(name: safe_name, transport: transport, config: item.config)
+  let fallback_transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
   let op_children = item.children
-  let impl_block = emit_service_impl(name: safe_name, transport: transport, op_children: op_children, registry: registry)
+  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, config: item.config)
+  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry)
   concat(struct_def, "\n\n", impl_block)
 }
 
-fn emit_service_struct(name: String, transport: Node, config: ServiceConfig?) -> String {
+// Check if any operation in the service (or the service-level fallback) uses a given transport kind.
+fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
+  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+// Check if any REST operation (or the service-level fallback) has auth.
+fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
+    transport_has_auth(t: fallback_transport)
+  } else { false }
+  let from_ops = op_children |> any(op =>
+    if op.transport != none {
+      let t = op.transport.value
+      if is_transport_kind(t: t, kind: RestTransport) { transport_has_auth(t: t) } else { false }
+    } else { false }
+  )
+  from_fallback || from_ops
+}
+
+fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, config: ServiceConfig?) -> String {
   let derives = "#[derive(Debug, Clone)]"
-  let config_fields = emit_service_config_fields(transport: transport, config: config)
+  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children, config: config)
   let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
   concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
-fn emit_service_config_fields(transport: Node, config: ServiceConfig?) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
-    let base = "    pub base_url: String,"
-    let auth_field = if transport_has_auth(t: transport) {
-      "\n    pub auth_token: String,"
-    } else {
-      ""
-    }
-    concat(base, auth_field)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
-    "    pub working_dir: Option<String>,"
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
-    "    pub base_path: String,"
-  } else {
-    "    // No configuration needed for local binding."
-  }
+fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>, config: ServiceConfig?) -> String {
+  let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: ShellTransport)
+  let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: RestTransport)
+  let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: FileTransport)
+  let has_auth = service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+  let shell_field = if has_shell { "    pub working_dir: Option<String>,\n" } else { "" }
+  let rest_field = if has_rest { "    pub base_url: String,\n" } else { "" }
+  let auth_field = if has_auth { "    pub auth_token: String,\n" } else { "" }
+  let file_field = if has_file { "    pub base_path: String,\n" } else { "" }
+  let fields = concat(shell_field, rest_field, auth_field, file_field)
+  if fields == "" { "    // No configuration needed for local binding.\n" } else { fields }
 }
 
 fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>) -> String {
   let depth = 0
-  let new_method = emit_service_new_method(name: name, transport: transport)
+  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children)
   let method_strs = op_children |> map(op_node =>
     emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1)
   )
@@ -2825,52 +2843,36 @@ fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, reg
 }
 
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
-// For REST services, also accepts base_url; for Shell, working_dir; etc.
-fn emit_service_new_method(name: String, transport: Node) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
-    let base_url_default = match transport_base_url(t: transport) {
-      Some { value: bu } => match bu.expr_data {
-        ExprLiteral { value: LitStr { value: s } } => s
-        _ => "http://localhost"
+// Scans all operations to determine which transport fields to initialize.
+fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
+  let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: ShellTransport)
+  let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: RestTransport)
+  let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: FileTransport)
+  let has_auth = service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+  // Find a default base_url from the service-level REST transport or from any REST op
+  let base_url_default = if has_rest {
+    let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
+      match transport_base_url(t: fallback_transport) {
+        Some { value: bu } => match bu.expr_data {
+          ExprLiteral { value: LitStr { value: s } } => s
+          _ => ""
+        }
+        None => ""
       }
-      None => "http://localhost"
-    }
-    let auth_field = if transport_has_auth(t: transport) {
-      "\n            auth_token,"
-    } else {
-      ""
-    }
-    concat(
-      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-      "    ", name, " {\n",
-      "        base_url: \"", base_url_default, "\".to_string(),", auth_field, "\n",
-      "        dry_run,\n",
-      "    }\n",
-      "}")
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
-    concat(
-      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-      "    ", name, " {\n",
-      "        working_dir: None,\n",
-      "        dry_run,\n",
-      "    }\n",
-      "}")
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
-    concat(
-      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-      "    ", name, " {\n",
-      "        base_path: \".\".to_string(),\n",
-      "        dry_run,\n",
-      "    }\n",
-      "}")
-  } else {
-    concat(
-      "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
-      "    ", name, " {\n",
-      "        dry_run,\n",
-      "    }\n",
-      "}")
-  }
+    } else { "" }
+    if from_fallback != "" { from_fallback } else { "http://localhost" }
+  } else { "" }
+  let shell_init = if has_shell { "        working_dir: None,\n" } else { "" }
+  let rest_init = if has_rest { concat("        base_url: \"", base_url_default, "\".to_string(),\n") } else { "" }
+  let auth_init = if has_auth { "        auth_token: String::new(),\n" } else { "" }
+  let file_init = if has_file { "        base_path: \".\".to_string(),\n" } else { "" }
+  concat(
+    "pub fn new(dry_run: crate::dry_run::DryRunMode) -> Self {\n",
+    "    ", name, " {\n",
+    shell_init, rest_init, auth_init, file_init,
+    "        dry_run,\n",
+    "    }\n",
+    "}")
 }
 
 // Extract modifier names from properties.
