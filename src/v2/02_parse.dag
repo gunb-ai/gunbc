@@ -221,8 +221,33 @@ fn has_err(err: Diagnostic?) -> Bool {
   }
 }
 
+// Structural token kind predicates -- avoid string roundtrip.
+// These are the single authority for "what kind of token is this?"
+fn is_ident_kind(kind: TokenKind) -> Bool { match kind { Ident { name: _ } => true  _ => false } }
+fn is_lit_str_kind(kind: TokenKind) -> Bool { match kind { LitStr { value: _ } => true  _ => false } }
+fn is_lit_int_kind(kind: TokenKind) -> Bool { match kind { LitInt { value: _ } => true  _ => false } }
+fn is_lit_float_kind(kind: TokenKind) -> Bool { match kind { LitFloat { value: _ } => true  _ => false } }
+fn is_str_begin_kind(kind: TokenKind) -> Bool { match kind { StrBegin { value: _ } => true  _ => false } }
+fn is_newline_kind(kind: TokenKind) -> Bool { match kind { Newline => true  _ => false } }
+fn is_eof_kind(kind: TokenKind) -> Bool { match kind { Eof => true  _ => false } }
+
+fn peek_is_ident(tokens: List<Token>, state: ParserState) -> Bool {
+  match peek_kind(tokens: tokens, state: state) {
+    Some { value: kind } => is_ident_kind(kind: kind)
+    None => false
+  }
+}
+
+fn peek_is_newline(tokens: List<Token>, state: ParserState) -> Bool {
+  match peek_kind(tokens: tokens, state: state) {
+    Some { value: kind } => is_newline_kind(kind: kind)
+    None => false
+  }
+}
+
 // Token kind comparison helpers. Since TokenKind is a sum type with
 // payload variants, we compare by extracting a tag string.
+// NOTE: Prefer structural predicates above for new code.
 fn kind_tag(kind: TokenKind) -> String {
   match kind {
     KwModule => "KwModule"

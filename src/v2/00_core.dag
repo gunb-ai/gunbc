@@ -798,3 +798,55 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
     NoExprData => false
   }
 }
+
+// =========================================================================
+// Dissolution infrastructure -- Node-based representations of types that
+// will eventually dissolve. Each type gets:
+//   1. A Node constructor that encodes the type's fields as Node properties
+//   2. Accessor functions that extract fields from the Node representation
+//   3. A predicate that identifies nodes of this kind
+//
+// The migration path: producers switch to constructors, consumers switch
+// to accessors, then the dedicated type definition is deleted.
+// =========================================================================
+
+// --- Diagnostic as Node ---
+// A Diagnostic dissolves into a Node where:
+//   name = message, properties encode severity/module_name/category,
+//   span = the diagnostic's source span.
+
+fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module_name: String?) -> Node {
+  let sev_name = match severity { Error => "error"  Warning => "warning" }
+  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: sev_name } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+  let mod_prop = match module_name {
+    Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }]
+    None => []
+  }
+  Node {
+    name: message, span: span, children: [], connective: none,
+    params: [], return_type: none, uses: [], body: none,
+    transport: none, properties: concat([sev_prop], mod_prop), type_annotation: none,
+    config: none, is_self_recursive: false, has_non_tail_self_call: false,
+    expr_data: NoExprData
+  }
+}
+
+fn is_diagnostic_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "severity")
+}
+
+// --- Module as Node ---
+// When dissolved, a Module becomes a Node where:
+//   name = module name, children = item nodes, imports in properties.
+
+fn is_module_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_module")
+}
+
+// --- Token as Node ---
+// When dissolved, a Token becomes a Node where:
+//   name = kind tag string, span = token span, properties encode payload.
+
+fn is_token_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_token")
+}
