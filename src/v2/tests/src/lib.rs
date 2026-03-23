@@ -4251,6 +4251,7 @@ fn origin() -> Point {
             ("complexity", "src/v2/complexity.dag"),
             ("ownership", "src/v2/ownership.dag"),
             ("artifact", "src/v2/artifact.dag"),
+            ("runtime_rust", "src/v2/runtime_rust.dag"),
         ];
 
         let parsed: Vec<(String, daglang_syntax::ast::SourceFile)> = v2_files

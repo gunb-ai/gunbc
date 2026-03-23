@@ -33,12 +33,20 @@ fn leaf_node(name: String) -> Node {
   Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
+fn product_property() -> FieldInit {
+  FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+}
+
+fn coproduct_property() -> FieldInit {
+  FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+}
+
 fn optional_property() -> FieldInit {
   FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
 }
 
 fn optional_node(inner: Node) -> Node {
-  Node { name: "Optional", span: SourceSpan { start: 0, end: 0 }, children: [inner, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [optional_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Optional", span: SourceSpan { start: 0, end: 0 }, children: [inner, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [coproduct_property(), optional_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn container_property(kind_name: String) -> FieldInit {
@@ -53,7 +61,7 @@ fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
     Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: first }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
     Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: second }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
@@ -87,7 +95,21 @@ fn error_type_node() -> Node {
 
 fn node_is_error_type(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.connective == none && normed.children |> count == 0 && normed.name == "Error"
+  node_is_leaf(n: normed) && normed.name == "Error"
+}
+
+fn node_is_product(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_product")
+  || (n.connective != none && n.connective == Some { value: Conj })
+}
+
+fn node_is_coproduct(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_coproduct")
+  || (n.connective != none && n.connective == Some { value: Disj })
+}
+
+fn node_has_structure(n: Node) -> Bool {
+  node_is_product(n: n) || node_is_coproduct(n: n)
 }
 
 fn node_is_container(n: Node) -> Bool {
@@ -106,8 +128,7 @@ fn node_is_map(n: Node) -> Bool {
 // For cascade suppression of error types, use node_is_error_type instead.
 fn node_is_dynamic(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.connective == none && normed.children |> count == 0
-    && normed.name == "Dynamic"
+  node_is_leaf(n: normed) && normed.name == "Dynamic"
 }
 
 fn node_is_permissive(n: Node) -> Bool {
@@ -115,18 +136,16 @@ fn node_is_permissive(n: Node) -> Bool {
 }
 
 fn node_is_leaf(n: Node) -> Bool {
-  n.connective == none && n.children |> count == 0 && n.properties |> count == 0
+  n.connective == none && node_has_structure(n: n) == false && n.children |> count == 0 && n.properties |> count == 0
 }
 
 fn node_is_named_ref(n: Node) -> Bool {
   if n.return_type == none { false }
   else {
     let rt = n.return_type.value
-    rt.connective == none && rt.children |> count == 0
+    node_has_structure(n: rt) == false && rt.children |> count == 0
       && rt.name != "" && rt.name != "None"
-      && rt.name != "String" && rt.name != "Int" && rt.name != "Bool"
-      && rt.name != "Float" && rt.name != "Secret" && rt.name != "Json"
-      && rt.name != "Unit" && rt.name != "Bytes"
+      && is_kernel_type(name: rt.name) == false
   }
 }
 
@@ -135,7 +154,7 @@ fn node_is_named_ref(n: Node) -> Bool {
 // =========================================================================
 
 fn normalize_access_type_node(n: Node) -> Node {
-  if n.name == "Refined" && n.connective != none {
+  if n.name == "Refined" && node_has_structure(n: n) {
     match n.children |> first {
       Some { value: base } => normalize_access_type_node(n: base)
       None => n
@@ -169,13 +188,10 @@ fn node_type_shape(n: Node) -> String {
     } else {
       concat("Primitive(", n.name, ")")
     }
-  } else if n.connective != none {
-    match n.connective.value {
-      Conj =>
-        if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
-      Disj =>
-        if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
-    }
+  } else if node_is_product(n: n) {
+    if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
+  } else if node_is_coproduct(n: n) {
+    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
   } else if node_is_container(n: n) {
     let elem_shape = match n.children |> first {
       Some { value: el } => node_type_shape(n: el)
@@ -235,9 +251,9 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   else if node_is_leaf(n: left) && node_is_leaf(n: right) {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
-  else if left.connective != none && right.connective != none {
+  else if node_has_structure(n: left) && node_has_structure(n: right) {
     if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
-    else if left.connective != right.connective { false }
+    else if node_is_product(n: left) != node_is_product(n: right) { false }
     else if left.children |> count != right.children |> count { false }
     else {
       left.children |> enumerate |> all(pair =>
@@ -248,10 +264,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       )
     }
   }
-  else if node_is_leaf(n: left) && right.connective != none {
+  else if node_is_leaf(n: left) && node_has_structure(n: right) {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
-  else if left.connective != none && node_is_leaf(n: right) {
+  else if node_has_structure(n: left) && node_is_leaf(n: right) {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
   else if node_is_container(n: left) && node_is_container(n: right) {
@@ -323,7 +339,7 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
     [n.return_type.value.name]
-  } else if n.connective != none {
+  } else if node_has_structure(n: n) {
     flat_map(n.children, child =>
       if child.return_type != none {
         node_type_deps(n: child.return_type.value)
@@ -348,22 +364,22 @@ fn node_type_deps(n: Node) -> List<String> {
 
 fn is_int_type_node(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.name == "Int" && normed.connective == none && normed.children |> count == 0
+  normed.name == "Int" && node_is_leaf(n: normed)
 }
 
 fn is_string_type_node(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.name == "String" && normed.connective == none && normed.children |> count == 0
+  normed.name == "String" && node_is_leaf(n: normed)
 }
 
 fn is_bool_type_node(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.name == "Bool" && normed.connective == none && normed.children |> count == 0
+  normed.name == "Bool" && node_is_leaf(n: normed)
 }
 
 fn is_float_type_node(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.name == "Float" && normed.connective == none && normed.children |> count == 0
+  normed.name == "Float" && node_is_leaf(n: normed)
 }
 
 // =========================================================================
@@ -386,7 +402,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 
 fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  if normed.connective == none && normed.children |> count == 1 {
+  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
     match normed.children |> first {
       Some { value: el } => el
       None => receiver_type
@@ -427,12 +443,12 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
 
 fn for_each_element_type_node(n: Node) -> Node {
   let normed = normalize_access_type_node(n: n)
-  if normed.connective == none && normed.children |> count == 1 {
+  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
     match normed.children |> first {
       Some { value: el } => el
       None => normed
     }
-  } else if normed.connective == none && normed.children |> count == 0 && normed.name == "String" {
+  } else if node_is_leaf(n: normed) && normed.name == "String" {
     leaf_node(name: "String")
   } else {
     normed

@@ -40,7 +40,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { node_is_optional, node_is_map }
+import v2.compiler.infer_types { node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -797,15 +797,8 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   }
 }
 
-// Classify a Node's type structure based on its connective.
-// Returns: "leaf", "conj", or "disj".
 fn classify_type_structure(n: Node) -> TypeStructureKind {
-  if n.connective == none {
-    TypeLeaf
-  } else {
-    match n.connective.value {
-      Conj => TypeConj
-      Disj => TypeDisj
-    }
-  }
+  if node_is_product(n: n) { TypeConj }
+  else if node_is_coproduct(n: n) { TypeDisj }
+  else { TypeLeaf }
 }

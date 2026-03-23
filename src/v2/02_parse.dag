@@ -472,11 +472,8 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
 
 // Check if a Node represents an inline record (Conj with children).
 fn is_conj_with_children(n: Node) -> Bool {
-  if n.connective != none {
-    match n.connective.value {
-      Conj => n.children |> count > 0
-      Disj => false
-    }
+  if n.properties |> any(p => p.name == "is_product") {
+    n.children |> count > 0
   } else {
     false
   }
@@ -695,7 +692,7 @@ fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
 
 fn field_to_child_node(field: Field) -> Node {
   let ret_type = if field.optional {
-    Node { name: "Optional", span: field.span, children: [field.type_expr, leaf_type_node(name: "None", span: field.span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: field.span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    Node { name: "Optional", span: field.span, children: [field.type_expr, leaf_type_node(name: "None", span: field.span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: field.span) }, FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: field.span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   } else {
     field.type_expr
   }
@@ -718,7 +715,7 @@ fn variant_to_child_node(variant: Variant) -> Node {
     connective: if variant.fields |> count > 0 { Some { value: Conj } } else { none },
     params: [], return_type: none,
     uses: [], body: none,
-    transport: none, properties: [],
+    transport: none, properties: if variant.fields |> count > 0 { [FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: variant.span) }] } else { [] },
     type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
@@ -728,7 +725,7 @@ fn outputs_to_return_type(outputs: List<Field>, span: SourceSpan) -> Node? {
   if outputs |> count > 0 {
     // Always create an anonymous Conj record, even for single-output operations,
     // so field names are preserved (e.g., output { branch: String } -> { branch: String }).
-    Some { value: Node { name: "", span: span, children: map(outputs, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
+    Some { value: Node { name: "", span: span, children: map(outputs, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
   } else {
     none
   }
@@ -759,7 +756,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
     let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f))
-    let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
   } else {
     // Sum type or alias: type Name = ...
@@ -797,7 +794,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       if has_err(err: rest.err) { return ItemResult { item: dummy, state: rest.state, err: rest.err } }
       let variants = rest.variants
       let type_children = variants |> map(v => variant_to_child_node(variant: v))
-      let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: rest.state), err: none }
     } else {
       // It's an alias: type Name = SomeType
@@ -828,7 +825,7 @@ fn try_where_clause(tokens: List<Token>, state: ParserState, base_te: Node, star
     let adv = advance(tokens: tokens, state: state)
     let r = parse_predicates(tokens: tokens, state: adv.state)
     if has_err(err: r.err) { return TypeResult { type_expr: base_te, state: r.state, err: r.err } }
-    let refined = Node { name: "Refined", span: start_span, children: [base_te], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: r.predicates, type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let refined = Node { name: "Refined", span: start_span, children: [base_te], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: concat([FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], r.predicates), type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     TypeResult { type_expr: refined, state: r.state, err: none }
   } else {
     TypeResult { type_expr: base_te, state: state, err: none }
@@ -1048,7 +1045,7 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: inline_start), state: r2.state, err: r2.err } }
       let span = current_span(tokens: tokens, state: s)
-      let te = Node { name: "", span: span, children: map(r.fields, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let te = Node { name: "", span: span, children: map(r.fields, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       TypeResult { type_expr: te, state: r2.state, err: none }
     }
     // Named type
@@ -1103,7 +1100,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
 fn maybe_optional(tokens: List<Token>, state: ParserState, te: Node, start_span: SourceSpan) -> TypeResult {
   let e = eat(tokens: tokens, state: state, tag: "Question")
   if e.consumed {
-    let ote = Node { name: "Optional", span: start_span, children: [te, leaf_type_node(name: "None", span: start_span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let ote = Node { name: "Optional", span: start_span, children: [te, leaf_type_node(name: "None", span: start_span)], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }, FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     TypeResult { type_expr: ote, state: e.state, err: none }
   } else {
     TypeResult { type_expr: te, state: state, err: none }
@@ -1915,12 +1912,9 @@ fn node_to_name_str(n: Node) -> String {
     if has_children { concat("List_", node_to_name_str(n: first_child_or_self(n: n))) }
     else { n.name }
   } else if n.name == "" {
-    if n.connective != none {
-      match n.connective.value {
-        Conj => "Record"
-        Disj => "Union"
-      }
-    } else { n.name }
+    if n.properties |> any(p => p.name == "is_product") { "Record" }
+    else if n.properties |> any(p => p.name == "is_coproduct") { "Union" }
+    else { n.name }
   } else {
     n.name
   }

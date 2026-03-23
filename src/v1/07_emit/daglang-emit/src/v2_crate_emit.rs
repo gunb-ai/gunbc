@@ -1,4 +1,12 @@
-//! v2 compiler crate assembly — produces a complete Cargo crate from v2 .dag modules.
+//! LEGACY (bootstrap-only): v2 compiler crate assembly.
+//!
+//! The authoritative emit pipeline is now in `src/v2/05_emit_rust.dag`, with
+//! runtime template in `src/v2/runtime_rust.dag` and crate scaffolding in
+//! `emit_cargo_toml`, `emit_lib_rs`, `emit_main_rs` within the same file.
+//!
+//! This module is only used by the v1 bootstrap path to assemble the v2
+//! compiler crate from .dag source files. Once v1 is retired, this file
+//! should be deleted.
 //!
 //! Given parsed v2 module ASTs, this module:
 //! 1. Emits types with recursive field boxing (Phase 4)
@@ -7,22 +15,6 @@
 //! 4. Assembles a complete crate with Cargo.toml and lib.rs
 //!
 //! The emitted crate is written to `target/v2-compiler/`.
-//!
-//! ## TEMPORARY bootstrap scaffolding (remove after self-hosting)
-//!
-//! This module contains several categories of hardcoded knowledge that should
-//! be derived from the .dag source files instead:
-//!
-//! - **`std_types_prelude()`**: Materializes types (`SourceSpan`, `BindingPower`,
-//!   `ItemResult`, etc.) that the .dag source imports from `std.types` or uses as
-//!   anonymous records. In a self-hosted compiler, these would come from the .dag
-//!   type definitions themselves.
-//!
-//! - **Hardcoded `struct_field_types` entries**: Manual registry of the materialized
-//!   types' field layouts. Should be generated from the type definitions.
-//!
-//! - **`module_prelude()`**: Derived from each .dag file's module declaration and
-//!   import list.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
