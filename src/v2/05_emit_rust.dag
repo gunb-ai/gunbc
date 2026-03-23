@@ -3041,12 +3041,18 @@ fn emit_local_call(op_name: String) -> String {
 // =========================================================================
 
 fn emit_resource_def(item: Node) -> String {
-  let depth = 0
   let cap_children = item.children
-  let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c))
-  let methods_str = cap_methods |> join(separator: "\n\n")
-  concat("#[async_trait::async_trait]\npub trait ", item.name, " {\n",
-    make_indent(level: depth + 1),methods_str, "\n}")
+  if cap_children |> count == 0 {
+    // Resources without capabilities are emitted as unit structs.
+    // They serve as capability markers passed by reference.
+    concat("#[derive(Debug, Clone)]\npub struct ", item.name, ";")
+  } else {
+    let depth = 0
+    let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c))
+    let methods_str = cap_methods |> join(separator: "\n\n")
+    concat("#[async_trait::async_trait]\npub trait ", item.name, " {\n",
+      make_indent(level: depth + 1),methods_str, "\n}")
+  }
 }
 
 fn emit_capability_method(cap_node: Node) -> String {
