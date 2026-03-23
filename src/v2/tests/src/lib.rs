@@ -5,6 +5,8 @@
 //! Phase 2: tokenizer e2e (evaluate tokenize fn on real input)
 //! Phase 3: stage-by-stage integration (chain stages on trivial fixture)
 
+#![allow(clippy::disallowed_macros, clippy::absurd_extreme_comparisons)]
+
 #[cfg(test)]
 #[cfg(feature = "v1-bootstrap")]
 mod tests {

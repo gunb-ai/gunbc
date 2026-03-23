@@ -35,3 +35,20 @@ data go_container_templates: Map<String, String> = {
   "list": "[]{0}", "set": "map[{0}]struct{}",
   "optional": "*{0}", "map": "map[{0}]{1}"
 }
+
+// -- Reserved words ------------------------------------------------------
+// Ref: Go Spec "Keywords" + predeclared identifiers
+data go_reserved: List<String> = [
+  "break", "case", "chan", "const", "continue",
+  "default", "defer", "else", "fallthrough", "for",
+  "func", "go", "goto", "if", "import",
+  "interface", "map", "package", "range", "return",
+  "select", "struct", "switch", "type", "var",
+  "bool", "byte", "complex64", "complex128", "error",
+  "float32", "float64", "int", "int8", "int16", "int32", "int64",
+  "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
+  "uintptr", "true", "false", "iota", "nil",
+  "append", "cap", "close", "complex", "copy", "delete",
+  "imag", "len", "make", "new", "panic", "print", "println",
+  "real", "recover"
+]

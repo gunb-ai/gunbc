@@ -802,3 +802,101 @@ fn classify_type_structure(n: Node) -> TypeStructureKind {
   else if node_is_coproduct(n: n) { TypeDisj }
   else { TypeLeaf }
 }
+
+// =========================================================================
+// Shared ExprData fold spine -- target-agnostic expression classification
+// and traversal helpers. Each backend dispatches on these categories to
+// select its own rendering, eliminating duplicate arm structure.
+//
+// The fold spine provides:
+//   - ExprCategory: coarse classification of expressions
+//   - FuncBodyShape: how the top-level function body is structured
+//   - TcoExprShape: which expressions participate in TCO
+//   - block_stmts: shared block statement sequencing
+// =========================================================================
+
+type ExprCategory
+  = ExprCatLeaf
+  | ExprCatCompound
+  | ExprCatControlFlow
+  | ExprCatBinding
+  | ExprCatService
+  | ExprCatNone
+
+fn classify_expr(texpr: Node) -> ExprCategory {
+  match texpr.expr_data {
+    ExprLiteral { value: _ } => ExprCatLeaf
+    ExprError { kind: _, message: _ } => ExprCatLeaf
+    ExprVar { name: _, binding_kind: _ } => ExprCatLeaf
+    ExprFieldAccess { base: _, field: _, summary: _ } => ExprCatCompound
+    ExprCall { func: _, args: _, call_semantics: _ } => ExprCatCompound
+    ExprMethodCall { receiver: _, method: _, args: _, semantics: _ } => ExprCatCompound
+    ExprRecordLit { type_name: _, fields: _, parent_enum: _ } => ExprCatCompound
+    ExprListLit { elements: _ } => ExprCatCompound
+    ExprBinOp { op: _, left: _, right: _ } => ExprCatCompound
+    ExprUnaryOp { op: _, operand: _ } => ExprCatCompound
+    ExprLambda { params: _, body: _, semantics: _ } => ExprCatCompound
+    ExprStringInterp { parts: _ } => ExprCatCompound
+    ExprCast { expr: _, target: _ } => ExprCatCompound
+    ExprIndex { base: _, index: _ } => ExprCatCompound
+    ExprSlice { base: _, start: _, end: _ } => ExprCatCompound
+    ExprMatch { scrutinee: _, arms: _ } => ExprCatControlFlow
+    ExprIf { condition: _, then_branch: _, else_branch: _ } => ExprCatControlFlow
+    ExprForEach { variable: _, collection: _, body: _ } => ExprCatControlFlow
+    ExprBlock { stmts: _ } => ExprCatControlFlow
+    ExprLet { name: _, value: _, body: _ } => ExprCatBinding
+    ExprReturn { value: _ } => ExprCatControlFlow
+    NoExprData => ExprCatNone
+    _ => ExprCatNone
+  }
+}
+
+type FuncBodyShape
+  = FuncBodyLet { name: String, value: Node, rest: Node }
+  | FuncBodyBlock { stmts: List<Node> }
+  | FuncBodyExpr { expr: Node }
+
+fn classify_func_body(body: Node) -> FuncBodyShape {
+  match body.expr_data {
+    ExprLet { name: n, value: v, body: rest } =>
+      FuncBodyLet { name: n, value: v, rest: rest }
+    ExprBlock { stmts: ss } =>
+      FuncBodyBlock { stmts: ss }
+    _ =>
+      FuncBodyExpr { expr: body }
+  }
+}
+
+type TcoExprShape
+  = TcoCall { func: String, args: List<Node> }
+  | TcoIf { condition: Node, then_branch: Node, else_branch: Node }
+  | TcoMatch { scrutinee: Node, arms: List<Node> }
+  | TcoLet { name: String, value: Node, body: Node }
+  | TcoBlock { stmts: List<Node> }
+  | TcoOther { expr: Node }
+
+fn classify_tco_expr(texpr: Node) -> TcoExprShape {
+  match texpr.expr_data {
+    ExprCall { func: f, args: a, call_semantics: _ } =>
+      TcoCall { func: f, args: a }
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      TcoIf { condition: c, then_branch: t, else_branch: e }
+    ExprMatch { scrutinee: s, arms: arm_list } =>
+      TcoMatch { scrutinee: s, arms: arm_list }
+    ExprLet { name: n, value: v, body: bd } =>
+      TcoLet { name: n, value: v, body: bd }
+    ExprBlock { stmts: ss } =>
+      TcoBlock { stmts: ss }
+    _ =>
+      TcoOther { expr: texpr }
+  }
+}
+
+fn block_stmts_init(stmts: List<Node>) -> List<Node> {
+  if stmts |> count <= 1 { [] }
+  else { stmts |> take(n: (stmts |> count) - 1) }
+}
+
+fn block_stmts_last(stmts: List<Node>) -> Node {
+  stmts |> last |> match { Some { value: v } => v  None => stmts |> first |> match { Some { value: v } => v  None => stmts |> first |> match { _ => stmts |> first |> match { _ => Node {} } } } }
+}

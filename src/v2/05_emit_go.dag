@@ -65,6 +65,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import extdeps.languages.go.emit { go_reserved }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map }
 import v2.compiler.infer {
@@ -107,23 +108,7 @@ import v2.compiler.emit {
 // These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
 
-// Go reserved words -- Ref: Go Spec "Keywords"
-// Source of truth: std.languages.go_language.reserved_words
-data go_reserved: List<String> = [
-  "break", "case", "chan", "const", "continue",
-  "default", "defer", "else", "fallthrough", "for",
-  "func", "go", "goto", "if", "import",
-  "interface", "map", "package", "range", "return",
-  "select", "struct", "switch", "type", "var",
-  // Predeclared identifiers that should not be shadowed
-  "bool", "byte", "complex64", "complex128", "error",
-  "float32", "float64", "int", "int8", "int16", "int32", "int64",
-  "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
-  "uintptr", "true", "false", "iota", "nil",
-  "append", "cap", "close", "complex", "copy", "delete",
-  "imag", "len", "make", "new", "panic", "print", "println",
-  "real", "recover"
-]
+// Go reserved words imported from extdeps.languages.go.emit
 
 // Go type_map, keywords, container_templates, go_keyword, and
 // go_container now live in go_lang_facts() and shared functions

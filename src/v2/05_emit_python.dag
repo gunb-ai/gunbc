@@ -55,6 +55,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import extdeps.languages.python.emit { python_reserved }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map }
 import v2.compiler.infer {
@@ -106,16 +107,7 @@ fn emit_single_field_product_py_type(field_node: Node) -> String {
 // These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
 
-// Python reserved words -- Ref: Python Reference 2.3.1 Keywords
-// Source of truth: std.languages.python_language.reserved_words
-data python_reserved: List<String> = [
-  "False", "None", "True", "and", "as", "assert", "async", "await",
-  "break", "class", "continue", "def", "del", "elif", "else",
-  "except", "finally", "for", "from", "global", "if", "import",
-  "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
-  "return", "try", "while", "with", "yield",
-  "type", "match", "case"
-]
+// Python reserved words imported from extdeps.languages.python.emit
 
 // Python type_map, keywords, container_templates, python_keyword, and
 // python_container now live in python_lang_facts() and shared functions
