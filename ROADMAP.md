@@ -574,10 +574,22 @@ single atomic commit that updates all consumers, not incrementally.
 
 New pass: `parse → resolve → **normalize** → infer → emit`
 
-Job:
+Normalization has two scopes, split across phases:
+
+- **Phase 1 normalization** (P1.14): Call/MethodCall unification, arity
+  enforcement via the hardcoded arity bridge (P1.17), and parser
+  error-recovery tagging with `CompilerError`. This scope uses
+  hardcoded knowledge of known parameterized types (`Map→2`, `List→1`,
+  `Optional→1`, `Set→1`).
+
+- **Phase 3 normalization** (P3.6/P3.7): Declaration-driven property
+  population and generic slot substitution. The arity bridge is deleted
+  and replaced by reading arity from real `.dag` algebraic declarations.
+  This scope requires generics (P3.6) to exist first.
+
+Phase 1 normalization job:
 - Unify `ExprCall`→`ExprMethodCall` for known method patterns (the
   bridge rewrite that currently lives inside `infer_expr`)
-- Populate structural properties from `.dag` type declarations
 - Enforce arity completeness: parameterized types always carry their
   declared number of children (no bare `leaf_node(name: "Map")`)
 - Mark parser error-recovery nodes with `CompilerError`
