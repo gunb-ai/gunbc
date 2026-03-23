@@ -1,4 +1,10 @@
-//! **Stage 6 — Emit**: Transforms a `ReachableDag<LoweredOp>` +
+//! LEGACY (bootstrap-only): **Stage 6 — Emit**.
+//!
+//! The v2 self-hosted emit pipeline (`05_emit_rust.dag`, `05_emit_python.dag`,
+//! `05_emit_go.dag`) is now authoritative. This crate is retained only for
+//! bootstrapping the v2 compiler.
+//!
+//! Transforms a `ReachableDag<LoweredOp>` +
 //! `DerivedArtifacts` into an `EmissionBundle` of generated source files
 //! for Rust, Go, C, and MIPS backends.
 //!

@@ -37,7 +37,7 @@ import v2.std.core {
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
   transport_has_auth, transport_auth_header_name,
-  transport_headers, transport_argv, transport_env,
+  transport_headers, transport_env,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
   ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
@@ -47,21 +47,32 @@ import v2.std.core {
   make_expr_node,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars,
+  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
+  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
   RuntimeBridgeSemantics, ServiceMethodSemantics,
+  RuntimeBridgeMethod,
+  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
+  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
+  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
+  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
+  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
+  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
-import v2.compiler.reconcile {
+import extdeps.languages.go.emit { go_reserved }
+import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map }
+import v2.compiler.infer {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
-  TypeEnv, TypeBinding, InferScope,
+  InferScope,
   build_params_scope, extend_scope,
-  for_each_element_type_node,
   expr_span,
   ItemInfo, FuncItem,
   is_typed_service_call_receiver, extract_typed_service_name
@@ -97,23 +108,7 @@ import v2.compiler.emit {
 // These data declarations mirror dsl/std/languages.dag exactly.
 // =========================================================================
 
-// Go reserved words -- Ref: Go Spec "Keywords"
-// Source of truth: std.languages.go_language.reserved_words
-data go_reserved: List<String> = [
-  "break", "case", "chan", "const", "continue",
-  "default", "defer", "else", "fallthrough", "for",
-  "func", "go", "goto", "if", "import",
-  "interface", "map", "package", "range", "return",
-  "select", "struct", "switch", "type", "var",
-  // Predeclared identifiers that should not be shadowed
-  "bool", "byte", "complex64", "complex128", "error",
-  "float32", "float64", "int", "int8", "int16", "int32", "int64",
-  "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
-  "uintptr", "true", "false", "iota", "nil",
-  "append", "cap", "close", "complex", "copy", "delete",
-  "imag", "len", "make", "new", "panic", "print", "println",
-  "real", "recover"
-]
+// Go reserved words imported from extdeps.languages.go.emit
 
 // Go type_map, keywords, container_templates, go_keyword, and
 // go_container now live in go_lang_facts() and shared functions
@@ -247,23 +242,23 @@ fn collect_go_std_imports(has_services: Bool, has_errors: Bool) -> List<String> 
 
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let kind = classify_typed_item(item: item)
-  if kind == TypedItemTypeDef {
+  if (kind == TypedItemTypeDef) {
     emit_go_type_def_from_connective(item: item)
-  } else if kind == TypedItemTypeAlias {
+  } else if (kind == TypedItemTypeAlias) {
     emit_go_type_alias(name: item.name, base: item.return_type.value)
-  } else if kind == TypedItemFunction {
+  } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
       emit_go_func_def(name: item.name, params: item.params, return_type: item.return_type.value, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
       emit_go_fn_def(name: item.name, params: item.params, return_type: item.return_type.value, body: item.body.value, registry: registry, scope: scope)
     }
-  } else if kind == TypedItemDataDef {
+  } else if (kind == TypedItemDataDef) {
     emit_go_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
-  } else if kind == TypedItemServiceDef {
+  } else if (kind == TypedItemServiceDef) {
     emit_go_service_def(item: item, registry: registry)
-  } else if kind == TypedItemResourceDef {
+  } else if (kind == TypedItemResourceDef) {
     emit_go_resource_def(item: item)
-  } else if kind == TypedItemExternFunc {
+  } else if (kind == TypedItemExternFunc) {
     let params_str = emit_go_params(params: item.params)
     let ret_str = emit_go_return_type(return_type: item.return_type.value)
     concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
@@ -278,9 +273,11 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_go_type_def_from_connective(item: Node) -> String {
-  match item.connective.value {
-    Conj => emit_go_struct_from_children(name: item.name, children: item.children)
-    Disj => emit_go_sum_from_children(name: item.name, children: item.children)
+  let kind = classify_type_structure(n: item)
+  if (kind == TypeConj) {
+    emit_go_struct_from_children(name: item.name, children: item.children)
+  } else {
+    emit_go_sum_from_children(name: item.name, children: item.children)
   }
 }
 
@@ -367,9 +364,9 @@ fn emit_go_node_type(n: Node) -> String {
     return concat("func(", param_str, ")", ret_str)
   }
   let kind = classify_type_structure(n: n)
-  if kind == TypeLeaf {
+  if (kind == TypeLeaf) {
     emit_go_node_type_leaf(n: n)
-  } else if kind == TypeConj {
+  } else if (kind == TypeConj) {
     emit_go_node_type_conj(n: n)
   } else {
     emit_go_node_type_disj(n: n)
@@ -379,7 +376,7 @@ fn emit_go_node_type(n: Node) -> String {
 fn emit_go_node_type_leaf(n: Node) -> String {
   if n.children |> count == 0 {
     go_primitive_type(name: n.name)
-  } else if n.name == "Map" && n.children |> count == 2 {
+  } else if node_is_map(n: n) {
     let k = match n.children |> first {
       Some { value: kn } => emit_go_node_type(n: kn)
       None => "string"
@@ -431,7 +428,7 @@ fn emit_go_node_type_conj(n: Node) -> String {
 }
 
 fn emit_go_node_type_disj(n: Node) -> String {
-  if n.name == "Optional" {
+  if node_is_optional(n: n) {
     match n.children |> first {
       Some { value: inner } =>
         go_container(kind: "optional", inner: emit_go_node_type(n: inner))
@@ -657,27 +654,72 @@ fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String,
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String? {
+fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
   let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
   match intrinsic {
-    MethodCount => Some { value: concat("len(", recv_str, ")") }
-    MethodJoin => Some { value: concat("strings.Join(", recv_str, ", ", first_arg_str, ")") }
-    MethodSplit => Some { value: concat("strings.Split(", recv_str, ", ", first_arg_str, ")") }
-    MethodLast => Some { value: concat(recv_str, "[len(", recv_str, ")-1]") }
-    MethodFirst => Some { value: concat(recv_str, "[0]") }
-    MethodEnumerate => Some { value: recv_str }
-    MethodChars => Some { value: concat("strings.Split(", recv_str, ", \"\")") }
-    _ => none
+    MethodCount => concat("len(", recv_str, ")")
+    MethodJoin => concat("strings.Join(", recv_str, ", ", first_arg_str, ")")
+    MethodSplit => concat("strings.Split(", recv_str, ", ", first_arg_str, ")")
+    MethodLast => concat(recv_str, "[len(", recv_str, ")-1]")
+    MethodFirst => concat(recv_str, "[0]")
+    MethodEnumerate => recv_str
+    MethodChars => concat("strings.Split(", recv_str, ", \"\")")
+    MethodStringContains => concat("strings.Contains(", recv_str, ", ", first_arg_str, ")")
+    MethodConcat => concat("append(", recv_str, ", ", first_arg_str, "...)")
+    MethodMap => concat("v2rt.Map(", recv_str, ", ", first_arg_str, ")")
+    MethodFilter => concat("v2rt.Filter(", recv_str, ", ", first_arg_str, ")")
+    MethodAny => concat("v2rt.Any(", recv_str, ", ", first_arg_str, ")")
+    MethodAll => concat("v2rt.All(", recv_str, ", ", first_arg_str, ")")
+    MethodFlatMap => concat("v2rt.FlatMap(", recv_str, ", ", first_arg_str, ")")
+    MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
+    MethodTake => concat(recv_str, "[:", first_arg_str, "]")
+    MethodFold => concat("v2rt.Fold(", recv_str, ", ", first_arg_str, ")")
+    MethodSortBy => concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")")
+    MethodAppend => concat("append(", recv_str, ", ", first_arg_str, ")")
   }
 }
 
-fn emit_go_runtime_bridge_method_call(function_name: String, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn go_bridge_method_name(method: RuntimeBridgeMethod) -> String {
+  match method {
+    BridgeGet => "Get"
+    BridgeWith => "With"
+    BridgeListPush => "ListPush"
+    BridgeMapInsert => "MapInsert"
+    BridgeMapMerge => "MapMerge"
+    BridgeMapGet => "MapGet"
+    BridgeMapHas => "MapHas"
+    BridgeEmitMapHas => "EmitMapHas"
+    BridgeMapValues => "MapValues"
+    BridgeMapKeys => "MapKeys"
+    BridgeMapContainsKey => "MapContainsKey"
+    BridgeCharAt => "CharAt"
+    BridgeStringAt => "StringAt"
+    BridgeStringLength => "StringLength"
+    BridgeLength => "Length"
+    BridgeStartsWith => "StartsWith"
+    BridgeEndsWith => "EndsWith"
+    BridgeToString => "ToString"
+    BridgeTrim => "Trim"
+    BridgeToLower => "ToLower"
+    BridgeToUpper => "ToUpper"
+    BridgeReplace => "Replace"
+    BridgeSubstring => "Substring"
+    BridgeToInt => "ToInt"
+    BridgeEmptyMap => "EmptyMap"
+    BridgeContains => "Contains"
+    BridgeReverse => "Reverse"
+    BridgeLookup => "Lookup"
+  }
+}
+
+fn emit_go_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let method_name = go_bridge_method_name(method: method)
   let recv_expr = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
   let recv_str = recv_expr
   let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
   let args_str = arg_strs |> join(separator: ", ")
-  concat(recv_str, ".", go_export_ident(name: function_name), "(", args_str, ")")
+  concat(recv_str, ".", method_name, "(", args_str, ")")
 }
 
 fn emit_go_plain_method_call(receiver: Node, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -696,12 +738,9 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
     Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
-      match emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope) {
-        Some { value: lowered } => lowered
-        None => emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
-      }
-    Some { value: RuntimeBridgeSemantics { function_name: function_name } } =>
-      emit_go_runtime_bridge_method_call(function_name: function_name, receiver: receiver, args: args, registry: registry, scope: scope)
+      emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope)
+    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+      emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
     Some { value: PlainMethodSemantics } =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
     None =>

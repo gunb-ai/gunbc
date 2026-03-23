@@ -9,12 +9,7 @@
 //   work  -- total operations performed
 //   span  -- critical path length under DAG dependency structure
 //
-// Costs are parameterized by SemanticsCtx so that the same surface
-// operation can have different faithful costs in the bootstrap
-// interpreter vs emitted/native code.
-//
 // D2: get_or_compute_summary -- lazy cached summary computation
-// D3: classify_recursion -- SCC-based recursion pattern detection
 // D4: build_complexity_report -- collect summaries + violations
 
 module v2.compiler.complexity
@@ -32,9 +27,10 @@ import v2.std.core {
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodFold, MethodSortBy, MethodAppend,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
-  PlainMethodSemantics, ServiceMethodSemantics
+  PlainMethodSemantics, ServiceMethodSemantics,
+  RuntimeBridgeMethod, BridgeReverse
 }
 
 // =========================================================================
@@ -62,21 +58,7 @@ type SizeExpr
 // operation costs), and Unknown (when the system cannot prove a
 // tighter bound).
 //
-// PrimCost references a closed primitive operator under a concrete
-// semantics context, keeping the proof vocabulary structural instead of
-// stringly typed.
 // =========================================================================
-
-type PrimOp
-  = OpCharAt
-  | OpStringLength
-  | OpListPush
-  | OpMapInsert
-  | OpMapGet
-  | OpConcat
-  | OpSubstring
-  | OpScanWhile
-  | OpJoin
 
 type CostExpr
   = CostConst { value: Int }
@@ -84,22 +66,7 @@ type CostExpr
   | CostMul { left: CostExpr, right: CostExpr }
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
-  | PrimCost { op: PrimOp, args: List<SizeExpr>, ctx: SemanticsCtx }
   | CostUnknown { reason: String }
-
-// =========================================================================
-// Constraints on sizes
-//
-// Constraints express assumptions about symbolic sizes: equality,
-// ordering, and non-negativity. These are carried alongside cost
-// expressions so that simplification and reporting can reason about
-// the conditions under which a cost formula holds.
-// =========================================================================
-
-type Constraint
-  = ConstraintEq { left: SizeExpr, right: SizeExpr }
-  | ConstraintLeq { left: SizeExpr, right: SizeExpr }
-  | NonNegative { expr: SizeExpr }
 
 // =========================================================================
 // Certainty of a proof
@@ -143,6 +110,7 @@ fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> CostShape {
     MethodFilter => ShapeIterateBody { produces_collection: true }
     MethodEnumerate => ShapeIterateBody { produces_collection: true }
     MethodSkip => ShapeIterateBody { produces_collection: true }
+    MethodTake => ShapeIterateBody { produces_collection: true }
     MethodFold => ShapeIterateBody { produces_collection: false }
     MethodAny => ShapeIterateBody { produces_collection: false }
     MethodAll => ShapeIterateBody { produces_collection: false }
@@ -160,33 +128,6 @@ fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> CostShape {
 }
 
 // =========================================================================
-// Runtime semantics context
-//
-// Parameterizes cost analysis by backend and data structure
-// representation. The same surface operation (e.g., list append)
-// has different costs under different models:
-//
-//   PrimCost(OpListPush, [n], SemanticsCtx { list_model: PersistentList, ... }) = n + 1
-//   PrimCost(OpListPush, [n], SemanticsCtx { list_model: RcVec, ... })          = 1
-// =========================================================================
-
-type BackendKind = V1Interpreter | EmittedRust | EmittedPython | EmittedGo
-
-type ListModel = PersistentList | RcVec | NativeVec
-
-type MapModel = BTreeMap | HashMap | NativeDict
-
-type StringModel = PersistentString | RcString | NativeString
-
-type SemanticsCtx {
-  backend: BackendKind
-  exec_model: BackendKind
-  list_model: ListModel
-  map_model: MapModel
-  string_model: StringModel
-}
-
-// =========================================================================
 // Complexity summary -- the main output type
 //
 // Attaches to a function, expression, or DAG node to describe its
@@ -195,19 +136,16 @@ type SemanticsCtx {
 //   work        -- total operations (sequential cost)
 //   span        -- critical path (parallel cost)
 //   output_size -- symbolic size of each named output
-//   assumptions -- constraints under which the formula holds
 //   certainty   -- how confident the proof is
 //
 // The reporting rule: compute exact symbolic formulas first, then
-// derive asymptotic summaries from those formulas. Do not discard
-// representation or backend assumptions early.
+// derive asymptotic summaries from those formulas.
 // =========================================================================
 
 type ComplexitySummary {
   work: CostExpr
   span: CostExpr
   output_size: Map<String, CostExpr>
-  assumptions: List<Constraint>
   certainty: Certainty
 }
 
@@ -231,26 +169,6 @@ type CostInternTable {
 
 fn empty_intern_table() -> CostInternTable {
   CostInternTable { interned: empty_map(), summaries: empty_map() }
-}
-
-// Intern a CostExpr: if structurally identical expr already exists,
-// return the cached canonical version. Otherwise store and return it.
-// Returns (canonical_expr, updated_table).
-fn intern_cost(table: CostInternTable, hash: String, expr: CostExpr) -> CostExpr {
-  match map_get(table.interned, hash) {
-    Some { value: existing } => existing
-    None => expr
-  }
-}
-
-fn intern_cost_table(table: CostInternTable, hash: String, expr: CostExpr) -> CostInternTable {
-  match map_get(table.interned, hash) {
-    Some { value: _ } => table
-    None => CostInternTable {
-      interned: map_insert(table.interned, hash, expr),
-      summaries: table.summaries
-    }
-  }
 }
 
 // Cache a complexity summary for a function.
@@ -329,17 +247,17 @@ fn scalar_output() -> Map<String, CostExpr> {
 // =========================================================================
 
 fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
-  method == MethodMap || method == MethodFilter || method == MethodFlatMap ||
-  method == MethodSkip || method == MethodEnumerate || method == MethodSortBy ||
-  method == MethodConcat
+  (method == MethodMap) || (method == MethodFilter) || (method == MethodFlatMap)
+  || (method == MethodSkip) || (method == MethodEnumerate) || (method == MethodSortBy)
+  || (method == MethodConcat)
 }
 
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   match method_semantics {
     Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } } =>
       is_size_preserving_intrinsic_method(method: method)
-    Some { value: RuntimeBridgeSemantics { function_name: fname } } =>
-      fname == "reverse"
+    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+      bridge_method == BridgeReverse
     _ => false
   }
 }
@@ -407,7 +325,6 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Conservative
         },
         table: recv_r.table
@@ -435,7 +352,6 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
           work: cost_seq(a: recv_r.summary.work, b: loop_work),
           span: cost_seq(a: recv_r.summary.span, b: loop_work),
           output_size: os,
-          assumptions: concat(recv_r.summary.assumptions, body_result.summary.assumptions),
           certainty: body_result.summary.certainty
         },
         table: body_result.table
@@ -453,7 +369,6 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
               work: CostConst { value: 1 },
               span: CostConst { value: 1 },
               output_size: empty_map(),
-              assumptions: [],
               certainty: Conservative
             },
             table: recv_r.table
@@ -466,7 +381,6 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
           work: cost_seq(a: recv_r.summary.work, b: sort_work),
           span: cost_seq(a: recv_r.summary.span, b: sort_work),
           output_size: sort_os,
-          assumptions: concat(recv_r.summary.assumptions, key_result.summary.assumptions),
           certainty: Conservative
         },
         table: key_result.table
@@ -485,7 +399,6 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
           work: cost_seq(a: recv_r.summary.work, b: loop_work),
           span: cost_seq(a: recv_r.summary.span, b: loop_work),
           output_size: scan_os,
-          assumptions: recv_r.summary.assumptions,
           certainty: recv_r.summary.certainty
         },
         table: recv_r.table
@@ -496,7 +409,6 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
           work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
           span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
           output_size: empty_map(),
-          assumptions: recv_r.summary.assumptions,
           certainty: recv_r.summary.certainty
         },
         table: recv_r.table
@@ -541,7 +453,6 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: _ } => expr
     CostUnknown { reason: _ } => expr
-    PrimCost { op: _, args: _, ctx: _ } => expr
     CostAdd { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
@@ -629,7 +540,6 @@ fn classify_complexity(expr: CostExpr) -> String {
   match s {
     CostConst { value: _ } => "O(1)"
     CostUnknown { reason: _ } => "O(?)"
-    PrimCost { op: _, args: _, ctx: _ } => "O(1)"
     CostSum { binder: _, upper: u, body: bd } =>
       if has_cost_sum(expr: bd) {
         // Nested iteration — inner classification needs O() stripped
@@ -772,6 +682,11 @@ type SummaryResult {
   table: CostInternTable
 }
 
+type MatchCostAccum {
+  result: SummaryResult
+  branch_costs: List<CostExpr>
+}
+
 // Walk a single expression and produce its CostExpr for work.
 fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInternTable) -> SummaryResult {
   match texpr.expr_data {
@@ -781,7 +696,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -793,7 +707,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -805,7 +718,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -819,7 +731,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_seq(a: lr.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.work)),
           span: cost_seq(a: lr.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.span)),
           output_size: empty_map(),
-          assumptions: concat(lr.summary.assumptions, rr.summary.assumptions),
           certainty: Proven
         },
         table: rr.table
@@ -838,7 +749,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               work: CostConst { value: 1 },
               span: CostConst { value: 1 },
               output_size: empty_map(),
-              assumptions: [],
               certainty: Proven
             },
             table: table
@@ -850,7 +760,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: callee_result.table
@@ -861,7 +770,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             work: cost_seq(a: acc.summary.work, b: ar.summary.work),
             span: cost_seq(a: acc.summary.span, b: ar.summary.span),
             output_size: empty_map(),
-            assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
             certainty: Proven
           },
           table: ar.table
@@ -872,7 +780,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_seq(a: args_result.summary.work, b: callee_result.summary.work),
           span: cost_seq(a: args_result.summary.span, b: callee_result.summary.span),
           output_size: callee_result.summary.output_size,
-          assumptions: concat(args_result.summary.assumptions, callee_result.summary.assumptions),
           certainty: callee_result.summary.certainty
         },
         table: args_result.table
@@ -890,14 +797,13 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } } =>
           let shape = intrinsic_method_cost_shape(method: im)
           cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index)
-        Some { value: RuntimeBridgeSemantics { function_name: _ } } =>
+        Some { value: RuntimeBridgeSemantics { method: _ } } =>
           // All runtime bridge methods are O(1)
           SummaryResult {
             summary: ComplexitySummary {
               work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
               span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
               output_size: empty_map(),
-              assumptions: recv_r.summary.assumptions,
               certainty: recv_r.summary.certainty
             },
             table: recv_r.table
@@ -910,7 +816,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               work: CostConst { value: 0 },
               span: CostConst { value: 0 },
               output_size: empty_map(),
-              assumptions: [],
               certainty: Proven
             },
             table: recv_r.table
@@ -921,7 +826,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
                 work: cost_seq(a: acc.summary.work, b: ar.summary.work),
                 span: cost_seq(a: acc.summary.span, b: ar.summary.span),
                 output_size: empty_map(),
-                assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
                 certainty: Proven
               },
               table: ar.table
@@ -932,7 +836,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
               span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
               output_size: empty_map(),
-              assumptions: concat(recv_r.summary.assumptions, args_result.summary.assumptions),
               certainty: Proven
             },
             table: args_result.table
@@ -941,44 +844,43 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
 
     ExprMatch { scrutinee: s, arms: arm_list } =>
       let s_r = cost_of_expr(texpr: s, func_index: func_index, table: table)
-      let arms_result = arm_list |> fold(init: SummaryResult {
-        summary: ComplexitySummary {
-          work: CostConst { value: 0 },
-          span: CostConst { value: 0 },
-          output_size: empty_map(),
-          assumptions: [],
-          certainty: Proven
-        },
-        table: s_r.table
-      }, f: fn(acc, arm) {
-        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.table)
-        // Space: all match arms produce same type; use last arm's output
-        SummaryResult {
+      // Single pass: collect both accumulated max and individual branch costs.
+      // Previous code re-evaluated each arm body a second time to get individual
+      // costs, causing exponential blowup on nested match expressions (2^depth).
+      let arms_accum = arm_list |> fold(init: MatchCostAccum {
+        result: SummaryResult {
           summary: ComplexitySummary {
-            work: cost_par(a: acc.summary.work, b: ar.summary.work),
-            span: cost_par(a: acc.summary.span, b: ar.summary.span),
-            output_size: ar.summary.output_size,
-            assumptions: concat(acc.summary.assumptions, ar.summary.assumptions),
-            certainty: ar.summary.certainty
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
+            output_size: empty_map(),
+            certainty: Proven
           },
-          table: ar.table
+          table: s_r.table
+        },
+        branch_costs: []
+      }, f: fn(acc, arm) {
+        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.result.table)
+        MatchCostAccum {
+          result: SummaryResult {
+            summary: ComplexitySummary {
+              work: cost_par(a: acc.result.summary.work, b: ar.summary.work),
+              span: cost_par(a: acc.result.summary.span, b: ar.summary.span),
+              output_size: ar.summary.output_size,
+              certainty: ar.summary.certainty
+            },
+            table: ar.table
+          },
+          branch_costs: concat(acc.branch_costs, [ar.summary.work])
         }
       })
-      // Per-arm costs: re-evaluate each arm against the fully-cached table
-      // so individual branch costs are preserved (not the accumulated max).
-      let branch_costs = arm_list |> map(arm =>
-        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: arms_result.table)
-        ar.summary.work
-      )
       SummaryResult {
         summary: ComplexitySummary {
-          work: cost_conditional(condition: s_r.summary.work, branches: branch_costs),
-          span: cost_conditional(condition: s_r.summary.span, branches: [arms_result.summary.span]),
-          output_size: arms_result.summary.output_size,
-          assumptions: concat(s_r.summary.assumptions, arms_result.summary.assumptions),
-          certainty: arms_result.summary.certainty
+          work: cost_conditional(condition: s_r.summary.work, branches: arms_accum.branch_costs),
+          span: cost_conditional(condition: s_r.summary.span, branches: [arms_accum.result.summary.span]),
+          output_size: arms_accum.result.summary.output_size,
+          certainty: arms_accum.result.summary.certainty
         },
-        table: arms_result.table
+        table: arms_accum.result.table
       }
 
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
@@ -997,7 +899,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               work: CostConst { value: 0 },
               span: CostConst { value: 0 },
               output_size: empty_map(),
-              assumptions: [],
               certainty: Proven
             },
             table: t_r.table
@@ -1009,7 +910,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_conditional(condition: c_r.summary.work, branches: [t_r.summary.work, e_result.summary.work]),
           span: cost_conditional(condition: c_r.summary.span, branches: [t_r.summary.span, e_result.summary.span]),
           output_size: t_r.summary.output_size,
-          assumptions: concat(c_r.summary.assumptions, t_r.summary.assumptions, e_result.summary.assumptions),
           certainty: Proven
         },
         table: e_result.table
@@ -1025,7 +925,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
               work: cost_seq(a: v_r.summary.work, b: b_r.summary.work),
               span: cost_seq(a: v_r.summary.span, b: b_r.summary.span),
               output_size: b_r.summary.output_size,
-              assumptions: concat(v_r.summary.assumptions, b_r.summary.assumptions),
               certainty: b_r.summary.certainty
             },
             table: b_r.table
@@ -1039,7 +938,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -1050,7 +948,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             work: cost_seq(a: acc.summary.work, b: sr.summary.work),
             span: cost_seq(a: acc.summary.span, b: sr.summary.span),
             output_size: sr.summary.output_size,
-            assumptions: concat(acc.summary.assumptions, sr.summary.assumptions),
             certainty: sr.summary.certainty
           },
           table: sr.table
@@ -1068,7 +965,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_seq(a: c_r.summary.work, b: loop_work),
           span: cost_seq(a: c_r.summary.span, b: loop_work),
           output_size: empty_map(),
-          assumptions: concat(c_r.summary.assumptions, bd_r.summary.assumptions),
           certainty: bd_r.summary.certainty
         },
         table: bd_r.table
@@ -1087,7 +983,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_seq(a: CostConst { value: 1 }, b: er.summary.work),
           span: cost_seq(a: CostConst { value: 1 }, b: er.summary.span),
           output_size: empty_map(),
-          assumptions: er.summary.assumptions,
           certainty: er.summary.certainty
         },
         table: er.table
@@ -1102,7 +997,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -1113,7 +1007,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             work: cost_seq(a: acc.summary.work, b: fr.summary.work),
             span: cost_seq(a: acc.summary.span, b: fr.summary.span),
             output_size: empty_map(),
-            assumptions: concat(acc.summary.assumptions, fr.summary.assumptions),
             certainty: fr.summary.certainty
           },
           table: fr.table
@@ -1126,7 +1019,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -1137,7 +1029,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             work: cost_seq(a: acc.summary.work, b: er.summary.work),
             span: cost_seq(a: acc.summary.span, b: er.summary.span),
             output_size: empty_map(),
-            assumptions: concat(acc.summary.assumptions, er.summary.assumptions),
             certainty: er.summary.certainty
           },
           table: er.table
@@ -1150,7 +1041,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -1163,7 +1053,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
                 work: cost_seq(a: acc.summary.work, b: er.summary.work),
                 span: cost_seq(a: acc.summary.span, b: er.summary.span),
                 output_size: empty_map(),
-                assumptions: concat(acc.summary.assumptions, er.summary.assumptions),
                 certainty: er.summary.certainty
               },
               table: er.table
@@ -1183,7 +1072,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_seq(a: br.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: ir.summary.work)),
           span: cost_seq(a: br.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: ir.summary.span)),
           output_size: empty_map(),
-          assumptions: concat(br.summary.assumptions, ir.summary.assumptions),
           certainty: Proven
         },
         table: ir.table
@@ -1198,7 +1086,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: cost_seq(a: br.summary.work, b: cost_seq(a: sr.summary.work, b: er.summary.work)),
           span: cost_seq(a: br.summary.span, b: cost_seq(a: sr.summary.span, b: er.summary.span)),
           output_size: empty_map(),
-          assumptions: concat(br.summary.assumptions, sr.summary.assumptions, er.summary.assumptions),
           certainty: Proven
         },
         table: er.table
@@ -1210,7 +1097,6 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
           output_size: empty_map(),
-          assumptions: [],
           certainty: Proven
         },
         table: table
@@ -1234,7 +1120,6 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             work: CostUnknown { reason: concat("computing: ", func_name) },
             span: CostUnknown { reason: concat("computing: ", func_name) },
             output_size: empty_map(),
-            assumptions: [],
             certainty: Unknown
           }
           let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
@@ -1245,7 +1130,6 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             work: simplify_cost(expr: result.summary.work),
             span: simplify_cost(expr: result.summary.span),
             output_size: result.summary.output_size,
-            assumptions: result.summary.assumptions,
             certainty: result.summary.certainty
           }
           let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
@@ -1256,118 +1140,10 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             work: CostUnknown { reason: concat("function not found: ", func_name) },
             span: CostUnknown { reason: concat("function not found: ", func_name) },
             output_size: empty_map(),
-            assumptions: [],
             certainty: Unknown
           }
           SummaryResult { summary: unknown_summary, table: table }
       }
-  }
-}
-
-// =========================================================================
-// D3: Recursion classification
-//
-// Inspects a function's Node to classify its recursion pattern.
-// Uses is_self_recursive flag and counts self-calls in the body.
-// =========================================================================
-
-// Count the number of direct self-calls in an expression body.
-fn count_self_calls(texpr: Node, fn_name: String) -> Int {
-  match texpr.expr_data {
-    ExprCall { func: f, args: call_args } =>
-      let self_count = if f == fn_name { 1 } else { 0 }
-      let arg_count = call_args |> fold(init: 0, f: (acc, a) =>
-        acc + count_self_calls(texpr: a.value, fn_name: fn_name)
-      )
-      self_count + arg_count
-    ExprMethodCall { receiver: recv, method: _, args: mc_args } =>
-      let recv_count = count_self_calls(texpr: recv, fn_name: fn_name)
-      let arg_count = mc_args |> fold(init: 0, f: (acc, a) =>
-        acc + count_self_calls(texpr: a.value, fn_name: fn_name)
-      )
-      recv_count + arg_count
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      let s_count = count_self_calls(texpr: s, fn_name: fn_name)
-      let arm_count = arm_list |> fold(init: 0, f: (acc, arm) =>
-        acc + count_self_calls(texpr: arm.body, fn_name: fn_name)
-      )
-      s_count + arm_count
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      let c_count = count_self_calls(texpr: c, fn_name: fn_name)
-      let t_count = count_self_calls(texpr: t, fn_name: fn_name)
-      let e_count = match e {
-        Some { value: eb } => count_self_calls(texpr: eb, fn_name: fn_name)
-        None => 0
-      }
-      c_count + t_count + e_count
-    ExprLet { name: _, value: v, body: bd } =>
-      let v_count = count_self_calls(texpr: v, fn_name: fn_name)
-      let bd_count = match bd {
-        Some { value: b } => count_self_calls(texpr: b, fn_name: fn_name)
-        None => 0
-      }
-      v_count + bd_count
-    ExprBlock { stmts: ss } =>
-      ss |> fold(init: 0, f: (acc, s) =>
-        acc + count_self_calls(texpr: s, fn_name: fn_name)
-      )
-    ExprBinOp { op: _, left: l, right: r } =>
-      count_self_calls(texpr: l, fn_name: fn_name) + count_self_calls(texpr: r, fn_name: fn_name)
-    ExprUnaryOp { op: _, operand: e } =>
-      count_self_calls(texpr: e, fn_name: fn_name)
-    ExprLambda { params: _, body: bd } =>
-      count_self_calls(texpr: bd, fn_name: fn_name)
-    ExprFieldAccess { base: b, field: _ } =>
-      count_self_calls(texpr: b, fn_name: fn_name)
-    ExprRecordLit { type_name: _, fields: fs } =>
-      fs |> fold(init: 0, f: (acc, fi) =>
-        acc + count_self_calls(texpr: fi.value, fn_name: fn_name)
-      )
-    ExprListLit { elements: els } =>
-      els |> fold(init: 0, f: (acc, el) =>
-        acc + count_self_calls(texpr: el, fn_name: fn_name)
-      )
-    ExprReturn { value: v } =>
-      count_self_calls(texpr: v, fn_name: fn_name)
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      count_self_calls(texpr: c, fn_name: fn_name) + count_self_calls(texpr: bd, fn_name: fn_name)
-    ExprCast { expr: e, target: _ } =>
-      count_self_calls(texpr: e, fn_name: fn_name)
-    ExprIndex { base: b, index: i } =>
-      count_self_calls(texpr: b, fn_name: fn_name) + count_self_calls(texpr: i, fn_name: fn_name)
-    ExprSlice { base: b, start: s, end: e } =>
-      count_self_calls(texpr: b, fn_name: fn_name) + count_self_calls(texpr: s, fn_name: fn_name) + count_self_calls(texpr: e, fn_name: fn_name)
-    ExprStringInterp { parts: _ } => 0
-    ExprVar { name: _ } => 0
-    ExprLiteral { value: _ } => 0
-    ExprError { kind: _, message: _ } => 0
-    NoExprData => 0
-  }
-}
-
-// Classify the recursion pattern of a function from its Node metadata.
-//   - is_self_recursive + 1 recursive call => LinearRecursion
-//   - is_self_recursive + 2 recursive calls on halved input => DivideAndConquer
-//   - otherwise => UnresolvableRecursion
-fn classify_recursion(func_node: Node) -> RecursionPattern {
-  if func_node.is_self_recursive == false {
-    UnresolvableRecursion { reason: "not self-recursive" }
-  } else {
-    match func_node.body {
-      Some { value: body } =>
-        let call_count = count_self_calls(texpr: body, fn_name: func_node.name)
-        if call_count == 1 {
-          LinearRecursion { iteration_var: "n" }
-        } else {
-          if call_count == 2 {
-            DivideAndConquer { split_factor: 2 }
-          } else {
-            UnresolvableRecursion { reason: "unrecognized pattern: multiple recursive calls" }
-          }
-        }
-      None =>
-        UnresolvableRecursion { reason: "no body" }
-    }
   }
 }
 
@@ -1396,7 +1172,6 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
       work: CostConst { value: 0 },
       span: CostConst { value: 0 },
       output_size: empty_map(),
-      assumptions: [],
       certainty: Proven
     },
     table: empty_intern_table()

@@ -98,8 +98,8 @@ confirm before continuing.
 - Three tiers: DryRun (structure), Selective Real (computation), Full Real (integration)
 
 ```bash
-cargo test --workspace --exclude gunbc-dag-tests   # hand-written tests
-cargo test -p gunbc-dag-tests                       # auto-generated DAG tests
+cargo test --workspace --exclude v2-compiler-tests  # hand-written tests
+cargo test -p v2-compiler-tests                     # v2 compiler tests
 cargo clippy --all-targets -- -D warnings           # lint
 ```
 

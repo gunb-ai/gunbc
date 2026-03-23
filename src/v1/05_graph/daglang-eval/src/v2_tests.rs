@@ -32,9 +32,21 @@ const V2_RESOLVE_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../../src/v2/03_resolve.dag"
 ));
+const V2_TYPES_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/04_types.dag"
+));
+const V2_ENV_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/04_env.dag"
+));
+const V2_METHOD_DAG: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../../src/v2/04_method.dag"
+));
 const V2_TYPECHECK_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../../src/v2/04_reconcile.dag"
+    "/../../../../src/v2/04_infer.dag"
 ));
 const V2_EMIT_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -42,7 +54,7 @@ const V2_EMIT_DAG: &str = include_str!(concat!(
 ));
 const V2_PIPELINE_DAG: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../../src/v2/06_pipeline.dag"
+    "/../../../../src/v2/compile.dag"
 ));
 
 fn empty_siblings() -> HashMap<String, LoweredFnBody> {
@@ -136,7 +148,7 @@ fn v2_pipeline_dag_partial_parse_recovers_module_path() {
         .module_path
         .as_ref()
         .expect("partial parse should recover module path");
-    assert_eq!(module_path.node.as_dotted(), "v2.compiler.pipeline");
+    assert_eq!(module_path.node.as_dotted(), "v2.compiler.compile");
 }
 
 #[test]
@@ -151,6 +163,39 @@ fn v2_parse_dag_parses() {
 }
 
 #[test]
+fn v2_types_dag_parses() {
+    let result = daglang_syntax::parser::parse_to_result(V2_TYPES_DAG);
+    let module_path = result
+        .ast
+        .module_path
+        .as_ref()
+        .expect("should recover module path");
+    assert_eq!(module_path.node.as_dotted(), "v2.compiler.infer_types");
+}
+
+#[test]
+fn v2_env_dag_parses() {
+    let result = daglang_syntax::parser::parse_to_result(V2_ENV_DAG);
+    let module_path = result
+        .ast
+        .module_path
+        .as_ref()
+        .expect("should recover module path");
+    assert_eq!(module_path.node.as_dotted(), "v2.compiler.infer_env");
+}
+
+#[test]
+fn v2_method_dag_parses() {
+    let result = daglang_syntax::parser::parse_to_result(V2_METHOD_DAG);
+    let module_path = result
+        .ast
+        .module_path
+        .as_ref()
+        .expect("should recover module path");
+    assert_eq!(module_path.node.as_dotted(), "v2.compiler.infer_method");
+}
+
+#[test]
 fn v2_typecheck_dag_parses() {
     let result = daglang_syntax::parser::parse_to_result(V2_TYPECHECK_DAG);
     let module_path = result
@@ -158,7 +203,7 @@ fn v2_typecheck_dag_parses() {
         .module_path
         .as_ref()
         .expect("should recover module path");
-    assert_eq!(module_path.node.as_dotted(), "v2.compiler.reconcile");
+    assert_eq!(module_path.node.as_dotted(), "v2.compiler.infer");
 }
 
 #[test]

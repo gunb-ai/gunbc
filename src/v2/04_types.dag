@@ -1,0 +1,456 @@
+// v2 type predicates, constructors, and comparisons.
+//
+// Pure functions on Node-as-type representations. No TypeEnv, no InferScope,
+// no side effects. Every function here takes Nodes and returns Nodes or
+// booleans -- the vocabulary for structural type reasoning throughout the
+// compiler.
+//
+// Dependency: only v2.std.core (Node, Connective, etc.)
+
+module v2.compiler.infer_types
+
+import std.types { SourceSpan }
+import v2.std.core {
+  Node, FieldInit, Param,
+  Connective, Conj, Disj,
+  NoExprData, ExprLiteral,
+  make_expr_node,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  is_kernel_type, is_kernel_numeric, is_kernel_textual,
+  BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce
+}
+
+// =========================================================================
+// Node constructors
+// =========================================================================
+
+fn child_return_type_or_name(ch: Node) -> Node {
+  if ch.return_type == none { leaf_node(name: ch.name) }
+  else { ch.return_type.value }
+}
+
+fn leaf_node(name: String) -> Node {
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn product_property() -> FieldInit {
+  FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+}
+
+fn coproduct_property() -> FieldInit {
+  FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+}
+
+fn optional_property() -> FieldInit {
+  FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+}
+
+fn optional_node(inner: Node) -> Node {
+  Node { name: "Optional", span: SourceSpan { start: 0, end: 0 }, children: [inner, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [coproduct_property(), optional_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn container_property(kind_name: String) -> FieldInit {
+  FieldInit { name: "container_kind", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: kind_name } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+}
+
+fn container_node(kind_name: String, element: Node) -> Node {
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [container_property(kind_name: kind_name)], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn tuple_node(first: Node, second: Node) -> Node {
+  Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: first }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: second }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn map_node(key: Node, value: Node) -> Node {
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn bare_map_node() -> Node {
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn callable_node(func_params: List<Param>, ret: Node) -> Node {
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: ret }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn callable_return_type(n: Node) -> Node {
+  if n.name == "Callable" {
+    match n.return_type {
+      Some { value: ret } => ret
+      None => leaf_node(name: "Dynamic")
+    }
+  } else { n }
+}
+
+fn error_type_node() -> Node {
+  leaf_node(name: "Error")
+}
+
+// =========================================================================
+// Type predicates
+// =========================================================================
+
+fn node_is_error_type(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  node_is_leaf(n: normed) && normed.name == "Error"
+}
+
+fn node_is_product(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_product")
+  || (n.connective != none && n.connective == Some { value: Conj })
+}
+
+fn node_is_coproduct(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_coproduct")
+  || (n.connective != none && n.connective == Some { value: Disj })
+}
+
+fn node_has_structure(n: Node) -> Bool {
+  node_is_product(n: n) || node_is_coproduct(n: n)
+}
+
+fn node_is_container(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "container_kind")
+}
+
+fn node_is_optional(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "optional")
+}
+
+fn node_is_map(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "map_type")
+}
+
+// Dynamic means "any type is acceptable" -- truly unresolved, not an error.
+// For cascade suppression of error types, use node_is_error_type instead.
+fn node_is_dynamic(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  node_is_leaf(n: normed) && normed.name == "Dynamic"
+}
+
+fn node_is_permissive(n: Node) -> Bool {
+  node_is_dynamic(n: n) || node_is_error_type(n: n)
+}
+
+fn node_is_leaf(n: Node) -> Bool {
+  n.connective == none && node_has_structure(n: n) == false && n.children |> count == 0 && n.properties |> count == 0
+}
+
+fn node_is_named_ref(n: Node) -> Bool {
+  if n.return_type == none { false }
+  else {
+    let rt = n.return_type.value
+    node_has_structure(n: rt) == false && rt.children |> count == 0
+      && rt.name != "" && rt.name != "None"
+      && is_kernel_type(name: rt.name) == false
+  }
+}
+
+// =========================================================================
+// Normalization
+// =========================================================================
+
+fn normalize_access_type_node(n: Node) -> Node {
+  if n.name == "Refined" && node_has_structure(n: n) {
+    match n.children |> first {
+      Some { value: base } => normalize_access_type_node(n: base)
+      None => n
+    }
+  } else { n }
+}
+
+fn normalize_type_name(name: String) -> String {
+  if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
+    name
+  } else {
+    let base = match name |> split(delimiter: "<") |> first {
+      Some { value: part } => part
+      None => name
+    }
+    match base |> split(delimiter: ".") |> last {
+      Some { value: short } => short
+      None => base
+    }
+  }
+}
+
+// =========================================================================
+// Type shape and comparison
+// =========================================================================
+
+fn node_type_shape(n: Node) -> String {
+  if node_is_leaf(n: n) {
+    if node_is_named_ref(n: n) {
+      concat("Named(", normalize_type_name(name: n.name), ")")
+    } else {
+      concat("Primitive(", n.name, ")")
+    }
+  } else if node_is_product(n: n) {
+    if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
+  } else if node_is_coproduct(n: n) {
+    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
+  } else if node_is_container(n: n) {
+    let elem_shape = match n.children |> first {
+      Some { value: el } => node_type_shape(n: el)
+      None => "?"
+    }
+    concat("Container(", n.name, ",", elem_shape, ")")
+  } else if node_is_optional(n: n) {
+    let inner_shape = match n.children |> first {
+      Some { value: inner } => node_type_shape(n: inner)
+      None => "?"
+    }
+    concat("Optional(", inner_shape, ")")
+  } else if node_is_map(n: n) {
+    "Map(...)"
+  } else {
+    concat("Node(", n.name, ")")
+  }
+}
+
+fn node_type_compatible(left: Node, right: Node) -> Bool {
+  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
+  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { true }
+  else if node_is_optional(n: left) && right.name == "Unit" { true }
+  else if left.name == "Unit" && node_is_optional(n: right) { true }
+  else if node_is_container(n: left) && node_is_container(n: right) {
+    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    else {
+      match left.children |> first {
+        Some { value: left_el } =>
+          match right.children |> first {
+            Some { value: right_el } => node_type_compatible(left: left_el, right: right_el)
+            None => true
+          }
+        None => true
+      }
+    }
+  }
+  else if node_is_optional(n: left) && node_is_optional(n: right) {
+    match left.children |> first {
+      Some { value: left_inner } =>
+        match right.children |> first {
+          Some { value: right_inner } => node_type_compatible(left: left_inner, right: right_inner)
+          None => true
+        }
+      None => true
+    }
+  }
+  else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
+}
+
+fn node_type_equals(left: Node, right: Node) -> Bool {
+  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
+  else if node_is_dynamic(n: left) && node_is_dynamic(n: right) { true }
+  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { false }
+  else if node_is_optional(n: left) && right.name == "Unit" { true }
+  else if left.name == "Unit" && node_is_optional(n: right) { true }
+  else if node_is_leaf(n: left) && node_is_leaf(n: right) {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  else if node_has_structure(n: left) && node_has_structure(n: right) {
+    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    else if node_is_product(n: left) != node_is_product(n: right) { false }
+    else if left.children |> count != right.children |> count { false }
+    else {
+      left.children |> enumerate |> all(pair =>
+        match right.children |> skip(pair.first) |> first {
+          Some { value: right_child } => node_type_equals(left: pair.second, right: right_child)
+          None => false
+        }
+      )
+    }
+  }
+  else if node_is_leaf(n: left) && node_has_structure(n: right) {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  else if node_has_structure(n: left) && node_is_leaf(n: right) {
+    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+  }
+  else if node_is_container(n: left) && node_is_container(n: right) {
+    if left.name != right.name { false }
+    else {
+      match left.children |> first {
+        Some { value: left_el } =>
+          match right.children |> first {
+            Some { value: right_el } => node_type_equals(left: left_el, right: right_el)
+            None => false
+          }
+        None => false
+      }
+    }
+  }
+  else if node_is_optional(n: left) && node_is_optional(n: right) {
+    match left.children |> first {
+      Some { value: left_inner } =>
+        match right.children |> first {
+          Some { value: right_inner } => node_type_equals(left: left_inner, right: right_inner)
+          None => false
+        }
+      None => false
+    }
+  }
+  else if node_is_map(n: left) && node_is_map(n: right) {
+    if left.children |> count == 2 && right.children |> count == 2 {
+      let left_first = match left.children |> first { Some { value: v } => v, None => left }
+      let right_first = match right.children |> first { Some { value: v } => v, None => right }
+      let left_second = match skip(left.children, 1) |> first { Some { value: v } => v, None => left }
+      let right_second = match skip(right.children, 1) |> first { Some { value: v } => v, None => right }
+      node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
+    } else {
+      false
+    }
+  }
+  else if left.name == "Callable" && right.name == "Callable" {
+    if left.params |> count != right.params |> count { false }
+    else {
+      let params_eq = left.params |> enumerate |> all(pair =>
+        match right.params |> skip(pair.first) |> first {
+          Some { value: right_param } =>
+            node_type_equals(left: pair.second.type_expr, right: right_param.type_expr)
+          None => false
+        }
+      )
+      if params_eq == false { false }
+      else {
+        match left.return_type {
+          Some { value: left_ret } =>
+            match right.return_type {
+              Some { value: right_ret } => node_type_equals(left: left_ret, right: right_ret)
+              None => false
+            }
+          None => right.return_type == none
+        }
+      }
+    }
+  }
+  else {
+    false
+  }
+}
+
+// =========================================================================
+// Type dependency analysis
+// =========================================================================
+
+fn node_type_deps(n: Node) -> List<String> {
+  if node_is_named_ref(n: n) {
+    [n.return_type.value.name]
+  } else if node_has_structure(n: n) {
+    flat_map(n.children, child =>
+      if child.return_type != none {
+        node_type_deps(n: child.return_type.value)
+      } else {
+        node_type_deps(n: child)
+      }
+    )
+  } else if n.return_type != none {
+    node_type_deps(n: n.return_type.value)
+  } else if n.children |> count > 0 {
+    flat_map(n.children, child => node_type_deps(n: child))
+  } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
+    []
+  } else {
+    [n.name]
+  }
+}
+
+// =========================================================================
+// Primitive type checks
+// =========================================================================
+
+fn is_int_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "Int" && node_is_leaf(n: normed)
+}
+
+fn is_string_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "String" && node_is_leaf(n: normed)
+}
+
+fn is_bool_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "Bool" && node_is_leaf(n: normed)
+}
+
+fn is_float_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "Float" && node_is_leaf(n: normed)
+}
+
+// =========================================================================
+// Literal type inference
+// =========================================================================
+
+fn infer_literal_node(lit: LiteralValue) -> Node {
+  match lit {
+    LitStr { value: _ } => leaf_node(name: "String")
+    LitInt { value: _ } => leaf_node(name: "Int")
+    LitFloat { value: _ } => leaf_node(name: "Float")
+    LitBool { value: _ } => leaf_node(name: "Bool")
+    LitNull => leaf_node(name: "Unit")
+  }
+}
+
+// =========================================================================
+// Element and unwrap utilities
+// =========================================================================
+
+fn method_receiver_element_node(receiver_type: Node) -> Node {
+  let normed = normalize_access_type_node(n: receiver_type)
+  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
+    match normed.children |> first {
+      Some { value: el } => el
+      None => receiver_type
+    }
+  } else if node_is_map(n: normed) {
+    match normed.children |> skip(1) |> first {
+      Some { value: val_type } => val_type
+      None => receiver_type
+    }
+  } else {
+    receiver_type
+  }
+}
+
+fn extract_optional_inner_node(n: Node) -> Node {
+  if node_is_optional(n: n) {
+    match n.children |> first {
+      Some { value: inner } => inner
+      None => n
+    }
+  } else { n }
+}
+
+fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
+  match op {
+    BinEq => leaf_node(name: "Bool")
+    BinNe => leaf_node(name: "Bool")
+    BinLt => leaf_node(name: "Bool")
+    BinGt => leaf_node(name: "Bool")
+    BinLe => leaf_node(name: "Bool")
+    BinGe => leaf_node(name: "Bool")
+    BinAnd => leaf_node(name: "Bool")
+    BinOr => leaf_node(name: "Bool")
+    NullCoalesce => extract_optional_inner_node(n: left_type)
+    _ => left_type
+  }
+}
+
+fn for_each_element_type_node(n: Node) -> Node {
+  let normed = normalize_access_type_node(n: n)
+  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
+    match normed.children |> first {
+      Some { value: el } => el
+      None => normed
+    }
+  } else if node_is_leaf(n: normed) && normed.name == "String" {
+    leaf_node(name: "String")
+  } else {
+    normed
+  }
+}

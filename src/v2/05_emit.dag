@@ -27,6 +27,7 @@ import v2.std.core {
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
   ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
+  ExprError, ExprReturn,
   NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
   LiteralValue,
@@ -35,16 +36,20 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   ServiceConfig,
   DeclaredFuncSig,
+  IntrinsicMethod,
   kernel_types
 }
 
-import v2.compiler.reconcile {
+import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_types { node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure }
+import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
-  TypeEnv, TypeBinding, InferScope,
+  InferScope,
   build_params_scope, extend_scope,
   ItemInfo, UniqueAccum, emit_map_has,
-  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo
+  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo,
+  build_emit_graph_info
 }
 
 import extdeps.languages.rust.emit {
@@ -84,6 +89,55 @@ type TypedItemKind
   | TypedItemUnhandled
 
 type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
+
+// =========================================================================
+// Backend capability contract -- what each backend declares it can handle.
+// Used by the artifact planner and equivalence validator.
+// =========================================================================
+
+type BackendCapability
+  = CapServiceEmit
+  | CapAsyncTransport
+  | CapTestGeneration
+  | CapDryRunMode
+  | CapRcOwnership
+
+type BackendInfo {
+  target_name: String
+  capabilities: List<BackendCapability>
+}
+
+// =========================================================================
+// Test projection -- target-agnostic test case extraction from typed graph.
+// Each backend translates these into its own test syntax.
+// =========================================================================
+
+type TestProjection {
+  service_name: String
+  operation_name: String
+  mock_field_inits: List<FieldInit>
+}
+
+fn has_mock_prefix(name: String) -> Bool {
+  if string_length(s: name) < 5 { false }
+  else { substring(s: name, start: 0, end: 5) == "mock_" }
+}
+
+fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
+  typed.modules |> flat_map(tm =>
+    tm.items
+      |> filter(item => is_service_item(item: item))
+      |> flat_map(item =>
+        item.children
+          |> filter(c => c.properties |> any(p => has_mock_prefix(name: p.name)))
+          |> map(c => TestProjection {
+            service_name: item.name,
+            operation_name: c.name,
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name))
+          })
+      )
+  )
+}
 
 // Intermediate type for string interpolation segments
 type InterpPart {
@@ -217,7 +271,7 @@ fn unique_strings(items: List<String>) -> List<String> {
 // Build the full EmitContext from a ResolvedGraph. Called once at emit entry.
 // Each index is a pre-built Map for O(1) lookups during code generation.
 fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
-  let info = graph.emit_info
+  let info = build_emit_graph_info(modules: graph.modules)
   // A-1: field access index -- flatten type_summaries into keyed field lookups.
   // Key format: "TypeName::field_name" for unique O(1) lookup.
   let field_idx = map_values(info.type_summaries) |> fold(init: empty_map(), f: fn(acc, ts) {
@@ -264,6 +318,7 @@ fn build_intrinsic_index() -> Map<String, IntrinsicMethod> {
   let m = map_insert(m, "all", MethodAll)
   let m = map_insert(m, "flat_map", MethodFlatMap)
   let m = map_insert(m, "skip", MethodSkip)
+  let m = map_insert(m, "take", MethodTake)
   let m = map_insert(m, "fold", MethodFold)
   let m = map_insert(m, "sort_by", MethodSortBy)
   let m = map_insert(m, "append", MethodAppend)
@@ -303,18 +358,20 @@ fn ctx_is_bridge(ctx: EmitContext, func: String) -> Bool {
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
-  if n.connective != none {
-    match n.connective.value {
-      Conj => n.name == ""
-      Disj =>
-        if n.name == "Optional" {
-          match n.children |> first {
-            Some { value: inner } => has_nested_records_node(n: inner)
-            None => false
-          }
-        } else { false }
-    }
-  } else if n.name == "Map" && n.children |> count == 2 {
+  let n_kind = classify_type_structure(n: n)
+  if (n_kind == TypeConj) {
+    // Any record type in data value position needs serde: both anonymous
+    // records (name == "") and named records (name != "") whose literals
+    // may not carry the struct name.
+    true
+  } else if (n_kind == TypeDisj) {
+    if node_is_optional(n: n) {
+      match n.children |> first {
+        Some { value: inner } => has_nested_records_node(n: inner)
+        None => false
+      }
+    } else { false }
+  } else if node_is_map(n: n) {
     match skip(n.children, 1) |> first {
       Some { value: val_child } => has_nested_records_node(n: val_child)
       None => false
@@ -766,9 +823,10 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
-  if item.connective != none && item.transport == none {
+  let item_kind = classify_type_structure(n: item)
+  if item_kind != TypeLeaf && item.transport == none {
     TypedItemTypeDef
-  } else if item.connective == none && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
+  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
@@ -778,6 +836,10 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     TypedItemServiceDef
   } else if item.transport == none && item.children |> count > 0 {
     TypedItemResourceDef
+  } else if item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none {
+    // Resources without capabilities: have properties (kind, mode, acquire, release) but no body/transport/children.
+    // Note: return_type may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
+    TypedItemResourceDef
   } else if item.params |> count > 0 {
     TypedItemExternFunc
   } else {
@@ -785,15 +847,119 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   }
 }
 
-// Classify a Node's type structure based on its connective.
-// Returns: "leaf", "conj", or "disj".
 fn classify_type_structure(n: Node) -> TypeStructureKind {
-  if n.connective == none {
-    TypeLeaf
-  } else {
-    match n.connective.value {
-      Conj => TypeConj
-      Disj => TypeDisj
-    }
+  if node_is_product(n: n) { TypeConj }
+  else if node_is_coproduct(n: n) { TypeDisj }
+  else { TypeLeaf }
+}
+
+// =========================================================================
+// Shared ExprData fold spine -- target-agnostic expression classification
+// and traversal helpers. Each backend dispatches on these categories to
+// select its own rendering, eliminating duplicate arm structure.
+//
+// The fold spine provides:
+//   - ExprCategory: coarse classification of expressions
+//   - FuncBodyShape: how the top-level function body is structured
+//   - TcoExprShape: which expressions participate in TCO
+//   - block_stmts: shared block statement sequencing
+// =========================================================================
+
+type ExprCategory
+  = ExprCatLeaf
+  | ExprCatCompound
+  | ExprCatControlFlow
+  | ExprCatBinding
+  | ExprCatService
+  | ExprCatNone
+
+fn classify_expr(texpr: Node) -> ExprCategory {
+  match texpr.expr_data {
+    ExprLiteral { value: _ } => ExprCatLeaf
+    ExprError { kind: _, message: _ } => ExprCatLeaf
+    ExprVar { name: _, binding_kind: _ } => ExprCatLeaf
+    ExprFieldAccess { base: _, field: _, summary: _ } => ExprCatCompound
+    ExprCall { func: _, args: _, call_semantics: _ } => ExprCatCompound
+    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _ } => ExprCatCompound
+    ExprRecordLit { type_name: _, fields: _, parent_enum: _ } => ExprCatCompound
+    ExprListLit { elements: _ } => ExprCatCompound
+    ExprBinOp { op: _, left: _, right: _ } => ExprCatCompound
+    ExprUnaryOp { op: _, operand: _ } => ExprCatCompound
+    ExprLambda { params: _, body: _, semantics: _ } => ExprCatCompound
+    ExprStringInterp { parts: _ } => ExprCatCompound
+    ExprCast { expr: _, target: _ } => ExprCatCompound
+    ExprIndex { base: _, index: _ } => ExprCatCompound
+    ExprSlice { base: _, start: _, end: _ } => ExprCatCompound
+    ExprMatch { scrutinee: _, arms: _ } => ExprCatControlFlow
+    ExprIf { condition: _, then_branch: _, else_branch: _ } => ExprCatControlFlow
+    ExprForEach { variable: _, collection: _, body: _ } => ExprCatControlFlow
+    ExprBlock { stmts: _ } => ExprCatControlFlow
+    ExprLet { name: _, value: _, body: _ } => ExprCatBinding
+    ExprReturn { value: _ } => ExprCatControlFlow
+    NoExprData => ExprCatNone
+    _ => ExprCatNone
+  }
+}
+
+type FuncBodyShape
+  = FuncBodyLet { name: String, value: Node, rest: Node? }
+  | FuncBodyBlock { stmts: List<Node> }
+  | FuncBodyExpr { expr: Node }
+
+fn classify_func_body(body: Node) -> FuncBodyShape {
+  match body.expr_data {
+    ExprLet { name: n, value: v, body: rest } =>
+      FuncBodyLet { name: n, value: v, rest: rest }
+    ExprBlock { stmts: ss } =>
+      FuncBodyBlock { stmts: ss }
+    _ =>
+      FuncBodyExpr { expr: body }
+  }
+}
+
+type TcoExprShape
+  = TcoCall { func: String, args: List<NamedArg> }
+  | TcoIf { condition: Node, then_branch: Node, else_branch: Node? }
+  | TcoMatch { scrutinee: Node, arms: List<MatchArm> }
+  | TcoLet { name: String, value: Node, body: Node? }
+  | TcoBlock { stmts: List<Node> }
+  | TcoOther { expr: Node }
+
+fn classify_tco_expr(texpr: Node) -> TcoExprShape {
+  match texpr.expr_data {
+    ExprCall { func: f, args: a, call_semantics: _ } =>
+      TcoCall { func: f, args: a }
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      TcoIf { condition: c, then_branch: t, else_branch: e }
+    ExprMatch { scrutinee: s, arms: arm_list } =>
+      TcoMatch { scrutinee: s, arms: arm_list }
+    ExprLet { name: n, value: v, body: bd } =>
+      TcoLet { name: n, value: v, body: bd }
+    ExprBlock { stmts: ss } =>
+      TcoBlock { stmts: ss }
+    _ =>
+      TcoOther { expr: texpr }
+  }
+}
+
+fn block_stmts_init(stmts: List<Node>) -> List<Node> {
+  if stmts |> count <= 1 { [] }
+  else { stmts |> take(n: (stmts |> count) - 1) }
+}
+
+fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
+  match texpr.expr_data {
+    ExprCall { func: f, args: _, call_semantics: _ } => f == func_name
+    ExprIf { condition: _, then_branch: t, else_branch: e } =>
+      is_tco_candidate(texpr: t, func_name: func_name) ||
+        match e { Some { value: eb } => is_tco_candidate(texpr: eb, func_name: func_name)  None => false }
+    ExprMatch { scrutinee: _, arms: arm_list } =>
+      arm_list |> any(arm => is_tco_candidate(texpr: arm.body, func_name: func_name))
+    ExprLet { name: _, value: _, body: bd } =>
+      match bd { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
+    ExprBlock { stmts: ss } =>
+      if ss |> count == 0 { false }
+      else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
+    _ => false
   }
 }

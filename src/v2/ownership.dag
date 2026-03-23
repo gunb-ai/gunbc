@@ -14,7 +14,7 @@ module v2.compiler.ownership
 
 import v2.std.core {
   Node, Param,
-  ExprData, NoExprData,
+  ExprData, NoExprData, ExprError,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
@@ -250,6 +250,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprReturn { value: v } =>
       walk_expr(accum: accum, texpr: v, in_tail: true)
+
+    ExprError { kind: _, message: _ } => accum
 
     NoExprData => accum
   }

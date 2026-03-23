@@ -1,4 +1,7 @@
-//! Pure expression evaluator for lowered DAG IR.
+//! LEGACY (bootstrap-only): Pure expression evaluator for lowered DAG IR.
+//!
+//! The v2 self-hosted compiler pipeline is now authoritative. This crate is
+//! retained only for bootstrapping the v2 compiler from `.dag` sources.
 //!
 //! Evaluates `LoweredFnBody` and collection operations using only `Value`
 //! types from `gunbc-ir`. No side effects, no transport, no I/O.

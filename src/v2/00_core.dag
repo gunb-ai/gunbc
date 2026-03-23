@@ -148,23 +148,6 @@ type FieldSummary {
   value_shape: FieldValueShape
 }
 
-type BuiltinTypeKind
-  = BuiltinInt
-  | BuiltinFloat
-  | BuiltinBool
-  | BuiltinString
-  | BuiltinList
-  | BuiltinMap
-  | BuiltinSet
-  | BuiltinOptional
-  | BuiltinUnit
-  | BuiltinBytes
-  | BuiltinJson
-  | BuiltinSecret
-  | BuiltinDynamic
-  | BuiltinError
-  | BuiltinCustom { name: String }
-
 // Canonical list of kernel-provided primitive types.
 // Any stage that needs to recognize kernel names imports this list
 // instead of redefining its own copy.
@@ -175,6 +158,14 @@ data kernel_types: List<String> = [
 
 fn is_kernel_type(name: String) -> Bool {
   kernel_types |> any(t => t == name)
+}
+
+fn is_kernel_numeric(name: String) -> Bool {
+  name == "Int" || name == "Float"
+}
+
+fn is_kernel_textual(name: String) -> Bool {
+  name == "String" || name == "Secret"
 }
 
 type IntrinsicMethod
@@ -193,6 +184,7 @@ type IntrinsicMethod
   | MethodAll
   | MethodFlatMap
   | MethodSkip
+  | MethodTake
   | MethodFold
   | MethodSortBy
   | MethodAppend
@@ -210,10 +202,73 @@ type LambdaSemantics {
   param_types: List<Node>
 }
 
+type RuntimeBridgeMethod
+  = BridgeGet
+  | BridgeWith
+  | BridgeListPush
+  | BridgeMapInsert
+  | BridgeMapMerge
+  | BridgeMapGet
+  | BridgeMapHas
+  | BridgeEmitMapHas
+  | BridgeMapValues
+  | BridgeMapKeys
+  | BridgeMapContainsKey
+  | BridgeCharAt
+  | BridgeStringAt
+  | BridgeStringLength
+  | BridgeLength
+  | BridgeStartsWith
+  | BridgeEndsWith
+  | BridgeToString
+  | BridgeTrim
+  | BridgeToLower
+  | BridgeToUpper
+  | BridgeReplace
+  | BridgeSubstring
+  | BridgeToInt
+  | BridgeEmptyMap
+  | BridgeContains
+  | BridgeReverse
+  | BridgeLookup
+
+fn runtime_bridge_method_name(method: RuntimeBridgeMethod) -> String {
+  match method {
+    BridgeGet => "get"
+    BridgeWith => "with"
+    BridgeListPush => "list_push"
+    BridgeMapInsert => "map_insert"
+    BridgeMapMerge => "map_merge"
+    BridgeMapGet => "map_get"
+    BridgeMapHas => "map_has"
+    BridgeEmitMapHas => "emit_map_has"
+    BridgeMapValues => "map_values"
+    BridgeMapKeys => "map_keys"
+    BridgeMapContainsKey => "map_contains_key"
+    BridgeCharAt => "char_at"
+    BridgeStringAt => "string_at"
+    BridgeStringLength => "string_length"
+    BridgeLength => "length"
+    BridgeStartsWith => "starts_with"
+    BridgeEndsWith => "ends_with"
+    BridgeToString => "to_string"
+    BridgeTrim => "trim"
+    BridgeToLower => "to_lower"
+    BridgeToUpper => "to_upper"
+    BridgeReplace => "replace"
+    BridgeSubstring => "substring"
+    BridgeToInt => "to_int"
+    BridgeEmptyMap => "empty_map"
+    BridgeContains => "contains"
+    BridgeReverse => "reverse"
+    BridgeLookup => "lookup"
+  }
+}
+
 type MethodSemantics
   = PlainMethodSemantics
   | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
-  | RuntimeBridgeSemantics { function_name: String }
+  | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
   | ServiceMethodSemantics { service_name: String }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
@@ -331,12 +386,6 @@ type CapabilityDef {
   outputs: List<Field>
   span: SourceSpan
 }
-
-// =========================================================================
-// Render target -- which language the emitter produces.
-// =========================================================================
-
-type RenderTarget = Rust | Python | Go
 
 // =========================================================================
 // Compiler output
@@ -478,17 +527,6 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
   make_transport_node(name: transport_kind_name(kind: FileTransport), properties: [path_field], children: [], span: span)
 }
 
-fn auth_properties(scheme: String, header_name: String, token_expr: Node, span: SourceSpan) -> List<FieldInit> {
-  let scheme_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: scheme } }, return_type: none, span: span)
-  let header_expr = make_expr_node(expr_data: ExprLiteral { value: LitStr { value: header_name } }, return_type: none, span: span)
-  let result = [
-    FieldInit { name: config_property_name(key: ConfigAuthScheme), value: scheme_expr },
-    FieldInit { name: config_property_name(key: ConfigAuthHeader), value: header_expr },
-    FieldInit { name: config_property_name(key: ConfigAuthToken), value: token_expr }
-  ]
-  result
-}
-
 // =========================================================================
 // Transport Node accessors
 // =========================================================================
@@ -567,42 +605,12 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
   }
 }
 
-fn field_init_has_config_key(field_init: FieldInit, key: ConfigPropertyKey) -> Bool {
-  config_property_key(name: field_init.name) == key
-}
-
-fn builtin_type_kind(n: Node) -> BuiltinTypeKind {
-  if n.name == "Int" && n.connective == none && n.children |> count == 0 { BuiltinInt }
-  else if n.name == "Float" && n.connective == none && n.children |> count == 0 { BuiltinFloat }
-  else if n.name == "Bool" && n.connective == none && n.children |> count == 0 { BuiltinBool }
-  else if n.name == "String" && n.connective == none && n.children |> count == 0 { BuiltinString }
-  else if n.name == "List" && n.connective == none && n.children |> count == 1 { BuiltinList }
-  else if n.name == "Map" && n.connective == none && n.children |> count == 2 { BuiltinMap }
-  else if n.name == "Set" && n.connective == none && n.children |> count == 1 { BuiltinSet }
-  else if n.name == "Optional" && n.connective != none { BuiltinOptional }
-  else if n.name == "Unit" && n.connective == none && n.children |> count == 0 { BuiltinUnit }
-  else if n.name == "Bytes" && n.connective == none && n.children |> count == 0 { BuiltinBytes }
-  else if n.name == "Json" && n.connective == none && n.children |> count == 0 { BuiltinJson }
-  else if n.name == "Secret" && n.connective == none && n.children |> count == 0 { BuiltinSecret }
-  else if n.name == "Dynamic" && n.connective == none && n.children |> count == 0 { BuiltinDynamic }
-  else if n.name == "Error" && n.connective == none && n.children |> count == 0 { BuiltinError }
-  else { BuiltinCustom { name: n.name } }
-}
-
 fn transport_base_url(t: Node) -> Node? {
   find_property(props: t.properties, prop_name: config_property_name(key: ConfigBaseUrl))
 }
 
-fn transport_base_path(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: config_property_name(key: ConfigBasePath))
-}
-
 fn transport_auth_token(t: Node) -> Node? {
   find_property(props: t.properties, prop_name: config_property_name(key: ConfigAuthToken))
-}
-
-fn transport_auth_scheme(t: Node) -> String? {
-  find_property_string(props: t.properties, prop_name: config_property_name(key: ConfigAuthScheme))
 }
 
 fn transport_auth_header_name(t: Node) -> String? {
@@ -625,10 +633,6 @@ fn transport_headers(t: Node) -> List<FieldInit> {
       && key != ConfigAuthHeader
       && key != ConfigAuthToken
   )
-}
-
-fn transport_argv(t: Node) -> List<Node> {
-  t.children
 }
 
 fn transport_env(t: Node) -> List<FieldInit> {
@@ -793,4 +797,56 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
       expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
     NoExprData => false
   }
+}
+
+// =========================================================================
+// Dissolution infrastructure -- Node-based representations of types that
+// will eventually dissolve. Each type gets:
+//   1. A Node constructor that encodes the type's fields as Node properties
+//   2. Accessor functions that extract fields from the Node representation
+//   3. A predicate that identifies nodes of this kind
+//
+// The migration path: producers switch to constructors, consumers switch
+// to accessors, then the dedicated type definition is deleted.
+// =========================================================================
+
+// --- Diagnostic as Node ---
+// A Diagnostic dissolves into a Node where:
+//   name = message, properties encode severity/module_name/category,
+//   span = the diagnostic's source span.
+
+fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module_name: String?) -> Node {
+  let sev_name = match severity { Error => "error"  Warning => "warning" }
+  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: sev_name } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+  let mod_prop = match module_name {
+    Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }]
+    None => []
+  }
+  Node {
+    name: message, span: span, children: [], connective: none,
+    params: [], return_type: none, uses: [], body: none,
+    transport: none, properties: concat([sev_prop], mod_prop), type_annotation: none,
+    config: none, is_self_recursive: false, has_non_tail_self_call: false,
+    expr_data: NoExprData
+  }
+}
+
+fn is_diagnostic_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "severity")
+}
+
+// --- Module as Node ---
+// When dissolved, a Module becomes a Node where:
+//   name = module name, children = item nodes, imports in properties.
+
+fn is_module_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_module")
+}
+
+// --- Token as Node ---
+// When dissolved, a Token becomes a Node where:
+//   name = kind tag string, span = token span, properties encode payload.
+
+fn is_token_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "is_token")
 }

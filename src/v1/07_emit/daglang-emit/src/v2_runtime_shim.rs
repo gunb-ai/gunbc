@@ -1,8 +1,8 @@
-//! Rust source text for the `v2_rt` runtime shim module.
+//! LEGACY (bootstrap-only): Rust source text for the `v2_rt` runtime shim.
 //!
-//! When the v2 compiler crate is emitted, this module is written verbatim
-//! as `src/v2_rt.rs` so that intrinsic calls (`char_at`, `string_length`,
-//! `substring`, `string_contains`, `lookup`, `concat`) resolve to real Rust functions.
+//! The authoritative runtime template is now in `src/v2/runtime_rust.dag`.
+//! This file is only used by the v1 bootstrap path (`v2_crate_emit.rs`).
+//! Once v1 is retired, this file should be deleted.
 
 /// The Rust source code for the v2 runtime shim module.
 pub const V2_RUNTIME_SOURCE: &str = r#"//! Runtime shims for v2 compiler intrinsic operations.

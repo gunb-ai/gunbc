@@ -283,10 +283,8 @@ fn get_item_name(item: Node) -> String {
 // For sum types (disjunction), each child node is a variant whose name
 // is importable. For other items, returns an empty list.
 fn get_variant_names(item: Node) -> List<String> {
-  match item.connective {
-    Some { value: Disj } => item.children |> map(c => c.name)
-    _ => []
-  }
+  if item.properties |> any(p => p.name == "is_coproduct") { item.children |> map(c => c.name) }
+  else { [] }
 }
 
 // =========================================================================

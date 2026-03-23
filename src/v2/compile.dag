@@ -4,28 +4,29 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> reconcile -> complexity -> ownership -> artifact-plan -> emit
+// Pipeline: tokenize -> parse -> resolve -> infer -> complexity -> ownership -> artifact-plan -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on
 // RenderTarget (Rust, Python, Go). Artifact planning and trace contracts
 // live in separate modules; compile_sources only owns compilation.
 
-module v2.compiler.pipeline
+module v2.compiler.compile
 
 import v2.std.core {
-  Diagnostic, CompileResult, RenderTarget, Error, TextFile
+  Diagnostic, Severity, Warning, CompileResult, Error, TextFile, SourceSpan
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
-import v2.compiler.reconcile { reconcile, ResolvedGraph }
+import v2.compiler.infer { reconcile, ResolvedGraph }
+import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
-import v2.compiler.ownership { OwnershipProof, analyze_ownership }
-import v2.compiler.artifact { ArtifactPlan, Artifact, default_artifact_plan }
+import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
+import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, default_artifact_plan }
 
 // =========================================================================
 // Types
@@ -77,6 +78,23 @@ fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   )
 }
 
+fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<Diagnostic> {
+  proofs |> flat_map(proof =>
+    proof.decisions |> flat_map(decision =>
+      match decision {
+        SharedError { binding: binding, consumer_count: count, sites: sites } =>
+          [Diagnostic {
+            message: concat("ownership: binding '", binding, "' in ", proof.func_name, " has ", to_string(count), " consumers -- cannot guarantee O(1) mutation (", sites |> join(separator: ", "), ")"),
+            severity: Warning,
+            span: SourceSpan { start: 0, end: 0 },
+            module_name: proof.func_name
+          }]
+        _ => []
+      }
+    )
+  )
+}
+
 // =========================================================================
 // Diagnostic collection
 // =========================================================================
@@ -95,7 +113,7 @@ fn compile_bundle_error(message: String) -> Diagnostic {
   }
 }
 
-fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> CompileResult {
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
   match artifact.target {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
@@ -103,21 +121,36 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> CompileResult {
   }
 }
 
-fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> CompileResult {
-  if artifact_plan.artifacts |> count != 1 {
-    CompileResult {
+fn boundary_ref_error(names: List<String>, ref_name: String) -> List<Diagnostic> {
+  if names |> any(n => n == ref_name) { [] }
+  else { [compile_bundle_error(message: concat("boundary references unknown artifact '", ref_name, "'"))] }
+}
+
+fn validate_boundaries(plan: ArtifactPlan) -> List<Diagnostic> {
+  let names = plan.artifacts |> map(a => a.name)
+  plan.boundaries |> flat_map(b =>
+    concat(
+      boundary_ref_error(names: names, ref_name: b.from_artifact),
+      boundary_ref_error(names: names, ref_name: b.to_artifact)
+    )
+  )
+}
+
+fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+  if artifact_plan.artifacts |> count == 0 {
+    return EmitResult {
       files: [],
-      diagnostics: [compile_bundle_error(message: "compile_sources currently requires exactly one planned artifact")]
-    }
-  } else {
-    match artifact_plan.artifacts |> first {
-      Some { value: artifact } => emit_artifact(typed: typed, artifact: artifact)
-      None => CompileResult {
-        files: [],
-        diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")]
-      }
+      diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")]
     }
   }
+  let boundary_diags = validate_boundaries(plan: artifact_plan)
+  if boundary_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: boundary_diags }
+  }
+  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
+  let all_files = results |> flat_map(r => r.files)
+  let all_diags = results |> flat_map(r => r.diagnostics)
+  EmitResult { files: all_files, diagnostics: all_diags }
 }
 
 // Gather all diagnostics from a list of parse results.
@@ -215,6 +248,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 
       // Stage 6: Ownership analysis.
       let ownership = extract_ownership_proofs(typed: typed)
+      let ownership_diags = ownership_diagnostics(proofs: ownership)
 
       // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(
@@ -233,7 +267,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {
         files: final_files,
-        diagnostics: concat(frontend.diagnostics, typed_diags, emit_diags),
+        diagnostics: concat(frontend.diagnostics, typed_diags, ownership_diags, emit_diags),
         complexity: complexity,
         ownership: ownership,
         artifact_plan: artifact_plan

@@ -1,0 +1,53 @@
+// v2 type environment -- structural type bindings and lookup.
+//
+// Defines the TypeEnv and TypeBinding types used throughout inference
+// and emit. Provides the core operations: lookup, merge, and cycle
+// membership checks.
+//
+// Dependency: v2.compiler.infer_types (normalize_type_name)
+
+module v2.compiler.infer_env
+
+import v2.std.core { Node }
+import v2.compiler.infer_types { normalize_type_name }
+
+// =========================================================================
+// Types
+// =========================================================================
+
+type TypeEnv {
+  bindings: Map<String, TypeBinding>
+  recursive_types: List<String>
+  recursive_type_set: Map<String, Bool>
+}
+
+type TypeBinding {
+  name: String
+  resolved: Node
+}
+
+// =========================================================================
+// Environment operations
+// =========================================================================
+
+fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
+  match map_get(env.recursive_type_set, name) {
+    Some { value: _ } => true
+    _ => false
+  }
+}
+
+fn lookup_type(env: TypeEnv, name: String) -> Node? {
+  let canonical = normalize_type_name(name: name)
+  match map_get(env.bindings, canonical) {
+    Some { value: binding } => Some { value: binding.resolved }
+    None => None
+  }
+}
+
+fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
+  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
+  let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set }
+}
