@@ -906,32 +906,35 @@ These six constructors are **complete** for the language's type system.
 The kernel has 8 atoms: `{ String, Int, Bool, Float, Secret, Bytes, Unit, Json }`.
 Lattice bounds: `⊤ = Json` (universal), `⊥ = Never` (uninhabited).
 
-### Optionality and cardinality
+### Occurrence and cardinality
 
-**Direction: cardinality as the primitive.** Optionality is not a
-property of the type — it's a property of how the type is used at a
-binding site. `T?` means "type T with cardinality 0..1," not a
-different type.
+**Presence/cardinality is fundamental; optionality is the `0..1`
+case.** Optionality is not a separate primitive — it is one derived
+shape of a binding site's occurrence constraint. `T?` means "type T
+with cardinality 0..1," not a different type.
 
-Three distinct concepts must not be conflated:
+Four distinct concepts must not be conflated:
 
 | Concept | Meaning | Representation |
 |---------|---------|---------------|
-| **Structural absence** | Binding may or may not carry a value | `Field.cardinality: Cardinality` (0..1) |
-| **Inference failure** | Compiler could not determine type | `InferredNode.CompilerError` (ROADMAP P1.9) |
-| **Runtime absence** | Operation may not produce a value | Return cardinality 0..1, or coproduct return |
+| **Absence** | The slot/binding may be missing entirely | `Field.cardinality: Cardinality` (0..1) |
+| **Nullability** | The slot is present, but the value may be `null` | Value-level coproduct `T \| Unit` in the type graph |
+| **Unknownness** | The compiler doesn't know the value/type yet | `InferredNode.CompilerError` (ROADMAP P1.9) |
+| **Defaultability** | The slot may be omitted because a default fills it | `Field.default_value: Node?` — syntactically optional, semantically required |
 
 Collapsing these into one mechanism (e.g., a single `Optional` node)
 blurs distinct semantics: "this field is absent" is not the same as
-"the compiler failed" is not the same as "the lookup found nothing."
+"the value is null" is not the same as "the compiler failed" is not
+the same as "a default will be filled in."
 
 ```
 type Cardinality = Required | Optional
 ```
 
-`Required | Optional` is sufficient for Phase 1. `Many` (0..n) and
-`AtLeastOne` (1..n) are deferred — they map to collection type
-constructors (`List<T>`, `NonEmptyList<T>`), not to binding-site
+`Required | Optional` is sufficient for Phase 1. Min/max ranges are
+more general but not needed yet; named cases are safer for the
+compiler. `Many` (0..n) and `AtLeastOne` (1..n) map to collection
+type constructors (`List<T>`, `NonEmptyList<T>`), not to binding-site
 cardinality (see OD2 below).
 
 This means:
@@ -943,14 +946,14 @@ This means:
   `Option<T>`, Go `*T`, Python `Optional[T]`) — reading cardinality
   from the binding, not from type-node names
 
-Denotationally, `T?` means `⟦T⟧ ∪ {⊥}` — isomorphic to `T | Unit`.
-The denotation guides semantics; the compiler representation is the
-cardinality annotation. In the collection model, the "Option" in
-`Map<K,V> = K -> Option<V>` represents partiality: the function may
-not be defined for all keys. In the compiler, this is return
-cardinality 0..1 on `lookup`, not a type wrapper.
+**`field?: T` vs `field: T | Unit`.** These have the same
+denotational cardinality but differ operationally. `field?: T` is
+structural presence (binding may be absent). `field: T | Unit` is a
+value-level coproduct (binding is present, value is `Some(v)` or
+`None`). This keeps `Optional<List<T>>` (field absent vs present
+with a list) crisp from `List<T | Unit>` (every element nullable).
 
-The full model is in `ROADMAP.md` (Optionality and Cardinality Model).
+The full model is in `ROADMAP.md` (Occurrence and Cardinality Model).
 
 ## Type representation
 

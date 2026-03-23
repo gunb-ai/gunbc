@@ -100,7 +100,7 @@ type Byte = Tuple<Bit, Bit, Bit, Bit, Bit, Bit, Bit, Bit>  // |[Byte]| = 2^8
 // Level 3: Algebraic structures
 // Optionality: T? is cardinality 0..1 on the binding site
 // (denotationally T | Unit, |T| + 1 inhabitants;
-// see Optionality and Cardinality Model below)
+// see Occurrence and Cardinality Model below)
 //
 // Container types have two layers: denotational meaning and
 // algebraic (computational) representation.
@@ -242,23 +242,38 @@ These properties must be explicitly decided, not left implicit:
 | Do sets/maps require decidable equality on keys? | Yes — membership/lookup must be computable | This falls out of finite support + function semantics |
 | Is iteration order part of `Map`? | No — unordered by default | `SortedMap`/`OrderedMap` are distinct types with additional structure |
 
-#### Optionality and Cardinality Model
+#### Occurrence and Cardinality Model
 
-Three distinct concepts have historically been conflated under
-"optional." Separating them is prerequisite to the arity bridge
-(P1.17) and generics (P3.6).
+> The DAG represents occurrence constraints structurally. `Optional` is
+> normalized to cardinality `0..1`; collection constructors carry
+> ordering, uniqueness, and keying constraints at the type level.
+> Absence, nullability, unknownness, and defaultability are distinct
+> concepts and must not be conflated.
+
+**Presence/cardinality is fundamental.** Optionality is the `0..1`
+case — a derived shape, not a separate primitive. Separating these
+concerns is prerequisite to the arity bridge (P1.17) and generics
+(P3.6).
+
+Four distinct concepts have historically been conflated under
+"optional" in the compiler. They must stay separate:
 
 | Concept | Meaning | Compiler representation |
 |---------|---------|------------------------|
-| **Structural absence** | Binding may or may not carry a value | `Field.cardinality: Cardinality` (0..1) |
-| **Inference failure** | Compiler could not determine type | `InferredNode.CompilerError` (P1.9) |
-| **Runtime absence** | Operation may not produce a value | Return cardinality 0..1, or coproduct return |
+| **Absence** | The slot/binding may be missing entirely | `Field.cardinality: Cardinality` (0..1) |
+| **Nullability** | The slot is present, but the value may be `null` | Value-level coproduct `T \| Unit` in the type graph |
+| **Unknownness** | The compiler doesn't know the value/type yet | `InferredNode.CompilerError` (P1.9) |
+| **Defaultability** | The slot may be omitted because a default fills it | `Field.default_value: Node?` — syntactically optional, semantically required |
 
-**Direction: cardinality is the primitive, not Optional.**
+Collapsing these into one mechanism (e.g., a single `Optional` node)
+blurs distinct semantics: "this field is absent" is not the same as
+"the value is null" is not the same as "the compiler failed" is not
+the same as "a default will be filled in."
 
-`Optional<T>` does not exist as a type constructor. Type nodes are
+**`Optional<T>` does not exist as a type constructor.** Type nodes are
 purely "what" (the set of values); "how many" is a separate annotation
-on the binding site. `T?` sets cardinality, not wraps the type.
+on the binding site. `T?` sets cardinality on the binding, not wraps
+the type.
 
 ```
 type Cardinality = Required | Optional
@@ -267,25 +282,57 @@ type Field {
   name: String
   type_expr: Node
   cardinality: Cardinality   // replaces optional: Bool
-  default_value: Node?
+  default_value: Node?       // distinct from cardinality — see defaultability above
   span: SourceSpan
 }
 ```
 
-Denotationally, `T?` means `⟦T⟧ ∪ {⊥}` — isomorphic to `T | Unit`
-with `|T| + 1` inhabitants. The denotation guides semantics; the
-compiler representation is the cardinality annotation, not a coproduct
-node.
+**`field?: T` vs `field: T | Unit`.** These have the same
+denotational cardinality (`|T| + 1` inhabitants) but differ
+operationally:
 
-The denotational equation `Map<K,V> = K -> Option<V>` uses "Option"
-to express *partiality*: the function may not be defined for all keys.
+- `field?: T` — structural presence. The binding may be absent.
+  Cardinality 0..1 on the field. No type wrapping.
+- `field: T | Unit` — value-level coproduct. The binding is present;
+  its value is `Some(v)` or `None`. The type IS `T | Unit`.
+
+This distinction keeps `Optional<List<T>>` (field absent vs present
+with a list) crisp from `List<T | Unit>` (field present, each
+element nullable). If the DAG conflates these, nested optionality
+blurs.
+
+**Denotational interpretation.** `T?` denotes `⟦T⟧ ∪ {⊥}` —
+isomorphic to `T | Unit`. The denotation guides semantics; the
+compiler representation is the cardinality annotation. The
+denotational equation `Map<K,V> = K -> Option<V>` uses "Option" to
+express *partiality*: the function may not be defined for all keys.
 In the compiler, partiality is return cardinality 0..1 on `lookup`,
-not a type wrapper. The denotational equations are mathematical; the
-compiler representation is structural.
+not a type wrapper.
 
-The emitter translates cardinality to target representations (Rust
-`Option<T>`, Go `*T`, Python `Optional[T]`), reading cardinality from
-the binding — not from type-node names or properties.
+**Emit rendering.** The emitter translates cardinality to target
+representations (Rust `Option<T>`, Go `*T`, Python `Optional[T]`),
+reading cardinality from the binding — not from type-node names or
+properties.
+
+**Slot-descriptor derived view.** For schema-level reasoning, a
+binding site's constraints can be summarized as:
+
+```text
+T            = min=1, max=1
+T?           = min=0, max=1
+List<T>      = min=0, max=∞, ordered=true     (type constructor)
+Set<T>       = min=0, max=∞, unique=true       (type constructor)
+Bag<T>       = min=0, max=∞                    (type constructor)
+Map<K,V>     = keyed support K -> V?           (type constructor)
+```
+
+This is a useful derived view for reasoning about binding-site
+properties, but **collections remain type constructors in the type
+graph.** `List<T>` is `Type -> Type`, not "cardinality 0..n plus
+ordering." The distinction matters for nested composition
+(`List<Map<String, Int>>`), method dispatch (`.map()`, `.filter()`),
+and inference — types flow through the pipeline as compositional
+structures, not as flat slot descriptors.
 
 **What this deletes:** `optional_node()`, `node_is_optional()`,
 `optional_property()`, `Field.optional: Bool`, `"Optional"` name
@@ -297,11 +344,12 @@ bridge (P1.17); generics (P3.6) no longer need `type Optional<T>`.
 
 | Question | Candidate answer | Notes |
 |----------|-----------------|-------|
-| Cardinality representation? | `Required \| Optional` (closed enum) | `Many`/`AtLeastOne` deferred — map to collection type constructors |
-| Cardinality in return position? | Same `Cardinality` on function/expression return | `map.get(key)` returns `V` with cardinality `Optional` |
-| Cardinality in let bindings? | Yes — `let x: String? = ...` has `Optional` | Consistent with field cardinality |
+| Cardinality representation? | `Required \| Optional` (closed enum) | Min/max ranges are more general but not needed yet; named cases are safer for the compiler |
+| Cardinality in return position? | Same `Cardinality` on function/expression return | `map.get(key)` returns `V` with cardinality 0..1 |
+| Cardinality in let bindings? | Yes — `let x: String? = ...` has cardinality 0..1 | Consistent with field cardinality |
 | Does `?` always mean cardinality? | Yes — annotates binding site, never wraps type | Single surface-syntax rule |
 | When is coproduct return needed? | When richer failure info beyond presence/absence | `Result<T, E> = Ok \| Err` is a coproduct, not cardinality |
+| Defaultability interaction? | A field with `default_value` is syntactically optional but semantically required | Cardinality remains `Required`; the default is an elaboration rule |
 
 L3 is larger than previously acknowledged: `02_parse.dag` (3,938 lines)
 dispatches on `TokenKind` entirely through a `kind_tag(token) -> String`
@@ -674,7 +722,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | P1.14 | Normalization stage | III | Planned | New pass between resolve and infer. Unifies `Call`→`MethodCall` bridging, enforces arity completeness (via arity bridge — see P1.17), marks parser error-recovery nodes with `CompilerError`. Property population from `.dag` declarations deferred to Phase 3 (requires generics for parameterized type declarations). |
 | P1.15 | Deduplicate inference paths | III | Planned | After P1.14, a single code path handles each semantic operation. Shared `refine_collection_result_type` helper. `map_insert`/`map_merge` handled uniformly. |
 | P1.17 | Arity bridge | I | Planned | Hardcode arity for known parameterized types (`Map→2, List→1, Set→1`) in the same pattern as `kernel_types`. `Optional` is excluded — it is cardinality on the binding site (P1.4), not a parameterized type. Normalization enforces that type nodes carry the declared number of children. **Explicit short-term bridge** — deleted when real `.dag` algebraic declarations exist (Phase 3). Every bare `leaf_node(name: "Map")` becomes a construction error. Dissolves ~20 Root Cause I violations. |
-| P1.18 | Algebraic type spec (design doc) | — | **Partial** | The Collection Denotational Model (above) pins the four denotational equations, the algebra family, and the method model. The Optionality and Cardinality Model (above) pins the three-way separation (structural absence / inference failure / runtime absence) and the direction: cardinality on binding, not Optional as type constructor. **Remaining:** (a) resolve the law layer questions (finiteness, extensional equality, decidable equality, iteration order); (b) resolve cardinality open questions (return position, let bindings, coproduct-vs-cardinality boundary); (c) pin set algebra laws (idempotence, commutativity, distributivity of union/intersect, absorption); (d) write the full spec as a standalone design document; (e) pin the recursive algebraic representations that will become Phase 3 `.dag` declarations. |
+| P1.18 | Algebraic type spec (design doc) | — | **Partial** | The Collection Denotational Model (above) pins the four denotational equations, the algebra family, and the method model. The Occurrence and Cardinality Model (above) pins the four-way separation (absence / nullability / unknownness / defaultability) and the direction: presence/cardinality as fundamental, optionality as the 0..1 case. **Remaining:** (a) resolve the law layer questions (finiteness, extensional equality, decidable equality, iteration order); (b) resolve cardinality open questions (return position, let bindings, coproduct-vs-cardinality boundary); (c) pin set algebra laws (idempotence, commutativity, distributivity of union/intersect, absorption); (d) write the full spec as a standalone design document; (e) pin the recursive algebraic representations that will become Phase 3 `.dag` declarations. |
 
 #### Tier 3: L1 dissolution (toward name opacity — ongoing, NOT Phase 1 exit requirements)
 
@@ -685,7 +733,7 @@ where the foundational work (arity bridge, InferredNode) enables them.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P1.16 | Scrambled-name tests | Planned | Rename all types to arbitrary strings (declaration + references), run through infer, verify identical structural decisions. Verifies the property wall. |
-| P1.4 | L1 Optional → cardinality | Planned | Replace `Optional` type nodes with cardinality on binding sites. `Field.optional: Bool` → `Field.cardinality: Cardinality`. Delete `optional_node()`, `node_is_optional()`, `optional_property()`, `OptionalUnwrap`/`OptionalValue`. `T?` sets cardinality, not wraps type. Emit reads cardinality from bindings, not type-node names. See Optionality and Cardinality Model. |
+| P1.4 | L1 Optional → cardinality | Planned | Replace `Optional` type nodes with cardinality on binding sites. `Field.optional: Bool` → `Field.cardinality: Cardinality`. Delete `optional_node()`, `node_is_optional()`, `optional_property()`, `OptionalUnwrap`/`OptionalValue`. `T?` sets cardinality, not wraps type. Emit reads cardinality from bindings, not type-node names. See Occurrence and Cardinality Model. |
 | P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Each collection type has its own algebra (see Collection Denotational Model) — no single "container" concept needed. Element/key/value types are structural children. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
 | P1.6 | L1 Primitives | Planned | Primitives dissolve with the bit-graph model. `Int`, `String`, etc. are namespaced compositions opaque to the compiler. `.dag` declarations carry any facts emit needs. |
 | P1.7 | L1 Connective dissolution | Planned | Last structural primitive. Remove `connective` from `Node` only after all consumers use structural graph traversal. |
@@ -821,8 +869,9 @@ Diagnostics reached 0. These inference gaps remain:
   equations (`Set<A> = A -> Bool`, `Bag<A> = A -> Nat`, `Map<K,V> = K ->
   Option<V>`, `List<A> = Σ n. Fin(n) -> A`), the algebra family, the
   law layer decisions for `List`, `Map`, `Set`, and primitives, the
-  cardinality model (three-way separation, `Cardinality` type, binding-site
-  semantics), and set algebra laws
+  occurrence/cardinality model (four-way separation: absence, nullability,
+  unknownness, defaultability; `Cardinality` type; binding-site semantics),
+  and set algebra laws
 - No silent/fail-open fabrication on the bootstrap-critical Rust emit
   path — every `"_"` placeholder, silent `todo!()`, and `Default::default()`
   fallback in `05_emit_rust.dag` is replaced with `compile_error!()` or
@@ -941,7 +990,7 @@ type Set<T>       // membership: finite-support T -> Bool
 ```
 
 `Optional` is not a parameterized type declaration — it is cardinality
-on the binding site (see Optionality and Cardinality Model). `T?` sets
+on the binding site (see Occurrence and Cardinality Model). `T?` sets
 cardinality, not wraps the type. The generics system does not need
 `type Optional<T>`.
 
