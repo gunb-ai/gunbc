@@ -1588,36 +1588,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
           TupleSecond => concat(base_str, ".1.clone()")
           OptionalUnwrap => concat(base_str, ".clone().unwrap()")
           EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-          StoredField =>
-            // RC3: Safety net — if reconcile classified as StoredField but the base
-            // type is actually Optional and field is "value", emit .unwrap() instead.
-            // This handles chained field accesses where reconcile loses Optional type
-            // propagation through intermediate steps.
-            let is_optional_from_return_type = match base.return_type {
-              Some { value: bt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: bt))
-              None => false
-            }
-            // Also check the base expression's field_summary: if the base is a field
-            // access that produces an Optional value (value_shape: OptionalValue),
-            // then .value on it is an unwrap.
-            let is_optional_from_base_summary = match base.expr_data {
-              ExprFieldAccess { base: _, field: _, summary: base_sum } =>
-                match base_sum {
-                  Some { value: base_fs } =>
-                    match base_fs.value_shape {
-                      OptionalValue => true
-                      _ => false
-                    }
-                  None => false
-                }
-              _ => false
-            }
-            let is_optional_value_access = field == "value" && (is_optional_from_return_type || is_optional_from_base_summary)
-            if is_optional_value_access {
-              concat(base_str, ".clone().unwrap()")
-            } else {
-              concat(base_str, ".", rust_ident(name: field), ".clone()")
-            }
+          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
         }
       // Every field access must have a summary set by reconcile.
       None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
