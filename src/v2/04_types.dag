@@ -222,7 +222,9 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
       match left.children |> first {
         Some { value: left_el } =>
           match right.children |> first {
-            Some { value: right_el } => node_type_compatible(left: left_el, right: right_el)
+            Some { value: right_el } =>
+              if left_el.name == "Unit" || right_el.name == "Unit" { true }
+              else { node_type_compatible(left: left_el, right: right_el) }
             None => true
           }
         None => true
@@ -233,13 +235,37 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     match left.children |> first {
       Some { value: left_inner } =>
         match right.children |> first {
-          Some { value: right_inner } => node_type_compatible(left: left_inner, right: right_inner)
+          Some { value: right_inner } =>
+            if left_inner.name == "Unit" || right_inner.name == "Unit" { true }
+            else { node_type_compatible(left: left_inner, right: right_inner) }
           None => true
         }
       None => true
     }
   }
   else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
+}
+
+fn prefer_specific_type(left: Node, right: Node) -> Node {
+  if node_is_container(n: left) && node_is_container(n: right) {
+    if normalize_type_name(name: left.name) == normalize_type_name(name: right.name) {
+      match left.children |> first {
+        Some { value: left_el } =>
+          if left_el.name == "Unit" { right }
+          else { left }
+        None => left
+      }
+    } else { left }
+  }
+  else if node_is_optional(n: left) && node_is_optional(n: right) {
+    match left.children |> first {
+      Some { value: left_inner } =>
+        if left_inner.name == "Unit" { right }
+        else { left }
+      None => left
+    }
+  }
+  else { left }
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {

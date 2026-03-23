@@ -466,11 +466,18 @@ Status labels:
 
 ---
 
-## Current State (2026-03-23 Audit, reconciled with branch review)
+## Current State (2026-03-23 Audit, updated 2026-03-23)
 
-**Bootstrap note:** On this tree, `cargo test -p v2-compiler-tests --features v1-bootstrap v2_strict_compile_diagnostic_count -- --ignored` and `v2_bootstrap_fixed_point` **fail**: stage0 compile of v2 `.dag` sources reports 44 errors (`if` branches resolve to incompatible list element types across infer/parse/resolve/complexity). Workspace tests excluding `v2-compiler-tests` pass. Non-ignored v2-compiler-tests pass (115/115). Re-run the ignored gates after stage0 self-compile is green again.
+**Bootstrap note:** On this tree, `v2_strict_compile_diagnostic_count`
+and `v2_bootstrap_fixed_point` **fail** with **45 type errors**: all
+`"if branches resolve to incompatible types"` — list element type
+mismatches across `infer`, `parse`, `resolve`, and `complexity` modules.
+A parse error in `05_emit.dag` (binary operator RHS across newline) was
+fixed by adding `skip_newlines` after consuming infix operators in
+`parse_expr_loop` and `parse_expr_loop_no_brace`. Workspace tests pass
+(116/116 non-ignored). Clippy clean. L1 ratchet 372 (cap 374).
 
-**What "prior-branch" means:** Several milestones (diagnostic ratchet 0, bootstrap A5/A6/A7, stage0 build) were achieved on earlier green branches but the current tree has regressed stage0 self-compile. The `.dag` source changes are present, but the bootstrap ignored test gates do not pass. These milestones re-verify once root cause fixes (P1.9, P1.14, P1.15) land and stage0 self-compile is green again.
+**What "prior-branch" means:** Several milestones (diagnostic ratchet 0, bootstrap A5/A6/A7, stage0 build) were achieved on earlier green branches. The `.dag` source changes are present. These milestones re-verify once the 45 type errors are resolved and stage0 self-compile is green again.
 
 **Root-cause audit (2026-03-23):** All ~66 live invariant violations
 trace to three root causes. Fixing root causes eliminates downstream
@@ -486,7 +493,7 @@ symptoms structurally; fixing symptoms individually is whack-a-mole.
 
 | Area | Lines | Fns | Current state | Key issues |
 |------|------:|----:|---------------|------------|
-| `00_core.dag` | 800 | 28 | Target-agnostic; `BuiltinTypeKind` deleted | `runtime_bridge_method_name` in core plus per-emitter maps duplicate enum→identifier strings (P1.10). Several enum-to-string / string-to-enum paired functions (`config_property_*`, `transport_kind*`) risk drift. |
+| `00_core.dag` | 800 | 28 | Target-agnostic; `BuiltinTypeKind` deleted | `runtime_bridge_method_name` deleted; bridge maps now use closed-enum match per target (P1.10 done). Several enum-to-string / string-to-enum paired functions (`config_property_*`, `transport_kind*`) risk drift. |
 | `01_tokenize.dag` | 507 | 18 | Clean syntax leaf | No structural issues. Errors represented as `Unknown` tokens. |
 | `02_parse.dag` | 3,932 | 176 | L3 debt hotspot | `kind_tag` dispatches on `TokenKind` via ~200 string comparisons. Service/resource syntax correctly dissolves into `Node`. 6 fabrication sites (empty capability on bad input, `"_"` status key, dummy EOF tokens). This is the primary L3 target. |
 | `03_resolve.dag` | 459 | 12 | Cleanest authority boundary | `kernel_type_names()` deleted; callers import `kernel_types` from core. `resolve_node_bounded` trusts topological order (no redundant re-resolve of bindings; fixes diamond-shaped OOM). One defensive `None => []` fallback. |
@@ -698,7 +705,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | ID | Item | Root Cause | Fix |
 |----|------|-----------|-----|
 | R1 | RC3 safety net: 30 lines of emit heuristic compensating for reconcile losing Optional through chained field access (`emit_rust` 1591-1620) | I | Fix `FieldSummary` propagation in inference; delete emit compensation |
-| R2 | Anonymous record tuple index: hardcoded 0-3, falls back to `"0"` for index >= 4 (`emit_rust` 1574-1578) | I | **Stopgap:** emit `compile_error!()` for index >= 4 (fail-loud, not a root cause fix). Real fix is the backlog item "Anonymous record target resolution" which should produce proper field access for any arity. |
+| R2 | Anonymous record tuple index | I | **Done (stopgap):** `compile_error!()` for index >= 4 already emitted at `emit_rust` 1579. Single-field unwraps to bare type, multi-field uses tuple `.0`–`.3`. Real fix (proper field access for any arity) remains in backlog. |
 | R3 | Duplicate map/flat_map/fold type refinement: ~40 lines in both `ExprCall` (1765-1803) and `ExprMethodCall` (1919-1935) paths | III | Extract shared helper; both paths call it |
 | R4 | `map_insert` key type hardcoded `"String"` (`infer` 1781) | III | Read key type from receiver's map children |
 
@@ -706,10 +713,10 @@ invariant violations, and continues L1 dissolution toward name opacity.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P1.12 | Emit catch-all fail-closed | Quick | `emit_typed_item` catch-all emits `compile_error!()` instead of `// unhandled` |
-| P1.10 | Collapse parallel bridge name maps | **Blocking** | Delete `runtime_bridge_method_name` (dead in core); collapse 4 parallel enum→string tables to one per-target rendering without shared string intermediary |
-| P1.19 | Testgen: collapse parallel mock extraction | Quick | Rust emitter's `extract_mock_props`/`starts_with_prefix` duplicates shared emit's `has_mock_prefix`/`extract_test_projections`. Delete the Rust-only copy; `emit_test_file` must consume `TestProjection` from shared emit. |
-| P1.20 | Testgen: kill fabrication sites | Quick | `emit_simple_expr` wildcard (`todo!()`) and `emit_data_value_json` wildcard (`"null"`) silently produce wrong test/mock code. Replace with `compile_error!()` and diagnostic respectively. `Default::default()` fallback when no mock data exists must emit `compile_error!()` or skip the test entirely. |
+| P1.12 | Emit catch-all fail-closed | **Done** | `emit_typed_item` catch-all already emits `compile_error!()` — no `// unhandled` comments remain in `05_emit_rust.dag` |
+| P1.10 | Collapse parallel bridge name maps | **Done** | `runtime_bridge_method_name` deleted from core. Remaining 4 tables (1 classifier in `04_method` + 3 per-target renderers in emit files) are exhaustive matches on closed `RuntimeBridgeMethod` enum — structurally sound per invariants. Per-target names genuinely differ (Rust `"with"`, Go `"With"`, Python `"with_update"`). |
+| P1.19 | Testgen: collapse parallel mock extraction | **Done** | Deleted `extract_mock_props` from `05_emit_rust.dag`; all 3 call sites inlined to use `has_mock_prefix` from shared emit directly. `TestProjection` and `extract_test_projections` remain in shared emit for future test generation restructuring. |
+| P1.20 | Testgen: kill fabrication sites | **Done** | `emit_simple_expr` wildcard already `compile_error!()`. `emit_data_value_json`/`emit_typed_data_value_json` wildcards changed from `{"__error__": ...}` to invalid JSON `<<<UNSUPPORTED_MOCK_EXPR>>>`. `Default::default()` for resource args → `compile_error!()`. Three `todo!()` sites (fold/method-arg/cast) → `compile_error!()`. Dry-run no-mock-data already `compile_error!()`. |
 | P1.21 | Testgen: verification gate | **Blocking** | Add a test that compiles a service module with mock data, extracts the test files from the emitted bundle, and asserts they are non-empty and syntactically valid Rust. Replaces the archived `v2_crate_cargo_test`. Without this, testgen can regress silently. |
 | P1.13 | Dead code cleanup | **Done** | Dead functions removed from `00_core.dag` and `complexity.dag` |
 | P1.11 | Delete speculative artifact types | **Done** | Only consumed plan types remain in `artifact.dag` |
@@ -880,9 +887,9 @@ Diagnostics reached 0. These inference gaps remain:
 - No new emit heuristics introduced — every emit-side type-knowledge
   regression is traced upstream and fixed in inference or normalization
 - `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
-  (As of 2026-03-23, stage0 self-compile reports 44 errors — `if`-branch
-  list element type mismatches across infer/parse/resolve/complexity. These
-  must be resolved by root cause fixes before this gate can pass.)
+  (As of 2026-03-23, stage0 self-compile reports 45 type errors —
+  `"if branches resolve to incompatible types"` across infer/parse/resolve/
+  complexity modules. Parse error fixed; type mismatches remain.)
 - Fixed point still holds after every structural change
 - Phase 2 may start once all of the above are met; L1 dissolution
   continues in parallel toward Phase 5's L1=0 gate
@@ -1498,7 +1505,7 @@ Dissolved by: P1.5 (arity enforcement), P1.14 (normalization), P1.16
 | I-4 | `"_"` for fold accumulator | `emit_rust` 2033, 2170-2173 | P1.15: unified fold inference |
 | I-5 | `"_"` for sort_by element | `emit_rust` 2189-2190 | P1.5: receiver element type always present |
 | I-6 | RC3 safety net | `emit_rust` 1591-1620 | **R1**: fix FieldSummary propagation |
-| I-7 | Anon record index cap → `"0"` | `emit_rust` 1574-1578 | **R2**: `compile_error!()` for index >= 4 |
+| I-7 | ~~Anon record index cap → `"0"`~~ | **Fixed** — `compile_error!()` for index >= 4 |
 | I-8 | `normalize_type_name` heuristic | `04_types` 165-177 | P1.5: structurally complete types make this unnecessary |
 | I-9 | `node_type_equals` leaf==structured | `04_types` 267-272 | P1.5: bare leaves for parameterized types don't exist |
 | I-10 | `node_type_compatible` empty children → true | `04_types` 226-239 | P1.5: children always present |
@@ -1532,7 +1539,7 @@ graph.
 | II-9 | `ExprListLit` element = first only | `04_infer` 2089-2096 |
 | II-10 | `Optional == Unit` name shortcut | `04_types` 217-218, 249-250 |
 | II-11 | `node_is_error_type` checks in emit | `emit_rust` 1990, 2243 |
-| II-12 | `emit_typed_item` catch-all → comment | `emit_rust` 559 |
+| II-12 | ~~`emit_typed_item` catch-all → comment~~ | **Fixed** — now `compile_error!()` |
 | II-13 | Resolve builtin → `Unit` for unknown | `04_method` 187-191 |
 | II-14 | Unknown method → result = receiver type | `04_infer` 1912-1914 |
 
@@ -1549,22 +1556,22 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | III-4 | `map_insert`/`map_merge` only in Call bridge | `04_infer` 1777-1796 |
 | III-5 | `map_insert` key hardcoded `"String"` | `04_infer` 1781 |
 | III-6 | String method names in `ExprCall` bridge | `04_infer` 1670+ |
-| III-7 | 4x `RuntimeBridgeMethod` → string maps | `00_core`, `emit_rust/go/python` |
-| III-8 | `runtime_bridge_method_name` dead in core | `00_core` 235-266 |
+| III-7 | ~~4x `RuntimeBridgeMethod` → string maps~~ | **Fixed** (P1.10) — closed-enum match per target |
+| III-8 | ~~`runtime_bridge_method_name` dead in core~~ | **Fixed** — deleted |
 | III-9 | `py_bridge_method_name` diverges (`"with_update"` vs `"with"`) | `emit_python` 693 |
 | III-10 | `ownership.dag` `"fold"` string dispatch | `ownership` 2 sites |
 | III-11 | Inline string checks duplicate classifiers | `04_infer` |
 | III-12 | Builtin vs bridge typing disagrees | `04_method` |
-| III-13 | Testgen: `extract_mock_props`/`starts_with_prefix` duplicates shared `has_mock_prefix`/`extract_test_projections` | `emit_rust` 3028-3036 vs `05_emit` 121-140 |
+| III-13 | ~~Testgen: `extract_mock_props` duplicates shared `has_mock_prefix`~~ | **Fixed** (P1.19) — deleted, inlined |
 
-#### Testgen fabrication (Phase 1, P1.20)
+#### Testgen fabrication (Phase 1, P1.20) — **All Fixed**
 
-| ID | Violation | Where | Dissolved by |
-|----|-----------|-------|-------------|
-| TG-1 | `emit_simple_expr` wildcard → `todo!()` in generated test mock setup | `emit_rust` 1090, used at 3321 | P1.20 |
-| TG-2 | `emit_data_value_json` wildcard → `"null"` in mock JSON data | `05_emit` 413 | P1.20 |
-| TG-3 | `Default::default()` fallback when no mock data or `first` returns `None` | `emit_rust` 3092, 3096 | P1.20 |
-| TG-4 | `TestProjection` type and `extract_test_projections` defined but never called (dead abstraction) | `05_emit` 115-140 | P1.19 |
+| ID | Violation | Status |
+|----|-----------|--------|
+| TG-1 | ~~`emit_simple_expr` wildcard → `todo!()`~~ | **Fixed** — already `compile_error!()` |
+| TG-2 | ~~`emit_data_value_json` wildcard → `"null"`~~ | **Fixed** — now `<<<UNSUPPORTED_MOCK_EXPR>>>` (invalid JSON) |
+| TG-3 | ~~`Default::default()` fallback~~ | **Fixed** — `compile_error!()` for resources; dry-run no-mock already `compile_error!()` |
+| TG-4 | ~~`extract_mock_props` duplicates shared emit~~ | **Fixed** (P1.19) — deleted, inlined |
 
 #### Phase 4 violations (deferred, not blocking)
 
@@ -1585,6 +1592,12 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | `classify_reconciled_intrinsic_method` string ladder | **Done** |
 | `classify_runtime_bridge_method` string ladder | **Done** |
 | Go/Python intrinsic `_ => none` | **Done**: exhaustive 19-arm matches |
+| Bridge name maps (III-7, III-8) | **Done** (P1.10): dead fn deleted, closed-enum per-target |
+| Testgen mock extraction (III-13) | **Done** (P1.19): `extract_mock_props` deleted |
+| Testgen fabrication (TG-1–TG-4) | **Done** (P1.20): all `compile_error!()` or invalid JSON |
+| `emit_typed_item` catch-all (II-12) | **Done** (P1.12): `compile_error!()` |
+| Anon record index cap (I-7) | **Done** (R2): `compile_error!()` for index >= 4 |
+| Parse error (binary op RHS across newline) | **Fixed**: `skip_newlines` in `parse_expr_loop` |
 
 ### Review follow-ups (branch reconciliation)
 

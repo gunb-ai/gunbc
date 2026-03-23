@@ -2676,7 +2676,8 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               if has_err(err: r.err) { return r }
               parse_expr_loop(tokens: tokens, state: r.state, lhs: r.expr, min_bp: min_bp)
             } else {
-              let r = parse_expr_bp(tokens: tokens, state: adv.state, min_bp: bps.right)
+              let rhs_state = skip_newlines(tokens: tokens, state: adv.state)
+              let r = parse_expr_bp(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return r }
               let span = current_span(tokens: tokens, state: state)
               let binop = token_to_binop(kind: op_kind)
@@ -3174,7 +3175,8 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               if has_err(err: r.err) { return r }
               parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: r.expr, min_bp: min_bp)
             } else {
-              let r = parse_expr_bp_no_brace(tokens: tokens, state: adv.state, min_bp: bps.right)
+              let rhs_state = skip_newlines(tokens: tokens, state: adv.state)
+              let r = parse_expr_bp_no_brace(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return r }
               let span = current_span(tokens: tokens, state: s)
               let binop = token_to_binop(kind: op_kind)

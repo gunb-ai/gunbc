@@ -2145,7 +2145,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
               }
           }
           emit_typed_fold_lambda(lambda_expr: a.value, acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        None => "todo!(\"missing fold function\")"
+        None => "compile_error!(\"missing fold function argument\")"
       }
       concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
     }
@@ -2271,7 +2271,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
 fn emit_typed_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match args |> first {
     Some { value: a } => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    None => "todo!(\"missing method argument\")"
+    None => "compile_error!(\"missing method argument\")"
   }
 }
 
@@ -2713,7 +2713,7 @@ fn emit_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, sc
   if is_primitive_numeric_node(n: target) {
     concat(expr_str, " as ", ty_str)
   } else {
-    concat("todo!(\"unsupported cast to ", ty_str, "\")")
+    concat("compile_error!(\"unsupported cast to ", ty_str, "\")")
   }
 }
 
@@ -2995,10 +2995,6 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
   )
 }
 
-fn extract_mock_props(properties: List<FieldInit>) -> List<FieldInit> {
-  properties |> filter(p => has_mock_prefix(name: p.name))
-}
-
 fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
   let names = extract_modifier_names(properties: properties)
   if names |> count == 0 {
@@ -3025,7 +3021,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     None => transport
   }
   let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry, depth: depth + 2)
-  let mock_props = extract_mock_props(properties: op_node.properties)
+  let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: p.name))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: op_node.return_type.value, mock_props: mock_props, registry: registry)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
@@ -3040,7 +3036,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
 }
 
 // Emit the dry-run branch for an operation method.
-// If mock data is available, use it. Otherwise, return Default::default().
+// If mock data is available, use it. Otherwise, emit compile_error!().
 fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props: List<FieldInit>, registry: Map<String, ItemInfo>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
@@ -3260,7 +3256,7 @@ fn emit_typed_service_tests(item: Node, registry: Map<String, ItemInfo>, depth: 
     let safe_name = sanitize_service_name(name: item.name)
     // Mock data lives in properties with "mock_" prefix
     item.children
-      |> filter(c => extract_mock_props(properties: c.properties) |> count > 0)
+      |> filter(c => c.properties |> any(p => has_mock_prefix(name: p.name)))
       |> map(c => emit_operation_test(service_name: safe_name, op_node: c, registry: registry, depth: depth))
   } else {
     []
@@ -3269,7 +3265,7 @@ fn emit_typed_service_tests(item: Node, registry: Map<String, ItemInfo>, depth: 
 
 fn emit_operation_test(service_name: String, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: op_node.name))
-  let mock_props = extract_mock_props(properties: op_node.properties)
+  let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: p.name))
   let mock_setup = mock_props |> map(mp =>
     emit_mock_prop_setup(mock_prop: mp, registry: registry, depth: depth + 1)
   )
@@ -3695,8 +3691,7 @@ fn emit_main_service_args(wf: WorkflowFunc, has_services: Bool) -> String {
 // Each service gets constructed with `::new(dry_run.clone())` or `::new()`.
 fn emit_main_service_arg_list(wf: WorkflowFunc, has_services: Bool) -> List<String> {
   let resource_args = wf.uses |> map(u =>
-    // Resources are passed by reference; construct a default instance
-    concat("&Default::default()")
+    concat("&compile_error!(\"resource argument requires explicit initialization: ", u.name, "\")")
   )
   let svc_args = wf.service_names |> map(sn =>
     let struct_name = sanitize_service_name(name: sn)

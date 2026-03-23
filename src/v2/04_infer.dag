@@ -83,7 +83,7 @@ import v2.compiler.infer_types {
   node_is_product, node_is_coproduct, node_has_structure,
   product_property, coproduct_property,
   normalize_access_type_node, normalize_type_name,
-  node_type_shape, node_type_compatible, node_type_equals,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   method_receiver_element_node,
@@ -2027,7 +2027,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
               module_name: scope.module_name
             )]
           }
-          let resolved_type = then_typed.return_type.value
+          let resolved_type = prefer_specific_type(left: then_typed.return_type.value, right: else_typed.return_type.value)
           let if_texpr = make_expr_node(expr_data: ExprIf { condition: cond_typed, then_branch: then_typed, else_branch: Some { value: else_typed } }, return_type: Some { value: resolved_type }, span: span)
           InferResult {
             typed: if_texpr,
