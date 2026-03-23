@@ -54,7 +54,8 @@ import v2.compiler.infer {
   for_each_element_type_node,
   expr_span,
   ItemInfo, FuncItem,
-  is_typed_service_call_receiver, extract_typed_service_name
+  is_typed_service_call_receiver, extract_typed_service_name,
+  node_is_optional
 }
 
 import v2.compiler.emit {
@@ -301,7 +302,7 @@ fn emit_py_dataclass_from_children(name: String, children: List<Node>) -> String
 
 fn emit_py_dataclass_field_from_child(child: Node) -> String {
   let ty = emit_py_node_type(n: child.return_type.value)
-  let is_optional = child.return_type.value.name == "Optional" && child.return_type.value.connective != none
+  let is_optional = node_is_optional(n: child.return_type.value)
   let default_str = if is_optional {
     " = None"
   } else {
@@ -430,7 +431,7 @@ fn emit_py_node_type_conj(n: Node) -> String {
 }
 
 fn emit_py_node_type_disj(n: Node) -> String {
-  if n.name == "Optional" {
+  if node_is_optional(n: n) {
     match n.children |> first {
       Some { value: inner } =>
         python_container(kind: "optional", inner: emit_py_node_type(n: inner))

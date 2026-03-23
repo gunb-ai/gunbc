@@ -77,7 +77,7 @@ import v2.compiler.infer {
   expr_span,
   ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
-  emit_map_has,
+  emit_map_has, node_is_optional,
   node_is_error_type
 }
 
@@ -735,7 +735,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
   if n.children |> count == 0 {
     if emit_map_has(m: rc_types, key: n.name) { false }
     else { emit_map_has(m: recursive_types, key: n.name) }
-  } else if n.name == "Optional" {
+  } else if node_is_optional(n: n) {
     match n.children |> first {
       Some { value: inner } => needs_box_wrapping(n: inner, recursive_types: recursive_types, rc_types: rc_types)
       None => false
@@ -989,7 +989,7 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
 }
 
 fn emit_rust_node_type_disj(n: Node, rc_types: Map<String, Bool>) -> String {
-  if n.name == "Optional" {
+  if node_is_optional(n: n) {
     match n.children |> first {
       Some { value: inner } =>
         rust_container(kind: "optional", inner: emit_rust_node_type(n: inner, rc_types: rc_types))
@@ -2302,7 +2302,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   // For Optional<T>, unwrap to get T so inner patterns qualify correctly.
   let scrut_type = match scrutinee.return_type {
     Some { value: rt } =>
-      if rt.name == "Optional" {
+      if node_is_optional(n: rt) {
         match rt.children |> first {
           Some { value: inner } => inner.name
           None => rt.name
@@ -2418,10 +2418,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         true
       } else {
         match texpr.return_type {
-          Some { value: rt } => resolve_scrutinee_type_node(env: scope.type_env, n: rt).name == "Optional"
+          Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
           None =>
             match map_get(scope.locals, n) {
-              Some { value: binding } => resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved).name == "Optional"
+              Some { value: binding } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved))
               None => false
             }
         }
@@ -2440,13 +2440,13 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
           is_optional_struct_field(emit_info: emit_info, struct_name: resolved_base.name, field_name: f)
         None =>
           match texpr.return_type {
-            Some { value: rt } => resolve_scrutinee_type_node(env: scope.type_env, n: rt).name == "Optional"
+            Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
             None => false
           }
       }
     _ =>
       match texpr.return_type {
-        Some { value: rt } => resolve_scrutinee_type_node(env: scope.type_env, n: rt).name == "Optional"
+        Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
         None => false
       }
   }
@@ -2682,7 +2682,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_scrut_type = match s.return_type {
         Some { value: rt } =>
-          if rt.name == "Optional" {
+          if node_is_optional(n: rt) {
             match rt.children |> first {
               Some { value: inner } => inner.name
               None => rt.name

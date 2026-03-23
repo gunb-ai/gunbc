@@ -854,7 +854,7 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
           None => None
         }
       Disj =>
-        if n.name == "Optional" {
+        if node_is_optional(n: n) {
           match n.children |> first {
             Some { value: inner } =>
               if field_name == "value" {
@@ -1633,7 +1633,7 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
 // -------------------------------------------------------------------------
 
 fn extract_optional_inner_node(n: Node) -> Node {
-  if n.connective != none && n.name == "Optional" {
+  if node_is_optional(n: n) {
     match n.children |> first {
       Some { value: inner } => inner
       None => n
@@ -3409,7 +3409,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           }
         }
       Disj =>
-        if n.name == "Optional" {
+        if node_is_optional(n: n) {
           // Optional: recurse on first child (inner type)
           match n.children |> first {
             Some { value: inner } =>
