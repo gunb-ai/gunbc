@@ -987,7 +987,9 @@ fn node_is_map(n: Node) -> Bool {
 // or an error sentinel from a prior failed lookup.
 // Both are permissive: operations on them succeed without diagnostics.
 fn node_is_dynamic(n: Node) -> Bool {
-  builtin_type_kind(n: normalize_access_type_node(n: n)) == BuiltinDynamic
+  let normed = normalize_access_type_node(n: n)
+  normed.connective == none && normed.children |> count == 0
+    && (normed.name == "Dynamic" || normed.name == "Error")
 }
 
 // Check if a type-Node is a leaf (primitive or named reference).
@@ -1338,11 +1340,23 @@ fn node_type_deps(n: Node) -> List<String> {
 }
 
 fn is_int_type_node(n: Node) -> Bool {
-  builtin_type_kind(n: normalize_access_type_node(n: n)) == BuiltinInt
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "Int" && normed.connective == none && normed.children |> count == 0
 }
 
 fn is_string_type_node(n: Node) -> Bool {
-  builtin_type_kind(n: normalize_access_type_node(n: n)) == BuiltinString
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "String" && normed.connective == none && normed.children |> count == 0
+}
+
+fn is_bool_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "Bool" && normed.connective == none && normed.children |> count == 0
+}
+
+fn is_float_type_node(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  normed.name == "Float" && normed.connective == none && normed.children |> count == 0
 }
 
 fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
@@ -3503,17 +3517,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // exponential blowup on diamond-shaped dependency graphs (OOM).
           NodeResolveResult { resolved: resolved, diagnostics: [] }
         None =>
-          let builtin_kind = builtin_type_kind(n: n)
-          if builtin_kind == BuiltinString
-            || builtin_kind == BuiltinInt
-            || builtin_kind == BuiltinBool
-            || builtin_kind == BuiltinFloat
-            || builtin_kind == BuiltinSecret
-            || builtin_kind == BuiltinJson
-            || builtin_kind == BuiltinUnit
-            || builtin_kind == BuiltinBytes
-            || builtin_kind == BuiltinDynamic
-            || (builtin_kind == BuiltinError) {
+          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

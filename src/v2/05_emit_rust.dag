@@ -27,10 +27,6 @@ import v2.std.core {
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
   LambdaSemantics,
-  BuiltinTypeKind,
-  BuiltinInt, BuiltinFloat, BuiltinBool, BuiltinString, BuiltinMap,
-  BuiltinOptional, BuiltinUnit, BuiltinDynamic, BuiltinError, BuiltinList,
-  builtin_type_kind,
   FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
@@ -78,6 +74,7 @@ import v2.compiler.infer {
   ItemInfo, FuncItem, DataItem,
   is_typed_service_call_receiver, extract_typed_service_name,
   emit_map_has, node_is_optional, node_is_map, node_is_container,
+  node_is_dynamic, is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   node_is_error_type
 }
 
@@ -915,7 +912,6 @@ fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
 }
 
 fn emit_rust_node_type_leaf(n: Node, rc_types: Map<String, Bool>) -> String {
-  let builtin_kind = builtin_type_kind(n: n)
   if n.children |> count == 0 {
     // Leaf: primitive or named type reference.
     let base = rust_primitive_type(name: n.name)
@@ -924,7 +920,7 @@ fn emit_rust_node_type_leaf(n: Node, rc_types: Map<String, Bool>) -> String {
     } else {
       base
     }
-  } else if builtin_kind == BuiltinMap && n.children |> count == 2 {
+  } else if node_is_map(n: n) {
     let k = match n.children |> first {
       Some { value: kn } => emit_rust_node_type(n: kn, rc_types: rc_types)
       None => "String"
@@ -1197,12 +1193,9 @@ fn needs_reference_node(n: Node) -> Bool {
   if n.connective != none || n.children |> count > 0 {
     true
   } else {
-    let builtin_kind = builtin_type_kind(n: n)
-    if (builtin_kind == BuiltinInt) { false }
-    else if (builtin_kind == BuiltinBool) { false }
-    else if (builtin_kind == BuiltinFloat) { false }
-    else if (builtin_kind == BuiltinUnit) { false }
-    else { true }
+    let is_copy = is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
+      || (n.name == "Unit" && n.connective == none && n.children |> count == 0)
+    is_copy == false
   }
 }
 
@@ -1598,11 +1591,7 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
 
 // Returns true for primitive numeric types where Rust `as` is valid (Node-based).
 fn is_primitive_numeric_node(n: Node) -> Bool {
-  if n.connective != none || n.children |> count > 0 { false }
-  else if (builtin_type_kind(n: n) == BuiltinInt) { true }
-  else if (builtin_type_kind(n: n) == BuiltinFloat) { true }
-  else if (builtin_type_kind(n: n) == BuiltinBool) { true }
-  else { false }
+  is_int_type_node(n: n) || is_float_type_node(n: n) || is_bool_type_node(n: n)
 }
 
 // =========================================================================
@@ -1870,7 +1859,7 @@ fn is_enum_type_name(type_name: String, vtoe: Map<String, String>) -> Bool {
 
 fn is_map_typed_expr(texpr: Node) -> Bool {
   match texpr.return_type {
-    Some { value: n } => builtin_type_kind(n: n) == BuiltinMap
+    Some { value: n } => node_is_map(n: n)
     None => false
   }
 }
@@ -2001,9 +1990,9 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: base.return_type.value)
-  if (builtin_type_kind(n: base_node) == BuiltinString) {
+  if is_string_type_node(n: base_node) {
     concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
-  } else if builtin_type_kind(n: base_node) == BuiltinMap && base_node.children |> count == 2 {
+  } else if node_is_map(n: base_node) {
     concat("(", base_str, ").get(&", index_str, ").cloned()")
   } else {
     "panic!(\"internal error: unsupported index base in emitter\")"
@@ -2015,7 +2004,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: base.return_type.value)
-  if (builtin_type_kind(n: base_node) == BuiltinString) {
+  if is_string_type_node(n: base_node) {
     concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
   } else {
     "panic!(\"internal error: unsupported slice base in emitter\")"
@@ -2026,7 +2015,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
 fn collection_element_type(receiver_type: Node?, rc_types: Map<String, Bool>) -> String {
   match receiver_type {
     Some { value: rt } =>
-      if (builtin_type_kind(n: rt) == BuiltinList) {
+      if node_is_container(n: rt) {
         match rt.children |> first {
           Some { value: elem_node } => emit_rust_node_type(n: elem_node, rc_types: rc_types)
           None => "_"
@@ -2060,7 +2049,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
-            if (builtin_type_kind(n: param_type) == BuiltinDynamic) || (builtin_type_kind(n: param_type) == BuiltinError) {
+            if node_is_dynamic(n: param_type) {
               none
             } else {
               Some { value: emit_rust_node_type(n: param_type, rc_types: rc_types) }
@@ -2550,7 +2539,7 @@ fn is_string_comparison(op: BinOpKind, left: Node, right: Node) -> Bool {
 // Check if an expression has String resolved_type or is a string literal.
 fn is_string_typed_expr(e: Node) -> Bool {
   match e.return_type {
-    Some { value: rt } => builtin_type_kind(n: rt) == BuiltinString
+    Some { value: rt } => is_string_type_node(n: rt)
     None => false
   }
 }
@@ -3118,11 +3107,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 }
 
 fn is_simple_type_node(n: Node) -> Bool {
-  if n.connective != none || n.children |> count > 0 { false }
-  else if (builtin_type_kind(n: n) == BuiltinInt) { true }
-  else if (builtin_type_kind(n: n) == BuiltinBool) { true }
-  else if (builtin_type_kind(n: n) == BuiltinFloat) { true }
-  else { false }
+  is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
 }
 
 // =========================================================================
@@ -3431,8 +3416,7 @@ fn emit_subcommand_field(param: Param) -> String {
 // Bool -> bool, String -> String, Int -> i64, etc.
 // Optional types get wrapped in Option<>.
 fn emit_cli_param_type_node(n: Node) -> String {
-  let builtin_kind = builtin_type_kind(n: n)
-  if (builtin_kind == BuiltinOptional) {
+  if node_is_optional(n: n) {
     match n.children |> first {
       Some { value: inner } => concat("Option<", emit_cli_param_type_node(n: inner), ">")
       None => "String"
@@ -3440,9 +3424,9 @@ fn emit_cli_param_type_node(n: Node) -> String {
   } else if n.connective != none {
     "String"
   } else if n.children |> count == 0 {
-    if (builtin_kind == BuiltinBool) { "bool" }
-    else if (builtin_kind == BuiltinInt) { "i64" }
-    else if (builtin_kind == BuiltinFloat) { "f64" }
+    if is_bool_type_node(n: n) { "bool" }
+    else if is_int_type_node(n: n) { "i64" }
+    else if is_float_type_node(n: n) { "f64" }
     else { "String" }
   } else {
     "String"
