@@ -97,6 +97,28 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String) -> 
 }
 
 // =========================================================================
+// Branch-aware merge: mutually exclusive branches (match arms, if/else)
+// should contribute max(consumers) per binding, not sum. Each branch is
+// walked independently from the same base accumulator; the merge picks
+// the worst-case branch per binding.
+// =========================================================================
+
+fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAccum {
+  branches |> fold(init: base, f: (merged, branch) =>
+    branch.bindings |> map_values |> fold(init: merged, f: (acc, usage) =>
+      let current_count = match map_get(acc.bindings, usage.name) {
+        Some { value: existing } => semantic_consumer_count(usage: existing)
+        None => 0
+      }
+      let branch_count = semantic_consumer_count(usage: usage)
+      if branch_count > current_count {
+        UsageAccum { bindings: map_insert(acc.bindings, usage.name, usage) }
+      } else { acc }
+    )
+  )
+}
+
+// =========================================================================
 // AST walker -- classifies each variable reference by position
 //
 // in_tail: true when this expression is in return/last-use position
@@ -105,7 +127,7 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String) -> 
 // =========================================================================
 
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
-  let result = match texpr.expr_data {
+  match texpr.expr_data {
     ExprVar { name: n } =>
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return")
@@ -168,17 +190,19 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprMatch { scrutinee: s, arms: arm_list } =>
       let s_accum = walk_expr(accum: accum, texpr: s, in_tail: false)
-      arm_list |> fold(init: s_accum, f: (acc, arm) =>
-        walk_expr(accum: acc, texpr: arm.body, in_tail: in_tail)
+      let branch_accums = arm_list |> map(arm =>
+        walk_expr(accum: s_accum, texpr: arm.body, in_tail: in_tail)
       )
+      merge_branch_usages(base: s_accum, branches: branch_accums)
 
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
       let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail)
-      match e {
-        Some { value: eb } => walk_expr(accum: t_accum, texpr: eb, in_tail: in_tail)
-        None => t_accum
+      let e_accum = match e {
+        Some { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail)
+        None => c_accum
       }
+      merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
     ExprLet { name: _, value: v, body: bd } =>
       let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false)
@@ -252,7 +276,6 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     NoExprData => accum
   }
-  result
 }
 
 // =========================================================================

@@ -427,7 +427,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 
 fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  let result = if node_has_structure(n: normed) == false && normed.children |> count == 1 {
+  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
     match normed.children |> first {
       Some { value: el } => el
       None => receiver_type
@@ -440,7 +440,6 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
   } else {
     receiver_type
   }
-  result
 }
 
 fn extract_optional_inner_node(n: Node) -> Node {

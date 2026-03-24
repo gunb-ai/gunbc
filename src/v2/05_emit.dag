@@ -197,7 +197,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 // scope_after_expr: extend scope with let-binding type for bodyless lets.
 // After Expr->Node dissolution, resolved type is on Node.return_type.
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
-  let result = match texpr.expr_data {
+  match texpr.expr_data {
     ExprLet { name: name, value: value, body: body } =>
       if body == none {
         extend_scope(scope: scope, name: name, resolved: value.return_type.value)
@@ -206,7 +206,6 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
       }
     _ => scope
   }
-  result
 }
 
 fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
@@ -227,7 +226,7 @@ fn typed_named_arg_matches(arg: NamedArg, name: String) -> Bool {
 
 fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
   let has_unnamed = args |> any(arg => arg.name == none)
-  let result = if has_unnamed {
+  if has_unnamed {
     args
   } else {
     match lookup_func_sig_in_scope(scope: scope, name: func) {
@@ -256,7 +255,6 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
       }
     }
   }
-  result
 }
 
 fn unique_strings(items: List<String>) -> List<String> {
@@ -876,7 +874,7 @@ type ExprCategory
   | ExprCatNone
 
 fn classify_expr(texpr: Node) -> ExprCategory {
-  let cat = match texpr.expr_data {
+  match texpr.expr_data {
     ExprLiteral { value: _ } => ExprCatLeaf
     ExprError { kind: _, message: _ } => ExprCatLeaf
     ExprVar { name: _, binding_kind: _ } => ExprCatLeaf
@@ -901,7 +899,6 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     NoExprData => ExprCatNone
     _ => ExprCatNone
   }
-  cat
 }
 
 type FuncBodyShape

@@ -4627,6 +4627,103 @@ fn sum_twice(x: Int) -> Int { x + x }
     }
 
     #[test]
+    fn test_ownership_branch_exclusive_returns_sole_owner() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = r#"module ownership_branch
+
+fn pick_if(x: Int, flag: Bool) -> Int {
+  if flag { x } else { x }
+}
+
+fn pick_match(x: Int?) -> Int {
+  match x {
+    Some { value: v } => v
+    None => 0
+  }
+}
+
+fn one_branch_consumes(x: Int, flag: Bool) -> Int {
+  if flag { x } else { 0 }
+}
+"#;
+
+        let result =
+            compile_sources_with_target(&output, &[("ownership_branch.dag", source)], "Rust");
+
+        let ownership = result
+            .get("ownership")
+            .expect("compile_sources should return ownership");
+        let proofs = match ownership {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected ownership to be a List, got: {:?}", other),
+        };
+
+        // pick_if: x returned from both if-branches → SoleOwner (not SharedError)
+        let pick_if = proofs
+            .iter()
+            .find(|p| matches!(map_field(p, "func_name"), gunbc_ir::Value::Str(n) if n == "pick_if"))
+            .unwrap_or_else(|| panic!("missing ownership proof for pick_if: {:?}", proofs));
+        let pick_if_decisions = match map_field(pick_if, "decisions") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected decisions list, got: {:?}", other),
+        };
+        assert!(
+            pick_if_decisions.iter().any(|d| match d {
+                gunbc_ir::Value::Map(map) => {
+                    matches!(map.get("_variant"), Some(gunbc_ir::Value::Str(tag)) if tag == "SoleOwner")
+                        && matches!(map.get("binding"), Some(gunbc_ir::Value::Str(b)) if b == "x")
+                }
+                _ => false,
+            }),
+            "pick_if: x should be SoleOwner (branches are mutually exclusive): {:?}",
+            pick_if_decisions
+        );
+
+        // pick_match: v bound and returned in one arm → SoleOwner
+        let pick_match = proofs
+            .iter()
+            .find(|p| matches!(map_field(p, "func_name"), gunbc_ir::Value::Str(n) if n == "pick_match"))
+            .unwrap_or_else(|| panic!("missing ownership proof for pick_match: {:?}", proofs));
+        let pick_match_decisions = match map_field(pick_match, "decisions") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected decisions list, got: {:?}", other),
+        };
+        assert!(
+            pick_match_decisions.iter().any(|d| match d {
+                gunbc_ir::Value::Map(map) => {
+                    matches!(map.get("_variant"), Some(gunbc_ir::Value::Str(tag)) if tag == "SoleOwner")
+                        && matches!(map.get("binding"), Some(gunbc_ir::Value::Str(b)) if b == "v")
+                }
+                _ => false,
+            }),
+            "pick_match: v should be SoleOwner (only consumed in one arm): {:?}",
+            pick_match_decisions
+        );
+
+        // one_branch_consumes: x returned from one branch only → SoleOwner
+        let one_branch = proofs
+            .iter()
+            .find(|p| matches!(map_field(p, "func_name"), gunbc_ir::Value::Str(n) if n == "one_branch_consumes"))
+            .unwrap_or_else(|| panic!("missing ownership proof for one_branch_consumes: {:?}", proofs));
+        let one_branch_decisions = match map_field(one_branch, "decisions") {
+            gunbc_ir::Value::List(items) => items,
+            other => panic!("expected decisions list, got: {:?}", other),
+        };
+        assert!(
+            one_branch_decisions.iter().any(|d| match d {
+                gunbc_ir::Value::Map(map) => {
+                    matches!(map.get("_variant"), Some(gunbc_ir::Value::Str(tag)) if tag == "SoleOwner")
+                        && matches!(map.get("binding"), Some(gunbc_ir::Value::Str(b)) if b == "x")
+                }
+                _ => false,
+            }),
+            "one_branch_consumes: x should be SoleOwner (consumed in only one branch): {:?}",
+            one_branch_decisions
+        );
+    }
+
+    #[test]
     fn test_compile_sources_returns_default_artifact_plan() {
         let output = compile_all_modules().expect("compilation should succeed");
 

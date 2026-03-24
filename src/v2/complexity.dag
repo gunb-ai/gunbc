@@ -450,7 +450,7 @@ fn empty_complexity_report() -> ComplexityReport {
 // =========================================================================
 
 fn simplify_cost(expr: CostExpr) -> CostExpr {
-  let result = match expr {
+  match expr {
     CostConst { value: _ } => expr
     CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
@@ -500,7 +500,6 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
   }
-  result
 }
 
 // =========================================================================
@@ -541,7 +540,7 @@ fn has_cost_sum(expr: CostExpr) -> Bool {
 
 fn classify_complexity(expr: CostExpr) -> String {
   let s = simplify_cost(expr: expr)
-  let result = match s {
+  match s {
     CostConst { value: _ } => "O(1)"
     CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
@@ -580,7 +579,6 @@ fn classify_complexity(expr: CostExpr) -> String {
         else { lc }
       dominant
   }
-  result
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -631,9 +629,8 @@ fn deduplicate(items: List<String>) -> List<String> {
 
 fn format_space_class(expr: CostExpr) -> String {
   let space_class = classify_complexity(expr: expr)
-  let result = if space_class == "O(1)" { "" }
+  if space_class == "O(1)" { "" }
   else { concat(", space ", space_class) }
-  result
 }
 
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {

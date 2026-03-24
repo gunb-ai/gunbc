@@ -668,14 +668,13 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
 // Falls back to the full name if the property is absent.
 // Takes properties and name separately so it works for any Node.
 fn namespace_root_from_properties(properties: List<FieldInit>, name: String) -> String {
-  let result = match properties |> filter(p => p.name == "namespace_root") |> first {
+  match properties |> filter(p => p.name == "namespace_root") |> first {
     Some { value: ns_prop } => match ns_prop.value.expr_data {
       ExprLiteral { value: LitStr { value: root } } => root
       _ => name
     }
     None => name
   }
-  result
 }
 
 // =========================================================================
@@ -688,18 +687,17 @@ fn namespace_root_from_properties(properties: List<FieldInit>, name: String) -> 
 // =========================================================================
 
 fn check_service_field_access_node(base_type: Node, field: String, scope: InferScope) -> Node? {
-  let result = if node_has_structure(n: base_type) == false && base_type.children |> count == 0 {
+  if node_has_structure(n: base_type) == false && base_type.children |> count == 0 {
     let path = concat(base_type.name, ".", field)
     match map_get(scope.service_registry, path) {
       Some { value: _ } => Some { value: leaf_node(name: path) }
       None => None
     }
   } else { None }
-  result
 }
 
 fn check_service_method_call_node(receiver_type: Node, method: String, scope: InferScope) -> Node? {
-  let result = if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
+  if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
     match map_get(scope.service_registry, receiver_type.name) {
       Some { value: ops } =>
         let matching = ops |> filter(op => op.name == method)
@@ -720,7 +718,6 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
       None => None
     }
   } else { None }
-  result
 }
 
 // =========================================================================
@@ -804,7 +801,7 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
 }
 
 fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
-  let result = if node_has_structure(n: n) {
+  if node_has_structure(n: n) {
     if node_is_product(n: n) {
       match n.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
@@ -830,7 +827,6 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
       }
     }
   } else { None }
-  result
 }
 
 fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
@@ -1079,7 +1075,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
   let normed = normalize_access_type_node(n: n)
-  let result = if node_has_structure(n: normed) == false && normed.children |> count == 0 {
+  if node_has_structure(n: normed) == false && normed.children |> count == 0 {
     let canonical = normalize_type_name(name: normed.name)
     if normed.return_type != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
@@ -1104,7 +1100,6 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       }
     }
   } else { normed }
-  result
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, scope: InferScope) -> KnownMethodResolution {
@@ -1271,7 +1266,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
 }
 
 fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> InferScope {
-  let result = match stmt.expr_data {
+  match stmt.expr_data {
     ExprLet { name: name, value: _, body: body } =>
       if body == none {
         extend_scope(scope: scope, name: name, resolved: stmt_type)
@@ -1280,7 +1275,6 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
       }
     _ => scope
   }
-  result
 }
 
 // Synthesize a "Some { value: T }" variant node for Optional pattern matching.
@@ -1529,7 +1523,7 @@ fn is_lambda_expr(e: Node) -> Bool {
 }
 
 fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type_name: String, fallback: Node) -> Node {
-  let result = if method_name == "map" {
+  if method_name == "map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } =>
         let lambda_ret = lambda_arg.value.return_type.value
@@ -1547,7 +1541,6 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
       None => fallback
     }
   } else { fallback }
-  result
 }
 
 fn infer_arg_with_element_type(arg: NamedArg, element_type: Node, scope: InferScope) -> ArgInferResult {
@@ -2590,7 +2583,7 @@ fn compute_in_graph_deps(
     deps_map: Map<String, List<String>>,
     name_set: Map<String, Bool>
 ) -> Map<String, List<String>> {
-  let result = fold(all_names, init: empty_map(), f: (acc, name) =>
+  fold(all_names, init: empty_map(), f: (acc, name) =>
     match map_get(deps_map, name) {
       Some { value: deps } =>
         let local = filter(deps, d => d != name && emit_map_has(m: name_set, key: d))
@@ -2598,7 +2591,6 @@ fn compute_in_graph_deps(
       None => map_insert(acc, name, [])
     }
   )
-  result
 }
 
 // Count how many of a name's local_deps are in the removed_set.
