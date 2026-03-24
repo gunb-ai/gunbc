@@ -87,8 +87,9 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<Diagnostic> {
           [Diagnostic {
             message: concat("ownership: binding '", binding, "' in ", proof.func_name, " has ", to_string(count), " consumers -- cannot guarantee O(1) mutation (", sites |> join(separator: ", "), ")"),
             severity: Warning,
-            span: SourceSpan { start: 0, end: 0 },
-            module_name: proof.func_name
+            span: Some { value: SourceSpan { start: 0, end: 0 } },
+            module_name: Some { value: proof.func_name },
+            category: none
           }]
         _ => []
       }
