@@ -220,16 +220,24 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   }
 }
 
+// Three-way result for extracting a Node's return type.
+// Typed: successfully resolved type node.
+// InferError: type inference failed (error already reported as diagnostic).
+// Untyped: no return_type set (statements, unprocessed nodes).
+type NodeType
+  = Typed { node: Node }
+  | InferError { message: String, span: SourceSpan }
+  | Untyped
+
 // Extract the type Node from a Node's return_type field.
-// Handles the InferredNode wrapper: Resolved → inner node,
-// CompilerError → error sentinel node (behavioral equivalence),
-// None → unit sentinel node (unset return type).
-fn rt_node(n: Node) -> Node? {
-  if n.return_type == none { none }
+// Returns Typed/InferError/Untyped so callers can distinguish
+// "no type" from "type inference failed".
+fn rt_node(n: Node) -> NodeType {
+  if n.return_type == none { Untyped }
   else {
     match n.return_type.value {
-      Resolved { node: rt } => Some { value: rt }
-      CompilerError { message: _, span: _ } => none
+      Resolved { node: rt } => Typed { node: rt }
+      CompilerError { message: m, span: s } => InferError { message: m, span: s }
     }
   }
 }

@@ -32,6 +32,7 @@ import v2.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_expr_error_node,
   rt_node, has_return_type, InferredNode, Resolved, CompilerError,
+  NodeType, Typed, InferError, Untyped,
   Cardinality, Required, CardOptional,
   Diagnostic, Severity, Warning,
   ResourceUse,
@@ -90,7 +91,8 @@ import v2.compiler.infer_types {
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
-  extract_optional_inner_node, for_each_element_type_node
+  extract_optional_inner_node, for_each_element_type_node,
+  rt_type
 }
 import v2.compiler.infer_method {
   classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
@@ -460,7 +462,7 @@ fn return_type_to_outputs(return_type: InferredNode?, span: SourceSpan) -> List<
             if rt.name == "" {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
-                let child_type = if child.return_type == none { leaf_node(name: child.name) } else { match rt_node(n: child) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
+                let child_type = if child.return_type == none { leaf_node(name: child.name) } else { rt_type(n: child) }
                 Field { name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span }
               )
             } else {
@@ -512,7 +514,7 @@ fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
       let stmt_result = infer_expr(texpr: stmt, scope: scope)
       let stmt_typed = stmt_result.typed
       let stmt_diags = stmt_result.diagnostics
-      let stmt_rt = match rt_node(n: stmt_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+      let stmt_rt = rt_type(n: stmt_typed)
       let next_scope = scope_after_stmt_node(
         stmt: stmt,
         stmt_type: stmt_rt,
@@ -732,7 +734,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
-                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: match rt_node(n: titem) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } })
+                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: rt_type(n: titem) })
               }
             }
             else {
@@ -1004,7 +1006,7 @@ fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummar
       let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
       map_insert(acc, child.name, FieldSummary {
         access_style: style,
-        value_shape: field_value_shape_from_type_node(type_node: match rt_node(n: child) { Some { value: rt } => rt  None => leaf_node(name: "Unit") })
+        value_shape: field_value_shape_from_type_node(type_node: rt_type(n: child))
       })
     }
   )
@@ -1171,13 +1173,14 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
     if normed.return_type != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match rt_node(n: normed) {
-        Some { value: target } =>
+        Typed { node: target } =>
           if target.name == normed.name && target.return_type == none && node_has_structure(n: target) == false && target.children |> count == 0 {
             normed
           } else {
             resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
           }
-        None => normed
+        InferError { message: _, span: _ } => normed
+        Untyped => normed
       }
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
       leaf_node(name: normed.name)
@@ -1585,7 +1588,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
           body: body_result.typed,
           semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
         },
-        return_type: Some { value: Resolved { node: match rt_node(n: body_result.typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } },
+        return_type: Some { value: Resolved { node: rt_type(n: body_result.typed) } },
         span: lam_span
       )
       ArgInferResult { typed_arg: NamedArg { name: arg.name, value: typed_lam }, diagnostics: body_result.diagnostics }
@@ -1641,7 +1644,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
             body: body_typed,
             semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
           },
-          return_type: Some { value: Resolved { node: match rt_node(n: body_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } },
+          return_type: Some { value: Resolved { node: rt_type(n: body_typed) } },
           span: span
         ),
         diagnostics: body_result.diagnostics
@@ -1662,33 +1665,33 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
   if method_name == "map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } =>
-        let lambda_ret = match rt_node(n: lambda_arg.value) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+        let lambda_ret = rt_type(n: lambda_arg.value)
         container_node(kind_name: receiver_type_name, element: lambda_ret)
       None => fallback
     }
   } else if method_name == "flat_map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Some { value: rt } => rt  None => fallback }
+      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
       None => fallback
     }
   } else if method_name == "fold" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Some { value: rt } => rt  None => fallback }
+      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
       None => fallback
     }
   } else if method_name == "map_insert" && receiver_type.children |> count == 0 && node_is_map(n: receiver_type) && typed_args |> count >= 2 {
     let key_type = match typed_args |> first {
-      Some { value: key_arg } => match rt_node(n: key_arg.value) { Some { value: rt } => rt  None => fallback }
+      Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
       None => fallback
     }
     match typed_args |> skip(1) |> first {
       Some { value: val_arg } =>
-        map_node(key: key_type, value: match rt_node(n: val_arg.value) { Some { value: rt } => rt  None => fallback })
+        map_node(key: key_type, value: match rt_node(n: val_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback })
       None => fallback
     }
   } else if method_name == "map_merge" && node_is_map(n: receiver_type) && typed_args |> count >= 1 {
     let overlay_type = match typed_args |> first {
-      Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Some { value: rt } => rt  None => receiver_type }
+      Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  Untyped => receiver_type }
       None => receiver_type
     }
     if receiver_type.children |> count == 0 && overlay_type.children |> count > 0 {
@@ -1773,7 +1776,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
-      let base_rt = match rt_node(n: base_typed) { Some { value: rt } => rt  None => error_type_node() }
+      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_rt)
       if resolved_base.name == "Error" {
         InferResult {
@@ -1843,14 +1846,14 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let call_method_args = call_args |> skip(1)
       let call_fold_info = extract_fold_init_info(method_name: func_name, method_args: call_method_args, min_args: 2, scope: scope)
       let call_fold_acc_type = match call_fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Some { value: rt } => rt  None => leaf_node(name: "Dynamic") }
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_node(name: "Dynamic")  Untyped => leaf_node(name: "Dynamic") }
         None => leaf_node(name: "Dynamic")
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 {
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: first_arg.value, scope: scope)
-            let first_type = match rt_node(n: first_result.typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+            let first_type = rt_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type)
             let remaining_results = infer_method_args_with_fold(method_name: func_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
             concat(
@@ -1886,7 +1889,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       } else {
         // Tier 2: try bridging to method call on first argument
         let first_arg_type = match typed_args |> first {
-          Some { value: ta } => match rt_node(n: ta.value) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+          Some { value: ta } => rt_type(n: ta.value)
           None => leaf_node(name: "Unit")
         }
         let method_receiver = match typed_args |> first {
@@ -1977,11 +1980,11 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let recv_diags = recv_result.diagnostics
       // Type lambda args from receiver's element type instead of Dynamic.
       // For fold: also infer init arg to type accumulator param.
-      let recv_rt = match rt_node(n: recv_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+      let recv_rt = rt_type(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       let fold_info = extract_fold_init_info(method_name: method_name, method_args: mc_args, min_args: 2, scope: scope)
       let fold_acc_type = match fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Some { value: rt } => rt  None => leaf_node(name: "Dynamic") }
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_node(name: "Dynamic")  Untyped => leaf_node(name: "Dynamic") }
         None => leaf_node(name: "Dynamic")
       }
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
@@ -2015,7 +2018,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let scrut_result = infer_expr(texpr: scrut, scope: scope)
       let scrut_typed = scrut_result.typed
       let scrut_diags = scrut_result.diagnostics
-      let scrut_rt = match rt_node(n: scrut_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+      let scrut_rt = rt_type(n: scrut_typed)
       let arm_infer_results = arms |> map(arm =>
         let typed_pattern = annotate_pattern_parent_enums(pattern: arm.pattern, scrutinee_type: scrut_rt, scope: scope)
         let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_type: scrut_rt)
@@ -2041,7 +2044,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             body: body_typed
           },
           diagnostics: concat(pattern_diags, concat(guard_diags, body_diags))
-          body_type: match rt_node(n: body_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+          body_type: rt_type(n: body_typed)
         }
       )
       let typed_arms = arm_infer_results |> map(ar => ar.typed_arm)
@@ -2085,8 +2088,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let else_result = infer_expr(texpr: else_branch, scope: scope)
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
-          let then_rt = match rt_node(n: then_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
-          let else_rt = match rt_node(n: else_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+          let then_rt = rt_type(n: then_typed)
+          let else_rt = rt_type(n: else_typed)
           let branch_diags = if node_type_compatible(
             left: then_rt,
             right: else_rt
@@ -2123,7 +2126,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let val_result = infer_expr(texpr: let_value, scope: scope)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
-      let val_type = match rt_node(n: val_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+      let val_type = rt_type(n: val_typed)
       if let_body == none {
         let let_texpr = make_expr_node(expr_data: ExprLet { name: let_name, value: val_typed, body: none }, return_type: Some { value: Resolved { node: val_type } }, span: span)
         InferResult {
@@ -2135,7 +2138,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         let body_result = infer_expr(texpr: let_body.value, scope: extended)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let let_texpr2 = make_expr_node(expr_data: ExprLet { name: let_name, value: val_typed, body: Some { value: body_typed } }, return_type: Some { value: Resolved { node: match rt_node(n: body_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } }, span: span)
+        let let_texpr2 = make_expr_node(expr_data: ExprLet { name: let_name, value: val_typed, body: Some { value: body_typed } }, return_type: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
         InferResult {
           typed: let_texpr2,
           diagnostics: concat(val_diags, body_diags)
@@ -2153,7 +2156,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
       let elem_type_node = if count(elem_results) > 0 {
         match first(elem_results) {
-          Some { value: r } => match rt_node(n: r.typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+          Some { value: r } => rt_type(n: r.typed)
           None => leaf_node(name: "Unit")
         }
       } else {
@@ -2173,7 +2176,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let right_result = infer_expr(texpr: right_expr, scope: scope)
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
-      let result_type = infer_binop_type_node(op: op, left_type: match rt_node(n: left_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") })
+      let result_type = infer_binop_type_node(op: op, left_type: rt_type(n: left_typed))
       let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op, left: left_typed, right: right_typed }, return_type: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
@@ -2187,7 +2190,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let operand_diags = operand_result.diagnostics
       let result_type = match op {
         Not => leaf_node(name: "Bool")
-        Neg => match rt_node(n: operand_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+        Neg => rt_type(n: operand_typed)
       }
       let uo_texpr = make_expr_node(expr_data: ExprUnaryOp { op: op, operand: operand_typed }, return_type: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
@@ -2207,7 +2210,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           body: body_typed,
           semantics: Some { value: lambda_semantics_from_param_types(param_types: lambda_param_types_from_scope(scope: lam_scope, params: lam_params)) }
         },
-        return_type: Some { value: Resolved { node: match rt_node(n: body_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } },
+        return_type: Some { value: Resolved { node: rt_type(n: body_typed) } },
         span: span
       )
       InferResult {
@@ -2272,12 +2275,12 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let coll_result = infer_expr(texpr: coll, scope: scope)
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
-      let elem_type_node = for_each_element_type_node(n: match rt_node(n: coll_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") })
+      let elem_type_node = for_each_element_type_node(n: rt_type(n: coll_typed))
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_expr_node(expr_data: ExprForEach { variable: variable, collection: coll_typed, body: body_typed }, return_type: Some { value: Resolved { node: match rt_node(n: body_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } }, span: span)
+      let fe_texpr = make_expr_node(expr_data: ExprForEach { variable: variable, collection: coll_typed, body: body_typed }, return_type: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)
@@ -2292,8 +2295,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let index_typed = index_result.typed
       let index_diags = index_result.diagnostics
       let index_check = check_index_access_node(
-        base_type: match rt_node(n: base_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") },
-        index_type: match rt_node(n: index_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") },
+        base_type: rt_type(n: base_typed),
+        index_type: rt_type(n: index_typed),
         span: span,
         module_name: scope.module_name
       )
@@ -2315,9 +2318,9 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let end_typed = end_result.typed
       let end_diags = end_result.diagnostics
       let slice_check = check_slice_access_node(
-        base_type: match rt_node(n: base_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") },
-        start_type: match rt_node(n: start_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") },
-        end_type: match rt_node(n: end_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") },
+        base_type: rt_type(n: base_typed),
+        start_type: rt_type(n: start_typed),
+        end_type: rt_type(n: end_typed),
         span: span,
         module_name: scope.module_name
       )
@@ -2330,7 +2333,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
     ExprReturn { value: inner_expr } =>
       let span = texpr.span
       let inner_result = infer_expr(texpr: inner_expr, scope: scope)
-      let ret_texpr = make_expr_node(expr_data: ExprReturn { value: inner_result.typed }, return_type: Some { value: Resolved { node: match rt_node(n: inner_result.typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } }, span: span)
+      let ret_texpr = make_expr_node(expr_data: ExprReturn { value: inner_result.typed }, return_type: Some { value: Resolved { node: rt_type(n: inner_result.typed) } }, span: span)
       InferResult {
         typed: ret_texpr,
         diagnostics: inner_result.diagnostics
@@ -2376,7 +2379,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
       Node {
         name: fir.typed_field.name, span: no_span(),
         children: [], connective: none,
-        params: [], return_type: Some { value: Resolved { node: match rt_node(n: fir.infer_result.typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } }, return_cardinality: Required, uses: [],
+        params: [], return_type: Some { value: Resolved { node: rt_type(n: fir.infer_result.typed) } }, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
       }
     )
@@ -2419,7 +2422,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     let resolved_node = if is_some_ctor {
       let val_field = fi_infer_results |> filter(fir => fir.typed_field.name == "value") |> first
       match val_field {
-        Some { value: val_fir } => with_optional_cardinality(n: match rt_node(n: val_fir.infer_result.typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") })
+        Some { value: val_fir } => with_optional_cardinality(n: rt_type(n: val_fir.infer_result.typed))
         None => raw_resolved
       }
     } else { raw_resolved }
@@ -2470,9 +2473,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     let resolved_ret = if item.return_type == none {
-      match rt_node(n: body_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+      rt_type(n: body_typed)
     } else {
-      match rt_node(n: item) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+      rt_type(n: item)
     }
     TypedItemResult {
       item: Node {
@@ -2495,7 +2498,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope)
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
-    let resolved_ret = match rt_node(n: item) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+    let resolved_ret = rt_type(n: item)
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: [], params: [],
@@ -2513,7 +2516,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_result = infer_expr(texpr: item.body.value, scope: scope)
     let val_typed = val_result.typed
     let val_diags = val_result.diagnostics
-    let resolved_ret = if item.type_annotation == none { match rt_node(n: val_typed) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } } else { item.type_annotation.value }
+    let resolved_ret = if item.type_annotation == none { rt_type(n: val_typed) } else { item.type_annotation.value }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: [], params: [],
@@ -2528,7 +2531,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Extern func: has params but no body
   else if item.params |> count > 0 && item.body == none {
-    let resolved_ret = if item.return_type == none { leaf_node(name: "Unit") } else { match rt_node(n: item) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
+    let resolved_ret = if item.return_type == none { leaf_node(name: "Unit") } else { rt_type(n: item) }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -2543,7 +2546,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Service/Resource/other: pass through
   else {
-    let resolved_ret = if item.return_type == none { leaf_node(name: "Unit") } else { match rt_node(n: item) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
+    let resolved_ret = if item.return_type == none { leaf_node(name: "Unit") } else { rt_type(n: item) }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -2946,7 +2949,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           if child.return_type == none {
             NodeResolveResult { resolved: child, diagnostics: [] }
           } else {
-            let child_rt = match rt_node(n: child) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+            let child_rt = rt_type(n: child)
             let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1)
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
@@ -2980,7 +2983,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             if field_child.return_type == none {
               NodeResolveResult { resolved: field_child, diagnostics: [] }
             } else {
-              let field_rt = match rt_node(n: field_child) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+              let field_rt = rt_type(n: field_child)
               let rt_result = resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1)
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
@@ -3724,7 +3727,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
   let is_zero_arg_func = ritem.params |> count == 0 && ritem.return_type != none && ritem.body != none
   let func_sig = if is_func || is_zero_arg_func {
     let declared_rt = if ritem.return_type != none {
-      rt_node(n: ritem)
+      Some { value: rt_type(n: ritem) }
     } else {
       none
     }

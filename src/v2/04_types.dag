@@ -20,7 +20,8 @@ import v2.std.core {
   is_kernel_type, is_kernel_numeric, is_kernel_textual,
   parameterized_type_arity, is_parameterized_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
-  InferredNode, Resolved, CompilerError, rt_node, has_return_type
+  InferredNode, Resolved, CompilerError, rt_node, has_return_type,
+  NodeType, Typed, InferError, Untyped
 }
 
 // =========================================================================
@@ -29,11 +30,22 @@ import v2.std.core {
 
 fn child_return_type_or_name(ch: Node) -> Node {
   if ch.return_type == none { leaf_node(name: ch.name) }
-  else { match rt_node(n: ch) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
+  else { rt_type(n: ch) }
 }
 
 fn leaf_node(name: String) -> Node {
   Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+// Convenience: extract the return type Node, falling back to Unit.
+// Use for emission callers and statement contexts where Unit is correct.
+// For inference callers that need error-awareness, match rt_node directly.
+fn rt_type(n: Node) -> Node {
+  match rt_node(n: n) {
+    Typed { node: rt } => rt
+    InferError { message: _, span: _ } => leaf_node(name: "Unit")
+    Untyped => leaf_node(name: "Unit")
+  }
 }
 
 fn product_property() -> FieldInit {
@@ -143,11 +155,12 @@ fn node_is_named_ref(n: Node) -> Bool {
   if n.return_type == none { false }
   else {
     match rt_node(n: n) {
-      Some { value: rt } =>
+      Typed { node: rt } =>
         node_has_structure(n: rt) == false && rt.children |> count == 0
           && rt.name != "" && rt.name != "None"
           && is_kernel_type(name: rt.name) == false
-      None => false
+      InferError { message: _, span: _ } => false
+      Untyped => false
     }
   }
 }
@@ -361,17 +374,17 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
-    match rt_node(n: n) { Some { value: rt } => [rt.name]  None => [] }
+    match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  Untyped => [] }
   } else if node_has_structure(n: n) {
     flat_map(n.children, child =>
       if child.return_type != none {
-        match rt_node(n: child) { Some { value: rt } => node_type_deps(n: rt)  None => [] }
+        match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
       } else {
         node_type_deps(n: child)
       }
     )
   } else if n.return_type != none {
-    match rt_node(n: n) { Some { value: rt } => node_type_deps(n: rt)  None => [] }
+    match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
   } else if n.children |> count > 0 {
     flat_map(n.children, child => node_type_deps(n: child))
   } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {

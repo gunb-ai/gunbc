@@ -18,7 +18,8 @@ module v2.compiler.parse
 
 import v2.std.core {
   Module, Import, ImportNames, ImportAll, ImportSpecific,
-  Node, InferredNode, Resolved, CompilerError, rt_node,
+  Node, InferredNode, Resolved, CompilerError,
+  NodeType, Typed, InferError, Untyped, rt_node,
   Connective, Conj, Disj,
   Field, Variant, Param, ResourceUse, Cardinality, Required, CardOptional,
   ExprData, NoExprData,
@@ -509,7 +510,7 @@ fn is_conj_with_children(n: Node) -> Bool {
 // Extract the return_type from a child Node, with a fallback.
 fn child_return_type_or_empty(ch: Node) -> Node {
   if ch.return_type != none {
-    match rt_node(n: ch) { Some { value: rt } => rt  None => leaf_type_node(name: "Unit", span: ch.span) }
+    match rt_node(n: ch) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_type_node(name: "Unit", span: ch.span)  Untyped => leaf_type_node(name: "Unit", span: ch.span) }
   } else {
     leaf_type_node(name: "", span: ch.span)
   }

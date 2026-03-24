@@ -19,7 +19,7 @@ module v2.compiler.emit
 
 import v2.std.core {
   Import,
-  Node, InferredNode, Resolved, CompilerError, rt_node,
+  Node, InferredNode, Resolved, CompilerError,
   Connective, Conj, Disj,
   Field, Param,
   ExprData, NoExprData,
@@ -41,7 +41,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality }
+import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -200,7 +200,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
     ExprLet { name: name, value: value, body: body } =>
       if body == none {
-        match rt_node(n: value) { Some { value: rt } => extend_scope(scope: scope, name: name, resolved: rt)  None => scope }
+        extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
       } else {
         scope
       }
@@ -824,7 +824,7 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   let item_kind = classify_type_structure(n: item)
   let kind = if item_kind != TypeLeaf && item.transport == none {
     TypedItemTypeDef
-  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: match rt_node(n: item) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }) {
+  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
