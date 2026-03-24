@@ -3783,10 +3783,13 @@ fn compile_intrinsic_call(
                 args: vec![code_ir::Expr::Ref(Box::new(key))],
             })
         }
-        // map_values(map) → Rc-unwrap HashMap, into_values, collect into Rc<Vec<_>>.
+        // map_values(map) → Rc-unwrap HashMap, sort by key, collect values into Rc<Vec<_>>.
+        // This matches the interpreter's BTreeMap semantics so bootstrap output
+        // stays deterministic across runs.
         "map_values" if args.len() == 1 => {
             let rc_var = fresh(counter, "rc");
             let map_var = fresh(counter, "map_unwrapped");
+            let entries = fresh(counter, "entries");
             let values = fresh(counter, "values");
             Some(code_ir::Expr::Block(vec![
                 code_ir::Stmt::let_bind(&rc_var, collection.clone()),
@@ -3795,17 +3798,28 @@ fn compile_intrinsic_call(
                     code_ir::Expr::RawCode(render_rc_unwrap_or_clone(&rc_var)),
                 ),
                 code_ir::Stmt::Let {
+                    name: entries.clone(),
+                    mutable: true,
+                    expr: code_ir::Expr::RawCode(format!(
+                        "{map_var}.into_iter().collect::<Vec<_>>()"
+                    )),
+                    ir_type: None,
+                },
+                code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!(
+                    "{entries}.sort_by(|a, b| a.0.cmp(&b.0))"
+                ))),
+                code_ir::Stmt::Let {
                     name: values.clone(),
                     mutable: false,
                     expr: code_ir::Expr::RawCode(format!(
-                        "{map_var}.into_values().collect::<Vec<_>>()"
+                        "{entries}.into_iter().map(|(_, value)| value).collect::<Vec<_>>()"
                     )),
                     ir_type: None,
                 },
                 code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(values))),
             ]))
         }
-        // map_keys(map) → Rc-unwrap HashMap, into_keys, collect into Vec<String>.
+        // map_keys(map) → Rc-unwrap HashMap, collect keys, sort, collect into Vec<String>.
         "map_keys" if args.len() == 1 => {
             let rc_var = fresh(counter, "rc");
             let map_var = fresh(counter, "map_unwrapped");
@@ -3818,12 +3832,13 @@ fn compile_intrinsic_call(
                 ),
                 code_ir::Stmt::Let {
                     name: keys.clone(),
-                    mutable: false,
+                    mutable: true,
                     expr: code_ir::Expr::RawCode(format!(
                         "{map_var}.into_keys().collect::<Vec<_>>()"
                     )),
                     ir_type: None,
                 },
+                code_ir::Stmt::Expr(code_ir::Expr::RawCode(format!("{keys}.sort()"))),
                 code_ir::Stmt::TailExpr(rc_wrap(code_ir::Expr::Var(keys))),
             ]))
         }
