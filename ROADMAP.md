@@ -778,27 +778,40 @@ is Phase 3 (v1 retirement, generics) and cleanup.
 
 ### Parallelizable work streams
 
-These can proceed independently on separate branches:
+These can proceed on separate branches:
 
 | Stream | What | Files touched | Depends on |
 |--------|------|---------------|------------|
 | **A: Fixed-point convergence** | Fix remaining 16 stage1 errors (Optional double-wrapping, lambda type annotations, tokenizer Rc/vtoe, misc) | `05_emit_rust.dag` only | Nothing — self-contained emitter fixes |
-| **B: P3.6 Generics** | Parameterized type declarations (`type List<T>`, slot substitution) | `02_parse.dag`, `03_resolve.dag`, `03_normalize.dag` | Nothing — new language feature in different files |
+| **B: P3.6 Generics wiring** | Wire slot substitution into `03_normalize.dag`, un-ignore generics test | `03_normalize.dag` | **Blocked by A** — substitution function definitions crash v1 interpreter at module load time (same v1 limitation as `map_expr_children`) |
 | **C: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | `04_infer.dag` + new split modules | Blocked by `map_expr_children` (v1 retirement) for full effect; mechanical extractions possible now |
 
-**Streams A and B are fully independent** — different files, different
-concerns. Stream C can start now for mechanical extractions but delivers
-full value after A completes (v1 retired → `map_expr_children` lands →
-`resolve_expr_types` collapses → file boundaries stabilize).
+**Stream A is the critical path.** Both B and C are blocked by v1
+retirement. Once A completes and v1 retires:
+- B: substitution code is already written and tested — just wire it in
+- C: `map_expr_children` lands, `resolve_expr_types` collapses, file
+  boundaries stabilize
 
-### Sequential dependencies
+**P3.6 generics current status (partial):**
+- Type parameter registration in `build_type_env`: **done** (slot names
+  resolve as leaf types during inference)
+- Function signature filter: **done** (generic type declarations excluded
+  from `resolve_func_sigs`)
+- Substitution logic: **written and tested** (proved to work when wired
+  in — `Pair<Int, String>` with field access compiles with 0 diagnostics)
+- Test: **written, `#[ignore]`** pending v1 retirement
+- Wiring: **blocked by v1** — function definitions in `03_normalize.dag`
+  crash the v1 module loader
+
+### Sequential dependencies (updated)
 
 ```
-A (fixed-point) → v1 retirement → map_expr_children → C (full decomposition)
-B (generics) → P3.7 (delete arity bridge) → algebraic .dag declarations
+A (fixed-point 16 errors) → v1 retirement
+  → B (wire generics substitution) → P3.7 (delete arity bridge)
+  → map_expr_children → C (full decomposition)
 ```
 
-A and B merge independently into Phase 3 completion.
+All three streams converge through v1 retirement.
 
 **D. P4.1/P4.2: Shared emit / adapter contract.**
 
@@ -1363,7 +1376,7 @@ R9.
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
-| P3.6 | Generics (parameterized type declarations) | Planned | See P3.6 Design below. At least enough for `type List<T> = Nil \| Cons { head: T, tail: List<T> }`, `type Map<K,V>` (finite partial function), `type Set<T>` (membership). `Optional` is not a parameterized type — it is cardinality on the binding site (P1.4). The algebraic specs from P1.18 (denotational model) become real `.dag` declarations. |
+| P3.6 | Generics (parameterized type declarations) | **Partial — blocked by v1** | Inference handles slot names (param bindings registered in `build_type_env`). Substitution logic written and tested in `03_normalize.dag`. Wiring blocked: function definitions crash v1 module loader. Test `v2_generic_type_declaration_smoke` is `#[ignore]`. **Unblocks after Stream A (v1 retirement).** |
 | P3.7 | Delete arity bridge | Planned | Once P3.6 lands, the hardcoded arity bridge (P1.17) is replaced by the compiler reading arity from the `.dag` declarations. Delete the bridge. Cardinality starts falling out of structure. |
 
 ### P3.6 Design: Generics as Compositional DAG Slots
