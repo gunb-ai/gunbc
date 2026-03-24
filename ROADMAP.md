@@ -782,12 +782,22 @@ These can proceed on separate branches:
 
 | Stream | What | Files touched | Depends on |
 |--------|------|---------------|------------|
-| **A: Fixed-point convergence** | Fix remaining 16 stage1 errors (Optional double-wrapping, lambda type annotations, tokenizer Rc/vtoe, misc) | `05_emit_rust.dag` only | Nothing — self-contained emitter fixes |
-| **B: P3.6 Generics wiring** | Wire slot substitution into `03_normalize.dag`, un-ignore generics test | `03_normalize.dag` | **Blocked by A** — substitution function definitions crash v1 interpreter at module load time (same v1 limitation as `map_expr_children`) |
+| **A: Fixed-point test redesign** | Remaining ~10 errors are vtoe nondeterminism from HashMap iteration order in stage0. Real semantic divergences are fixed (820→~10 via 7 emitter/inference fixes). Fixed-point test needs semantic comparison instead of byte-identical diff. Design: sort emitted output, or compare AST structure, or make emitter iteration-order-insensitive. | `05_emit_rust.dag`, `04_infer.dag`, test harness | Nothing — offloaded, separate branch |
+| **B: P3.6 Generics** | Substitution logic written. Two paths: (1) simplify functions to avoid v1 module loader crash, or (2) wait for v1 retirement. Trying path 1 now. | `03_normalize.dag`, `04_infer.dag` | Path 1: nothing. Path 2: blocked by A |
 | **C: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | `04_infer.dag` + new split modules | Blocked by `map_expr_children` (v1 retirement) for full effect; mechanical extractions possible now |
 
-**Stream A is the critical path.** Both B and C are blocked by v1
-retirement. Once A completes and v1 retires:
+**Stream A status:** All real semantic divergences between v1 and stage0
+emission are fixed. Remaining ~10 fixed-point errors are from HashMap
+iteration order affecting vtoe variant-to-enum resolution. The vtoe is
+now marked `__ambiguous__` for shared variants, and the module-level
+override corrects per-module — but the byte-identical comparison still
+fails because HashMap iteration order differs between runs. This is a
+test design issue, not a compiler correctness issue. Offloaded.
+
+**Stream B is now active.** Trying to get generics working by
+simplifying the normalize substitution functions to avoid v1 crashes.
+
+Once A's test redesign completes and v1 retires:
 - B: substitution code is already written and tested — just wire it in
 - C: `map_expr_children` lands, `resolve_expr_types` collapses, file
   boundaries stabilize
