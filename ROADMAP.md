@@ -10,6 +10,12 @@ domain knowledge — types, cardinality, containers, optionality, and
 target-language facts — lives in `.dag` definitions, not in the compiler
 implementation.
 
+A `Node` is the universal graph carrier. Names introduce opaque
+namespaces over node-shaped compositions. Distinctions such as type
+position, value/expression position, pattern position, and binding-site
+descriptor are operational roles in the pipeline, not separate
+ontological categories of node.
+
 ### Three Structural Principles
 
 These principles refine the thesis based on root-cause analysis of the
@@ -19,10 +25,12 @@ back to one of these principles being underdeveloped.
 **1. Names are opaque namespaces.**
 
 Type names (`Int`, `Map`, `List`, etc.) are human-readable labels for
-structural compositions, not compiler-meaningful identifiers. The compiler
-must not branch on node names for structural decisions. `Int` is a
-namespace for `List<List<bit>>`; `String` is a namespace for `List<Int>`.
-At every level above the fundamental unit, names are opaque.
+structural compositions, not compiler-meaningful identifiers. Names label
+compositions built from machine primitives and algebraic constructors.
+`Bit`/bitvectors live in the machine layer; `List`, `Map`, and `Set` live
+in the algebraic layer with denotational laws. The compiler must not
+branch on node names for structural decisions. At every level above the
+fundamental unit, names are opaque.
 
 Enforcement: inference receives nodes with opaque names and no name
 registry. It can thread names through to output nodes and diagnostic
@@ -78,6 +86,10 @@ coproduct — graph primitives, not domain), children/parent traversal,
 and cardinality. Everything above that — what `Int` means, what `Map`
 means — is namespace, defined in `.dag`. `Optional` is not a namespace
 or type constructor; it is cardinality on the binding site.
+The roadmap also keeps role vocabulary where it marks real operational
+invariants: node in type position, node in value/expression position,
+node in pattern position, node as binding-site descriptor. Those are
+pipeline roles over one carrier, not different species of node.
 
 ### Algebraic Type Vision
 
@@ -124,6 +136,11 @@ type wrapper. `Optional<T>` does not exist as a type constructor —
 Cardinality Model below). The compiler processes coproducts
 generically; it doesn't need an "optional" concept.
 
+This spans distinct layers. Machine/foundational primitives bottom out
+in `Bit`/bitvectors; algebraic constructors such as `List`, `Map`, and
+`Set` carry separate denotational laws. The roadmap should not flatten
+those layers into one undifferentiated notion of "primitive."
+
 This requires generics in the `.dag` language (Phase 3+). Until then,
 the compiler uses an explicit arity bridge (`kernel_types` pattern)
 that gets deleted when real algebraic declarations exist. Every
@@ -143,10 +160,11 @@ Phase timeline for this vision:
 | Beyond | Bit-graph model. Primitives as compositions. Full structural type algebra. | None |
 
 The bit-graph model is aspirational and post-Phase 5. The pragmatic
-intermediate (Phases 1-3) is: primitives and containers get real `.dag`
-declarations with structural definitions; the compiler reads structure
-from those declarations; names are opaque. This is sufficient for the
-thesis without requiring the full algebraic foundation up front.
+intermediate (Phases 1-3) is: machine primitives and algebraic
+constructors/containers get real `.dag` declarations with structural
+definitions; the compiler reads structure from those declarations; names
+are opaque. This is sufficient for the thesis without requiring the full
+algebraic foundation up front.
 
 ### Collection Denotational Model
 
@@ -541,6 +559,12 @@ symptoms structurally; fixing symptoms individually is whack-a-mole.
 | **II: Error/Dynamic are names, not structure** | ~18 | Inference failures are smuggled through the type namespace as nodes named `"Error"` or `"Dynamic"`. Downstream: `node_type_equals` treats Error==anything, emit string-checks for error types, cascade suppression by name, permissive type compatibility. |
 | **III: Divergent inference paths** | ~17 | `ExprCall` and `ExprMethodCall` compute the same operations through independent code paths with different logic. Downstream: duplicated map/flat_map/fold typing, asymmetric `map_insert`/`map_merge` handling, 4x bridge method name maps, inline string method checks bypassing classifiers, testgen parallel mock extraction. |
 
+Terminology note: a "leaf" in this roadmap means only "a Node with no
+recorded children in the current IR." It does not mean machine
+primitive or algebraically fundamental; a leaf can be a reference, tag,
+placeholder, or unresolved name. Root Cause I is about missing
+structure, not about primitive-ness.
+
 ### Compositional Audit
 
 | Area | Lines | Fns | Current state | Key issues |
@@ -586,9 +610,10 @@ knowledge that the roadmap is actively dissolving.
 
 `ExprData` is an acknowledged L2 bridge. Child `Node` structure migrates
 to `expr_children` / `map_expr_children` now so traversals can become
-structural without waiting for full semantic dissolution. Non-`Node`
-expression metadata remains in `ExprData` until P5.11/P5.12. This is
-preparatory work in the final direction, not throwaway work.
+structural without waiting for full semantic dissolution. Role-specific
+metadata and non-value-position data remain in `ExprData` until
+P5.11/P5.12. This is preparatory work in the final direction, not
+throwaway work.
 
 Rules during the bridge era:
 
@@ -596,10 +621,12 @@ Rules during the bridge era:
    shared walkers, and any new ownership/complexity/emit traversals.
    Direct child-field access in ExprData walks is legacy.
 
-2. **No new `ExprData` variant may introduce fresh child `Node` storage
-   outside the `expr_children` contract.** New variants must define their
-   child order through `expr_children`. Legacy callers may access fields
-   directly until migrated.
+2. **No new `ExprData` variant may introduce fresh value-position child
+   `Node` storage outside the `expr_children` contract.** New variants
+   must define their child order through `expr_children`. If a `Node`
+   stays in type position, pattern position, or a binding-site
+   descriptor role, the variant should say so explicitly. Legacy callers
+   may access fields directly until migrated.
 
 3. **`ExprData` dissolution is about child structure, not about
    `InferredNode`.** The L2 bridge (P5.11/P5.12) dissolves expression
@@ -1087,6 +1114,9 @@ name-checking, and cardinality routes through the binding site
 (`Field.cardinality` → `field_to_child_node` → child node
 `return_cardinality`). Type expressions retain cardinality as a
 dual-write stepping stone for backward compatibility with emitters.
+This is bridge-era role language, not a second ontology: the same Node
+carrier can still appear in type position while the enclosing binding
+site carries occurrence/cardinality semantics.
 
 What landed:
 - `Cardinality = Required | CardOptional` type in `00_core.dag`
@@ -1673,8 +1703,8 @@ can interleave with either track.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) | ~5000 lines across all .dag files + v1 interpreter | Move expression children from ExprData variant fields to `node.children`. Delete `expr_children`/`map_expr_children` bridge. See P5.11 design below. |
-| P5.12 | ExprData tag dissolution | P5.11 | ~2000 lines | Replace ExprData sum type with a structural expression-kind property on Node. The compiler no longer hardcodes what `if`, `match`, `let` mean — it processes graph structure. |
+| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) | ~5000 lines across all .dag files + v1 interpreter | Move expression-position child Nodes from ExprData variant fields to `node.children`. Delete `expr_children`/`map_expr_children` bridge. See P5.11 design below. |
+| P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | Validate whether `ExprData` should dissolve into a more structural expression-kind property on Node, or remain as a closed semantic tag where that is the right exhaustiveness device. The goal is structural clarity, not dogmatic deletion. |
 
 ### P5.11 Design: ExprData Child Dissolution
 
@@ -1689,26 +1719,29 @@ child expression Nodes from ExprData. `map_expr_children(node,
 transform)` (structural tree-map) is designed but blocked by v1
 interpreter/emitter limitations — lands with Phase 3.
 
-`ExprData` is an acknowledged L2 bridge. Child `Node` structure
-migrates to `expr_children` now so traversals can become structural
-without waiting for full semantic dissolution. Non-`Node` expression
-metadata remains in `ExprData` until P5.11/P5.12. This is preparatory
-work in the final direction, not throwaway work. The bridge is safer
-than the arity bridge: the arity bridge invents missing information
-temporarily; the expr-children bridge re-homes information that
-already exists.
+`ExprData` is an acknowledged L2 bridge. Child `Node` structure in
+value/expression position migrates to `expr_children` now so traversals
+can become structural without waiting for full semantic dissolution.
+Role-specific metadata and non-value-position data remain in `ExprData`
+until P5.11/P5.12. This is preparatory work in the final direction, not
+throwaway work. The bridge is safer than the arity bridge: the arity
+bridge invents missing information temporarily; the expr-children bridge
+re-homes information that already exists.
 
-**Target state:** Expression nodes use `node.children` for child
-expressions, the same way type nodes use `node.children` for
-fields/variants. ExprData retains non-Node metadata (operator kind,
-variable name, method name) but child Nodes are structural.
+**Target state:** Expression nodes use `node.children` for child Nodes
+that participate in value/expression position, the same way structural
+passes consume ordered child lists elsewhere in the graph. ExprData
+retains non-Node metadata plus any Nodes that still serve distinct roles
+(type position, pattern position, binding-site descriptors) until those
+roles get their own structural encoding.
 
-**Per-variant child table:**
+**Per-variant value-position child table:**
 
-`node.children` contains **all Node-valued children** in declared
-order. A Node is a Node — there is no ontological distinction between
-"type nodes" and "expression nodes." The compiler processes graph
-structure uniformly.
+`node.children` contains the child Nodes that participate in
+value/expression position, in declared order. A Node is a Node:
+distinctions like type, value, pattern, and binding-site describe where
+the node participates in the pipeline, not different carriers. The role
+vocabulary stays because it still marks real operational invariants.
 
 | Variant | children (positional) |
 |---------|----------------------|
@@ -1722,7 +1755,7 @@ structure uniformly.
 | ExprUnaryOp | [operand] |
 | ExprLambda | [body] |
 | ExprBlock | [stmt0, stmt1, ...] |
-| ExprCast | [expr, target] |
+| ExprCast | [expr] |
 | ExprForEach | [collection, body] |
 | ExprIndex | [base, index] |
 | ExprSlice | [base, start, end] |
@@ -1732,7 +1765,7 @@ structure uniformly.
 | ExprStringInterp | [interp0.expr, interp1.expr, ...] |
 | ExprLiteral, ExprError, ExprVar, NoExprData | [] |
 
-**What stays in ExprData (non-Node metadata):**
+**What stays in ExprData or adjacent metadata (role-specific data):**
 
 ```
 ExprCall.func: String              → stays (function name is metadata)
@@ -1747,11 +1780,11 @@ ExprBinOp.op: BinOpKind           → stays
 ExprUnaryOp.op: UnaryOpKind       → stays
 ExprLet.name: String              → stays
 ExprForEach.variable: String      → stays
-ExprCast.target: Node             → stays (target is a type, not a child expr)
+ExprCast.target: Node             → stays for now (type position, not a value child)
 ExprRecordLit.type_name           → stays
-ExprLambda.params                 → stays
+ExprLambda.params                 → stays (binding-site descriptors; may include type-position nodes)
 ExprLambda.semantics              → stays
-MatchArm.pattern                  → stays (pattern is not a child expr)
+MatchArm.pattern                  → stays (pattern position, not a value child)
 NamedArg.name                     → stays (arg name is metadata on the child)
 ```
 
@@ -1759,9 +1792,10 @@ NamedArg.name                     → stays (arg name is metadata on the child)
 meaningful. `ExprIf` children are `[condition, then, else]` by
 position — child 0 is condition, child 1 is then-branch, child 2 is
 else-branch. The ExprData tag identifies the expression kind;
-`node.children` holds the operands in declared order. This is the same
-model as type nodes: a product's children are its fields in declared
-order; a coproduct's children are its variants.
+`node.children` holds the value-position operands in declared order.
+Type-position, pattern-position, and binding-site data may still live
+beside that list without implying separate ontologies. This is the same
+uniform-carrier model used elsewhere in the graph.
 
 **Named arg threading:** `ExprCall` and `ExprMethodCall` have
 `args: List<NamedArg>` where each arg has `name: String?` and
@@ -1867,11 +1901,12 @@ match succeeds.
 
 ### Beyond Phase 5: Bit-Graph Model
 
-The full algebraic vision — primitives as compositions from `Bit`,
-`Int = List<List<Bit>>`, `String = List<Int>` — is post-Phase 5 work.
-It requires the algebraic type system to be mature enough that the
-compiler genuinely processes only graph structure and the fundamental
-unit. This is the theoretical endgame, not a near-term deliverable.
+The full algebraic vision — machine primitives grounded in
+`Bit`/bitvectors, plus higher-level names as graph compositions over
+primitives and algebraic constructors — is post-Phase 5 work. It
+requires the algebraic type system to be mature enough that the compiler
+genuinely processes only graph structure and the fundamental unit. This
+is the theoretical endgame, not a near-term deliverable.
 
 Note: the bit-graph model and the Collection Denotational Model are
 **separate layers** that coexist. The bit-graph model is about machine

@@ -1354,6 +1354,10 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
   let arm_analyses = arms |> map(arm =>
     analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   )
+  let scrutinee_is_optional = match scrutinee.return_type {
+    Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+    _ => false
+  }
   let scrutinee_is_rc_wrapped = match scrutinee.return_type {
     Some { value: Resolved { node: rt } } =>
       if rt.children |> count == 0 && rt.name != "" {
@@ -1361,9 +1365,15 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
       } else { false }
     _ => false
   }
+  let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
+  let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
+  // Optional<Rc<T>> matches directly — no deref needed. The Some(x) binding
+  // gives x: Rc<T> which is correct. Only use .as_deref().cloned() when arms
+  // destructure the inner value (matches_option_rc_variant from arm analysis).
+  // Never use (*...).clone() on Optional — it can't deref Option.
   RcMatchAnalysis {
-    needs_option_deref: arm_analyses |> any(a => a.matches_option_rc_variant),
-    needs_deref: scrutinee_is_rc_wrapped || arm_analyses |> any(a => a.matches_rc_variant)
+    needs_option_deref: arms_want_option,
+    needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
   }
 }
 
@@ -1454,6 +1464,12 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
 // =========================================================================
 
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types: Map<String, Bool>) -> String? {
+  // Optional records (Some { value: x }) must keep struct name "Some"
+  // so the emitter triggers the Some(x) rendering path.
+  if node_is_optional(n: inferred_node) {
+    let result = type_name
+    return result
+  }
   // Normalize: unwrap Refined nodes to their base
   let n = if inferred_node.name == "Refined" && (classify_type_structure(n: inferred_node) != TypeLeaf) {
     match inferred_node.children |> first {
