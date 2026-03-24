@@ -727,20 +727,21 @@ fn emit_go_plain_method_call(receiver: Node, method: String, args: List<NamedArg
 }
 
 fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  match method_semantics {
-    Some { value: ServiceMethodSemantics { service_name: svc_name } } => {
+  if method_semantics != none { match method_semantics.value {
+    ServiceMethodSemantics { service_name: svc_name } => {
       let var_name = service_var_name(service_name: svc_name)
       let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
+    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
       emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope)
-    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+    RuntimeBridgeSemantics { method: bridge_method } =>
       emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
-    Some { value: PlainMethodSemantics } =>
+    PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
-    None =>
+  } }
+  else {
       if is_typed_service_call_receiver(receiver: receiver) {
         match extract_typed_service_name(receiver: receiver) {
           Some { value: svc_name } =>

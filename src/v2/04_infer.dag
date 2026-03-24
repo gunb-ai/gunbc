@@ -380,8 +380,10 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
   all_items |> fold(init: registry, f: (reg, item) =>
     match map_get(reg, item.name) {
       Some { value: info } =>
-        if info.kind != FuncItem { reg }
-        else if item.body == none { reg }
+        let is_not_func = info.kind != FuncItem
+        let has_no_body = item.body == none
+        if is_not_func { reg }
+        else if has_no_body { reg }
         else {
           let called = collect_called_func_names(texpr: item.body.value)
           let extra = called |> flat_map(callee_name =>
@@ -394,7 +396,8 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
             if svc_list |> any(s => s == svc) { svc_list }
             else { list_push(svc_list, svc) }
           )
-          if merged |> count == info.service_names |> count { reg }
+          let same_count = merged |> count == info.service_names |> count
+          if same_count { reg }
           else {
             map_insert(reg, item.name, ItemInfo {
               name: info.name,
@@ -448,29 +451,30 @@ type ServiceMethodResult {
 //   - Multiple outputs: return_type is Conj Node with field children
 //   - No outputs: return_type is none
 fn return_type_to_outputs(return_type: InferredNode?, span: SourceSpan) -> List<Field> {
-  match return_type {
-    None => []
-    Some { value: CompilerError { message: _, span: _ } } => []
-    Some { value: Resolved { node: rt } } =>
-      if node_has_structure(n: rt) {
-        if node_is_product(n: rt) {
-          if rt.name == "" {
-            // Anonymous product -- expand children as fields
-            map(rt.children, child =>
-              let child_type = if child.return_type == none { leaf_node(name: child.name) } else { match rt_node(n: child) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
-              Field { name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span }
-            )
+  if return_type == none { [] }
+  else { match return_type.value {
+    CompilerError { message: _, span: _ } => []
+    Resolved { node: rt } =>
+        if node_has_structure(n: rt) {
+          if node_is_product(n: rt) {
+            if rt.name == "" {
+              // Anonymous product -- expand children as fields
+              map(rt.children, child =>
+                let child_type = if child.return_type == none { leaf_node(name: child.name) } else { match rt_node(n: child) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
+                Field { name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span }
+              )
+            } else {
+              [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+            }
           } else {
             [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
           }
+        } else if rt.name == "Unit" && rt.children |> count == 0 {
+          []
         } else {
           [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
         }
-      } else if rt.name == "Unit" && rt.children |> count == 0 {
-        []
-      } else {
-        [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
-      }
+    }
   }
 }
 
@@ -783,9 +787,9 @@ fn check_service_field_access_node(base_type: Node, field: String, scope: InferS
     let path = concat(base_type.name, ".", field)
     match map_get(scope.service_registry, path) {
       Some { value: _ } => Some { value: leaf_node(name: path) }
-      None => None
+      None => none
     }
-  } else { None }
+  } else { none }
 }
 
 fn check_service_method_call_node(receiver_type: Node, method: String, scope: InferScope) -> ServiceMethodResult? {
@@ -808,11 +812,11 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
                 op_params: op.params
               } }
             }
-          None => None
+          None => none
         }
-      None => None
+      None => none
     }
-  } else { None }
+  } else { none }
 }
 
 // =========================================================================
@@ -903,7 +907,7 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
     } else {
       match lookup_field_type_node(n: inner, field_name: field_name) {
         Some { value: inner_result } => Some { value: with_optional_cardinality(n: inner_result) }
-        None => None
+        None => none
       }
     }
   } else if node_has_structure(n: n) {
@@ -911,12 +915,12 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
       match n.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
           Some { value: child_return_type_or_name(ch: field_child) }
-        None => None
+        None => none
       }
     } else {
       lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
     }
-  } else { None }
+  } else { none }
 }
 
 fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
@@ -927,13 +931,13 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) 
     match variants |> first {
       Some { value: first_variant } =>
         first_variant.children |> filter(c => c.name == field_name) |> first
-      None => None
+      None => none
     }
-  } else { None }
+  } else { none }
   match first_field {
     Some { value: field_child } =>
       Some { value: child_return_type_or_name(ch: field_child) }
-    None => None
+    None => none
   }
 }
 
@@ -1995,10 +1999,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         None => recv_rt
       }
       let result_type = refine_collection_result_type(method_name: method_name, typed_args: typed_mc_args, receiver_type: recv_rt, fallback: base_result_type)
-      let method_semantics = match method_resolution.semantics {
-        Some { value: resolved_method_semantics } => Some { value: resolved_method_semantics }
-        None => Some { value: PlainMethodSemantics }
-      }
+      let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
       let mc_texpr = make_expr_node(
         expr_data: ExprMethodCall { receiver: recv_typed, method: method_name, args: typed_mc_args, method_semantics: method_semantics },
         return_type: Some { value: Resolved { node: result_type } },
@@ -3078,14 +3079,16 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
 }
 
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  match n {
-    None => NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
-    Some { value: Resolved { node: inner } } => resolve_node(n: inner, env: env, module_name: module_name)
-    Some { value: CompilerError { message: msg, span: sp } } =>
-      NodeResolveResult {
-        resolved: leaf_node(name: "Error"),
-        diagnostics: [Diagnostic { severity: Error, message: msg, span: Some { value: sp }, module_name: Some { value: module_name }, category: none }]
-      }
+  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+  else {
+    match n.value {
+      Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
+      CompilerError { message: msg, span: sp } =>
+        NodeResolveResult {
+          resolved: leaf_node(name: "Error"),
+          diagnostics: [Diagnostic { severity: Error, message: msg, span: Some { value: sp }, module_name: Some { value: module_name }, category: none }]
+        }
+    }
   }
 }
 

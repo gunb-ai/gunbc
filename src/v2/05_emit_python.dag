@@ -734,20 +734,21 @@ fn emit_py_plain_method_call(receiver: Node, method: String, args: List<NamedArg
 }
 
 fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  match method_semantics {
-    Some { value: ServiceMethodSemantics { service_name: svc_name } } => {
+  if method_semantics != none { match method_semantics.value {
+    ServiceMethodSemantics { service_name: svc_name } => {
       let var_name = service_var_name(service_name: svc_name)
       let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", py_ident(name: method), "(", args_str, ")")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
+    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
       emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
-    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+    RuntimeBridgeSemantics { method: bridge_method } =>
       emit_py_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
-    Some { value: PlainMethodSemantics } =>
+    PlainMethodSemantics =>
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
-    None =>
+  } }
+  else {
       if is_typed_service_call_receiver(receiver: receiver) {
         match extract_typed_service_name(receiver: receiver) {
           Some { value: svc_name } =>

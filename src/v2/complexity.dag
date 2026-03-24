@@ -253,12 +253,15 @@ fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
 }
 
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
-  match method_semantics {
-    Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } } =>
-      is_size_preserving_intrinsic_method(method: method)
-    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
-      bridge_method == BridgeReverse
-    _ => false
+  if method_semantics == none { false }
+  else {
+    match method_semantics.value {
+      IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } =>
+        is_size_preserving_intrinsic_method(method: method)
+      RuntimeBridgeSemantics { method: bridge_method } =>
+        bridge_method == BridgeReverse
+      _ => false
+    }
   }
 }
 
@@ -645,7 +648,7 @@ fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
   // Space: classify the "result" output size if present
   let space_str = match map_get(summary.output_size, "result") {
     Some { value: size_expr } => format_space_class(expr: size_expr)
-    None => ""
+    _ => ""
   }
   concat(name, ": ", marker, class, space_str)
 }
@@ -795,53 +798,59 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       // IntrinsicMethodSemantics carries the IntrinsicMethod; map it to CostShape.
       // RuntimeBridgeSemantics covers O(1) bridge methods (map_get, list_push, etc.).
       // Plain/Service/None fall through to default cost.
-      match ms {
-        Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } } =>
-          let shape = intrinsic_method_cost_shape(method: im)
-          cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index)
-        Some { value: RuntimeBridgeSemantics { method: _ } } =>
-          // All runtime bridge methods are O(1)
-          SummaryResult {
-            summary: ComplexitySummary {
-              work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
-              span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
-              output_size: empty_map(),
-              certainty: recv_r.summary.certainty
-            },
-            table: recv_r.table
-          }
-        _ =>
-          // PlainMethodSemantics, ServiceMethodSemantics, or no semantics:
-          // receiver cost + 1 for the method + arg costs
-          let args_result = mc_args |> fold(init: SummaryResult {
-            summary: ComplexitySummary {
-              work: CostConst { value: 0 },
-              span: CostConst { value: 0 },
-              output_size: empty_map(),
-              certainty: Proven
-            },
-            table: recv_r.table
-          }, f: fn(acc, a) {
-            let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
-            SummaryResult {
+      let method_cost_result = if ms == none { none } else {
+        match ms.value {
+          IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } =>
+            let shape = intrinsic_method_cost_shape(method: im)
+            Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
+          RuntimeBridgeSemantics { method: _ } =>
+            // All runtime bridge methods are O(1)
+            Some { value: SummaryResult {
               summary: ComplexitySummary {
-                work: cost_seq(a: acc.summary.work, b: ar.summary.work),
-                span: cost_seq(a: acc.summary.span, b: ar.summary.span),
+                work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+                span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
                 output_size: empty_map(),
-                certainty: Proven
+                certainty: recv_r.summary.certainty
               },
-              table: ar.table
-            }
-          })
+              table: recv_r.table
+            } }
+          _ => none
+        }
+      }
+      // PlainMethodSemantics, ServiceMethodSemantics, or no semantics:
+      // receiver cost + 1 for the method + arg costs
+      match method_cost_result {
+        Some { value: result } => result
+        _ =>
+        let args_result = mc_args |> fold(init: SummaryResult {
+          summary: ComplexitySummary {
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
+            output_size: empty_map(),
+            certainty: Proven
+          },
+          table: recv_r.table
+        }, f: fn(acc, a) {
+          let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
           SummaryResult {
             summary: ComplexitySummary {
-              work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
-              span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
+              work: cost_seq(a: acc.summary.work, b: ar.summary.work),
+              span: cost_seq(a: acc.summary.span, b: ar.summary.span),
               output_size: empty_map(),
               certainty: Proven
             },
-            table: args_result.table
+            table: ar.table
           }
+        })
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
+            span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
+            output_size: empty_map(),
+            certainty: Proven
+          },
+          table: args_result.table
+        }
       }
 
     ExprMatch { scrutinee: s, arms: arm_list } =>

@@ -352,7 +352,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let this_mod_filename = module_to_filename(name: m.name)
   let all_svc_names = typed_module.items |> flat_map(item =>
     match map_get(registry, item.name) {
-      Some { value: info } => if info.kind == FuncItem { info.service_names } else { [] }
+      Some { value: info } =>
+        let is_func = info.kind == FuncItem
+        if is_func { info.service_names } else { [] }
       None => []
     }
   )
@@ -1523,7 +1525,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 ident
               } else { match resolved_type {
                 Some { value: _ } => concat(ident, ".clone()")
-                None => ident
+                _ => ident
               } }
               ident_str
             }
@@ -1531,7 +1533,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             let ident = rust_ident(name: name)
             let ident_str = match resolved_type {
               Some { value: _ } => concat(ident, ".clone()")
-              None => ident
+              _ => ident
             }
             ident_str
         }
@@ -2292,27 +2294,27 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
 }
 
 fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  match method_semantics {
-    Some { value: ServiceMethodSemantics { service_name: svc_name, op_params: op_params } } => {
+  if method_semantics != none { match method_semantics.value {
+    ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => {
       let var_name = service_var_name(service_name: svc_name)
       let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = filled_args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } } => {
+    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } => {
       let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       lowered
     }
-    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+    RuntimeBridgeSemantics { method: bridge_method } =>
       emit_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    Some { value: PlainMethodSemantics } =>
+    PlainMethodSemantics =>
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
       let args_str = arg_strs |> join(separator: ", ")
       concat(recv_str, ".", rust_ident(name: method), "(", args_str, ")")
-    None => "compile_error!(\"method call missing reconcile semantics\")"
-  }
+  } }
+  else { "compile_error!(\"method call missing reconcile semantics\")" }
 }
 
 fn emit_typed_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {

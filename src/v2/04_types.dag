@@ -159,7 +159,7 @@ fn node_is_named_ref(n: Node) -> Bool {
 fn normalize_access_type_node(n: Node) -> Node {
   let unwrapped = if n.name == "Refined" && node_has_structure(n: n) {
     n.children |> first
-  } else { None }
+  } else { none }
   match unwrapped {
     Some { value: base } => normalize_access_type_node(n: base)
     None => n
@@ -463,7 +463,7 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
 fn for_each_element_type_node(n: Node) -> Node {
   let normed = normalize_access_type_node(n: n)
   let is_single_child = node_has_structure(n: normed) == false && normed.children |> count == 1
-  let extracted = if is_single_child { normed.children |> first } else { None }
+  let extracted = if is_single_child { normed.children |> first } else { none }
   match extracted {
     Some { value: el } => el
     None =>

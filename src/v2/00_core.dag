@@ -225,10 +225,12 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
 // CompilerError → error sentinel node (behavioral equivalence),
 // None → unit sentinel node (unset return type).
 fn rt_node(n: Node) -> Node? {
-  match n.return_type {
-    Some { value: Resolved { node: rt } } => Some { value: rt }
-    Some { value: CompilerError { message: _, span: _ } } => none
-    None => none
+  if n.return_type == none { none }
+  else {
+    match n.return_type.value {
+      Resolved { node: rt } => Some { value: rt }
+      CompilerError { message: _, span: _ } => none
+    }
   }
 }
 

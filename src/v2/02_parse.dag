@@ -432,7 +432,7 @@ fn keyword_to_name(tokens: List<Token>, state: ParserState) -> String? {
   else if check(tokens: tokens, state: state, tag: "KwIdempotent") { Some { value: "idempotent" } }
   else if check(tokens: tokens, state: state, tag: "KwReadonly") { Some { value: "readonly" } }
   else if check(tokens: tokens, state: state, tag: "KwHermetic") { Some { value: "hermetic" } }
-  else { None }
+  else { none }
 }
 
 fn skip_newlines(tokens: List<Token>, state: ParserState) -> ParserState {
@@ -976,14 +976,14 @@ fn parse_named_int_args(tokens: List<Token>, state: ParserState) -> RangeArgsRes
     if has_err(err: r2.err) { return RangeArgsResult { min_val: none, max_val: none, state: r2.state, err: r2.err } }
     let min_val = if r.arg_name == "min" { Some { value: r.arg_value } }
                   else if r2.arg_name == "min" { Some { value: r2.arg_value } }
-                  else { None }
+                  else { none }
     let max_val = if r.arg_name == "max" { Some { value: r.arg_value } }
                   else if r2.arg_name == "max" { Some { value: r2.arg_value } }
-                  else { None }
+                  else { none }
     RangeArgsResult { min_val: min_val, max_val: max_val, state: r2.state, err: none }
   } else {
-    let min_val = if r.arg_name == "min" { Some { value: r.arg_value } } else { None }
-    let max_val = if r.arg_name == "max" { Some { value: r.arg_value } } else { None }
+    let min_val = if r.arg_name == "min" { Some { value: r.arg_value } } else { none }
+    let max_val = if r.arg_name == "max" { Some { value: r.arg_value } } else { none }
     RangeArgsResult { min_val: min_val, max_val: max_val, state: r.state, err: none }
   }
 }
