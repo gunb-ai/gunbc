@@ -4000,10 +4000,21 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         _ => state.type_summaries
       }
       let next_summaries = map_insert(with_variants, summary.name, summary)
+      // First-write-wins for variant_to_enum: if a variant name exists in
+      // multiple enums, keep the first registration. The module-level vtoe
+      // override corrects per-module based on imports. This makes vtoe
+      // construction deterministic regardless of Map iteration order.
       let next_variants = match summary.repr {
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
-            map_insert(acc, child.name, summary.name)
+            match map_get(acc, child.name) {
+              Some { value: existing } =>
+                // Ambiguous: variant exists in multiple enums. Mark as
+                // ambiguous so the module-level override is the sole authority.
+                if existing == summary.name { acc }
+                else { map_insert(acc, child.name, "__ambiguous__") }
+              None => map_insert(acc, child.name, summary.name)
+            }
           )
         _ => state.variant_to_enum
       }
