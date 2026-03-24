@@ -53,6 +53,14 @@ module std.types
 //   [Char] = {n in Z | 0 <= n <= 1114111}
 type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 
+// --- Container types (parameterized) -----------------------------------
+// Bare declarations with type parameters. The compiler reads arity from
+// params and renders to target-language containers. The algebraic
+// structure (Nil|Cons for List, etc.) is denotational — not compiled.
+type List<element>
+type Set<element>
+type Map<key, value>
+
 // --- Refinement types (Level 1: Subset Comprehension) -----------------
 // Each adds a Validate node to the base type's DAG:
 //   Url = Dag { Identity("String") -> Validate(NonEmpty) -> Validate(Matches("^https?://")) }

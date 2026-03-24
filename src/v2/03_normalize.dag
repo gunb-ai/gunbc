@@ -1,20 +1,18 @@
 // v2 normalization pass -- structural graph rewrite between resolve and infer.
 //
-// Normalization has two scopes:
-//   Phase 1 (this file): arity enforcement via the hardcoded arity bridge,
-//     diagnostic tagging for bare parameterized type nodes.
-//   Phase 3 (future): declaration-driven property population, generic slot
-//     substitution, Call→MethodCall unification (currently in infer).
+// P3.7: arity bridge deleted. Arity enforcement via hardcoded
+// parameterized_type_arity is removed. Arity is now structural:
+// type declarations carry params, and generic substitution in
+// resolve_node_bounded checks declaration params at resolution time.
 //
-// The normalizer is a single-pass graph rewrite: same ModuleGraph in,
-// structurally-normalized ModuleGraph out. It should stay small.
+// The normalizer currently passes the graph through unchanged.
+// Future: Call→MethodCall unification (currently in infer).
 
 module v2.compiler.normalize
 
 import v2.std.core {
   Node, Module, Diagnostic, Severity, Warning, Error, SourceSpan,
-  InferredNode, Resolved, CompilerError,
-  parameterized_type_arity, is_parameterized_type
+  InferredNode, Resolved, CompilerError
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
 
@@ -31,62 +29,9 @@ type NormalizeResult {
 // Normalization entry point
 // =========================================================================
 
-// Normalize a resolved module graph: enforce arity completeness on type nodes.
-// Returns the same graph with diagnostics appended for arity violations.
 fn normalize_graph(graph: ModuleGraph) -> NormalizeResult {
-  let all_diags = flat_map(graph.modules, rm =>
-    check_module_arity(m: rm.module)
-  )
   NormalizeResult {
     graph: graph,
-    diagnostics: all_diags
+    diagnostics: []
   }
 }
-
-// =========================================================================
-// Arity enforcement
-// =========================================================================
-
-// Check all type nodes in a module for arity completeness.
-// A parameterized type (Map, List, Set) must carry its declared number
-// of children. A bare leaf_node(name: "Map") with 0 children produces
-// a warning diagnostic.
-fn check_module_arity(m: Module) -> List<Diagnostic> {
-  flat_map(m.items, item => check_node_arity(n: item))
-}
-
-fn check_node_arity(n: Node) -> List<Diagnostic> {
-  let self_diag = if is_parameterized_type(name: n.name) {
-    let expected = parameterized_type_arity(name: n.name)
-    let actual = n.children |> count
-    if actual == 0 {
-      [Diagnostic {
-        severity: Error,
-        message: concat(n.name, " used without type parameters"),
-        span: Some { value: n.span },
-        module_name: none,
-        category: none
-      }]
-    } else if actual != expected {
-      [Diagnostic {
-        severity: Error,
-        message: concat(n.name, " has wrong number of type parameters"),
-        span: Some { value: n.span },
-        module_name: none,
-        category: none
-      }]
-    } else { [] }
-  } else { [] }
-  let child_diags = n.children |> map(child => check_node_arity(n: child))
-  let param_diags = n.params |> map(p => check_node_arity(n: p.type_expr))
-  let body_diags = match n.body {
-    Some { value: body } => check_node_arity(n: body)
-    None => []
-  }
-  let rt_diags = match n.return_type {
-    Some { value: Resolved { node: rt } } => check_node_arity(n: rt)
-    _ => []
-  }
-  concat(self_diag, concat(flat_map(child_diags, d => d), concat(flat_map(param_diags, d => d), concat(body_diags, rt_diags))))
-}
-

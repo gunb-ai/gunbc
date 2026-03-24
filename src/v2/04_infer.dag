@@ -2651,6 +2651,17 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
+    } else if item.params |> count > 0 && node_has_structure(n: item) == false && item.body == none && item.transport == none {
+      // Bare parameterized type declaration (e.g., type List<element>, type Map<key, value>).
+      // Register as a nominal type with params so generics can find the declaration.
+      let bare_node = Node {
+        name: item.name, span: item.span, children: [],
+        connective: none, params: item.params, return_type: none,
+        return_cardinality: item.return_cardinality,
+        uses: [], body: none, transport: none, properties: [],
+        type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+      }
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: bare_node })
     } else if item.properties |> count > 0 && node_has_structure(n: item) == false && item.transport == none && item.return_type == none && item.params |> count == 0 {
       // Resource declaration: has properties (kind, mode) but no children/connective.
       // Register as a nominal type so it can be referenced in `uses` clauses.
@@ -2764,9 +2775,9 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 // True when the node has children (type args) and its name resolves to a
 // type declaration with params that's NOT a built-in parameterized type.
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
-  if is_parameterized_type(name: n.name) { false }
-  else if node_has_structure(n: n) { false }
+  if node_has_structure(n: n) { false }
   else if node_is_map(n: n) { false }
+  else if node_is_container(n: n) { false }
   else {
     match lookup_type(env: env, name: n.name) {
       Some { value: decl } => decl.params |> count > 0
