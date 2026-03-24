@@ -723,7 +723,7 @@ fn expr_children(node: Node) -> List<Node> {
     ExprLambda { params: _, body: b, semantics: _ } => [b]
     ExprStringInterp { parts: ps } => ps |> flat_map(p => match p { Interpolation { expr: e } => [e]  Text { value: _ } => [] })
     ExprBlock { stmts: ss } => ss
-    ExprCast { expr: e, target: _ } => [e]
+    ExprCast { expr: e, target: t } => [e, t]
     ExprForEach { variable: _, collection: c, body: b } => [c, b]
     ExprIndex { base: b, index: i } => [b, i]
     ExprSlice { base: b, start: s, end: e } => [b, s, e]

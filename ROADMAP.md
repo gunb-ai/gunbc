@@ -601,11 +601,11 @@ Rules during the bridge era:
    child order through `expr_children`. Legacy callers may access fields
    directly until migrated.
 
-3. **Bright line between expression semantics and inferred type.**
-   Expression semantics (`ExprData` tags, method names, operators,
-   binding names) belong to the P5.11/P5.12 bridge family. Inferred
-   type (`return_type`, `return_cardinality`, `InferredNode`) is real
-   structural typing — not L2 debt. These are separate concerns.
+3. **`ExprData` dissolution is about child structure, not about
+   `InferredNode`.** The L2 bridge (P5.11/P5.12) dissolves expression
+   metadata (`ExprData` tags, method names, operators, binding names).
+   Inferred type (`return_type`, `return_cardinality`, `InferredNode`)
+   is structural typing from P1.9 — a completed dissolution, not L2 debt.
 
 4. **`map_expr_children` lands with Phase 3** (v1 retirement). The
    design exists and is tested; the v1 interpreter/emitter cannot
@@ -1684,38 +1684,53 @@ can interleave with either track.
 ExprData match to access children — 12 manual walks totaling ~1800
 lines, of which ~600 are pure structural boilerplate.
 
-**Bridge (current):** `expr_children(node) -> List<Node>` and
-`map_expr_children(node, transform)` extract/reconstruct children from
-ExprData. This eliminates the boilerplate but the dual representation
-remains.
+**Bridge (current):** `expr_children(node) -> List<Node>` extracts
+child expression Nodes from ExprData. `map_expr_children(node,
+transform)` (structural tree-map) is designed but blocked by v1
+interpreter/emitter limitations — lands with Phase 3.
+
+`ExprData` is an acknowledged L2 bridge. Child `Node` structure
+migrates to `expr_children` now so traversals can become structural
+without waiting for full semantic dissolution. Non-`Node` expression
+metadata remains in `ExprData` until P5.11/P5.12. This is preparatory
+work in the final direction, not throwaway work. The bridge is safer
+than the arity bridge: the arity bridge invents missing information
+temporarily; the expr-children bridge re-homes information that
+already exists.
 
 **Target state:** Expression nodes use `node.children` for child
 expressions, the same way type nodes use `node.children` for
 fields/variants. ExprData retains non-Node metadata (operator kind,
 variable name, method name) but child Nodes are structural.
 
-**What moves to `node.children`:**
+**Per-variant child table:**
 
-```
-ExprFieldAccess { base }           → children: [base]
-ExprCall { args }                  → children: [arg.value for each arg]
-ExprMethodCall { receiver, args }  → children: [receiver, arg.value...]
-ExprMatch { scrutinee, arms }      → children: [scrutinee, arm.body...]
-ExprIf { condition, then, else }   → children: [condition, then, else?]
-ExprLet { value, body }            → children: [value, body?]
-ExprBinOp { left, right }         → children: [left, right]
-ExprUnaryOp { operand }           → children: [operand]
-ExprLambda { body }               → children: [body]
-ExprBlock { stmts }               → children: stmts
-ExprCast { expr }                 → children: [expr]
-ExprForEach { collection, body }  → children: [collection, body]
-ExprIndex { base, index }         → children: [base, index]
-ExprSlice { base, start, end }    → children: [base, start, end]
-ExprReturn { value }              → children: [value]
-ExprRecordLit { fields }          → children: [field.value...]
-ExprListLit { elements }          → children: elements
-ExprStringInterp { parts }        → children: [interp.expr for each Interpolation]
-```
+`node.children` contains **all Node-valued children** in declared
+order. A Node is a Node — there is no ontological distinction between
+"type nodes" and "expression nodes." The compiler processes graph
+structure uniformly.
+
+| Variant | children (positional) |
+|---------|----------------------|
+| ExprFieldAccess | [base] |
+| ExprCall | [arg0.value, arg1.value, ...] |
+| ExprMethodCall | [receiver, arg0.value, ...] |
+| ExprMatch | [scrutinee, guard0?, body0, guard1?, body1, ...] |
+| ExprIf | [condition, then, else?] |
+| ExprLet | [value, body?] |
+| ExprBinOp | [left, right] |
+| ExprUnaryOp | [operand] |
+| ExprLambda | [body] |
+| ExprBlock | [stmt0, stmt1, ...] |
+| ExprCast | [expr, target] |
+| ExprForEach | [collection, body] |
+| ExprIndex | [base, index] |
+| ExprSlice | [base, start, end] |
+| ExprReturn | [value] |
+| ExprRecordLit | [field0.value, field1.value, ...] |
+| ExprListLit | [elem0, elem1, ...] |
+| ExprStringInterp | [interp0.expr, interp1.expr, ...] |
+| ExprLiteral, ExprError, ExprVar, NoExprData | [] |
 
 **What stays in ExprData (non-Node metadata):**
 
@@ -1769,13 +1784,26 @@ with a position convention.
    `node.children`)
 4. Delete `expr_children`/`map_expr_children` bridge
 
+**Dual-write invariants (steps 1-2):**
+
+During the migration, both `ExprData` child fields and `node.children`
+exist. `node.children` is canonical. `ExprData` child fields are
+compatibility mirrors only. All constructors and rewrites must go
+through `make_expr_node` / `map_expr_children`. No pass may directly
+mutate expression child fields after the dual-write begins.
+
+Test invariants for the dual-write phase:
+- `expr_children(node) == node.children` for every expression node
+- `map_expr_children(node, identity) == node`
+- Child count is stable per variant (matches the role table above)
+
 **Prerequisite:** Shared emit (Phase 4) should be stable before P5.11
 starts. Dissolving ExprData children changes what shared emit
 dispatches on. If shared emit is still being extracted when P5.11
 lands, the extraction must be redone.
 
 **Verification:** All existing tests + diagnostic ratchet + stage0
-self-compile + fixed point.
+self-compile + fixed point + dual-write invariant tests.
 
 ### P5.0 Design: Token Shape API
 
