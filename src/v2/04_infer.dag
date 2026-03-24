@@ -252,125 +252,39 @@ fn collect_typed_service_calls(texpr: Node) -> List<String> {
 }
 
 fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
-  match texpr.expr_data {
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } => {
-      let acc2 = if is_typed_service_call_receiver(receiver: r) {
+  // Per-node logic: detect service method calls on typed receivers.
+  let this_acc = match texpr.expr_data {
+    ExprMethodCall { receiver: r, method: _, args: _, method_semantics: _ } =>
+      if is_typed_service_call_receiver(receiver: r) {
         match extract_typed_service_name(receiver: r) {
           Some { value: service_name } =>
             if emit_map_has(m: acc.seen, key: service_name) { acc }
             else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
           None => acc
         }
-      } else {
-        collect_typed_service_calls_into(texpr: r, acc: acc)
-      }
-      collect_typed_service_calls_from_args_into(args: a, acc: acc2)
-    }
-    ExprCall { func: _, args: a, call_semantics: _ } =>
-      collect_typed_service_calls_from_args_into(args: a, acc: acc)
-    ExprFieldAccess { base: b, field: _, summary: _ } =>
-      collect_typed_service_calls_into(texpr: b, acc: acc)
-    ExprIf { condition: c, then_branch: t, else_branch: e } => {
-      let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
-      let acc3 = collect_typed_service_calls_into(texpr: t, acc: acc2)
-      match e {
-        Some { value: eb } => collect_typed_service_calls_into(texpr: eb, acc: acc3)
-        None => acc3
-      }
-    }
-    ExprLet { name: _, value: v, body: b } => {
-      let acc2 = collect_typed_service_calls_into(texpr: v, acc: acc)
-      match b {
-        Some { value: bd } => collect_typed_service_calls_into(texpr: bd, acc: acc2)
-        None => acc2
-      }
-    }
-    ExprBlock { stmts: ss } =>
-      ss |> fold(init: acc, f: (a, s) => collect_typed_service_calls_into(texpr: s, acc: a))
-    ExprMatch { scrutinee: s, arms: arm_list } => {
-      let acc2 = collect_typed_service_calls_into(texpr: s, acc: acc)
-      arm_list |> fold(init: acc2, f: (a, arm) =>
-        let guard_acc = match arm.guard {
-          Some { value: g } => collect_typed_service_calls_into(texpr: g, acc: a)
-          None => a
-        }
-        collect_typed_service_calls_into(texpr: arm.body, acc: guard_acc)
-      )
-    }
-    ExprBinOp { op: _, left: l, right: r } => {
-      let acc2 = collect_typed_service_calls_into(texpr: l, acc: acc)
-      collect_typed_service_calls_into(texpr: r, acc: acc2)
-    }
-    ExprUnaryOp { op: _, operand: e } =>
-      collect_typed_service_calls_into(texpr: e, acc: acc)
-    ExprLambda { params: _, body: bd, semantics: _ } =>
-      collect_typed_service_calls_into(texpr: bd, acc: acc)
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      fs |> fold(init: acc, f: (a, f) => collect_typed_service_calls_into(texpr: f.value, acc: a))
-    ExprListLit { elements: els } =>
-      els |> fold(init: acc, f: (a, e) => collect_typed_service_calls_into(texpr: e, acc: a))
-    ExprCast { expr: e, target: _ } =>
-      collect_typed_service_calls_into(texpr: e, acc: acc)
-    ExprForEach { variable: _, collection: c, body: bd } => {
-      let acc2 = collect_typed_service_calls_into(texpr: c, acc: acc)
-      collect_typed_service_calls_into(texpr: bd, acc: acc2)
-    }
-    ExprIndex { base: b, index: i } => {
-      let acc2 = collect_typed_service_calls_into(texpr: b, acc: acc)
-      collect_typed_service_calls_into(texpr: i, acc: acc2)
-    }
-    ExprSlice { base: b, start: s, end: e } => {
-      let acc2 = collect_typed_service_calls_into(texpr: b, acc: acc)
-      let acc3 = collect_typed_service_calls_into(texpr: s, acc: acc2)
-      collect_typed_service_calls_into(texpr: e, acc: acc3)
-    }
-    ExprReturn { value: v } =>
-      collect_typed_service_calls_into(texpr: v, acc: acc)
-    ExprStringInterp { parts: ps } =>
-      ps |> fold(init: acc, f: (a, p) => match p {
-        Interpolation { expr: e } => collect_typed_service_calls_into(texpr: e, acc: a)
-        _ => a
-      })
+      } else { acc }
     _ => acc
   }
-}
-
-fn collect_typed_service_calls_from_args_into(args: List<NamedArg>, acc: UniqueAccum) -> UniqueAccum {
-  args |> fold(init: acc, f: (a, arg) => collect_typed_service_calls_into(texpr: arg.value, acc: a))
+  // Structural recursion into all child expressions.
+  let result = expr_children(node: texpr) |> fold(init: this_acc, f: (a, child) =>
+    collect_typed_service_calls_into(texpr: child, acc: a)
+  )
+  result
 }
 
 fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
-  match texpr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
-      let acc2 = if emit_map_has(m: acc.seen, key: f) { acc }
-        else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
-      a |> fold(init: acc2, f: (ac, arg) => collect_called_func_names_into(texpr: arg.value, acc: ac))
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
-      let acc2 = collect_called_func_names_into(texpr: r, acc: acc)
-      a |> fold(init: acc2, f: (ac, arg) => collect_called_func_names_into(texpr: arg.value, acc: ac))
-    ExprLet { name: _, value: v, body: b } =>
-      let acc2 = collect_called_func_names_into(texpr: v, acc: acc)
-      match b { Some { value: bd } => collect_called_func_names_into(texpr: bd, acc: acc2)  None => acc2 }
-    ExprBlock { stmts: ss } =>
-      ss |> fold(init: acc, f: (a, s) => collect_called_func_names_into(texpr: s, acc: a))
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      let acc2 = collect_called_func_names_into(texpr: c, acc: acc)
-      let acc3 = collect_called_func_names_into(texpr: t, acc: acc2)
-      match e { Some { value: eb } => collect_called_func_names_into(texpr: eb, acc: acc3)  None => acc3 }
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      let acc2 = collect_called_func_names_into(texpr: s, acc: acc)
-      arm_list |> fold(init: acc2, f: (a, arm) => collect_called_func_names_into(texpr: arm.body, acc: a))
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      let acc2 = collect_called_func_names_into(texpr: c, acc: acc)
-      collect_called_func_names_into(texpr: bd, acc: acc2)
-    ExprLambda { params: _, body: bd, semantics: _ } =>
-      collect_called_func_names_into(texpr: bd, acc: acc)
-    ExprReturn { value: v } =>
-      collect_called_func_names_into(texpr: v, acc: acc)
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      fs |> fold(init: acc, f: (a, fld) => collect_called_func_names_into(texpr: fld.value, acc: a))
+  // Per-node logic: detect function calls and accumulate unique names.
+  let this_acc = match texpr.expr_data {
+    ExprCall { func: f, args: _, call_semantics: _ } =>
+      if emit_map_has(m: acc.seen, key: f) { acc }
+      else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
     _ => acc
   }
+  // Structural recursion into all child expressions.
+  let result = expr_children(node: texpr) |> fold(init: this_acc, f: (a, child) =>
+    collect_called_func_names_into(texpr: child, acc: a)
+  )
+  result
 }
 
 fn collect_called_func_names(texpr: Node) -> List<String> {
@@ -3839,80 +3753,19 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>)
 
 // Walk a Node expression tree to find ExprCall nodes whose func is a local function.
 fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  match texpr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
-      let self_edge = if emit_map_has(m: local_func_set, key: f) {
-        [CallEdge { caller: caller, callee: f }]
-      } else { [] }
-      let arg_edges = flat_map(a, na => collect_calls_in_expr(caller: caller, texpr: na.value, local_func_set: local_func_set))
-      concat(self_edge, arg_edges)
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
-      let r_edges = collect_calls_in_expr(caller: caller, texpr: r, local_func_set: local_func_set)
-      let a_edges = flat_map(a, na => collect_calls_in_expr(caller: caller, texpr: na.value, local_func_set: local_func_set))
-      concat(r_edges, a_edges)
-    ExprFieldAccess { base: b, field: _, summary: _ } =>
-      collect_calls_in_expr(caller: caller, texpr: b, local_func_set: local_func_set)
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      let c_edges = collect_calls_in_expr(caller: caller, texpr: c, local_func_set: local_func_set)
-      let t_edges = collect_calls_in_expr(caller: caller, texpr: t, local_func_set: local_func_set)
-      let e_edges = match e {
-        Some { value: eb } => collect_calls_in_expr(caller: caller, texpr: eb, local_func_set: local_func_set)
-        None => []
-      }
-      concat(c_edges, t_edges, e_edges)
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      let s_edges = collect_calls_in_expr(caller: caller, texpr: s, local_func_set: local_func_set)
-      let arm_edges = flat_map(arm_list, arm => collect_calls_in_expr(caller: caller, texpr: arm.body, local_func_set: local_func_set))
-      concat(s_edges, arm_edges)
-    ExprLet { name: _, value: v, body: bd } =>
-      let v_edges = collect_calls_in_expr(caller: caller, texpr: v, local_func_set: local_func_set)
-      let bd_edges = match bd {
-        Some { value: b } => collect_calls_in_expr(caller: caller, texpr: b, local_func_set: local_func_set)
-        None => []
-      }
-      concat(v_edges, bd_edges)
-    ExprBlock { stmts: ss } =>
-      flat_map(ss, s => collect_calls_in_expr(caller: caller, texpr: s, local_func_set: local_func_set))
-    ExprBinOp { op: _, left: l, right: r } =>
-      concat(
-        collect_calls_in_expr(caller: caller, texpr: l, local_func_set: local_func_set),
-        collect_calls_in_expr(caller: caller, texpr: r, local_func_set: local_func_set)
-      )
-    ExprUnaryOp { op: _, operand: e } =>
-      collect_calls_in_expr(caller: caller, texpr: e, local_func_set: local_func_set)
-    ExprLambda { params: _, body: bd, semantics: _ } =>
-      collect_calls_in_expr(caller: caller, texpr: bd, local_func_set: local_func_set)
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      flat_map(fs, fi => collect_calls_in_expr(caller: caller, texpr: fi.value, local_func_set: local_func_set))
-    ExprListLit { elements: els } =>
-      flat_map(els, el => collect_calls_in_expr(caller: caller, texpr: el, local_func_set: local_func_set))
-    ExprStringInterp { parts: ps } =>
-      flat_map(ps, p => match p {
-        Interpolation { expr: e } => collect_calls_in_expr(caller: caller, texpr: e, local_func_set: local_func_set)
-        Text { value: _ } => []
-      })
-    ExprCast { expr: e, target: _ } =>
-      collect_calls_in_expr(caller: caller, texpr: e, local_func_set: local_func_set)
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      concat(
-        collect_calls_in_expr(caller: caller, texpr: c, local_func_set: local_func_set),
-        collect_calls_in_expr(caller: caller, texpr: bd, local_func_set: local_func_set)
-      )
-    ExprIndex { base: b, index: i } =>
-      concat(
-        collect_calls_in_expr(caller: caller, texpr: b, local_func_set: local_func_set),
-        collect_calls_in_expr(caller: caller, texpr: i, local_func_set: local_func_set)
-      )
-    ExprSlice { base: b, start: s, end: e } =>
-      concat(
-        collect_calls_in_expr(caller: caller, texpr: b, local_func_set: local_func_set),
-        collect_calls_in_expr(caller: caller, texpr: s, local_func_set: local_func_set),
-        collect_calls_in_expr(caller: caller, texpr: e, local_func_set: local_func_set)
-      )
-    ExprReturn { value: v } =>
-      collect_calls_in_expr(caller: caller, texpr: v, local_func_set: local_func_set)
+  // Per-node logic: detect local function calls and produce call edges.
+  let this_edges = match texpr.expr_data {
+    ExprCall { func: f, args: _, call_semantics: _ } =>
+      if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
+      else { [] }
     _ => []
   }
+  // Structural recursion into all child expressions.
+  let child_edges = expr_children(node: texpr) |> flat_map(child =>
+    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
+  )
+  let result = concat(this_edges, child_edges)
+  result
 }
 
 // Check if a function reaches itself through the call graph (DFS).

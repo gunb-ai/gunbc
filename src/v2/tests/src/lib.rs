@@ -3313,31 +3313,35 @@ fn from_method() -> User? {\n\
 
     #[test]
     fn phase6_service_calls_under_return_inject_service_params() {
-        let main_rs = read_v2_file("src/v2/04_infer.dag");
+        // Service call detection now uses expr_children for structural recursion.
+        // Verify that expr_children covers Return, ForEach, Index, Slice, and
+        // match guards — the variants that were historically missed.
+        let core_rs = read_v2_file("src/v2/00_core.dag");
         assert!(
-            main_rs.contains("Return { value: v"),
-            "service dependency walk should recurse through Return expressions:\n{}",
-            main_rs
+            core_rs.contains("ExprReturn { value: v }"),
+            "expr_children should handle Return expressions"
         );
         assert!(
-            main_rs.contains("ForEach { variable: _, collection: c, body: bd"),
-            "service dependency walk should recurse through ForEach expressions:\n{}",
-            main_rs
+            core_rs.contains("ExprForEach { variable: _, collection: c, body: b }"),
+            "expr_children should handle ForEach expressions"
         );
         assert!(
-            main_rs.contains("Index { base: b, index: i"),
-            "service dependency walk should recurse through Index expressions:\n{}",
-            main_rs
+            core_rs.contains("ExprIndex { base: b, index: i }"),
+            "expr_children should handle Index expressions"
         );
         assert!(
-            main_rs.contains("Slice { base: b, start: s, end: e"),
-            "service dependency walk should recurse through Slice expressions:\n{}",
-            main_rs
+            core_rs.contains("ExprSlice { base: b, start: s, end: e }"),
+            "expr_children should handle Slice expressions"
         );
         assert!(
-            main_rs.contains("match arm.guard"),
-            "service dependency walk should recurse through match guards:\n{}",
-            main_rs
+            core_rs.contains("arm.guard"),
+            "expr_children should handle match guard expressions"
+        );
+        // Verify the collector uses expr_children for recursion.
+        let infer_rs = read_v2_file("src/v2/04_infer.dag");
+        assert!(
+            infer_rs.contains("expr_children(node: texpr)"),
+            "service call collector should use expr_children for structural recursion"
         );
     }
 
