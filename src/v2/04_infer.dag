@@ -177,6 +177,8 @@ type ItemInfo {
   name: String
   kind: ItemKind
   service_names: List<String>
+  resource_names: List<String>
+  params: List<Param>
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 }
@@ -348,10 +350,15 @@ type NodeResolveResult {
 // =========================================================================
 
 // Lightweight operation entry for the service registry.
-// Only the fields needed for type inference: name + outputs.
 type OpEntry {
   name: String
   outputs: List<Field>
+  params: List<Param>
+}
+
+type ServiceMethodResult {
+  result_type: Node
+  op_params: List<Param>
 }
 
 // Derive outputs from a Node's return_type.
@@ -565,7 +572,7 @@ type CycleDetectState {
 }
 
 fn service_op_entry(child: Node) -> OpEntry {
-  OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span) }
+  OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span), params: child.params }
 }
 
 // =========================================================================
@@ -625,7 +632,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
           }, f: (acc, titem) =>
             if titem.transport != none && titem.children |> count > 0 {
               let entries = titem.children |> map(c =>
-                OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span) }
+                OpEntry { name: c.name, outputs: return_type_to_outputs(return_type: c.return_type, span: c.span), params: c.params }
               )
               let root = namespace_root_from_properties(properties: titem.properties, name: titem.name)
               InferScopeComponents {
@@ -700,7 +707,7 @@ fn check_service_field_access_node(base_type: Node, field: String, scope: InferS
   } else { None }
 }
 
-fn check_service_method_call_node(receiver_type: Node, method: String, scope: InferScope) -> Node? {
+fn check_service_method_call_node(receiver_type: Node, method: String, scope: InferScope) -> ServiceMethodResult? {
   if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
     match map_get(scope.service_registry, receiver_type.name) {
       Some { value: ops } =>
@@ -708,13 +715,16 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
         match matching |> first {
           Some { value: op } =>
             if op.outputs |> count == 0 {
-              Some { value: leaf_node(name: "Unit") }
+              Some { value: ServiceMethodResult { result_type: leaf_node(name: "Unit"), op_params: op.params } }
             } else {
-              Some { value: Node {
-                name: "", span: no_span(),
-                children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: f.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }),
-                connective: Some { value: Conj },
-                params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+              Some { value: ServiceMethodResult {
+                result_type: Node {
+                  name: "", span: no_span(),
+                  children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: f.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }),
+                  connective: Some { value: Conj },
+                  params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+                },
+                op_params: op.params
               } }
             }
           None => None
@@ -1104,10 +1114,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, scope: InferScope) -> KnownMethodResolution {
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, scope: scope) {
-    Some { value: service_type } =>
+    Some { value: svc_result } =>
       KnownMethodResolution {
-        semantics: Some { value: ServiceMethodSemantics { service_name: receiver_type.name } },
-        result_type: Some { value: service_type }
+        semantics: Some { value: ServiceMethodSemantics { service_name: receiver_type.name, op_params: svc_result.op_params } },
+        result_type: Some { value: svc_result.result_type }
       }
     None =>
       match classify_reconciled_intrinsic_method(method: method_name) {
@@ -3582,12 +3592,15 @@ fn item_kind(item: Node) -> ItemKind {
 
 fn build_item_info(item: Node) -> ItemInfo {
   let kind = item_kind(item: item)
+  let res_names = item.uses |> map(u => u.name)
   match kind {
     FuncItem =>
       ItemInfo {
         name: item.name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
+        resource_names: res_names,
+        params: item.params,
         is_self_recursive: false,
         has_non_tail_self_call: false
       }
@@ -3596,6 +3609,8 @@ fn build_item_info(item: Node) -> ItemInfo {
         name: item.name,
         kind: kind,
         service_names: [],
+        resource_names: res_names,
+        params: item.params,
         is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name) },
         has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true) }
       }
@@ -3604,6 +3619,8 @@ fn build_item_info(item: Node) -> ItemInfo {
         name: item.name,
         kind: kind,
         service_names: [],
+        resource_names: res_names,
+        params: item.params,
         is_self_recursive: false,
         has_non_tail_self_call: false
       }

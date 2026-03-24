@@ -3672,20 +3672,20 @@ fn compile_intrinsic_call(
             method: "is_empty".to_string(),
             args: vec![],
         }),
-        // skip(list, n) → Rc::new(list[n as usize..].to_vec())
+        // skip(list, n) → Rc::new(list[min(n, len)..].to_vec())
         "skip" if args.len() == 2 => {
             let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
-                "{{ let __s = {}; Rc::new(__s[({}) as usize..].to_vec()) }}",
+                "{{ let __s = {}; let __n = ({}) as usize; Rc::new(__s[__n.min(__s.len())..].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
                 render_expr_inline(&n)
             )))
         }
-        // take(list, n) → Rc::new(list[..n as usize].to_vec())
+        // take(list, n) → Rc::new(list[..min(n, len)].to_vec())
         "take" if args.len() == 2 => {
             let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
-                "{{ let __t = {}; Rc::new(__t[..({}) as usize].to_vec()) }}",
+                "{{ let __t = {}; let __n = ({}) as usize; Rc::new(__t[..__n.min(__t.len())].to_vec()) }}",
                 render_expr_inline(&collection.clone()),
                 render_expr_inline(&n)
             )))

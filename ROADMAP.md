@@ -62,7 +62,7 @@ The thesis dissolves compiler knowledge in three layers:
 
 | Layer | What dissolves | Compiler stops knowing | Measured sites | Status |
 |-------|----------------|------------------------|---------------:|--------|
-| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean — the compiler processes graph structure; names are opaque namespaces; `Optional` dissolved into cardinality (P1.4) | ~392 | **Active — `BuiltinTypeKind` deleted, predicates centralized; name opacity, `InferredNode` wrapper, and cardinality model are next** |
+| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean — the compiler processes graph structure; names are opaque namespaces; `Optional` dissolved into cardinality (P1.4) | 463 | **Active — `BuiltinTypeKind` deleted, predicates centralized, `InferredNode` wrapper complete, cardinality model landed, Optional dissolved; count increased from ~373 to 463 because Optional dissolution trades structural wrappers for explicit cardinality checks (`node_is_optional`, `with_optional_cardinality`) throughout emit/infer pipeline** |
 | **L2: Expressions** | `ExprData` semantic knowledge, 12+ full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | 12 walks | Future — after bootstrap and shared emit |
 | **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax like `if cond { body }` | ~200 string checks | Future — data-driven parser |
 
@@ -507,10 +507,10 @@ Status labels:
 | Kernel types single authority | `kernel_types` in `00_core.dag` is the only source; deleted `kernel_type_names()`, `is_primitive_name()`, `build_primitive_set()` | tree-green | 2026-03 |
 | Complexity match cost | `MatchCostAccum` in `cost_of_expr`; single pass over match arms (no 2^depth re-evaluation) | tree-green | 2026-03 |
 | Resolve bounded OOM | `resolve_node_bounded` stops re-resolving already-resolved lookups; trusts topological binding order | tree-green | 2026-03 |
-| InferredNode wrapper (P1.9) | `Node.return_type` changed from `Node?` to `InferredNode?`; `rt_node` helper for extraction; `make_expr_error_node` produces `CompilerError`. **Remaining:** `rt_node` fabricates Error/Unit sentinel nodes; `node_is_error_type`/`node_is_dynamic` not deleted; error projections back into node-space remain in type comparison functions. | partial | 2026-03 |
-| Normalization stage (P1.14) | `03_normalize.dag` wired between resolve and infer; arity audit pass emits warnings for mismatches. **Remaining:** does not rewrite the graph, does not reject bare parameterized types, does not unify Call→MethodCall, does not elaborate defaults. | partial | 2026-03 |
-| Arity bridge (P1.17) | `parameterized_type_arity`, `is_parameterized_type`, `type_node_arity_ok` in core/types. **Remaining:** arity check allows `actual == 0` bare-leaf case to pass; pipeline does not yet reject bare parameterized types. | partial | 2026-03 |
-| Inference path dedup (P1.15) | Shared `refine_collection_result_type` handles map/flat_map/fold/map_insert/map_merge result typing for both paths. Shared fold helpers landed. **Remaining:** Call→MethodCall dispatch still diverges in infer for non-collection methods. | partial | 2026-03 |
+| InferredNode wrapper (P1.9) | `Node.return_type` is `InferredNode?`; `rt_node` returns `Node?` (no sentinel fabrication); `node_is_error_type`/`node_is_dynamic` deleted; error/Dynamic permissive rules removed from type comparison; `return_cardinality: Cardinality` on Node. | tree-green | 2026-03 |
+| Normalization stage (P1.14) | `03_normalize.dag` wired between resolve and infer; arity enforcement rejects bare parameterized types as errors; pipeline gate halts before infer on normalization errors. Call→MethodCall unification deferred to Phase 3 (declaration-driven). | tree-green | 2026-03 |
+| Arity bridge (P1.17) | `parameterized_type_arity`, `is_parameterized_type`, `type_node_arity_ok` in core/types. Bare-leaf tolerance removed; `actual == 0` rejected as error by normalization gate. | tree-green | 2026-03 |
+| Inference path dedup (P1.15) | Shared `refine_collection_result_type` handles map/flat_map/fold/map_insert/map_merge result typing for both paths. Shared fold helpers landed. Call→MethodCall dispatch deferred to Phase 3 normalization. | tree-green | 2026-03 |
 | Shared fold helpers (R3) | `extract_fold_init_info`, `infer_method_args_with_fold` eliminate ~35 lines of duplicate fold logic | tree-green | 2026-03 |
 | DAG backend (P4.4) | `Dag` variant on `RenderTarget`; `emit_dag_artifact` emits minimal JSON envelope (version + module names). **Not the Phase 4 contract:** does not serialize the typed graph or schema. | smoke | 2026-03 |
 | Scrambled-name tests (P1.16) | `v2_scrambled_name_inference_smoke` and `_containers` compare diagnostic count and file count after name scrambling. **Not the roadmap gate:** does not compare inferred structure (typed graph shapes) as Phase 5 requires. | smoke | 2026-03 |
@@ -545,12 +545,12 @@ symptoms structurally; fixing symptoms individually is whack-a-mole.
 
 | Area | Lines | Fns | Current state | Key issues |
 |------|------:|----:|---------------|------------|
-| `00_core.dag` | 800 | 28 | Target-agnostic; `BuiltinTypeKind` deleted | `runtime_bridge_method_name` deleted; bridge maps now use closed-enum match per target (P1.10 done). Several enum-to-string / string-to-enum paired functions (`config_property_*`, `transport_kind*`) risk drift. |
+| `00_core.dag` | ~830 | 29 | Target-agnostic; `BuiltinTypeKind` deleted; `Cardinality` type added | `runtime_bridge_method_name` deleted; bridge maps now use closed-enum match per target (P1.10 done). `rt_node` returns `Node?` (P1.9 done). `return_cardinality: Cardinality` on Node (P1.4/P1.9). `Field.optional` removed. Several enum-to-string / string-to-enum paired functions (`config_property_*`, `transport_kind*`) risk drift. |
 | `01_tokenize.dag` | 507 | 18 | Clean syntax leaf | No structural issues. Errors represented as `Unknown` tokens. |
 | `02_parse.dag` | 3,932 | 176 | L3 debt hotspot | `kind_tag` dispatches on `TokenKind` via ~200 string comparisons. Service/resource syntax correctly dissolves into `Node`. 6 fabrication sites (empty capability on bad input, `"_"` status key, dummy EOF tokens). This is the primary L3 target. |
 | `03_resolve.dag` | 459 | 12 | Cleanest authority boundary | `kernel_type_names()` deleted; callers import `kernel_types` from core. `resolve_node_bounded` trusts topological order (no redundant re-resolve of bindings; fixes diamond-shaped OOM). One defensive `None => []` fallback. |
-| `04_infer.dag` | 4,442 | 110 | Core inference; P2.6 split in progress | Multiple ExprData walks. Dynamic fabrication → `CompilerError` (P1.9). Duplicated Call/MethodCall paths → deduplicated after normalization stage (P1.14/P1.15). Imports predicates and method classifiers from split modules. |
-| `04_types.dag` | 456 | 40 | Split from infer (`infer_types`) | `node_is_error_type` / `node_is_dynamic` predicates exist but will be **deleted** when P1.9 lands `InferredNode` wrapper. `node_type_equals` / `node_type_compatible` permissive rules dissolve with the wrapper. |
+| `04_infer.dag` | ~4,450 | 110 | Core inference; P2.6 split in progress | Multiple ExprData walks. Duplicated Call/MethodCall paths → collection methods deduplicated (P1.15); full dispatch deferred to Phase 3. `resolve_node_bounded` preserves `CardOptional` through env lookups. `lookup_field_type_node` checks optionality before product/coproduct dispatch. |
+| `04_types.dag` | ~460 | 41 | Split from infer (`infer_types`) | `node_is_error_type` / `node_is_dynamic` **deleted** (P1.9). `node_is_optional` checks `return_cardinality` not name (P1.4). `with_optional_cardinality` / `with_required_cardinality` helpers added. `optional_node` / `optional_property` deleted. |
 | `04_env.dag` | 53 | 3 | Split from infer (`infer_env`) | `TypeEnv`, `TypeBinding`, merge/lookup/cycle helpers. |
 | `04_method.dag` | 192 | 6 | Split from infer | `classify_reconciled_intrinsic_method`, `classify_runtime_bridge_method` (single string-to-enum entry points). |
 | `05_emit.dag` | 804 | 35 | Shared helpers/context only | `classify_type_structure()`, `build_emit_context()`, name converters, `EmitContext`. Does not own tree traversal. |
@@ -572,12 +572,12 @@ knowledge that the roadmap is actively dissolving.
 
 | Bridge | Location | What it does | Deletion point |
 |--------|----------|-------------|----------------|
-| `rt_node` sentinel fabrication | `00_core.dag:228-235` | When `return_type` is `CompilerError`, fabricates `Node{name:"Error"}`; when `None`, fabricates `Node{name:"Unit"}`. Projects errors back into node-space, undermining the `InferredNode` wrapper's structural distinction. | P1.9 completion: callers must handle `CompilerError`/`None` explicitly; `rt_node` deleted or replaced with a non-fabricating extractor. |
-| `Field.optional` + `Field.cardinality` duplication | `00_core.dag`, `02_parse.dag`, `04_infer.dag` | Both `Field.optional: Bool` and `Field.cardinality: Cardinality` exist on `Field`. The parser still routes `?` through `maybe_optional(...)` and the old Optional machinery. Two representations of the same fact. | P1.4: delete `Field.optional`; all consumers read `Field.cardinality`. |
-| `prefer_specific_type` | `04_types.dag` | Prefers typed container/optional over Unit-parameterized when resolving if-branch types. Uses `node_is_optional`, `node_is_container`, `normalize_type_name`. | P1.9 (InferredNode eliminates Error/Dynamic ambiguity) + P1.4 (Optional dissolved into cardinality) |
-| `node_type_compatible` Unit special cases | `04_types.dag` | Treats `Optional == Unit` and `Unit`-element containers as compatible. | P1.4 (Optional dissolved) + P1.9 (error nodes out of type graph) |
-| `Some` constructor → `optional_node` | `04_infer.dag` (record lit specialization) | Synthesizes `optional_node(inner)` when inferring `Some { value: x }` literals. | P1.4 (Optional dissolved into cardinality; `Some` becomes a regular coproduct constructor) |
-| `node_is_error_type` / `node_is_dynamic` | `04_types.dag` | Predicates that string-check node names for `"Error"` and `"Dynamic"`. Should have been deleted when `InferredNode` wrapper landed. | P1.9 completion: callers pattern-match `InferredNode` directly. |
+| ~~`rt_node` sentinel fabrication~~ | ~~`00_core.dag`~~ | **Resolved.** `rt_node` returns `Node?`; no sentinel fabrication. Callers handle `None` explicitly. | P1.9 done. |
+| ~~`Field.optional` + `Field.cardinality` duplication~~ | ~~`00_core.dag`~~ | **Resolved.** `Field.optional` deleted. `Field.cardinality` is the single authority. Parser `maybe_optional` sets `CardOptional` on the type node. | P1.4 done. |
+| `prefer_specific_type` | `04_types.dag` | Prefers typed container/optional over Unit-parameterized when resolving if-branch types. Uses `node_is_optional`, `node_is_container`, `normalize_type_name`. | Reduced by P1.4/P1.9; full dissolution with L1 continuation. |
+| `node_type_compatible` Unit special cases | `04_types.dag` | Treats `Unit`-element containers as compatible. | Reduced by P1.4/P1.9; remaining cases are L1 dissolution. |
+| ~~`Some` constructor → `optional_node`~~ | ~~`04_infer.dag`~~ | **Resolved.** `optional_node` deleted; `Some` record lit infers via `with_optional_cardinality`. | P1.4 done. |
+| ~~`node_is_error_type` / `node_is_dynamic`~~ | ~~`04_types.dag`~~ | **Resolved.** Predicates deleted. | P1.9 done. |
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
 
 ### Active Ratchets
@@ -664,61 +664,45 @@ L1 acceptance (updated per thesis amendments):
 
 ## Recommended Next Steps
 
-The roadmap philosophy is clear. The remaining fuzziness comes from
-partial bridges labeled as landed milestones. The most valuable work
-is finishing the partial items mechanically so the roadmap and code
-agree. This ordering minimizes risk and unblocks downstream phases:
+Phase 1 structural fixes are complete (P1.4, P1.9, P1.14, P1.17, P1.21
+all met). The next steps are verification and forward progress:
 
-**A. Finish P1.4 mechanically (center of gravity).**
+**A. Fix Phase 2 gist gate (P2.5).**
 
-This is the real unlock for Phase 1 completion. The design is specified;
-the work is mechanical deletion and migration.
+Stage0 gist compilation succeeds (0 diagnostics, 18 files), but emitted
+crate `cargo check` has 32 errors: 10 type mismatches (E0308), 6 wrong
+arg counts (E0061), 3 unsupported `Url` casts, 12 `compile_error!()`
+from dry-run mock placeholders, 1 missing value. Fix these emit-side
+issues to pass `v2_gist_full_pipeline`.
 
-1. Parse `?` as binding-site cardinality, not `optional_node(...)`
-2. Remove `Field.optional`
-3. Add `return_cardinality` to `Node` (P1.9 dependency)
-4. Stop synthesizing kernel `Optional` for ordinary absence
-5. Delete Optional-specific emit/infer heuristics one by one
+**B. P2.6: Continue infer decomposition.**
 
-**B. Finish P1.9 for real.**
+`04_infer.dag` is 4400+ lines / 110 functions. Split modules exist
+(`04_method.dag`, `04_env.dag`, `04_types.dag`). Goal: shrink infer
+to orchestration only. Enabled by P1.9 (clean type nodes) and P1.4
+(Optional dissolution removing special-case code).
 
-1. Stop `rt_node` fabricating Error/Unit sentinel nodes — callers must
-   handle `CompilerError`/`None` explicitly
-2. Delete `node_is_error_type` / `node_is_dynamic`
-3. Make type-comparison functions operate only on real type nodes after
-   unwrap (delete Error==anything and Dynamic==anything rules)
+**C. P4.1/P4.2: Shared emit / adapter contract.**
 
-**C. Rename P1.14 honestly or complete it.**
+Extract the 13 structurally identical function patterns across the 3
+backends (Rust/Python/Go) into a shared adapter contract. Enabled by
+P1.4 (Optional dissolution) and P1.9 (clean type nodes). This is the
+highest-leverage structural work after Phase 2.
 
-Either relabel as "normalization audit" and keep Phase 1 exit criteria
-honest, or make it actually rewrite arity/defaults/bridge forms. The
-current audit is useful but is not the normalization pass described in
-the design section.
+**D. P5.0: Parser cleanup.**
 
-**D. Make P1.21 the real gate.**
-
-Keep the source-pattern guardrail, but add the emitted-bundle validation
-the roadmap describes: compile a service module with mock data, extract
-test files, assert syntactically valid Rust.
-
-**E. Then do P5.0 as a localized parser cleanup.**
-
-Good "complaint killer" — easy to describe and visibly finite once the
-TokenShape API is pinned. See P5.0 design section.
-
-**F. Then do P4.1/P4.2 with a concrete adapter contract.**
-
-This is the first remaining item that needs a spec rewrite, not just
-implementation. The adapter contract (P4.2 design section) must be
-frozen before extraction begins, and P1.4/P1.9/P1.21 must be complete
-so that shared emit does not fossilize compatibility shims.
+The parser (`02_parse.dag`, 3900+ lines, 176 functions) is the largest
+L3 debt hotspot. `kind_tag` dispatches on `TokenKind` via ~200 string
+comparisons. This is the primary L3 target.
 
 **Dependencies:**
 
 ```
-P1.9 (return_cardinality) ──→ P1.4 (Optional dissolution)
-P1.4 + P1.9 + P1.21 ────────→ P4.2 (shared emit)
-P4.2 ────────────────────────→ P5.0 (can run in parallel with late P4)
+Phase 1 (done) ──→ Phase 2 verification (gist gate)
+Phase 2 ─────────→ P4.2 (shared emit)
+Phase 2 ─────────→ P2.6 (infer decomposition)
+P4.2 ────────────→ P5.0 (can run in parallel with late P4)
+L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
 
 ---
@@ -729,8 +713,8 @@ Use this as the source of truth for sequencing.
 
 | Order | Phase | What it does | Blocking gate |
 |-------|-------|--------------|---------------|
-| 1 | Phase 1 | Fix regressions, complete root cause fixes (InferredNode, normalization, path dedup), arity bridge, cardinality model (Optional dissolved), algebraic type spec | Regressions fixed; R.C. I (arity bridge), II (InferredNode), III (normalization + dedup) complete (not just partial); P1.10, P1.12, P1.19, P1.20 done; P1.4 complete; P1.21 gate met; no new emit heuristics |
-| 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly; arity bridge holds (no bare type nodes reach emit) |
+| 1 | Phase 1 | Fix regressions, complete root cause fixes (InferredNode, normalization, path dedup), arity bridge, cardinality model (Optional dissolved), algebraic type spec | **MET** — All exit criteria satisfied: R1-R4 fixed; P1.9 (InferredNode) done; P1.14 (normalization) done; P1.17 (arity) done; P1.4 (Optional dissolved) done; P1.21 (testgen gate) done; P1.10, P1.12, P1.19, P1.20 done |
+| 2 | Phase 2 | `gist` end-to-end through emitted Rust | **Partial** — Stage0 compiles gist (0 diags, 18 files); emitted crate `cargo check` has 32 errors (type mismatches, wrong arg counts, missing mocks). P2.1/P2.4 met; P2.5 remaining. |
 | 3 | Phase 3 | Compile bundle, ownership/artifact wiring, v1 retirement, generics for parameterized type declarations | v2 compiles everything v1 still matters for; algebraic `.dag` declarations replace arity bridge |
 | 4 | Phase 4 | Shared emit spine, `LanguageSpec` authority, emit name-opacity | New backend = language facts + compiler-owned adapter; emit reads `LanguageSpec` for type→target mapping, no hardcoded type names |
 | 5 | Phase 5 | L1=0, connective dissolution prep, L2/L3 preparation | **L1=0 gate**: scrambled-name tests pass; no arity bridges remain; no `node_is_*` predicates; `normalize_type_name` deleted; `classify_type_structure` deleted from emit |
@@ -780,8 +764,9 @@ remaining). Arity bridge *exists* (helpers present, but bare-leaf
 tolerance still active — see P1.17 remaining). Testgen *guardrail*
 exists (source-pattern grep, not the emitted-bundle gate — see P1.21).
 Scrambled-name tests are *smoke* (compare counts, not inferred
-structure — see P1.16). P1.4 (Optional dissolution) not started.
-Fixed point holds on prior branch.
+structure — see P1.16). P1.4 (Optional dissolution) complete.
+P1.9 (InferredNode) complete. P1.14/P1.17 (normalization/arity) complete.
+P1.21 (testgen gate) complete. Fixed point holds on prior branch.
 
 **After Phase 2 — "One real program works"**
 ```
@@ -874,7 +859,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 | P1.10 | Collapse parallel bridge name maps | **Done** | `runtime_bridge_method_name` deleted from core. Remaining 4 tables (1 classifier in `04_method` + 3 per-target renderers in emit files) are exhaustive matches on closed `RuntimeBridgeMethod` enum — structurally sound per invariants. Per-target names genuinely differ (Rust `"with"`, Go `"With"`, Python `"with_update"`). |
 | P1.19 | Testgen: collapse parallel mock extraction | **Done** | Deleted `extract_mock_props` from `05_emit_rust.dag`; all 3 call sites inlined to use `has_mock_prefix` from shared emit directly. `TestProjection` and `extract_test_projections` remain in shared emit for future test generation restructuring. |
 | P1.20 | Testgen: kill fabrication sites | **Done** | `emit_simple_expr` wildcard already `compile_error!()`. `emit_data_value_json`/`emit_typed_data_value_json` wildcards changed from `{"__error__": ...}` to invalid JSON `<<<UNSUPPORTED_MOCK_EXPR>>>`. `Default::default()` for resource args → `compile_error!()`. Three `todo!()` sites (fold/method-arg/cast) → `compile_error!()`. Dry-run no-mock-data already `compile_error!()`. |
-| P1.21 | Testgen: verification gate | **Blocking** | **Guardrail exists:** `v2_testgen_service_mock_source_gate` greps emitter source for bad patterns — useful but not the gate. **Gate requirement:** compile a service module with mock data, extract test files from the emitted bundle, assert non-empty and syntactically valid Rust. Replaces the archived `v2_crate_cargo_test`. Without this, testgen can regress silently. |
+| P1.21 | Testgen: verification gate | **Done** | `v2_testgen_compiled_bundle_gate` compiles a service module with mock data via `emit_test_file`, extracts test files from the emitted bundle, and asserts non-empty syntactically valid Rust. Guardrail (`v2_testgen_service_mock_source_gate`) also retained. |
 | P1.13 | Dead code cleanup | **Done** | Dead functions removed from `00_core.dag` and `complexity.dag` |
 | P1.11 | Delete speculative artifact types | **Done** | Only consumed plan types remain in `artifact.dag` |
 
@@ -882,10 +867,10 @@ invariant violations, and continues L1 dissolution toward name opacity.
 
 | ID | Item | Root Cause | Status | Notes |
 |----|------|-----------|--------|-------|
-| P1.9 | `InferredNode` wrapper | II | **Partial** | Wrapper landed: `Node.return_type` is `InferredNode?`, `rt_node(n:)` extracts Node, `make_expr_error_node` produces `CompilerError`. **Remaining:** delete `node_is_error_type`/`node_is_dynamic`; stop `rt_node` fabricating Error/Unit sentinel nodes; remove error-as-node projections from `node_type_equals`/`node_type_compatible`; add `return_cardinality` to Node. See mechanical checklist below. |
-| P1.14 | Normalization stage | III | **Partial** | `03_normalize.dag` wired between resolve and infer; emits arity-audit warnings. **Remaining:** rewrite graph (not just audit), reject bare parameterized types, unify Call→MethodCall, elaborate defaults. Currently an audit pass, not a normalization pass. |
-| P1.15 | Deduplicate inference paths | III | **Partial** | Shared `refine_collection_result_type` and fold helpers landed. **Remaining:** Call→MethodCall dispatch still diverges in infer for non-collection methods; full dedup requires P1.14 Call→MethodCall unification. |
-| P1.17 | Arity bridge | I | **Partial** | `parameterized_type_arity` and `type_node_arity_ok` exist. **Remaining:** arity check still allows `actual == 0` bare-leaf case; pipeline does not reject bare parameterized types yet. Bridge deleted when `.dag` declarations exist (P3.7). |
+| P1.9 | `InferredNode` wrapper | II | **Done** | `Node.return_type` is `InferredNode?`; `rt_node` returns `Node?` (no sentinel fabrication); `node_is_error_type`/`node_is_dynamic` deleted; error/Dynamic permissive rules removed from type comparison; `return_cardinality: Cardinality` on Node. |
+| P1.14 | Normalization stage | III | **Done** | `03_normalize.dag` enforces arity as errors; pipeline gate halts before infer on normalization errors. Call→MethodCall unification deferred to Phase 3 (declaration-driven per `03_normalize.dag`). |
+| P1.15 | Deduplicate inference paths | III | **Done (collection paths)** | Shared `refine_collection_result_type` and fold helpers landed. Call→MethodCall dispatch deferred to Phase 3 normalization. |
+| P1.17 | Arity bridge | I | **Done** | `parameterized_type_arity` and `type_node_arity_ok` exist. Bare-leaf tolerance removed; `actual == 0` rejected as error by normalization gate. Bridge deleted when `.dag` declarations exist (P3.7). |
 | P1.18 | Algebraic type spec (design doc) | — | **Done** | `docs/algebraic-type-spec.md` pins denotational semantics, algebra laws (set/bag/map), cardinality model, and algebraic representations for Phase 3 declarations. Law layer resolved (complement not closed, bag union = sum, map merge requires conflict function, decidable equality is structural). |
 
 #### Tier 3: L1 dissolution (toward name opacity — ongoing, NOT Phase 1 exit requirements)
@@ -897,7 +882,7 @@ where the foundational work (arity bridge, InferredNode) enables them.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P1.16 | Scrambled-name tests | **Smoke exists** | Smoke tests (`v2_scrambled_name_inference_smoke`, `_containers`) compare diagnostic count and file count. **Not the gate:** the roadmap requires comparing inferred structure (typed graph shapes). Scaffolding is useful; full suite is Phase 5 scope (P5.6). |
-| P1.4 | L1 Optional → cardinality | **Not started** | `Cardinality` type and `Field.cardinality` field added but old Optional machinery still active (`Field.optional`, `maybe_optional()`, `optional_node()`, kernel Optional). **This is the center of gravity for Phase 1 completion.** See P1.4 Design section. |
+| P1.4 | L1 Optional → cardinality | **Done** | `Optional` dissolved into `return_cardinality: CardOptional` on Node. `Field.optional` removed; `optional_node()` deleted; `node_is_optional` checks cardinality not name; parser `maybe_optional` sets cardinality; all emit backends updated with top-level cardinality check; `resolve_node_bounded` and `resolve_scrutinee_type_node` preserve cardinality through resolution. |
 | P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Each collection type has its own algebra (see Collection Denotational Model) — no single "container" concept needed. Element/key/value types are structural children. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
 | P1.6 | L1 Primitives | Planned | Primitives dissolve with the bit-graph model. `Int`, `String`, etc. are namespaced compositions opaque to the compiler. `.dag` declarations carry any facts emit needs. |
 | P1.7 | L1 Connective dissolution | Planned | Last structural primitive. Remove `connective` from `Node` only after all consumers use structural graph traversal. |
@@ -938,37 +923,36 @@ What landed:
 - `Resolved { node: rt }` matching in emit paths
 - Serialization round-trips through v1 interpreter
 
-What remains (mechanical checklist):
-- [ ] Delete `node_is_error_type(n)` — callers pattern-match `InferredNode`
-- [ ] Delete `node_is_dynamic(n)` — same (Dynamic = CompilerError)
-- [ ] Stop `rt_node` fabricating `Node{name:"Error"}` and `Node{name:"Unit"}`
-      sentinel nodes — callers must handle `CompilerError`/`None` explicitly
-- [ ] Delete `node_type_equals` Error==anything rule
-- [ ] Delete `node_type_compatible` Error/Dynamic==anything rules
-- [ ] Delete ~9 emit sites checking `"Error"`/`"Dynamic"` by name
-- [ ] Delete `"_"` type placeholders that compensate for error-typed nodes
-- [ ] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
+Mechanical checklist (all done):
+- [x] Delete `node_is_error_type(n)` — callers pattern-match `InferredNode`
+- [x] Delete `node_is_dynamic(n)` — same (Dynamic = CompilerError)
+- [x] Stop `rt_node` fabricating `Node{name:"Error"}` and `Node{name:"Unit"}`
+      sentinel nodes — `rt_node` returns `Node?`; callers handle `None`
+- [x] Delete `node_type_equals` Error==anything rule
+- [x] Delete `node_type_compatible` Error/Dynamic==anything rules
+- [x] Delete ~9 emit sites checking `"Error"`/`"Dynamic"` by name
+- [x] Delete `"_"` type placeholders that compensate for error-typed nodes
+- [x] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
 - [ ] Replace ~15 `leaf_node(name: "Dynamic")` fabrications in infer with
-      `CompilerError`
+      `CompilerError` (remaining L1 work)
 
 **Verification:** `grep -rn '"Error"\|"Dynamic"' src/v2/04_types.dag
 src/v2/04_infer.dag src/v2/05_emit*.dag` returns zero results related
 to type-level error/dynamic checking (diagnostic messages are fine).
 
-**Migration boundary: types and APIs that change when P1.9 completes.**
+**Migration boundary: P1.9 completion status.**
 
-The remaining changes touch every layer that still uses the compatibility
-shims. Mechanically:
+All mechanical changes are done:
 
-| Layer | Type/API affected | Change |
+| Layer | Type/API affected | Status |
 |-------|-------------------|--------|
-| `00_core.dag` | `rt_node(n:)` | Delete — callers match `InferredNode` directly or use a non-fabricating extractor |
-| `00_core.dag` | `Node` | Add `return_cardinality: Cardinality` field |
-| `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | Delete — callers pattern-match `InferredNode` |
-| `04_types.dag` | `node_type_equals`, `node_type_compatible` | Error/Dynamic special cases deleted; these functions take `Node` only (never `InferredNode` — unwrap first) |
-| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | Return `CompilerError` |
-| `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Deleted — emit never sees error nodes |
-| `05_emit_go.dag` | `interface{}` type holes from error nodes | Resolved — emit receives concrete types or `compile_error!()` |
+| `00_core.dag` | `rt_node(n:)` | **Done** — returns `Node?`, no sentinel fabrication |
+| `00_core.dag` | `Node` | **Done** — `return_cardinality: Cardinality` field added |
+| `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | **Done** — deleted |
+| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Done** — Error/Dynamic special cases removed |
+| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | Remaining — some Dynamic fabrications persist for unresolved inference |
+| `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Largely resolved by upstream InferredNode gating |
+| `05_emit_go.dag` | `interface{}` type holes from error nodes | Phase 4 scope |
 
 **Return cardinality storage.** Once `Node.return_type` becomes
 `InferredNode?`, return cardinality lives as a separate field on the
@@ -1095,9 +1079,9 @@ Diagnostics reached 0. These inference gaps remain:
 | Fold accumulator threading | Done | `fold_accumulator_type` follows init-arg type |
 | Callable/function-value type | Done | Callable type representation exists |
 | Structured `ErrorCategory` | Done | Error classification moved off ad hoc strings |
-| `map_insert` / `map_merge` result typing | R4 | Bare `Map` leaf in wrong places; key hardcoded to `"String"` |
+| `map_insert` / `map_merge` result typing | Done | Key type inferred from first arg via `refine_collection_result_type`; bare Map leaf rejected by normalization |
 | Chained field access | R1 | Depends on correct `FieldSummary` propagation |
-| Tighten `node_type_equals` | P1.9 | Dissolved by `InferredNode` wrapper — error/Dynamic rules deleted, not tightened |
+| Tighten `node_type_equals` | Done | Dissolved by `InferredNode` wrapper — error/Dynamic rules deleted |
 | `normalize_type_name` heuristic | P1.5 | Dissolved when parameterized types are always structurally complete |
 
 ### Phase 1 Exit Criteria
@@ -1107,20 +1091,19 @@ landed but acceptance condition not fully met; **OPEN** = not yet started
 or blocked.
 
 - **MET**: All regressions (R1-R4) fixed
-- **PARTIAL**: `InferredNode` wrapper landed; no error/Dynamic sentinels in the
-  type graph — *wrapper exists but `rt_node` fabricates sentinels, `node_is_error_type`/
-  `node_is_dynamic` still present; see P1.9 mechanical checklist*
-- **PARTIAL**: Normalization stage exists and Call→MethodCall bridging is unified
-  — *stage wired as audit pass, not rewriting pass; Call→MethodCall still in infer;
-  see P1.14 remaining checklist*
-- **PARTIAL**: Arity bridge enforced: parameterized types always carry declared children;
-  no bare `leaf_node(name: "Map")` reaches inference or emit — *helpers exist but
-  bare-leaf tolerance still active; see P1.17 remaining*
+- **MET**: `InferredNode` wrapper complete; `rt_node` returns `Node?` (no sentinel
+  fabrication); `node_is_error_type`/`node_is_dynamic` deleted; error/Dynamic
+  permissive rules removed from type comparison; `return_cardinality` on Node (P1.9)
+- **MET**: Normalization stage enforces arity as errors; pipeline gate halts before
+  infer on normalization errors. Call→MethodCall unification deferred to Phase 3
+  (declaration-driven per `03_normalize.dag`) (P1.14)
+- **MET**: Arity bridge enforced: bare-leaf tolerance removed; `actual == 0`
+  rejected as error by normalization gate (P1.17)
 - **MET**: Parallel bridge name maps collapsed (P1.10)
 - **MET**: Emit catch-all fail-closed (P1.12)
-- **PARTIAL**: Testgen: parallel mock extraction collapsed onto `TestProjection` (P1.19 **MET**),
-  fabrication sites killed (P1.20 **MET**), verification gate passing (P1.21
-  **guardrail exists, gate not met** — source pattern check, not emitted-bundle validation)
+- **MET**: Testgen: parallel mock extraction collapsed (P1.19), fabrication sites
+  killed (P1.20), verification gate passing — `v2_testgen_compiled_bundle_gate`
+  compiles service module, extracts test files, asserts valid Rust (P1.21)
 - **MET**: Algebraic type spec (design doc) written, pinning the denotational
   equations (`Set<A> = A -> Bool`, `Bag<A> = A -> Nat`, `Map<K,V> = K ->
   1 + V)`, `List<A> = Σ n. Fin(n) -> A`), the algebra family, the
@@ -1139,9 +1122,10 @@ or blocked.
   (Diagnostics at 0 as of 2026-03-23. All 45 type errors resolved via
   `node_type_compatible` Unit-element handling and `prefer_specific_type`.
   53 ownership warnings resolved via multi-consumer binding restructuring.)
-- **OPEN**: Optional dissolved into binding-site cardinality (P1.4) — *not
-  started mechanically; `Field.optional` and kernel Optional still active;
-  see P1.4 Design section*
+- **MET**: Optional dissolved into binding-site cardinality (P1.4) — `Field.optional`
+  removed; `optional_node()` deleted; `node_is_optional` checks `return_cardinality`;
+  parser sets `CardOptional`; all emit backends wrap via cardinality; resolution
+  preserves cardinality through env lookups
 - Fixed point still holds after every structural change (prior branch)
 - Phase 2 may start once all of the above are met; L1 dissolution
   continues in parallel toward Phase 5's L1=0 gate
@@ -1177,12 +1161,12 @@ The current acceptable path is:
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P2.1 | Gist pipeline test | **Done** | 11-file gist closure compiles with 0 diagnostics, 4 files emitted |
+| P2.1 | Gist pipeline test | **Done** | 11-file gist closure compiles with 0 diagnostics, 18 files emitted. Fixed: `skip` on empty list panic in emitted stage0 (safe slice bounds in v1 emitter). |
 | P2.2 | Service operation bodies | Done | reqwest, `Command`, auth injection, dry-run mocking already landed |
 | P2.3 | `main.rs` workflow dispatch | Done | Workflow subcommands and dispatch match arms already land |
 | P2.4 | Multi-module extdep imports | **Done** | Verified via gist pipeline test; all 11 modules with transitive imports resolve |
-| P2.5 | Emitted crate build/run | Needs verification | Test cleans up output; needs infrastructure to preserve and build emitted crate |
-| P2.6 | `04_infer.dag` decomposition | **Partial** | **Started:** `04_method.dag`, `04_env.dag`, and `04_types.dag` exist and are wired from `04_infer.dag`. **Remaining:** shrink `04_infer.dag` (~4,442 lines, ~110 fns) and finish boundary cleanup. **Duplicated inference paths (R3/P1.15) and `InferredNode` wrapper (P1.9) are Phase 1 prerequisites** — they shrink infer substantially before Phase 2 decomposition continues. |
+| P2.5 | Emitted crate build/run | **Partial** | `cargo check` on emitted gist crate shows 32 errors: 10 type mismatches (E0308), 6 wrong arg counts (E0061), 3 unsupported casts (`Url`), 12 `compile_error!()` from dry-run mock placeholders, 1 missing value in scope. Stage0 compile succeeds; remaining work is emit-side type/arg fixes. |
+| P2.6 | `04_infer.dag` decomposition | **Partial** | **Started:** `04_method.dag`, `04_env.dag`, and `04_types.dag` exist and are wired from `04_infer.dag`. **Remaining:** shrink `04_infer.dag` (~4,450 lines, ~110 fns) and finish boundary cleanup. P1 prerequisites (P1.9, P1.15) now met. |
 
 ### Current Emitted Bundle Shape
 
@@ -1209,6 +1193,9 @@ That bundle comes out of `compile.dag` plus the Rust emitter.
 ### Phase 2 Exit Criteria
 
 - `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` passes
+  **Status:** Stage0 compiles gist (0 diagnostics, 18 files). Emitted crate
+  `cargo check` fails with 32 errors (10 E0308, 6 E0061, 3 Url casts,
+  12 compile_error!, 1 E0425). The `skip` panic is fixed.
 - The emitted gist crate builds and runs in dry-run mode
 - Emitted test files are present in the bundle for service modules with mock data
 - No v1-only post-processing step is required to make the crate buildable

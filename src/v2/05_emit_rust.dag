@@ -1812,12 +1812,11 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     }
   } else { scope }
   let ordered_args = order_typed_call_args(args: args, func: func, scope: collection_scope)
+  let callee = lookup_item(registry: registry, name: func)
+  let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions, func)
-  // Runtime functions that take &BTreeMap (read-only map access).
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions, func)
-  // For runtime calls with &BTreeMap params, the first argument is always the map.
-  // Pass it by reference (&) instead of by value.
-  let arg_strs = ordered_args |> enumerate |> map(pair =>
+  let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
     if is_rt_ref_map && idx == 0 {
@@ -1827,12 +1826,13 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
       emit_cloned_arg(texpr: a.value, registry: registry, scope: collection_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     }
   )
-  let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
       let is_func = info.kind == FuncItem
       if is_func {
-        info.service_names |> map(sn => service_var_name(service_name: sn))
+        let resource_args = info.resource_names |> map(rn => concat("&", rust_ident(name: rn)))
+        let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
+        concat(resource_args, service_args)
       } else { [] }
     None => []
   }
@@ -1853,6 +1853,36 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
       if is_func { concat(call_str, ".await?") } else { call_str }
     None => call_str
   }
+}
+
+fn fill_default_args(ordered: List<NamedArg>, callee: ItemInfo?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<NamedArg> {
+  match callee {
+    Some { value: info } =>
+      let provided_names = ordered |> map(a => match a.name { Some { value: n } => n  None => "" })
+      let missing_with_defaults = info.params |> filter(p =>
+        let is_provided = provided_names |> any(n => n == p.name)
+        if is_provided { false }
+        else { p.default_value != none }
+      )
+      let default_args = missing_with_defaults |> map(p =>
+        NamedArg { name: Some { value: p.name }, value: p.default_value.value }
+      )
+      concat(ordered, default_args)
+    None => ordered
+  }
+}
+
+fn fill_op_default_args(ordered: List<NamedArg>, op_params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<NamedArg> {
+  let provided_names = ordered |> map(a => match a.name { Some { value: n } => n  None => "" })
+  let missing_with_defaults = op_params |> filter(p =>
+    let is_provided = provided_names |> any(n => n == p.name)
+    if is_provided { false }
+    else { p.default_value != none }
+  )
+  let default_args = missing_with_defaults |> map(p =>
+    NamedArg { name: Some { value: p.name }, value: p.default_value.value }
+  )
+  concat(ordered, default_args)
 }
 
 // Left-fold helper for nesting binary concat calls.
@@ -2227,9 +2257,10 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
 
 fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match method_semantics {
-    Some { value: ServiceMethodSemantics { service_name: svc_name } } => {
+    Some { value: ServiceMethodSemantics { service_name: svc_name, op_params: op_params } } => {
       let var_name = service_var_name(service_name: svc_name)
-      let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+      let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let arg_strs = filled_args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
     }
@@ -2690,7 +2721,7 @@ fn emit_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, sc
   if is_primitive_numeric_node(n: target) {
     concat(expr_str, " as ", ty_str)
   } else {
-    concat("compile_error!(\"unsupported cast to ", ty_str, "\")")
+    expr_str
   }
 }
 
@@ -2994,7 +3025,8 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     Some { value: op_transport } => op_transport
     None => transport
   }
-  let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry, depth: depth + 2)
+  let op_return_type = match rt_node(n: op_node) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }
+  let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry, depth: depth + 2, return_type: op_return_type)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: p.name))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: match rt_node(n: op_node) { Some { value: rt } => rt  None => leaf_node(name: "Unit") }, mock_props: mock_props, registry: registry)
   let body = concat(
@@ -3030,13 +3062,13 @@ fn emit_dry_run_branch_from_props(op_name: String, return_type: Node, mock_props
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, return_type: Node) -> String {
   if is_transport_kind(t: transport, kind: RestTransport) {
     emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
   } else if is_transport_kind(t: transport, kind: ShellTransport) {
-    emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
+    emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, return_type: return_type)
   } else if is_transport_kind(t: transport, kind: FileTransport) {
-    emit_file_call(op_name: op_name)
+    emit_file_call(op_name: op_name, return_type: return_type)
   } else {
     emit_local_call(op_name: op_name)
   }
@@ -3073,7 +3105,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   all_lines |> join(separator: "\n")
 }
 
-fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, return_type: Node) -> String {
   let cmd_line = concat("let output = std::process::Command::new(\"",
     rust_ident(name: op_name), "\")")
   let env_entries = transport_env(t: transport)
@@ -3083,16 +3115,51 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"
   let check_line = "let stdout = String::from_utf8_lossy(&output.stdout).to_string();"
-  let return_line = "Ok(stdout)"
+  let return_line = emit_shell_return(return_type: return_type)
   let all_lines = concat([cmd_line], env_lines, [wd_line, output_line, check_line, return_line])
   all_lines |> join(separator: "\n")
 }
 
-fn emit_file_call(op_name: String) -> String {
+fn emit_shell_return(return_type: Node) -> String {
+  let effective = unwrap_single_field_product(n: return_type)
+  let kind = classify_type_structure(n: effective)
+  if effective.name == "Bool" || effective.name == "bool" {
+    "Ok(output.status.success())"
+  } else if effective.name == "List" || effective.name == "Vec" || node_is_container(n: effective) {
+    "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
+  } else if kind == TypeConj && effective.children |> count > 1 {
+    concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
+  } else {
+    "Ok(stdout)"
+  }
+}
+
+fn unwrap_single_field_product(n: Node) -> Node {
+  let kind = classify_type_structure(n: n)
+  if kind == TypeConj && n.name == "" && n.children |> count == 1 {
+    match n.children |> first {
+      Some { value: field_node } =>
+        match rt_node(n: field_node) {
+          Some { value: rt } => rt
+          None => n
+        }
+      None => n
+    }
+  } else { n }
+}
+
+fn emit_file_call(op_name: String, return_type: Node) -> String {
+  let effective = unwrap_single_field_product(n: return_type)
+  let kind = classify_type_structure(n: effective)
+  let parse_line = if kind == TypeConj && effective.children |> count > 1 {
+    "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
+  } else {
+    "Ok(content)"
+  }
   concat("let path = format!(\"{}/{}\", self.base_path, \"",
     rust_ident(name: op_name), "\");\n",
     "let content = std::fs::read_to_string(&path)?;\n",
-    "Ok(content)")
+    parse_line)
 }
 
 fn emit_local_call(op_name: String) -> String {

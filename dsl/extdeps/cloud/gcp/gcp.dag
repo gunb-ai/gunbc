@@ -111,6 +111,9 @@ service gcloud.Auth {
       0 => Unit
       nonzero => String "Authentication failed"
     }
+    mock_response {
+      0 => { ok: true } "Login succeeded"
+    }
   }
 
   operation ReadADC {
@@ -123,6 +126,9 @@ service gcloud.Auth {
     readonly
     // Parses JSON: extracts client_id, client_secret, refresh_token
     transport file { op: READ, path: "\{path\}" }
+    mock_response {
+      0 => { client_id: "mock-client-id.apps.googleusercontent.com", client_secret: "mock-client-secret", refresh_token: "1//mock-refresh-token" } "Mock ADC"
+    }
   }
 }
 
@@ -164,6 +170,9 @@ service shell.OAuth2 {
       0 => Unit
       nonzero => String "Token refresh failed"
     }
+    mock_response {
+      0 => { access_token: "ya29.mock-shell-access-token", valid: true } "Token refreshed via shell"
+    }
   }
 }
 
@@ -176,6 +185,9 @@ service shell.GCloud {
     exit {
       0 => Unit
       nonzero => String "Failed to get access token"
+    }
+    mock_response {
+      0 => { access_token: "ya29.mock-gcloud-access-token" } "Mock access token"
     }
   }
 
@@ -191,6 +203,9 @@ service shell.GCloud {
     exit {
       0 => Unit
       nonzero => String "Failed to access secret"
+    }
+    mock_response {
+      0 => { secret_value: "mock-secret-value" } "Mock secret"
     }
   }
 }

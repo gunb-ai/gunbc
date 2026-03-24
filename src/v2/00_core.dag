@@ -305,7 +305,7 @@ type MethodSemantics
   = PlainMethodSemantics
   | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
   | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
-  | ServiceMethodSemantics { service_name: String }
+  | ServiceMethodSemantics { service_name: String, op_params: List<Param> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 
