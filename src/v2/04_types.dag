@@ -386,7 +386,12 @@ fn node_type_deps(n: Node) -> List<String> {
   } else if n.return_type != none {
     match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
   } else if n.children |> count > 0 {
-    flat_map(n.children, child => node_type_deps(n: child))
+    // Parameterized type reference (e.g., MyList<T>): the node name IS a
+    // dependency (MyList) AND the children (type args like T) may also be.
+    let child_deps = flat_map(n.children, child => node_type_deps(n: child))
+    if n.name != "" && is_kernel_type(name: n.name) == false {
+      concat([n.name], child_deps)
+    } else { child_deps }
   } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
     []
   } else {

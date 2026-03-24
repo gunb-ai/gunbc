@@ -2767,7 +2767,6 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   if is_parameterized_type(name: n.name) { false }
   else if node_has_structure(n: n) { false }
   else if node_is_map(n: n) { false }
-  else if is_recursive_type(env: env, name: n.name) { false }
   else {
     match lookup_type(env: env, name: n.name) {
       Some { value: decl } => decl.params |> count > 0
@@ -2888,7 +2887,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               NodeResolveResult { resolved: field_child, diagnostics: [] }
             } else {
               let field_rt = rt_type(n: field_child)
-              let rt_result = resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1)
+              // Skip resolution for self-referencing fields in recursive types
+              // (e.g., tail: MyList<T> inside MyList's Cons variant).
+              let rt_result = if field_rt.name == n.name && field_rt.children |> count > 0 {
+                NodeResolveResult { resolved: field_rt, diagnostics: [] }
+              } else {
+                resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1)
+              }
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
               NodeResolveResult {
@@ -2930,8 +2935,9 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let substituted_children = decl.children |> map(child =>
       substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
     )
+    let is_recursive = is_recursive_type(env: env, name: n.name)
     let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
+      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
       diagnostics: arg_diags
     }
     result
