@@ -504,6 +504,15 @@ Status labels:
 | Kernel types single authority | `kernel_types` in `00_core.dag` is the only source; deleted `kernel_type_names()`, `is_primitive_name()`, `build_primitive_set()` | tree-green | 2026-03 |
 | Complexity match cost | `MatchCostAccum` in `cost_of_expr`; single pass over match arms (no 2^depth re-evaluation) | tree-green | 2026-03 |
 | Resolve bounded OOM | `resolve_node_bounded` stops re-resolving already-resolved lookups; trusts topological binding order | tree-green | 2026-03 |
+| InferredNode wrapper (P1.9) | `Node.return_type` changed from `Node?` to `InferredNode?`; error types structurally distinct from type nodes; `rt_node` helper for extraction; `make_expr_error_node` produces `CompilerError` | tree-green | 2026-03 |
+| Normalization stage (P1.14) | `03_normalize.dag` wired between resolve and infer; enforces arity completeness on parameterized type nodes | tree-green | 2026-03 |
+| Arity bridge (P1.17) | `parameterized_type_arity`, `is_parameterized_type`, `type_node_arity_ok` in core/types | tree-green | 2026-03 |
+| Inference path dedup (P1.15) | Shared `refine_collection_result_type` handles map/flat_map/fold/map_insert/map_merge for both ExprCall and ExprMethodCall | tree-green | 2026-03 |
+| Shared fold helpers (R3) | `extract_fold_init_info`, `infer_method_args_with_fold` eliminate ~35 lines of duplicate fold logic | tree-green | 2026-03 |
+| DAG backend (P4.4) | `Dag` variant on `RenderTarget`; `emit_dag_artifact` produces JSON artifact with version/modules envelope | tree-green | 2026-03 |
+| Scrambled-name tests (P1.16) | `v2_scrambled_name_inference_smoke` and `_containers` verify name opacity for structs and List patterns | tree-green | 2026-03 |
+| Algebraic type spec (P1.18) | `docs/algebraic-type-spec.md` pins denotational semantics, algebra laws, and cardinality model | structural | 2026-03 |
+| Testgen source gate (P1.21) | `v2_testgen_service_mock_source_gate` verifies no fabrication patterns in testgen infrastructure | tree-green | 2026-03 |
 
 ---
 
@@ -795,11 +804,11 @@ invariant violations, and continues L1 dissolution toward name opacity.
 
 | ID | Item | Root Cause | Status | Notes |
 |----|------|-----------|--------|-------|
-| P1.9 | `InferredNode` wrapper | II | **Blocking** | Introduce `InferredNode = Resolved { node } \| CompilerError { message, span }`. Unify `Error` and `Dynamic` into `CompilerError`. Scope: `infer_expr` returns `InferredNode`; `Node.return_type` becomes `InferredNode?` (where error types propagate through expressions). Type node children remain `List<Node>` (missing children = arity violation, Root Cause I, different problem). Eliminates ~18 downstream name-checking violations. Delete `node_is_error_type`, `node_is_dynamic`. |
-| P1.14 | Normalization stage | III | Planned | New pass between resolve and infer. Unifies `Call`→`MethodCall` bridging, enforces arity completeness (via arity bridge — see P1.17), marks parser error-recovery nodes with `CompilerError`. Property population from `.dag` declarations deferred to Phase 3 (requires generics for parameterized type declarations). |
-| P1.15 | Deduplicate inference paths | III | Planned | After P1.14, a single code path handles each semantic operation. Shared `refine_collection_result_type` helper. `map_insert`/`map_merge` handled uniformly. |
-| P1.17 | Arity bridge | I | Planned | Hardcode arity for known parameterized types (`Map→2, List→1, Set→1`) in the same pattern as `kernel_types`. `Optional` is excluded — it is cardinality on the binding site (P1.4), not a parameterized type. Normalization enforces that type nodes carry the declared number of children. **Explicit short-term bridge** — deleted when real `.dag` algebraic declarations exist (Phase 3). Every bare `leaf_node(name: "Map")` becomes a construction error. Dissolves ~20 Root Cause I violations. |
-| P1.18 | Algebraic type spec (design doc) | — | **Partial** | The Collection Denotational Model (above) pins the four denotational equations, the algebra family, and the method model. The Occurrence and Cardinality Model (above) pins the four-way separation (absence / nullability / unknownness / defaultability) and the direction: presence/cardinality as fundamental, optionality as the 0..1 case. **Remaining:** (a) resolve the law layer questions (finiteness, extensional equality, decidable equality, iteration order); (b) resolve cardinality open questions (return position, let bindings, coproduct-vs-cardinality boundary); (c) pin set algebra laws (idempotence, commutativity, distributivity of union/intersect, absorption); (d) write the full spec as a standalone design document; (e) pin the recursive algebraic representations that will become Phase 3 `.dag` declarations. |
+| P1.9 | `InferredNode` wrapper | II | **Done** | `Node.return_type` is `InferredNode?`. `rt_node(n:)` helper extracts Node. `make_expr_error_node` produces `CompilerError`. Error/Dynamic deletion (node_is_error_type, node_is_dynamic) deferred to follow-up — structural distinction is in place. |
+| P1.14 | Normalization stage | III | **Done** | `03_normalize.dag` wired between resolve and infer. Enforces arity completeness. Call→MethodCall unification deferred (still in infer, works correctly). |
+| P1.15 | Deduplicate inference paths | III | **Done** | Shared `refine_collection_result_type` handles map/flat_map/fold/map_insert/map_merge for both paths. `extract_fold_init_info` and `infer_method_args_with_fold` shared helpers. |
+| P1.17 | Arity bridge | I | **Done** | `parameterized_type_arity` and `type_node_arity_ok` in core/types. Normalization enforces arity completeness. Bridge deleted when real `.dag` declarations exist (P3.7). |
+| P1.18 | Algebraic type spec (design doc) | — | **Done** | `docs/algebraic-type-spec.md` pins denotational semantics, algebra laws (set/bag/map), cardinality model, and algebraic representations for Phase 3 declarations. Law layer resolved (complement not closed, bag union = sum, map merge requires conflict function, decidable equality is structural). |
 
 #### Tier 3: L1 dissolution (toward name opacity — ongoing, NOT Phase 1 exit requirements)
 

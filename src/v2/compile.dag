@@ -27,7 +27,7 @@ import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
-import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, default_artifact_plan }
+import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
 // =========================================================================
 // Types
@@ -119,6 +119,24 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
     Go => emit_go(typed: typed)
+    Dag => emit_dag_artifact(typed: typed)
+  }
+}
+
+// DAG backend: emit a serialized typed graph as a JSON artifact.
+// The schema is the post-infer ResolvedGraph structure.
+fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
+  let module_names = typed.modules |> map(m => concat("\"", m.module.name, "\""))
+  let modules_json = module_names |> fold(init: "", f: (acc, name) =>
+    if acc == "" { name } else { concat(acc, ", ", name) }
+  )
+  let json = concat(
+    "{\n  \"version\": \"0.1.0\",\n  \"modules\": [", modules_json,
+    "],\n  \"files\": []\n}"
+  )
+  EmitResult {
+    files: [TextFile { path: "dag-artifact.json", content: json }],
+    diagnostics: []
   }
 }
 

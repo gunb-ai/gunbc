@@ -2182,10 +2182,11 @@ fn foo(item: String) -> String {
         let source = read_v2_file("src/v2/04_infer.dag");
         assert!(
             source.contains("fn resolve_expr_types"),
-            "typecheck.dag should walk expression trees during type resolution"
+            "resolve_types.dag should walk expression trees during type resolution"
         );
+        let infer_source = read_v2_file("src/v2/04_infer.dag");
         assert!(
-            source.contains("collect_unresolved_in_expr"),
+            infer_source.contains("collect_unresolved_in_expr"),
             "typecheck.dag should validate unresolved types inside expression trees"
         );
     }
@@ -3854,6 +3855,63 @@ fn origin() -> Point {
             artifacts
         );
         expect_variant(map_field(&artifacts[0], "target"), "Go");
+    }
+
+    /// P4.4: DAG backend smoke test. Verifies the Dag render target produces
+    /// a JSON artifact file with the expected schema envelope.
+    #[test]
+    fn v2_dag_pipeline_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module dag_smoke
+
+type Point { x: Int  y: Int }
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}
+";
+
+        let result = compile_sources_with_target(&output, &[("dag_smoke.dag", source)], "Dag");
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "dag pipeline smoke: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+
+        let files = result
+            .get("files")
+            .expect("compile_sources should return files");
+        let file_count = emitted_file_count(files);
+        assert_eq!(
+            file_count, 1,
+            "dag backend should emit exactly one artifact file, got {}",
+            file_count,
+        );
+
+        let json = emitted_file_content(files, "dag-artifact.json");
+        assert!(
+            json.contains("\"version\": \"0.1.0\""),
+            "DAG artifact should have version field:\n{}",
+            &json[..json.len().min(500)],
+        );
+        assert!(
+            json.contains("\"modules\""),
+            "DAG artifact should have modules field:\n{}",
+            &json[..json.len().min(500)],
+        );
+        assert!(
+            json.contains("dag_smoke"),
+            "DAG artifact should reference the compiled module:\n{}",
+            &json[..json.len().min(500)],
+        );
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -5775,6 +5833,74 @@ fn get_x(b: Wmn) -> Int {
             emitted_file_count(files_real),
             emitted_file_count(files_scrambled),
             "scrambled names should produce same file count"
+        );
+    }
+
+    /// P5.6: Extended scrambled-name test with containers, coproducts,
+    /// pattern matching, and collection operations.
+    #[test]
+    fn v2_scrambled_name_inference_containers() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source_real = "\
+module scramble_ctr
+
+type Coord { x: Int  y: Int }
+
+type Path { points: List<Coord>  name: String }
+
+fn empty_path() -> Path {
+  Path { points: [], name: \"default\" }
+}
+
+fn add_point(p: Path, c: Coord) -> Path {
+  let new_points = list_push(p.points, c)
+  Path { points: new_points, name: p.name }
+}
+
+fn path_length(p: Path) -> Int {
+  p.points |> count
+}
+";
+
+        let source_scrambled = "\
+module scramble_ctr
+
+type Qwz { x: Int  y: Int }
+
+type Ijk { points: List<Qwz>  name: String }
+
+fn empty_path() -> Ijk {
+  Ijk { points: [], name: \"default\" }
+}
+
+fn add_point(p: Ijk, c: Qwz) -> Ijk {
+  let new_points = list_push(p.points, c)
+  Ijk { points: new_points, name: p.name }
+}
+
+fn path_length(p: Ijk) -> Int {
+  p.points |> count
+}
+";
+
+        let result_real = compile_sources_with(&output, &[("scramble_ctr.dag", source_real)]);
+        let result_scrambled = compile_sources_with(&output, &[("scramble_ctr.dag", source_scrambled)]);
+
+        let diags_real = diagnostic_messages(result_real.get("diagnostics").unwrap());
+        let diags_scrambled = diagnostic_messages(result_scrambled.get("diagnostics").unwrap());
+        assert_eq!(
+            diags_real.len(),
+            diags_scrambled.len(),
+            "scrambled container names should produce same diagnostic count.\nReal: {:?}\nScrambled: {:?}",
+            diags_real,
+            diags_scrambled
+        );
+
+        assert_eq!(
+            emitted_file_count(result_real.get("files").unwrap()),
+            emitted_file_count(result_scrambled.get("files").unwrap()),
+            "scrambled container names should produce same file count"
         );
     }
 

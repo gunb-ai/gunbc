@@ -20,7 +20,7 @@ import v2.std.core {
   Module, Import, ImportNames, ImportAll, ImportSpecific,
   Node, InferredNode, Resolved, CompilerError, rt_node,
   Connective, Conj, Disj,
-  Field, Variant, Param, ResourceUse,
+  Field, Variant, Param, ResourceUse, Cardinality, Required, CardOptional,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -518,9 +518,9 @@ fn child_return_type_or_empty(ch: Node) -> Node {
 // Otherwise -> single "value" field wrapping the node.
 fn node_return_type_to_outputs(rt: Node) -> List<Field> {
   if is_conj_with_children(n: rt) {
-    rt.children |> map(ch => Field { name: ch.name, type_expr: child_return_type_or_empty(ch: ch), optional: false, default_value: ch.body, from_key: none, span: ch.span })
+    rt.children |> map(ch => Field { name: ch.name, type_expr: child_return_type_or_empty(ch: ch), optional: false, cardinality: Required, default_value: ch.body, from_key: none, span: ch.span })
   } else {
-    [Field { name: "value", type_expr: rt, optional: false, default_value: none, from_key: none, span: rt.span }]
+    [Field { name: "value", type_expr: rt, optional: false, cardinality: Required, default_value: none, from_key: none, span: rt.span }]
   }
 }
 
@@ -770,19 +770,23 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
-  let s = skip_newlines(tokens: tokens, state: r.state)
+
+  // Optional type parameters: type Name<element> or type Name<key, value>
+  let type_params_result = parse_optional_type_params(tokens: tokens, state: r.state)
+  let type_params = type_params_result.params
+  let s = skip_newlines(tokens: tokens, state: type_params_result.state)
 
   // Record type: type Name { fields }
   let e = eat(tokens: tokens, state: s, tag: "LBrace")
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
-    let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let named_dummy = Node { name: name, span: start_span, children: [], params: type_params, return_type: none, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f))
-    let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: type_params, return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
   } else {
     // Sum type or alias: type Name = ...
@@ -793,7 +797,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
       parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span)
     } else {
       // Bare type declaration -- primitive type with no structural expansion
-      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_type_node(name: name, span: start_span) } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let item = Node { name: name, span: start_span, children: [], connective: none, params: type_params, return_type: Some { value: Resolved { node: leaf_type_node(name: name, span: start_span) } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       ItemResult { item: item, state: s, err: none }
     }
   }
@@ -1086,32 +1090,78 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
     let first_arg = r.type_expr
     let s = r.state
 
-    // Check for comma (second type arg, e.g., Map<K, V>)
-    let e2 = eat(tokens: tokens, state: s, tag: "Comma")
-    if e2.consumed {
-      let r2 = parse_type_expr(tokens: tokens, state: e2.state)
-      if has_err(err: r2.err) { return r2 }
-      let second_arg = r2.type_expr
-      let r3 = expect(tokens: tokens, state: r2.state, tag: "Gt")
-      if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
-      let te = Node { name: "Map", span: start_span, children: [first_arg, second_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-      maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
-    } else {
-      let r3 = expect(tokens: tokens, state: s, tag: "Gt")
-      if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
-      if type_name == "List" || type_name == "Set" || type_name == "NonEmptyList" || type_name == "NonEmptySet" {
-        let te = Node { name: type_name, span: start_span, children: [first_arg], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "container_kind", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: type_name } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-        maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
-      } else {
-        // Unknown single-arg generic -- treat as named type.
-        let te = leaf_type_node(name: type_name, span: start_span)
-        maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
-      }
-    }
+    // Collect all type args: Name<A, B, C, ...>
+    let type_args = collect_type_args(tokens: tokens, state: s, args: [first_arg])
+    if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, state: type_args.state, err: type_args.err } }
+    let r3 = expect(tokens: tokens, state: type_args.state, tag: "Gt")
+    if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
+    // Build type node with args as children. Container/map properties
+    // are preserved for backward compatibility until P3.7 deletes the arity bridge.
+    let container_props = if type_name == "Map" {
+      [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }]
+    } else if type_name == "List" || type_name == "Set" || type_name == "NonEmptyList" || type_name == "NonEmptySet" {
+      [FieldInit { name: "container_kind", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: type_name } }, return_type: none, span: start_span) }]
+    } else { [] }
+    let te = Node { name: type_name, span: start_span, children: type_args.args, connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: container_props, type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
   } else {
     // Plain named type
     let te = leaf_type_node(name: type_name, span: start_span)
     maybe_optional(tokens: tokens, state: state, te: te, start_span: start_span)
+  }
+}
+
+type TypeParamsResult {
+  params: List<Param>
+  state: ParserState
+}
+
+// Parse optional type parameters: <name, name, ...>
+// Returns empty params if no < is found.
+fn parse_optional_type_params(tokens: List<Token>, state: ParserState) -> TypeParamsResult {
+  let e = eat(tokens: tokens, state: state, tag: "Lt")
+  if e.consumed {
+    let params_result = collect_type_param_names(tokens: tokens, state: e.state, params: [])
+    let r = expect(tokens: tokens, state: params_result.state, tag: "Gt")
+    // If Gt parsing fails, return what we have — the error propagates from caller
+    TypeParamsResult { params: params_result.params, state: r.state }
+  } else {
+    TypeParamsResult { params: [], state: state }
+  }
+}
+
+fn collect_type_param_names(tokens: List<Token>, state: ParserState, params: List<Param>) -> TypeParamsResult {
+  if is_ident(tokens: tokens, state: state) {
+    let r = expect_ident(tokens: tokens, state: state)
+    let span = current_span(tokens: tokens, state: r.state)
+    let param = Param { name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span }
+    let next_params = list_push(params, param)
+    let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+    if e.consumed {
+      collect_type_param_names(tokens: tokens, state: e.state, params: next_params)
+    } else {
+      TypeParamsResult { params: next_params, state: r.state }
+    }
+  } else {
+    TypeParamsResult { params: params, state: state }
+  }
+}
+
+type TypeArgsResult {
+  args: List<Node>
+  state: ParserState
+  err: Diagnostic?
+}
+
+// Collect comma-separated type args until > is reached.
+fn collect_type_args(tokens: List<Token>, state: ParserState, args: List<Node>) -> TypeArgsResult {
+  let e = eat(tokens: tokens, state: state, tag: "Comma")
+  if e.consumed {
+    let r = parse_type_expr(tokens: tokens, state: e.state)
+    if has_err(err: r.err) { return TypeArgsResult { args: args, state: r.state, err: r.err } }
+    collect_type_args(tokens: tokens, state: r.state, args: list_push(args, r.type_expr))
+  } else {
+    TypeArgsResult { args: args, state: state, err: none }
   }
 }
 
@@ -1155,7 +1205,7 @@ fn parse_field_list_acc(tokens: List<Token>, state: ParserState, acc: List<Field
 
 fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let dummy_field = Field { name: "", type_expr: leaf_type_node(name: "", span: start_span), optional: false, default_value: none, from_key: none, span: start_span }
+  let dummy_field = Field { name: "", type_expr: leaf_type_node(name: "", span: start_span), optional: false, cardinality: Required, default_value: none, from_key: none, span: start_span }
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return FieldResult { field: dummy_field, state: r.state, err: r.err } }
   let name = r.name
@@ -1179,13 +1229,13 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, state: r4.state, err: r4.err } }
     let f = Field {
-      name: name, type_expr: te, optional: false,
+      name: name, type_expr: te, optional: false, cardinality: Required,
       default_value: Some { value: r4.expr }, from_key: from_key, span: start_span
     }
     FieldResult { field: f, state: r4.state, err: none }
   } else {
     let f = Field {
-      name: name, type_expr: te, optional: false,
+      name: name, type_expr: te, optional: false, cardinality: Required,
       default_value: none, from_key: from_key, span: start_span
     }
     FieldResult { field: f, state: s, err: none }

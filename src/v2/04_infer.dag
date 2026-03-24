@@ -32,6 +32,7 @@ import v2.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_expr_error_node,
   rt_node, has_return_type, InferredNode, Resolved, CompilerError,
+  Cardinality, Required, CardOptional,
   Diagnostic, Severity, Warning,
   ResourceUse,
   ServiceConfig,
@@ -369,18 +370,18 @@ fn return_type_to_outputs(return_type: InferredNode?, span: SourceSpan) -> List<
             // Anonymous product -- expand children as fields
             map(rt.children, child =>
               let child_type = if child.return_type == none { leaf_node(name: child.name) } else { rt_node(n: child) }
-              Field { name: child.name, type_expr: child_type, optional: false, default_value: none, from_key: none, span: span }
+              Field { name: child.name, type_expr: child_type, optional: false, cardinality: Required, default_value: none, from_key: none, span: span }
             )
           } else {
-            [Field { name: "value", type_expr: rt, optional: false, default_value: none, from_key: none, span: span }]
+            [Field { name: "value", type_expr: rt, optional: false, cardinality: Required, default_value: none, from_key: none, span: span }]
           }
         } else {
-          [Field { name: "value", type_expr: rt, optional: false, default_value: none, from_key: none, span: span }]
+          [Field { name: "value", type_expr: rt, optional: false, cardinality: Required, default_value: none, from_key: none, span: span }]
         }
       } else if rt.name == "Unit" && rt.children |> count == 0 {
         []
       } else {
-        [Field { name: "value", type_expr: rt, optional: false, default_value: none, from_key: none, span: span }]
+        [Field { name: "value", type_expr: rt, optional: false, cardinality: Required, default_value: none, from_key: none, span: span }]
       }
   }
 }
@@ -1065,7 +1066,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_map(n: map_type) {
+  if node_is_map(n: map_type) && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -1185,7 +1186,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     let diags = if is_int_type_node(n: index_type) { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
     AccessCheckResultNode { resolved_type: leaf_node(name: "String"), diagnostics: diags }
-  } else if node_is_map(n: normed) {
+  } else if node_is_map(n: normed) && normed.children |> count >= 2 {
     let key_node = match normed.children |> first {
       Some { value: k } => k
       None => leaf_node(name: "String")
@@ -3011,6 +3012,7 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
       name: field.name,
       type_expr: type_resolved,
       optional: field.optional,
+      cardinality: field.cardinality,
       default_value: match default_resolved {
         Some { value: result } => Some { value: result.expr }
         None => none

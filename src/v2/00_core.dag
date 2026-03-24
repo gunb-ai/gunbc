@@ -111,10 +111,13 @@ type Import {
 // Disj = disjunction: exactly one child holds (sum variants).
 type Connective = Conj | Disj
 
+type Cardinality = Required | CardOptional
+
 type Field {
   name: String
   type_expr: Node
   optional: Bool
+  cardinality: Cardinality
   default_value: Node?
   from_key: String?
   span: SourceSpan
