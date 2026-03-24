@@ -154,12 +154,13 @@ fn node_is_named_ref(n: Node) -> Bool {
 // =========================================================================
 
 fn normalize_access_type_node(n: Node) -> Node {
-  if n.name == "Refined" && node_has_structure(n: n) {
-    match n.children |> first {
-      Some { value: base } => normalize_access_type_node(n: base)
-      None => n
-    }
-  } else { n }
+  let unwrapped = if n.name == "Refined" && node_has_structure(n: n) {
+    n.children |> first
+  } else { None }
+  match unwrapped {
+    Some { value: base } => normalize_access_type_node(n: base)
+    None => n
+  }
 }
 
 fn normalize_type_name(name: String) -> String {
@@ -247,24 +248,22 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
-  if node_is_container(n: left) && node_is_container(n: right) {
-    if normalize_type_name(name: left.name) == normalize_type_name(name: right.name) {
-      match left.children |> first {
-        Some { value: left_el } =>
-          if left_el.name == "Unit" { right }
-          else { left }
-        None => left
-      }
-    } else { left }
-  }
-  else if node_is_optional(n: left) && node_is_optional(n: right) {
-    match left.children |> first {
-      Some { value: left_inner } =>
-        if left_inner.name == "Unit" { right }
-        else { left }
-      None => left
+  let left_is_container = node_is_container(n: left)
+  let left_is_optional = node_is_optional(n: left)
+  let left_first_child = left.children |> first
+  let left_norm_name = left.name
+  let left_is_unit_inner = if left_is_container || left_is_optional {
+    match left_first_child {
+      Some { value: el } => el.name == "Unit"
+      None => false
     }
-  }
+  } else { false }
+  let same_kind = if left_is_container && node_is_container(n: right) {
+    normalize_type_name(name: left_norm_name) == normalize_type_name(name: right.name)
+  } else if left_is_optional && node_is_optional(n: right) {
+    true
+  } else { false }
+  if same_kind && left_is_unit_inner { right }
   else { left }
 }
 
@@ -428,7 +427,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 
 fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
+  let result = if node_has_structure(n: normed) == false && normed.children |> count == 1 {
     match normed.children |> first {
       Some { value: el } => el
       None => receiver_type
@@ -441,15 +440,15 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
   } else {
     receiver_type
   }
+  result
 }
 
 fn extract_optional_inner_node(n: Node) -> Node {
-  if node_is_optional(n: n) {
-    match n.children |> first {
-      Some { value: inner } => inner
-      None => n
-    }
-  } else { n }
+  let inner = if node_is_optional(n: n) { n.children |> first } else { None }
+  match inner {
+    Some { value: i } => i
+    None => n
+  }
 }
 
 fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
@@ -469,14 +468,12 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
 
 fn for_each_element_type_node(n: Node) -> Node {
   let normed = normalize_access_type_node(n: n)
-  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
-    match normed.children |> first {
-      Some { value: el } => el
-      None => normed
-    }
-  } else if node_is_leaf(n: normed) && normed.name == "String" {
-    leaf_node(name: "String")
-  } else {
-    normed
+  let is_single_child = node_has_structure(n: normed) == false && normed.children |> count == 1
+  let extracted = if is_single_child { normed.children |> first } else { None }
+  match extracted {
+    Some { value: el } => el
+    None =>
+      if node_is_leaf(n: normed) && normed.name == "String" { leaf_node(name: "String") }
+      else { normed }
   }
 }

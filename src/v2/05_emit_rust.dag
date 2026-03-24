@@ -1210,10 +1210,9 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         None => name
       }
     }
-  if name == "Some" && field_bindings |> count == 1 {
+  let result = if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
-        // String literal inside Some: use ref binding, guard is collected separately.
         if is_string_lit_pattern(p: fb.binding) {
           "Some(ref __some_val)"
         } else {
@@ -1225,9 +1224,6 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   } else if field_bindings |> count == 0 {
     qualified
   } else {
-    // Filter out wildcard bindings -- the trailing `..` already handles unbound fields.
-    // This prevents duplicate field bindings when the reconciler produces both
-    // a wildcard and an explicit binding for the same field (e.g. func: _, func: func).
     let effective_bindings = field_bindings |> filter(fb =>
       match fb.binding { Wildcard => false  _ => true }
     )
@@ -1235,7 +1231,6 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       concat(qualified, " { .. }")
     } else {
       let binding_strs = effective_bindings |> map(fb =>
-        // String literal field binding: use ref binding, guard is collected separately.
         if is_string_lit_pattern(p: fb.binding) {
           concat("ref ", rust_ident(name: fb.field_name))
         } else {
@@ -1247,6 +1242,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       concat(qualified, " { ", bindings_str, ", .. }")
     }
   }
+  result
 }
 
 // =========================================================================
@@ -1359,10 +1355,9 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         None => name
       }
     }
-  if name == "Some" && field_bindings |> count == 1 {
+  let result = if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
-        // String literal inside Some: use ref binding, guard is collected separately.
         if is_string_lit_pattern(p: fb.binding) {
           "Some(ref __some_val)"
         } else {
@@ -1382,7 +1377,6 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       concat(qualified, " { .. }")
     } else {
       let binding_strs = effective_bindings |> map(fb =>
-        // String literal field binding: use ref binding, guard is collected separately.
         if is_string_lit_pattern(p: fb.binding) {
           concat("ref ", rust_ident(name: fb.field_name))
         } else {
@@ -1399,6 +1393,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       concat(qualified, " { ", bindings_str, ", .. }")
     }
   }
+  result
 }
 
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>) -> String {
@@ -1438,17 +1433,18 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
     }
   } else { inferred_node }
   let n_kind = classify_type_structure(n: n)
-  if n.name == "__EmitTypeCacheMiss" { type_name }
-  else if n.name == "Error" { type_name }
-  else if (n_kind == TypeConj) {
-    if n.name == "" { type_name } else { Some { value: n.name } }
-  } else if (n_kind == TypeDisj) {
-    type_name
-  } else if n.children |> count == 0 && n.name != "" {
-    Some { value: n.name }
-  } else {
-    type_name
-  }
+  let result = if n.name == "__EmitTypeCacheMiss" { type_name }
+    else if n.name == "Error" { type_name }
+    else if (n_kind == TypeConj) {
+      if n.name == "" { type_name } else { Some { value: n.name } }
+    } else if (n_kind == TypeDisj) {
+      type_name
+    } else if n.children |> count == 0 && n.name != "" {
+      Some { value: n.name }
+    } else {
+      type_name
+    }
+  result
 }
 
 
@@ -1481,15 +1477,13 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Node
   else if name == "true" || name == "false" { name }
   else {
     let variant_parent = variant_parent_from_binding_kind(binding_kind: binding_kind)
-    match variant_parent {
+    let ref_str = match variant_parent {
       Some { value: enum_name } =>
         let qualified = concat(enum_name, "::", name)
         if emit_map_has(m: rc_types, key: enum_name) {
           concat("Rc::new(", qualified, ")")
         } else { qualified }
       None =>
-        // Data constants use SCREAMING_SNAKE_CASE.
-        // lazy_static refs need .clone() when passed to functions expecting owned values.
         match map_get(registry, name) {
           Some { value: info } =>
             let is_data = info.kind == DataItem
@@ -1499,24 +1493,25 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Node
                 Some { value: FunctionValueBinding } => true
                 _ => false
               }
-              // Clone only when resolved_type is known. Lambda params and match
-              // bindings have None -- cloning them breaks Rust's type inference.
               let ident = rust_ident(name: name)
-              if is_function_value {
+              let ident_str = if is_function_value {
                 ident
               } else { match resolved_type {
                 Some { value: _ } => concat(ident, ".clone()")
                 None => ident
               } }
+              ident_str
             }
           None =>
             let ident = rust_ident(name: name)
-            match resolved_type {
+            let ident_str = match resolved_type {
               Some { value: _ } => concat(ident, ".clone()")
               None => ident
             }
+            ident_str
         }
     }
+    ref_str
   }
 }
 
@@ -1694,8 +1689,6 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
         }
         if base_check { true }
         else {
-          // Fallback: check if the lookup's return type is Optional<T> where T needs Rc.
-          // Handles cases where the receiver's map type isn't fully resolved.
           match texpr.return_type {
             Some { value: ret_type } =>
               let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
@@ -1711,13 +1704,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       } else {
         false
       }
-      match call_semantics {
-        Some { value: LookupCallSemantics } =>
-          if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
-        _ =>
-          if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") }
-          else { call_str }
-      }
+      if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
     ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
       emit_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprMatch { scrutinee: s, arms: arm_list } =>
@@ -1866,12 +1853,13 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   } else {
     concat(func_name, "(", args_str, ")")
   }
-  match callee {
+  let result = match callee {
     Some { value: info } =>
       let is_func = info.kind == FuncItem
       if is_func { concat(call_str, ".await?") } else { call_str }
     None => call_str
   }
+  result
 }
 
 // Left-fold helper for nesting binary concat calls.
@@ -2583,24 +2571,22 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           None => concat(display_tn, " {}")
         }
       } else if fields |> count == 0 {
-        let raw = concat(display_tn, " {}")
+        let empty_raw = concat(display_tn, " {}")
         let record_parent_enum = match parent_enum {
           Some { value: en } => en
           None => ""
         }
         let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: record_parent_enum)
-        if needs_rc {
-          concat("Rc::new(", raw, ")")
-        } else { raw }
+        if needs_rc { concat("Rc::new(", empty_raw, ")") } else { empty_raw }
       } else {
         let field_strs = fields |> map(f =>
           let val_str = emit_field_value_with_context(field_value: f.value, struct_node: resolved_type, outer_type_name: type_name, field_name: f.name, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f.name)
             && is_already_optional(texpr: f.value, emit_info: emit_info, scope: scope) == false
-          let wrapped = if needs_wrap {
+          let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          concat("    ", rust_ident(name: f.name), ": ", wrapped, ",")
+          concat("    ", rust_ident(name: f.name), ": ", field_val, ",")
         )
         let all_field_strs = field_strs
         let fields_str = all_field_strs |> join(separator: "\n")
@@ -2610,9 +2596,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           None => ""
         }
         let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: record_parent_enum)
-        if needs_rc {
-          concat("Rc::new(", raw, ")")
-        } else { raw }
+        if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
       }
   }
 }

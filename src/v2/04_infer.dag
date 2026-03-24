@@ -668,13 +668,14 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
 // Falls back to the full name if the property is absent.
 // Takes properties and name separately so it works for any Node.
 fn namespace_root_from_properties(properties: List<FieldInit>, name: String) -> String {
-  match properties |> filter(p => p.name == "namespace_root") |> first {
+  let result = match properties |> filter(p => p.name == "namespace_root") |> first {
     Some { value: ns_prop } => match ns_prop.value.expr_data {
       ExprLiteral { value: LitStr { value: root } } => root
       _ => name
     }
     None => name
   }
+  result
 }
 
 // =========================================================================
@@ -687,17 +688,18 @@ fn namespace_root_from_properties(properties: List<FieldInit>, name: String) -> 
 // =========================================================================
 
 fn check_service_field_access_node(base_type: Node, field: String, scope: InferScope) -> Node? {
-  if node_has_structure(n: base_type) == false && base_type.children |> count == 0 {
+  let result = if node_has_structure(n: base_type) == false && base_type.children |> count == 0 {
     let path = concat(base_type.name, ".", field)
     match map_get(scope.service_registry, path) {
       Some { value: _ } => Some { value: leaf_node(name: path) }
       None => None
     }
   } else { None }
+  result
 }
 
 fn check_service_method_call_node(receiver_type: Node, method: String, scope: InferScope) -> Node? {
-  if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
+  let result = if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
     match map_get(scope.service_registry, receiver_type.name) {
       Some { value: ops } =>
         let matching = ops |> filter(op => op.name == method)
@@ -706,8 +708,6 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
             if op.outputs |> count == 0 {
               Some { value: leaf_node(name: "Unit") }
             } else {
-              // Always return a record type with named fields so field access
-              // (e.g., result.branch) works for both single- and multi-output operations.
               Some { value: Node {
                 name: "", span: no_span(),
                 children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, params: [], return_type: Some { value: f.type_expr }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }),
@@ -720,6 +720,7 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
       None => None
     }
   } else { None }
+  result
 }
 
 // =========================================================================
@@ -803,9 +804,8 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
 }
 
 fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
-  if node_has_structure(n: n) {
+  let result = if node_has_structure(n: n) {
     if node_is_product(n: n) {
-      // Product: search children by name
       match n.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
           Some { value: child_return_type_or_name(ch: field_child) }
@@ -816,10 +816,8 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
         match n.children |> first {
           Some { value: inner } =>
             if field_name == "value" {
-              // .value on Optional means unwrap -- return inner type
               Some { value: inner }
             } else {
-              // Look up field in inner type, wrap result in Optional
               match lookup_field_type_node(n: inner, field_name: field_name) {
                 Some { value: inner_result } => Some { value: optional_node(inner: inner_result) }
                 None => None
@@ -828,30 +826,29 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
           None => None
         }
       } else {
-        // Coproduct: find common field across all variants
         lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
       }
     }
   } else { None }
+  result
 }
 
 fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
-  // A field is "common" if it exists in ALL variants
   let found_in_all = variants |> all(v =>
     v.children |> any(c => c.name == field_name)
   )
-  if found_in_all {
-    // Return the field type from the first variant that has it
+  let first_field = if found_in_all {
     match variants |> first {
       Some { value: first_variant } =>
-        match first_variant.children |> filter(c => c.name == field_name) |> first {
-          Some { value: field_child } =>
-            Some { value: child_return_type_or_name(ch: field_child) }
-          None => None
-        }
+        first_variant.children |> filter(c => c.name == field_name) |> first
       None => None
     }
   } else { None }
+  match first_field {
+    Some { value: field_child } =>
+      Some { value: child_return_type_or_name(ch: field_child) }
+    None => None
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -1082,7 +1079,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
   let normed = normalize_access_type_node(n: n)
-  if node_has_structure(n: normed) == false && normed.children |> count == 0 {
+  let result = if node_has_structure(n: normed) == false && normed.children |> count == 0 {
     let canonical = normalize_type_name(name: normed.name)
     if normed.return_type != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
@@ -1107,6 +1104,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       }
     }
   } else { normed }
+  result
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, scope: InferScope) -> KnownMethodResolution {
@@ -1273,7 +1271,7 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
 }
 
 fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> InferScope {
-  match stmt.expr_data {
+  let result = match stmt.expr_data {
     ExprLet { name: name, value: _, body: body } =>
       if body == none {
         extend_scope(scope: scope, name: name, resolved: stmt_type)
@@ -1282,6 +1280,7 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
       }
     _ => scope
   }
+  result
 }
 
 // Synthesize a "Some { value: T }" variant node for Optional pattern matching.
@@ -1530,7 +1529,7 @@ fn is_lambda_expr(e: Node) -> Bool {
 }
 
 fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type_name: String, fallback: Node) -> Node {
-  if method_name == "map" {
+  let result = if method_name == "map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } =>
         let lambda_ret = lambda_arg.value.return_type.value
@@ -1548,6 +1547,7 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
       None => fallback
     }
   } else { fallback }
+  result
 }
 
 fn infer_arg_with_element_type(arg: NamedArg, element_type: Node, scope: InferScope) -> ArgInferResult {
@@ -3575,7 +3575,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 }
 
 fn item_kind(item: Node) -> ItemKind {
-  if node_has_structure(n: item) && item.transport == none {
+  let kind = if node_has_structure(n: item) && item.transport == none {
     TypeItem
   } else if item.transport != none {
     ServiceItem
@@ -3590,6 +3590,7 @@ fn item_kind(item: Node) -> ItemKind {
   } else {
     OtherItem
   }
+  kind
 }
 
 fn build_item_info(item: Node) -> ItemInfo {

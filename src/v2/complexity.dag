@@ -450,13 +450,13 @@ fn empty_complexity_report() -> ComplexityReport {
 // =========================================================================
 
 fn simplify_cost(expr: CostExpr) -> CostExpr {
-  match expr {
+  let result = match expr {
     CostConst { value: _ } => expr
     CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
-      match sl {
+      let simplified = match sl {
         CostConst { value: 0 } => sr
         CostConst { value: a } => match sr {
           CostConst { value: 0 } => sl
@@ -468,10 +468,11 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
           _ => CostAdd { left: sl, right: sr }
         }
       }
+      simplified
     CostMul { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
-      match sl {
+      let simplified = match sl {
         CostConst { value: 0 } => CostConst { value: 0 }
         CostConst { value: 1 } => sr
         _ => match sr {
@@ -480,16 +481,18 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
           _ => CostMul { left: sl, right: sr }
         }
       }
+      simplified
     CostMax { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
-      match sl {
+      let simplified = match sl {
         CostConst { value: 0 } => sr
         _ => match sr {
           CostConst { value: 0 } => sl
           _ => CostMax { left: sl, right: sr }
         }
       }
+      simplified
     CostSum { binder: b, upper: u, body: bd } =>
       let sbd = simplify_cost(expr: bd)
       match sbd {
@@ -497,6 +500,7 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
   }
+  result
 }
 
 // =========================================================================
@@ -537,12 +541,11 @@ fn has_cost_sum(expr: CostExpr) -> Bool {
 
 fn classify_complexity(expr: CostExpr) -> String {
   let s = simplify_cost(expr: expr)
-  match s {
+  let result = match s {
     CostConst { value: _ } => "O(1)"
     CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
       if has_cost_sum(expr: bd) {
-        // Nested iteration — inner classification needs O() stripped
         let inner_class = classify_complexity(expr: bd)
         let inner_bare = strip_big_o(s: inner_class)
         concat("O(", format_size(size: u), " * ", inner_bare, ")")
@@ -550,11 +553,9 @@ fn classify_complexity(expr: CostExpr) -> String {
         concat("O(", format_size(size: u), ")")
       }
     CostAdd { left: l, right: r } =>
-      // Dominant term: if either side has a CostSum, use that classification
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
-      if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
-        // Both sides iterate — report the left (additive, so same class)
+      let dominant = if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
         lc
       } else if has_cost_sum(expr: l) {
         lc
@@ -563,19 +564,23 @@ fn classify_complexity(expr: CostExpr) -> String {
       } else {
         "O(1)"
       }
+      dominant
     CostMul { left: l, right: r } =>
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
-      if lc == "O(1)" { rc }
-      else if rc == "O(1)" { lc }
-      else { concat(lc, " * ", rc) }
+      let combined = if lc == "O(1)" { rc }
+        else if rc == "O(1)" { lc }
+        else { concat(lc, " * ", rc) }
+      combined
     CostMax { left: l, right: r } =>
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
-      if has_cost_sum(expr: l) { lc }
-      else if has_cost_sum(expr: r) { rc }
-      else { lc }
+      let dominant = if has_cost_sum(expr: l) { lc }
+        else if has_cost_sum(expr: r) { rc }
+        else { lc }
+      dominant
   }
+  result
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -1106,6 +1111,48 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
 
 // Get or compute the complexity summary for a function.
 // Checks cache first; on miss, walks the body and caches the result.
+fn estimate_expr_size(texpr: Node, budget: Int) -> Int {
+  if budget <= 0 { 0 }
+  else {
+    match texpr.expr_data {
+      ExprBlock { stmts: ss } =>
+        ss |> fold(init: budget, f: (acc, s) => estimate_expr_size(texpr: s, budget: acc))
+      ExprBinOp { op: _, left: l, right: r } =>
+        let s1 = estimate_expr_size(texpr: l, budget: budget - 1)
+        estimate_expr_size(texpr: r, budget: s1)
+      ExprIf { condition: c, then_branch: t, else_branch: e } =>
+        let s1 = estimate_expr_size(texpr: c, budget: budget - 1)
+        let s2 = estimate_expr_size(texpr: t, budget: s1)
+        match e {
+          Some { value: eb } => estimate_expr_size(texpr: eb, budget: s2)
+          None => s2
+        }
+      ExprLet { name: _, value: v, body: b } =>
+        let s1 = estimate_expr_size(texpr: v, budget: budget - 1)
+        match b {
+          Some { value: bd } => estimate_expr_size(texpr: bd, budget: s1)
+          None => s1
+        }
+      ExprMatch { scrutinee: s, arms: arms } =>
+        let s1 = estimate_expr_size(texpr: s, budget: budget - 1)
+        arms |> fold(init: s1, f: (acc, arm) => estimate_expr_size(texpr: arm.body, budget: acc))
+      ExprForEach { variable: _, collection: c, body: b } =>
+        let s1 = estimate_expr_size(texpr: c, budget: budget - 1)
+        estimate_expr_size(texpr: b, budget: s1)
+      ExprCall { func: _, args: a } =>
+        a |> fold(init: budget - 1, f: (acc, arg) => estimate_expr_size(texpr: arg.value, budget: acc))
+      ExprMethodCall { receiver: r, method: _, args: a } =>
+        let s1 = estimate_expr_size(texpr: r, budget: budget - 1)
+        a |> fold(init: s1, f: (acc, arg) => estimate_expr_size(texpr: arg.value, budget: acc))
+      ExprLambda { params: _, body: b } =>
+        estimate_expr_size(texpr: b, budget: budget - 1)
+      ExprReturn { value: v } =>
+        estimate_expr_size(texpr: v, budget: budget - 1)
+      _ => budget - 1
+    }
+  }
+}
+
 fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, table: CostInternTable) -> SummaryResult {
   // Check cache first
   match lookup_summary(table: table, func_name: func_name) {
@@ -1115,25 +1162,37 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
       // Look up function body
       match map_get(func_index, func_name) {
         Some { value: entry } =>
-          // Insert a placeholder to prevent infinite recursion on self-recursive functions
-          let placeholder = ComplexitySummary {
-            work: CostUnknown { reason: concat("computing: ", func_name) },
-            span: CostUnknown { reason: concat("computing: ", func_name) },
-            output_size: empty_map(),
-            certainty: Unknown
+          let body_budget = estimate_expr_size(texpr: entry.body, budget: 500)
+          if body_budget <= 0 {
+            let too_large = ComplexitySummary {
+              work: CostUnknown { reason: concat("body too large: ", func_name) },
+              span: CostUnknown { reason: concat("body too large: ", func_name) },
+              output_size: empty_map(),
+              certainty: Unknown
+            }
+            let guarded_table = cache_summary(table: table, func_name: func_name, summary: too_large)
+            SummaryResult { summary: too_large, table: guarded_table }
+          } else {
+            // Insert a placeholder to prevent infinite recursion on self-recursive functions
+            let placeholder = ComplexitySummary {
+              work: CostUnknown { reason: concat("computing: ", func_name) },
+              span: CostUnknown { reason: concat("computing: ", func_name) },
+              output_size: empty_map(),
+              certainty: Unknown
+            }
+            let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
+            // Walk the function body
+            let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
+            // Simplify and cache the real summary
+            let simplified = ComplexitySummary {
+              work: simplify_cost(expr: result.summary.work),
+              span: simplify_cost(expr: result.summary.span),
+              output_size: result.summary.output_size,
+              certainty: result.summary.certainty
+            }
+            let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
+            SummaryResult { summary: simplified, table: final_table }
           }
-          let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
-          // Walk the function body
-          let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
-          // Simplify and cache the real summary
-          let simplified = ComplexitySummary {
-            work: simplify_cost(expr: result.summary.work),
-            span: simplify_cost(expr: result.summary.span),
-            output_size: result.summary.output_size,
-            certainty: result.summary.certainty
-          }
-          let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
-          SummaryResult { summary: simplified, table: final_table }
         None =>
           // Unknown function -- return unknown cost
           let unknown_summary = ComplexitySummary {

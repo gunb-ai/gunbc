@@ -446,18 +446,18 @@ fn skip_newlines(tokens: List<Token>, state: ParserState) -> ParserState {
 // operator. This allows multi-line expressions using pipes, method chains,
 // and boolean operators without breaking statement boundaries.
 fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> ParserState {
-  if check(tokens: tokens, state: state, tag: "Newline") {
+  let is_continuation = if check(tokens: tokens, state: state, tag: "Newline") {
     let s = skip_newlines(tokens: tokens, state: state)
     let tag = match peek_kind(tokens: tokens, state: s) {
       Some { value: kind } => kind_tag(kind: kind)
       None => ""
     }
-    if tag == "PipeArrow" || tag == "Dot" || tag == "Or" || tag == "And" {
-      s
-    } else {
-      // Not a continuation -- return original state (keep newlines)
-      state
-    }
+    tag == "PipeArrow" || tag == "Dot" || tag == "Or" || tag == "And"
+  } else {
+    false
+  }
+  if is_continuation {
+    skip_newlines(tokens: tokens, state: state)
   } else {
     state
   }
@@ -895,11 +895,10 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } => {
-            let result = PredResult { predicate: FieldInit { name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
-            result }
-          _ => { let result = PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "pattern() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
-            result }
+          ExprLiteral { value: LitStr { value: s } } =>
+            PredResult { predicate: FieldInit { name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
+          _ =>
+            PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "pattern() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
         }
       }
       "format" => {
@@ -907,8 +906,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: FieldInit { name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
-        result
+        PredResult { predicate: FieldInit { name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
       "brand" => {
         let r2 = parse_expr(tokens: tokens, state: e.state)
@@ -916,11 +914,10 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } => {
-            let result = PredResult { predicate: FieldInit { name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
-            result }
-          _ => { let result = PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "brand() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
-            result }
+          ExprLiteral { value: LitStr { value: s } } =>
+            PredResult { predicate: FieldInit { name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
+          _ =>
+            PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "brand() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
         }
       }
       "content" => {
@@ -928,16 +925,14 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: FieldInit { name: "ContentEncoding", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
-        result
+        PredResult { predicate: FieldInit { name: "ContentEncoding", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
       "domain" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let result = PredResult { predicate: FieldInit { name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
-        result
+        PredResult { predicate: FieldInit { name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
       "range" => {
         // range(min: N) | range(max: N) | range(min: N, max: N)
@@ -952,21 +947,18 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         let max_fields = if r2.max_val != none {
           [FieldInit { name: "max", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.max_val.value } }, return_type: none, span: zero_span) }]
         } else { [] }
-        let result = PredResult { predicate: FieldInit { name: "Range", value: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: concat(min_fields, max_fields), parent_enum: none }, return_type: none, span: zero_span) }, state: r3.state, err: none }
-        result
+        PredResult { predicate: FieldInit { name: "Range", value: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: concat(min_fields, max_fields), parent_enum: none }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
-      _ => {
-        let result = PredResult { predicate: dummy_pred, state: e.state, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: e.state)) } }
-        result
-      }
+      _ =>
+        PredResult { predicate: dummy_pred, state: e.state, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: e.state)) } }
     }
   } else {
     // No args -- handle bare predicate names
     match pred_name {
-      "non_empty" => { let result = PredResult { predicate: FieldInit { name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: zero_span) }, state: s, err: none }
-        result }
-      _ => { let result = PredResult { predicate: dummy_pred, state: s, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: s)) } }
-        result }
+      "non_empty" =>
+        PredResult { predicate: FieldInit { name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: zero_span) }, state: s, err: none }
+      _ =>
+        PredResult { predicate: dummy_pred, state: s, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: s)) } }
     }
   }
 }
@@ -1209,18 +1201,15 @@ fn parse_optional_from_key(tokens: List<Token>, state: ParserState) -> FromKeyRe
       match k2 {
         Some { value: LitStr { value: key } } => {
           let adv2 = advance(tokens: tokens, state: adv.state)
-          let result = FromKeyResult { from_key: Some { value: key }, state: adv2.state, err: none }
-          result
+          FromKeyResult { from_key: Some { value: key }, state: adv2.state, err: none }
         }
-        _ => {
-          // "from" without string literal -- not a from clause, backtrack
-          let result = FromKeyResult { from_key: none, state: state, err: none }
-          result
-        }
+        // "from" without string literal -- not a from clause, backtrack
+        _ =>
+          FromKeyResult { from_key: none, state: state, err: none }
       }
     }
-    _ => { let result = FromKeyResult { from_key: none, state: state, err: none }
-      result }
+    _ =>
+      FromKeyResult { from_key: none, state: state, err: none }
   }
 }
 
@@ -1524,39 +1513,34 @@ fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> Transport
       let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
       if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
       let r2 = parse_rest_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-      if has_err(err: r2.err) { return r2 }
+      if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
       let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
       if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-      let result = TransportResult { transport: r2.transport, state: r3.state, err: none }
-      result
+      TransportResult { transport: r2.transport, state: r3.state, err: none }
     }
     Some { value: Ident { name: "shell" } } => {
       let adv = advance(tokens: tokens, state: state)
       let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
       if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
       let r2 = parse_shell_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-      if has_err(err: r2.err) { return r2 }
+      if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
       let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
       if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-      let result = TransportResult { transport: r2.transport, state: r3.state, err: none }
-      result
+      TransportResult { transport: r2.transport, state: r3.state, err: none }
     }
     Some { value: Ident { name: "file" } } => {
       let adv = advance(tokens: tokens, state: state)
       let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
       if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
       let r2 = parse_file_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-      if has_err(err: r2.err) { return r2 }
+      if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
       let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
       if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-      let result = TransportResult { transport: r2.transport, state: r3.state, err: none }
-      result
+      TransportResult { transport: r2.transport, state: r3.state, err: none }
     }
-    _ => {
-      // Default: local binding (reuse dummy which already holds local_transport_node(span))
-      let result = TransportResult { transport: dummy, state: state, err: none }
-      result
-    }
+    // Default: local binding (reuse dummy which already holds local_transport_node(span))
+    _ =>
+      TransportResult { transport: dummy, state: state, err: none }
   }
 }
 
@@ -2673,12 +2657,12 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
             } else if kind_tag(kind: op_kind) == "PipeArrow" {
               let span = current_span(tokens: tokens, state: state)
               let r = parse_pipe_rhs(tokens: tokens, state: adv.state, receiver: lhs, span: span)
-              if has_err(err: r.err) { return r }
+              if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               parse_expr_loop(tokens: tokens, state: r.state, lhs: r.expr, min_bp: min_bp)
             } else {
               let rhs_state = skip_newlines(tokens: tokens, state: adv.state)
               let r = parse_expr_bp(tokens: tokens, state: rhs_state, min_bp: bps.right)
-              if has_err(err: r.err) { return r }
+              if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: state)
               let binop = token_to_binop(kind: op_kind)
               let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, left: lhs, right: r.expr }, return_type: none, span: span)
@@ -2718,7 +2702,7 @@ fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
 }
 
 fn token_to_binop(kind: TokenKind) -> BinOpKind {
-  match kind {
+  let op = match kind {
     Plus => Add
     Minus => Sub
     Star => Mul
@@ -2733,12 +2717,9 @@ fn token_to_binop(kind: TokenKind) -> BinOpKind {
     And => BinAnd
     Or => BinOr
     NullCoalesce => NullCoalesce
-    // All other tokens are not binary operators. This function is only called
-    // after infix_bp confirms the token is an operator, so this arm is
-    // unreachable in correct usage. Returns Add as a defensive fallback --
-    // the parser will produce a type error downstream.
     _ => Add
   }
+  op
 }
 
 // parse_pipe_rhs: after |>, parse the method name and optional (args).
@@ -2769,14 +2750,14 @@ fn parse_prefix(tokens: List<Token>, state: ParserState) -> ExprResult {
       let adv = advance(tokens: tokens, state: state)
       let span = current_span(tokens: tokens, state: state)
       let r = parse_expr_bp(tokens: tokens, state: adv.state, min_bp: 12)
-      if has_err(err: r.err) { return r }
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: Not, operand: r.expr }, return_type: none, span: span), state: r.state, err: none }
     }
     Some { value: Minus } => {
       let adv = advance(tokens: tokens, state: state)
       let span = current_span(tokens: tokens, state: state)
       let r = parse_expr_bp(tokens: tokens, state: adv.state, min_bp: 12)
-      if has_err(err: r.err) { return r }
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: Neg, operand: r.expr }, return_type: none, span: span), state: r.state, err: none }
     }
     _ => parse_primary(tokens: tokens, state: state)
@@ -2993,7 +2974,7 @@ fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, spa
 
   // Parse the first expression (index or slice start)
   let r = parse_expr(tokens: tokens, state: s)
-  if has_err(err: r.err) { return r }
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
   let first_expr = r.expr
   let s = r.state
 
@@ -3001,7 +2982,7 @@ fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, spa
   if check(tokens: tokens, state: s, tag: "DotDot") {
     let adv = advance(tokens: tokens, state: s)
     let r = parse_expr(tokens: tokens, state: adv.state)
-    if has_err(err: r.err) { return r }
+    if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
     let end_expr = r.expr
     let s = r.state
     let r = expect(tokens: tokens, state: s, tag: "RBracket")
@@ -3152,7 +3133,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
     } else if check(tokens: tokens, state: s, tag: "LBracket") && 14 >= min_bp {
       let span = current_span(tokens: tokens, state: s)
       let r = parse_index_or_slice(tokens: tokens, state: s, base: lhs, span: span)
-      if has_err(err: r.err) { return r }
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
       parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: r.expr, min_bp: min_bp)
     } else {
       let bp = infix_bp(tokens: tokens, state: s)
@@ -3172,12 +3153,12 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
             } else if kind_tag(kind: op_kind) == "PipeArrow" {
               let span = current_span(tokens: tokens, state: s)
               let r = parse_pipe_rhs(tokens: tokens, state: adv.state, receiver: lhs, span: span)
-              if has_err(err: r.err) { return r }
+              if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: r.expr, min_bp: min_bp)
             } else {
               let rhs_state = skip_newlines(tokens: tokens, state: adv.state)
               let r = parse_expr_bp_no_brace(tokens: tokens, state: rhs_state, min_bp: bps.right)
-              if has_err(err: r.err) { return r }
+              if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: s)
               let binop = token_to_binop(kind: op_kind)
               let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, left: lhs, right: r.expr }, return_type: none, span: span)
@@ -3479,11 +3460,11 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return r }
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
   let condition = r.expr
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return r }
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
   let then_branch = r.expr
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -3492,11 +3473,11 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
     let s = skip_newlines(tokens: tokens, state: e.state)
     if check(tokens: tokens, state: s, tag: "KwIf") {
       let r2 = parse_if(tokens: tokens, state: s)
-      if has_err(err: r2.err) { return r2 }
+      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, state: r2.state, err: r2.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprIf { condition: condition, then_branch: then_branch, else_branch: Some { value: r2.expr } }, return_type: none, span: span), state: r2.state, err: none }
     } else {
       let r2 = parse_block(tokens: tokens, state: s)
-      if has_err(err: r2.err) { return r2 }
+      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, state: r2.state, err: r2.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprIf { condition: condition, then_branch: then_branch, else_branch: Some { value: r2.expr } }, return_type: none, span: span), state: r2.state, err: none }
     }
   } else {
@@ -3560,11 +3541,11 @@ fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return r }
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
   let collection = r.expr
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return r }
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
   let body = r.expr
 
   let for_expr = make_expr_node(expr_data: ExprForEach { variable: var_name, collection: collection, body: body }, return_type: none, span: span)
@@ -3704,11 +3685,11 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
     let lambda_r = try_lambda_params(tokens: tokens, state: s)
     if lambda_r.is_lambda {
       let r = parse_lambda_body(tokens: tokens, state: lambda_r.state)
-      if has_err(err: r.err) { return r }
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprLambda { params: lambda_r.params, body: r.expr, semantics: none }, return_type: none, span: span), state: r.state, err: none }
     } else {
       let r = parse_expr(tokens: tokens, state: s)
-      if has_err(err: r.err) { return r }
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
       let s = skip_newlines(tokens: tokens, state: r.state)
       let r2 = expect(tokens: tokens, state: s, tag: "RParen")
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
@@ -3862,13 +3843,10 @@ fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<Strin
       } else {
         new_parts
       }
-      let result = ExprResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: final_parts }, return_type: none, span: span), state: adv.state, err: none }
-      result
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: final_parts }, return_type: none, span: span), state: adv.state, err: none }
     }
-    _ => {
-      let result = ExprResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: new_parts }, return_type: none, span: span), state: s, err: none }
-      result
-    }
+    _ =>
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: new_parts }, return_type: none, span: span), state: s, err: none }
   }
 }
 

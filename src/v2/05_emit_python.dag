@@ -632,12 +632,13 @@ fn emit_py_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
   let call_str = concat(py_ident(name: func), "(", args_str, ")")
-  match callee {
+  let result = match callee {
     Some { value: info } =>
       let is_func = info.kind == FuncItem
       if is_func { concat("await ", call_str) } else { call_str }
     None => call_str
   }
+  result
 }
 
 fn emit_py_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {

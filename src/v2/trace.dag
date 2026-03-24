@@ -88,20 +88,22 @@ fn trace_pop_frame(trace: Trace) -> Trace {
 
 // Extract the SourceSpan from any TraceEvent variant.
 fn event_span(event: TraceEvent) -> SourceSpan {
-  match event {
+  let result = match event {
     TraceEnter { node_id: _, span: s, inputs: _ } => s
     TraceExit { node_id: _, span: s, output: _ } => s
     TraceError { node_id: _, span: s, message: _ } => s
   }
+  result
 }
 
 // Extract the node_id from any TraceEvent variant.
 fn event_node_id(event: TraceEvent) -> String {
-  match event {
+  let result = match event {
     TraceEnter { node_id: id, span: _, inputs: _ } => id
     TraceExit { node_id: id, span: _, output: _ } => id
     TraceError { node_id: id, span: _, message: _ } => id
   }
+  result
 }
 
 // =========================================================================
