@@ -19,7 +19,7 @@ module v2.compiler.emit
 
 import v2.std.core {
   Import,
-  Node,
+  Node, InferredNode, Resolved, CompilerError,
   Connective, Conj, Disj,
   Field, Param,
   ExprData, NoExprData,
@@ -41,7 +41,7 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure }
+import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -200,7 +200,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
     ExprLet { name: name, value: value, body: body } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: value.return_type.value)
+        extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
       } else {
         scope
       }
@@ -227,31 +227,32 @@ fn typed_named_arg_matches(arg: NamedArg, name: String) -> Bool {
 fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
   let has_unnamed = args |> any(arg => arg.name == none)
   if has_unnamed {
-    return args
-  }
-  match lookup_func_sig_in_scope(scope: scope, name: func) {
-    None => args
-    Some { value: sig } => {
-      let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
-        if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
-      )
-      let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-        map_insert(acc, param.name, true)
-      )
-      let ordered = sig.params |> flat_map(param =>
-        match map_get(arg_map, param.name) {
-          Some { value: arg } => [arg]
-          None => []
-        }
-      )
-      let leftovers = args |> filter(arg =>
-        if arg.name == none {
-          true
-        } else {
-          emit_map_has(m: param_name_set, key: arg.name.value) == false
-        }
-      )
-      concat(ordered, leftovers)
+    args
+  } else {
+    match lookup_func_sig_in_scope(scope: scope, name: func) {
+      None => args
+      Some { value: sig } => {
+        let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
+          if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
+        )
+        let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
+          map_insert(acc, param.name, true)
+        )
+        let ordered = sig.params |> flat_map(param =>
+          match map_get(arg_map, param.name) {
+            Some { value: arg } => [arg]
+            None => []
+          }
+        )
+        let leftovers = args |> filter(arg =>
+          if arg.name == none {
+            true
+          } else {
+            emit_map_has(m: param_name_set, key: arg.name.value) == false
+          }
+        )
+        concat(ordered, leftovers)
+      }
     }
   }
 }
@@ -366,10 +367,7 @@ fn has_nested_records_node(n: Node) -> Bool {
     true
   } else if (n_kind == TypeDisj) {
     if node_is_optional(n: n) {
-      match n.children |> first {
-        Some { value: inner } => has_nested_records_node(n: inner)
-        None => false
-      }
+      has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
   } else if node_is_map(n: n) {
     match skip(n.children, 1) |> first {
@@ -410,7 +408,7 @@ fn emit_data_value_json(value: Node) -> String {
       concat("{", field_strs |> join(separator: ", "), "}")
     }
     ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
-    _ => concat("{\"__error__\": \"unsupported expression in mock data\"}")
+    _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
   }
 }
 
@@ -435,7 +433,7 @@ fn emit_typed_data_value_json(value: Node) -> String {
       concat("{", field_strs |> join(separator: ", "), "}")
     }
     ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
-    _ => concat("{\"__error__\": \"unsupported expression in mock data\"}")
+    _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
   }
 }
 
@@ -824,9 +822,9 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
   let item_kind = classify_type_structure(n: item)
-  if item_kind != TypeLeaf && item.transport == none {
+  let kind = if item_kind != TypeLeaf && item.transport == none {
     TypedItemTypeDef
-  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
+  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
@@ -834,10 +832,8 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     TypedItemDataDef
   } else if item.transport != none && item.children |> count > 0 {
     TypedItemServiceDef
-  } else if item.transport == none && item.children |> count > 0 {
-    TypedItemResourceDef
-  } else if item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none {
-    // Resources without capabilities: have properties (kind, mode, acquire, release) but no body/transport/children.
+  } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
+    // Resources: either with capabilities (children > 0) or without (have properties but no body/transport/children).
     // Note: return_type may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
     TypedItemResourceDef
   } else if item.params |> count > 0 {
@@ -845,6 +841,7 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   } else {
     TypedItemUnhandled
   }
+  kind
 }
 
 fn classify_type_structure(n: Node) -> TypeStructureKind {

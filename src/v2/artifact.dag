@@ -16,7 +16,7 @@ import v2.std.core { TextFile }
 // Render target -- which language the emitter produces.
 // =========================================================================
 
-type RenderTarget = Rust | Python | Go
+type RenderTarget = Rust | Python | Go | Dag
 
 // =========================================================================
 // Artifact kinds

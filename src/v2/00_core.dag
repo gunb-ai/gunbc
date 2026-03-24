@@ -111,10 +111,12 @@ type Import {
 // Disj = disjunction: exactly one child holds (sum variants).
 type Connective = Conj | Disj
 
+type Cardinality = Required | CardOptional
+
 type Field {
   name: String
   type_expr: Node
-  optional: Bool
+  cardinality: Cardinality
   default_value: Node?
   from_key: String?
   span: SourceSpan
@@ -164,8 +166,85 @@ fn is_kernel_numeric(name: String) -> Bool {
   name == "Int" || name == "Float"
 }
 
+// Arity bridge: parameterized types and their expected number of type children.
+// This is an explicit short-term bridge — deleted when real .dag algebraic
+// declarations exist (Phase 3, P3.7). Optional is EXCLUDED: it is cardinality
+// on the binding site (P1.4), not a parameterized type.
+//
+// A type node for Map must have exactly 2 children (key, value).
+// A type node for List/Set must have exactly 1 child (element).
+// A bare leaf_node(name: "Map") with 0 children is a construction error.
+fn parameterized_type_arity(name: String) -> Int {
+  if name == "Map" { 2 }
+  else if name == "List" { 1 }
+  else if name == "Set" { 1 }
+  else { 0 }
+}
+
+fn is_parameterized_type(name: String) -> Bool {
+  parameterized_type_arity(name: name) > 0
+}
+
 fn is_kernel_textual(name: String) -> Bool {
   name == "String" || name == "Secret"
+}
+
+// P1.9 InferredNode: compiler errors are orthogonal to the node graph.
+// When inference fails, the result is structurally distinct from a type node.
+// Error and Dynamic type sentinels become CompilerError variants.
+//
+// Migration: Node.return_type will change from Node? to InferredNode?.
+// Until the atomic migration, these types and helpers are defined but not yet
+// wired into Node. The migration is one atomic commit that:
+// (1) changes Node.return_type to InferredNode?
+// (2) wraps all return_type construction in Resolved { node: ... }
+// (3) replaces all .return_type.value access with inferred_return_type_node()
+// (4) node_is_error_type() and node_is_dynamic() deleted; inline checks remain until rt_node stops fabricating sentinels
+type InferredNode
+  = Resolved { node: Node }
+  | CompilerError { message: String, span: SourceSpan }
+
+// Extract the Node from an InferredNode, returning None for CompilerError.
+fn inferred_to_node(inferred: InferredNode) -> Node? {
+  match inferred {
+    Resolved { node: n } => Some { value: n }
+    CompilerError { message: _, span: _ } => none
+  }
+}
+
+// Check if an InferredNode is a compiler error.
+fn is_compiler_error(inferred: InferredNode) -> Bool {
+  match inferred {
+    Resolved { node: _ } => false
+    CompilerError { message: _, span: _ } => true
+  }
+}
+
+// Three-way result for extracting a Node's return type.
+// Typed: successfully resolved type node.
+// InferError: type inference failed (error already reported as diagnostic).
+// Untyped: no return_type set (statements, unprocessed nodes).
+type NodeType
+  = Typed { node: Node }
+  | InferError { message: String, span: SourceSpan }
+  | Untyped
+
+// Extract the type Node from a Node's return_type field.
+// Returns Typed/InferError/Untyped so callers can distinguish
+// "no type" from "type inference failed".
+fn rt_node(n: Node) -> NodeType {
+  if n.return_type == none { Untyped }
+  else {
+    match n.return_type.value {
+      Resolved { node: rt } => Typed { node: rt }
+      CompilerError { message: m, span: s } => InferError { message: m, span: s }
+    }
+  }
+}
+
+// Check if a Node has a return_type set (regardless of Resolved or CompilerError).
+fn has_return_type(n: Node) -> Bool {
+  n.return_type != none
 }
 
 type IntrinsicMethod
@@ -236,7 +315,7 @@ type MethodSemantics
   = PlainMethodSemantics
   | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
   | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
-  | ServiceMethodSemantics { service_name: String }
+  | ServiceMethodSemantics { service_name: String, op_params: List<Param> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 
@@ -423,7 +502,8 @@ type Node {
   connective: Connective?
   // Ports -- what flows in and out
   params: List<Param>
-  return_type: Node?
+  return_type: InferredNode?
+  return_cardinality: Cardinality
   uses: List<ResourceUse>
   // Computation -- how it executes (none = externally provided)
   body: Node?
@@ -439,23 +519,26 @@ type Node {
 }
 
 // Construct a Node carrying expression data (the Node-embedded form).
-fn make_expr_node(expr_data: ExprData, return_type: Node?, span: SourceSpan) -> Node {
+// Accepts InferredNode? for return_type and passes it through directly.
+fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
-    params: [], return_type: return_type, uses: [], body: none,
-    transport: none, properties: [], type_annotation: none,
-    config: none, is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: expr_data
+    params: [], return_type: return_type, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, expr_data: expr_data
   }
 }
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
-  let error_type = Node { name: "Error", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  make_expr_node(
-    expr_data: ExprError { kind: kind, message: message },
-    return_type: Some { value: error_type },
-    span: span
-  )
+  Node {
+    name: "", span: span, children: [], connective: none,
+    params: [], return_type: Some { value: CompilerError { message: message, span: span } },
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none, config: none,
+    is_self_recursive: false, has_non_tail_self_call: false,
+    expr_data: ExprError { kind: kind, message: message }
+  }
 }
 
 // =========================================================================
@@ -468,10 +551,10 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, children: children, connective: none,
-    params: [], return_type: none, uses: [], body: none,
-    transport: none, properties: properties, type_annotation: none,
-    config: none, is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: NoExprData
+    params: [], return_type: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: properties,
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, expr_data: NoExprData
   }
 }
 
@@ -607,6 +690,56 @@ fn transport_env(t: Node) -> List<FieldInit> {
 }
 
 // =========================================================================
+// ExprData structural primitives
+//
+// expr_children: extracts every child expression Node from an ExprData.
+// map_expr_children: applies a transform to every child expression Node
+// and reconstructs the ExprData with the transformed children.
+//
+// These are the L2 dissolution foundation. All ExprData walks that are
+// pure structural recursion (resolve_expr_types, collectors, self-call
+// detection) reduce to expr_children or map_expr_children + per-node logic.
+// =========================================================================
+
+fn expr_children(node: Node) -> List<Node> {
+  match node.expr_data {
+    ExprFieldAccess { base: b, field: _, summary: _ } => [b]
+    ExprCall { func: _, args: a, call_semantics: _ } => a |> map(na => na.value)
+    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } => concat([r], a |> map(na => na.value))
+    ExprMatch { scrutinee: s, arms: arms } =>
+      let arm_nodes = arms |> flat_map(arm =>
+        let guard_nodes = match arm.guard { Some { value: g } => [g]  None => [] }
+        concat(guard_nodes, [arm.body])
+      )
+      concat([s], arm_nodes)
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      match e { Some { value: el } => [c, t, el]  None => [c, t] }
+    ExprLet { name: _, value: v, body: b } =>
+      match b { Some { value: body } => [v, body]  None => [v] }
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => fs |> map(f => f.value)
+    ExprListLit { elements: els } => els
+    ExprBinOp { op: _, left: l, right: r } => [l, r]
+    ExprUnaryOp { op: _, operand: o } => [o]
+    ExprLambda { params: _, body: b, semantics: _ } => [b]
+    ExprStringInterp { parts: ps } => ps |> flat_map(p => match p { Interpolation { expr: e } => [e]  Text { value: _ } => [] })
+    ExprBlock { stmts: ss } => ss
+    ExprCast { expr: e, target: t } => [e, t]
+    ExprForEach { variable: _, collection: c, body: b } => [c, b]
+    ExprIndex { base: b, index: i } => [b, i]
+    ExprSlice { base: b, start: s, end: e } => [b, s, e]
+    ExprReturn { value: v } => [v]
+    _ => []
+  }
+}
+
+// NOTE: map_expr_children (structural tree-map that reconstructs ExprData
+// with transformed children) is blocked by two v1 limitations:
+// (1) v1 interpreter can't evaluate user-defined higher-order functions
+// (2) v1 emitter mishandles Optional wrapping in lambda + match contexts
+// Landing point: Phase 3 (v1 retirement). Design exists; implementation
+// is ~50 lines and tested. See L2 bridge notes in ROADMAP.
+
+// =========================================================================
 // Self-call detection -- Node expression walkers
 //
 // These functions walk Node expr_data trees to detect self-recursive calls
@@ -616,66 +749,10 @@ fn transport_env(t: Node) -> List<FieldInit> {
 
 fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, args: _, call_semantics: _ } =>
       if f == fn_name { true }
-      else { a |> any(na => expr_has_self_call(texpr: na.value, fn_name: fn_name)) }
-    ExprError { kind: _, message: _ } => false
-    ExprVar { name: _, binding_kind: _ } => false
-    ExprLiteral { value: _ } => false
-    ExprFieldAccess { base: b, field: _, summary: _ } =>
-      expr_has_self_call(texpr: b, fn_name: fn_name)
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
-      expr_has_self_call(texpr: r, fn_name: fn_name)
-        || a |> any(na => expr_has_self_call(texpr: na.value, fn_name: fn_name))
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      expr_has_self_call(texpr: s, fn_name: fn_name)
-        || arm_list |> any(arm => expr_has_self_call(texpr: arm.body, fn_name: fn_name))
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      expr_has_self_call(texpr: c, fn_name: fn_name)
-        || expr_has_self_call(texpr: t, fn_name: fn_name)
-        || match e {
-          Some { value: eb } => expr_has_self_call(texpr: eb, fn_name: fn_name)
-          None => false
-        }
-    ExprLet { name: _, value: v, body: bd } =>
-      expr_has_self_call(texpr: v, fn_name: fn_name)
-        || match bd {
-          Some { value: b } => expr_has_self_call(texpr: b, fn_name: fn_name)
-          None => false
-        }
-    ExprBlock { stmts: ss } =>
-      ss |> any(s => expr_has_self_call(texpr: s, fn_name: fn_name))
-    ExprBinOp { op: _, left: l, right: r } =>
-      expr_has_self_call(texpr: l, fn_name: fn_name)
-        || expr_has_self_call(texpr: r, fn_name: fn_name)
-    ExprUnaryOp { op: _, operand: e } =>
-      expr_has_self_call(texpr: e, fn_name: fn_name)
-    ExprLambda { params: _, body: bd, semantics: _ } =>
-      expr_has_self_call(texpr: bd, fn_name: fn_name)
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      fs |> any(fi => expr_has_self_call(texpr: fi.value, fn_name: fn_name))
-    ExprListLit { elements: els } =>
-      els |> any(el => expr_has_self_call(texpr: el, fn_name: fn_name))
-    ExprStringInterp { parts: ps } =>
-      ps |> any(p => match p {
-        Interpolation { expr: e } => expr_has_self_call(texpr: e, fn_name: fn_name)
-        Text { value: _ } => false
-      })
-    ExprCast { expr: e, target: _ } =>
-      expr_has_self_call(texpr: e, fn_name: fn_name)
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      expr_has_self_call(texpr: c, fn_name: fn_name)
-        || expr_has_self_call(texpr: bd, fn_name: fn_name)
-    ExprIndex { base: b, index: i } =>
-      expr_has_self_call(texpr: b, fn_name: fn_name)
-        || expr_has_self_call(texpr: i, fn_name: fn_name)
-    ExprSlice { base: b, start: s, end: e } =>
-      expr_has_self_call(texpr: b, fn_name: fn_name)
-        || expr_has_self_call(texpr: s, fn_name: fn_name)
-        || expr_has_self_call(texpr: e, fn_name: fn_name)
-    ExprReturn { value: v } =>
-      expr_has_self_call(texpr: v, fn_name: fn_name)
-    NoExprData => false
+      else { expr_children(node: texpr) |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
+    _ => expr_children(node: texpr) |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
   }
 }
 
@@ -791,8 +868,9 @@ fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module
   }
   Node {
     name: message, span: span, children: [], connective: none,
-    params: [], return_type: none, uses: [], body: none,
-    transport: none, properties: concat([sev_prop], mod_prop), type_annotation: none,
+    params: [], return_type: none, return_cardinality: Required,
+    uses: [], body: none, transport: none,
+    properties: concat([sev_prop], mod_prop), type_annotation: none,
     config: none, is_self_recursive: false, has_non_tail_self_call: false,
     expr_data: NoExprData
   }

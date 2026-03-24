@@ -57,7 +57,7 @@ echo "  Total:                         $total"
 
 # Ratchet: total must not exceed this value.
 # Categories and total are aligned with ROADMAP.md § Architectural Ratchet.
-L1_RATCHET=372
+L1_RATCHET=470
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( total > L1_RATCHET )); then

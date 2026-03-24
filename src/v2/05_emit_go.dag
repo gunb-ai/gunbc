@@ -23,7 +23,7 @@ module v2.compiler.emit_go
 
 import v2.std.core {
   Import, ImportAll, ImportSpecific,
-  Node,
+  Node, InferredNode, Resolved, CompilerError,
   Connective, Conj, Disj,
   Field, Variant, Param, MatchArm,
   MatchPattern, FieldBinding, LiteralValue,
@@ -67,7 +67,7 @@ import v2.std.core {
 
 import extdeps.languages.go.emit { go_reserved }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map }
+import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
   ResolvedFuncSig, ResolvedFuncEnv,
@@ -245,12 +245,12 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   if (kind == TypedItemTypeDef) {
     emit_go_type_def_from_connective(item: item)
   } else if (kind == TypedItemTypeAlias) {
-    emit_go_type_alias(name: item.name, base: item.return_type.value)
+    emit_go_type_alias(name: item.name, base: rt_type(n: item))
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_go_func_def(name: item.name, params: item.params, return_type: item.return_type.value, uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_go_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_go_fn_def(name: item.name, params: item.params, return_type: item.return_type.value, body: item.body.value, registry: registry, scope: scope)
+      emit_go_fn_def(name: item.name, params: item.params, return_type: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if (kind == TypedItemDataDef) {
     emit_go_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
@@ -260,7 +260,7 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_go_resource_def(item: item)
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_go_params(params: item.params)
-    let ret_str = emit_go_return_type(return_type: item.return_type.value)
+    let ret_str = emit_go_return_type(return_type: rt_type(n: item))
     concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
       "\tpanic(\"extern func not implemented\")\n}")
   } else {
@@ -295,7 +295,7 @@ fn emit_go_struct_from_children(name: String, children: List<Node>) -> String {
 }
 
 fn emit_go_struct_field_from_child(child: Node) -> String {
-  let ty = emit_go_node_type(n: child.return_type.value)
+  let ty = emit_go_node_type(n: rt_type(n: child))
   let json_tag = concat(" `json:\"", to_snake(name: child.name), "\"`")
   concat("\t", go_export_ident(name: child.name), " ", ty, json_tag)
 }
@@ -358,10 +358,13 @@ fn emit_go_node_type(n: Node) -> String {
     let param_types = n.params |> map(p => emit_go_node_type(n: p.type_expr))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.return_type {
-      Some { value: rt } => concat(" ", emit_go_node_type(n: rt))
-      None => ""
+      Some { value: Resolved { node: rt } } => concat(" ", emit_go_node_type(n: rt))
+      _ => ""
     }
     return concat("func(", param_str, ")", ret_str)
+  }
+  if node_is_optional(n: n) {
+    return go_container(kind: "optional", inner: emit_go_node_type(n: with_required_cardinality(n: n)))
   }
   let kind = classify_type_structure(n: n)
   if (kind == TypeLeaf) {
@@ -428,13 +431,7 @@ fn emit_go_node_type_conj(n: Node) -> String {
 }
 
 fn emit_go_node_type_disj(n: Node) -> String {
-  if node_is_optional(n: n) {
-    match n.children |> first {
-      Some { value: inner } =>
-        go_container(kind: "optional", inner: emit_go_node_type(n: inner))
-      None => "*struct{}"
-    }
-  } else if n.name != "" {
+  if n.name != "" {
     n.name
   } else {
     "interface{}"
@@ -634,7 +631,7 @@ fn emit_go_typed_call(func: String, args: List<NamedArg>, registry: Map<String, 
 
 fn emit_go_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let coll_str = emit_go_typed_expr(texpr: collection, registry: registry, scope: scope, depth: 0)
-  let elem_type = for_each_element_type_node(n: collection.return_type.value)
+  let elem_type = for_each_element_type_node(n: rt_type(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat(make_indent(level: depth), "for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
@@ -730,20 +727,21 @@ fn emit_go_plain_method_call(receiver: Node, method: String, args: List<NamedArg
 }
 
 fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  match method_semantics {
-    Some { value: ServiceMethodSemantics { service_name: svc_name } } => {
+  if method_semantics != none { match method_semantics.value {
+    ServiceMethodSemantics { service_name: svc_name } => {
       let var_name = service_var_name(service_name: svc_name)
       let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
+    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
       emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope)
-    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
+    RuntimeBridgeSemantics { method: bridge_method } =>
       emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
-    Some { value: PlainMethodSemantics } =>
+    PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
-    None =>
+  } }
+  else {
       if is_typed_service_call_receiver(receiver: receiver) {
         match extract_typed_service_name(receiver: receiver) {
           Some { value: svc_name } =>
@@ -805,7 +803,7 @@ fn emit_go_typed_let(name: String, value: Node, body: Node?, registry: Map<Strin
   let let_line = concat(make_indent(level: depth), go_local_ident(name: name), " := ", val_str)
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: value.return_type.value)
+      let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
       concat(let_line, "\n", emit_go_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth))
     None => let_line
   }
@@ -919,7 +917,7 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
     ExprLet { name: n, value: v, body: inner } => {
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
       let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.return_type.value)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_go_typed_func_body(body: bd, registry: registry, scope: next_scope, depth: depth))
@@ -988,7 +986,7 @@ fn emit_go_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, reg
     ExprLet { name: n, value: v, body: bd } =>
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
       let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.return_type.value)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_go_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: depth))
@@ -1084,7 +1082,7 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
   // After dissolution, return_type on the child node IS the output type
-  let ret_type = emit_go_node_type(n: op_node.return_type.value)
+  let ret_type = emit_go_node_type(n: rt_type(n: op_node))
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
     None => transport
@@ -1196,7 +1194,7 @@ fn emit_go_capability_method(cap_node: Node, depth: Int) -> String {
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, return_type on the child node IS the output type
-  let ret = emit_go_node_type(n: cap_node.return_type.value)
+  let ret = emit_go_node_type(n: rt_type(n: cap_node))
   concat(make_indent(level: depth), go_export_ident(name: cap_node.name), "(", params_str, ") (", ret, ", error)")
 }
 

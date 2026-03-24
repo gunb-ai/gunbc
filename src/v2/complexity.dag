@@ -253,12 +253,15 @@ fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
 }
 
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
-  match method_semantics {
-    Some { value: IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } } =>
-      is_size_preserving_intrinsic_method(method: method)
-    Some { value: RuntimeBridgeSemantics { method: bridge_method } } =>
-      bridge_method == BridgeReverse
-    _ => false
+  if method_semantics == none { false }
+  else {
+    match method_semantics.value {
+      IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } =>
+        is_size_preserving_intrinsic_method(method: method)
+      RuntimeBridgeSemantics { method: bridge_method } =>
+        bridge_method == BridgeReverse
+      _ => false
+    }
   }
 }
 
@@ -456,7 +459,7 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
     CostAdd { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
-      match sl {
+      let simplified = match sl {
         CostConst { value: 0 } => sr
         CostConst { value: a } => match sr {
           CostConst { value: 0 } => sl
@@ -468,10 +471,11 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
           _ => CostAdd { left: sl, right: sr }
         }
       }
+      simplified
     CostMul { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
-      match sl {
+      let simplified = match sl {
         CostConst { value: 0 } => CostConst { value: 0 }
         CostConst { value: 1 } => sr
         _ => match sr {
@@ -480,16 +484,18 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
           _ => CostMul { left: sl, right: sr }
         }
       }
+      simplified
     CostMax { left: l, right: r } =>
       let sl = simplify_cost(expr: l)
       let sr = simplify_cost(expr: r)
-      match sl {
+      let simplified = match sl {
         CostConst { value: 0 } => sr
         _ => match sr {
           CostConst { value: 0 } => sl
           _ => CostMax { left: sl, right: sr }
         }
       }
+      simplified
     CostSum { binder: b, upper: u, body: bd } =>
       let sbd = simplify_cost(expr: bd)
       match sbd {
@@ -542,7 +548,6 @@ fn classify_complexity(expr: CostExpr) -> String {
     CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
       if has_cost_sum(expr: bd) {
-        // Nested iteration — inner classification needs O() stripped
         let inner_class = classify_complexity(expr: bd)
         let inner_bare = strip_big_o(s: inner_class)
         concat("O(", format_size(size: u), " * ", inner_bare, ")")
@@ -550,11 +555,9 @@ fn classify_complexity(expr: CostExpr) -> String {
         concat("O(", format_size(size: u), ")")
       }
     CostAdd { left: l, right: r } =>
-      // Dominant term: if either side has a CostSum, use that classification
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
-      if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
-        // Both sides iterate — report the left (additive, so same class)
+      let dominant = if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
         lc
       } else if has_cost_sum(expr: l) {
         lc
@@ -563,18 +566,21 @@ fn classify_complexity(expr: CostExpr) -> String {
       } else {
         "O(1)"
       }
+      dominant
     CostMul { left: l, right: r } =>
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
-      if lc == "O(1)" { rc }
-      else if rc == "O(1)" { lc }
-      else { concat(lc, " * ", rc) }
+      let combined = if lc == "O(1)" { rc }
+        else if rc == "O(1)" { lc }
+        else { concat(lc, " * ", rc) }
+      combined
     CostMax { left: l, right: r } =>
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
-      if has_cost_sum(expr: l) { lc }
-      else if has_cost_sum(expr: r) { rc }
-      else { lc }
+      let dominant = if has_cost_sum(expr: l) { lc }
+        else if has_cost_sum(expr: r) { rc }
+        else { lc }
+      dominant
   }
 }
 
@@ -626,9 +632,8 @@ fn deduplicate(items: List<String>) -> List<String> {
 
 fn format_space_class(expr: CostExpr) -> String {
   let space_class = classify_complexity(expr: expr)
-  let result = if space_class == "O(1)" { "" }
+  if space_class == "O(1)" { "" }
   else { concat(", space ", space_class) }
-  result
 }
 
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
@@ -643,7 +648,7 @@ fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
   // Space: classify the "result" output size if present
   let space_str = match map_get(summary.output_size, "result") {
     Some { value: size_expr } => format_space_class(expr: size_expr)
-    None => ""
+    _ => ""
   }
   concat(name, ": ", marker, class, space_str)
 }
@@ -793,53 +798,59 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       // IntrinsicMethodSemantics carries the IntrinsicMethod; map it to CostShape.
       // RuntimeBridgeSemantics covers O(1) bridge methods (map_get, list_push, etc.).
       // Plain/Service/None fall through to default cost.
-      match ms {
-        Some { value: IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } } =>
-          let shape = intrinsic_method_cost_shape(method: im)
-          cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index)
-        Some { value: RuntimeBridgeSemantics { method: _ } } =>
-          // All runtime bridge methods are O(1)
-          SummaryResult {
-            summary: ComplexitySummary {
-              work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
-              span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
-              output_size: empty_map(),
-              certainty: recv_r.summary.certainty
-            },
-            table: recv_r.table
-          }
-        _ =>
-          // PlainMethodSemantics, ServiceMethodSemantics, or no semantics:
-          // receiver cost + 1 for the method + arg costs
-          let args_result = mc_args |> fold(init: SummaryResult {
-            summary: ComplexitySummary {
-              work: CostConst { value: 0 },
-              span: CostConst { value: 0 },
-              output_size: empty_map(),
-              certainty: Proven
-            },
-            table: recv_r.table
-          }, f: fn(acc, a) {
-            let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
-            SummaryResult {
+      let method_cost_result = if ms == none { none } else {
+        match ms.value {
+          IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } =>
+            let shape = intrinsic_method_cost_shape(method: im)
+            Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
+          RuntimeBridgeSemantics { method: _ } =>
+            // All runtime bridge methods are O(1)
+            Some { value: SummaryResult {
               summary: ComplexitySummary {
-                work: cost_seq(a: acc.summary.work, b: ar.summary.work),
-                span: cost_seq(a: acc.summary.span, b: ar.summary.span),
+                work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+                span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
                 output_size: empty_map(),
-                certainty: Proven
+                certainty: recv_r.summary.certainty
               },
-              table: ar.table
-            }
-          })
+              table: recv_r.table
+            } }
+          _ => none
+        }
+      }
+      // PlainMethodSemantics, ServiceMethodSemantics, or no semantics:
+      // receiver cost + 1 for the method + arg costs
+      match method_cost_result {
+        Some { value: result } => result
+        _ =>
+        let args_result = mc_args |> fold(init: SummaryResult {
+          summary: ComplexitySummary {
+            work: CostConst { value: 0 },
+            span: CostConst { value: 0 },
+            output_size: empty_map(),
+            certainty: Proven
+          },
+          table: recv_r.table
+        }, f: fn(acc, a) {
+          let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
           SummaryResult {
             summary: ComplexitySummary {
-              work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
-              span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
+              work: cost_seq(a: acc.summary.work, b: ar.summary.work),
+              span: cost_seq(a: acc.summary.span, b: ar.summary.span),
               output_size: empty_map(),
               certainty: Proven
             },
-            table: args_result.table
+            table: ar.table
           }
+        })
+        SummaryResult {
+          summary: ComplexitySummary {
+            work: cost_seq(a: recv_r.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.work)),
+            span: cost_seq(a: recv_r.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: args_result.summary.span)),
+            output_size: empty_map(),
+            certainty: Proven
+          },
+          table: args_result.table
+        }
       }
 
     ExprMatch { scrutinee: s, arms: arm_list } =>
@@ -1106,6 +1117,48 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
 
 // Get or compute the complexity summary for a function.
 // Checks cache first; on miss, walks the body and caches the result.
+fn estimate_expr_size(texpr: Node, budget: Int) -> Int {
+  if budget <= 0 { 0 }
+  else {
+    match texpr.expr_data {
+      ExprBlock { stmts: ss } =>
+        ss |> fold(init: budget, f: (acc, s) => estimate_expr_size(texpr: s, budget: acc))
+      ExprBinOp { op: _, left: l, right: r } =>
+        let s1 = estimate_expr_size(texpr: l, budget: budget - 1)
+        estimate_expr_size(texpr: r, budget: s1)
+      ExprIf { condition: c, then_branch: t, else_branch: e } =>
+        let s1 = estimate_expr_size(texpr: c, budget: budget - 1)
+        let s2 = estimate_expr_size(texpr: t, budget: s1)
+        match e {
+          Some { value: eb } => estimate_expr_size(texpr: eb, budget: s2)
+          None => s2
+        }
+      ExprLet { name: _, value: v, body: b } =>
+        let s1 = estimate_expr_size(texpr: v, budget: budget - 1)
+        match b {
+          Some { value: bd } => estimate_expr_size(texpr: bd, budget: s1)
+          None => s1
+        }
+      ExprMatch { scrutinee: s, arms: arms } =>
+        let s1 = estimate_expr_size(texpr: s, budget: budget - 1)
+        arms |> fold(init: s1, f: (acc, arm) => estimate_expr_size(texpr: arm.body, budget: acc))
+      ExprForEach { variable: _, collection: c, body: b } =>
+        let s1 = estimate_expr_size(texpr: c, budget: budget - 1)
+        estimate_expr_size(texpr: b, budget: s1)
+      ExprCall { func: _, args: a } =>
+        a |> fold(init: budget - 1, f: (acc, arg) => estimate_expr_size(texpr: arg.value, budget: acc))
+      ExprMethodCall { receiver: r, method: _, args: a } =>
+        let s1 = estimate_expr_size(texpr: r, budget: budget - 1)
+        a |> fold(init: s1, f: (acc, arg) => estimate_expr_size(texpr: arg.value, budget: acc))
+      ExprLambda { params: _, body: b } =>
+        estimate_expr_size(texpr: b, budget: budget - 1)
+      ExprReturn { value: v } =>
+        estimate_expr_size(texpr: v, budget: budget - 1)
+      _ => budget - 1
+    }
+  }
+}
+
 fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, table: CostInternTable) -> SummaryResult {
   // Check cache first
   match lookup_summary(table: table, func_name: func_name) {
@@ -1115,25 +1168,37 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
       // Look up function body
       match map_get(func_index, func_name) {
         Some { value: entry } =>
-          // Insert a placeholder to prevent infinite recursion on self-recursive functions
-          let placeholder = ComplexitySummary {
-            work: CostUnknown { reason: concat("computing: ", func_name) },
-            span: CostUnknown { reason: concat("computing: ", func_name) },
-            output_size: empty_map(),
-            certainty: Unknown
+          let body_budget = estimate_expr_size(texpr: entry.body, budget: 500)
+          if body_budget <= 0 {
+            let too_large = ComplexitySummary {
+              work: CostUnknown { reason: concat("body too large: ", func_name) },
+              span: CostUnknown { reason: concat("body too large: ", func_name) },
+              output_size: empty_map(),
+              certainty: Unknown
+            }
+            let guarded_table = cache_summary(table: table, func_name: func_name, summary: too_large)
+            SummaryResult { summary: too_large, table: guarded_table }
+          } else {
+            // Insert a placeholder to prevent infinite recursion on self-recursive functions
+            let placeholder = ComplexitySummary {
+              work: CostUnknown { reason: concat("computing: ", func_name) },
+              span: CostUnknown { reason: concat("computing: ", func_name) },
+              output_size: empty_map(),
+              certainty: Unknown
+            }
+            let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
+            // Walk the function body
+            let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
+            // Simplify and cache the real summary
+            let simplified = ComplexitySummary {
+              work: simplify_cost(expr: result.summary.work),
+              span: simplify_cost(expr: result.summary.span),
+              output_size: result.summary.output_size,
+              certainty: result.summary.certainty
+            }
+            let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
+            SummaryResult { summary: simplified, table: final_table }
           }
-          let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
-          // Walk the function body
-          let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
-          // Simplify and cache the real summary
-          let simplified = ComplexitySummary {
-            work: simplify_cost(expr: result.summary.work),
-            span: simplify_cost(expr: result.summary.span),
-            output_size: result.summary.output_size,
-            certainty: result.summary.certainty
-          }
-          let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
-          SummaryResult { summary: simplified, table: final_table }
         None =>
           // Unknown function -- return unknown cost
           let unknown_summary = ComplexitySummary {

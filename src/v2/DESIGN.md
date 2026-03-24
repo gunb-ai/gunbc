@@ -906,25 +906,54 @@ These six constructors are **complete** for the language's type system.
 The kernel has 8 atoms: `{ String, Int, Bool, Float, Secret, Bytes, Unit, Json }`.
 Lattice bounds: `⊤ = Json` (universal), `⊥ = Never` (uninhabited).
 
-### Optionality and cardinality
+### Occurrence and cardinality
 
-**Direction: cardinality as the primitive.** Optionality is not a
-property of the type — it's a property of how the type is used at a
-binding site. `T?` means "type T with cardinality 0..1," not a
-different type.
+**Presence/cardinality is fundamental; optionality is the `0..1`
+case.** Optionality is not a separate primitive — it is one derived
+shape of a binding site's occurrence constraint. `T?` means "type T
+with cardinality 0..1," not a different type.
+
+Four distinct concepts must not be conflated:
+
+| Concept | Meaning | Representation |
+|---------|---------|---------------|
+| **Absence** | The slot/binding may be missing entirely | `Field.cardinality: Cardinality` (0..1) |
+| **Nullability** | The slot is present, but the value may be `null` | Value-level coproduct `T \| Unit` in the type graph |
+| **Unknownness** | The compiler doesn't know the value/type yet | `InferredNode.CompilerError` (ROADMAP P1.9) |
+| **Defaultability** | The slot may be omitted because a default fills it | `Field.default_value: Node?` — syntactically optional, semantically required |
+
+Collapsing these into one mechanism (e.g., a single `Optional` node)
+blurs distinct semantics: "this field is absent" is not the same as
+"the value is null" is not the same as "the compiler failed" is not
+the same as "a default will be filled in."
 
 ```
-Required   : exactly 1 value    (1..1)
-Optional   : 0 or 1 value       (0..1)
-Many       : 0..n values        (0..n)
-AtLeastOne : 1..n values        (1..n)
+type Cardinality = Required | Optional
 ```
+
+`Required | Optional` is sufficient for Phase 1. Min/max ranges are
+more general but not needed yet; named cases are safer for the
+compiler. `Many` (0..n) and `AtLeastOne` (1..n) map to collection
+type constructors (`List<T>`, `NonEmptyList<T>`), not to binding-site
+cardinality (see OD2 below).
 
 This means:
 - `Optional` is not a type constructor — it is cardinality on the binding site
 - `Field.optional: Bool` becomes `Field.cardinality: Cardinality`
 - Type nodes are purely "what" (the set of values), never "how many"
 - `List<T>`, `Set<T>`, `Map<K,V>` remain as type constructors via application
+- The emitter translates cardinality to target representations (Rust
+  `Option<T>`, Go `*T`, Python `Optional[T]`) — reading cardinality
+  from the binding, not from type-node names
+
+**`field?: T` vs `field: T | Unit`.** These have the same
+denotational cardinality but differ operationally. `field?: T` is
+structural presence (binding may be absent). `field: T | Unit` is a
+value-level coproduct (binding is present, value is `Some(v)` or
+`None`). This keeps `Optional<List<T>>` (field absent vs present
+with a list) crisp from `List<T | Unit>` (every element nullable).
+
+The full model is in `ROADMAP.md` (Occurrence and Cardinality Model).
 
 ## Type representation
 
@@ -1072,12 +1101,24 @@ Migration Workboard, M1–M8).
 (`ParseVal`) replacing `Map` in `PR.val`, ~25 variants. Needs
 prototyping against parse.dag's error-propagation patterns.
 
-**OD2: Cardinality representation.** Finite coproduct
-(`Required | Optional | Many | AtLeastOne`) vs min/max range. Coproduct
-covers all current uses; range is more general.
+**OD2: Cardinality representation.** *Partially resolved.* Phase 1
+uses `Required | Optional` (closed enum). `Many` (0..n) and
+`AtLeastOne` (1..n) are deferred — they map to collection type
+constructors (`List<T>`, `NonEmptyList<T>`), not binding-site
+cardinality. If a future need arises for general min/max ranges, the
+enum can be extended, but `Required | Optional` covers all current
+uses. **Remaining:** confirm `Required | Optional` survives gist
+end-to-end and bootstrap before declaring it final.
 
-**OD3: Cardinality in return position.** Options: field on function def,
-return-type record, or model as coproduct (`Found | NotFound`).
+**OD3: Cardinality in return position.** *Direction chosen.*
+Return cardinality uses the same `Cardinality` annotation as field
+cardinality: `map.get(key)` returns `V` with cardinality `Optional`.
+For richer failure information (error messages, failure reasons), use
+a coproduct return type (`Result<T, E> = Ok { value: T } | Err { error: E }`).
+The boundary: cardinality handles simple presence/absence; coproducts
+handle typed failure modes. **Remaining:** mechanical design of where
+cardinality lives on functions/expressions (on the function def? on
+`InferredNode`? on `Node.return_type`?).
 
 **OD4: ServiceConfig grounding.** Field set should match actual grammar,
 not be speculative.
