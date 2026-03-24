@@ -535,19 +535,65 @@ Status labels:
 | Algebraic type spec (P1.18) | `docs/algebraic-type-spec.md` pins denotational semantics, algebra laws, and cardinality model | structural | 2026-03 |
 | Testgen source gate (P1.21) | `v2_testgen_service_mock_source_gate` greps emitter source for bad patterns. **Guardrail, not gate:** does not compile a service module, extract test files, and assert syntactically valid Rust. | guardrail | 2026-03 |
 
+| `rt_node` 3-variant return type | `rt_node` returns `NodeType = Typed \| InferError \| Untyped` instead of `Node?`. 137 callers migrated; `rt_type` convenience helper for emission callers; explicit 3-arm matches where error/absent distinction matters. | tree-green | 2026-03 |
+| `expr_children` structural primitive | Extracts all child expression Nodes from ExprData variants. 4 manual walks rewritten (~210 lines eliminated). `map_expr_children` designed but blocked by v1 interpreter/emitter. | tree-green | 2026-03 |
+| P2.5 resource wiring | `emit_main_service_arg_list` constructs resources (`&Network`) instead of `compile_error!()`. Resource module imports added to main.rs via `find_resource_module`. | tree-green | 2026-03 |
+| P3.1 fixed-point convergence (partial) | Stage1 cargo check errors reduced 820 → 16 via 5 emitter fixes: Optional type name, Rc match analysis, Optional string comparison, expr_children import, vtoe module-scope priority. | structural | 2026-03 |
+
 ---
 
-## Current State (2026-03-23 Audit, updated 2026-03-24)
+## Current State (2026-03-24)
+
+**Updated 2026-03-24.** Previous state description (2026-03-23) is superseded.
 
 **Bootstrap status:** `v2_strict_compile_diagnostic_count` passes with
-**0 diagnostics** (ratchet = 0). All 45 type errors resolved via
-`node_type_compatible` Unit-element handling and `prefer_specific_type`
-for ExprIf branch resolution. 53 ownership warnings exposed by the
-newly-reachable ownership analysis stage were fixed by restructuring
-multi-consumer bindings across 10 `.dag` files. Workspace tests pass
-(116/116 non-ignored). Clippy clean. Stage0 compiles in ~3 s, 91 MB
-peak RSS (complexity analysis guarded for >100 functions to avoid
-Rc-cloning OOM; see compile.dag stage 5 comment).
+**0 diagnostics** (ratchet = 0). Workspace tests pass (122/122
+non-ignored). Clippy clean. Gist pipeline passes (`v2_gist_full_pipeline`
+lib target compiles and builds). Stage0 compiles in ~3 s, 91 MB peak RSS.
+
+**P3.1 fixed-point status:** `v2_bootstrap_fixed_point` reduced from
+**820 → 16 stage1 errors**. 5 holistic emitter fixes landed (Optional
+type rendering, Rc match analysis, Optional string comparison,
+expr_children import, vtoe module-scope priority). Remaining 16 errors
+are 5-6 distinct edge cases: 4 Optional double-wrapping (single-field
+product optimization strips variant constructors), 6 lambda type
+annotations in sort/fold, 3 tokenizer Rc/vtoe edge cases, 3 misc.
+**This work can proceed independently on a separate branch.**
+
+**L2 bridge status:** `expr_children` primitive landed in `00_core.dag`.
+4 manual ExprData walks rewritten (~210 lines eliminated).
+`map_expr_children` designed but blocked by v1 interpreter/emitter.
+`rt_node` returns `NodeType` (Typed/InferError/Untyped). Bridge-era
+invariants documented. P5.11/P5.12 dissolution design complete.
+
+### Error Classification and Progress Measurement
+
+Every fix should be classified by **which layer absorbed it**. If the
+fix deleted a heuristic or moved logic upstream, that is real progress.
+If it only taught one backend a new quirk, that is survival work.
+
+| Layer | What it means | Example fixes | Health signal |
+|-------|---------------|---------------|---------------|
+| **Upstream semantic** | Wrong typed graph, wrong cardinality, wrong inference | `explicit_record_struct_name` CardOptional check, `analyze_rc_match` Optional scrutinee handling | Positive — fixes the data flowing into emission |
+| **Bridge contract** | Named temporary surface with deletion point | `expr_children`, `rt_type`, arity bridge | Positive if bridge surface shrinks over time |
+| **Backend rendering** | Typed graph is right but Rust/Go/Python rendering wrong | vtoe priority fix, Optional string `.as_deref()` | Necessary but not thesis-advancing |
+| **Visibility/gating** | Error exists but normal tests don't catch it | Stage1 errors invisible to `cargo test` because ratchet test is `#[ignore]` | Red flag — hidden debt accumulating |
+
+**Key principle: v1 is an oracle for bootstrap parity, not the spec.**
+The spec is the roadmap thesis and the typed graph. When a stage1 error
+surfaces, first ask "is the typed graph wrong?" If yes, fix inference.
+If the graph is right and rendering is wrong, fix the emitter — but
+don't copy v1 quirks as the definition of correctness.
+
+**P3.1 fix classification (820 → 16):**
+- Fix 1 (Optional type name): **upstream semantic** — CardOptional not recognized in record struct name resolution
+- Fix 2 (Rc match deref): **upstream semantic** — match analysis didn't account for Optional wrapping on scrutinees
+- Fix 3 (Optional string comparison): **backend rendering** — emitter added `.as_str()` without checking cardinality
+- Fix 4 (expr_children import): **bridge contract** — new structural primitive needed explicit import
+- Fix 5 (vtoe module priority): **backend rendering** — vtoe lookup order wasn't module-scope-aware
+
+3 of 5 fixes were upstream or bridge. 2 were backend rendering.
+The remaining 16 are likely a mix; each should be classified as it's fixed.
 
 **Root-cause audit (2026-03-23):** All ~66 live invariant violations
 trace to three root causes. Fixing root causes eliminates downstream
@@ -725,27 +771,36 @@ L1 acceptance (updated per thesis amendments):
 
 ---
 
-## Recommended Next Steps
+## Recommended Next Steps and Parallelization
 
-Phase 1 structural fixes are complete (P1.4, P1.9, P1.14, P1.17, P1.21
-all met). The next steps are verification and forward progress:
+Phase 1 complete. Phase 2 gate met (gist lib compiles). Active work
+is Phase 3 (v1 retirement, generics) and cleanup.
 
-**A. Fix Phase 2 gist gate (P2.5).**
+### Parallelizable work streams
 
-Stage0 gist compilation succeeds (0 diagnostics, 18 files), but emitted
-crate `cargo check` has 32 errors: 10 type mismatches (E0308), 6 wrong
-arg counts (E0061), 3 unsupported `Url` casts, 12 `compile_error!()`
-from dry-run mock placeholders, 1 missing value. Fix these emit-side
-issues to pass `v2_gist_full_pipeline`.
+These can proceed independently on separate branches:
 
-**B. P2.6: Continue infer decomposition.**
+| Stream | What | Files touched | Depends on |
+|--------|------|---------------|------------|
+| **A: Fixed-point convergence** | Fix remaining 16 stage1 errors (Optional double-wrapping, lambda type annotations, tokenizer Rc/vtoe, misc) | `05_emit_rust.dag` only | Nothing — self-contained emitter fixes |
+| **B: P3.6 Generics** | Parameterized type declarations (`type List<T>`, slot substitution) | `02_parse.dag`, `03_resolve.dag`, `03_normalize.dag` | Nothing — new language feature in different files |
+| **C: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | `04_infer.dag` + new split modules | Blocked by `map_expr_children` (v1 retirement) for full effect; mechanical extractions possible now |
 
-`04_infer.dag` is 4400+ lines / 110 functions. Split modules exist
-(`04_method.dag`, `04_env.dag`, `04_types.dag`). Goal: shrink infer
-to orchestration only. Enabled by P1.9 (clean type nodes) and P1.4
-(Optional dissolution removing special-case code).
+**Streams A and B are fully independent** — different files, different
+concerns. Stream C can start now for mechanical extractions but delivers
+full value after A completes (v1 retired → `map_expr_children` lands →
+`resolve_expr_types` collapses → file boundaries stabilize).
 
-**C. P4.1/P4.2: Shared emit / adapter contract.**
+### Sequential dependencies
+
+```
+A (fixed-point) → v1 retirement → map_expr_children → C (full decomposition)
+B (generics) → P3.7 (delete arity bridge) → algebraic .dag declarations
+```
+
+A and B merge independently into Phase 3 completion.
+
+**D. P4.1/P4.2: Shared emit / adapter contract.**
 
 Extract the 13 structurally identical function patterns across the 3
 backends (Rust/Python/Go) into a shared adapter contract. Enabled by
@@ -1253,8 +1308,8 @@ The current acceptable path is:
 | P2.2 | Service operation bodies | Done | reqwest, `Command`, auth injection, dry-run mocking already landed |
 | P2.3 | `main.rs` workflow dispatch | Done | Workflow subcommands and dispatch match arms already land |
 | P2.4 | Multi-module extdep imports | **Done** | Verified via gist pipeline test; all 11 modules with transitive imports resolve |
-| P2.5 | Emitted crate build/run | **Partial** | `cargo check` on emitted gist crate shows 32 errors: 10 type mismatches (E0308), 6 wrong arg counts (E0061), 3 unsupported casts (`Url`), 12 `compile_error!()` from dry-run mock placeholders, 1 missing value in scope. Stage0 compile succeeds; remaining work is emit-side type/arg fixes. |
-| P2.6 | `04_infer.dag` decomposition | **Partial** | **Started:** `04_method.dag`, `04_env.dag`, and `04_types.dag` exist and are wired from `04_infer.dag`. **Remaining:** shrink `04_infer.dag` (~4,450 lines, ~110 fns) and finish boundary cleanup. P1 prerequisites (P1.9, P1.15) now met. |
+| P2.5 | Emitted crate build/run | **Done (lib)** | `v2_gist_full_pipeline` passes: lib target compiles and builds. Resource wiring fixed (main.rs constructs `&Network`). Bin target dry-run execution not yet tested (comment at test line 5643). Previous 32-error description is stale. |
+| P2.6 | `04_infer.dag` decomposition | **Partial** | `04_cycle.dag` extracted (150 lines). `expr_children` primitive eliminates ~210 lines of walker boilerplate. `map_expr_children` designed but blocked by v1 — lands after v1 retirement. Full file decomposition deferred until `resolve_expr_types` collapses (~160 → ~10 lines). |
 
 ### Current Emitted Bundle Shape
 
@@ -1303,7 +1358,7 @@ R9.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P3.1 | Verify parity with remaining v1 paths | **Prior-branch** | Root causes identified on a previous green branch (tuple field naming, if-branch type unification). Stage0 self-compile at 0 diagnostics on current tree; parity re-verifies through bootstrap. |
+| P3.1 | Verify parity with remaining v1 paths | **820 → 16 errors** | 5 holistic emitter fixes landed. Remaining 16 are edge cases (Optional double-wrapping, lambda type annotations, tokenizer Rc/vtoe). **Parallelizable** — separate branch, touches only `05_emit_rust.dag`. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
