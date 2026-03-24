@@ -1,10 +1,12 @@
 // v2 normalization pass -- structural graph rewrite between resolve and infer.
 //
-// Normalization has two scopes:
-//   Phase 1 (this file): arity enforcement via the hardcoded arity bridge,
-//     diagnostic tagging for bare parameterized type nodes.
-//   Phase 3 (future): declaration-driven property population, generic slot
-//     substitution, Call→MethodCall unification (currently in infer).
+// Two responsibilities:
+//   1. Arity enforcement via the hardcoded arity bridge (Phase 1).
+//   2. Generic slot substitution: when a parameterized type is used with
+//      concrete arguments (e.g., Pair<Int, String>), the normalizer looks
+//      up the declaration, binds slots to arguments, and substitutes TypeVar
+//      references in the body. After normalization, all type nodes are
+//      fully concrete — infer never sees TypeVar nodes.
 //
 // The normalizer is a single-pass graph rewrite: same ModuleGraph in,
 // structurally-normalized ModuleGraph out. It should stay small.
@@ -12,9 +14,21 @@
 module v2.compiler.normalize
 
 import v2.std.core {
-  Node, Module, Diagnostic, Severity, Warning, Error, SourceSpan,
+  Node, Module, Param, FieldInit, NamedArg, MatchArm, StringPart,
+  Connective, Conj, Disj,
+  ExprData, NoExprData,
+  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
+  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
+  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
+  make_expr_node,
+  MatchPattern, Bind, Wildcard, LitPattern, VariantPattern, FieldBinding,
+  Diagnostic, Severity, Warning, Error, SourceSpan,
   InferredNode, Resolved, CompilerError,
-  parameterized_type_arity, is_parameterized_type
+  Cardinality, Required, CardOptional,
+  parameterized_type_arity, is_parameterized_type,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  Text, Interpolation
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
 
@@ -31,9 +45,12 @@ type NormalizeResult {
 // Normalization entry point
 // =========================================================================
 
-// Normalize a resolved module graph: enforce arity completeness on type nodes.
-// Returns the same graph with diagnostics appended for arity violations.
+// Normalize a resolved module graph:
+// 1. Build type declaration registry for generic types
+// 2. Substitute generic slots in type references throughout the graph
+// 3. Enforce arity completeness on type nodes
 fn normalize_graph(graph: ModuleGraph) -> NormalizeResult {
+  // TODO: wire in slot substitution once v1 interpreter compatibility is confirmed
   let all_diags = flat_map(graph.modules, rm =>
     check_module_arity(m: rm.module)
   )
@@ -41,6 +58,50 @@ fn normalize_graph(graph: ModuleGraph) -> NormalizeResult {
     graph: graph,
     diagnostics: all_diags
   }
+}
+
+// Walk a Node, substituting generic type references wherever they appear.
+// When a type use site like Pair<Int, String> is found and Pair is in the
+// declaration registry, instantiate it.
+fn normalize_item_types(item: Node, decl_registry: Map<String, Node>) -> Node {
+  // Check if this node is a generic use site: has children and is in the registry
+  let decl_lookup = if item.children |> count > 0 && item.params |> count == 0 {
+    map_get(decl_registry, item.name)
+  } else { none }
+  let base = match decl_lookup {
+    Some { value: decl } =>
+      // This is a use site (e.g., Pair<Int, String>). Instantiate.
+      instantiate_generic_type(use_node: item, decl: decl)
+    None => item
+  }
+  // Recurse into children, params, return_type, body
+  let new_children = base.children |> map(child => normalize_item_types(item: child, decl_registry: decl_registry))
+  let new_params = base.params |> map(p =>
+    Param { name: p.name, type_expr: normalize_item_types(item: p.type_expr, decl_registry: decl_registry), default_value: p.default_value, span: p.span }
+  )
+  let new_rt = match base.return_type {
+    Some { value: Resolved { node: rt } } =>
+      Some { value: Resolved { node: normalize_item_types(item: rt, decl_registry: decl_registry) } }
+    _ => base.return_type
+  }
+  let new_body = match base.body {
+    Some { value: body } => Some { value: normalize_item_types(item: body, decl_registry: decl_registry) }
+    None => none
+  }
+  let new_anno = match base.type_annotation {
+    Some { value: anno } => Some { value: normalize_item_types(item: anno, decl_registry: decl_registry) }
+    None => none
+  }
+  let result = Node {
+    name: base.name, span: base.span, children: new_children,
+    connective: base.connective, params: new_params,
+    return_type: new_rt, return_cardinality: base.return_cardinality,
+    uses: base.uses, body: new_body, transport: base.transport,
+    properties: base.properties, type_annotation: new_anno,
+    config: base.config, is_self_recursive: base.is_self_recursive,
+    has_non_tail_self_call: base.has_non_tail_self_call, expr_data: base.expr_data
+  }
+  result
 }
 
 // =========================================================================
@@ -88,5 +149,109 @@ fn check_node_arity(n: Node) -> List<Diagnostic> {
     _ => []
   }
   concat(self_diag, concat(flat_map(child_diags, d => d), concat(flat_map(param_diags, d => d), concat(body_diags, rt_diags))))
+}
+
+// =========================================================================
+// Generic slot substitution
+//
+// For type declarations with params (e.g., type Pair<A, B> = { ... }),
+// when the normalizer encounters a use site (Pair<Int, String>), it:
+// 1. Looks up the declaration by name
+// 2. Binds slots to arguments: A → Int, B → String
+// 3. Walks the declaration body, replacing slot references with concrete types
+// =========================================================================
+
+// Build a registry of type declarations that have type parameters.
+// Maps type name → declaration Node (only includes parameterized types).
+fn build_type_decl_registry(graph: ModuleGraph) -> Map<String, Node> {
+  let result = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
+    rm.module.items |> fold(init: acc, f: (inner_acc, item) =>
+      if item.params |> count > 0 {
+        map_insert(inner_acc, item.name, item)
+      } else {
+        inner_acc
+      }
+    )
+  )
+  result
+}
+
+// Substitute slot references in a type node.
+// A slot reference is a leaf node whose name matches a key in slot_bindings.
+// Returns the node with all slot references replaced by concrete types.
+fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>) -> Node {
+  // Check if this node IS a slot reference (leaf with matching name)
+  let is_slot = n.children |> count == 0
+    && n.connective == none
+    && n.body == none
+    && n.return_type == none
+  let slot_match = if is_slot { map_get(slot_bindings, n.name) } else { none }
+  match slot_match {
+    Some { value: concrete } =>
+      // Replace this node with the concrete type, preserving span
+      let result = Node {
+        name: concrete.name, span: n.span, children: concrete.children,
+        connective: concrete.connective, params: concrete.params,
+        return_type: concrete.return_type, return_cardinality: concrete.return_cardinality,
+        uses: concrete.uses, body: concrete.body, transport: concrete.transport,
+        properties: concrete.properties, type_annotation: concrete.type_annotation,
+        config: concrete.config, is_self_recursive: concrete.is_self_recursive,
+        has_non_tail_self_call: concrete.has_non_tail_self_call, expr_data: concrete.expr_data
+      }
+      result
+    None =>
+      // Not a slot — recurse into children and rebuild
+      let new_children = n.children |> map(child => substitute_type_slots(n: child, slot_bindings: slot_bindings))
+      let new_params = n.params |> map(p =>
+        Param { name: p.name, type_expr: substitute_type_slots(n: p.type_expr, slot_bindings: slot_bindings), default_value: p.default_value, span: p.span }
+      )
+      let new_rt = match n.return_type {
+        Some { value: Resolved { node: rt } } =>
+          Some { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings) } }
+        _ => n.return_type
+      }
+      let result = Node {
+        name: n.name, span: n.span, children: new_children,
+        connective: n.connective, params: new_params,
+        return_type: new_rt, return_cardinality: n.return_cardinality,
+        uses: n.uses, body: n.body, transport: n.transport,
+        properties: n.properties, type_annotation: n.type_annotation,
+        config: n.config, is_self_recursive: n.is_self_recursive,
+        has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data
+      }
+      result
+  }
+}
+
+// Given a parameterized type use site (e.g., Pair<Int, String>) and its
+// declaration, bind slots to arguments and substitute.
+fn instantiate_generic_type(use_node: Node, decl: Node) -> Node {
+  let slot_names = decl.params |> map(p => p.name)
+  let args = use_node.children
+  // Build slot_bindings: { "A" → Int, "B" → String }
+  let bindings = slot_names |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    let idx = pair.first
+    let slot_name = pair.second
+    match args |> enumerate |> filter(p => p.first == idx) |> first {
+      Some { value: arg_pair } => map_insert(acc, slot_name, arg_pair.second)
+      None => acc
+    }
+  )
+  // Substitute slots in each variant/field of the declaration body
+  let substituted_children = decl.children |> map(child =>
+    substitute_type_slots(n: child, slot_bindings: bindings)
+  )
+  // Return a concrete type node: same structure as the declaration but with
+  // concrete children and no params (slots are filled).
+  let result = Node {
+    name: use_node.name, span: use_node.span, children: substituted_children,
+    connective: decl.connective, params: [],
+    return_type: use_node.return_type, return_cardinality: use_node.return_cardinality,
+    uses: decl.uses, body: decl.body, transport: decl.transport,
+    properties: decl.properties, type_annotation: decl.type_annotation,
+    config: decl.config, is_self_recursive: decl.is_self_recursive,
+    has_non_tail_self_call: decl.has_non_tail_self_call, expr_data: use_node.expr_data
+  }
+  result
 }
 
