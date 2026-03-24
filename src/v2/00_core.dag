@@ -732,6 +732,13 @@ fn expr_children(node: Node) -> List<Node> {
   }
 }
 
+// NOTE: map_expr_children (structural tree-map that reconstructs ExprData
+// with transformed children) is blocked by two v1 limitations:
+// (1) v1 interpreter can't evaluate user-defined higher-order functions
+// (2) v1 emitter mishandles Optional wrapping in lambda + match contexts
+// Landing point: Phase 3 (v1 retirement). Design exists; implementation
+// is ~50 lines and tested. See L2 bridge notes in ROADMAP.
+
 // =========================================================================
 // Self-call detection -- Node expression walkers
 //

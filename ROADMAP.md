@@ -579,8 +579,44 @@ knowledge that the roadmap is actively dissolving.
 | ~~`Some` constructor → `optional_node`~~ | ~~`04_infer.dag`~~ | **Resolved.** `optional_node` deleted; `Some` record lit infers via `with_optional_cardinality`. | P1.4 done. |
 | ~~`node_is_error_type` / `node_is_dynamic`~~ | ~~`04_types.dag`~~ | **Resolved.** Predicates deleted. | P1.9 done. |
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
-| `expr_children` / `map_expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~600 lines of boilerplate across 6 manual ExprData walks. | L2 dissolution (P5.11): when expression children move to `node.children`, these functions become `node.children` reads and are deleted. |
+| `expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~210 lines of boilerplate across 4 manual ExprData walks (collectors + self-call detection). `map_expr_children` (structural tree-map) is designed but blocked by v1 interpreter/emitter limitations — lands with Phase 3 (v1 retirement). | L2 dissolution (P5.11): when expression children move to `node.children`, `expr_children` becomes `node.children` read and is deleted. |
 | Arity bridge (`parameterized_type_arity`) | `00_core.dag`, `04_types.dag` | Hardcodes arity for known parameterized types (`Map→2`, `List→1`, `Set→1`). Compiler reads arity from this bridge instead of from `.dag` declarations. | P3.7: deleted when generics (P3.6) provide real `.dag` algebraic declarations with declared arity. |
+
+### L2 Bridge-Era Invariants
+
+`ExprData` is an acknowledged L2 bridge. Child `Node` structure migrates
+to `expr_children` / `map_expr_children` now so traversals can become
+structural without waiting for full semantic dissolution. Non-`Node`
+expression metadata remains in `ExprData` until P5.11/P5.12. This is
+preparatory work in the final direction, not throwaway work.
+
+Rules during the bridge era:
+
+1. **`expr_children` is the required API** for new expression walkers,
+   shared walkers, and any new ownership/complexity/emit traversals.
+   Direct child-field access in ExprData walks is legacy.
+
+2. **No new `ExprData` variant may introduce fresh child `Node` storage
+   outside the `expr_children` contract.** New variants must define their
+   child order through `expr_children`. Legacy callers may access fields
+   directly until migrated.
+
+3. **Bright line between expression semantics and inferred type.**
+   Expression semantics (`ExprData` tags, method names, operators,
+   binding names) belong to the P5.11/P5.12 bridge family. Inferred
+   type (`return_type`, `return_cardinality`, `InferredNode`) is real
+   structural typing — not L2 debt. These are separate concerns.
+
+4. **`map_expr_children` lands with Phase 3** (v1 retirement). The
+   design exists and is tested; the v1 interpreter/emitter cannot
+   handle user-defined higher-order functions. Until then,
+   `resolve_expr_types` retains per-variant reconstruction.
+
+5. **P5.12 is design validation, not dogmatic deletion.** A closed
+   typed semantic tag may still be the right intermediate even in a
+   Node-centric compiler if it preserves exhaustiveness. P5.12 replaces
+   `ExprData` with a more structural representation only if it reduces
+   compiler semantic knowledge without regressing exhaustiveness.
 
 ### Active Ratchets
 
