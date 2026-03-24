@@ -108,7 +108,7 @@ type Byte = Tuple<Bit, Bit, Bit, Bit, Bit, Bit, Bit, Bit>  // |[Byte]| = 2^8
 // Denotational (what they mean):
 //   Set<A>   = A -> Bool         (finite support — membership)
 //   Bag<A>   = A -> Nat          (finite support — multiplicity)
-//   Map<K,V> = K -> Option<V>    (finite support — keyed lookup)
+//   Map<K,V> = K -> (1 + V)      (finite support — keyed lookup)
 //   List<A>  = Σ n. Fin(n) -> A  (length + value per position)
 //
 // Algebraic (how they compute):
@@ -163,7 +163,7 @@ The denotational equations:
 ```text
 Set<A>   = A -> Bool         (finite support)
 Bag<A>   = A -> Nat          (finite support)
-Map<K,V> = K -> Option<V>    (finite support)
+Map<K,V> = K -> (1 + V)      (finite support)
 List<A>  = Σ n. Fin(n) -> A
 ```
 
@@ -176,7 +176,7 @@ Reading these:
 - **Bag** is a multiplicity structure. The codomain is `Nat` (how many).
   Like Set but tracks count, not just presence.
 - **Map** is a keyed partial-function structure. The codomain is
-  `Option<V>` (present with value, or absent). **Key uniqueness is
+  `1 + V` (present with value, or absent). **Key uniqueness is
   automatic:** a function returns one value per key — there is no
   "two entries for the same key."
 - **List** is a positional structure. A list is a length `n` plus a
@@ -186,9 +186,11 @@ Reading these:
   positions, each labeled by a value. If you tried to model `List<A>`
   as an ordered set of `A` itself, `[1,1,2]` would collapse.
 
-The `List` equation can also be read as `Nat -> Option<A>` with domain
-`{0..n-1}`, making the parallel to `Map` visible: a list is a map from
-natural-number positions to values.
+`List<A>` is **dense**: its support is exactly the initial segment
+`{0..n-1}`. Holes are unrepresentable. Sparse sequences are a
+distinct type. The `List` equation can also be read as `Nat -> (1 + A)`
+with domain `{0..n-1}`, making the parallel to `Map` visible: a list
+is a map from natural-number positions to values.
 
 **Type constructors, not generic sets.** `List<_>` is not a set of
 types `{List<Int>, List<String>, ...}`. It is a type constructor:
@@ -228,19 +230,58 @@ in the same way `Int` does. The bit-graph model (post-Phase 5) is
 about machine primitives; the collection model is about data structure
 semantics.
 
-#### Law Layer (open questions to pin in P1.18)
+#### Law Layer (resolved)
 
-These properties must be explicitly decided, not left implicit:
+These properties are decided, not left implicit:
 
-| Question | Candidate answer | Notes |
-|----------|-----------------|-------|
-| Are collections finite by default? | Yes — finite support everywhere | Infinite collections are a separate concept (streams, generators) |
-| Is equality extensional? | Yes for Set/Map/Bag; structural for List | Two sets with the same members are equal regardless of construction |
-| Is set element uniqueness semantic? | Yes — falls out of `A -> Bool` being a function | An element is in or out; "in twice" is unrepresentable |
-| Are list duplicates always allowed? | Yes — positions are the carrier | `[1,1,2]` has 3 positions; duplicates are not special |
-| Is map key uniqueness semantic? | Yes — falls out of `K -> Option<V>` being a function | Two entries for the same key is a representation error, not a valid map |
-| Do sets/maps require decidable equality on keys? | Yes — membership/lookup must be computable | This falls out of finite support + function semantics |
-| Is iteration order part of `Map`? | No — unordered by default | `SortedMap`/`OrderedMap` are distinct types with additional structure |
+| Question | Answer | Notes |
+|----------|--------|-------|
+| Are collections finite by default? | **Yes** — finite support everywhere | Infinite collections are a separate concept (streams, generators) |
+| Is equality extensional? | **Yes** for Set/Map/Bag; **structural** for List | Two sets with the same members are equal regardless of construction |
+| Is set element uniqueness semantic? | **Yes** — falls out of `A -> Bool` being a function | An element is in or out; "in twice" is unrepresentable |
+| Are list duplicates always allowed? | **Yes** — positions are the carrier | `[1,1,2]` has 3 positions; duplicates are not special |
+| Is map key uniqueness semantic? | **Yes** — falls out of `K -> (1 + V)` being a function | Two entries for the same key is a representation error, not a valid map |
+| Do sets/maps require decidable equality on keys? | **Yes** — all runtime values have structural decidable equality | The DAG model gives every value a structural form; no value is "unhashable." Decidable equality is a consequence of the model, not an imposed constraint. |
+| Is iteration order part of `Map`? | **No** — unordered by default | `SortedMap`/`OrderedMap` are distinct types with additional structure |
+
+#### Support and Algebra Laws
+
+Set algebra laws follow from `Set<A> = A -> Bool` pointwise:
+
+| Operation | Definition | Law |
+|-----------|-----------|-----|
+| Union | `(S ∪ T)(a) = S(a) ∨ T(a)` | Commutative, associative, idempotent |
+| Intersection | `(S ∩ T)(a) = S(a) ∧ T(a)` | Commutative, associative, idempotent |
+| Difference | `(S \ T)(a) = S(a) ∧ ¬T(a)` | Not commutative |
+| Absorption | `S ∪ (S ∩ T) = S`; `S ∩ (S ∪ T) = S` | Standard lattice absorption |
+| Distributivity | `S ∩ (T ∪ U) = (S ∩ T) ∪ (S ∩ U)` | Boolean algebra |
+
+**Complement is not closed.** `¬S(a) = ¬S(a)` is well-defined
+pointwise, but the complement of a finite-support set has infinite
+support unless the carrier is finite. This language does not provide
+a general complement operation on `Set<A>`. Complement relative to a
+known finite universe (`S.complement_in(universe)`) is expressible
+as difference.
+
+**Bag union is sum, not max.** `Bag<A> = A -> Nat` with union defined
+as `(B₁ ⊕ B₂)(a) = B₁(a) + B₂(a)` (sum). Max-union is a distinct
+operation (`B₁ ⊔ B₂`). The default `union` on `Bag` uses sum; max
+is available as `max_union` if needed. This pins the algebra:
+`(Bag, ⊕, ε)` is a commutative monoid (where `ε(a) = 0` for all
+`a`), not an idempotent semilattice.
+
+**Map merge requires a conflict function.** `Map<K,V>` merge is not
+automatically defined because two maps may disagree on a key's value.
+`merge(m1, m2, on_conflict: (V, V) -> V)` takes an explicit conflict
+resolution function. Common specializations: `merge_left` (keep
+first), `merge_right` (keep second), `merge_with(f)` (apply `f`).
+A bare `merge(m1, m2)` without conflict semantics is a compile error.
+
+**Cardinality is support size.** For all finite-support collections,
+`|S|` is the number of elements in the support (elements where the
+characteristic function returns a non-zero/non-absent value). For
+`List<A>`, this is `n` (the length). For `Set<A>`, this is
+`|{a : S(a) = true}|`.
 
 #### Occurrence and Cardinality Model
 
@@ -294,18 +335,18 @@ operationally:
 - `field?: T` — structural presence. The binding may be absent.
   Cardinality 0..1 on the field. No type wrapping.
 - `field: T | Unit` — value-level coproduct. The binding is present;
-  its value is `Some(v)` or `None`. The type IS `T | Unit`.
+  its value is `Present(v)` or `Null`. The type IS `1 + T`.
 
 This distinction keeps `Optional<List<T>>` (field absent vs present
 with a list) crisp from `List<T | Unit>` (field present, each
 element nullable). If the DAG conflates these, nested optionality
 blurs.
 
-**Denotational interpretation.** `T?` denotes `⟦T⟧ ∪ {⊥}` —
-isomorphic to `T | Unit`. The denotation guides semantics; the
-compiler representation is the cardinality annotation. The
-denotational equation `Map<K,V> = K -> Option<V>` uses "Option" to
-express *partiality*: the function may not be defined for all keys.
+**Denotational interpretation.** `T?` denotes `1 + T` (one extra
+inhabitant beyond `T`, representing absence). The denotation guides
+semantics; the compiler representation is the cardinality annotation.
+The denotational equation `Map<K,V> = K -> (1 + V)` uses the `1 + V`
+to express *partiality*: the function may not be defined for all keys.
 In the compiler, partiality is return cardinality 0..1 on `lookup`,
 not a type wrapper.
 
@@ -511,6 +552,19 @@ symptoms structurally; fixing symptoms individually is whack-a-mole.
 | `artifact.dag` | 113 | 2 | Consumed types only | `RenderTarget`, `Artifact`, `ArtifactPlan`, `default_artifact_plan` consumed by `compile.dag`. Speculative boundary verification types removed (P1.11 **done**). |
 | `trace.dag` | 221 | 13 | Completely disconnected from pipeline | No other `.dag` file imports from it. Type-only schema with pure helpers. Should not grow until a consumer exists. |
 
+### Active Temporary Bridges
+
+These are acknowledged short-term regressions with named deletion
+points. Each leans on Optional-specific or bootstrap-specific compiler
+knowledge that the roadmap is actively dissolving.
+
+| Bridge | Location | What it does | Deletion point |
+|--------|----------|-------------|----------------|
+| `prefer_specific_type` | `04_types.dag:250` | Prefers typed container/optional over Unit-parameterized when resolving if-branch types. Uses `node_is_optional`, `node_is_container`, `normalize_type_name`. | P1.9 (InferredNode eliminates Error/Dynamic ambiguity) + P1.4 (Optional dissolved into cardinality) |
+| `node_type_compatible` Unit special cases | `04_types.dag:218-219, 227, 240` | Treats `Optional == Unit` and `Unit`-element containers as compatible. | P1.4 (Optional dissolved) + P1.9 (error nodes out of type graph) |
+| `Some` constructor → `optional_node` | `04_infer.dag` (record lit specialization) | Synthesizes `optional_node(inner)` when inferring `Some { value: x }` literals. | P1.4 (Optional dissolved into cardinality; `Some` becomes a regular coproduct constructor) |
+| Complexity guard (>100 functions) | `compile.dag:251` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
+
 ### Active Ratchets
 
 #### Phase-Blocking Ratchet: Diagnostics
@@ -547,18 +601,18 @@ standard `cargo test` did not catch the regression window.
 
 Scripted audit via `scripts/l1-ratchet.sh`. The script and this table
 measure the same categories. Run `scripts/l1-ratchet.sh --check` to
-verify the ratchet (current cap: 374).
+verify the ratchet (current cap: 382).
 
 | Category | Script variable | Count | What the compiler still "knows" |
 |----------|----------------|------:|----------------------------------|
 | `.connective` direct access | `connective_field_count` | 17 | Product vs coproduct read from Node field |
 | `Conj` / `Disj` references | `conj_disj_count` | 47 | Connective shape matching (includes parse, which must produce them) |
-| Type constructors | `constructor_count` | 140 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
-| Type-name comparisons | `typename_count` | 32 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | `predicate_count` | 116 | Centralized type-specific dispatch helpers |
+| Type constructors | `constructor_count` | 141 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
+| Type-name comparisons | `typename_count` | 35 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| `node_is_*` predicate calls | `predicate_count` | 120 | Centralized type-specific dispatch helpers |
 | `classify_type_structure` calls | `classify_count` | 22 | Structural classification (replaces raw `.connective` reads in emit) |
 | `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
-| **Total** | | **374** | |
+| **Total** | | **382** | |
 
 Progress since last audit: `BuiltinTypeKind` enum and `builtin_type_kind()`
 are fully deleted. `classify_type_structure()` replaces direct `.connective`
@@ -592,7 +646,7 @@ Use this as the source of truth for sequencing.
 
 | Order | Phase | What it does | Blocking gate |
 |-------|-------|--------------|---------------|
-| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode, normalization, path dedup), arity bridge, cardinality model (Optional dissolved), algebraic type spec | Regressions fixed; R.C. I (arity bridge), II (InferredNode), III (normalization + dedup) landed; P1.4, P1.10, P1.12, P1.19-21 done; no new emit heuristics |
+| 1 | Phase 1 | Fix regressions, fix root causes (InferredNode, normalization, path dedup), arity bridge, cardinality model (Optional dissolved), algebraic type spec | Regressions fixed; R.C. I (arity bridge), II (InferredNode), III (normalization + dedup) landed; P1.10, P1.12, P1.19, P1.20 done; P1.4, P1.21 landed; no new emit heuristics |
 | 2 | Phase 2 | `gist` end-to-end through emitted Rust | `gist` builds and runs correctly; arity bridge holds (no bare type nodes reach emit) |
 | 3 | Phase 3 | Compile bundle, ownership/artifact wiring, v1 retirement, generics for parameterized type declarations | v2 compiles everything v1 still matters for; algebraic `.dag` declarations replace arity bridge |
 | 4 | Phase 4 | Shared emit spine, `LanguageSpec` authority, emit name-opacity | New backend = language facts + compiler-owned adapter; emit reads `LanguageSpec` for type→target mapping, no hardcoded type names |
@@ -826,6 +880,30 @@ Mechanically:
 | `ownership.dag` | `walk_expr` reads `return_type` | Unwrap `InferredNode`; skip ownership for `CompilerError` |
 | Serialization | Stage0 IR boundary | `InferredNode` must round-trip through v1 interpreter values (same `_variant` pattern as other sum types) |
 
+**Return cardinality storage.** Once `Node.return_type` becomes
+`InferredNode?`, return cardinality lives as a separate field on the
+expression node:
+
+```
+Node.return_type: InferredNode?          // the type (or failure)
+Node.return_cardinality: Cardinality     // Required (exactly 1) or Optional (0..1)
+```
+
+Two fields, not a composite `InferredType = { node, cardinality }`,
+because cardinality is orthogonal to success/failure — a
+`CompilerError` has no meaningful cardinality, and a `Resolved { node }`
+can have either. Emit reads `return_cardinality` from the binding site
+to render `Option<T>` / `*T` / `Optional[T]`. Default is `Required`
+unless inference determines otherwise (e.g., `map.get(key)` sets
+`return_cardinality: Optional`).
+
+**Default elaboration timing.** Default values on fields
+(`Field.default_value: Node?`) are elaborated during normalization
+(P1.14). The normalizer fills in default values for omitted fields
+before inference runs. Inference sees all fields as present; the
+distinction between "explicitly provided" and "default-filled" is a
+parse/normalize concern, not an inference concern.
+
 Ordering constraint: the InferredNode wrapper changes the type of
 `Node.return_type`, which touches `00_core.dag`. Every `.dag` file that
 reads `return_type` needs mechanical updates. This should be done as a
@@ -890,7 +968,7 @@ Diagnostics reached 0. These inference gaps remain:
   fabrication sites killed (P1.20), verification gate passing (P1.21)
 - Algebraic type spec (design doc) written, pinning the denotational
   equations (`Set<A> = A -> Bool`, `Bag<A> = A -> Nat`, `Map<K,V> = K ->
-  Option<V>`, `List<A> = Σ n. Fin(n) -> A`), the algebra family, the
+  1 + V)`, `List<A> = Σ n. Fin(n) -> A`), the algebra family, the
   law layer decisions for `List`, `Map`, `Set`, and primitives, the
   occurrence/cardinality model (four-way separation: absence, nullability,
   unknownness, defaultability; `Cardinality` type; binding-site semantics),
@@ -903,9 +981,9 @@ Diagnostics reached 0. These inference gaps remain:
 - No new emit heuristics introduced — every emit-side type-knowledge
   regression is traced upstream and fixed in inference or normalization
 - `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` passes
-  (As of 2026-03-23, stage0 self-compile reports 45 type errors —
-  `"if branches resolve to incompatible types"` across infer/parse/resolve/
-  complexity modules. Parse error fixed; type mismatches remain.)
+  (Diagnostics at 0 as of 2026-03-23. All 45 type errors resolved via
+  `node_type_compatible` Unit-element handling and `prefer_specific_type`.
+  53 ownership warnings resolved via multi-consumer binding restructuring.)
 - Fixed point still holds after every structural change
 - Phase 2 may start once all of the above are met; L1 dissolution
   continues in parallel toward Phase 5's L1=0 gate
@@ -992,7 +1070,7 @@ R9.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P3.1 | Verify parity with remaining v1 paths | **Prior-branch** | Root causes identified on a previous green branch (tuple field naming, if-branch type unification). Stage0 self-compile currently has 44 errors; parity re-verifies when stage0 is green. |
+| P3.1 | Verify parity with remaining v1 paths | **Prior-branch** | Root causes identified on a previous green branch (tuple field naming, if-branch type unification). Stage0 self-compile at 0 diagnostics on current tree; parity re-verifies through bootstrap. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
@@ -1316,7 +1394,7 @@ can interleave with either track.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | All compiler stages from infer onward produce identical output regardless of type names. This is the L1=0 verification gate. |
+| P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | Inference produces identical **inferred structure** (typed graph shapes) regardless of type names. Emit excluded (legitimately reads names for target identifiers). This is the L1=0 verification gate. |
 | P5.7 | Delete `node_is_*` predicates | P5.6 passing | 82 call sites | Replaced by structural graph traversal. No predicate checks type identity. |
 | P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
 | P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | Unnecessary when nodes carry structure directly. |

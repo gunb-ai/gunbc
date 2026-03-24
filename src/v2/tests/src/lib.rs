@@ -630,6 +630,23 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
+    fn emitted_file_paths(files: &gunbc_ir::Value) -> Vec<String> {
+        match files {
+            gunbc_ir::Value::List(items) => items
+                .iter()
+                .filter_map(|item| match item {
+                    gunbc_ir::Value::Map(map) => match map.get("path") {
+                        Some(gunbc_ir::Value::Str(path)) => Some(path.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect(),
+            other => panic!("expected files list, got: {other:?}"),
+        }
+    }
+
     fn map_field<'a>(
         value: &'a gunbc_ir::Value,
         field: &str,
@@ -5609,6 +5626,63 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
             !emit_shared.contains("_ => \"null\""),
             "emit_data_value_json should not silently fabricate \"null\" for unknown expressions"
         );
+    }
+
+    /// P1.21: Testgen verification gate — source-level checks.
+    /// Verifies the testgen infrastructure in emit source has no fabrication
+    /// patterns and the required functions/types exist.
+    #[test]
+    fn v2_testgen_service_mock_source_gate() {
+        let emit_rust = read_v2_file("src/v2/05_emit_rust.dag");
+        let emit_shared = read_v2_file("src/v2/05_emit.dag");
+
+        // Testgen functions must exist in emit_rust
+        assert!(
+            emit_rust.contains("fn emit_test_file("),
+            "emit_rust should have emit_test_file function"
+        );
+
+        // Shared emit must provide the TestProjection pipeline
+        assert!(
+            emit_shared.contains("fn extract_test_projections("),
+            "shared emit must define extract_test_projections"
+        );
+        assert!(
+            emit_shared.contains("fn has_mock_prefix("),
+            "shared emit must define has_mock_prefix"
+        );
+
+        // No fabrication in testgen-related functions
+        assert!(
+            !emit_rust.contains("Ok(Default::default())"),
+            "testgen must not fabricate Default::default() values"
+        );
+        assert!(
+            !emit_rust.contains("Value::Object(Default::default())"),
+            "testgen must not fabricate empty JSON objects"
+        );
+        assert!(
+            !emit_shared.contains("_ => \"null\""),
+            "shared emit must not silently fabricate null for unknown expressions"
+        );
+
+        // No parallel mock extraction — all routes through shared has_mock_prefix
+        assert!(
+            !emit_rust.contains("fn extract_mock_props("),
+            "emit_rust must not have parallel mock extraction (P1.19)"
+        );
+        assert!(
+            !emit_rust.contains("fn starts_with_prefix("),
+            "emit_rust must not have parallel prefix check (P1.19)"
+        );
+
+        // Mock data emission must use invalid JSON markers, not silent nulls
+        if emit_shared.contains("emit_data_value_json") {
+            assert!(
+                emit_shared.contains("UNSUPPORTED_MOCK_EXPR") || !emit_shared.contains("=> \"null\""),
+                "emit_data_value_json wildcards must use invalid markers, not silent null"
+            );
+        }
     }
 
     /// Lightweight gist pipeline test via interpreter: single synthetic module
