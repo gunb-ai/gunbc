@@ -62,7 +62,7 @@ The thesis dissolves compiler knowledge in three layers:
 
 | Layer | What dissolves | Compiler stops knowing | Measured sites | Status |
 |-------|----------------|------------------------|---------------:|--------|
-| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean — the compiler processes graph structure; names are opaque namespaces; `Optional` dissolved into cardinality (P1.4) | 463 | **Active — `BuiltinTypeKind` deleted, predicates centralized, `InferredNode` wrapper complete, cardinality model landed, Optional dissolved; count increased from ~373 to 463 because Optional dissolution trades structural wrappers for explicit cardinality checks (`node_is_optional`, `with_optional_cardinality`) throughout emit/infer pipeline** |
+| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean — the compiler processes graph structure; names are opaque namespaces; `Optional` dissolved into cardinality (P1.4) | 470 | **Active — `BuiltinTypeKind` deleted, predicates centralized, `InferredNode` wrapper landed (bridges remain — see P1.9), cardinality model landed (bridges remain — see P1.4), Optional name-checking dissolved; count at 470 (up from ~373) because dissolution trades type wrappers for explicit cardinality checks and InferredNode plumbing** |
 | **L2: Expressions** | `ExprData` semantic knowledge, 12+ full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | 12 walks | Future — after bootstrap and shared emit |
 | **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax like `if cond { body }` | ~200 string checks | Future — data-driven parser |
 
@@ -317,7 +317,7 @@ on the binding site. `T?` sets cardinality on the binding, not wraps
 the type.
 
 ```
-type Cardinality = Required | Optional
+type Cardinality = Required | CardOptional
 
 type Field {
   name: String
@@ -616,35 +616,33 @@ standard `cargo test` did not catch the regression window.
 
 Scripted audit via `scripts/l1-ratchet.sh`. The script and this table
 measure the same categories. Run `scripts/l1-ratchet.sh --check` to
-verify the ratchet (current cap: 385).
+verify the ratchet (current cap: 470).
 
 | Category | Script variable | Count | What the compiler still "knows" |
 |----------|----------------|------:|----------------------------------|
-| `.connective` direct access | `connective_field_count` | 17 | Product vs coproduct read from Node field |
-| `Conj` / `Disj` references | `conj_disj_count` | 47 | Connective shape matching (includes parse, which must produce them) |
-| Type constructors | `constructor_count` | 144 | `leaf_node`, `optional_node`, `container_node`, `tuple_node`, etc. |
-| Type-name comparisons | `typename_count` | 35 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | `predicate_count` | 120 | Centralized type-specific dispatch helpers |
-| `classify_type_structure` calls | `classify_count` | 22 | Structural classification (replaces raw `.connective` reads in emit) |
+| `.connective` direct access | `connective_field_count` | 19 | Product vs coproduct read from Node field |
+| `Conj` / `Disj` references | `conj_disj_count` | 44 | Connective shape matching (includes parse, which must produce them) |
+| Type constructors | `constructor_count` | 229 | `leaf_node`, `container_node`, `tuple_node`, etc. |
+| Type-name comparisons | `typename_count` | 48 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| `node_is_*` predicate calls | `predicate_count` | 105 | Centralized type-specific dispatch helpers |
+| `classify_type_structure` calls | `classify_count` | 25 | Structural classification (replaces raw `.connective` reads in emit) |
 | `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
-| **Total** | | **385** | |
+| **Total** | | **470** | |
 
-Progress since last audit: `BuiltinTypeKind` enum and `builtin_type_kind()`
-are fully deleted. `classify_type_structure()` replaces direct `.connective`
-reads in emit. `node_is_optional`, `node_is_map`, `node_is_container` are
-centralized in `04_types.dag` (`infer_types`, imported by infer and emit).
+Progress since initial baseline (~373): `BuiltinTypeKind` enum and
+`builtin_type_kind()` are fully deleted. `classify_type_structure()`
+replaces direct `.connective` reads in emit. `node_is_optional`,
+`node_is_map`, `node_is_container` are centralized in `04_types.dag`.
 
-The `node_is_*` count rose from 43 to 116 because scattered inline checks
-were replaced with calls to the centralized predicates. This is correct
-L1 migration behavior: concentrate knowledge into fewer predicates first,
-then dissolve those predicates into structural graph traversal.
-
-**Temporary regression 382 → 385 (+3).** The increase is from
-`InferredNode` plumbing: `rt_node` calls and `Resolved`-aware constructor
-calls added during the partial P1.9 migration. These are bridge sites —
-they exist because `rt_node` fabricates sentinel nodes (see Active
-Temporary Bridges above). The ratchet will drop below 382 when P1.9
-completes and `rt_node` is deleted.
+The total rose from ~373 to 470 because Optional dissolution and
+`InferredNode` plumbing trade structural wrappers for explicit
+cardinality checks and `rt_node`/`Resolved`-aware constructor calls
+throughout the emit/infer pipeline. This is expected L1 migration
+behavior: concentrate knowledge into fewer predicates first, then
+dissolve those predicates into structural graph traversal. The count
+will decrease as P1.4 bridges (cardinality on type nodes → binding
+sites only) and P1.9 bridges (~15 remaining `leaf_node("Dynamic")`
+fabrications) are removed.
 
 L1 acceptance (updated per thesis amendments):
 
@@ -753,12 +751,12 @@ cargo test --workspace --exclude v2-compiler-tests          # green
 cargo clippy --all-targets -- -D warnings                   # green
 cargo test -p v2-compiler-tests --features v1-bootstrap     # green
 cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
-scripts/l1-ratchet.sh --check                               # total <= ratchet (385)
+scripts/l1-ratchet.sh --check                               # total <= ratchet (470)
 ```
 State: 0 diagnostic regressions. Algebraic type spec written. Ownership
 branch-merge fix landed. Emit catch-all fail-closed. Testgen fabrication
 killed. `InferredNode` wrapper *partially* landed (wrapper exists, but
-compatibility shims remain — see P1.9 mechanical checklist).
+~15 `leaf_node("Dynamic")` fabrications remain — see P1.9 checklist).
 Normalization stage *wired* (audit pass, not rewriting pass — see P1.14
 remaining). Arity bridge *exists* (helpers present, but bare-leaf
 tolerance still active — see P1.17 remaining). Testgen *guardrail*
@@ -882,7 +880,7 @@ where the foundational work (arity bridge, InferredNode) enables them.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P1.16 | Scrambled-name tests | **Smoke exists** | Smoke tests (`v2_scrambled_name_inference_smoke`, `_containers`) compare diagnostic count and file count. **Not the gate:** the roadmap requires comparing inferred structure (typed graph shapes). Scaffolding is useful; full suite is Phase 5 scope (P5.6). |
-| P1.4 | L1 Optional → cardinality | **Done** | `Optional` dissolved into `return_cardinality: CardOptional` on Node. `Field.optional` removed; `optional_node()` deleted; `node_is_optional` checks cardinality not name; parser `maybe_optional` sets cardinality; all emit backends updated with top-level cardinality check; `resolve_node_bounded` and `resolve_scrutinee_type_node` preserve cardinality through resolution. |
+| P1.4 | L1 Optional → cardinality | **Landed (bridges remain)** | `Optional` dissolved from name-checking: `return_cardinality: CardOptional` on Node, `Field.optional` removed, `optional_node()` deleted, `node_is_optional` checks cardinality not name, emit backends read cardinality. **Remaining bridges:** parser `maybe_optional(...)` still stamps `CardOptional` on the parsed type expression (not purely binding-site); emitters still call `node_is_optional(n)` on type nodes rather than reading cardinality from binding sites only. Not yet the pure "binding site owns cardinality" model. |
 | P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Each collection type has its own algebra (see Collection Denotational Model) — no single "container" concept needed. Element/key/value types are structural children. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
 | P1.6 | L1 Primitives | Planned | Primitives dissolve with the bit-graph model. `Int`, `String`, etc. are namespaced compositions opaque to the compiler. `.dag` declarations carry any facts emit needs. |
 | P1.7 | L1 Connective dissolution | Planned | Last structural primitive. Remove `connective` from `Node` only after all consumers use structural graph traversal. |
@@ -923,7 +921,7 @@ What landed:
 - `Resolved { node: rt }` matching in emit paths
 - Serialization round-trips through v1 interpreter
 
-Mechanical checklist (all done):
+Mechanical checklist:
 - [x] Delete `node_is_error_type(n)` — callers pattern-match `InferredNode`
 - [x] Delete `node_is_dynamic(n)` — same (Dynamic = CompilerError)
 - [x] Stop `rt_node` fabricating `Node{name:"Error"}` and `Node{name:"Unit"}`
@@ -935,6 +933,11 @@ Mechanical checklist (all done):
 - [x] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
 - [ ] Replace ~15 `leaf_node(name: "Dynamic")` fabrications in infer with
       `CompilerError` (remaining L1 work)
+- [ ] Stop `resolve_optional_node` converting `CompilerError` back to
+      `leaf_node("Error")` — errors must stay in `InferredNode`, not re-enter
+      the node graph
+- [ ] Audit `rt_node(...)` callers that collapse `None` into `Unit` — these
+      should propagate the failure, not fabricate a type
 
 **Verification:** `grep -rn '"Error"\|"Dynamic"' src/v2/04_types.dag
 src/v2/04_infer.dag src/v2/05_emit*.dag` returns zero results related
@@ -942,7 +945,8 @@ to type-level error/dynamic checking (diagnostic messages are fine).
 
 **Migration boundary: P1.9 completion status.**
 
-All mechanical changes are done:
+Most mechanical changes are done. Remaining items are concentrated in
+infer (Dynamic fabrications) and resolution (error re-entry into node graph):
 
 | Layer | Type/API affected | Status |
 |-------|-------------------|--------|
@@ -950,7 +954,9 @@ All mechanical changes are done:
 | `00_core.dag` | `Node` | **Done** — `return_cardinality: Cardinality` field added |
 | `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | **Done** — deleted |
 | `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Done** — Error/Dynamic special cases removed |
-| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | Remaining — some Dynamic fabrications persist for unresolved inference |
+| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | **Remaining** — some Dynamic fabrications persist for unresolved inference |
+| `04_infer.dag` | `resolve_optional_node` | **Remaining** — converts `CompilerError` back to `leaf_node("Error")` |
+| `04_infer.dag` | `rt_node(...)` callers | **Remaining** — some collapse `None` into `Unit` instead of propagating failure |
 | `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Largely resolved by upstream InferredNode gating |
 | `05_emit_go.dag` | `interface{}` type holes from error nodes | Phase 4 scope |
 
@@ -960,7 +966,7 @@ expression node:
 
 ```
 Node.return_type: InferredNode?          // the type (or failure)
-Node.return_cardinality: Cardinality     // Required (exactly 1) or Optional (0..1)
+Node.return_cardinality: Cardinality     // Required (exactly 1) or CardOptional (0..1)
 ```
 
 Two fields, not a composite `InferredType = { node, cardinality }`,
@@ -969,7 +975,7 @@ because cardinality is orthogonal to success/failure — a
 can have either. Emit reads `return_cardinality` from the binding site
 to render `Option<T>` / `*T` / `Optional[T]`. Default is `Required`
 unless inference determines otherwise (e.g., `map.get(key)` sets
-`return_cardinality: Optional`).
+`return_cardinality: CardOptional`).
 
 **Default elaboration timing.** Default values on fields
 (`Field.default_value: Node?`) are elaborated during normalization
@@ -1034,40 +1040,35 @@ analysis.
 
 ### P1.4 Design: Optional → Cardinality Dissolution
 
-**Current status: not started mechanically.**
+**Current status: substantial progress, bridges remain.**
 
-The design is specified in the algebraic type spec and the Occurrence and
-Cardinality Model section below. `Field.cardinality: Cardinality` was
-added alongside `Field.optional: Bool`, but the old Optional machinery
-is still fully active — both representations coexist, which is the
-problem.
+The cardinality model is landed and Optional is dissolved from
+name-checking. The remaining work is moving from "cardinality on type
+nodes" to the pure "binding site owns cardinality" model.
 
-What exists:
+What landed:
 - `Cardinality = Required | CardOptional` type in `00_core.dag`
-- `Field.cardinality` field added to `Field`
+- `Node.return_cardinality: Cardinality` field added
+- `Field.optional: Bool` removed — all consumers read `Field.cardinality`
+- `optional_node()` constructor deleted
+- `node_is_optional(n)` checks `n.return_cardinality`, not name
+- Parser `maybe_optional(...)` sets `CardOptional` on parsed type
+- All emit backends read `return_cardinality` for top-level wrapping
+- `resolve_node_bounded` and `resolve_scrutinee_type_node` preserve
+  cardinality through resolution
 - Design doc pinning the four-way separation (absence, nullability,
   unknownness, defaultability)
 
 What remains (mechanical checklist):
-- [ ] Parse `?` as binding-site cardinality, not `optional_node(...)` —
-      `maybe_optional(...)` in parser routes through Optional type
-      construction today
-- [ ] Remove `Field.optional: Bool` — all consumers read `Field.cardinality`
-- [ ] Add `Node.return_cardinality: Cardinality` to Node (P1.9 dependency)
-- [ ] Stop synthesizing kernel `Optional` for ordinary absence — the type
-      environment still builds an `Optional` shape node
-- [ ] Delete `optional_node()` constructor
-- [ ] Delete `node_is_optional()` predicate
-- [ ] Delete `optional_property()` / `OptionalUnwrap` / `OptionalValue`
-- [ ] Delete `Some` constructor → `optional_node` bridge in `infer_record_lit`
-- [ ] Update emit to read cardinality from binding sites, not type-node
-      names — `emit_rust_node_type` checks for Optional nodes today
-- [ ] Update `prefer_specific_type` and `node_type_compatible` Unit special
-      cases — these dissolve when Optional is no longer a type wrapper
-
-**Dependency:** P1.9 must add `return_cardinality` to Node before P1.4
-can remove `Optional` from the type graph, because return cardinality
-currently rides on the Optional type wrapper.
+- [ ] Make `maybe_optional(...)` set cardinality on the binding site
+      only, not stamp it onto the type expression node
+- [ ] Stop emitters calling `node_is_optional(n)` on type nodes —
+      they should read cardinality from the binding site's
+      `return_cardinality`, not from the type node they receive
+- [ ] Delete residual `optional_property()` / `OptionalUnwrap` /
+      `OptionalValue` if still present
+- [ ] Update `prefer_specific_type` and `node_type_compatible` Unit
+      special cases that compensate for Optional-as-type-wrapper
 
 ### Remaining Diagnostic Correctness Items
 
@@ -1091,12 +1092,16 @@ landed but acceptance condition not fully met; **OPEN** = not yet started
 or blocked.
 
 - **MET**: All regressions (R1-R4) fixed
-- **MET**: `InferredNode` wrapper complete; `rt_node` returns `Node?` (no sentinel
+- **PARTIAL**: `InferredNode` wrapper landed; `rt_node` returns `Node?` (no sentinel
   fabrication); `node_is_error_type`/`node_is_dynamic` deleted; error/Dynamic
-  permissive rules removed from type comparison; `return_cardinality` on Node (P1.9)
-- **MET**: Normalization stage enforces arity as errors; pipeline gate halts before
-  infer on normalization errors. Call→MethodCall unification deferred to Phase 3
-  (declaration-driven per `03_normalize.dag`) (P1.14)
+  permissive rules removed from type comparison; `return_cardinality` on Node.
+  **Remaining:** ~15 `leaf_node(name: "Dynamic")` fabrications in infer; some
+  `rt_node(...)` callers collapse `None` into `Unit`; `resolve_optional_node`
+  still converts `CompilerError` back to `leaf_node("Error")`. (P1.9)
+- **PARTIAL**: Normalization stage wired and enforces arity as warnings; pipeline
+  continues past normalization. **Remaining:** audit-only (does not rewrite the
+  graph); bare parameterized types warned but not rejected; Call→MethodCall
+  unification deferred to Phase 3. (P1.14)
 - **MET**: Arity bridge enforced: bare-leaf tolerance removed; `actual == 0`
   rejected as error by normalization gate (P1.17)
 - **MET**: Parallel bridge name maps collapsed (P1.10)
@@ -1114,7 +1119,9 @@ or blocked.
 - **MET**: No silent/fail-open fabrication on the bootstrap-critical Rust emit
   path — every `"_"` placeholder, silent `todo!()`, and `Default::default()`
   fallback in `05_emit_rust.dag` is replaced with `compile_error!()` or
-  traced upstream. Go `interface{}` (13 sites), Python `_unimplemented()`
+  traced upstream. Non-numeric casts fail-closed with `compile_error!` unless
+  source and target resolve to the same Rust type (refinement identity cast).
+  Go `interface{}` (13 sites), Python `_unimplemented()`
   (2 sites), and Go `/* unhandled expr */` (1 site) are Phase 4 scope.
 - **MET**: No new emit heuristics introduced — every emit-side type-knowledge
   regression is traced upstream and fixed in inference or normalization
@@ -1122,13 +1129,16 @@ or blocked.
   (Diagnostics at 0 as of 2026-03-23. All 45 type errors resolved via
   `node_type_compatible` Unit-element handling and `prefer_specific_type`.
   53 ownership warnings resolved via multi-consumer binding restructuring.)
-- **MET**: Optional dissolved into binding-site cardinality (P1.4) — `Field.optional`
-  removed; `optional_node()` deleted; `node_is_optional` checks `return_cardinality`;
-  parser sets `CardOptional`; all emit backends wrap via cardinality; resolution
-  preserves cardinality through env lookups
+- **PARTIAL**: Optional dissolved from name-checking into `CardOptional` on
+  `Node.return_cardinality` (P1.4) — `Field.optional` removed; `optional_node()`
+  deleted; `node_is_optional` checks `return_cardinality`; parser sets
+  `CardOptional`; emit backends wrap via cardinality. **Remaining:** cardinality
+  still stamped on type expression nodes by `maybe_optional`; emitters still
+  call `node_is_optional(n)` on type nodes rather than reading binding-site
+  cardinality only. Not yet the pure binding-site model.
 - Fixed point still holds after every structural change (prior branch)
-- Phase 2 may start once all of the above are met; L1 dissolution
-  continues in parallel toward Phase 5's L1=0 gate
+- Phase 2 may start once all MET items hold; PARTIAL items continue
+  in parallel toward Phase 5's L1=0 gate
 
 ---
 

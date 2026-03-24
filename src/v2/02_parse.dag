@@ -791,7 +791,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
     let eq = eat(tokens: tokens, state: s, tag: "Eq")
     if eq.consumed {
       let s = skip_newlines(tokens: tokens, state: eq.state)
-      parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span)
+      parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span, type_params: type_params)
     } else {
       // Bare type declaration -- primitive type with no structural expansion
       let item = Node { name: name, span: start_span, children: [], connective: none, params: type_params, return_type: Some { value: Resolved { node: leaf_type_node(name: name, span: start_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -801,8 +801,8 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
 }
 
 // After `type Name =`, determine if this is a sum type or alias.
-fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: String, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: String, start_span: SourceSpan, type_params: List<Param>) -> ItemResult {
+  let dummy = Node { name: name, span: start_span, children: [], params: type_params, return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   // Check if the first token is an identifier (potential variant name)
   // followed by LBrace or Pipe (sum type indicators).
   // If it's an identifier, try to parse as a sum type.
@@ -821,7 +821,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       if has_err(err: rest.err) { return ItemResult { item: dummy, state: rest.state, err: rest.err } }
       let variants = rest.variants
       let type_children = variants |> map(v => variant_to_child_node(variant: v))
-      let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Disj }, params: type_params, return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: rest.state), err: none }
     } else {
       // It's an alias: type Name = SomeType
@@ -830,7 +830,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       // Check for where clause: type Name = BaseType where predicate(...)
       let wr = try_where_clause(tokens: tokens, state: r.state, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
-      let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let item = Node { name: name, span: start_span, children: [], connective: none, params: type_params, return_type: Some { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: wr.state), err: none }
     }
   } else {
@@ -840,7 +840,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
     // Check for where clause
     let wr = try_where_clause(tokens: tokens, state: r.state, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, state: wr.state, err: wr.err } }
-    let item = Node { name: name, span: start_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let item = Node { name: name, span: start_span, children: [], connective: none, params: type_params, return_type: Some { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     ItemResult { item: item, state: skip_newlines(tokens: tokens, state: wr.state), err: none }
   }
 }

@@ -36,11 +36,6 @@ type GitCommit {
 
 // -- Refs ----------------------------------------------------------
 
-type GitRef
-  = BranchRef { name: String }
-  | TagRef { name: String }
-  | CommitRef { sha: CommitSha }
-
 type GitBranch {
   name: String
   upstream: String?

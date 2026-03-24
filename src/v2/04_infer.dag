@@ -336,8 +336,89 @@ fn collect_typed_service_calls_from_args_into(args: List<NamedArg>, acc: UniqueA
   args |> fold(init: acc, f: (a, arg) => collect_typed_service_calls_into(texpr: arg.value, acc: a))
 }
 
+fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
+  match texpr.expr_data {
+    ExprCall { func: f, args: a, call_semantics: _ } =>
+      let acc2 = if emit_map_has(m: acc.seen, key: f) { acc }
+        else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
+      a |> fold(init: acc2, f: (ac, arg) => collect_called_func_names_into(texpr: arg.value, acc: ac))
+    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
+      let acc2 = collect_called_func_names_into(texpr: r, acc: acc)
+      a |> fold(init: acc2, f: (ac, arg) => collect_called_func_names_into(texpr: arg.value, acc: ac))
+    ExprLet { name: _, value: v, body: b } =>
+      let acc2 = collect_called_func_names_into(texpr: v, acc: acc)
+      match b { Some { value: bd } => collect_called_func_names_into(texpr: bd, acc: acc2)  None => acc2 }
+    ExprBlock { stmts: ss } =>
+      ss |> fold(init: acc, f: (a, s) => collect_called_func_names_into(texpr: s, acc: a))
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      let acc2 = collect_called_func_names_into(texpr: c, acc: acc)
+      let acc3 = collect_called_func_names_into(texpr: t, acc: acc2)
+      match e { Some { value: eb } => collect_called_func_names_into(texpr: eb, acc: acc3)  None => acc3 }
+    ExprMatch { scrutinee: s, arms: arm_list } =>
+      let acc2 = collect_called_func_names_into(texpr: s, acc: acc)
+      arm_list |> fold(init: acc2, f: (a, arm) => collect_called_func_names_into(texpr: arm.body, acc: a))
+    ExprForEach { variable: _, collection: c, body: bd } =>
+      let acc2 = collect_called_func_names_into(texpr: c, acc: acc)
+      collect_called_func_names_into(texpr: bd, acc: acc2)
+    ExprLambda { params: _, body: bd, semantics: _ } =>
+      collect_called_func_names_into(texpr: bd, acc: acc)
+    ExprReturn { value: v } =>
+      collect_called_func_names_into(texpr: v, acc: acc)
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
+      fs |> fold(init: acc, f: (a, fld) => collect_called_func_names_into(texpr: fld.value, acc: a))
+    _ => acc
+  }
+}
 
+fn collect_called_func_names(texpr: Node) -> List<String> {
+  let result = collect_called_func_names_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+  result.result
+}
 
+fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
+  let all_items = modules |> flat_map(m => m.items)
+  all_items |> fold(init: registry, f: (reg, item) =>
+    match map_get(reg, item.name) {
+      Some { value: info } =>
+        if info.kind != FuncItem { reg }
+        else if item.body == none { reg }
+        else {
+          let called = collect_called_func_names(texpr: item.body.value)
+          let extra = called |> flat_map(callee_name =>
+            match map_get(reg, callee_name) {
+              Some { value: callee_info } => callee_info.service_names
+              None => []
+            }
+          )
+          let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
+            if svc_list |> any(s => s == svc) { svc_list }
+            else { list_push(svc_list, svc) }
+          )
+          if merged |> count == info.service_names |> count { reg }
+          else {
+            map_insert(reg, item.name, ItemInfo {
+              name: info.name,
+              kind: info.kind,
+              service_names: merged,
+              resource_names: info.resource_names,
+              params: info.params,
+              is_self_recursive: info.is_self_recursive,
+              has_non_tail_self_call: info.has_non_tail_self_call
+            })
+          }
+        }
+      None => reg
+    }
+  )
+}
+
+fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
+  if remaining_passes <= 0 { registry }
+  else {
+    let next = expand_transitive_services_once(modules: modules, registry: registry)
+    expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1)
+  }
+}
 
 
 type NodeResolveResult {
@@ -4417,7 +4498,8 @@ fn typecheck_modules(
 ) -> TypedGraph {
   match remaining |> first {
     None =>
-      TypedGraph { modules: modules, item_registry: item_registry, diagnostics: flat_map(diag_chunks, c => c) }
+      let expanded_registry = expand_transitive_services(modules: modules, registry: item_registry, remaining_passes: 5)
+      TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
     Some { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
