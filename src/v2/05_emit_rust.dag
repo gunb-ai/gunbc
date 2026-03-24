@@ -2621,13 +2621,25 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
     Some { value: tn } =>
       // RC1: Qualify variant names with parent enum to avoid name collisions
       // (e.g. LitFloat exists in both TokenKind and LiteralValue).
-      // Prefer resolved_type.name (from return type inference) over parent_enum
-      // (from variant_to_enum map) since the latter can be wrong due to
-      // nondeterministic HashMap iteration order in v1-compiled stage0.
-      let effective_parent = if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
-        Some { value: resolved_type.name }
-      } else {
-        parent_enum
+      // Resolution order:
+      // 1. vtoe map (module-scope-corrected, deterministic by import analysis)
+      // 2. resolved_type.name from return type inference (global, not module-scoped)
+      // 3. parent_enum from inference annotation (nondeterministic for ambiguous variants)
+      // vtoe is preferred because it's corrected per-module based on imports.
+      // resolved_type.name is global and may point to the wrong parent for
+      // ambiguous variants (e.g., LitStr in LiteralValue vs TokenKind).
+      let vtoe_lookup = match map_get(vtoe, tn) {
+        Some { value: vp } => Some { value: vp }
+        None => none
+      }
+      let effective_parent = match vtoe_lookup {
+        Some { value: vtoe_parent } => Some { value: vtoe_parent }
+        None =>
+          if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
+            Some { value: resolved_type.name }
+          } else {
+            parent_enum
+          }
       }
       let display_tn = if tn == "Some" || tn == "None" { tn }
         else {
@@ -2692,10 +2704,27 @@ fn emit_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<Strin
   } else {
     let op_str = rust_bin_op_symbol(op: op)
     if is_string_comparison(op: op, left: left, right: right) {
-      concat("(", l_str, ".as_str() ", op_str, " ", r_str, ".as_str())")
+      // When either side is Optional<String>, use .as_deref() to get Option<&str>
+      // instead of .as_str() which doesn't exist on Option<String>.
+      let l_optional = is_optional_typed_expr(e: left)
+      let r_optional = is_optional_typed_expr(e: right)
+      if l_optional || r_optional {
+        let l_cmp = if l_optional { concat(l_str, ".as_deref()") } else { concat("Some(", l_str, ".as_str())") }
+        let r_cmp = if r_optional { concat(r_str, ".as_deref()") } else { concat("Some(", r_str, ".as_str())") }
+        concat("(", l_cmp, " ", op_str, " ", r_cmp, ")")
+      } else {
+        concat("(", l_str, ".as_str() ", op_str, " ", r_str, ".as_str())")
+      }
     } else {
       concat("(", l_str, " ", op_str, " ", r_str, ")")
     }
+  }
+}
+
+fn is_optional_typed_expr(e: Node) -> Bool {
+  match e.return_type {
+    Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+    _ => false
   }
 }
 
@@ -2711,7 +2740,9 @@ fn is_string_comparison(op: BinOpKind, left: Node, right: Node) -> Bool {
 // Check if an expression has String resolved_type or is a string literal.
 fn is_string_typed_expr(e: Node) -> Bool {
   match e.return_type {
-    Some { value: Resolved { node: rt } } => is_string_type_node(n: rt)
+    Some { value: Resolved { node: rt } } =>
+      let inner = if node_is_optional(n: rt) { with_required_cardinality(n: rt) } else { rt }
+      is_string_type_node(n: inner)
     _ => false
   }
 }

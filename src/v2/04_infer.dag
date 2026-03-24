@@ -33,6 +33,7 @@ import v2.std.core {
   make_expr_node, make_expr_error_node,
   rt_node, has_return_type, InferredNode, Resolved, CompilerError,
   NodeType, Typed, InferError, Untyped,
+  expr_children,
   Cardinality, Required, CardOptional,
   Diagnostic, Severity, Warning,
   ResourceUse,
