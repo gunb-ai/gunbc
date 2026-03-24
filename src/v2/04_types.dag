@@ -18,7 +18,8 @@ import v2.std.core {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type, is_kernel_numeric, is_kernel_textual,
   parameterized_type_arity, is_parameterized_type,
-  BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce
+  BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
+  InferredNode, Resolved, CompilerError, rt_node, has_return_type
 }
 
 // =========================================================================
@@ -27,7 +28,7 @@ import v2.std.core {
 
 fn child_return_type_or_name(ch: Node) -> Node {
   if ch.return_type == none { leaf_node(name: ch.name) }
-  else { ch.return_type.value }
+  else { rt_node(n: ch) }
 }
 
 fn leaf_node(name: String) -> Node {
@@ -60,8 +61,8 @@ fn container_node(kind_name: String, element: Node) -> Node {
 
 fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: first }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: second }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: first } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: second } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
@@ -83,14 +84,15 @@ fn type_node_arity_ok(n: Node) -> Bool {
 }
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: ret }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: Resolved { node: ret } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn callable_return_type(n: Node) -> Node {
   if n.name == "Callable" {
     match n.return_type {
-      Some { value: ret } => ret
+      Some { value: Resolved { node: ret } } => ret
       None => leaf_node(name: "Dynamic")
+      _ => leaf_node(name: "Dynamic")
     }
   } else { n }
 }
@@ -152,7 +154,7 @@ fn node_is_leaf(n: Node) -> Bool {
 fn node_is_named_ref(n: Node) -> Bool {
   if n.return_type == none { false }
   else {
-    let rt = n.return_type.value
+    let rt = rt_node(n: n)
     node_has_structure(n: rt) == false && rt.children |> count == 0
       && rt.name != "" && rt.name != "None"
       && is_kernel_type(name: rt.name) == false
@@ -352,12 +354,14 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       if params_eq == false { false }
       else {
         match left.return_type {
-          Some { value: left_ret } =>
+          Some { value: Resolved { node: left_ret } } =>
             match right.return_type {
-              Some { value: right_ret } => node_type_equals(left: left_ret, right: right_ret)
+              Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
               None => false
+              _ => false
             }
           None => right.return_type == none
+          _ => false
         }
       }
     }
@@ -373,17 +377,17 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
-    [n.return_type.value.name]
+    [rt_node(n: n).name]
   } else if node_has_structure(n: n) {
     flat_map(n.children, child =>
       if child.return_type != none {
-        node_type_deps(n: child.return_type.value)
+        node_type_deps(n: rt_node(n: child))
       } else {
         node_type_deps(n: child)
       }
     )
   } else if n.return_type != none {
-    node_type_deps(n: n.return_type.value)
+    node_type_deps(n: rt_node(n: n))
   } else if n.children |> count > 0 {
     flat_map(n.children, child => node_type_deps(n: child))
   } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {

@@ -19,6 +19,7 @@ import v2.std.core {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
+import v2.compiler.normalize { normalize_graph, NormalizeResult }
 import v2.compiler.infer { reconcile, ResolvedGraph }
 import v2.compiler.emit { EmitResult }
 import v2.compiler.emit_rust { emit_rust }
@@ -224,10 +225,15 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         }
       }
 
+      // Stage 3.5: Normalize the resolved graph.
+      // Enforces arity completeness on parameterized type nodes.
+      let norm = normalize_graph(graph: graph)
+      let norm_diags = norm.diagnostics
+
       // Stage 4: Reconcile namespaces and infer the module graph.
       // The env-error gate inside reconcile() prevents unresolved type
       // references from reaching emit.
-      let typed = reconcile(graph: graph)
+      let typed = reconcile(graph: norm.graph)
       let typed_diags = typed.diagnostics
 
       // Gate: if typecheck produced errors, do not proceed to emit.
@@ -235,7 +241,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
-          diagnostics: concat(frontend.diagnostics, typed_diags),
+          diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags),
           complexity: empty_complexity_report(),
           ownership: [],
           artifact_plan: empty_artifact_plan()
@@ -275,7 +281,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {
         files: final_files,
-        diagnostics: concat(frontend.diagnostics, typed_diags, ownership_diags, emit_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, ownership_diags, emit_diags),
         complexity: complexity,
         ownership: ownership,
         artifact_plan: artifact_plan

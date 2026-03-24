@@ -218,6 +218,25 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   }
 }
 
+// Extract the type Node from a Node's return_type field.
+// Handles the InferredNode wrapper: Resolved → inner node,
+// CompilerError → error sentinel node (behavioral equivalence),
+// None → unit sentinel node (unset return type).
+fn rt_node(n: Node) -> Node {
+  match n.return_type {
+    Some { value: Resolved { node: rt } } => rt
+    Some { value: CompilerError { message: _, span: _ } } =>
+      Node { name: "Error", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    None =>
+      Node { name: "Unit", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  }
+}
+
+// Check if a Node has a return_type set (regardless of Resolved or CompilerError).
+fn has_return_type(n: Node) -> Bool {
+  n.return_type != none
+}
+
 type IntrinsicMethod
   = MethodCount
   | MethodJoin
@@ -473,7 +492,7 @@ type Node {
   connective: Connective?
   // Ports -- what flows in and out
   params: List<Param>
-  return_type: Node?
+  return_type: InferredNode?
   uses: List<ResourceUse>
   // Computation -- how it executes (none = externally provided)
   body: Node?
@@ -489,7 +508,8 @@ type Node {
 }
 
 // Construct a Node carrying expression data (the Node-embedded form).
-fn make_expr_node(expr_data: ExprData, return_type: Node?, span: SourceSpan) -> Node {
+// Accepts InferredNode? for return_type and passes it through directly.
+fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
     params: [], return_type: return_type, uses: [], body: none,
@@ -500,12 +520,14 @@ fn make_expr_node(expr_data: ExprData, return_type: Node?, span: SourceSpan) -> 
 }
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
-  let error_type = Node { name: "Error", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  make_expr_node(
-    expr_data: ExprError { kind: kind, message: message },
-    return_type: Some { value: error_type },
-    span: span
-  )
+  Node {
+    name: "", span: span, children: [], connective: none,
+    params: [], return_type: Some { value: CompilerError { message: message, span: span } },
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false,
+    expr_data: ExprError { kind: kind, message: message }
+  }
 }
 
 // =========================================================================

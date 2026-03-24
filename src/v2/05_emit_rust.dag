@@ -16,7 +16,7 @@ module v2.compiler.emit_rust
 
 import v2.std.core {
   Import, ImportAll, ImportSpecific,
-  Node,
+  Node, InferredNode, Resolved, CompilerError, rt_node,
   Connective, Conj, Disj,
   Param, LiteralValue,
   ExprData, NoExprData,
@@ -123,7 +123,7 @@ fn emit_single_field_product_rust_type(field_node: Node, rc_types: Map<String, B
   if field_node.return_type == none {
     "compile_error!(\"anonymous product field missing return_type\")"
   } else {
-    emit_rust_node_type(n: field_node.return_type.value, rc_types: rc_types)
+    emit_rust_node_type(n: rt_node(n: field_node), rc_types: rc_types)
   }
 }
 
@@ -539,12 +539,12 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   if (kind == TypedItemTypeDef) {
     emit_type_def_from_connective(item: item, recursive_types: scope.type_env.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
-    concat("pub type ", item.name, " = ", emit_rust_node_type(n: item.return_type.value, rc_types: rc_types), ";")
+    concat("pub type ", item.name, " = ", emit_rust_node_type(n: rt_node(n: item), rc_types: rc_types), ";")
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_func_def(name: item.name, params: item.params, return_type: item.return_type.value, uses: item.uses, body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_func_def(name: item.name, params: item.params, return_type: rt_node(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     } else {
-      emit_fn_def(name: item.name, params: item.params, return_type: item.return_type.value, body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_fn_def(name: item.name, params: item.params, return_type: rt_node(n: item), body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     }
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -554,7 +554,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
     emit_resource_def(item: item)
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_params(params: item.params, rc_types: rc_types)
-    let ret_str = emit_return_type(return_type: item.return_type.value, rc_types: rc_types)
+    let ret_str = emit_return_type(return_type: rt_node(n: item), rc_types: rc_types)
     concat("pub fn ", rust_ident(name: item.name), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   } else {
     concat("compile_error!(\"unhandled item: ", item.name, "\");")
@@ -615,8 +615,8 @@ fn emit_struct_from_children(name: String, children: List<Node>, recursive_types
 
 fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
-  let ty = emit_rust_node_type(n: child.return_type.value, rc_types: rc_types)
-  let final_ty = if needs_box_wrapping(n: child.return_type.value, recursive_types: recursive_types, rc_types: rc_types) {
+  let ty = emit_rust_node_type(n: rt_node(n: child), rc_types: rc_types)
+  let final_ty = if needs_box_wrapping(n: rt_node(n: child), recursive_types: recursive_types, rc_types: rc_types) {
     concat("Box<", ty, ">")
   } else { ty }
   // Check for from_key in child properties
@@ -680,7 +680,7 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => f.name == fname) |> first {
-        Some { value: f } => emit_rust_node_type(n: f.return_type.value, rc_types: rc_types)
+        Some { value: f } => emit_rust_node_type(n: rt_node(n: f), rc_types: rc_types)
         None => ""
       }
     )
@@ -694,8 +694,8 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => f.name == fname) |> first {
-      Some { value: f } => emit_rust_node_type(n: f.return_type.value, rc_types: rc_types)
-      None => "compile_error!(\"enum shared accessor missing field metadata\")" 
+      Some { value: f } => emit_rust_node_type(n: rt_node(n: f), rc_types: rc_types)
+      None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     // Generate match arms for each variant.
     let arms = children |> map(child =>
@@ -719,8 +719,8 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
   } else {
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
-      let ty = emit_rust_node_type(n: f.return_type.value, rc_types: rc_types)
-      let final_ty = if needs_box_wrapping(n: f.return_type.value, recursive_types: recursive_types, rc_types: rc_types) {
+      let ty = emit_rust_node_type(n: rt_node(n: f), rc_types: rc_types)
+      let final_ty = if needs_box_wrapping(n: rt_node(n: f), recursive_types: recursive_types, rc_types: rc_types) {
         concat("Box<", ty, ">")
       } else { ty }
       concat("        ", rust_ident(name: f.name), ": ", final_ty, ",")
@@ -743,8 +743,8 @@ fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
     let param_types = n.params |> map(p => emit_rust_node_type(n: p.type_expr, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.return_type {
-      Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
-      None => "()"
+      Some { value: Resolved { node: rt } } => emit_rust_node_type(n: rt, rc_types: rc_types)
+      _ => "()"
     }
     return concat("impl Fn(", param_str, ") -> ", ret_str)
   }
@@ -808,17 +808,21 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
     }
   } else if n.name == "Tuple" {
     let first_str = match n.children |> first {
-      Some { value: c } => match c.return_type {
-        Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
-        None => emit_rust_node_type(n: c, rc_types: rc_types)
-      }
+      Some { value: c } =>
+        if c.return_type != none {
+          emit_rust_node_type(n: rt_node(n: c), rc_types: rc_types)
+        } else {
+          emit_rust_node_type(n: c, rc_types: rc_types)
+        }
       None => "()"
     }
     let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } => match c.return_type {
-        Some { value: rt } => emit_rust_node_type(n: rt, rc_types: rc_types)
-        None => emit_rust_node_type(n: c, rc_types: rc_types)
-      }
+      Some { value: c } =>
+        if c.return_type != none {
+          emit_rust_node_type(n: rt_node(n: c), rc_types: rc_types)
+        } else {
+          emit_rust_node_type(n: c, rc_types: rc_types)
+        }
       None => "()"
     }
     concat("(", first_str, ", ", second_str, ")")
@@ -839,7 +843,7 @@ fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
       // Anonymous multi-field product → Rust tuple type.
       let field_types = n.children |> map(child =>
         if child.return_type != none {
-          emit_rust_node_type(n: child.return_type.value, rc_types: rc_types)
+          emit_rust_node_type(n: rt_node(n: child), rc_types: rc_types)
         } else { "String" }
       )
       concat("(", field_types |> join(separator: ", "), ")")
@@ -952,7 +956,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
     ExprLet { name: n, value: v, body: inner } => {
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.return_type.value)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: rt_node(n: v))
       match inner {
         Some { value: bd } =>
           concat(let_line, "\n", emit_func_body(body: bd, registry: registry, scope: next_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
@@ -1324,11 +1328,11 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
     analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   )
   let scrutinee_is_rc_wrapped = match scrutinee.return_type {
-    Some { value: rt } =>
+    Some { value: Resolved { node: rt } } =>
       if rt.children |> count == 0 && rt.name != "" {
         emit_map_has(m: rc_types, key: rt.name)
       } else { false }
-    None => false
+    _ => false
   }
   RcMatchAnalysis {
     needs_option_deref: arm_analyses |> any(a => a.matches_option_rc_variant),
@@ -1469,7 +1473,7 @@ fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Node?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>) -> String {
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>) -> String {
   if name == "none" || name == "None" { "None" }
   else if name == "true" || name == "false" { name }
   else {
@@ -1549,13 +1553,13 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   // inner type (single-field → bare type, multi-field → tuple), so field access must be
   // translated to the flattened representation.
   let base_is_anon_record = match base.return_type {
-    Some { value: bt } =>
+    Some { value: Resolved { node: bt } } =>
       let kind = classify_type_structure(n: bt)
       if (kind == TypeConj) && bt.name == "" { true } else { false }
-    None => false
+    _ => false
   }
   if base_is_anon_record {
-    let bt = base.return_type.value
+    let bt = rt_node(n: base)
     if bt.children |> count == 1 {
       // Single-field anonymous record: emitter unwraps to bare type, so elide field access.
       base_str
@@ -1603,7 +1607,7 @@ fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) ->
     let canonical = normed.name
     if normed.return_type != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      type_needs_rc_seen(env: env, type_node: normed.return_type.value, seen: next_seen)
+      type_needs_rc_seen(env: env, type_node: rt_node(n: normed), seen: next_seen)
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
       false
     } else {
@@ -1644,12 +1648,12 @@ fn rust_lookup_receiver_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool
     return false
   }
   match receiver.return_type {
-    Some { value: receiver_type } =>
+    Some { value: Resolved { node: receiver_type } } =>
       match rust_map_value_type(receiver_type: receiver_type, scope: scope) {
         Some { value: value_type } => type_needs_rc(env: scope.type_env, type_node: value_type)
         None => false
       }
-    None => false
+    _ => false
   }
 }
 
@@ -1687,7 +1691,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
         if base_check { true }
         else {
           match texpr.return_type {
-            Some { value: ret_type } =>
+            Some { value: Resolved { node: ret_type } } =>
               let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
               if node_is_optional(n: resolved_ret) {
                 match resolved_ret.children |> first {
@@ -1695,7 +1699,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
                   None => false
                 }
               } else { false }
-            None => false
+            _ => false
           }
         }
       } else {
@@ -1711,7 +1715,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     ExprLet { name: n, value: v, body: bd } =>
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: texpr.return_type.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_node(n: texpr), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprListLit { elements: els } =>
       emit_typed_list_lit(elements: els, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprBinOp { op: o, left: l, right: r } =>
@@ -1752,8 +1756,8 @@ fn is_enum_type_name(type_name: String, vtoe: Map<String, String>) -> Bool {
 
 fn is_map_typed_expr(texpr: Node) -> Bool {
   match texpr.return_type {
-    Some { value: n } => node_is_map(n: n)
-    None => false
+    Some { value: Resolved { node: n } } => node_is_map(n: n)
+    _ => false
   }
 }
 
@@ -1782,9 +1786,10 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     let update_arg = (with_args |> skip(1) |> first).value.value
     let base_str = emit_typed_expr(texpr: base_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     // Get the struct type name from the base argument's return_type.
-    let type_name = match base_arg.return_type {
-      Some { value: rt } => rt.name
-      None => "compile_error!(\"with call missing resolved record type\")"
+    let type_name = if base_arg.return_type != none {
+      rt_node(n: base_arg).name
+    } else {
+      "compile_error!(\"with call missing resolved record type\")"
     }
     // Extract field inits from the update argument (ExprRecordLit).
     let field_strs = match update_arg.expr_data {
@@ -1872,7 +1877,7 @@ fn emit_nested_rt_concat(remaining: List<String>, acc: String, rc_types: Map<Str
 
 fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let elem_type = for_each_element_type_node(n: collection.return_type.value)
+  let elem_type = for_each_element_type_node(n: rt_node(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   concat("for ", rust_ident(name: variable), " in ", coll_str, ".iter().cloned() {\n",
@@ -1882,7 +1887,7 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
 fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let base_node = normalize_access_type_node(n: base.return_type.value)
+  let base_node = normalize_access_type_node(n: rt_node(n: base))
   if is_string_type_node(n: base_node) {
     concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
   } else if node_is_map(n: base_node) {
@@ -1896,7 +1901,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let base_node = normalize_access_type_node(n: base.return_type.value)
+  let base_node = normalize_access_type_node(n: rt_node(n: base))
   if is_string_type_node(n: base_node) {
     concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
   } else {
@@ -1905,16 +1910,16 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
 }
 
 // Extract element type string from a receiver's resolved_type (List<T> -> T's Rust type).
-fn collection_element_type(receiver_type: Node?, rc_types: Map<String, Bool>) -> String {
+fn collection_element_type(receiver_type: InferredNode?, rc_types: Map<String, Bool>) -> String {
   match receiver_type {
-    Some { value: rt } =>
+    Some { value: Resolved { node: rt } } =>
       if node_is_container(n: rt) {
         match rt.children |> first {
           Some { value: elem_node } => emit_rust_node_type(n: elem_node, rc_types: rc_types)
           None => "_"
         }
       } else { "_" }
-    None => "_"
+    _ => "_"
   }
 }
 
@@ -2019,8 +2024,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       // RC4: If the receiver is Optional, emit .map(|p| body) to preserve Option type.
       // Otherwise use the standard for-loop collect pattern for lists.
       let recv_is_optional = match receiver.return_type {
-        Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
-        None => false
+        Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+        _ => false
       }
       if recv_is_optional {
         match args |> first {
@@ -2119,12 +2124,11 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
               // Fallback: infer accumulator type from init expression's return type
               match args |> first {
                 Some { value: init_arg } =>
-                  match init_arg.value.return_type {
-                    Some { value: init_rt } =>
-                      let init_type = emit_rust_node_type(n: init_rt, rc_types: rc_types)
-                      if init_type != "" && init_type != "Dynamic" { init_type } else { "_" }
-                    None => "_"
-                  }
+                  if init_arg.value.return_type != none {
+                    let init_rt = rt_node(n: init_arg.value)
+                    let init_type = emit_rust_node_type(n: init_rt, rc_types: rc_types)
+                    if init_type != "" && init_type != "Dynamic" { init_type } else { "_" }
+                  } else { "_" }
                 None => "_"
               }
           }
@@ -2136,13 +2140,13 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
     MethodSortBy =>
       // Annotate sort_by closure params with the element type to avoid E0282.
       let elem_type_str = match receiver.return_type {
-        Some { value: rt } =>
+        Some { value: Resolved { node: rt } } =>
           let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
           let elem = for_each_element_type_node(n: resolved)
           if elem.name != "" && elem.name != "Dynamic" {
             emit_rust_node_type(n: elem, rc_types: rc_types)
           } else { "_" }
-        None => "_"
+        _ => "_"
       }
       concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", first_arg_str, ")(a.clone()); let __kb = (", first_arg_str, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
     MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
@@ -2194,11 +2198,11 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
   } else if (method == BridgeWith) {
     let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let type_name = match receiver.return_type {
-      Some { value: rt } =>
+      Some { value: Resolved { node: rt } } =>
         if node_is_error_type(n: rt) || rt.name == "" {
           "compile_error!(\"with method missing resolved record type\")"
         } else { rt.name }
-      None => "compile_error!(\"with method missing resolved record type\")"
+      _ => "compile_error!(\"with method missing resolved record type\")"
     }
     if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
     let update_arg = (args |> first).value.value
@@ -2264,14 +2268,14 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   // Extract scrutinee type name for qualifying variant patterns.
   // For Optional<T>, unwrap to get T so inner patterns qualify correctly.
   let scrut_type = match scrutinee.return_type {
-    Some { value: rt } =>
+    Some { value: Resolved { node: rt } } =>
       if node_is_optional(n: rt) {
         match rt.children |> first {
           Some { value: inner } => inner.name
           None => rt.name
         }
       } else { rt.name }
-    None => ""
+    _ => ""
   }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type))
@@ -2343,7 +2347,7 @@ fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, 
   let let_line = concat("let ", rust_ident(name: name), " = ", val_str, ";")
   match body {
     Some { value: bd } =>
-      let next_scope = extend_scope(scope: scope, name: name, resolved: value.return_type.value)
+      let next_scope = extend_scope(scope: scope, name: name, resolved: rt_node(n: value))
       concat(let_line, "\n", emit_typed_expr(texpr: bd, registry: registry, scope: next_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
     None => let_line
   }
@@ -2353,7 +2357,7 @@ fn emit_record_lit_full(type_name: String?, fields: List<FieldInit>, span: Sourc
   let inferred = infer_record_lit(type_name: type_name, field_inits: fields, span: span, scope: scope)
   match inferred.typed.expr_data {
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: inferred.typed.return_type.value, registry: registry, scope: scope, depth: 0, vtoe: empty_map(), rc_types: rc_types, emit_info: emit_info)
+      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_node(n: inferred.typed), registry: registry, scope: scope, depth: 0, vtoe: empty_map(), rc_types: rc_types, emit_info: emit_info)
     _ =>
       "compile_error!(\"internal error: infer_record_lit did not produce ExprRecordLit\")"
   }
@@ -2382,8 +2386,8 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         true
       } else {
         match texpr.return_type {
-          Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
-          None =>
+          Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+          _ =>
             match map_get(scope.locals, n) {
               Some { value: binding } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved))
               None => false
@@ -2406,28 +2410,28 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       if summary_says_optional { true }
       else {
         match b.return_type {
-          Some { value: base_type } =>
+          Some { value: Resolved { node: base_type } } =>
             let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_type)
             if is_optional_struct_field(emit_info: emit_info, struct_name: resolved_base.name, field_name: f) {
               true
             } else {
               // Fallback: struct may not be in type_summaries; check expression return type
               match texpr.return_type {
-                Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
-                None => false
+                Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+                _ => false
               }
             }
-          None =>
+          _ =>
             match texpr.return_type {
-              Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
-              None => false
+              Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+              _ => false
             }
         }
       }
     _ =>
       match texpr.return_type {
-        Some { value: rt } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
-        None => false
+        Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+        _ => false
       }
   }
 }
@@ -2441,13 +2445,12 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
   // First try: direct children (works for Conj/struct nodes)
   let direct = match struct_node.children |> filter(c => c.name == field_name) |> first {
     Some { value: field_child } =>
-      match field_child.return_type {
-        Some { value: field_type } =>
-          if field_type.name != "" && field_type.name != "Dynamic" {
-            Some { value: field_type.name }
-          } else { none }
-        None => none
-      }
+      if field_child.return_type != none {
+        let field_type = rt_node(n: field_child)
+        if field_type.name != "" && field_type.name != "Dynamic" {
+          Some { value: field_type.name }
+        } else { none }
+      } else { none }
     None => none
   }
   match direct {
@@ -2460,13 +2463,12 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
             Some { value: variant_child } =>
               match variant_child.children |> filter(c => c.name == field_name) |> first {
                 Some { value: field_child } =>
-                  match field_child.return_type {
-                    Some { value: field_type } =>
-                      if field_type.name != "" && field_type.name != "Dynamic" {
-                        Some { value: field_type.name }
-                      } else { none }
-                    None => none
-                  }
+                  if field_child.return_type != none {
+                    let field_type = rt_node(n: field_child)
+                    if field_type.name != "" && field_type.name != "Dynamic" {
+                      Some { value: field_type.name }
+                    } else { none }
+                  } else { none }
                 None => none
               }
             None => none
@@ -2505,7 +2507,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               } else { pe }
             None => pe
           }
-          emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: field_value.return_type.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: rt_node(n: field_value), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None =>
           emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
@@ -2634,8 +2636,8 @@ fn is_string_comparison(op: BinOpKind, left: Node, right: Node) -> Bool {
 // Check if an expression has String resolved_type or is a string literal.
 fn is_string_typed_expr(e: Node) -> Bool {
   match e.return_type {
-    Some { value: rt } => is_string_type_node(n: rt)
-    None => false
+    Some { value: Resolved { node: rt } } => is_string_type_node(n: rt)
+    _ => false
   }
 }
 
@@ -2765,14 +2767,14 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
     ExprMatch { scrutinee: s, arms: arm_list } =>
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_scrut_type = match s.return_type {
-        Some { value: rt } =>
+        Some { value: Resolved { node: rt } } =>
           if node_is_optional(n: rt) {
             match rt.children |> first {
               Some { value: inner } => inner.name
               None => rt.name
             }
           } else { rt.name }
-        None => ""
+        _ => ""
       }
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, vtoe: vtoe, rc_types: rc_types)
       let arm_strs = arm_list |> map(arm =>
@@ -2792,7 +2794,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       let let_line = if is_param { concat(rust_ident(name: n), " = ", val_str, ";") } else { concat("let ", rust_ident(name: n), " = ", val_str, ";") }
-      let next_scope = extend_scope(scope: scope, name: n, resolved: v.return_type.value)
+      let next_scope = extend_scope(scope: scope, name: n, resolved: rt_node(n: v))
       match bd {
         Some { value: b } =>
           concat(let_line, "\n", emit_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
@@ -2994,7 +2996,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_rust_node_type(n: op_node.return_type.value, rc_types: empty_map())
+  let ret_type = emit_rust_node_type(n: rt_node(n: op_node), rc_types: empty_map())
   // Use per-operation transport override if present, otherwise service-level transport.
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
@@ -3002,7 +3004,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   }
   let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry, depth: depth + 2)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: p.name))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: op_node.return_type.value, mock_props: mock_props, registry: registry)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: rt_node(n: op_node), mock_props: mock_props, registry: registry)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -3137,7 +3139,7 @@ fn emit_capability_method(cap_node: Node) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_rust_node_type(n: cap_node.return_type.value, rc_types: empty_map())
+  let ret = emit_rust_node_type(n: rt_node(n: cap_node), rc_types: empty_map())
   concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
@@ -3321,7 +3323,7 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     name: item.name,
     module_name: module_name,
     params: item.params,
-    return_type: item.return_type.value,
+    return_type: rt_node(n: item),
     uses: item.uses,
     service_names: svc_names
   }

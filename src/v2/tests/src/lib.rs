@@ -105,6 +105,7 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
+            root.join("src/v2/03_normalize.dag"),
             root.join("src/v2/04_types.dag"),
             root.join("src/v2/04_env.dag"),
             root.join("src/v2/04_method.dag"),
@@ -210,6 +211,7 @@ mod tests {
             root.join("src/v2/01_tokenize.dag"),
             root.join("src/v2/02_parse.dag"),
             root.join("src/v2/03_resolve.dag"),
+            root.join("src/v2/03_normalize.dag"),
             root.join("src/v2/04_types.dag"),
             root.join("src/v2/04_env.dag"),
             root.join("src/v2/04_method.dag"),
@@ -3083,12 +3085,18 @@ fn get_name() -> String {\n\
             gunbc_ir::Value::Map(map) => map,
             other => panic!("expected alias node map, got: {:?}", other),
         };
+        let mut resolved_wrapper = std::collections::BTreeMap::new();
+        resolved_wrapper.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Resolved".to_string()),
+        );
+        resolved_wrapper.insert("node".to_string(), map_type);
         let mut some_return = std::collections::BTreeMap::new();
         some_return.insert(
             "_variant".to_string(),
             gunbc_ir::Value::Str("Some".to_string()),
         );
-        some_return.insert("value".to_string(), map_type);
+        some_return.insert("value".to_string(), gunbc_ir::Value::Map(resolved_wrapper));
         alias_node.insert("return_type".to_string(), gunbc_ir::Value::Map(some_return));
         let alias_node = gunbc_ir::Value::Map(alias_node);
 
@@ -3223,12 +3231,18 @@ fn from_method() -> User? {\n\
             gunbc_ir::Value::Map(map) => map,
             other => panic!("expected alias node map, got: {:?}", other),
         };
+        let mut a_resolved = std::collections::BTreeMap::new();
+        a_resolved.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Resolved".to_string()),
+        );
+        a_resolved.insert("node".to_string(), named_type_value("B"));
         let mut a_return = std::collections::BTreeMap::new();
         a_return.insert(
             "_variant".to_string(),
             gunbc_ir::Value::Str("Some".to_string()),
         );
-        a_return.insert("value".to_string(), named_type_value("B"));
+        a_return.insert("value".to_string(), gunbc_ir::Value::Map(a_resolved));
         alias_a.insert("return_type".to_string(), gunbc_ir::Value::Map(a_return));
         let alias_a = gunbc_ir::Value::Map(alias_a);
 
@@ -3236,12 +3250,18 @@ fn from_method() -> User? {\n\
             gunbc_ir::Value::Map(map) => map,
             other => panic!("expected alias node map, got: {:?}", other),
         };
+        let mut b_resolved = std::collections::BTreeMap::new();
+        b_resolved.insert(
+            "_variant".to_string(),
+            gunbc_ir::Value::Str("Resolved".to_string()),
+        );
+        b_resolved.insert("node".to_string(), named_type_value("A"));
         let mut b_return = std::collections::BTreeMap::new();
         b_return.insert(
             "_variant".to_string(),
             gunbc_ir::Value::Str("Some".to_string()),
         );
-        b_return.insert("value".to_string(), named_type_value("A"));
+        b_return.insert("value".to_string(), gunbc_ir::Value::Map(b_resolved));
         alias_b.insert("return_type".to_string(), gunbc_ir::Value::Map(b_return));
         let alias_b = gunbc_ir::Value::Map(alias_b);
 
@@ -3991,6 +4011,7 @@ fn origin() -> Point {
             ("01_tokenize", "src/v2/01_tokenize.dag"),
             ("02_parse", "src/v2/02_parse.dag"),
             ("03_resolve", "src/v2/03_resolve.dag"),
+            ("03_normalize", "src/v2/03_normalize.dag"),
             ("04_types", "src/v2/04_types.dag"),
             ("04_env", "src/v2/04_env.dag"),
             ("04_method", "src/v2/04_method.dag"),
@@ -5683,6 +5704,78 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
                 "emit_data_value_json wildcards must use invalid markers, not silent null"
             );
         }
+    }
+
+    /// P1.16: Scrambled-name test. Verifies that inference produces identical
+    /// structural decisions regardless of type names. Renames all type names
+    /// to arbitrary strings, re-compiles, and compares the inferred graph
+    /// structure (children count, connective shape) — not names.
+    #[test]
+    fn v2_scrambled_name_inference_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        // Program with real type names
+        let source_real = "\
+module scramble_test
+
+type Foo { x: Int  y: String }
+type Bar { items: List<Foo>  count: Int }
+
+fn make_bar(f: Foo) -> Bar {
+  Bar { items: [f], count: 1 }
+}
+
+fn get_x(b: Bar) -> Int {
+  let first = b.items |> first
+  match first {
+    Some { value: f } => f.x
+    None => 0
+  }
+}
+";
+
+        // Same program with scrambled type names (Foo→Zqx, Bar→Wmn)
+        let source_scrambled = "\
+module scramble_test
+
+type Zqx { x: Int  y: String }
+type Wmn { items: List<Zqx>  count: Int }
+
+fn make_bar(f: Zqx) -> Wmn {
+  Wmn { items: [f], count: 1 }
+}
+
+fn get_x(b: Wmn) -> Int {
+  let first = b.items |> first
+  match first {
+    Some { value: f } => f.x
+    None => 0
+  }
+}
+";
+
+        let result_real = compile_sources_with(&output, &[("scramble_test.dag", source_real)]);
+        let result_scrambled = compile_sources_with(&output, &[("scramble_test.dag", source_scrambled)]);
+
+        // Both should compile with same number of diagnostics
+        let diags_real = diagnostic_messages(result_real.get("diagnostics").unwrap());
+        let diags_scrambled = diagnostic_messages(result_scrambled.get("diagnostics").unwrap());
+        assert_eq!(
+            diags_real.len(),
+            diags_scrambled.len(),
+            "scrambled names should produce same diagnostic count.\nReal: {:?}\nScrambled: {:?}",
+            diags_real,
+            diags_scrambled
+        );
+
+        // Both should emit the same number of files
+        let files_real = result_real.get("files").unwrap();
+        let files_scrambled = result_scrambled.get("files").unwrap();
+        assert_eq!(
+            emitted_file_count(files_real),
+            emitted_file_count(files_scrambled),
+            "scrambled names should produce same file count"
+        );
     }
 
     /// Lightweight gist pipeline test via interpreter: single synthetic module

@@ -19,7 +19,7 @@ module v2.compiler.emit
 
 import v2.std.core {
   Import,
-  Node,
+  Node, InferredNode, Resolved, CompilerError, rt_node,
   Connective, Conj, Disj,
   Field, Param,
   ExprData, NoExprData,
@@ -200,7 +200,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
     ExprLet { name: name, value: value, body: body } =>
       if body == none {
-        extend_scope(scope: scope, name: name, resolved: value.return_type.value)
+        extend_scope(scope: scope, name: name, resolved: rt_node(n: value))
       } else {
         scope
       }
@@ -827,7 +827,7 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   let item_kind = classify_type_structure(n: item)
   let kind = if item_kind != TypeLeaf && item.transport == none {
     TypedItemTypeDef
-  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: item.return_type.value) {
+  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_node(n: item)) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
