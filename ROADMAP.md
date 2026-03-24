@@ -63,7 +63,7 @@ The thesis dissolves compiler knowledge in three layers:
 | Layer | What dissolves | Compiler stops knowing | Measured sites | Status |
 |-------|----------------|------------------------|---------------:|--------|
 | **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean — the compiler processes graph structure; names are opaque namespaces; `Optional` dissolved into cardinality (P1.4) | 470 | **Active — `BuiltinTypeKind` deleted, predicates centralized, `InferredNode` wrapper landed (bridges remain — see P1.9), cardinality model landed (bridges remain — see P1.4), Optional name-checking dissolved; count at 470 (up from ~373) because dissolution trades type wrappers for explicit cardinality checks and InferredNode plumbing** |
-| **L2: Expressions** | `ExprData` semantic knowledge, 12+ full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | 12 walks | Future — after bootstrap and shared emit |
+| **L2: Expressions** | `ExprData` semantic knowledge, 12+ full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | 12 walks | **Bridge landed** — `expr_children`/`map_expr_children` in `00_core.dag` extract child relationship; deletion point P5.11. Full dissolution design in P5.11/P5.12. |
 | **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax like `if cond { body }` | ~200 string checks | Future — data-driven parser |
 
 L1 is the urgent layer. Its endgame is not "replace name checks with
@@ -579,6 +579,8 @@ knowledge that the roadmap is actively dissolving.
 | ~~`Some` constructor → `optional_node`~~ | ~~`04_infer.dag`~~ | **Resolved.** `optional_node` deleted; `Some` record lit infers via `with_optional_cardinality`. | P1.4 done. |
 | ~~`node_is_error_type` / `node_is_dynamic`~~ | ~~`04_types.dag`~~ | **Resolved.** Predicates deleted. | P1.9 done. |
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
+| `expr_children` / `map_expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~600 lines of boilerplate across 6 manual ExprData walks. | L2 dissolution (P5.11): when expression children move to `node.children`, these functions become `node.children` reads and are deleted. |
+| Arity bridge (`parameterized_type_arity`) | `00_core.dag`, `04_types.dag` | Hardcodes arity for known parameterized types (`Map→2`, `List→1`, `Set→1`). Compiler reads arity from this bridge instead of from `.dag` declarations. | P3.7: deleted when generics (P3.6) provide real `.dag` algebraic declarations with declared arity. |
 
 ### Active Ratchets
 
@@ -936,8 +938,10 @@ Mechanical checklist:
 - [x] Stop `resolve_optional_node` silently swallowing `CompilerError` —
       now surfaces error as diagnostic; `leaf_node("Error")` sentinel persists
       due to `NodeResolveResult` structural constraint (Phase 5 migration)
-- [ ] Audit `rt_node(...)` callers that collapse `None` into `Unit` — these
-      should propagate the failure, not fabricate a type
+- [x] Audit `rt_node(...)` callers that collapse `None` into `Unit` —
+      `rt_node` now returns `NodeType = Typed | InferError | Untyped`;
+      137 callers migrated; `rt_type` convenience helper for emit callers;
+      explicit 3-arm matches where error/absent distinction matters
 
 **Verification:** `grep -rn '"Error"\|"Dynamic"' src/v2/04_types.dag
 src/v2/04_infer.dag src/v2/05_emit*.dag` returns zero results related
@@ -1628,6 +1632,114 @@ can interleave with either track.
 | P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
 | P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | Unnecessary when nodes carry structure directly. |
 | P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Note: collections (`Set`, `Map`, `List`) are *not* products or coproducts — they are function/indexed types in the denotational model. `Conj`/`Disj` remain relevant for record types (product) and coproduct types (e.g., `Result<T, E> = Ok \| Err`), but the collection algebra family is orthogonal. `Optional` is cardinality, not a coproduct node (P1.4). |
+
+#### Track D: L2 dissolution (ExprData → Node children)
+
+| ID | Item | Depends on | Est. scope | Notes |
+|----|------|-----------|-----------|-------|
+| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) | ~5000 lines across all .dag files + v1 interpreter | Move expression children from ExprData variant fields to `node.children`. Delete `expr_children`/`map_expr_children` bridge. See P5.11 design below. |
+| P5.12 | ExprData tag dissolution | P5.11 | ~2000 lines | Replace ExprData sum type with a structural expression-kind property on Node. The compiler no longer hardcodes what `if`, `match`, `let` mean — it processes graph structure. |
+
+### P5.11 Design: ExprData Child Dissolution
+
+**Problem:** Expression children live inside ExprData variant fields
+(`ExprIf.condition`, `ExprCall.args`, etc.) instead of in
+`node.children`. This forces every expression analysis to write a full
+ExprData match to access children — 12 manual walks totaling ~1800
+lines, of which ~600 are pure structural boilerplate.
+
+**Bridge (current):** `expr_children(node) -> List<Node>` and
+`map_expr_children(node, transform)` extract/reconstruct children from
+ExprData. This eliminates the boilerplate but the dual representation
+remains.
+
+**Target state:** Expression nodes use `node.children` for child
+expressions, the same way type nodes use `node.children` for
+fields/variants. ExprData retains non-Node metadata (operator kind,
+variable name, method name) but child Nodes are structural.
+
+**What moves to `node.children`:**
+
+```
+ExprFieldAccess { base }           → children: [base]
+ExprCall { args }                  → children: [arg.value for each arg]
+ExprMethodCall { receiver, args }  → children: [receiver, arg.value...]
+ExprMatch { scrutinee, arms }      → children: [scrutinee, arm.body...]
+ExprIf { condition, then, else }   → children: [condition, then, else?]
+ExprLet { value, body }            → children: [value, body?]
+ExprBinOp { left, right }         → children: [left, right]
+ExprUnaryOp { operand }           → children: [operand]
+ExprLambda { body }               → children: [body]
+ExprBlock { stmts }               → children: stmts
+ExprCast { expr }                 → children: [expr]
+ExprForEach { collection, body }  → children: [collection, body]
+ExprIndex { base, index }         → children: [base, index]
+ExprSlice { base, start, end }    → children: [base, start, end]
+ExprReturn { value }              → children: [value]
+ExprRecordLit { fields }          → children: [field.value...]
+ExprListLit { elements }          → children: elements
+ExprStringInterp { parts }        → children: [interp.expr for each Interpolation]
+```
+
+**What stays in ExprData (non-Node metadata):**
+
+```
+ExprCall.func: String              → stays (function name is metadata)
+ExprCall.call_semantics            → stays
+ExprMethodCall.method: String      → stays
+ExprMethodCall.method_semantics    → stays
+ExprFieldAccess.field: String      → stays
+ExprFieldAccess.summary            → stays
+ExprVar.name: String               → stays (or moves to node.name)
+ExprVar.binding_kind               → stays
+ExprBinOp.op: BinOpKind           → stays
+ExprUnaryOp.op: UnaryOpKind       → stays
+ExprLet.name: String              → stays
+ExprForEach.variable: String      → stays
+ExprCast.target: Node             → stays (target is a type, not a child expr)
+ExprRecordLit.type_name           → stays
+ExprLambda.params                 → stays
+ExprLambda.semantics              → stays
+MatchArm.pattern                  → stays (pattern is not a child expr)
+NamedArg.name                     → stays (arg name is metadata on the child)
+```
+
+**Positional semantics:** After dissolution, child positions are
+meaningful. `ExprIf` children are `[condition, then, else]` by
+position — child 0 is condition, child 1 is then-branch, child 2 is
+else-branch. The ExprData tag identifies the expression kind;
+`node.children` holds the operands in declared order. This is the same
+model as type nodes: a product's children are its fields in declared
+order; a coproduct's children are its variants.
+
+**Named arg threading:** `ExprCall` and `ExprMethodCall` have
+`args: List<NamedArg>` where each arg has `name: String?` and
+`value: Node`. After dissolution, the child Nodes are the arg values;
+the arg names become properties on the children (or on the parent via
+a parallel name list). Design decision for P5.11.
+
+**Match arm threading:** `ExprMatch` has `arms: List<MatchArm>` where
+each arm has `pattern`, `guard`, and `body`. The child Nodes are
+scrutinee + arm bodies (+ guards). Patterns stay in ExprData. Design
+decision: encode arm structure as a property or flatten into children
+with a position convention.
+
+**Migration order:**
+1. Add `node.children` population alongside ExprData during parse
+   (dual-write)
+2. Migrate walkers from ExprData child reads to `node.children` reads
+   (one at a time, test after each)
+3. Remove ExprData child fields (children now live only in
+   `node.children`)
+4. Delete `expr_children`/`map_expr_children` bridge
+
+**Prerequisite:** Shared emit (Phase 4) should be stable before P5.11
+starts. Dissolving ExprData children changes what shared emit
+dispatches on. If shared emit is still being extracted when P5.11
+lands, the extraction must be redone.
+
+**Verification:** All existing tests + diagnostic ratchet + stage0
+self-compile + fixed point.
 
 ### P5.0 Design: Token Shape API
 
