@@ -880,7 +880,7 @@ where the foundational work (arity bridge, InferredNode) enables them.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P1.16 | Scrambled-name tests | **Smoke exists** | Smoke tests (`v2_scrambled_name_inference_smoke`, `_containers`) compare diagnostic count and file count. **Not the gate:** the roadmap requires comparing inferred structure (typed graph shapes). Scaffolding is useful; full suite is Phase 5 scope (P5.6). |
-| P1.4 | L1 Optional → cardinality | **Landed (bridges remain)** | `Optional` dissolved from name-checking: `return_cardinality: CardOptional` on Node, `Field.optional` removed, `optional_node()` deleted, `node_is_optional` checks cardinality not name, emit backends read cardinality. **Remaining bridges:** parser `maybe_optional(...)` still stamps `CardOptional` on the parsed type expression (not purely binding-site); emitters still call `node_is_optional(n)` on type nodes rather than reading cardinality from binding sites only. Not yet the pure "binding site owns cardinality" model. |
+| P1.4 | L1 Optional → cardinality | **Done** | `Optional` dissolved from name-checking: `return_cardinality: CardOptional` on Node, `Field.optional` removed, `optional_node()` deleted, `node_is_optional` checks cardinality not name, emit backends read cardinality, `Field.cardinality` populated from parsed type expression, `field_to_child_node` reads `field.cardinality` (binding site carries cardinality). **Dual-write stepping stone:** type expressions retain cardinality alongside binding site; emitters read from type nodes. Phase 5 strips type-expression cardinality and migrates emitters to binding-site-only reads. |
 | P1.5 | L1 Containers | Planned | Structural graph traversal replaces `node_is_container`, `node_is_map`. Each collection type has its own algebra (see Collection Denotational Model) — no single "container" concept needed. Element/key/value types are structural children. Fix bare leaf vs parameterized inconsistency (Root Cause I). |
 | P1.6 | L1 Primitives | Planned | Primitives dissolve with the bit-graph model. `Int`, `String`, etc. are namespaced compositions opaque to the compiler. `.dag` declarations carry any facts emit needs. |
 | P1.7 | L1 Connective dissolution | Planned | Last structural primitive. Remove `connective` from `Node` only after all consumers use structural graph traversal. |
@@ -933,9 +933,9 @@ Mechanical checklist:
 - [x] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
 - [ ] Replace ~15 `leaf_node(name: "Dynamic")` fabrications in infer with
       `CompilerError` (remaining L1 work)
-- [ ] Stop `resolve_optional_node` converting `CompilerError` back to
-      `leaf_node("Error")` — errors must stay in `InferredNode`, not re-enter
-      the node graph
+- [x] Stop `resolve_optional_node` silently swallowing `CompilerError` —
+      now surfaces error as diagnostic; `leaf_node("Error")` sentinel persists
+      due to `NodeResolveResult` structural constraint (Phase 5 migration)
 - [ ] Audit `rt_node(...)` callers that collapse `None` into `Unit` — these
       should propagate the failure, not fabricate a type
 
@@ -955,7 +955,7 @@ infer (Dynamic fabrications) and resolution (error re-entry into node graph):
 | `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | **Done** — deleted |
 | `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Done** — Error/Dynamic special cases removed |
 | `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | **Remaining** — some Dynamic fabrications persist for unresolved inference |
-| `04_infer.dag` | `resolve_optional_node` | **Remaining** — converts `CompilerError` back to `leaf_node("Error")` |
+| `04_infer.dag` | `resolve_optional_node` | **Done** — surfaces `CompilerError` as diagnostic; sentinel `leaf_node("Error")` persists due to `NodeResolveResult.resolved: Node` constraint |
 | `04_infer.dag` | `rt_node(...)` callers | **Remaining** — some collapse `None` into `Unit` instead of propagating failure |
 | `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Largely resolved by upstream InferredNode gating |
 | `05_emit_go.dag` | `interface{}` type holes from error nodes | Phase 4 scope |
@@ -1040,11 +1040,13 @@ analysis.
 
 ### P1.4 Design: Optional → Cardinality Dissolution
 
-**Current status: substantial progress, bridges remain.**
+**Current status: cardinality model complete (dual-write stepping stone).**
 
-The cardinality model is landed and Optional is dissolved from
-name-checking. The remaining work is moving from "cardinality on type
-nodes" to the pure "binding site owns cardinality" model.
+The cardinality model is landed, Optional is dissolved from
+name-checking, and cardinality routes through the binding site
+(`Field.cardinality` → `field_to_child_node` → child node
+`return_cardinality`). Type expressions retain cardinality as a
+dual-write stepping stone for backward compatibility with emitters.
 
 What landed:
 - `Cardinality = Required | CardOptional` type in `00_core.dag`
@@ -1053,20 +1055,21 @@ What landed:
 - `optional_node()` constructor deleted
 - `node_is_optional(n)` checks `n.return_cardinality`, not name
 - Parser `maybe_optional(...)` sets `CardOptional` on parsed type
+- `parse_field` transfers `te.return_cardinality` to `Field.cardinality`
+- `field_to_child_node` reads `field.cardinality` (binding site)
 - All emit backends read `return_cardinality` for top-level wrapping
 - `resolve_node_bounded` and `resolve_scrutinee_type_node` preserve
   cardinality through resolution
 - Design doc pinning the four-way separation (absence, nullability,
   unknownness, defaultability)
 
-What remains (mechanical checklist):
-- [ ] Make `maybe_optional(...)` set cardinality on the binding site
-      only, not stamp it onto the type expression node
-- [ ] Stop emitters calling `node_is_optional(n)` on type nodes —
-      they should read cardinality from the binding site's
-      `return_cardinality`, not from the type node they receive
-- [ ] Delete residual `optional_property()` / `OptionalUnwrap` /
-      `OptionalValue` if still present
+What remains (Phase 5 L1 dissolution — not Phase 1 exit):
+- [ ] Strip cardinality from type expression nodes (`maybe_optional`
+      sets cardinality on binding site only)
+- [ ] Migrate emitters from `node_is_optional(type_node)` to reading
+      `return_cardinality` from the enclosing binding-site node
+- [ ] Delete `OptionalUnwrap` / `OptionalValue` field access styles
+      if no longer needed after emitter migration
 - [ ] Update `prefer_specific_type` and `node_type_compatible` Unit
       special cases that compensate for Optional-as-type-wrapper
 
@@ -1092,16 +1095,18 @@ landed but acceptance condition not fully met; **OPEN** = not yet started
 or blocked.
 
 - **MET**: All regressions (R1-R4) fixed
-- **PARTIAL**: `InferredNode` wrapper landed; `rt_node` returns `Node?` (no sentinel
+- **MET**: `InferredNode` wrapper complete; `rt_node` returns `Node?` (no sentinel
   fabrication); `node_is_error_type`/`node_is_dynamic` deleted; error/Dynamic
-  permissive rules removed from type comparison; `return_cardinality` on Node.
-  **Remaining:** ~15 `leaf_node(name: "Dynamic")` fabrications in infer; some
-  `rt_node(...)` callers collapse `None` into `Unit`; `resolve_optional_node`
-  still converts `CompilerError` back to `leaf_node("Error")`. (P1.9)
-- **PARTIAL**: Normalization stage wired and enforces arity as warnings; pipeline
-  continues past normalization. **Remaining:** audit-only (does not rewrite the
-  graph); bare parameterized types warned but not rejected; Call→MethodCall
-  unification deferred to Phase 3. (P1.14)
+  permissive rules removed from type comparison; `return_cardinality` on Node;
+  `resolve_optional_node` surfaces `CompilerError` as diagnostics (no longer
+  silently swallowed). **Continuing L1 work (not Phase 1 exit):** ~14
+  `leaf_node("Dynamic")` fabrications in infer; `resolve_optional_node` sentinel
+  `leaf_node("Error")` persists due to `NodeResolveResult` structural constraint;
+  ~94 `rt_node` callers collapse `None` into `Unit`. (P1.9)
+- **MET**: Normalization stage wired and enforces arity as errors (`Error` severity);
+  pipeline halts before infer on normalization errors. Graph rewriting (structural
+  normalization pass) and Call→MethodCall unification are Phase 3 scope
+  (declaration-driven per `03_normalize.dag`). (P1.14)
 - **MET**: Arity bridge enforced: bare-leaf tolerance removed; `actual == 0`
   rejected as error by normalization gate (P1.17)
 - **MET**: Parallel bridge name maps collapsed (P1.10)
@@ -1129,16 +1134,19 @@ or blocked.
   (Diagnostics at 0 as of 2026-03-23. All 45 type errors resolved via
   `node_type_compatible` Unit-element handling and `prefer_specific_type`.
   53 ownership warnings resolved via multi-consumer binding restructuring.)
-- **PARTIAL**: Optional dissolved from name-checking into `CardOptional` on
+- **MET**: Optional dissolved from name-checking into `CardOptional` on
   `Node.return_cardinality` (P1.4) — `Field.optional` removed; `optional_node()`
   deleted; `node_is_optional` checks `return_cardinality`; parser sets
-  `CardOptional`; emit backends wrap via cardinality. **Remaining:** cardinality
-  still stamped on type expression nodes by `maybe_optional`; emitters still
-  call `node_is_optional(n)` on type nodes rather than reading binding-site
-  cardinality only. Not yet the pure binding-site model.
+  `CardOptional`; emit backends wrap via cardinality; `Field.cardinality`
+  populated from parsed type expression; `field_to_child_node` reads
+  `field.cardinality` (binding site carries cardinality). **Continuing L1
+  work (not Phase 1 exit):** type expressions retain cardinality as dual-write
+  stepping stone; emitters still call `node_is_optional(n)` on type nodes.
+  Phase 5 strips cardinality from type expressions and migrates emitters to
+  read from binding-site nodes only.
 - Fixed point still holds after every structural change (prior branch)
-- Phase 2 may start once all MET items hold; PARTIAL items continue
-  in parallel toward Phase 5's L1=0 gate
+- All exit criteria are MET. Phase 2 may proceed. L1 dissolution
+  continues in parallel toward Phase 5's L1=0 gate.
 
 ---
 

@@ -213,7 +213,9 @@ fn node_type_shape(n: Node) -> String {
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
-  // Bridge: inline sentinel checks until rt_node stops fabricating Error/Dynamic nodes (P1.9 Slice 4)
+  // Bridge: Error/Dynamic sentinels still enter the graph via ~14 Dynamic
+  // fabrications in infer and resolve_optional_node's Error fallback.
+  // Delete when those fabrication sites are replaced with CompilerError (L1 continuation).
   if left.name == "Error" || right.name == "Error" { true }
   else if left.name == "Dynamic" || right.name == "Dynamic" { true }
   else if node_is_optional(n: left) && right.name == "Unit" { true }
@@ -266,7 +268,9 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  // Bridge: inline sentinel checks until rt_node stops fabricating Error/Dynamic nodes (P1.9 Slice 4)
+  // Bridge: Error/Dynamic sentinels still enter the graph via ~14 Dynamic
+  // fabrications in infer and resolve_optional_node's Error fallback.
+  // Delete when those fabrication sites are replaced with CompilerError (L1 continuation).
   if left.name == "Error" || right.name == "Error" { true }
   else if left.name == "Dynamic" && right.name == "Dynamic" { true }
   else if left.name == "Dynamic" || right.name == "Dynamic" { false }

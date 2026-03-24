@@ -3081,7 +3081,11 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
   match n {
     None => NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
     Some { value: Resolved { node: inner } } => resolve_node(n: inner, env: env, module_name: module_name)
-    Some { value: CompilerError { message: _, span: _ } } => NodeResolveResult { resolved: leaf_node(name: "Error"), diagnostics: [] }
+    Some { value: CompilerError { message: msg, span: sp } } =>
+      NodeResolveResult {
+        resolved: leaf_node(name: "Error"),
+        diagnostics: [Diagnostic { severity: Error, message: msg, span: Some { value: sp }, module_name: Some { value: module_name }, category: none }]
+      }
   }
 }
 

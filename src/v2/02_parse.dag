@@ -725,7 +725,7 @@ fn field_to_child_node(field: Field) -> Node {
   }
   Node { name: field.name, span: field.span,
     children: [], connective: none,
-    params: [], return_type: Some { value: Resolved { node: ret_type } }, return_cardinality: Required,
+    params: [], return_type: Some { value: Resolved { node: ret_type } }, return_cardinality: field.cardinality,
     uses: [], body: field.default_value,
     transport: none, properties: props,
     type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -1226,13 +1226,13 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, state: r4.state, err: r4.err } }
     let f = Field {
-      name: name, type_expr: te, cardinality: Required,
+      name: name, type_expr: te, cardinality: te.return_cardinality,
       default_value: Some { value: r4.expr }, from_key: from_key, span: start_span
     }
     FieldResult { field: f, state: r4.state, err: none }
   } else {
     let f = Field {
-      name: name, type_expr: te, cardinality: Required,
+      name: name, type_expr: te, cardinality: te.return_cardinality,
       default_value: none, from_key: from_key, span: start_span
     }
     FieldResult { field: f, state: s, err: none }
