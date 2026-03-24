@@ -466,18 +466,17 @@ Status labels:
 
 ---
 
-## Current State (2026-03-23 Audit, updated 2026-03-23)
+## Current State (2026-03-23 Audit, updated 2026-03-24)
 
-**Bootstrap note:** On this tree, `v2_strict_compile_diagnostic_count`
-and `v2_bootstrap_fixed_point` **fail** with **45 type errors**: all
-`"if branches resolve to incompatible types"` — list element type
-mismatches across `infer`, `parse`, `resolve`, and `complexity` modules.
-A parse error in `05_emit.dag` (binary operator RHS across newline) was
-fixed by adding `skip_newlines` after consuming infix operators in
-`parse_expr_loop` and `parse_expr_loop_no_brace`. Workspace tests pass
-(116/116 non-ignored). Clippy clean. L1 ratchet 372 (cap 374).
-
-**What "prior-branch" means:** Several milestones (diagnostic ratchet 0, bootstrap A5/A6/A7, stage0 build) were achieved on earlier green branches. The `.dag` source changes are present. These milestones re-verify once the 45 type errors are resolved and stage0 self-compile is green again.
+**Bootstrap status:** `v2_strict_compile_diagnostic_count` passes with
+**0 diagnostics** (ratchet = 0). All 45 type errors resolved via
+`node_type_compatible` Unit-element handling and `prefer_specific_type`
+for ExprIf branch resolution. 53 ownership warnings exposed by the
+newly-reachable ownership analysis stage were fixed by restructuring
+multi-consumer bindings across 10 `.dag` files. Workspace tests pass
+(116/116 non-ignored). Clippy clean. Stage0 compiles in ~3 s, 91 MB
+peak RSS (complexity analysis guarded for >100 functions to avoid
+Rc-cloning OOM; see compile.dag stage 5 comment).
 
 **Root-cause audit (2026-03-23):** All ~66 live invariant violations
 trace to three root causes. Fixing root causes eliminates downstream
@@ -517,15 +516,32 @@ symptoms structurally; fixing symptoms individually is whack-a-mole.
 #### Phase-Blocking Ratchet: Diagnostics
 
 `src/v2/tests/src/lib.rs` enforces `DIAG_RATCHET = 0` when the v1-bootstrap
-path can compile v2 sources through stage0. **PHASE 2 GATE MET** on a green
-bootstrap branch; if stage0 compile fails, the ignored diagnostic test fails
-before the ratchet runs (see bootstrap note under Current State).
+path can compile v2 sources through stage0. **GATE MET:** 0 diagnostics on
+this tree.
 
-Journey: 2797 → 395 → 197 → 0. Root causes eliminated:
+Journey: 2797 → 395 → 197 → 0 → (45 type errors regressed on tree merge)
+→ 0 type errors + 53 ownership warnings → **0 total**.
+
+Root causes eliminated (type errors):
 - RC-A: `method_receiver_element_node` for Map<K,V>, map/flat_map/fold return type propagation
 - RC-B: Suppress variant/field lookup cascade diagnostics on error/leaf types
 - RC-C: Imported data declarations added to scope via `merge_scope_from_imports`
 - RC-D: `lookup` return type fixed from receiver to `Optional<element>`
+- RC-E: `node_type_compatible` Unit-element handling for List/Optional containers
+- RC-F: `prefer_specific_type` for ExprIf branch type resolution
+- RC-G: `infer_record_lit` specialization for `Some { value: x }` → `optional_node`
+
+Root causes eliminated (ownership warnings, 53 → 0):
+- Multi-consumer bindings in parser functions (inline record construction, decompose
+  returns to field projections)
+- Multi-consumer bindings in emit/infer/complexity (wrap tail expressions in
+  `let result = ...; result` to convert Consumed uses to Read uses)
+- Duplicate binding names across if/else branches (`raw` → `empty_raw` rename)
+
+**Lesson learned:** The 53 ownership warnings were latent — hidden behind
+type errors that gated the pipeline before ownership analysis could run.
+The diagnostic ratchet test is `#[ignore]` and requires stage0 build, so
+standard `cargo test` did not catch the regression window.
 
 #### Architectural Ratchet: L1 Type Knowledge Dissolution
 

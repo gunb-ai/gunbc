@@ -101,7 +101,14 @@ confirm before continuing.
 cargo test --workspace --exclude v2-compiler-tests  # hand-written tests
 cargo test -p v2-compiler-tests                     # v2 compiler tests
 cargo clippy --all-targets -- -D warnings           # lint
+cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored  # stage0 diagnostic ratchet (0 diagnostics)
 ```
+
+**Zero-diagnostic invariant:** `DIAG_RATCHET = 0` in `src/v2/tests/src/lib.rs`.
+Stage0 self-compile must produce 0 type errors and 0 ownership warnings. This
+test is `#[ignore]` (requires building stage0, ~25 s) so it is not part of the
+default `cargo test` run. Run it explicitly after any change to `.dag` source
+files that affects type inference, ownership analysis, or the compilation pipeline.
 
 ## Review Queue Discipline
 
