@@ -116,7 +116,6 @@ type Cardinality = Required | CardOptional
 type Field {
   name: String
   type_expr: Node
-  optional: Bool
   cardinality: Cardinality
   default_value: Node?
   from_key: String?
@@ -200,7 +199,7 @@ fn is_kernel_textual(name: String) -> Bool {
 // (1) changes Node.return_type to InferredNode?
 // (2) wraps all return_type construction in Resolved { node: ... }
 // (3) replaces all .return_type.value access with inferred_return_type_node()
-// (4) deletes error_type_node(), node_is_error_type(), node_is_dynamic()
+// (4) node_is_error_type() and node_is_dynamic() deleted; inline checks remain until rt_node stops fabricating sentinels
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -225,13 +224,11 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
 // Handles the InferredNode wrapper: Resolved → inner node,
 // CompilerError → error sentinel node (behavioral equivalence),
 // None → unit sentinel node (unset return type).
-fn rt_node(n: Node) -> Node {
+fn rt_node(n: Node) -> Node? {
   match n.return_type {
-    Some { value: Resolved { node: rt } } => rt
-    Some { value: CompilerError { message: _, span: _ } } =>
-      Node { name: "Error", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-    None =>
-      Node { name: "Unit", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    Some { value: Resolved { node: rt } } => Some { value: rt }
+    Some { value: CompilerError { message: _, span: _ } } => none
+    None => none
   }
 }
 
@@ -496,6 +493,7 @@ type Node {
   // Ports -- what flows in and out
   params: List<Param>
   return_type: InferredNode?
+  return_cardinality: Cardinality
   uses: List<ResourceUse>
   // Computation -- how it executes (none = externally provided)
   body: Node?
@@ -515,10 +513,10 @@ type Node {
 fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
-    params: [], return_type: return_type, uses: [], body: none,
-    transport: none, properties: [], type_annotation: none,
-    config: none, is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: expr_data
+    params: [], return_type: return_type, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, expr_data: expr_data
   }
 }
 
@@ -526,9 +524,9 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
   Node {
     name: "", span: span, children: [], connective: none,
     params: [], return_type: Some { value: CompilerError { message: message, span: span } },
-    uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
-    has_non_tail_self_call: false,
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none, config: none,
+    is_self_recursive: false, has_non_tail_self_call: false,
     expr_data: ExprError { kind: kind, message: message }
   }
 }
@@ -543,10 +541,10 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, children: children, connective: none,
-    params: [], return_type: none, uses: [], body: none,
-    transport: none, properties: properties, type_annotation: none,
-    config: none, is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: NoExprData
+    params: [], return_type: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: properties,
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, expr_data: NoExprData
   }
 }
 
@@ -866,8 +864,9 @@ fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module
   }
   Node {
     name: message, span: span, children: [], connective: none,
-    params: [], return_type: none, uses: [], body: none,
-    transport: none, properties: concat([sev_prop], mod_prop), type_annotation: none,
+    params: [], return_type: none, return_cardinality: Required,
+    uses: [], body: none, transport: none,
+    properties: concat([sev_prop], mod_prop), type_annotation: none,
     config: none, is_self_recursive: false, has_non_tail_self_call: false,
     expr_data: NoExprData
   }

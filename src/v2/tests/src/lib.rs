@@ -361,6 +361,7 @@ mod tests {
         map.insert("connective".to_string(), gunbc_ir::Value::Unit);
         map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
+        map.insert("return_cardinality".to_string(), required_cardinality_value());
         map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("body".to_string(), gunbc_ir::Value::Unit);
         map.insert("transport".to_string(), gunbc_ir::Value::Unit);
@@ -370,6 +371,12 @@ mod tests {
         map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
         map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
         map.insert("expr_data".to_string(), no_expr_data_value());
+        gunbc_ir::Value::Map(map)
+    }
+
+    fn required_cardinality_value() -> gunbc_ir::Value {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("_variant".to_string(), gunbc_ir::Value::Str("Required".to_string()));
         gunbc_ir::Value::Map(map)
     }
 
@@ -385,6 +392,7 @@ mod tests {
         map.insert("connective".to_string(), gunbc_ir::Value::Unit);
         map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("return_type".to_string(), return_type);
+        map.insert("return_cardinality".to_string(), required_cardinality_value());
         map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
         map.insert("body".to_string(), gunbc_ir::Value::Unit);
         map.insert("transport".to_string(), gunbc_ir::Value::Unit);
@@ -5762,6 +5770,141 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
                 "emit_data_value_json wildcards must use invalid markers, not silent null"
             );
         }
+    }
+
+    /// P1.21: Testgen verification gate — emit output.
+    /// Constructs a TypedModule with a service item that has mock_response
+    /// data, calls emit_test_file, and asserts the output is non-empty,
+    /// contains a tokio test function, and has no compile_error!.
+    #[test]
+    fn v2_testgen_compiled_bundle_gate() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let mock_value_node = literal_expr_value(
+            {
+                let mut lit = std::collections::BTreeMap::new();
+                lit.insert("_variant".to_string(), gunbc_ir::Value::Str("LitStr".to_string()));
+                lit.insert("value".to_string(), gunbc_ir::Value::Str("mock_fixture_data".to_string()));
+                gunbc_ir::Value::Map(lit)
+            },
+            zero_span_value(),
+        );
+
+        let mock_prop = {
+            let mut fi = std::collections::BTreeMap::new();
+            fi.insert("name".to_string(), gunbc_ir::Value::Str("mock_response".to_string()));
+            fi.insert("value".to_string(), mock_value_node);
+            gunbc_ir::Value::Map(fi)
+        };
+
+        let operation_node = {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("name".to_string(), gunbc_ir::Value::Str("Create".to_string()));
+            map.insert("span".to_string(), zero_span_value());
+            map.insert("children".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("connective".to_string(), gunbc_ir::Value::Unit);
+            map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
+            map.insert("return_cardinality".to_string(), required_cardinality_value());
+            map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("body".to_string(), gunbc_ir::Value::Unit);
+            map.insert("transport".to_string(), gunbc_ir::Value::Unit);
+            map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![mock_prop])));
+            map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
+            map.insert("config".to_string(), gunbc_ir::Value::Unit);
+            map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+            map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
+            map.insert("expr_data".to_string(), no_expr_data_value());
+            gunbc_ir::Value::Map(map)
+        };
+
+        let service_node = {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("name".to_string(), gunbc_ir::Value::Str("gate.Api".to_string()));
+            map.insert("span".to_string(), zero_span_value());
+            map.insert("children".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![operation_node])));
+            map.insert("connective".to_string(), gunbc_ir::Value::Unit);
+            map.insert("params".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("return_type".to_string(), gunbc_ir::Value::Unit);
+            map.insert("return_cardinality".to_string(), required_cardinality_value());
+            map.insert("uses".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("body".to_string(), gunbc_ir::Value::Unit);
+            map.insert("transport".to_string(), named_type_value("rest"));
+            map.insert("properties".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("type_annotation".to_string(), gunbc_ir::Value::Unit);
+            map.insert("config".to_string(), gunbc_ir::Value::Unit);
+            map.insert("is_self_recursive".to_string(), gunbc_ir::Value::Bool(false));
+            map.insert("has_non_tail_self_call".to_string(), gunbc_ir::Value::Bool(false));
+            map.insert("expr_data".to_string(), no_expr_data_value());
+            gunbc_ir::Value::Map(map)
+        };
+
+        let module_value = {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("name".to_string(), gunbc_ir::Value::Str("testgen_gate".to_string()));
+            map.insert("imports".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+            map.insert("items".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![service_node.clone()])));
+            map.insert("span".to_string(), zero_span_value());
+            gunbc_ir::Value::Map(map)
+        };
+
+        let typed_module = {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("module".to_string(), module_value);
+            map.insert("items".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![service_node])));
+            map.insert("type_env".to_string(), {
+                let mut te = std::collections::BTreeMap::new();
+                te.insert("bindings".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+                te.insert("recursive_type_names".to_string(), gunbc_ir::Value::List(std::sync::Arc::new(vec![])));
+                gunbc_ir::Value::Map(te)
+            });
+            map.insert("func_env".to_string(), {
+                let mut fe = std::collections::BTreeMap::new();
+                fe.insert("signatures".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+                gunbc_ir::Value::Map(fe)
+            });
+            map.insert("item_registry".to_string(), gunbc_ir::Value::Map(std::collections::BTreeMap::new()));
+            gunbc_ir::Value::Map(map)
+        };
+
+        let mut inputs = HashMap::new();
+        inputs.insert("typed_module".to_string(), typed_module);
+        let result = call_fn(&output, "emit_test_file", inputs)
+            .expect("emit_test_file should succeed");
+
+        let test_file_content = match result.get("content") {
+            Some(gunbc_ir::Value::Str(s)) => s.clone(),
+            other => panic!("expected content string in result, got: {:?}", other),
+        };
+
+        assert!(
+            !test_file_content.is_empty(),
+            "emit_test_file should produce non-empty content for a service with mock data"
+        );
+        assert!(
+            test_file_content.contains("#[tokio::test]"),
+            "generated test file should contain #[tokio::test]:\n{}",
+            &test_file_content[..test_file_content.len().min(500)],
+        );
+        assert!(
+            test_file_content.contains("async fn test_"),
+            "generated test file should contain an async test function:\n{}",
+            &test_file_content[..test_file_content.len().min(500)],
+        );
+        assert!(
+            !test_file_content.contains("compile_error!"),
+            "generated test file should not contain compile_error! markers:\n{}",
+            test_file_content,
+        );
+
+        let test_file_path = match result.get("path") {
+            Some(gunbc_ir::Value::Str(s)) => s.clone(),
+            other => panic!("expected path string in result, got: {:?}", other),
+        };
+        assert_eq!(
+            test_file_path, "tests/testgen_gate_test.rs",
+            "test file should be emitted to tests/<module>_test.rs"
+        );
     }
 
     /// P1.16: Scrambled-name test. Verifies that inference produces identical

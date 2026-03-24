@@ -13,6 +13,7 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node, FieldInit, Param,
   Connective, Conj, Disj,
+  Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
   make_expr_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -28,11 +29,11 @@ import v2.std.core {
 
 fn child_return_type_or_name(ch: Node) -> Node {
   if ch.return_type == none { leaf_node(name: ch.name) }
-  else { rt_node(n: ch) }
+  else { match rt_node(n: ch) { Some { value: rt } => rt  None => leaf_node(name: "Unit") } }
 }
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn product_property() -> FieldInit {
@@ -43,12 +44,12 @@ fn coproduct_property() -> FieldInit {
   FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
 }
 
-fn optional_property() -> FieldInit {
-  FieldInit { name: "optional", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+fn with_optional_cardinality(n: Node) -> Node {
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, return_type: n.return_type, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
-fn optional_node(inner: Node) -> Node {
-  Node { name: "Optional", span: SourceSpan { start: 0, end: 0 }, children: [inner, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [coproduct_property(), optional_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+fn with_required_cardinality(n: Node) -> Node {
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, return_type: n.return_type, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn container_property(kind_name: String) -> FieldInit {
@@ -56,22 +57,22 @@ fn container_property(kind_name: String) -> FieldInit {
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [container_property(kind_name: kind_name)], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [container_property(kind_name: kind_name)], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: first } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: second } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, params: [], return_type: none, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  ], connective: Some { value: Conj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 // Arity bridge check: returns true if a type node has the expected number of
@@ -84,7 +85,7 @@ fn type_node_arity_ok(n: Node) -> Bool {
 }
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: Resolved { node: ret } }, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn callable_return_type(n: Node) -> Node {
@@ -105,11 +106,6 @@ fn error_type_node() -> Node {
 // Type predicates
 // =========================================================================
 
-fn node_is_error_type(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  node_is_leaf(n: normed) && normed.name == "Error"
-}
-
 fn node_is_product(n: Node) -> Bool {
   n.properties |> any(p => p.name == "is_product")
   || (n.connective != none && n.connective == Some { value: Conj })
@@ -129,22 +125,14 @@ fn node_is_container(n: Node) -> Bool {
 }
 
 fn node_is_optional(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "optional")
+  match n.return_cardinality {
+    CardOptional => true
+    Required => false
+  }
 }
 
 fn node_is_map(n: Node) -> Bool {
   n.properties |> any(p => p.name == "map_type")
-}
-
-// Dynamic means "any type is acceptable" -- truly unresolved, not an error.
-// For cascade suppression of error types, use node_is_error_type instead.
-fn node_is_dynamic(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  node_is_leaf(n: normed) && normed.name == "Dynamic"
-}
-
-fn node_is_permissive(n: Node) -> Bool {
-  node_is_dynamic(n: n) || node_is_error_type(n: n)
 }
 
 fn node_is_leaf(n: Node) -> Bool {
@@ -154,10 +142,13 @@ fn node_is_leaf(n: Node) -> Bool {
 fn node_is_named_ref(n: Node) -> Bool {
   if n.return_type == none { false }
   else {
-    let rt = rt_node(n: n)
-    node_has_structure(n: rt) == false && rt.children |> count == 0
-      && rt.name != "" && rt.name != "None"
-      && is_kernel_type(name: rt.name) == false
+    match rt_node(n: n) {
+      Some { value: rt } =>
+        node_has_structure(n: rt) == false && rt.children |> count == 0
+          && rt.name != "" && rt.name != "None"
+          && is_kernel_type(name: rt.name) == false
+      None => false
+    }
   }
 }
 
@@ -212,10 +203,7 @@ fn node_type_shape(n: Node) -> String {
     }
     concat("Container(", n.name, ",", elem_shape, ")")
   } else if node_is_optional(n: n) {
-    let inner_shape = match n.children |> first {
-      Some { value: inner } => node_type_shape(n: inner)
-      None => "?"
-    }
+    let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
     concat("Optional(", inner_shape, ")")
   } else if node_is_map(n: n) {
     "Map(...)"
@@ -225,8 +213,9 @@ fn node_type_shape(n: Node) -> String {
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
-  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
-  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { true }
+  // Bridge: inline sentinel checks until rt_node stops fabricating Error/Dynamic nodes (P1.9 Slice 4)
+  if left.name == "Error" || right.name == "Error" { true }
+  else if left.name == "Dynamic" || right.name == "Dynamic" { true }
   else if node_is_optional(n: left) && right.name == "Unit" { true }
   else if left.name == "Unit" && node_is_optional(n: right) { true }
   else if node_is_container(n: left) && node_is_container(n: right) {
@@ -245,17 +234,12 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     }
   }
   else if node_is_optional(n: left) && node_is_optional(n: right) {
-    match left.children |> first {
-      Some { value: left_inner } =>
-        match right.children |> first {
-          Some { value: right_inner } =>
-            if left_inner.name == "Unit" || right_inner.name == "Unit" { true }
-            else { node_type_compatible(left: left_inner, right: right_inner) }
-          None => true
-        }
-      None => true
-    }
+    let left_inner = with_required_cardinality(n: left)
+    let right_inner = with_required_cardinality(n: right)
+    if left_inner.name == "Unit" || right_inner.name == "Unit" { true }
+    else { node_type_compatible(left: left_inner, right: right_inner) }
   }
+  else if node_is_optional(n: left) || node_is_optional(n: right) { false }
   else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
 }
 
@@ -264,11 +248,13 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
   let left_is_optional = node_is_optional(n: left)
   let left_first_child = left.children |> first
   let left_norm_name = left.name
-  let left_is_unit_inner = if left_is_container || left_is_optional {
+  let left_is_unit_inner = if left_is_container {
     match left_first_child {
       Some { value: el } => el.name == "Unit"
       None => false
     }
+  } else if left_is_optional {
+    left.name == "Unit"
   } else { false }
   let same_kind = if left_is_container && node_is_container(n: right) {
     normalize_type_name(name: left_norm_name) == normalize_type_name(name: right.name)
@@ -280,9 +266,10 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  if node_is_error_type(n: left) || node_is_error_type(n: right) { true }
-  else if node_is_dynamic(n: left) && node_is_dynamic(n: right) { true }
-  else if node_is_dynamic(n: left) || node_is_dynamic(n: right) { false }
+  // Bridge: inline sentinel checks until rt_node stops fabricating Error/Dynamic nodes (P1.9 Slice 4)
+  if left.name == "Error" || right.name == "Error" { true }
+  else if left.name == "Dynamic" && right.name == "Dynamic" { true }
+  else if left.name == "Dynamic" || right.name == "Dynamic" { false }
   else if node_is_optional(n: left) && right.name == "Unit" { true }
   else if left.name == "Unit" && node_is_optional(n: right) { true }
   else if node_is_leaf(n: left) && node_is_leaf(n: right) {
@@ -321,14 +308,7 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     }
   }
   else if node_is_optional(n: left) && node_is_optional(n: right) {
-    match left.children |> first {
-      Some { value: left_inner } =>
-        match right.children |> first {
-          Some { value: right_inner } => node_type_equals(left: left_inner, right: right_inner)
-          None => false
-        }
-      None => false
-    }
+    node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
   }
   else if node_is_map(n: left) && node_is_map(n: right) {
     if left.children |> count == 2 && right.children |> count == 2 {
@@ -377,17 +357,17 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 
 fn node_type_deps(n: Node) -> List<String> {
   if node_is_named_ref(n: n) {
-    [rt_node(n: n).name]
+    match rt_node(n: n) { Some { value: rt } => [rt.name]  None => [] }
   } else if node_has_structure(n: n) {
     flat_map(n.children, child =>
       if child.return_type != none {
-        node_type_deps(n: rt_node(n: child))
+        match rt_node(n: child) { Some { value: rt } => node_type_deps(n: rt)  None => [] }
       } else {
         node_type_deps(n: child)
       }
     )
   } else if n.return_type != none {
-    node_type_deps(n: rt_node(n: n))
+    match rt_node(n: n) { Some { value: rt } => node_type_deps(n: rt)  None => [] }
   } else if n.children |> count > 0 {
     flat_map(n.children, child => node_type_deps(n: child))
   } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
@@ -457,11 +437,8 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
 }
 
 fn extract_optional_inner_node(n: Node) -> Node {
-  let inner = if node_is_optional(n: n) { n.children |> first } else { None }
-  match inner {
-    Some { value: i } => i
-    None => n
-  }
+  if node_is_optional(n: n) { with_required_cardinality(n: n) }
+  else { n }
 }
 
 fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {

@@ -248,6 +248,19 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let norm = normalize_graph(graph: graph)
       let norm_diags = norm.diagnostics
 
+      // Gate: if normalization produced errors (bare parameterized types,
+      // arity mismatches), do not proceed to infer.
+      let norm_errors = norm_diags |> filter(d => d.severity == Error)
+      if norm_errors |> count > 0 {
+        return PipelineResult {
+          files: [],
+          diagnostics: concat(frontend.diagnostics, norm_diags),
+          complexity: empty_complexity_report(),
+          ownership: [],
+          artifact_plan: empty_artifact_plan()
+        }
+      }
+
       // Stage 4: Reconcile namespaces and infer the module graph.
       // The env-error gate inside reconcile() prevents unresolved type
       // references from reaching emit.

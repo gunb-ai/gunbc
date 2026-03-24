@@ -12,7 +12,7 @@
 module v2.compiler.normalize
 
 import v2.std.core {
-  Node, Module, Diagnostic, Severity, Warning, SourceSpan,
+  Node, Module, Diagnostic, Severity, Warning, Error, SourceSpan,
   InferredNode, Resolved, CompilerError,
   parameterized_type_arity, is_parameterized_type
 }
@@ -59,11 +59,17 @@ fn check_node_arity(n: Node) -> List<Diagnostic> {
   let self_diag = if is_parameterized_type(name: n.name) {
     let expected = parameterized_type_arity(name: n.name)
     let actual = n.children |> count
-    if actual != expected && actual != 0 {
-      // Arity mismatch (but not bare leaf — bare leafs are common in parse output
-      // and will be filled by inference or reported there)
+    if actual == 0 {
       [Diagnostic {
-        severity: Warning,
+        severity: Error,
+        message: concat(n.name, " used without type parameters"),
+        span: Some { value: n.span },
+        module_name: none,
+        category: none
+      }]
+    } else if actual != expected {
+      [Diagnostic {
+        severity: Error,
         message: concat(n.name, " has wrong number of type parameters"),
         span: Some { value: n.span },
         module_name: none,
