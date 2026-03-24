@@ -3801,11 +3801,7 @@ fn describe(lb: Label) -> String {
 
     /// P3.6: User-defined generic types compile through the full pipeline.
     /// P3.6: User-defined generic types compile through the full pipeline.
-    /// Ignored: substitution logic in 03_normalize.dag crashes v1 interpreter
-    /// at module load time (complex Node constructors trigger empty-outputs bug).
-    /// Un-ignore after v1 retirement (Stream A) when substitution can be wired in.
     #[test]
-    #[ignore]
     fn v2_generic_type_declaration_smoke() {
         let output = compile_all_modules().expect("compilation should succeed");
 
